@@ -192,7 +192,7 @@ def test_sampled_single_shot_pulls_match_the_paced_cycle():
             mean = sum(B.semi_interval(rng, fire, pull) for _ in range(n)) / n
             want = CAT.paced_cycle_ms(weapon_id, pull)
             # The closed form is the renewal limit, exact for a long t14; a t14 well under the pull runs up to
-            # about 2.5% short (the USP at 350 ms: 359 against 367).
+            # about 2% short (the USP at 350 ms: 422 against 429).
             assert abs(mean - want) / want < 0.03, (weapon_id, pull, round(mean), round(want))
         assert B.semi_interval(rng, fire, 0) == fire                  # a perfect finger: the gun's own t14
         assert min(B.semi_interval(rng, fire, 300) for _ in range(2000)) >= fire   # never inside t14

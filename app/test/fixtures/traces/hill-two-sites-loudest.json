@@ -2,7 +2,7 @@
   "name": "hill-two-sites-loudest",
   "why": "F522: two present control points, the quieter one first in the step. The engine reads the first present site of a list a phone sorts loudest first (beacon.js Presence.stations), so it adopts the louder point, held by blue, not the neutral one.",
   "source": "app/src/engine.js _controlStation; app/src/beacon.js Presence._list; app/test/trace-station-age.test.mjs",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}]},
     "fields": ["hill"],
@@ -11,7 +11,7 @@
   "steps": [
     {"advance_ms":10},
     {"advance_ms":3000},
-    {"check": "live", "preamble": true},
+    {"check":"live","preamble":true},
     {"stations":[{"id":11,"kind":"control","team":255,"state":0,"value":0,"threshold":-74,"median":-70,"present":true},{"id":8,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"median":-50,"present":true}]},
     {"advance_ms":500},
     {"check":"the_louder_point_adopted"}
@@ -32,7 +32,7 @@
         "$GSET,0,0,1,0,1,0,0,1,*",
         "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
         "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
-        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
         "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
         "$SIR,0,0,,28,0,0,1,,*",
         "$SIR,0,1,,28,0,0,1,,*",

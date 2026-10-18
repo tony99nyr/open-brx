@@ -13,6 +13,8 @@ describe('mock compiler validation', () => {
     const f = await fixture();
     f.players[0].loadout.weapons = [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }];
     f.config.scoring.frag_limit = 5;
+    // 2026-10-17: the USP (12 a hit) kills a 115 pool on one magazine, so a 200 pool keeps the magazine warning.
+    f.config.health = { ...f.config.health, max_hp: 100, max_armor: 100 };
     const result = compilerValidation(f.config, f.players, f.weapons, false);
     const magazine = result.warnings.findIndex(line => line.startsWith('usp is your backup'));
     const crit = result.warnings.findIndex(line => line.includes('HEADSET-ONLY'));
@@ -61,6 +63,7 @@ describe('mock compiler validation', () => {
     f.config.station_source = 'phone';
     f.config.teams = f.config.teams.map(team => ({ ...team, tid: team.tid === 2 ? 3 : team.tid }));
     f.players[0].loadout.weapons = [{ weapon_id: 'usp' }];
+    f.config.health = { ...f.config.health, max_hp: 100, max_armor: 100 };   // see the backup-USP test above
     const result = compilerValidation(f.config, f.players, f.weapons, true);
     const setup = result.warnings.findIndex(line => line.startsWith('SETUP:'));
     const magazine = result.warnings.findIndex(line => line.startsWith('usp is your only weapon'));
