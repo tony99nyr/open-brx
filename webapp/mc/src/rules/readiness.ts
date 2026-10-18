@@ -46,11 +46,14 @@ export function sessionOffGrid(players: readonly Binding[], nodes: readonly Path
 
 // Server: state.py Session._notices(): mc_verify.
 export function sessionNoticesMcVerify(config: Pick<ConfigView, 'mode' | 'scoring' | 'coverage'>,
-  offGrid: readonly string[]): string | undefined {
+  offGrid: readonly string[], rosterSize: number): string | undefined {
   const decided = !!config.scoring.frag_limit ||
     (!!config.scoring.win_by && config.scoring.win_by !== 'kills') ||
     config.mode === 'lms' || config.mode === 'infection';
   if (!decided || config.coverage === 'full' || !offGrid.length) return undefined;
+  if (offGrid.length >= rosterSize) {
+    return 'WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE';
+  }
   const shown = offGrid.slice(0, 6).join(', ') + (offGrid.length > 6 ? ` +${offGrid.length - 6} MORE` : '');
-  return `WIN IS CONFIRMED AT MC, ${offGrid.length} PHONE${offGrid.length === 1 ? '' : 'S'} OFF-GRID (${shown}): TELL PLAYERS TO RETURN AFTER THE WHISTLE`;
+  return `WIN IS CONFIRMED AT MC, ${offGrid.length} PHONE${offGrid.length === 1 ? '' : 'S'} WITH NO ROUTE BACK (${shown}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE`;
 }

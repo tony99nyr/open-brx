@@ -199,6 +199,7 @@ export const DEMO_WEAPONS = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
