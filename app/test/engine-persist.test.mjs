@@ -198,6 +198,7 @@ test('T2: after a restart, a dual-emitter pull still counts as one shot group', 
 // that held the hill for 60 s, restarted and held 30 s more reported max(60, 30) = 60, not 90.
 test('T2: a restart keeps this node\'s possession tally, so the hold time it reports keeps growing from it', () => {
   const h = match();
+  h.adv(2000);   // F556: past go-live, so the 1 s anchor is all match time (an anchor before go-live is clamped)
   const at = h.eng.now();
   h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
   h.eng._reportPossession(at, true);
@@ -245,6 +246,7 @@ test('T2 r1: a restart mid-overheat still exempts the locked gun\'s dry pulls fr
 // `_resetHill` never ran. The tally a restart restored for match A then went to MC as match B's possession.
 test('T2 r1: a restored possession tally never reaches MC as another match\'s', () => {
   const h = match();
+  h.adv(2000);   // F556: past go-live, so the 1 s anchor is all match time (an anchor before go-live is clamped)
   const at = h.eng.now();
   h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
   h.eng._reportPossession(at, true);
@@ -337,6 +339,7 @@ test('H1: a phase a new-match welcome dropped stays dropped after a second resta
 // second restart lost the tally that the first one kept.
 test('M1: a possession tally survives a save after a restart and a second restart', () => {
   const h = match();
+  h.adv(2000);   // F556: past go-live, so the 1 s anchor is all match time (an anchor before go-live is clamped)
   const at = h.eng.now();
   h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
   h.eng._reportPossession(at, true);
@@ -394,6 +397,7 @@ test('Restore r1 #6: a standby assign drops the restored live phase', () => {
 // after a phone restart must always be REPORTED, even unchanged; only the SAVE skips it.
 test('Restore r1 #5: the first possession tally after a restart is reported, unchanged or not', () => {
   const h = match();
+  h.adv(2000);   // F556: past go-live, so the 1 s anchor is all match time (an anchor before go-live is clamped)
   const at = h.eng.now();
   h.eng._accrueHold({ site: 'A', owner: 1, at: at - 1000, source: 'station' }, at);
   h.eng._reportPossession(at, true);

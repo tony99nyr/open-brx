@@ -90,7 +90,7 @@
     {
       "at": "the_louder_point_adopted",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100}},
-      "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":250},"observed_ms":250,"source":"station"}],
+      "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":250},"observed_ms":250,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":250},"observed_ms":250,"source":"station"}],
       "reports": [],
       "writes": [
         "$PLAY,U100,4,6,,,,,*"

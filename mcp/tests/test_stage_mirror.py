@@ -2325,7 +2325,7 @@ KNOWN_UNMIRRORED = {
     "am.saved", "am.restore",   # F164: the live counts a reconcile re-arms survive an app restart; the stage never restarts
     "am.heatSaved", "am.heatRestore",   # T2 r1: the heat lockout survives an app restart; the stage never restarts
     # T2 r1: the phone's possession tally belongs to one match id; the stage has no MC welcome and reports no possession
-    "hl.begins", "hl.rival", "hl.report", "hl.holdTally", "hl.accrue", "hl.hill",
+    "hl.begins", "hl.rival", "hl.report", "hl.holdTally", "hl.accrue", "hl.accrueStations", "hl.hill",
     # Engine keeps these doors for call order and persistence; the listener owns their state and rules.
     "_accrueHold", "_reportPossession", "hill", "_possessionSaved",
 

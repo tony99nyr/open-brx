@@ -49,7 +49,7 @@ export const HILL_TRANSIENT = Object.freeze({
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing',
   _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillModeWarned: 'log once per game', _hillContestedAt: 'announcer edge',
   _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window', _hillBeginsAt: 'announcer edge',
-  _holdAt: 'accrual anchor: the next advert re-anchors', _possessionSentAt: 'report cadence',
+  _holdAt: 'accrual anchor: the next advert re-anchors', _siteHold: 'F556: the per-point accrual anchors, re-anchored by the next advert', _possessionSentAt: 'report cadence',
   _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
   _possessionSaved: 'DERIVED: the tally `_save` writes; `_load` rebuilds it from the restored hold/observed through the Engine accessor',
 });
@@ -70,6 +70,7 @@ export class HillListener {
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
     this._hillModeWarned = '';      // F535: a mode with no hill, logged once per game
     this._holdAt = 0;               // when the accrual last ran
+    this._siteHold = {};            // F556: per control point (site), its own accrual anchor {_holdAt}
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
   }
   get hill() { return this._hill; }
@@ -261,7 +262,8 @@ export class HillListener {
    *
    *  ⚠ ONE point. A station advert does name its own id, so unlike F88's grenades several points ARE
    *  distinguishable on this wire -- but `this.hill` models a single point, so the nearest/occupied one wins
-   *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). */
+   *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). That is the HUD and the
+   *  audio only: since F556 the possession clock accrues every point heard (`accrueStations`). */
   onAdvert(now) {
     const e = this.host._controlStation();
     if (!e) return;
@@ -455,16 +457,18 @@ export class HillListener {
    * MAX per (site, team) precisely because four players on one hill all observe the same ownership. The fact
    * says "team X owned point P for N ms as observed by me", which is why that merge is the obvious one.
    */
-  accrue(h, now) {
-    if (this.host.phase !== 'live') { this._holdAt = 0; return; }   // a point heard in the lobby is not possession
+  accrue(h, now, slot = this) {
+    if (this.host.phase !== 'live') { slot._holdAt = 0; return; }   // a point heard in the lobby is not possession
     this.holdTally();
     // Anchor the FIRST interval on when the point was last SEEN, not on when our tick happened to run.
     // Seeding from `now` instead lost one tick's worth on every fresh hold -- 250 ms at our normal cadence
     // but a full second on a throttled phone, which made possession depend on tick rate, the exact thing
     // this accumulator exists to avoid.
-    if (!this._holdAt) this._holdAt = (h.at != null && h.at <= now) ? h.at : now;
-    const dt = Math.max(0, Math.min(HOLD_STEP_MAX_MS, now - this._holdAt));
-    this._holdAt = now;
+    if (!slot._holdAt) slot._holdAt = (h.at != null && h.at <= now) ? h.at : now;
+    const goLive = this.host.goLiveT;   // F556 review: a point last heard before go-live banks nothing from before it
+    if (Number.isFinite(goLive) && goLive <= now && slot._holdAt < goLive) slot._holdAt = goLive;   // a go-live still ahead (a clock step) clamps nothing
+    const dt = Math.max(0, Math.min(HOLD_STEP_MAX_MS, now - slot._holdAt));
+    slot._holdAt = now;
     if (!dt) return;
     // A grenade beacon carries NO point id (F88), so its site is unnamed; a station advert names itself.
     const site = h.site != null ? String(h.site) : '';
@@ -475,6 +479,20 @@ export class HillListener {
       const by = this.host.hold[site] || (this.host.hold[site] = {});
       by[h.owner] = (by[h.owner] || 0) + dt;   // tid 2 included: MC credits it to nobody as `neutral_s`
     }
+  }
+  /** F556: accrue every control point heard now, each on its own clock (`_siteHold`), with the advert-path decode: held
+   *  and a claimable tid is the owner, else nobody (tid 2, which MC credits to no team). A point that falls silent drops. */
+  accrueStations(now) {
+    const heard = (this.host._controlStations && this.host._controlStations()) || [];
+    const keep = {};
+    for (const e of heard) {
+      const site = String(e.id);
+      const slot = keep[site] = this._siteHold[site] || { _holdAt: 0 };
+      const held = !!(e.state & ADVERT_CONTROL_STATE.held);
+      this.accrue({ owner: (held && claimable(e.team)) ? e.team : HILL_REFUSED_TID, contested: !!(e.state & ADVERT_CONTROL_STATE.contested),
+        at: Number.isFinite(e.ageMs) ? now - e.ageMs : now, site: e.id, source: 'station' }, now, slot);
+    }
+    this._siteHold = keep;
   }
   /** Send the tally to MC. `hold_ms` is CUMULATIVE and every report is idempotent, so this is
    *  resend-as-it-grows on a slow cadence, plus one unconditional report at the whistle. */
@@ -499,7 +517,7 @@ export class HillListener {
   holdTally() {
     if (this.host._holdMatch === this.host.matchId) return;
     if (this.host._holdMatch == null) { this.host._holdMatch = this.host.matchId; return; }
-    this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this.host._holdSource = null; this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
+    this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null; this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
     this.host._holdMatch = this.host.matchId;
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
@@ -509,7 +527,7 @@ export class HillListener {
     this._hillWasContested = false; this._hillContestedAt = 0; this._hillContestOwed = false; this._hillOwnerWhenSilenced = undefined;
     this._hillTeam2Warned = false; this._hillSourceWarned = ''; this._hillModeWarned = '';
     this._hillEp = null; this._hillBeginsAt = {};
-    this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this.host._holdSource = null;
+    this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
   }
   /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
@@ -523,28 +541,30 @@ export class HillListener {
       this.host._changed();
     }
     const h = this.hill;
-    if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
+    if (!h) { this._holdAt = 0; this._siteHold = {}; return; }   // nothing to hear: the next accrual must not count the gap
     // F535 (Codex review): a hill still in memory from a KOTH game is dropped in a mode with no hill: no tick, no hold.
     if (!this.modeHasHill()) {
-      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._siteHold = {}; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
       this.host.log(`hill dropped: ${this.host.config.mode} has no hill`, 'li'); this.host._changed();
       return;
     }
     // F537 review r3: our own scan is closed. The point neither expires (that was the flap) nor scores (MC takes the
     // largest tally, so a phone that pauses more would score more); the next fresh advert re-anchors the clock.
-    if (h.source === 'station' && this.host._controlStation()?.paused) { this._holdAt = 0; return; }
+    if (h.source === 'station' && this.host._controlStation()?.paused) { this._holdAt = 0; this._siteHold = {}; return; }
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
     const window = h.source === 'station' ? CONTROL_STALE_MS : GRENADE_STALE_MS;
     if (now - h.at >= window) {   // out of range or off the point. NOT a "lost" — nobody took it from us
-      this.hill = null; this._hillTickAt = 0; this._holdAt = 0;
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._siteHold = {};
       if (this._hillPendingCallout?.site === h.site) this._hillPendingCallout = null;
       this._controlSig = ''; this._hillWasContested = false;   // K1: walking back into range must be able to re-announce
       this.host.log(`hill presence expired (${Math.round((now - h.at) / 1000)}s since its last beacon)`, 'li');
       this.host._changed();
       return;
     }
-    this.accrue(h, now);   // the CLOCK runs whatever the audio does: possession is a fact about the point
+    // the CLOCK runs whatever the audio does: possession is a fact about the point. F556: a station hill counts EVERY point
+    // heard, each on its own anchor; the latched one (`h`) is only what the HUD and the audio read.
+    if (h.source === 'station') this.accrueStations(now); else this.accrue(h, now);
     const pending = this._hillPendingCallout;
     if (pending) {
       if (h.source !== 'station' || h.site !== pending.site || h.owner !== pending.to) this._hillPendingCallout = null;
