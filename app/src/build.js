@@ -16,6 +16,16 @@ export const APP_VER = (typeof __APP_VER__ !== 'undefined' && __APP_VER__) || '0
  *  rig both read `web`. Deliberately NOT a user-agent sniff: Chrome on a phone is not the app, and a
  *  mislabelled node sends MC hunting for an APK that was never installed. Called per frame, so it
  *  stays a cheap property read rather than a cached boot-time value (the bridge appears late). */
+/** F564 (field 2026-10-17): the phone's make and model, from `Device.getInfo()` at boot (app.js, utility.js), so a battery or
+ *  radio report can be tied to hardware. Null until the plugin answers (and on the web): the hello then omits it. */
+let _device = /** @type {string|null} */ (null);
+/** @param {{manufacturer?: string, model?: string}|null} info */
+export function setDeviceModel(info) {
+  const s = info ? [info.manufacturer, info.model].filter(v => typeof v === 'string' && v.trim()).map(v => String(v).trim()).join(' ') : '';
+  _device = s ? s.slice(0, 64) : null;
+}
+export function deviceModel() { return _device; }
+
 export function platformName() {
   try {
     const runtime = /** @type {typeof globalThis & {Capacitor?: {getPlatform?: () => string}}} */ (globalThis);
