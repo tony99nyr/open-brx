@@ -405,7 +405,14 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
         allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}
         got = cat.resolve(wid, 0).split(",")
         want = row["capture"]["frame"].split(",")
-        assert len(got) == len(want), wid
+        # F548: this used to assert equal lengths, and it passed on the SMG only because t42 was written ONTO the
+        # terminator. Compare the cells with both terminators off: the frame may grow, but only into cells a balance
+        # token or a declared override writes (an empty pad cell in between is fine), and `*` is always last.
+        assert got[-1] == "*" and want[-1] == "*", (wid, got[-2:])
+        got, want = got[:-1], want[:-1]
+        assert len(got) >= len(want), wid
+        for i, a in enumerate(got[len(want):], start=len(want)):
+            assert i in allowed or a == "", f"{wid} grew an undeclared tok{i - 1}: {a!r}"
         for i, (a, b) in enumerate(zip(got, want)):
             if i not in allowed:
                 assert a == b, f"{wid} tok{i - 1} drifted from the capture: {b!r} -> {a!r}"

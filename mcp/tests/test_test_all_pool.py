@@ -843,3 +843,90 @@ def test_a_local_ticket_never_bypasses_a_waiting_priority_ticket(tmp_path):
       (await head).release(); lander.close(); local.close();
     """
     _run_pool_script(script)
+
+
+def test_darwin_memory_counts_inactive_and_speculative_pages():
+    # F565: on macOS os.freemem() counts only free pages (206 MB on a MacBook whose vm_stat showed about 1.5 GB
+    # inactive), so every job queued for ever. The Darwin branch reads vm_stat instead.
+    script = f"""
+      import {{ memAvailableMb, darwinAvailableMb }} from {json.dumps(POOL_MOD.as_uri())};
+      const vmStat = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               13184.
+Pages active:                            301213.
+Pages inactive:                           96000.
+Pages speculative:                         3200.
+Pages wired down:                         98000.
+`;
+      const mb = darwinAvailableMb(vmStat);
+      if (mb !== (13184 + 96000 + 3200) * 16384 / 1048576) throw new Error('wrong sum: ' + mb);
+      if (darwinAvailableMb('no header here') !== null) throw new Error('a bad vm_stat must read as unknown');
+      const read = memAvailableMb({{ platform: 'darwin', readMeminfo: () => {{ throw new Error('ENOENT'); }},
+        readVmStat: () => vmStat }});
+      if (read !== mb) throw new Error('darwin did not use vm_stat: ' + read);
+      const fallback = memAvailableMb({{ platform: 'darwin', readMeminfo: () => {{ throw new Error('ENOENT'); }},
+        readVmStat: () => {{ throw new Error('no vm_stat'); }} }});
+      if (!(fallback > 0)) throw new Error('no fallback when vm_stat fails');
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_an_empty_pool_admits_one_job_when_memory_reads_too_low(tmp_path):
+    # F565: with no starvation escape a run on a machine that under-reads its memory waited for ever, heartbeat alive.
+    # The timed floor (macOS): the head of the queue, alone in an empty pool, is admitted after floorMs, and from then
+    # on each empty-pool head at once.
+    script = f"""
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const dir = {json.dumps(str(tmp_path / 'pool'))};
+      const logs = [];
+      const pool = createPool({{ dir, poolMb: 1000, reserveMb: 100, poolCores: 4, readAvailableMb: () => 50,
+        taskHeadroom: () => null, pollMs: 10, floorMs: 300, memoryFloor: true, log: m => logs.push(m) }});
+      const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
+      // An older ticket from another run is ahead: the floor waits behind it.
+      const other = path.join(dir, '000000000000001-1-waiter.ticket');
+      fs.mkdirSync(dir, {{ recursive: true }});
+      fs.writeFileSync(other, JSON.stringify({{ pid: process.pid, mb: 600, cores: 1, heartbeat: Date.now(), queuedAt: Date.now() }}));
+      const queued = pool.acquire({{ runId: 'r', job: 'big', mb: 600, cores: 1 }});
+      if (await within(queued, 600)) throw new Error('the floor admitted a job behind an older ticket');
+      fs.rmSync(other);
+      const started = Date.now();
+      const lease = await within(queued, 3000);
+      if (!lease) throw new Error('an empty pool never admitted the head job');
+      if (Date.now() - started < 250) throw new Error('the floor admitted before floorMs');
+      if (!logs.some(m => /alone/.test(m))) throw new Error('the floor admission was silent: ' + logs);
+      // The floor is for an EMPTY pool only: a second job waits while the first holds its lease.
+      const second = pool.acquire({{ runId: 'r', job: 'second', mb: 100, cores: 1 }});
+      if (await within(second, 600)) throw new Error('the floor admitted a job beside a live lease');
+      const freed = Date.now();
+      lease.release();
+      const next = await within(second, 3000);
+      if (!next) throw new Error('the next job never ran');
+      // Once the floor has opened, the next empty-pool head goes at once, not after another floorMs (Opus review).
+      if (Date.now() - freed >= 250) throw new Error('every job waited the floor again');
+      next.release();
+      pool.close();
+    """
+    _run_pool_script(script)
+
+
+@_temporary_path
+def test_the_mac_floor_spends_the_reserve_at_once_and_linux_never_does(tmp_path):
+    # F565, Opus review: on macOS an empty-pool head whose job fits the reading itself goes at once (it spends the
+    # reserve, not memory the reading lacks). Linux keeps the hard limit: test_reserve_blocks_until_memavailable_rises.
+    script = f"""
+      import {{ createPool }} from {json.dumps(POOL_MOD.as_uri())};
+      const within = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
+      for (const memoryFloor of [true, false]) {{
+        const pool = createPool({{ dir: {json.dumps(str(tmp_path))} + '/pool-' + memoryFloor, poolMb: 1000,
+          reserveMb: 300, poolCores: 4, readAvailableMb: () => 700, taskHeadroom: () => null, pollMs: 10,
+          floorMs: 60000, memoryFloor, log: () => {{}} }});
+        const lease = await within(pool.acquire({{ runId: 'r', job: 'big', mb: 600, cores: 1 }}), 1000);
+        if (memoryFloor && !lease) throw new Error('the mac floor did not spend the reserve');
+        if (!memoryFloor && lease) throw new Error('Linux admitted into the reserve');
+        lease?.release();
+        pool.close();
+      }}
+    """
+    _run_pool_script(script)

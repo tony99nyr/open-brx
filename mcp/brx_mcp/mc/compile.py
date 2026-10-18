@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import math
 import pathlib
 from typing import Any, Literal, cast
@@ -1400,11 +1401,28 @@ class WeaponCatalog:
             p[_W_RESERVE] = str(_res); p[_W_RELOAD] = str(_rel)
             return ",".join(p)
         p = frame.split(",")
+        # F548 (field 2026-10-17, P0): take the `*` terminator off before any token is written, and put it back last.
+        # The SMG capture is 44 fields with no t42 cell, so writing t42 landed ON the terminator, and a frame with no
+        # `*` never dispatches on the gun (the slot never loaded, the head never echoed). A write past the captured
+        # cells now extends the frame instead. A capture with no terminator at all stays without one, and the
+        # compile gate (`Compiler._refuse_malformed_frames`) refuses it.
+        terminated = p[-1].strip() == "*"
+        if terminated:
+            p.pop()
         p[1] = str(slot)
         T = self._T
 
+        def set_cell(i: int, val) -> None:
+            if i >= len(p):
+                p.extend([""] * (i + 1 - len(p)))
+            p[i] = str(val)
+
+        def cell(key: str) -> str:
+            i = T[key] + 1
+            return p[i] if i < len(p) else ""
+
         def put(key: str, val) -> None:
-            p[T[key] + 1] = str(val)
+            set_cell(T[key] + 1, val)
 
         wire = w.get("wire") or {}
         # S50 (Armour Piercing perk): `dmg_mult` must be able to scale t5 even on a weapon with NO
@@ -1519,9 +1537,9 @@ class WeaponCatalog:
         # words -- the flat, measured shelf of F231's range curve, not its unstable 13-26 transition
         # band -- so today the second word lands on every pull at every range this game is played at.
         # See docs/FOLLOWUPS.md for the open question of where the word WOULD cut out if aimed lower.
-        if p[T["headset_range_outdoor"] + 1].strip() != "" and wire.get("headset_range_outdoor") is not None:
+        if cell("headset_range_outdoor").strip() != "" and wire.get("headset_range_outdoor") is not None:
             put("headset_range_outdoor", int(wire["headset_range_outdoor"]))
-        if p[T["headset_range_indoor"] + 1].strip() != "" and wire.get("headset_range_indoor") is not None:
+        if cell("headset_range_indoor").strip() != "" and wire.get("headset_range_indoor") is not None:
             put("headset_range_indoor", int(wire["headset_range_indoor"]))
         fire_abs = (mods or {}).get("fire_abs")
         if fire_abs is not None:
@@ -1537,14 +1555,14 @@ class WeaponCatalog:
         # `_T` comment and the F234 block above `RANGE_OUTDOOR_FLOOR`) -- it stays exactly as the
         # capture carries it, byte for byte.
         put("range_outdoor", gun_range_outdoor_pct(
-            int(p[T["range_outdoor"] + 1] or 0), wire.get("range_outdoor_pct"), environment))
+            int(cell("range_outdoor") or 0), wire.get("range_outdoor_pct"), environment))
         for key, ov in (w.get("overrides") or {}).items():
             # t12 has already been validated and written above. Applying the evidence record again
             # here would undo Armour Piercing's required zeroing of the second damage word.
             if key == "t12" and headset_dmg is not None:
                 continue
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
-            p[idx + 1] = str(ov["value"])
+            set_cell(idx + 1, ov["value"])                    # F548: may extend the frame; never the terminator
         if (mods or {}).get("silent_weapons"):
             # F282: LAST, after the per-weapon `overrides`. A weapon that already carries the Suppressor's
             # t25/t26 pair is a suppressed weapon by design (the Suppressor itself, the USP-S) and keeps its
@@ -1552,9 +1570,11 @@ class WeaponCatalog:
             # all three tokens.
             t25, t26, t27 = self._silent_weapon_tokens()
             already_quiet = (p[26], p[27]) == (t25, t26)
-            p[26], p[27] = t25, t26
+            set_cell(26, t25); set_cell(27, t26)
             if not already_quiet:
-                p[28] = t27
+                set_cell(28, t27)
+        if terminated:
+            p.append("*")
         return ",".join(p)
 
     def _silent_weapon_tokens(self) -> tuple[str, str, str]:
@@ -2514,7 +2534,33 @@ class Compiler:
         self._build_respawn_profile(ctx)
         self._finish_bundle(ctx)
         assert ctx.bundle is not None
+        self._refuse_malformed_frames(ctx.bundle)
         return ctx.bundle
+
+    @staticmethod
+    def _refuse_malformed_frames(bundle: FrameBundle | list[str]) -> None:
+        """F548: every frame a bundle carries must pass `protocol.validate_frame` -- the same rail the lab instrument
+        enforces on `brx-mcp send`. The SMG head shipped with no `,*` for four weeks because this rail was never on
+        the compile path. A refusal names the frame and the reason; the push reports it (F551)."""
+        from ..protocol import validate_frame
+        bad: list[str] = []
+
+        def walk(v: object) -> None:
+            if isinstance(v, str):
+                if v.startswith("$") and (why := validate_frame(v)) is not None:
+                    bad.append(f"{why}: {v}")
+            elif isinstance(v, dict):
+                for x in v.values():
+                    walk(x)
+            elif isinstance(v, (list, tuple)):
+                for x in v:
+                    walk(x)
+        walk(bundle)
+        if bad:
+            msg = ("COMPILED FRAME REFUSED (THE GUN CANNOT DISPATCH IT): " + "; ".join(bad[:3])
+                   + (f" (+{len(bad) - 3} more)" if len(bad) > 3 else ""))
+            logging.getLogger("brx.mc").error("%s", msg)   # in mc.log, whoever catches the refusal
+            raise ValueError(msg)
 
     def _resolve_build(self, config: GameConfig, player: Player, teams: list[Team],
                        roll: _random.Random | None, plan: _ha.Plan | None) -> _Build:
@@ -2993,6 +3039,7 @@ class Compiler:
         ]
         assert_sir_follows_clear(frames)
         assert_sir_covers_weapons(frames)
+        self._refuse_malformed_frames(frames)   # F548 (Codex review): a try-out writes a head too
         return frames
 
     def voice_options(self) -> list[VoiceOption]:

@@ -520,7 +520,8 @@ class BleControlPoint {
 
     // Possession time, on the unclamped clock.
     // F382: the team tick pauses while contested, even though it keeps ownership.
-    if (owner != contract::STATION_TEAM_ANY && !contested && elapsed) hold_ms[owner] += elapsed;
+    // F554 (control.js): and banks only while the owner has a living player counted here (`counts`, so a fading owner holds).
+    if (owner != contract::STATION_TEAM_ANY && owner < 4 && !contested && counts[owner] > 0 && elapsed) hold_ms[owner] += elapsed;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").
