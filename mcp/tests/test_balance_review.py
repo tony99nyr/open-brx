@@ -583,6 +583,24 @@ def test_aim_sweep_flags_a_near_top_change():
     assert R.aim_sweep_status(rows, {"1v1 mid": 0.55, "1v1 long": 0.70})["near_top_changes"] == ["mid"]
 
 
+def _visible_haze_world():
+    """F577 (Tony 2026-10-18) hides the Haze, so a test about a SELECTABLE fn-23 row builds one: the shipped world with
+    `smoke_gun` shown again."""
+    shipped = R.shipped_world()
+    visible = copy.deepcopy(shipped.cat._row("smoke_gun"))
+    visible["hidden"] = False
+    return R.World(WeaponCatalog([visible if row["weapon_id"] == "smoke_gun" else row
+                                  for row in shipped.cat._rows]), shipped.perks)
+
+
+def test_f577_the_shipped_haze_is_hidden_so_no_standing_failure_ships():
+    shipped = R.shipped_world()
+    assert shipped.cat._row("smoke_gun").get("hidden") is True
+    with mock.patch.object(R, "haze_blind_sweep", side_effect=AssertionError("a hidden Haze was swept")):
+        result = R.haze_gate(shipped, shipped, 4)
+    assert result == {"rows": [], "flips": [], "fail": False, "standing_shipped_failures": []}, result
+
+
 def test_unhiding_haze_fails_only_when_it_crosses_the_blind_sweep_bar():
     shipped = R.shipped_world()
     hidden = copy.deepcopy(shipped.cat._row("smoke_gun"))
@@ -612,10 +630,11 @@ def test_unhiding_haze_fails_only_when_it_crosses_the_blind_sweep_bar():
 
 
 def test_haze_gate_reports_standing_shipped_failure_without_candidate_failure():
-    shipped = R.shipped_world()
-    baseline, candidate = R.build_worlds(R.load_candidate(
-        {"weapon_id": "shotgun", "changes": {"wire.dmg": 30}}))
-    result = R.haze_gate(baseline, candidate, 300)
+    shipped = _visible_haze_world()
+    R._SHIPPED_HAZE_CACHE.clear()
+    with mock.patch.object(R, "shipped_world", return_value=shipped):
+        result = R.haze_gate(shipped, shipped, 300)
+    R._SHIPPED_HAZE_CACHE.clear()
     assert not result["fail"]
     assert any(row["weapon_id"] == "smoke_gun" and row["blind_ms"] == 3000
                for row in result["standing_shipped_failures"])
@@ -638,26 +657,32 @@ def test_haze_gate_uses_newly_selectable_fn23_variant_row():
 
 
 def test_haze_gate_does_not_fail_when_shipped_blind_lengthens():
-    shipped = R.shipped_world()
+    shipped = _visible_haze_world()
     changed = copy.deepcopy(shipped.cat._row("smoke_gun"))
     changed["wire"]["swap_ms"] = 100
     candidate = R.World(WeaponCatalog([changed if row["weapon_id"] == "smoke_gun" else row
                                        for row in shipped.cat._rows]), shipped.perks)
     def longer(world, reps, heat_cool_while_firing=True, weapon_id="smoke_gun"):
         return [{"blind_ms": 3000, "win_vs_ar_body_armor": 0.8 if world is candidate else 0.7}]
-    with mock.patch.object(R, "haze_blind_sweep", side_effect=longer):
+    R._SHIPPED_HAZE_CACHE.clear()
+    with mock.patch.object(R, "haze_blind_sweep", side_effect=longer), \
+         mock.patch.object(R, "shipped_world", return_value=shipped):
         result = R.haze_gate(shipped, candidate, 4)
+    R._SHIPPED_HAZE_CACHE.clear()
     assert not result["fail"]
     assert result["standing_shipped_failures"]
 
 
 def test_haze_gate_reuses_the_shipped_sweep():
-    shipped = R.shipped_world()
+    shipped = _visible_haze_world()
     R.clear_cache()
+    R._SHIPPED_HAZE_CACHE.clear()
     with mock.patch.object(R, "haze_blind_sweep", return_value=[
-            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep:
+            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep, \
+         mock.patch.object(R, "shipped_world", return_value=shipped):
         R.haze_gate(shipped, shipped, 4)
         R.haze_gate(shipped, shipped, 4)
+    R._SHIPPED_HAZE_CACHE.clear()
     assert sweep.call_count == 5
 
 

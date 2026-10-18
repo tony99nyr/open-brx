@@ -713,7 +713,7 @@ def test_pick_ok_false_changes_nothing():
     needs(HAVE, "starlette + httpx")
     c, s, net, clock, ps = _pclient()
     r = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
-                                    "value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
+                                    "value": {"choice": "fixed", "fixed_id": "stripper"}})
     assert r.status_code == 200
     pid = r.json()["piece_id"]
     before_config, before_pick = dict(s.config), dict(s.game_pick)
@@ -773,7 +773,7 @@ def test_h1_put_on_a_picked_piece_prechecks_before_saving_or_dropping_the_lobby(
     assert c.post("/api/play/pick", json={"pieces": {"primary": pid}}).json()["ok"]
     s.push_config()
     assert s.lobby_pushed is True
-    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
+    r2 = c.put(f"/api/pieces/{pid}", json={"value": {"choice": "fixed", "fixed_id": "stripper"}})
     assert r2.status_code == 400, r2.json()
     unchanged = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == pid)
     assert unchanged["value"]["fixed_id"] == "assault_rifle"          # nothing saved
@@ -908,14 +908,14 @@ def test_ma_a_refused_pick_leaves_no_candidate_errors_on_the_live_session():
     before_errors = list(s.config_errors)
     before_warnings = list(s.config_warnings)
     r = c.post("/api/pieces", json={"kind": "primary", "name": "Ghost Gun", "note": "",
-                                    "value": {"choice": "fixed", "fixed_id": "smoke_gun"}})
+                                    "value": {"choice": "fixed", "fixed_id": "stripper"}})
     pid = r.json()["piece_id"]
     r2 = c.post("/api/play/pick", json={"pieces": {"primary": pid}})
     assert r2.json()["ok"] is False
     assert s.config_errors == before_errors
     assert s.config_warnings == before_warnings
     live = c.get("/api/state").json()
-    assert not any("smoke_gun" in e for e in live["config_errors"])
+    assert not any("stripper" in e for e in live["config_errors"])
 
 
 def test_mb_editing_an_unrelated_piece_survives_an_inherited_post_mvp_mode():

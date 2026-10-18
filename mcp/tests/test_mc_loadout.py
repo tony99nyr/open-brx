@@ -104,8 +104,9 @@ _OPEN_PRIMARY = _OPEN - len(_SUPPORT)
 
 
 def test_presets_and_pools():
-    assert _OPEN == 14, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
-    assert _SUPPORT == {"stripper", "smoke_gun"}, _SUPPORT
+    # F577 (Tony 2026-10-18): the Haze is hidden, so the stripper is the one support weapon left
+    assert _OPEN == 13, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    assert _SUPPORT == {"stripper"}, _SUPPORT
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
@@ -952,7 +953,8 @@ def test_weapon_view_htk_ttk_caution():
     # The Haze joined on 2026-09-18: it takes no health and drops the target's accuracy to 0 for about
     # three seconds, which reads as a broken tagger until the HUD says otherwise (S53). That is exactly
     # what a `caution` is for, so the pin grows rather than the field being dropped from the push.
-    assert set(cautioned) == {"charge_rifle", "energy_rifle", "smoke_gun"}, cautioned
+    # F577 (Tony 2026-10-18): the Haze is hidden, so it is not in the push at all.
+    assert set(cautioned) == {"charge_rifle", "energy_rifle"}, cautioned
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)

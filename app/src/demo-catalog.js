@@ -54,8 +54,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 64,
       "rof": 53,
-      "ammo": 49,
-      "ttk": 53
+      "ammo": 45,
+      "ttk": 49
     }
   },
   {
@@ -110,7 +110,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 38,
       "rof": 93,
-      "ammo": 77,
+      "ammo": 75,
       "ttk": 93
     }
   },
@@ -164,8 +164,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 47,
       "rof": 100,
-      "ammo": 83,
-      "ttk": 47
+      "ammo": 82,
+      "ttk": 42
     }
   },
   {
@@ -226,7 +226,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 82,
       "rof": 27,
-      "ammo": 60,
+      "ammo": 57,
       "ttk": 100
     }
   },
@@ -281,8 +281,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 64,
       "rof": 40,
-      "ammo": 43,
-      "ttk": 27
+      "ammo": 38,
+      "ttk": 20
     }
   },
   {
@@ -336,7 +336,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 67
+      "ttk": 64
     }
   },
   {
@@ -500,8 +500,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 73,
       "rof": 47,
-      "ammo": 37,
-      "ttk": 87
+      "ammo": 32,
+      "ttk": 85
     }
   },
   {
@@ -559,63 +559,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 38,
       "rof": 93,
-      "ammo": 89,
+      "ammo": 88,
       "ttk": 93
-    }
-  },
-  {
-    "weapon_id": "smoke_gun",
-    "name": "Haze",
-    "cls": "7",
-    "weapon_class": "ballistic",
-    "desc": "It cannot kill either. What it takes is a player's aim, for a few seconds, which is often worse.",
-    "clip": 8,
-    "mags": 3,
-    "reserve": 24,
-    "reload_s": 2.4,
-    "reload_ms": 2400,
-    "dmg": 0,
-    "rpm": 60,
-    "rng": 75,
-    "dmg_per_hit": 6,
-    "dual_emitter": false,
-    "reload_type": "magazine",
-    "pool": 115,
-    "verified": false,
-    "tags": [
-      "support"
-    ],
-    "role": "support",
-    "types": [
-      "support"
-    ],
-    "htk": 20,
-    "ttk_ms": 13300,
-    "rounds_per_charge": 1,
-    "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
-    "lethal": false,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
-    "hir": [
-      6
-    ],
-    "cells": [
-      {
-        "proto": 7,
-        "subtype": 0,
-        "mag": 6
-      }
-    ],
-    "ammo_total": 32,
-    "bars": {
-      "power": 20,
-      "rof": 80,
-      "ammo": 26,
-      "ttk": 20
     }
   },
   {
@@ -669,8 +614,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 91,
       "rof": 20,
-      "ammo": 31,
-      "ttk": 40
+      "ammo": 26,
+      "ttk": 35
     }
   },
   {
@@ -724,8 +669,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 20,
       "rof": 80,
-      "ammo": 54,
-      "ttk": 80
+      "ammo": 51,
+      "ttk": 78
     }
   },
   {
@@ -779,7 +724,7 @@ export const DEMO_WEAPONS = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 60
+      "ttk": 56
     }
   },
   {
@@ -831,8 +776,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 29,
       "rof": 87,
-      "ammo": 71,
-      "ttk": 73
+      "ammo": 69,
+      "ttk": 71
     }
   },
   {
@@ -886,8 +831,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 56,
       "rof": 60,
-      "ammo": 66,
-      "ttk": 33
+      "ammo": 63,
+      "ttk": 27
     }
   }
 ];
@@ -1021,7 +966,6 @@ export const DEMO_PERKS = [
       "rocket_launcher",
       "rail_gun",
       "stripper",
-      "smoke_gun",
       "toxin_rifle"
     ],
     "blocked_secondary": []
