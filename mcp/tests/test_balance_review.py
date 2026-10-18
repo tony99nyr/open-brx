@@ -593,6 +593,18 @@ def _visible_haze_world():
                                   for row in shipped.cat._rows]), shipped.perks)
 
 
+@contextlib.contextmanager
+def _shipped_as(world):
+    """Run `haze_gate` with `world` as the shipped catalogue. The shipped sweep cache is keyed without the world, so
+    it is cleared on the way in and, in a `finally`, on the way out: a failed assertion cannot leak a result."""
+    R._SHIPPED_HAZE_CACHE.clear()
+    try:
+        with mock.patch.object(R, "shipped_world", return_value=world):
+            yield
+    finally:
+        R._SHIPPED_HAZE_CACHE.clear()
+
+
 def test_f577_the_shipped_haze_is_hidden_so_no_standing_failure_ships():
     shipped = R.shipped_world()
     assert shipped.cat._row("smoke_gun").get("hidden") is True
@@ -631,10 +643,8 @@ def test_unhiding_haze_fails_only_when_it_crosses_the_blind_sweep_bar():
 
 def test_haze_gate_reports_standing_shipped_failure_without_candidate_failure():
     shipped = _visible_haze_world()
-    R._SHIPPED_HAZE_CACHE.clear()
-    with mock.patch.object(R, "shipped_world", return_value=shipped):
+    with _shipped_as(shipped):
         result = R.haze_gate(shipped, shipped, 300)
-    R._SHIPPED_HAZE_CACHE.clear()
     assert not result["fail"]
     assert any(row["weapon_id"] == "smoke_gun" and row["blind_ms"] == 3000
                for row in result["standing_shipped_failures"])
@@ -664,11 +674,8 @@ def test_haze_gate_does_not_fail_when_shipped_blind_lengthens():
                                        for row in shipped.cat._rows]), shipped.perks)
     def longer(world, reps, heat_cool_while_firing=True, weapon_id="smoke_gun"):
         return [{"blind_ms": 3000, "win_vs_ar_body_armor": 0.8 if world is candidate else 0.7}]
-    R._SHIPPED_HAZE_CACHE.clear()
-    with mock.patch.object(R, "haze_blind_sweep", side_effect=longer), \
-         mock.patch.object(R, "shipped_world", return_value=shipped):
+    with mock.patch.object(R, "haze_blind_sweep", side_effect=longer), _shipped_as(shipped):
         result = R.haze_gate(shipped, candidate, 4)
-    R._SHIPPED_HAZE_CACHE.clear()
     assert not result["fail"]
     assert result["standing_shipped_failures"]
 
@@ -676,13 +683,10 @@ def test_haze_gate_does_not_fail_when_shipped_blind_lengthens():
 def test_haze_gate_reuses_the_shipped_sweep():
     shipped = _visible_haze_world()
     R.clear_cache()
-    R._SHIPPED_HAZE_CACHE.clear()
     with mock.patch.object(R, "haze_blind_sweep", return_value=[
-            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep, \
-         mock.patch.object(R, "shipped_world", return_value=shipped):
+            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep, _shipped_as(shipped):
         R.haze_gate(shipped, shipped, 4)
         R.haze_gate(shipped, shipped, 4)
-    R._SHIPPED_HAZE_CACHE.clear()
     assert sweep.call_count == 5
 
 

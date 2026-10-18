@@ -164,7 +164,8 @@ def _pickable_ids() -> tuple[frozenset[str], frozenset[str]]:
 def _id_names() -> dict[str, str]:
     """id -> its catalogue display name, weapons and perks merged (disjoint id namespaces) -- so a
     refusal can say "FORCE RIFLE", not "force_rifle" (round 3, MEDIUM 5)."""
-    names = {w["weapon_id"]: w["name"] for w in WeaponCatalog().all()}
+    # hidden rows too (F577 review): a stale piece naming the hidden Haze must read HAZE, not SMOKE GUN
+    names = {w["weapon_id"]: w["name"] for w in WeaponCatalog()._rows}
     names.update({p["perk_id"]: p["name"] for p in default_perks().all()})
     return names
 

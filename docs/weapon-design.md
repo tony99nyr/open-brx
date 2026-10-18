@@ -1370,7 +1370,8 @@ moves no pool, together with live accuracy at 0.
 **The Haze is hidden (F577, Tony 2026-10-18: "Lets hide it").** Its row carries `hidden: true`, so it leaves
 every picker, preset pool and type toggle, like the Glock. The 3 s blind beats AR + Body Armor at mid about
 0.94 in the sim (0.29 at 1.5 s). It comes back when two things are done: a bench shows whether a `$SIR`
-magnitude can shorten the blind, and the S53 HUD is built.
+magnitude can shorten the blind, and S53 closes. The HUD tell is built (2026-09-19); the smoke sound and the
+recovery steps are still open.
 
 ## Appendix — token positions
 

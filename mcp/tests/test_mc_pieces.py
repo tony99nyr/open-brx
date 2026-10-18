@@ -1050,8 +1050,8 @@ def test_no_preset_can_name_a_hidden_weapon_or_perk():
                 check_value("primary", value); assert False, f"{wid} was accepted in {value}"
             except PieceError as e:
                 # round 3 (MEDIUM 5): the message names the weapon by its catalogue NAME, not the raw
-                # snake_case id -- "force_rifle" -> "FORCE RIFLE"
-                assert e.status == 400 and wid.replace("_", " ").upper() in str(e)
+                # snake_case id -- "force_rifle" -> "FORCE RIFLE"; F577: hidden rows by name too, smoke_gun -> "HAZE"
+                assert e.status == 400 and WeaponCatalog().row(wid)["name"].upper() in str(e), (wid, str(e))
     for pid in perks:
         try:
             check_value("perks", {"choice": "fixed", "fixed_id": pid}); assert False, pid

@@ -1,7 +1,8 @@
 """F577 (Tony 2026-10-18, "Lets hide it"): the Haze (`smoke_gun`, `$SIR` fn 23) is hidden like glock and the cut arsenal.
 
 Its 3 s blind beats AR + Body Armor at mid about 0.94 in the sim (0.29 at 1.5 s, brx2's balance review). Whether a `$SIR`
-magnitude can shorten the blind is unbenched, and the S53 HUD is not built; it comes back when both are done. Hidden means
+magnitude can shorten the blind is unbenched, and S53 is still open (the HUD tell is built; the smoke sound and the
+recovery steps are not). It comes back when both are done. Hidden means
 it leaves every picker, preset pool and type toggle, while the row and its frame stay for the bench and the sim.
 
 Run: python3 run_tests.py mc_haze_hidden
@@ -27,6 +28,13 @@ def test_f577_the_haze_leaves_the_visible_catalogue_and_what_a_preset_may_name()
 def test_f577_the_support_type_token_no_longer_expands_to_the_haze():
     out = pieces._expand_type_tokens(["support"])
     assert isinstance(out, list) and "smoke_gun" not in out, out
+    assert "stripper" in out, f"CONTROL: the token still expands to the visible support weapon: {out}"
+
+
+def test_f577_a_stale_piece_naming_the_haze_calls_it_by_its_name():
+    # Codex review: the refusal names the weapon from the catalogue, hidden rows included, so it reads HAZE
+    assert pieces._display("smoke_gun") == "HAZE", pieces._display("smoke_gun")
+    assert pieces._display("assault_rifle") == "ASSAULT RIFLE", "CONTROL: a visible weapon"
 
 
 def test_f577_the_row_and_frame_stay_for_the_bench_and_the_sim():
