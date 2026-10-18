@@ -68,7 +68,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 64,
       "rof": 53,
       "ammo": 49,
-      "ttk": 47
+      "ttk": 53
     }
   },
   {
@@ -124,7 +124,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 93,
       "ammo": 77,
-      "ttk": 93
+      "ttk": 100
     }
   },
   {
@@ -178,7 +178,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 40
+      "ttk": 47
     }
   },
   {
@@ -186,16 +186,16 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
+    "desc": "Hold it, and it holds. A full charge and five taps ends anyone, which is why it belongs to whoever saw the other person first.",
     "clip": 40,
     "mags": 4,
     "reserve": 160,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 61,
+    "dmg": 48,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 70,
+    "dmg_per_hit": 55,
     "dual_emitter": false,
     "reload_type": "magazine",
     "pool": 115,
@@ -209,8 +209,8 @@ export const WEAPONS: WeaponView[] = [
       "rifle",
       "long"
     ],
-    "htk": 4,
-    "ttk_ms": 855,
+    "htk": 6,
+    "ttk_ms": 1425,
     "rounds_per_charge": 10,
     "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
@@ -220,27 +220,27 @@ export const WEAPONS: WeaponView[] = [
       "recover_ms": 0
     },
     "hir": [
-      16,
-      70
+      14,
+      55
     ],
     "cells": [
       {
         "proto": 8,
         "subtype": 0,
-        "mag": 16
+        "mag": 14
       },
       {
         "proto": 8,
         "subtype": 0,
-        "mag": 70
+        "mag": 55
       }
     ],
     "ammo_total": 200,
     "bars": {
-      "power": 91,
+      "power": 82,
       "rof": 27,
       "ammo": 60,
-      "ttk": 100
+      "ttk": 80
     }
   },
   {
@@ -295,7 +295,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 64,
       "rof": 40,
       "ammo": 43,
-      "ttk": 27
+      "ttk": 33
     }
   },
   {
@@ -349,7 +349,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 60
+      "ttk": 67
     }
   },
   {
@@ -402,7 +402,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 93
+      "ttk": 100
     }
   },
   {
@@ -514,7 +514,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 73,
       "rof": 47,
       "ammo": 37,
-      "ttk": 87
+      "ttk": 93
     }
   },
   {
@@ -573,7 +573,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 93,
       "ammo": 89,
-      "ttk": 93
+      "ttk": 100
     }
   },
   {
@@ -636,18 +636,18 @@ export const WEAPONS: WeaponView[] = [
     "name": "Sniper Rifle",
     "cls": "2",
     "weapon_class": "ballistic",
-    "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
-    "clip": 4,
-    "mags": 12,
+    "desc": "One round, then the bolt. Three hits drop anyone from anywhere on the field, and you work the lever between them.",
+    "clip": 1,
+    "mags": 48,
     "reserve": 48,
-    "reload_s": 1.7,
-    "reload_ms": 1700,
-    "dmg": 52,
+    "reload_s": 1.5,
+    "reload_ms": 1500,
+    "dmg": 50,
     "rpm": 5,
     "rng": 75,
-    "dmg_per_hit": 60,
+    "dmg_per_hit": 57,
     "dual_emitter": false,
-    "reload_type": "magazine",
+    "reload_type": "bolt",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -659,8 +659,8 @@ export const WEAPONS: WeaponView[] = [
       "rifle",
       "long"
     ],
-    "htk": 2,
-    "ttk_ms": 1705,
+    "htk": 3,
+    "ttk_ms": 4011,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -669,21 +669,21 @@ export const WEAPONS: WeaponView[] = [
       "recover_ms": 0
     },
     "hir": [
-      60
+      57
     ],
     "cells": [
       {
         "proto": 0,
         "subtype": 1,
-        "mag": 60
+        "mag": 57
       }
     ],
-    "ammo_total": 52,
+    "ammo_total": 49,
     "bars": {
-      "power": 82,
+      "power": 91,
       "rof": 20,
       "ammo": 31,
-      "ttk": 67
+      "ttk": 27
     }
   },
   {
@@ -738,7 +738,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 20,
       "rof": 80,
       "ammo": 54,
-      "ttk": 80
+      "ttk": 87
     }
   },
   {
@@ -792,7 +792,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 53
+      "ttk": 60
     }
   },
   {
@@ -900,7 +900,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 56,
       "rof": 60,
       "ammo": 66,
-      "ttk": 33
+      "ttk": 40
     }
   }
 ];

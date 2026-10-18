@@ -325,21 +325,22 @@
   {
    "weapon_id": "sniper_rifle",
    "name": "Sniper Rifle",
-   "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
+   "desc": "One round, then the bolt. Three hits drop anyone from anywhere on the field, and you work the lever between them.",
    "cls": 2,
    "role": "marksman",
    "types": ["rifle", "long"],
    "class": "ballistic",
-   "mag": 4,
+   "mag": 1,
    "reserve": 48,
-   "reload_ms": 1700,
-   "dmg": 52,
+   "reload_ms": 1500,
+   "reload_type": "bolt",
+   "dmg": 50,
    "rof": 5,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
-   "htk": 2,
-   "ttk_ms": 1705,
+   "htk": 3,
+   "ttk_ms": 4011,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -351,8 +352,9 @@
     "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
    },
    "wire": {
-    "dmg": 60,
+    "dmg": 57,
     "fire_ms": 1500,
+    "swap_ms": 500,
     "range_outdoor_pct": 100
    },
    "overrides": {
@@ -367,7 +369,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss."
+   "notes": "A bolt action since 2026-10-17 (Tony): one round in the magazine, then a lever pull and a 1.5 s bolt before the next. 57 a hit, three hits to a kill on 115, 140 and 150, with 48 behind it. It peeks, takes cover while the bolt runs, and peeks again; its counter is the rush, because it must hit every shot. Perks leave the bolt and the magazine alone. Until 2026-10-17 it was 60 a hit on a 1.5 s cycle, four in the mag."
   },
   {
    "weapon_id": "plasma_sniper",
@@ -557,7 +559,7 @@
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
-   "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
+   "desc": "Hold it, and it holds. A full charge and five taps ends anyone, which is why it belongs to whoever saw the other person first.",
    "cls": 5,
    "role": "marksman",
    "types": ["rifle", "long"],
@@ -567,11 +569,11 @@
    "reload_ms": 2500,
    "rounds_per_charge": 10,
    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
-   "dmg": 61,
+   "dmg": 48,
    "rof": 6,
    "rng": 75,
-   "htk": 4,
-   "ttk_ms": 855,
+   "htk": 6,
+   "ttk_ms": 1425,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -585,8 +587,8 @@
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
    },
    "wire": {
-    "dmg": 70,
-    "tap_dmg": 16,
+    "dmg": 55,
+    "tap_dmg": 14,
     "range_outdoor_pct": 85
    },
    "overrides": {
@@ -601,7 +603,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
+   "notes": "2026-10-17 (Tony): charge 70 -> 55 and tap 16 -> 14, one charge plus five taps from the release (1.43 s); \"if charge rifle hits first it should win the battle against ar the majority of the time\" (R1 about 0.84-0.90). Earlier: 2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
   },
   {
    "weapon_id": "glock",

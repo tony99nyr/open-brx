@@ -1335,6 +1335,8 @@ export interface Weapon {
   min_app?: string;
   /** one trigger emits separate gun and headset words */
   dual_emitter?: boolean;
+  /** weapons.json: chain = shell by shell, bolt = a lever pull per shot */
+  reload_type?: 'chain' | 'bolt';
 }
 
 export interface WeaponBars {
@@ -1364,8 +1366,9 @@ export interface WeaponView {
   /** one trigger can emit separate gun and headset words */
   dual_emitter?: boolean;
   /** policy.chain_reload: a HELD per-shell reload (the Shotgun) conflicts with Easy Reload. The producer always fills it
-   *  (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons. */
-  reload_type?: 'chain' | 'magazine';
+   *  (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons.
+   *  bolt: one round, a lever pull per shot (2026-10-17) */
+  reload_type?: 'chain' | 'magazine' | 'bolt';
   /** older MC rows predate host-pool ranking; the current producer always fills it */
   pool?: number;
   verified: boolean;

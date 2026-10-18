@@ -1227,6 +1227,8 @@ class WeaponCatalog:
         row["rounds_per_charge"] = self.rounds_per_charge(w["weapon_id"])
         if w.get("caution"):    # A10: known live problem, human copy
             row["caution"] = w["caution"]
+        if w.get("reload_type"):   # chain (shell by shell) or bolt (a lever pull per shot, 2026-10-17)
+            row["reload_type"] = w["reload_type"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
             row["pickup_only"] = True
         if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
@@ -1354,6 +1356,10 @@ class WeaponCatalog:
         caller of `_ammo`) apply it identically; nothing downstream re-derives it.
         """
         w = self._row(weapon_id)
+        if w.get("reload_type") == "bolt":
+            # Tony, 2026-10-17: perks leave a bolt action alone. Quick Hands, Body Armor and Extended Mags would
+            # otherwise halve, slow or double the bolt (its reload_ms) and its one-round magazine.
+            mods = None
         pistol_mult = mods.get("ammo_mult_pistol") if mods and self._is_pistol(w) else None
         eff_mods = {**mods, "ammo_mult": pistol_mult} if pistol_mult and mods else mods
         mag, reserve, reload_ms = self._mods(eff_mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]),
@@ -1765,6 +1771,11 @@ class WeaponCatalog:
         `cycle_ms()`. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
         that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
         `cycle_ms()`, the fastest interval the gun allows."""
+        if pull_ms > 0 and self._row(weapon_id).get("reload_type") == "bolt":
+            # A bolt action (Tony, 2026-10-17): after each shot the player pulls the lever (one pull gap), the bolt
+            # runs (reload_ms), then the next round waits for the first press after it (the pull overshoot).
+            overshoot = pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2
+            return max(self.fire_ms(weapon_id) + overshoot, pull_ms + int(self._row(weapon_id)["reload_ms"]) + overshoot)
         if pull_ms > 0 and self._frame_int(weapon_id, "mode") == self._SEMI_MODE:
             # max(): the renewal limit runs short for a t14 well under the pull; at t14 0 the cycle is one pull (brx3)
             return max(pull_ms, self.fire_ms(weapon_id) + pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2)
@@ -3412,6 +3423,8 @@ class Compiler:
                 sidearm = SIDEARM_TAG in set(self.catalog._by_id[wid].get("tags") or ())
                 if slot > 0 and not sidearm:
                     continue                                 # the guard is the PRIMARY slot's (F146)
+                if self.catalog._by_id[wid].get("reload_type") == "bolt":
+                    continue                                 # a bolt action reloads every shot by design (2026-10-17)
                 # what the weapon is, for THIS player: "only" (the gun they fight with), "primary"
                 # (a real primary with a backup behind it) or "backup".
                 kind = "backup" if slot > 0 else ("only" if len(ws) == 1 else "primary")

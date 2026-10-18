@@ -185,7 +185,9 @@ def test_sampled_single_shot_pulls_match_the_paced_cycle():
     (`semi_interval`); `WeaponCatalog.paced_cycle_ms()` is the closed form the published ttk uses. They must agree,
     at every pull rate Tony asked about, or the arsenal shows a TTK the sim does not play."""
     rng = random.Random(SEED)
-    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+    # Not the Sniper Rifle: since 2026-10-17 it is a bolt action, paced by its lever (`paced_cycle_ms`'s bolt branch);
+    # the bolt is modelled in mcp/tools/balance_review.py, not in this sampler.
+    for weapon_id in ("amr", "deagle", "usp", "shotgun"):
         fire = CAT.fire_ms(weapon_id)
         for pull in (250, 300, 350):
             n = 20_000
@@ -205,7 +207,7 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
     cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
                       match_ms=20_000.0)
     pool_pts = cfg.pool.health + cfg.pool.armour
-    for weapon_id in ("sniper_rifle", "shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance
+    for weapon_id in ("shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance (not the bolt Sniper)
         m = B.weapon_model(CAT, weapon_id)
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
         kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
@@ -226,7 +228,7 @@ def test_only_single_shot_weapons_are_player_paced():
     for weapon_id in ("assault_rifle", "smg", "burst_rifle", "charge_rifle", "rail_gun"):
         assert CAT.paced_cycle_ms(weapon_id) == CAT.cycle_ms(weapon_id), weapon_id
         assert not B.weapon_model(CAT, weapon_id).semi, weapon_id
-    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):   # the Sniper through the bolt branch
         assert CAT.paced_cycle_ms(weapon_id) > CAT.cycle_ms(weapon_id), weapon_id
         assert B.weapon_model(CAT, weapon_id).semi, weapon_id
 
@@ -458,8 +460,11 @@ def test_recoil_duel_seeded_runs_land_in_band():
     r2 = B.recoil_duel_batch(B.run_recoil_duel_rule2, "ar", 2000, SEED, "rule2_test", m,
                              float(B.CHARGE_TAP_CADENCE_MS))
     r3 = B.recoil_duel_batch(B.run_recoil_duel_rule3, "burst", 2000, SEED, "rule3_test", m)
-    assert 0.88 < r1.win_rate < 0.98, r1.win_rate    # rule 1: a charged CR clearly beats an AR
-    assert 0.82 < r2.win_rate < 0.98, r2.win_rate     # rule 2: the AR is burst-disciplined too (Tony's
+    # rule 1: a charged CR beats an AR. Tony, 2026-10-17: charge 70 -> 55 and tap 16 -> 14, and his bar is now "the
+    # majority of the time" (it was about 0.92 at 70/16).
+    assert 0.78 < r1.win_rate < 0.92, r1.win_rate
+    # 2026-10-17: the 14 tap makes the AR's catch near-certain, so the ceiling rises to 0.995.
+    assert 0.82 < r2.win_rate < 0.995, r2.win_rate    # rule 2: the AR is burst-disciplined too (Tony's
                                                        # 2026-09-23 correction) and the Charge Rifle's tap
                                                        # damage moved 20->16 (wire.tap_dmg, t37 -- a real
                                                        # gun-enforced lever; the tap CADENCE stays the

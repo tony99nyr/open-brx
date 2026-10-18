@@ -2,7 +2,7 @@
   "name": "ammo-alt-spawn-and-old-round",
   "why": "F542 field 2026-10-17: after the spawn the gun ignores ALT until the first trigger pull, so the node opens no swap and assumes none (F436 bench rule). After a pull, a round from the old slot 250 ms or more into the window closes the swap with no swap, and the window never assumes it over that round (cause 2).",
   "source": "app/src/ammo.js altPressed and onAmmo (F542 cause 2, F445)",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment"]

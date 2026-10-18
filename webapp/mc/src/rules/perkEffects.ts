@@ -25,8 +25,10 @@ export function perkEffectsResolved(config: GameConfig, player: Player, weapons:
   const round = roundHalfEven;
   const isPistol = (primary?.role ?? rawPrimary.role) === 'sidearm'
     || (primary?.tags ?? rawPrimary.tags).includes('pistol');
-  const pistolMult = isPistol ? effects.ammo_mult_pistol : undefined;
-  const ammoMult = pistolMult || effects.ammo_mult || 1;
+  // Tony, 2026-10-17: perks leave a bolt action's one-round magazine and its bolt (reload_ms) alone, as compile.py does.
+  const bolt = rawPrimary.reload_type === 'bolt';
+  const pistolMult = isPistol && !bolt ? effects.ammo_mult_pistol : undefined;
+  const ammoMult = bolt ? 1 : pistolMult || effects.ammo_mult || 1;
   const ammoRound = pistolMult ? Math.floor : round;
   const magBase = rawPrimary.mag;
   const reserveBase = rawPrimary.capture_frame ? Math.floor(rawPrimary.reserve / 2) * 2 : rawPrimary.reserve;
@@ -37,7 +39,7 @@ export function perkEffectsResolved(config: GameConfig, player: Player, weapons:
   reserve = Math.min(reserve, Math.max(RESERVE_PROVEN_MAX, rawPrimary.reserve));
   // Captured frames mirror the reserve in tok40, which makes odd counts round down.
   if (rawPrimary.capture_frame) reserve = Math.floor(reserve / 2) * 2;
-  const reload = Math.max(0, round(reloadBase * (effects.reload_mult || 1)));
+  const reload = Math.max(0, round(reloadBase * (bolt ? 1 : effects.reload_mult || 1)));
 
   const swapMs = (id: string, multiplier = 1) => {
     const row = WEAPON_MOCK_FIELDS.find(weapon => weapon.weapon_id === id);

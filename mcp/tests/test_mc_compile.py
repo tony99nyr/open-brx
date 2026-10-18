@@ -493,9 +493,9 @@ def test_resolve_provisional_substitutes_mag_reserve():
 # ---- mag >= htk invariant (docs/weapon-design.md §2.1) ---------------------
 def test_hits_to_kill_reads_the_resolved_frame():
     cat = WeaponCatalog()
-    # rebalanced: wire.dmg wins. sniper 60 -> 2 hits at the 45+70 default pool
-    assert cat.damage("sniper_rifle") == 60
-    assert cat.hits_to_kill("sniper_rifle", 115) == 2
+    # rebalanced: wire.dmg wins. sniper 57 (the 2026-10-17 bolt action) -> 3 hits at the 45+70 default pool
+    assert cat.damage("sniper_rifle") == 57
+    assert cat.hits_to_kill("sniper_rifle", 115) == 3
     # untuned damage is read back out of the captured frame — the AR really deals 9 (bench exp 2),
     # the manual's 24 was stale (docs/reference/weapons.md)
     assert cat.damage("assault_rifle") == 9
@@ -643,22 +643,31 @@ def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
 
 def test_mag_invariant_follows_the_per_player_health_override():
     """Pool is per-player: an override that raises hp/armor can push a legal weapon over the line.
-    sniper_rifle is mag 4 / 60 dmg -> 2 hits at 115 (legal), 5 hits at 300 (illegal)."""
-    ok = _player(weapons=("sniper_rifle",))
+    The AMR is mag 14 / 26 dmg -> 5 hits at 115 (legal), 18 hits at 450 (illegal). (The Sniper Rifle used to be the
+    example; since 2026-10-17 it is a bolt action, which reloads every shot by design and is not graded here.)"""
+    ok = _player(weapons=("amr",))
     assert not any("one magazine" in e for e in C.validate(_cfg(), [ok])["errors"])
-    over = _player(weapons=("sniper_rifle",))
-    over["loadout"]["overrides"] = {"max_hp": 150, "max_armor": 150}
+    over = _player(weapons=("amr",))
+    over["loadout"]["overrides"] = {"max_hp": 200, "max_armor": 250}
     # F146: a WARNING now, and still per-player — an override is the HOST's health model for that
     # player, not a perk the player chose, so it still moves the pool the weapon is graded against.
     warns = C.validate(_cfg(), [over])["warnings"]
-    assert any("PRIMARY SNIPER RIFLE CANNOT KILL ON ONE MAGAZINE" in w for w in warns), warns
-    assert any("mag 4 < 5 rounds for 5 hits at 60 dmg vs a 300 pool" in w for w in warns), warns
+    assert any("PRIMARY AMR CANNOT KILL ON ONE MAGAZINE" in w for w in warns), warns
+    assert any("mag 14 < 18 rounds for 18 hits at 26 dmg vs a 450 pool" in w for w in warns), warns
+
+
+def test_a_bolt_action_is_not_graded_on_one_magazine():
+    """2026-10-17: the bolt-action Sniper Rifle holds one round by design, so the F146 warning would fire on every
+    kit. Break it by deleting the bolt skip in `validate()` and this goes red."""
+    warns = C.validate(_cfg(), [_player(weapons=("sniper_rifle",))])["warnings"]
+    assert not any("ONE MAGAZINE" in w for w in warns), warns
 
 
 def test_mag_invariant_reports_each_weapon_once_per_pool():
     """Two players carrying the same broken weapon is one error, not two."""
     ov = {"max_hp": 150, "max_armor": 150}
-    a, b = _player(num=7, weapons=("sniper_rifle",)), _player(num=8, weapons=("sniper_rifle",))
+    a, b = _player(num=7, weapons=("amr",)), _player(num=8, weapons=("amr",))
+    ov = {"max_hp": 200, "max_armor": 250}   # the AMR (14 rounds, 26 a hit) needs 18 hits at 450
     a["loadout"]["overrides"] = b["loadout"]["overrides"] = ov
     said = [w for w in C.validate(_cfg(), [a, b])["warnings"] if "ONE MAGAZINE" in w]
     assert len(said) == 1, said
@@ -1012,7 +1021,7 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     `MAG_INVARIANT_EXEMPT` for the next deliberate exception; its stale check below still fires."""
     cat = WeaponCatalog()
     support = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("lethal") is False}
-    MAG_INVARIANT_EXEMPT: set[str] = set()
+    MAG_INVARIANT_EXEMPT: set[str] = {"sniper_rifle"}   # a bolt action: one round, a lever pull per shot (2026-10-17)
     bad = [w["weapon_id"] for w in cat.all()
            if w["weapon_id"] not in support and w["weapon_id"] not in MAG_INVARIANT_EXEMPT
            and int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
@@ -1086,6 +1095,11 @@ def _weapon_family(cat: WeaponCatalog, w: dict) -> tuple:
     test below for the reverse check that keeps this from being a blind spot."""
     if w.get("role") == "sidearm":
         return ("sidearm",)
+    if cat._row(w["weapon_id"]).get("reload_type") == "bolt":
+        # 2026-10-17: a bolt action's identity is the peek and the lever (hit, take cover while the bolt runs,
+        # peek again), which none of these four axes can see. Its gate is the marksman rush counter in
+        # mcp/tools/balance_review.py, the way the §7.5c sim is the Toxin Rifle's.
+        return ("bolt",)
     if cat._row(w["weapon_id"]).get("dot"):
         return ("poison",)
     return _natural_family(cat, w)
@@ -1197,8 +1211,11 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # Sidearms are out of the band (2026-10-17): with the player-paced single-shot cycle they take 3.6 s at
     # the default pool, and Tony wants them weak against the rifles ("usp and deagle should feel weak against
     # the rifles"). Their own rules are R10a (finish 35 HP within 1.2 s) and R10b (every rifle beats them).
+    # A bolt action is out of the band too (Tony, 2026-10-17): its fight is a peek, a lever and a peek, so a TTK
+    # from the first shot is not its combat time. Its own gate is the marksman rush counter (balance_review.py).
+    bolts = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("reload_type") == "bolt"}
     for r in rows:
-        if r["htk"] > 1 and not r["is_cell"] and r["fam"] != ("sidearm",):
+        if r["htk"] > 1 and not r["is_cell"] and r["fam"] != ("sidearm",) and r["id"] not in bolts:
             assert 1200 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.2-3.5s band"
 
     pick = [r for r in rows if r["htk"] > 1]
@@ -1246,7 +1263,9 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # on every axis. The two weapons' real gap is range, not these four axes: the Sniper Rifle is
     # `range_band: full` (long), the Shotgun `range_band: close` (30% outdoor reach) -- priced apart by
     # the range model in `balance_sim.py`'s duel/team scenarios, which this dominance check does not run.
-    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {("shotgun", "sniper_rifle"): "R8, F308, 2026-09-23"}
+    # 2026-10-17: the bolt-action Sniper Rifle left the Shotgun's family (`_weapon_family()` gives a bolt its own),
+    # so this pair no longer meets here and its entry is gone. The mechanism stays for the next deliberate case.
+    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {}
     allowed_seen = set()
     for fam, members in fams.items():
         for a in members:
