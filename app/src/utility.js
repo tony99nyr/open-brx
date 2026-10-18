@@ -240,6 +240,7 @@ function applyHillClock(cfg, now) {
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
     if (cfg.starts_in_ms > 0 && counting && counted) resetPoint('MC START: the lobby and the countdown score nothing');
     settings.hillStartsAt = now + cfg.starts_in_ms;
+    if (cfg.starts_in_ms > 0) { point.at = null; _hillWaited = true; }   // anchor at go-live even if no tick runs before it
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
   // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
   // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.

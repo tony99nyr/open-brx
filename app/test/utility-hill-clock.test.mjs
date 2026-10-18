@@ -143,3 +143,16 @@ test('F557: a steady hold is saved as it grows, not only when the advert changes
   assert.ok(held > 15_000, `setup: ${held}`);
   assert.ok(held - (saved.holdMs?.[RED] ?? 0) <= 2_250, `the saved hold lags by more than the throttle: ${JSON.stringify(saved.holdMs)} vs ${held}`);
 });
+
+
+test('a START with no tick before go-live still counts from go-live', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
+  const t0 = Date.now();
+  for (let t = 0; t <= 4_000; t += 250) api.controlTick(t0 + t);   // RED builds 40% before the next match
+  await api.applyStationConfig({ ...hill, game: ++game });
+  redOnThePoint();
+  await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 600_000 });
+  const now = Date.now();
+  api.controlTick(now + 5_100);                                      // the first tick lands 0.1 s after go-live
+  assert.ok(Math.abs(api.point.progress - 1) < 1e-6, `0.1 s from go-live builds 1%: ${api.point.progress}`);
+});
