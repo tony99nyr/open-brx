@@ -1261,7 +1261,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS, PERKS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -2220,7 +2220,7 @@ export class MockBackend implements Api {
     const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
     const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS, PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.cachedCompilerResult = undefined; this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {

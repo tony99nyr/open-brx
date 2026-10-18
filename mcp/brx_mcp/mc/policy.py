@@ -567,6 +567,12 @@ def apply(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, weapons: Seq
         perk = kr["fixed_id"] if kr["fixed_id"] in lp["perks"] else None
     elif perk and perk not in lp["perks"]:
         perk = None
+    if perk:
+        # F551 (Codex review via brx4): the weapons just resolved (a fixed primary, a dropped secondary) can be ones this
+        # perk cannot ride with (`PerkView.blocked_*`, the compile guards' rule). Keeping it would refuse the push.
+        prow = _perk_row(perks, perk) or {}
+        if prim in (prow.get("blocked_primary") or []) or (sec_w and sec_w in (prow.get("blocked_secondary") or [])):
+            perk = None
     # S50: the ALT-button pairing moved from perk+weapon to override+weapon (see the docstring above).
     # `out` is `dict[str, Any]` (a `copy.deepcopy(loadout)` worked on by runtime key, like `base` in
     # `merge()` above) so `out.get("overrides")` carries no static shape of its own; `cast` says

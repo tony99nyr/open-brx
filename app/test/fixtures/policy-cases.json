@@ -1725,6 +1725,116 @@
         ],
         "perk": "armour"
       }
+    },
+    {
+      "name": "F551 (Codex review): a fixed primary the equipped perk cannot ride with drops the perk (stealth is blocked on the sniper rifle)",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "sniper_rifle"
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ],
+        "perk": "stealth"
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "sniper_rifle"
+          }
+        ]
+      }
+    },
+    {
+      "name": "F551: a blocked secondary drops the perk too (stealth is blocked with the shotgun as secondary)",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "shotgun"
+          }
+        ],
+        "perk": "stealth"
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "shotgun"
+          }
+        ]
+      }
     }
   ]
 }
