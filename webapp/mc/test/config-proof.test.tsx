@@ -622,3 +622,20 @@ describe('F8 · one instruction, one count', () => {
     }
   });
 });
+
+describe('?mock&faults=noconfig · F549, the gun loaded nothing', () => {
+  it('GUN-A blocks on the kit, as state.py writes it, and its headset is not called absent', async () => {
+    const was = location.href;
+    window.history.replaceState({}, '', '/?mock&faults=noconfig');
+    let state;
+    try {
+      const api = new MockBackend();
+      await api.pushLobby(true);
+      state = await api.getState();
+    } finally { window.history.replaceState({}, '', was); }
+    const row = state.readiness.board.find(r => r.gun_id === 'GUN-A')!;
+    expect(row.blockers).toContain('GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH');
+    expect(row.headset).not.toBe('absent');
+    expect(state.lobby.acks[state.players.find(p => p.gun_id === 'GUN-A')!.player_id]).toMatchObject({ ok: false, err: 'no_config' });
+  });
+});

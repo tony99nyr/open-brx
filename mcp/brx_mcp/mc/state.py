@@ -349,6 +349,9 @@ WRONG_WIFI = "WRONG WI-FI OR MC UNREACHABLE: JOIN THE PHONE TO THE FIELD WI-FI"
 TUNNEL_DOWN_ACT = "TUNNEL DOWN: TURN THE TUNNEL ON IN REACH"
 IDENTITY_REVERTED = "IDENTITY REVERTED: RE-STAMP $NAME"
 GUN_DID_NOT_ANSWER = "GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH"
+# F549 (brx4): the phone acks `err: "no_config"` when the gun answered with a zeroed `$LCD` (no config loaded, F548's
+# broken SMG head). The gun answered, so the headset is fine: the kit is the fault.
+GUN_DID_NOT_TAKE_CONFIG = "GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH"
 BATTERY_UNREAD = "BATTERY UNREAD"
 PHONE_BATTERY_LOW = "PHONE BATTERY LOW: CHARGE THE PHONE"
 SCREEN_OFF = "SCREEN OFF OR APP IN THE BACKGROUND: BRING THE APP TO THE FRONT"
@@ -5656,7 +5659,11 @@ class Session:
                            ) -> tuple[Literal["proven", "unknown", "absent"], Literal["echo", "link"] | None]:
         """Decide whether an echo or a held link proves the headset."""
         ack = self.acks.get(p["player_id"])
-        if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
+        no_config = self.lobby_pushed and ack is not None and ack.get("err") == "no_config"
+        if no_config:
+            # F549: the gun DID answer (a zeroed `$LCD`), so the headset keeps what the link proved; the kit blocks
+            blockers.append(GUN_DID_NOT_TAKE_CONFIG)
+        if not no_config and self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
             blockers.append(GUN_DID_NOT_ANSWER)
             headset, headset_proof = "absent", None
         elif nv.get("headset") == "proven":

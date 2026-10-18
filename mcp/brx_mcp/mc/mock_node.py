@@ -45,8 +45,9 @@ class MockNode:
                  app_ver: str = _DEFAULT_MOCK_APP_VER, gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
                  heartbeat_ms: int = STATUS_HEARTBEAT_MS, max_hp: int = 45, max_armor: int = 70,
                  backoff_cap_s: float = 10.0, prior_utility: dict[str, str] | None = None,
-                 sync_ms: int = 5000):
+                 sync_ms: int = 5000, no_config: bool = False):
         self.url = url
+        self.no_config = no_config   # F549: ack a push `err: "no_config"`, as the phone does when the gun loaded nothing
         self.node_id = node_id or f"mock-{uuid.uuid4().hex[:6]}"
         self.gun_name, self.gun_tail, self.gun_fw = gun_name, gun_tail, gun_fw
         self.node_type, self.app_ver = node_type, app_ver
@@ -454,7 +455,9 @@ class MockNode:
             if self.arm_state not in ("armed", "live"):
                 self.arm_state = "lobby"
             ack = {"config_id": (body.get("config") or {}).get("config_id"), "ok": True}
-            if self.gun_echo:
+            if self.no_config:
+                ack = {"config_id": ack["config_id"], "ok": False, "err": "no_config"}
+            elif self.gun_echo:
                 # A36: a real gun answers the head's `$WEAP,0` with a slot-0 `$ALCD` carrying that
                 # weapon's magazine. Fall back to the configured `gun_echo` only when the head has no
                 # readable `$WEAP,0` (a stub compiler) -- never invent numbers.
@@ -757,6 +760,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--tail", default="3D4F")
     ap.add_argument("--node-id", default=None)
     ap.add_argument("--no-echo", action="store_true", help="simulate a headset-less gun")
+    ap.add_argument("--no-config", action="store_true",
+                    help="F549: ack every push no_config, as the phone does when the gun loaded nothing (a broken head)")
     ap.add_argument("-v", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.v else logging.INFO,
@@ -764,7 +769,7 @@ def main(argv: list[str] | None = None) -> None:
 
     async def _main():
         node = MockNode(args.url, node_id=args.node_id, gun_name=args.gun, gun_tail=args.tail,
-                        gun_echo=None if args.no_echo else "$LCD,0,0,0,0,0,0,*")
+                        gun_echo=None if args.no_echo else "$LCD,0,0,0,0,0,0,*", no_config=args.no_config)
         await node.start()
         try:
             await node.wait_connected(10)
