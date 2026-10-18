@@ -44,10 +44,11 @@ MECHANICS MODELLED
   moment a contact opens, then taps (``tap_damage()``, 1 round) at ``CHARGE_TAP_CADENCE_MS``.
 - Charge without a tap (Rail Gun, Laser Cannon): every shot, the first included, waits t14.
 - ``reload_type: chain`` (Shotgun): ``reload_ms`` is per shell.
-- Single shot (t20 = 7): a fight samples fast trigger presses after t14 (``--fight-pull-ms``).
-  The bolt lever and its following press retain ``--pull-ms``.
+- Single shot (t20 = 7): a fight adds a sampled overshoot after t14
+  (``--fight-overshoot-ms``). The bolt lever and its following press retain ``--pull-ms``.
+  Compile's published semi ``ttk_ms`` still uses a 300 ms pull, so its values differ from the sim.
 - Catalogue heat: a crossing round fires, then the Charge Rifle waits through a self lockout.
-  The Energy Rifle vents with a lever pull and a cell reload. Heat cools between rounds.
+  The Energy Rifle vents with a lever pull and a cell reload. Heat cooling while firing is optional.
 - The DoT block: ``per_tick`` every ``tick_ms`` for ``duration_ms``, refreshed on each hit, never
   stacked. A tick takes damage from the outermost non-empty layer only, with no spill
   (spec/node.md §3.17). A stacking DoT (``stack: true``) or a non-refreshing one (``refresh: false``)
@@ -81,6 +82,10 @@ INVENTED ASSUMPTIONS (the numbers that move the answer most)
    half a magazine, the player reloads before the next contact.
 7. Match length 150 s. Kills per minute is a rate, so a short match widens the variance but does
    not bias the ratio.
+8. A reload or vent progresses only while its gun stays in hand. Swapping away cancels it.
+   This one-slot engine has no swap event. Ammo is credited when the reload completes.
+9. Heat cools while firing by default. ``--heat-cool-while-firing off`` permits cooling only
+   after a lockout. The bench has not established which rule the tagger uses.
 
 SIMPLIFICATIONS (things the model leaves out)
 ---------------------------------------------
@@ -148,10 +153,11 @@ INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
 DEFAULT_N = tuple(range(2, 11))
 DEFAULT_HIT_PROBS = (0.35,)
-# The bolt lever uses the catalogue's mean pull gap. Fight presses use a shorter fitted gap.
-# Both clocks use the same lognormal spread. A zero pull gap restores a press at t14.
+# The bolt lever uses the catalogue's mean pull gap. Fight presses add a fitted overshoot.
+# Both clocks use the same lognormal spread. A zero overshoot restores a press at t14.
 DEFAULT_PULL_MS = float(SEMI_PULL_MS)
-FIGHT_PULL_MS = 30.0  # frequent presses during contact; the bolt lever retains DEFAULT_PULL_MS
+FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3  # field median residual fit
+HEAT_COOL_WHILE_FIRING = True
 DEFAULT_RESPAWN_SEEK_MEAN_S = 7.0
 TOXIN_PRESET_GAP_MEAN_S = 3.0   # the published §7.5b run predates the field density refit
 TOXIN_PRESET_RESPAWN_SEEK_MEAN_S = 0.0
@@ -171,9 +177,12 @@ def semi_interval(rng: random.Random, fire_ms: float, pull_ms: float) -> float:
     return t
 
 
-def fight_semi_interval(rng: random.Random, fire_ms: float, pull_ms: float = FIGHT_PULL_MS) -> float:
-    """First press after t14 during a fight. The fast press clock fits the field's four semi medians."""
-    return semi_interval(rng, fire_ms, pull_ms)
+def fight_semi_interval(rng: random.Random, fire_ms: float, overshoot_ms: float = FIGHT_OVERSHOOT_MS) -> float:
+    """A fight's semi cycle is t14 plus a lognormal overshoot fitted to USP, AMR and Deagle."""
+    if overshoot_ms <= 0:
+        return fire_ms
+    mu = math.log(overshoot_ms) - PULL_SIGMA * PULL_SIGMA / 2
+    return fire_ms + rng.lognormvariate(mu, PULL_SIGMA)
 
 
 def p_join(n: int) -> float:
@@ -217,7 +226,8 @@ class SimConfig:
     gap_mean_s: float = 70.0
     respawn_seek_mean_s: float = DEFAULT_RESPAWN_SEEK_MEAN_S
     pull_ms: float = DEFAULT_PULL_MS   # the bolt lever and post-bolt press
-    fight_pull_ms: float = FIGHT_PULL_MS  # presses inside a contact
+    fight_overshoot_ms: float = FIGHT_OVERSHOOT_MS
+    heat_cool_while_firing: bool = HEAT_COOL_WHILE_FIRING
 
 
 @dataclass(frozen=True)
@@ -325,7 +335,7 @@ def hit_multiplier(m: WeaponModel, dist_idx: int, cfg: SimConfig) -> float:
 
 class Player:
     __slots__ = ("pid", "team", "w", "alive", "shield", "armour", "health", "ammo", "reserve",
-                 "reload_until", "next_ready", "last_pull", "burst_i", "target", "contact_end",
+                 "reload_until", "reload_amount", "next_ready", "last_pull", "burst_i", "target", "contact_end",
                  "engage_id", "attackers", "hit_p", "poison_gen", "poison_src", "poison_left",
                  "poison_dmg", "poison_tick_ms", "heat", "last_heat_ms", "heat_lock_until",
                  "kills", "deaths", "dot_kills", "shots")
@@ -336,6 +346,7 @@ class Player:
         self.shield, self.armour, self.health = pool.shield, pool.armour, pool.health
         self.ammo, self.reserve = w.mag, w.reserve
         self.reload_until = -1.0
+        self.reload_amount = 0
         self.next_ready = 0.0
         self.last_pull = -1e9
         self.burst_i = 0
@@ -382,7 +393,7 @@ class Match:
     # -- engagement ------------------------------------------------------------
 
     def _seek(self, p: Player, t: float, _gen: int = 0) -> None:
-        if not p.alive:
+        if not p.alive or p.target is not None:
             return
         enemies = [q for q in self.players if q.team != p.team and q.alive]
         if not enemies:
@@ -433,10 +444,20 @@ class Match:
 
     def _start_reload(self, p: Player, t: float) -> None:
         w = p.w
+        if p.reload_amount:
+            return
         amt = min(w.mag - p.ammo, p.reserve)
-        p.reserve -= amt
-        p.ammo += amt
+        if amt <= 0:
+            return
+        p.reload_amount = amt
         p.reload_until = t + (w.reload_ms * amt if w.chain_reload else w.reload_ms)
+
+    def _finish_reload(self, p: Player, t: float) -> None:
+        if p.reload_amount and t >= p.reload_until:
+            p.ammo += p.reload_amount
+            p.reserve -= p.reload_amount
+            p.reload_amount = 0
+            p.reload_until = -1.0
 
     # -- firing ------------------------------------------------------------------
 
@@ -452,12 +473,13 @@ class Match:
             p.heat = 0.0
             p.last_heat_ms = t
             p.heat_lock_until = -1.0
-        if heat:
+        if heat and self.cfg.heat_cool_while_firing:
             p.heat = max(0.0, p.heat - max(0.0, t - p.last_heat_ms) * float(heat.get("cool_per_s", 0)) / 1000.0)
             p.last_heat_ms = t
         if t < p.reload_until:
             self.push(p.reload_until, self.SHOT, p.pid, gen)
             return
+        self._finish_reload(p, t)
         if p.ammo <= 0:
             if p.reserve <= 0:
                 return  # dry until respawn
@@ -478,7 +500,7 @@ class Match:
                 p.burst_i += 1
                 interval = w.burst_gap_ms if p.burst_i % 3 == 0 else w.fire_ms
             elif w.semi:
-                interval = fight_semi_interval(self.rng, w.fire_ms, 0.0 if self.cfg.pull_ms <= 0 else self.cfg.fight_pull_ms)
+                interval = fight_semi_interval(self.rng, w.fire_ms, 0.0 if self.cfg.pull_ms <= 0 else self.cfg.fight_overshoot_ms)
             else:
                 interval = w.fire_ms
         p.ammo -= cost
@@ -592,6 +614,7 @@ class Match:
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
         p.ammo, p.reserve = p.w.mag, p.w.reserve
         p.reload_until = -1.0
+        p.reload_amount = 0
         p.poison_gen += 1
         p.poison_left = 0
         p.heat = 0.0
@@ -907,7 +930,8 @@ PRESETS = {
         "weapon": "toxin_rifle", "anchor": "assault_rifle", "include_hidden": True,
         "sweep": ["dmg=5..9", "dot.per_tick=2..6", "dot.duration_ms=3000,5000,7000"],
         "no_range": True, "no_tactical_reload": True, "hit_prob": "0.35,0.5,0.65",
-        "contact_mean_s": 2.0, "reps": 180, "duel_reps": 900,
+        "contact_mean_s": 2.0, "gap_mean_s": TOXIN_PRESET_GAP_MEAN_S,
+        "respawn_seek_mean_s": TOXIN_PRESET_RESPAWN_SEEK_MEAN_S, "reps": 180, "duel_reps": 900,
     },
 }
 
@@ -1780,7 +1804,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--contact-mean-s", type=float, default=3.0)
     ap.add_argument("--gap-mean-s", type=float, default=70.0)
     ap.add_argument("--respawn-seek-mean-s", type=float, default=DEFAULT_RESPAWN_SEEK_MEAN_S)
-    ap.add_argument("--fight-pull-ms", type=float, default=FIGHT_PULL_MS)
+    ap.add_argument("--fight-overshoot-ms", type=float, default=FIGHT_OVERSHOOT_MS)
+    ap.add_argument("--heat-cool-while-firing", choices=("on", "off"), default="on")
     ap.add_argument("--pull-ms", type=float, default=DEFAULT_PULL_MS,
                     help="bolt lever and legacy duel mean pull gap, ms (0 = a press at t14)")
     ap.add_argument("--reps", type=int, default=120, help="matches per team cell")
@@ -1915,7 +1940,8 @@ def main(argv=None) -> int:
                     hit_probs=tuple(float(x) for x in parse_values(args.hit_prob)),
                     match_ms=args.match_seconds * 1000.0, contact_mean_s=args.contact_mean_s,
                     gap_mean_s=args.gap_mean_s, respawn_seek_mean_s=args.respawn_seek_mean_s,
-                    pull_ms=args.pull_ms, fight_pull_ms=args.fight_pull_ms)
+                    pull_ms=args.pull_ms, fight_overshoot_ms=args.fight_overshoot_ms,
+                    heat_cool_while_firing=args.heat_cool_while_firing == "on")
     ns = [int(n) for n in parse_values(args.n)]
     cat = WeaponCatalog()
     summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")

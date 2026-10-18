@@ -1084,6 +1084,23 @@ competes with it for a slot.
 
 The answer moves most with these assumptions. All of them are invented, and each has a flag:
 
+The current field defaults are hit probability 0.35, mean contact 3 s and ordinary mean gap 70 s. After a
+respawn, the separate mean seek delay is 7 s. A player who waits for a defeated opponent's respawn seeks
+that opponent first, while an old seek cannot replace a live engagement. These are the density refit values;
+the toxin preset retains its historic 2 s contact and 3 s gap unless its options override them.
+
+In a semi-auto fight, each round fires at `t14` plus a lognormal overshoot. The fitted mean is
+`FIGHT_OVERSHOOT_MS` 36.67 ms, from the USP, AMR and Desert Eagle field medians. The bolt lever and the
+press after it use the ordinary pull model. `compile.py`'s published `ttk_ms` still uses the 300 ms pull
+for semi weapons, so those TTK values differ from the fight sim. Reloads and lever vents progress only
+while the weapon is in hand. Swapping away cancels them without crediting ammunition; they restart when
+the weapon returns. Passive heat cooling continues while holstered.
+
+Heat cooling while firing is unproven pending bench check F575. The default is on, matching the catalogue
+cooling rate. With `HEAT_COOL_WHILE_FIRING` off, cooling starts after lockout. A close-range melee swing
+uses `MELEE_HIT_P` 0.9 at aim 1, scaled by aim, blindness and `RUSH_MOVE_ACC`; the published TTK remains
+gun-only.
+
 - **Range** (`--no-range`, `--venue`). Each fight draws close, mid or long from the venue. A table
   (`BAND_FIT`) scales the hit chance by the weapon's `range_band` and that distance. Each band has
   the best hit chance at its own distance: a close weapon gains 30% up close, and a long gun loses
@@ -1091,8 +1108,9 @@ The answer moves most with these assumptions. All of them are invented, and each
   gain in the venue built for it.
 - **Tactical reload** (`--no-tactical-reload`). A player below half a magazine reloads between
   fights. A long reload then costs less.
-- **Focus fire and line of sight** (`--contact-mean-s`, `--gap-mean-s`). These are the §7.5b numbers
-  again. Short peeks (1 s) lift the weapons with a big first hit: the Charge Rifle goes from 1.37 to
+- **Focus fire and line of sight** (`--contact-mean-s`, `--gap-mean-s`). The toxin preset keeps the
+  historic §7.5b contact and gap values; the field defaults use the refit above. Short peeks (1 s) lift
+  the weapons with a big first hit: the Charge Rifle goes from 1.37 to
   1.60 and the Sniper Rifle from 0.75 to 0.89. They hurt the Rail Gun, which must charge first.
 - **Hit chance** (`--hit-prob`). One number for every weapon: the sim has no recoil or stance.
 
