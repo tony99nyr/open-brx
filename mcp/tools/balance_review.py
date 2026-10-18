@@ -2,7 +2,7 @@
 """Balance review: is a proposed weapon, weapon change or perk change good for the Open BRX sandbox?
 
     python3 mcp/tools/balance_review.py --candidate cand.json --out verdict.json [--report r.md]
-    python3 mcp/tools/balance_review.py --candidate cand.json --record --call "Tony: ship it"
+    python3 mcp/tools/balance_review.py --record-from verdict.json --call "Tony: ship it"
 
 The skill `.claude/skills/balance-review/SKILL.md` is the loop around this tool. The decision log it
 writes to is `docs/balance-decisions.md`.
@@ -53,13 +53,16 @@ NOT MODELLED (named, not silently dropped)
   matrix, and a DoT candidate is refused.
 - Overheat, stance, flinch, the Armour Piercing perk, the node-local perks.
 - Shield regeneration (no fight here gives the 6.5 s quiet it needs).
-- A candidate's `sim.perk_exempt` is a SIM-ONLY flag: compile.py has no such field today.
+- Perk exemption is read from the row: `reload_type: "bolt"` ignores the ammo and reload perks, as
+  compile.py `_ammo` does after the Sniper bolt batch (brx2/sniper-bolt). On a main without that batch
+  the compiled bolt still scales with the perks.
 """
 from __future__ import annotations
 
 import argparse
 import copy
 import datetime
+import hashlib
 import json
 import math
 import os
@@ -76,6 +79,7 @@ sys.path.insert(0, str(TOOLS.parent))
 import balance_sim as B  # noqa: E402
 from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, PULL_SIGMA, WeaponCatalog  # noqa: E402
 from brx_mcp.mc.perks import PerkCatalog  # noqa: E402
+from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # The versioned scenario list and every invented constant
@@ -130,9 +134,12 @@ NEAR_TOP_MARGIN = {"1v1 close": 0.05, "1v1 mid": 0.05, "1v1 long": 0.05, "long c
 # arsenal's weakest choice does not.
 VIABLE_FIELD_FLOOR = 0.50
 MARKSMAN_STRONG_BAR = 0.50    # peek-kill rate against a player who does not rush
+# The strong side also needs the marksman's kit near the top in this column. Pending brx1: it may move to
+# "peek mid" (then peek-kill plus near the top at peek). A one-line switch; do not change it without Tony.
+MARKSMAN_STRONG_COLUMN = "1v1 long"
 MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from RUSH_START_M
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
-R10_PRIMARY_BAR = 0.65        # a new sidearm: every primary still beats it at mid, as R10b
+R10_PRIMARY_BAR = 0.65        # a new sidearm: each of B.R10_PRIMARIES still beats it on Standard, as R10b (Shields: SHIELDS_BAR)
 RULE_BAR_STANDARD = 0.65      # mirrors mcp/tests/test_balance_sim.py (RANGE_BAR_OVERRIDES)
 RULE_BAR_OVERRIDES = {"R7": 0.55}
 OP_GATED_PRESETS = ("standard", "shields")   # Hardcore is reported, never gated (one-shots are its point)
@@ -157,9 +164,12 @@ def assumptions() -> dict:
                   "hit_probs": list(B.DEFAULT_HIT_PROBS), "contact_mean_s": 2.0, "gap_mean_s": 3.0},
         "charge_rifle": "starts every 1v1 and the ambush pre-charged, never recharges inside a fight",
         "kits": {"secondary": SECONDARY, "full_auto": sorted(FULL_AUTO), "combos": [list(c) for c in COMBO_KITS],
-                 "perk": "each primary takes the perk with the best mean 1v1 against a plain AR"},
+                 "perk": "each primary takes the perk with the best mean 1v1 against the BASELINE plain AR"},
+        "anchors": "the perk choice, the field ratio and the ambush always use the baseline world's AR",
         "near_top_margin": dict(NEAR_TOP_MARGIN), "viable_field_floor": VIABLE_FIELD_FLOOR,
-        "marksman_bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR},
+        "marksman_bars": {"strong": MARKSMAN_STRONG_BAR, "strong_column": MARKSMAN_STRONG_COLUMN,
+                          "rush": MARKSMAN_RUSH_BAR},
+        "perk_exemption": "a row with reload_type 'bolt' ignores ammo_mult, ammo_mult_pistol and reload_mult",
         "rule_bars": {"standard": RULE_BAR_STANDARD, "overrides": dict(RULE_BAR_OVERRIDES),
                       "shields": B.SHIELDS_BAR, "r10a_ms": B.R10_FINISH_BAR_MS},
         "op_gated_presets": list(OP_GATED_PRESETS),
@@ -171,23 +181,22 @@ def _reps(kind: str, scale: float) -> int:
 
 
 def pull_gap(rng, pull_ms: float) -> float:
-    """ONE sampled human press gap (lognormal, mean `pull_ms`, log-sigma `PULL_SIGMA`); 0 when `pull_ms` <= 0.
-    Used for the bolt lever, the ALT press and the press after a bolt."""
+    """ONE sampled human press gap; 0 when `pull_ms` <= 0. Used for the bolt lever, the ALT press and the
+    press after a bolt. It is `balance_sim.semi_interval` with a cycle shorter than any press, so the
+    lognormal (mean `pull_ms`, log-sigma `PULL_SIGMA`) lives in one place."""
     if pull_ms <= 0:
         return 0.0
-    mu = math.log(pull_ms) - PULL_SIGMA * PULL_SIGMA / 2
-    return rng.lognormvariate(mu, PULL_SIGMA)
+    return B.semi_interval(rng, 1e-9, pull_ms)
 
 
 # --------------------------------------------------------------------------- #
-# Worlds: a catalogue, a perk table and the sim-only flags
+# Worlds: a catalogue, a perk table and the sim-only style flag
 # --------------------------------------------------------------------------- #
 
 @dataclass
 class World:
     cat: WeaponCatalog
     perks: PerkCatalog
-    perk_exempt: frozenset = frozenset()   # weapon ids whose ammo and reload ignore perks (sim only)
     styles: dict = None                    # weapon id -> "burst" | "full" for an automatic
 
     def style(self, wid: str) -> str:
@@ -210,6 +219,16 @@ def pool_parts(preset: str, fx: dict) -> tuple[int, int, int]:
 
 def pool_total(preset: str, fx: dict) -> int:
     return sum(pool_parts(preset, fx))
+
+
+def fieldable_perks(perks: PerkCatalog) -> list[str]:
+    """Every visible perk, whatever its effect keys: each one's `max_armor_add` sets a pool a player can field."""
+    return list(perks.visible_ids())
+
+
+def lowest_pools(perks: PerkCatalog) -> dict:
+    """{preset: the lowest pool a player can field}: no perk, or any fieldable perk."""
+    return {p: min(pool_total(p, perks.effects(k)) for k in [None] + fieldable_perks(perks)) for p in HEALTH_PRESETS}
 
 
 def modelled_perks(perks: PerkCatalog) -> list[str]:
@@ -281,7 +300,9 @@ class Kit:
 
 
 def _ammo_mods(world: World, wid: str, fx: dict) -> dict | None:
-    if wid in world.perk_exempt:
+    # A bolt (`reload_type: "bolt"`) ignores the ammo and reload perks, as compile.py `_ammo` does once the
+    # Sniper batch (branch brx2/sniper-bolt) lands: the compiled frame is mag 1 / 48 / 1500 under every perk.
+    if world.cat._row(wid).get("reload_type") == "bolt":
         return None
     return {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult") if k in fx} or None
 
@@ -711,8 +732,11 @@ class KitMatch(B.Match):
         p.target = target.pid
         p.contact_end = t + self.rng.expovariate(1.0 / self.cfg.contact_mean_s) * 1000.0
         target.attackers += 1
-        p.dist = self.rng.choices((0, 1, 2), weights=self.dist_w)[0]
-        p.hit_p = min(1.0, self.base_p * B.hit_multiplier(p.w, p.dist, self.cfg))
+        p.hit_p = self.base_p
+        p.dist = 1
+        if self.cfg.range_model:     # as Match._seek: no range draw when the range model is off
+            p.dist = self.rng.choices((0, 1, 2), weights=self.dist_w)[0]
+            p.hit_p = min(1.0, p.hit_p * B.hit_multiplier(p.w, p.dist, self.cfg))
         p.burst_i = 0
         p.phase = "open"
         first = max(t, p.next_ready, p.swap_until)
@@ -838,6 +862,9 @@ def _run_cell(job):
         return ambush(k, enemy, dist, reps)
     if kind == "rule":
         return _run_rule(*job[1:])
+    if kind == "rush":
+        _, km, kv, reps = job
+        return marksman_rush_counter(km, kv, reps)
     raise ValueError(kind)
 
 
@@ -879,11 +906,12 @@ def _name(world: World, wid: str) -> str:
     return world.cat._row(wid).get("name", wid)
 
 
-def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int) -> tuple[dict, dict]:
-    """({primary: best perk}, {primary: {perk: score}}). Score = mean 1v1 win rate against a plain AR over the
-    three ranges; ties keep the earlier option (no perk first)."""
+def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
+                 anchor_world: World | None = None) -> tuple[dict, dict]:
+    """({primary: best perk}, {primary: {perk: score}}). Score = mean 1v1 win rate against the plain AR of
+    `anchor_world` (the baseline) over the three ranges; ties keep the earlier option (no perk first)."""
     options = [None] + modelled_perks(world.perks)
-    plain_ar = make_kit(world, "AR (plain)", ANCHOR)
+    plain_ar = make_kit(anchor_world or world, "AR (plain)", ANCHOR)
     reps = _reps("perk", scale)
     jobs, index = [], []
     for wid in primaries:
@@ -916,12 +944,13 @@ class KitSpec:
     combo: bool
 
 
-def build_kits(world: World, scale: float, n_jobs: int, extra: list[str] = ()) -> tuple[list[KitSpec], dict, list]:
+def build_kits(world: World, scale: float, n_jobs: int, extra: list[str] = (),
+               anchor_world: World | None = None) -> tuple[list[KitSpec], dict, list]:
     prim, skipped = roster_ids(world)
     for wid in extra:
         if wid not in prim:
             prim.append(wid)
-    best, scores = choose_perks(world, prim, scale, n_jobs)
+    best, scores = choose_perks(world, prim, scale, n_jobs, anchor_world)
     specs, seen = [], set()
     for w in prim:
         name = _name(world, w)
@@ -935,7 +964,17 @@ def build_kits(world: World, scale: float, n_jobs: int, extra: list[str] = ()) -
     return specs, {"best": {_name(world, w): best[w] for w in prim}, "scores": {_name(world, w): scores[w] for w in prim}}, skipped
 
 
-def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: int) -> dict:
+def _top(values) -> float:
+    """The column's best, ignoring NaN (a cell that did not run). NaN when nothing ran."""
+    ok = [v for v in values if isinstance(v, (int, float)) and not math.isnan(v)]
+    return max(ok) if ok else float("nan")
+
+
+def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: int,
+                     anchor_world: World | None = None) -> dict:
+    """The kit matrix. The field anchor and the ambush enemies are `anchor_world`'s plain AR (the baseline), so
+    an AR candidate is measured against today's AR, not against itself."""
+    aw = anchor_world or world
     kits = {s.name: make_kit(world, s.name, s.primary, s.secondary, s.perk, "combo" if s.combo else "single")
             for s in specs}
     fks = {s.name: field_kit(world, s.name, s.primary, s.secondary, s.perk, s.combo) for s in specs}
@@ -950,8 +989,8 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
             cells.append((("long", "mid", a, b), ("duel", kits[a], kits[b], "mid", "standard", LONG_CONTACT_AIM,
                                                   LONG_CONTACT_CAP_MS, False, dr)))
             cells.append((("peek", "mid", a, b), ("duel", kits[a], kits[b], "mid", "standard", AIM, FIGHT_CAP_MS, True, dr)))
-    anchor_fk = field_kit(world, "AR anchor", ANCHOR)
-    enemy = make_kit(world, "AR enemy", ANCHOR)
+    anchor_fk = field_kit(aw, "AR anchor", ANCHOR)
+    enemy = make_kit(aw, "AR enemy", ANCHOR)
     fr, ar = _reps("field", scale), _reps("ambush", scale)
     for n in names:
         for N in FIELD_NS:
@@ -981,9 +1020,10 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                    "peek mid": mean1("peek", "mid", n), "field": B.geo_mean(field[n]),
                    "ambush": sum(amb[n]) / len(amb[n]),
                    "shields": sum(mean1("shields", d, n) for d in DIST) / 3}
-    top = {c: max(cols[n][c] for n in names) for c in COLUMNS}
+    top = {c: _top([cols[n][c] for n in names]) for c in COLUMNS}
     near = {n: [c for c in COLUMNS if cols[n][c] >= top[c] - NEAR_TOP_MARGIN[c]] for n in names}
-    return {"kits": names, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
+    keys = {s.name: (s.name if s.combo else s.primary) for s in specs}   # stable ids: weapon_id, or the combo name
+    return {"kits": names, "keys": keys, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
                                                "combo": s.combo} for s in specs},
             "columns": cols, "top": top, "near_top": near, "duels": duel}
 
@@ -1029,7 +1069,9 @@ def _run_rule(rid: str, kind: str, preset: str, rows_sig: str, reps: int):
         n = rid[1:]
         _d, expected, fn, tap_dep = B.RECOIL_RULES[n]
         args = (m, float(CHARGE_TAP_CADENCE_MS)) if tap_dep else (m,)
-        return B.recoil_duel_batch(fn, expected, reps, SEED, f"review_{rid}", *args).win_rate
+        # the CI gate's own labels (test_balance_sim.py "gate_rule1".."gate_rule3"), so at the same reps the
+        # numbers here are the CI numbers
+        return B.recoil_duel_batch(fn, expected, reps, SEED, f"gate_rule{n}", *args).win_rate
     if kind == "range":
         return B.range_duel_batch(m, rid[1:], reps, SEED).win_rate
     if kind == "r10b":
@@ -1106,18 +1148,18 @@ def loadout_ids(cat: WeaponCatalog) -> list[str]:
 
 
 def op_check(world: World, ids: list[str]) -> dict:
-    """{weapon: {...}} for `ids`: the close pull (gun + headset word) against the lowest pool a player can
-    field on each preset (no perk, or any modelled perk)."""
-    perk_opts = [None] + modelled_perks(world.perks)
-    lows = {p: min(pool_total(p, world.fx(k)) for k in perk_opts) for p in HEALTH_PRESETS}
+    """{weapon: {...}} for `ids`: the larger of the close pull (gun + headset word) and a crit's pull, against
+    the lowest pool a player can field on each preset (no perk, or ANY visible perk's `max_armor_add`)."""
+    lows = lowest_pools(world.perks)
     out = {}
     for wid in ids:
         row = world.cat._row(wid)
         pull = world.cat.damage_per_pull(wid)
         crit = int(row.get("crit_pct") or 0)
         crit_pull = int(world.cat.damage(wid) * B.CRIT_MULT) + (pull - world.cat.damage(wid)) if crit else pull
-        one_shots = {p: pull >= lows[p] for p in HEALTH_PRESETS}
-        out[wid] = {"pull": pull, "crit_pull": crit_pull, "lowest_pool": lows, "one_shots": one_shots,
+        worst = max(pull, crit_pull)
+        one_shots = {p: worst >= lows[p] for p in HEALTH_PRESETS}
+        out[wid] = {"pull": pull, "crit_pull": crit_pull, "worst_pull": worst, "lowest_pool": lows, "one_shots": one_shots,
                     "pickup_only": bool(row.get("pickup_only")),
                     "pass": bool(row.get("pickup_only")) or not any(one_shots[p] for p in OP_GATED_PRESETS)}
     return out
@@ -1145,6 +1187,10 @@ def normalise(entry: dict) -> dict:
     if not isinstance(entry, dict):
         raise ValueError("a candidate entry must be a JSON object")
     sim = dict(entry.get("sim") or {})
+    if "perk_exempt" in sim:
+        raise ValueError('sim.perk_exempt is gone: set "reload_type": "bolt" on the row (a bolt ignores the ammo and reload perks)')
+    if set(sim) - {"style"}:
+        raise ValueError(f"unknown sim keys {sorted(set(sim) - {'style'})}; the only one is style")
     if "perk_id" in entry and "changes" in entry:
         return {"kind": "perk_diff", "perk_id": entry["perk_id"], "changes": dict(entry["changes"]), "sim": sim}
     if "perk" in entry:
@@ -1173,15 +1219,24 @@ def apply_entry(rows: list, perk_rows: list, entry: dict) -> tuple[list, list]:
     if k == "diff":
         if not any(r["weapon_id"] == entry["weapon_id"] for r in rows):
             raise ValueError(f"diff on an unknown weapon {entry['weapon_id']!r}: send a full row for a new weapon")
-        before = _facts(WeaponCatalog(rows), entry["weapon_id"])
-        row = next(r for r in rows if r["weapon_id"] == entry["weapon_id"])
+        wid = entry["weapon_id"]
+        before = _facts(WeaponCatalog(rows), wid)
+        idx = next(i for i, r in enumerate(rows) if r["weapon_id"] == wid)
+        # Every requested field on its own must move something the catalogue reads: a misspelt or unread
+        # path, or a value equal to today's, is refused, never silently dropped.
         for path, value in entry["changes"].items():
-            B.set_field(row, path, value)
-        after = _facts(WeaponCatalog(rows), entry["weapon_id"])
-        moved = {f for f in after if after[f] != before[f]}
-        if not moved:
-            raise ValueError(f"{entry['weapon_id']}: the changes {entry['changes']} move nothing the catalogue "
-                             "reads. Check the path (wire.dmg, wire.tap_dmg, wire.fire_ms, wire.swap_ms, mag, ...).")
+            alone = copy.deepcopy(rows)
+            B.set_field(alone[idx], path, value)
+            try:
+                moved = _facts(WeaponCatalog(alone), wid) != before
+            except (KeyError, ValueError, TypeError, IndexError) as e:
+                raise ValueError(f"{wid}: {path}={value!r} breaks the row: {e}") from e
+            if not moved:
+                raise ValueError(f"{wid}: {path}={value!r} moves nothing the catalogue reads (unread, misspelt, or "
+                                 "already that value). Balance numbers live in wire.dmg, wire.tap_dmg, wire.fire_ms, "
+                                 "wire.swap_ms, wire.headset_dmg, mag, reserve, reload_ms, reload_type.")
+        for path, value in entry["changes"].items():
+            B.set_field(rows[idx], path, value)
     elif k == "row":
         new = copy.deepcopy(entry["row"])
         idx = next((i for i, r in enumerate(rows) if r["weapon_id"] == new["weapon_id"]), None)
@@ -1194,6 +1249,9 @@ def apply_entry(rows: list, perk_rows: list, entry: dict) -> tuple[list, list]:
         row = next((r for r in perk_rows if r["perk_id"] == entry["perk_id"]), None)
         if row is None:
             raise ValueError(f"perk diff on an unknown perk {entry['perk_id']!r}")
+        for key, value in entry["changes"].items():
+            if (row.get("effects") or {}).get(key) == value:
+                raise ValueError(f"perk {entry['perk_id']}: {key}={value!r} is already that value")
         row.setdefault("effects", {}).update(entry["changes"])
     elif k == "perk_row":
         new = copy.deepcopy(entry["row"])
@@ -1207,14 +1265,17 @@ def apply_entry(rows: list, perk_rows: list, entry: dict) -> tuple[list, list]:
 
 
 def _world(rows, perk_rows, entries: list) -> World:
-    exempt, styles = set(), {}
+    styles = {}
     for e in entries:
         wid = e.get("weapon_id")
-        if wid and e["sim"].get("perk_exempt"):
-            exempt.add(wid)
         if wid and e["sim"].get("style"):
             styles[wid] = e["sim"]["style"]
-    return World(WeaponCatalog(rows), PerkCatalog(perk_rows), frozenset(exempt), styles)
+    return World(WeaponCatalog(rows), PerkCatalog(perk_rows), styles)
+
+
+def shipped_world() -> World:
+    """The catalogue as it ships, with no `with` context: the reference a `with` entry is judged against."""
+    return _world(WeaponCatalog()._rows, PerkCatalog()._rows, [])
 
 
 def build_worlds(cand: dict) -> tuple[World, World]:
@@ -1285,10 +1346,12 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1) -> dict:
                          "use balance_sim.py --sweep for it.")
 
     extra = [wid] if (wid and role == "sidearm") else []
-    specs_b, perks_b, skipped = build_kits(base, reps_scale, n_jobs)
-    specs_c, perks_c, _ = build_kits(world, reps_scale, n_jobs, extra)
-    mb = dominance_matrix(base, specs_b, reps_scale, n_jobs)
-    mc = dominance_matrix(world, specs_c, reps_scale, n_jobs)
+    shipped = shipped_world()
+    specs_b, perks_b, skipped = build_kits(base, reps_scale, n_jobs, anchor_world=base)
+    specs_c, perks_c, _ = build_kits(world, reps_scale, n_jobs, extra, anchor_world=base)
+    mb = dominance_matrix(base, specs_b, reps_scale, n_jobs, anchor_world=base)
+    mc = dominance_matrix(world, specs_c, reps_scale, n_jobs, anchor_world=base)
+    rules_s = run_rules(shipped, reps_scale, n_jobs)
     rules_b = run_rules(base, reps_scale, n_jobs)
     rules_c = run_rules(world, reps_scale, n_jobs)
 
@@ -1296,23 +1359,27 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1) -> dict:
     if wid and not pickup:
         subject_kit = next((s.name for s in specs_c if s.primary == wid and not s.combo), None)
     tests = {}
+    side = sidearm_r10(world, wid, reps_scale) if (role == "sidearm" and not pickup) else None
 
     # value_addition -------------------------------------------------------------------------------
     if is_perk:
         pid = entry["perk_id"]
         users = [k for k, p in perks_c["best"].items() if p == pid]
-        others = set().union(*[set(world.fx(p)) for p in modelled_perks(world.perks) if p != pid] or [set()])
+        others = set().union(*[set(world.fx(p)) for p in fieldable_perks(world.perks) if p != pid] or [set()])
         new_keys = sorted(set(world.fx(pid)) - others)
         tests["value_addition"] = _test(bool(users or new_keys), {"primaries_picking_it": users, "new_effect_keys": new_keys},
                                         "a perk adds value when at least one primary's best pick is it, or it brings an effect no other perk has")
+    elif pickup:
+        tests["value_addition"] = _test(None, {}, "pickup-only tier (rule 7): judged by op_rule and the pickup design, not the loadout matrix")
     else:
         others = [w for w in loadout_ids(world.cat) if w != wid]
         have = set().union(*[trigger_mechanics(world.cat, w) for w in others])
         new_mech = sorted(trigger_mechanics(world.cat, wid) - have)
         if role == "sidearm":
-            fin = _sidearm_finish(world, [w for w in loadout_ids(world.cat) if world.cat._row(w).get("role") == "sidearm"],
-                                  reps_scale)
-            best_other = min(v for w, v in fin.items() if w != wid) if len(fin) > 1 else math.inf
+            fin = {w: sidearm_r10(world, w, reps_scale, duels=False)["finish_ms"]
+                   for w in loadout_ids(world.cat) if world.cat._row(w).get("role") == "sidearm" and w != wid}
+            fin[wid] = side["finish_ms"]
+            best_other = min((v for w, v in fin.items() if w != wid), default=math.inf)
             ok_time = fin[wid] <= best_other * (1 + SIDEARM_VALUE_MARGIN)
             tests["value_addition"] = _test(bool(ok_time or new_mech),
                                             {"finish_ms": fin, "margin": SIDEARM_VALUE_MARGIN, "new_mechanics": new_mech},
@@ -1341,8 +1408,8 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1) -> dict:
     elif pickup:
         tests["viable"] = _test(None, {}, "pickup-only tier (rule 7): no player spawns with it")
     elif role == "sidearm":
-        fin = _sidearm_finish(world, [wid], reps_scale)[wid]
-        tests["viable"] = _test(fin < B.R10_FINISH_BAR_MS, {"finish_ms": fin, "bar_ms": B.R10_FINISH_BAR_MS},
+        tests["viable"] = _test(side["finish_ms"] < B.R10_FINISH_BAR_MS,
+                                {"finish_ms": side["finish_ms"], "bar_ms": B.R10_FINISH_BAR_MS},
                                 "a sidearm's job is to finish: 35 HP within the R10a bar")
     elif subject_kit is None:
         tests["viable"] = _test(None, {}, f"role {role!r} has no kit in the matrix")
@@ -1352,76 +1419,170 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1) -> dict:
                  any(mc["duels"][f"standard|{d}|{subject_kit}|{o}"] > 0.5 for d in DIST)]
         tests["viable"] = _test(f >= VIABLE_FIELD_FLOOR and bool(beats),
                                 {"field": f, "floor": VIABLE_FIELD_FLOOR, "beats_in_some_band": beats},
-                                "field ratio at or over the floor, and it beats at least one kit in at least one 1v1 band")
+                                "field ratio (against the baseline AR) at or over the floor, and it beats at least one kit in some 1v1 band")
 
     # balance_kept ----------------------------------------------------------------------------------
-    flips = [k for k in rules_c if rules_b[k]["pass"] and not rules_c[k]["pass"]]
-    already = [k for k in rules_b if not rules_b[k]["pass"]]
-    lost = [k for k in mb["kits"] if k != subject_kit and k in mc["near_top"]
-            and mb["near_top"][k] and not mc["near_top"][k]]
-    nums = {"rule_flips": {k: {"baseline": rules_b[k]["value"], "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]}
-                           for k in flips},
-            "already_failing_in_baseline": already, "kits_losing_last_near_top": lost}
-    ok = not flips and not lost
-    if role == "sidearm" and subject_kit:
-        r10 = {o: 1.0 - mc["duels"][f"standard|mid|{subject_kit}|{o}"] for o in mc["kits"]
-               if o != subject_kit and not mc["specs"][o]["combo"]}
-        low = {o: v for o, v in r10.items() if v < R10_PRIMARY_BAR}
-        nums["primaries_beat_it_at_mid"] = r10
-        nums["under_r10_bar"] = low
-        ok = ok and not low
-    tests["balance_kept"] = _test(ok, nums, "no Balance rule flips to fail, and no other kit loses its last near-top cell")
+    tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side)
 
     # op_rule -------------------------------------------------------------------------------------------
-    changed = [] if is_perk else [wid]
-    changed += [e["weapon_id"] for e in cand["with"] if e.get("weapon_id")]
-    scope = loadout_ids(world.cat) if is_perk else changed
-    op = op_check(world, scope)
-    op_base = op_check(base, [w for w in scope if w in base.cat._by_id])
-    bad = [w for w in scope if not op[w]["pass"] and (is_perk is False or op_base.get(w, {}).get("pass", True))]
-    tests["op_rule"] = _test(not bad, {"checked": op, "failing": bad},
-                             "no close pull reaches the lowest pool a player can field on Standard or Shields, unless pickup-only")
+    perk_in_play = is_perk or any(e["kind"].startswith("perk") for e in cand["with"])
+    changed = ([] if is_perk else [wid]) + [e["weapon_id"] for e in cand["with"] if e.get("weapon_id")]
+    scope = list(dict.fromkeys(changed + (loadout_ids(world.cat) if perk_in_play else [])))
+    tests["op_rule"] = op_rule(shipped, base, world, scope, changed)
 
     # marksman_rush_counter -----------------------------------------------------------------------------
+    rush_reps = _reps("rush", reps_scale)
     if role == "marksman" and not pickup:
         mk = make_kit(world, f"{_name(world, wid)} (plain)", wid)
         ar = make_kit(world, "AR (plain)", ANCHOR)
         ar_ba = make_kit(world, "AR+BA", ANCHOR, perk="body_armor") if world.perks.has("body_armor") else ar
-        r = marksman_rush_counter(mk, ar, _reps("rush", scale=reps_scale))
-        r_ba = marksman_rush_counter(mk, ar_ba, _reps("rush", scale=reps_scale))
-        long_near = "1v1 long" in mc["near_top"].get(subject_kit, [])
-        strong = r["peek_kill"] >= MARKSMAN_STRONG_BAR and long_near
-        counter = r["rush_success"] >= MARKSMAN_RUSH_BAR
-        tests["marksman_rush_counter"] = _test(strong and counter, {
-            "vs_plain_ar": r, "vs_ar_body_armor": r_ba, "near_top_1v1_long": long_near,
-            "strong_ok": strong, "counter_ok": counter, "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR},
-            "rush_start_m": RUSH_START_M},
-            "strong against non-rushers (peek-kill and near the top at long range), beaten by rushers from 20 m")
+        r, r_ba = run_cells([("rush", mk, ar, rush_reps), ("rush", mk, ar_ba, rush_reps)], n_jobs)
+        tests["marksman_rush_counter"] = marksman_verdict(r, r_ba, mc["near_top"].get(subject_kit, []))
     else:
         tests["marksman_rush_counter"] = _test(None, {}, "not a marksman candidate")
+    watch = marksman_watch(base, world, wid, rush_reps, n_jobs)
 
     ttk_ids = [w for w in roster_ids(world)[0]] + ([wid] if wid and wid not in roster_ids(world)[0] else [])
     verdict = {
         "tool": "balance_review", "scenario_version": SCENARIO_VERSION, "seed": SEED, "reps_scale": reps_scale,
-        "date": datetime.date.today().isoformat(), "git_sha": _git_sha(),
+        "date": datetime.date.today().isoformat(), "git_sha": _git_sha(), "fingerprint": fingerprint(),
+        "dirty": tree_dirty(),
         "title": cand["title"], "candidate": cand["raw"], "subject": {"weapon_id": wid, "perk_id": entry.get("perk_id"),
                                                                       "kit": subject_kit, "role": role},
         "facts": ({"baseline": _facts(base.cat, wid) if wid in base.cat._by_id else None,
                    "candidate": _facts(world.cat, wid)} if wid else None),
-        "sim_only_flags": {"perk_exempt": sorted(world.perk_exempt), "styles": world.styles},
+        "sim_only_flags": {"styles": world.styles},
         "tests": tests, "pass": all(t["pass"] is not False for t in tests.values()),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
-        "rules": {"baseline": rules_b, "candidate": rules_c}, "ttk": ttk_table(world, ttk_ids, reps_scale),
+        "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
+        "marksman_watch": watch, "ttk": ttk_table(world, ttk_ids, reps_scale),
         "not_modelled": skipped, "assumptions": assumptions(),
     }
     return verdict
 
 
-def _sidearm_finish(world: World, ids: list[str], scale: float) -> dict:
-    """R10a-style finish: median ms from a reaction delay to the kill of an undefended 35 HP target, aim AIM."""
-    reps = _reps("finish", scale)
-    return {w: time_to_kill(make_kit(world, f"finish:{w}", w), B.R10_FINISH_POOL_HP, AIM, reps, reaction=True)[0]
-            for w in ids}
+def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
+                 side: dict | None = None) -> dict:
+    """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
+    entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
+    (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
+    flips = [k for k in rules_c if (rules_b[k]["pass"] and not rules_c[k]["pass"])
+             or (rules_s[k]["pass"] and not (rules_b[k]["pass"] and rules_c[k]["pass"]))]
+    already = [k for k in rules_s if not rules_s[k]["pass"]]
+    by_key_c = {key: name for name, key in mc["keys"].items()}
+    lost = [key for name, key in mb["keys"].items() if key != subject and mb["near_top"][name]
+            and key in by_key_c and not mc["near_top"][by_key_c[key]]]
+    nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
+                               "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
+            "already_failing_when_shipped": already, "kits_losing_last_near_top": lost}
+    ok = not flips and not lost
+    if side is not None:
+        low = {k: v for k, v in side["r10b"].items()
+               if v < (R10_PRIMARY_BAR if k.startswith("standard") else B.SHIELDS_BAR)}
+        nums["r10b_primaries_beat_it"] = side["r10b"]
+        nums["r10b_under_bar"] = low
+        ok = ok and not low
+    return _test(ok, nums, "no Balance rule cell flips to fail (against the shipped catalogue too), "
+                           "and no other kit loses its last near-top cell")
+
+
+def op_rule(shipped: World, base: World, world: World, scope: list[str], changed: list[str]) -> dict:
+    """A changed or added row fails when it one-shots in either world. Any other row in scope (all loadout rows
+    when a perk is in play) fails when it passes in the shipped catalogue but one-shots in either world."""
+    op = op_check(world, scope)
+    op_b = op_check(base, [w for w in scope if w in base.cat._by_id])
+    op_s = op_check(shipped, [w for w in scope if w in shipped.cat._by_id])
+    bad = []
+    for w in scope:
+        fails = not op[w]["pass"] or not op_b.get(w, {"pass": True})["pass"]
+        if fails and (w in changed or op_s.get(w, {"pass": True})["pass"]):
+            bad.append(w)
+    return _test(not bad, {"checked": op, "failing": bad,
+                           "already_one_shot_when_shipped": [w for w in op_s if not op_s[w]["pass"]]},
+                 "no close or crit pull reaches the lowest pool a player can field on Standard or Shields, unless pickup-only")
+
+
+def marksman_verdict(r: dict, r_ba: dict, near_cols: list) -> dict:
+    """Tony 2026-10-17: strong until players learn to rush. Strong = peek-kill at or over MARKSMAN_STRONG_BAR
+    AND the kit near the top in MARKSMAN_STRONG_COLUMN; counter = rush success at or over MARKSMAN_RUSH_BAR."""
+    col_near = MARKSMAN_STRONG_COLUMN in near_cols
+    strong = r["peek_kill"] >= MARKSMAN_STRONG_BAR and col_near
+    counter = r["rush_success"] >= MARKSMAN_RUSH_BAR
+    return _test(strong and counter, {
+        "vs_plain_ar": r, "vs_ar_body_armor": r_ba, "strong_column": MARKSMAN_STRONG_COLUMN,
+        "near_top_in_strong_column": col_near, "strong_ok": strong, "counter_ok": counter,
+        "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR}, "rush_start_m": RUSH_START_M},
+        f"strong against non-rushers (peek-kill, and near the top in {MARKSMAN_STRONG_COLUMN!r}), beaten by rushers from 20 m")
+
+
+def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_jobs: int) -> dict:
+    """The rush counter for every OTHER marksman row in both worlds (against each world's own AR), so a candidate
+    that moves the Sniper's numbers without being a marksman (an AR change, a perk) shows it."""
+    ids = [w for w in roster_ids(world)[0] if world.cat._row(w).get("role") == "marksman" and w != subject]
+    jobs = []
+    for w in ids:
+        for wd in (base, world):
+            jobs.append(("rush", make_kit(wd, f"{_name(wd, w)} (plain)", w), make_kit(wd, "AR (plain)", ANCHOR), reps))
+    res = run_cells(jobs, n_jobs)
+    out = {}
+    for i, w in enumerate(ids):
+        b, c = res[2 * i], res[2 * i + 1]
+        out[w] = {"baseline": b, "candidate": c, "moved": b != c}
+    return out
+
+
+def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True) -> dict:
+    """R10 for a sidearm on balance_sim's own CI engine: R10a (`finish_time_batch`, median ms to finish 35 HP)
+    and R10b (`r10_duel_batch`: each of `B.R10_PRIMARIES` against it, Standard and Shields). The USP and the
+    Desert Eagle run as their own combatant kinds, so their numbers are the CI numbers; any other sidearm gets a
+    combatant built from its row the way `_usp_combatant` is (single shot paced by the pull model)."""
+    reps = _reps("rule", scale)
+    kind, temp = wid, None
+    if wid not in B.R10_SIDEARMS:
+        cat, row = world.cat, world.cat._row(wid)
+        mag, res, rel = cat._ammo(wid, None)
+        dmg, fire, crit = cat.damage_per_pull(wid), float(cat.fire_ms(wid)), int(row.get("crit_pct") or 0)
+        prof, semi = B.recoil_profile(row), cat._frame_int(wid, "mode") == B.SEMI_MODE
+
+        def temp(t, m, band, rng):
+            return B._ar_shots(t, dmg, fire, mag, res, float(rel), prof, m.aim_factor, rng=rng, crit_pct=crit,
+                               pull_ms=m.pull_ms if semi else 0.0)
+        kind = f"candidate:{wid}"
+        B.RANGE_COMBATANTS[kind] = temp
+    try:
+        m = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
+        out = {"finish_ms": B.finish_time_batch(m, kind, reps, SEED).median_ms, "r10b": {}}
+        if duels:
+            for preset in ("standard", "shields"):
+                mp = m if preset == "standard" else B.RecoilDuelModel.from_catalog(world.cat, health_preset=preset)
+                for p in B.R10_PRIMARIES:
+                    out["r10b"][f"{preset}|{p}"] = B.r10_duel_batch(mp, p, kind, reps, SEED).win_rate
+        return out
+    finally:
+        if temp is not None:
+            B.RANGE_COMBATANTS.pop(kind, None)
+
+
+def fingerprint() -> str:
+    """A hash of everything a verdict depends on beside the seed: the assumptions and the four source files."""
+    h = hashlib.sha256(json.dumps(assumptions(), sort_keys=True, default=str).encode())
+    data = Path(_compile_mod.__file__).resolve().parent     # the catalogue files the review actually read
+    for f in (Path(B.__file__), Path(__file__), data / "weapons.json", data / "perks.json"):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:16]
+
+
+def tree_dirty() -> bool:
+    """True when the checkout has uncommitted changes (the decision log itself excepted), or git cannot say."""
+    try:
+        out = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True,
+                             timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if out.returncode != 0:
+        return True
+    lines = [ln for ln in out.stdout.splitlines() if ln.strip() and not ln.endswith("docs/balance-decisions.md")]
+    return bool(lines)
 
 
 # --------------------------------------------------------------------------- #
@@ -1467,7 +1628,8 @@ def _short(numbers: dict) -> str:
 def report_markdown(v: dict) -> str:
     t = v["tests"]
     out = [f"# Balance review: {v['title']}", "",
-           f"Scenario version {v['scenario_version']}, seed {v['seed']}, git {v['git_sha']}, {v['date']}."
+           f"Scenario version {v['scenario_version']}, seed {v['seed']}, git {v['git_sha']}, fingerprint "
+           f"{v.get('fingerprint')}{' (dirty tree)' if v.get('dirty') else ''}, {v['date']}."
            + (f" **Reps scaled by {v['reps_scale']}: not a real verdict.**" if v["reps_scale"] != 1 else ""), "",
            f"**Verdict: {'PASS' if v['pass'] else 'FAIL'}**", "",
            "| test | result | numbers |", "|---|---|---|"]
@@ -1481,12 +1643,14 @@ def report_markdown(v: dict) -> str:
             if fb.get(k) != fc[k]:
                 out.append(f"| {k} | {fb.get(k, '(new)')} | {fc[k]} |")
         out.append("")
-    if v["sim_only_flags"]["perk_exempt"]:
-        out += [f"Sim-only flag: perks do not scale the ammo or reload of {', '.join(v['sim_only_flags']['perk_exempt'])}. "
-                "compile.py has no such field today; shipping it needs a compile change.", ""]
+    bolts = [w for w in ((v.get("facts") or {}).get("candidate") or {},) if w.get("reload_type") == "bolt"]
+    if bolts:
+        out += ["A bolt (`reload_type: \"bolt\"`): the ammo and reload perks do not act on it, as compile.py `_ammo` "
+                "does after the Sniper bolt batch (brx2/sniper-bolt).", ""]
     op = t["op_rule"]["numbers"].get("checked") or {}
     if op:
-        out += ["## One-shot check (op_rule)", "", "| weapon | pull | crit pull | lowest pool std / shields / hardcore | gated |",
+        out += ["## One-shot check (op_rule)", "", "The gate uses the larger of the pull and the crit pull.", "",
+                "| weapon | pull | crit pull | lowest pool std / shields / hardcore | gated |",
                 "|---|---|---|---|---|"]
         for w, r in op.items():
             lp = r["lowest_pool"]
@@ -1497,25 +1661,40 @@ def report_markdown(v: dict) -> str:
     if mr:
         a, b = mr["vs_plain_ar"], mr["vs_ar_body_armor"]
         out += ["## Marksman rush counter", "",
-                f"Against a plain AR: peek-kill {a['peek_kill']:.2f} (bar {MARKSMAN_STRONG_BAR}), near the top at 1v1 long: "
-                f"{mr['near_top_1v1_long']}; rush success from {RUSH_START_M:g} m {a['rush_success']:.2f} (bar {MARKSMAN_RUSH_BAR}). "
+                f"Against a plain AR: peek-kill {a['peek_kill']:.2f} (bar {MARKSMAN_STRONG_BAR}), near the top in "
+                f"{mr['strong_column']!r}: {mr['near_top_in_strong_column']}; rush success from {RUSH_START_M:g} m {a['rush_success']:.2f} (bar {MARKSMAN_RUSH_BAR}). "
                 f"Against an AR with Body Armor: peek-kill {b['peek_kill']:.2f}, rush success {b['rush_success']:.2f}.", ""]
+    moved_m = {w: r for w, r in (v.get("marksman_watch") or {}).items() if r["moved"]}
+    if moved_m:
+        out += ["## Marksman numbers this candidate moves", "",
+                "The candidate is not that marksman, but it moves its rush-counter numbers (against each world's AR):", ""]
+        for w, r in moved_m.items():
+            b, c = r["baseline"], r["candidate"]
+            out.append(f"- {w}: peek-kill {b['peek_kill']:.2f} -> {c['peek_kill']:.2f}, rush success "
+                       f"{b['rush_success']:.2f} -> {c['rush_success']:.2f}")
+        out.append("")
+    if v.get("sidearm_r10"):
+        sr = v["sidearm_r10"]
+        out += ["## Sidearm R10 (balance_sim's CI engine)", "", f"R10a finish: {_num(sr['finish_ms'])} ms "
+                f"(bar {B.R10_FINISH_BAR_MS:g}). R10b, each primary's win rate against it: "
+                + ", ".join(f"{k} {v2:.0%}" for k, v2 in sr["r10b"].items()), ""]
     out += ["## Dominance matrix, candidate world", "",
             "Bold = near the top (within the margin of the column's best). 1v1 columns are mean win rates against "
             "every other kit; field is the kill-rate ratio against AR carriers; ambush is P(kill both) + P(kill one or more).",
             "", matrix_markdown(v["matrix"]["candidate"]), "", "## Dominance matrix, baseline", "",
             matrix_markdown(v["matrix"]["baseline"]), ""]
-    rb, rc = v["rules"]["baseline"], v["rules"]["candidate"]
-    moved = [k for k in rc if abs(rc[k]["value"] - rb[k]["value"]) > 1e-9]
+    rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
+    moved = [k for k in rc if abs(rc[k]["value"] - rb[k]["value"]) > 1e-9 or abs(rc[k]["value"] - rs[k]["value"]) > 1e-9]
     out += ["## Balance rules", "",
             f"{sum(r['pass'] for r in rc.values())} of {len(rc)} rule cells pass in the candidate world "
-            f"({sum(r['pass'] for r in rb.values())} in the baseline)."]
+            f"({sum(r['pass'] for r in rb.values())} in the baseline, {sum(r['pass'] for r in rs.values())} as shipped)."]
     if moved:
-        out += ["", "| rule | baseline | candidate | bar | pass |", "|---|---|---|---|---|"]
+        out += ["", "| rule | shipped | baseline | candidate | bar | pass |", "|---|---|---|---|---|---|"]
         for k in moved:
-            out.append(f"| {k} | {_num(rb[k]['value'])} | {_num(rc[k]['value'])} | {_num(rc[k]['bar'])} | {rc[k]['pass']} |")
+            out.append(f"| {k} | {_num(rs[k]['value'])} | {_num(rb[k]['value'])} | {_num(rc[k]['value'])} | "
+                       f"{_num(rc[k]['bar'])} | {rc[k]['pass']} |")
     else:
-        out.append(" No rule cell moved: the candidate touches no weapon the rules read.")
+        out.append(" No rule cell moved: neither the candidate nor its context touches a weapon the rules read.")
     out += ["", "## Time to kill (perfect aim, recoil model, crits)", "",
             "| weapon | pool | htk | perfect | no crit | expected crit | all crit | recoil bursts | recoil full auto |",
             "|---|---|---|---|---|---|---|---|---|"]
@@ -1533,13 +1712,31 @@ def report_markdown(v: dict) -> str:
 DECISIONS = REPO / "docs" / "balance-decisions.md"
 
 
-def record(v: dict, call: str = "pending", path: Path = DECISIONS, command: str = "") -> str:
-    """Append one decision section to the log, newest last. Refuses a scaled (test) verdict."""
+def record_guard(v: dict, call: str, *, dirty_now: bool | None = None, fingerprint_now: str | None = None) -> None:
+    """Refuse to record a verdict that cannot be reproduced: a scaled run, no real call from Tony, a verdict made
+    on a dirty tree, a tree dirty now, or source files that changed since the verdict (fingerprint)."""
     if v["reps_scale"] != 1:
         raise ValueError("refusing to record a verdict run with scaled reps")
+    if not call or not call.strip() or call.strip().lower() == "pending":
+        raise ValueError('refusing to record without Tony\'s call: pass --call "<his words>"')
+    if v.get("dirty", True):
+        raise ValueError("refusing to record: the verdict was made on a dirty tree (or says nothing); commit, then re-run")
+    if (tree_dirty() if dirty_now is None else dirty_now):
+        raise ValueError("refusing to record: the tree is dirty now")
+    now = fingerprint() if fingerprint_now is None else fingerprint_now
+    if v.get("fingerprint") != now:
+        raise ValueError(f"refusing to record: the fingerprint moved ({v.get('fingerprint')} -> {now}); re-run the review")
+
+
+def record(v: dict, call: str, path: Path = DECISIONS, command: str = "") -> str:
+    """Append one decision section to the log, newest last. `main` runs `record_guard` first."""
+    if v["reps_scale"] != 1:
+        raise ValueError("refusing to record a verdict run with scaled reps")
+    if not call or call.strip().lower() == "pending":
+        raise ValueError("refusing to record without Tony's call")
     lines = [f"## {v['date']}: {v['title']}", "",
              f"- Verdict: **{'PASS' if v['pass'] else 'FAIL'}** (scenario version {v['scenario_version']}, seed {v['seed']}, "
-             f"git `{v['git_sha']}`).",
+             f"git `{v['git_sha']}`, fingerprint `{v.get('fingerprint')}`).",
              f"- Tony's call: {call}"]
     if command:
         lines.append(f"- Command: `{command}`")
@@ -1560,13 +1757,15 @@ def record(v: dict, call: str = "pending", path: Path = DECISIONS, command: str 
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="balance_review.py", description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--candidate", required=True, help="a weapons.json row, {weapon_id, changes}, {perk_id, changes} "
-                                                       "or {perk: row}; optional title, sim and with keys")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--candidate", help="a weapons.json row, {weapon_id, changes}, {perk_id, changes} "
+                                         "or {perk: row}; optional title, sim and with keys")
+    src.add_argument("--record-from", metavar="VERDICT", help="record an earlier --out verdict without re-running it")
     ap.add_argument("--out", help="write the verdict JSON here")
     ap.add_argument("--report", help="also write the markdown report here (it always goes to stdout)")
     ap.add_argument("--record", nargs="?", const=str(DECISIONS), default=None, metavar="PATH",
                     help=f"append a decision section to the log (default {DECISIONS.relative_to(REPO)})")
-    ap.add_argument("--call", default="pending", help="Tony's call, in his words, for --record (default: pending)")
+    ap.add_argument("--call", default="", help="Tony's call, in his words; required by --record and --record-from")
     ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1), help="worker processes (no effect on numbers)")
     ap.add_argument("--reps-scale", type=float, default=1.0, help=argparse.SUPPRESS)   # tests only
     return ap
@@ -1574,6 +1773,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.record_from:
+        v = json.loads(Path(args.record_from).read_text())
+        record_guard(v, args.call)
+        record(v, args.call, Path(args.record or DECISIONS), command=f"--record-from {Path(args.record_from).name}")
+        return 0
+    if args.record:
+        # fail before a 90 s run, not after it
+        if not args.call or args.call.strip().lower() == "pending":
+            raise SystemExit('--record needs --call "<Tony\'s words>"')
     v = review(args.candidate, reps_scale=args.reps_scale, n_jobs=args.jobs)
     md = report_markdown(v)
     sys.stdout.write(md)
@@ -1582,6 +1790,7 @@ def main(argv=None) -> int:
     if args.report:
         Path(args.report).write_text(md)
     if args.record:
+        record_guard(v, args.call)
         record(v, args.call, Path(args.record), command="python3 mcp/tools/balance_review.py --candidate " + args.candidate)
     return 0 if v["pass"] else 1
 

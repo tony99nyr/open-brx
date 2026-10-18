@@ -24,11 +24,13 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
    - a perk change: `{"perk_id": "quick_hands", "changes": {"reload_mult": 0.4}}`, or `{"perk": {...row...}}`.
 
    Optional keys: `"with": [...]` holds other pending changes that apply to BOTH worlds (for example "with the
-   Charge Rifle at 55/14"); `"sim": {"perk_exempt": true}` keeps perks off the row's ammo and reload (sim only:
-   compile.py has no such field, so say a ship needs a compile change); `"sim": {"style": "full"}` makes an
-   automatic hold the trigger instead of bursting. Balance numbers live in `wire`: use `wire.dmg`,
-   `wire.tap_dmg`, `wire.fire_ms`, `wire.swap_ms`, `wire.headset_dmg`. The tool refuses a diff that moves
-   nothing the catalogue reads.
+   Charge Rifle at 55/14"). Nothing escapes judgement that way: the rule cells and the one-shot check also run
+   against the shipped catalogue, and a `with` entry that breaks one fails `balance_kept` or `op_rule`.
+   `"sim": {"style": "full"}` makes an automatic hold the trigger instead of bursting. A bolt is
+   `"reload_type": "bolt"` in `changes`: the ammo and reload perks then skip it, as compile.py does after the
+   Sniper bolt batch. Balance numbers live in `wire`: use `wire.dmg`, `wire.tap_dmg`, `wire.fire_ms`,
+   `wire.swap_ms`, `wire.headset_dmg`. The tool refuses every requested field that the catalogue does not read
+   or that does not change.
 3. **Run it** from the repo root, in the background (about 90 s with 4 workers):
 
        python3 mcp/tools/balance_review.py --candidate <file.json> --out <scratch>/verdict.json --report <scratch>/report.md
@@ -43,8 +45,11 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
      instead finishes 35 HP inside the R10a bar.
    - `balance_kept`: no Balance rule cell (R1-R12, R10a, Standard and Shields) flips to fail, and no other kit
      loses its last near-top cell.
-   - `op_rule`: no loadout weapon one-shots the lowest pool a player can field on Standard or Shields (rule 7).
-   - `marksman_rush_counter`: marksman rows only. Strong against players who do not rush, beaten by rushers.
+   - `op_rule`: no loadout weapon's pull, or crit pull, one-shots the lowest pool a player can field on Standard
+     or Shields, with any visible perk (rule 7).
+   - `marksman_rush_counter`: marksman rows only. Strong against players who do not rush (peek-kill, and near
+     the top in `MARKSMAN_STRONG_COLUMN`), beaten by rushers. The report also says when any candidate moves
+     the other marksman rows' rush numbers.
    Also read the matrix, the rule table, the time-to-kill table (perfect aim, recoil, crits) and the
    hits-to-kill: a damage step that changes hits-to-kill (57 x 2 = 114, under the 115 pool) changes the weapon.
 5. **Propose the smallest fix** for each failed test: one field, one value, with the reason. Run the fix as its
@@ -53,8 +58,12 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
    candidate, the smallest fix, and **the invented assumptions** (the pull model, reaction delays, range bands
    and closing speed, peek windows; the report prints them all). Say plainly that the verdict holds under those
    assumptions, not in the field.
-7. **Record it** with his words. Re-run with `--record --call "<Tony's words, verbatim>"`. Without `--call` the
-   section says "pending". The log is append-only: a new decision is a new section, never an edit.
+7. **Record it** once Tony has decided, from the verdict you already have (no re-run):
+   `python3 mcp/tools/balance_review.py --record-from <scratch>/verdict.json --call "<Tony's words, verbatim>"`.
+   The tool refuses without a real call (no "pending"), on a verdict made on a dirty tree, on a tree dirty now,
+   and when the fingerprint (assumptions, both sim files, `weapons.json`, `perks.json`) moved since the verdict.
+   So run the review on a clean, committed tree. A pending review stays out of the log: the log starts empty
+   and holds decisions only. It is append-only: a new decision is a new section, never an edit.
 8. **Ship separately.** A pass is not a change to `weapons.json`. The row edit, its tests and the Balance rules
    row go through the normal land lane, and quote the decision section.
 
