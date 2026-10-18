@@ -17,7 +17,7 @@
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
 //                                              #   real-fresh | real-silent-snipers | real-load-feedback |
-//                                              #   real-teams-hold | real-last-match-restart
+//                                              #   real-teams-hold | real-hill | real-last-match-restart
 //   HEADED=1   KEEP_SHOTS=1   MC_PY=…
 //
 // Every vite/MC pair below always picks its OWN fresh free port at the moment it starts (never
@@ -800,6 +800,99 @@ step('real-teams-hold', async ({ browser }) => {
     expect(/FIRST TO HOLD 5:00 WINS/.test(noteAfter), `the operator note reads FIRST TO HOLD 5:00 WINS (saw ${JSON.stringify(noteAfter)})`);
     ok(`HOLD: "5 MIN" reaches a real MC as 300s, and the operator note names it   ${await shot(pg, 'real-teams-hold')}`);
     await pg.context().close();
+  } finally { await vite.stop(); await mc.stop(); }
+});
+
+step('real-hill', async ({ browser }) => {
+  // F559: the KOTH HILL item (CAPTURE TIME, NET CAP) against a REAL MC: STATION DEFAULT first, a tap reaches
+  // config.hill, LOBBY reads it back, CLEAR removes the key, a refused pick shows its words and leaves the
+  // value alone, and an older server (no `hill` item or key anywhere) still renders both screens.
+  const mc = await startRealMC();
+  const vite = await startVite(mc.port);
+  const state = () => fetch(`${mc.base}/api/state`).then(r => r.json());
+  try {
+    const pg = await openReal(browser, vite.base, '#build', 1280);
+    await pickMode(pg, 'KING OF THE HILL');
+    const capV = pg.getByTestId('match-hill-capture-value'), netV = pg.getByTestId('match-hill-net-value');
+    await until(() => capV.count().then(n => n > 0), 8000, 'the HILL item (KOTH offers it)');
+    expect((await capV.innerText()) === 'STATION DEFAULT', `CAPTURE TIME starts at STATION DEFAULT (saw ${JSON.stringify(await capV.innerText())})`);
+    expect((await netV.innerText()) === 'STATION DEFAULT', `NET CAP starts at STATION DEFAULT (saw ${JSON.stringify(await netV.innerText())})`);
+    expect(await pg.getByTestId('match-hill-capture-clear').isDisabled(), 'the CAPTURE TIME CLEAR button is disabled at STATION DEFAULT');
+    expect(await pg.getByTestId('match-hill-net-clear').isDisabled(), 'the NET CAP CLEAR button is disabled at STATION DEFAULT');
+    ok('HILL: both values start at STATION DEFAULT with CLEAR disabled');
+
+    await pg.getByRole('button', { name: 'hill capture time plus' }).click();
+    await until(async () => (await capV.innerText()) === '11 S', 6000, 'CAPTURE TIME to read 11 S');
+    await until(async () => (await state()).config.hill?.capture_s === 11, 6000, 'capture_s 11 on the real server');
+    ok('HILL: + from STATION DEFAULT reads 11 S and the real config.hill.capture_s is 11');
+
+    await pg.getByRole('button', { name: 'hill net cap plus' }).click();
+    await until(async () => (await netV.innerText()) === '4', 6000, 'NET CAP to read 4');
+    await pg.getByRole('button', { name: 'hill net cap plus' }).click();
+    await until(async () => (await netV.innerText()) === '5', 6000, 'NET CAP to read 5');
+    await until(async () => (await state()).config.hill?.net_cap === 5, 6000, 'net_cap 5 on the real server');
+    ok(`HILL: two net cap taps read 5 and the real config.hill.net_cap is 5   ${await shot(pg, 'real-hill-values')}`);
+
+    await pg.evaluate(() => { location.hash = '#lobby'; });
+    const readout = pg.getByTestId('hill-readout');
+    await until(() => readout.count().then(n => n > 0), 8000, 'the LOBBY hill readout');
+    const line = await readout.innerText();
+    expect(line === 'HILL: CAPTURE 11 S · NET CAP 5', `LOBBY reads the values in force (saw ${JSON.stringify(line)})`);
+    ok(`HILL: LOBBY reads "${line}"   ${await shot(pg, 'real-hill-lobby')}`);
+
+    await pg.evaluate(() => { location.hash = '#build'; });
+    await until(() => capV.count().then(n => n > 0), 8000, 'PLAY again');
+    await pg.getByTestId('match-hill-capture-clear').click();
+    await until(async () => (await capV.innerText()) === 'STATION DEFAULT', 6000, 'CAPTURE TIME back to STATION DEFAULT');
+    await until(async () => { const h = (await state()).config.hill; return h != null && !('capture_s' in h); }, 6000, 'capture_s gone from the real config.hill');
+    expect((await state()).config.hill?.net_cap === 5, 'CLEAR on one key leaves the other (net_cap 5)');
+    ok('HILL: CLEAR returns CAPTURE TIME to STATION DEFAULT and drops capture_s on the server');
+
+    // The refusal: the real client reads `error` from a 400 body (client.ts `j`).
+    await pg.route('**/api/play/pick', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'PROBE REFUSAL' }) }));
+    await pg.getByRole('button', { name: 'hill net cap plus' }).click();
+    await until(() => pg.locator('header button[role="alert"]').filter({ hasText: 'PROBE REFUSAL' }).count().then(n => n > 0), 6000, 'the refusal on screen');
+    expect((await netV.innerText()) === '5', `the refused tap leaves NET CAP at 5 (saw ${JSON.stringify(await netV.innerText())})`);
+    expect((await state()).config.hill?.net_cap === 5, 'and the server still holds net_cap 5');
+    // The browser logs the probe's own 400 as a console error; that one is the point of the step, not a fault.
+    failures = failures.filter(f => !(f.startsWith('real-hill:') && f.includes('400 (Bad Request)')));
+    ok(`HILL: a refused pick shows PROBE REFUSAL and NET CAP stays 5   ${await shot(pg, 'real-hill-refused')}`);
+    await pg.unroute('**/api/play/pick');
+    await pg.context().close();
+
+    // Stale server: no `hill` item in koth's match_items, no `hill` in any state (REST or websocket).
+    await fetch(`${mc.base}/api/play/pick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ match: { hill: { capture_s: 15 } } }) });
+    const strip = st => { if (st?.config) delete st.config.hill; return st; };
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
+    const old = await ctx.newPage();
+    old.on('pageerror', e => failures.push(`${current}: [pageerror] ${e.message}`));
+    await old.route('**/api/modes', async route => {
+      const r = await route.fetch(); const modes = await r.json();
+      for (const m of modes) if (m.mode === 'koth') m.match_items = (m.match_items || []).filter(k => k !== 'hill');
+      await route.fulfill({ response: r, json: modes });
+    });
+    await old.route('**/api/state', async route => {
+      const r = await route.fetch(); await route.fulfill({ response: r, json: strip(await r.json()) });
+    });
+    await old.routeWebSocket(/\/ui-ws/, ws => {
+      const server = ws.connectToServer();
+      server.onMessage(m => {
+        try { const j = JSON.parse(String(m)); if (j.kind === 'snapshot') strip(j.state); ws.send(JSON.stringify(j)); } catch { ws.send(m); }
+      });
+      ws.onMessage(m => server.send(m));
+    });
+    await old.goto(`${vite.base}/#build`, { waitUntil: 'domcontentloaded' });
+    await until(() => old.locator('text=PICK GAME').count().then(n => n > 0), 15000, 'PLAY on the stale server');
+    await until(() => old.getByRole('button', { name: 'KING OF THE HILL' }).getAttribute('aria-pressed').then(v => v === 'true'), 8000, 'KOTH shown picked');
+    await old.waitForTimeout(300);
+    expect(await old.getByTestId('match-hill-item').count() === 0, 'PLAY renders with no HILL item against a server whose koth lacks it');
+    await old.evaluate(() => { location.hash = '#lobby'; });
+    const oldLine = old.getByTestId('hill-readout');
+    await until(() => oldLine.count().then(n => n > 0), 8000, 'the LOBBY readout on the stale server');
+    const stale = await oldLine.innerText();
+    expect(stale === 'HILL: CAPTURE STATION DEFAULT · NET CAP STATION DEFAULT', `LOBBY reads STATION DEFAULT twice (saw ${JSON.stringify(stale)})`);
+    ok('HILL: a stale server renders PLAY without the item and LOBBY with STATION DEFAULT twice');
+    await ctx.close();
   } finally { await vite.stop(); await mc.stop(); }
 });
 

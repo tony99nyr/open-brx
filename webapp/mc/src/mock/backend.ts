@@ -1890,7 +1890,7 @@ export class MockBackend implements Api {
             ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
         : undefined;
       delete match.hold_target_s;
-      delete match.hill;   // F559: the same reset (picks.py)
+      // F559: `hill` is kept across a mode change, as picks.py keeps it; only koth composes it
     }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {

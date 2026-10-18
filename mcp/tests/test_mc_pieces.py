@@ -1310,11 +1310,14 @@ def test_f559_a_bad_hill_pick_is_refused_400_and_a_non_koth_pick_never_writes_on
         r = c.post("/api/play/pick", json={"match": {"hill": bad}})
         assert r.status_code == 400, (bad, r.status_code)
     assert s.config["hill"] == {"net_cap": 2}                      # a refused pick changes nothing
-    # switching to TDM drops the pick's hill, so TDM carries none in its pick
+    # a mode change keeps the hill tuning, as PUT /api/config does (`_candidate_config`): TDM never sends it...
     r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:tdm"}})
     assert r.json()["ok"]
-    assert "hill" not in s.game_pick["match"], s.game_pick["match"]
-    # naming one on a TDM pick is accepted as a pick value but compose never writes it
+    assert s.config.get("hill") == {"net_cap": 2}, s.config.get("hill")
+    # ...naming one on a TDM pick is accepted as a pick value, but compose never writes it...
     r = c.post("/api/play/pick", json={"match": {"hill": {"capture_s": 30}}})
     assert r.json()["ok"], r.json()
-    assert s.config.get("hill") != {"capture_s": 30}, s.config.get("hill")
+    assert s.config.get("hill") == {"net_cap": 2}, s.config.get("hill")
+    # ...and back on KOTH the pick's own hill goes on top of the kept one (the strip is the operator's)
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}})
+    assert r.json()["ok"] and s.config.get("hill") == {"capture_s": 30, "net_cap": 2}, s.config.get("hill")

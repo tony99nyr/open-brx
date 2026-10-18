@@ -103,7 +103,8 @@ class GamePick:
             # A pick that never named teams (an older session) carries the roster's own.
             prev_teams = match.pop("teams", None) or _gamepick.match_from_config(s.config).get("teams")
             match.pop("hold_target_s", None)
-            match.pop("hill", None)   # F559: the same reset; a pick that names a hill sets it right after
+            # F559: `hill` is NOT reset here: like `PUT /api/config` (`_candidate_config`), a mode change keeps the hill
+            # tuning, and only a mode offering "hill" (koth) ever writes it, so a value kept under TDM is never sent.
             row = self._mode_row(mode)
             new_teams = cast(list[TeamColour], list(row.get("teams") or []))
             if new_teams != ["ffa"]:
