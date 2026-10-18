@@ -212,11 +212,12 @@ async function applyStationConfig(body) {
   // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
-  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; }   // F344 review M2: a death seen last game is not one this game
+  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
+  if (cfg.kind === 'control') applyHillClock(cfg, Date.now());
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: cfg.valid_ids };
   save();
   if (wasArmed && armKey() === before) {
@@ -228,6 +229,24 @@ async function applyStationConfig(body) {
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAME_BY_TID[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
+}
+/** F386 phone twin (A68, the Stick's `station_link.h`): a hill counts only between MC's go-live and its deadline. A START
+ *  in the countdown (`starts_in_ms > 0`) wipes whatever a lobby counted and makes the point wait; a LIVE re-send (start
+ *  already past) leaves it alone. `ends_in_ms` sets the whistle, 0 = now; a config with no timing (a lobby or an abort
+ *  re-send) clears both, so the point counts as before. F555: MC scores the hill on this tally. */
+function applyHillClock(cfg, now) {
+  if (cfg.starts_in_ms != null) {
+    const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
+    const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
+    if (cfg.starts_in_ms > 0 && counting && counted) resetPoint('MC START: the lobby and the countdown score nothing');
+    settings.hillStartsAt = now + cfg.starts_in_ms;
+    if (cfg.starts_in_ms > 0) { point.at = null; _hillWaited = true; }   // anchor at go-live even if no tick runs before it
+  } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
+  // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
+  // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.
+  if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
+  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
+  else settings.hillEndsAt = null;
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
@@ -248,7 +267,9 @@ function utilityStatusBody() {
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
     // have watched any of it (F92).
-    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
+    // F555: `game` is the byte this hill counts under, so MC never seeds a new game's tally from a beat sent before the
+    // phone applied that game's config
+    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested, game: settings.game,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
 const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, setCurrent: t => { transport = t; },
@@ -549,9 +570,23 @@ function powerupTick(now) {
 // ---------- kind 5: the control point ----------
 /** One step of the point (control.js does the arithmetic), then its log lines, its save and its advert.
  *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
+let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0;
+const HOLD_SAVE_MS = 2000;
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
-  const { changed, events } = point.update(presence.players(), now);
+  // F386 phone twin: before go-live the point waits with no clock running (`at` cleared, so the first live step banks
+  // nothing), and at the whistle it takes one last step to the deadline, then holds.
+  // Only the step is skipped: the advert below still republishes (a START that reset the point must say so on air).
+  const waiting = settings.hillStartsAt != null && now < settings.hillStartsAt;
+  if (waiting) point.at = null;
+  else if (_hillWaited && settings.hillStartsAt != null) point.at = settings.hillStartsAt;   // the first live step counts from go-live, as on the Stick
+  _hillWaited = waiting;
+  let at = now, step = !waiting;
+  if (step && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
+    if (point.at != null && point.at >= settings.hillEndsAt) step = false;
+    else at = settings.hillEndsAt;
+  }
+  const { changed, events } = step ? point.update(presence.players(), at) : { changed: false, events: [] };
   for (const e of events) {
     if (e.type === 'captured') { log(`${TEAM_NAME_BY_TID[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAME_BY_TID[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEY_BY_TID[e.team]); }   // the big word already names the team
     else if (e.type === 'neutralised') { log(`${TEAM_NAME_BY_TID[e.team]} LOST the point — ${TEAM_NAME_BY_TID[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
@@ -563,7 +598,10 @@ function controlTick(now) {
   // to a second of conversion behind the screen, so a reload visibly went backwards (tools/screens.mjs #56
   // caught 38% coming back as 33%). A small JSON four times a second on a propped-up station is not a cost
   // worth that.
-  if (changed || events.length) saveControl();
+  // F557 (Codex review of F555): the hold grows on every held tick without `changed` flipping, and MC now scores on it.
+  // Save it at most every HOLD_SAVE_MS as it grows, so a reload loses seconds, not minutes.
+  const held = Object.values(point.holdMs).reduce((a, b) => a + b, 0);
+  if (changed || events.length || (held !== _holdSaved && now - _holdSavedAt >= HOLD_SAVE_MS)) { saveControl(); _holdSaved = held; _holdSavedAt = now; }
   // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
   // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
   // four times a second.
@@ -1138,7 +1176,7 @@ function wireExit() {
     connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
-    applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    applyNativeInset, controlTick };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 

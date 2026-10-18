@@ -234,7 +234,8 @@ export function pushGate(state: State): PushGate {
     a.ok && (a.config_id === undefined || a.config_id === config.config_id);
   const acked = Object.values(lobby.acks).filter(ackIsCurrent).length;
   const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
-  const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
+  // F549: a no_config ack is the KIT's fault (its own blocker), never "headset off"
+  const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok && (a as { err?: string | null }).err !== 'no_config').map(([id]) => nameOf(id));
   const pendingAck = players.filter(p => !Object.hasOwn(lobby.acks, p.player_id)).map(p => p.display);
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
   // F221: `WHAT IS WRONG: WHAT TO DO`, upper case (catalogue id 'lobby-stale-ack-line', AMBER).

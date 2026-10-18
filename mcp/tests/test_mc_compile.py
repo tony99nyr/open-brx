@@ -1006,17 +1006,13 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     invariant does not apply to it. The exemption is narrow: it is keyed on the catalogue's own
     `lethal` flag, not on the weapon id, so a future LETHAL weapon still has to earn this guard.
 
-    ⚠ ONE MORE ROW IS DELIBERATELY EXEMPT (2026-09-23, R10, docs/weapon-design.md's Balance rules
-    table, F308): the USP's own kill (13 hits) no longer fits its magazine (12) -- Tony's explicit
-    ask ("the sidearms should be finish-a-kill weapons, not competitive against rifles"), on a
-    REAL-WORLD lever he chose over an unrealistic one ("no pistol clip is that small"): a USP .45
-    holds 12 rounds. A full-health kill now forces a mid-fight reload, on purpose. `MAG_INVARIANT_
-    EXEMPT` is narrow and self-expiring below -- if the USP's magazine ever again reaches 13, the
-    exemption goes stale and this test says so, rather than leaving a guard standing that nothing
-    needs."""
+    The USP was exempt here from 2026-09-23 (R10: 13 hits against a 12-round magazine, a forced
+    mid-fight reload). The 2026-10-17 single-shot retune made it 12 damage for R10a (a 35 HP finish
+    within 1.2 s), so it kills in 10 hits and fits its magazine again: no row is exempt now. Keep
+    `MAG_INVARIANT_EXEMPT` for the next deliberate exception; its stale check below still fires."""
     cat = WeaponCatalog()
     support = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("lethal") is False}
-    MAG_INVARIANT_EXEMPT = {"usp"}
+    MAG_INVARIANT_EXEMPT: set[str] = set()
     bad = [w["weapon_id"] for w in cat.all()
            if w["weapon_id"] not in support and w["weapon_id"] not in MAG_INVARIANT_EXEMPT
            and int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
@@ -1169,7 +1165,7 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         mag = r["mag"]
         rtk = cat.rounds_to_kill(wid, lethal)
         kpc = mag // rtk if rtk else 0
-        per = cat.cycle_ms(wid)
+        per = cat.paced_cycle_ms(wid)   # a single-shot weapon is player-paced (field 2026-10-17)
         rpc = cat.rounds_per_charge(wid)
         # `damage_per_pull()`, not `damage()`, 2026-09-18: on the three headset weapons (shotgun,
         # plasma sniper, rocket launcher) `damage()` is the gun word alone (t5), but a pull actually
@@ -1198,8 +1194,11 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
                      "recoil_heavy": (r.get("recoil") or {}).get("heavy",
                                        (r.get("recoil") or {}).get("floor")),
                      "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
+    # Sidearms are out of the band (2026-10-17): with the player-paced single-shot cycle they take 3.6 s at
+    # the default pool, and Tony wants them weak against the rifles ("usp and deagle should feel weak against
+    # the rifles"). Their own rules are R10a (finish 35 HP within 1.2 s) and R10b (every rifle beats them).
     for r in rows:
-        if r["htk"] > 1 and not r["is_cell"]:
+        if r["htk"] > 1 and not r["is_cell"] and r["fam"] != ("sidearm",):
             assert 1200 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.2-3.5s band"
 
     pick = [r for r in rows if r["htk"] > 1]
