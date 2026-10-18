@@ -1,7 +1,8 @@
 // A4 (review 2026-10-10): the one parse rule for MC's `station_config`, shared with the Stick
 // (hardware/m5sticks3/station_link.h parse_station_config) through app/test/fixtures/station-config-cases.json.
 // PURE: no clock, no advert, no range edit. utility.js applyStationConfig applies the result in its own order.
-import { POWERUP_STATION_ID_MAX, STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY, VALID_IDS_MAX } from './transport/contract.gen.js';
+import { POWERUP_STATION_ID_MAX, STATION_ID_MAX, STATION_LOCK_MAX_S, STATION_TEAM_ANY, VALID_IDS_MAX, HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX,
+  HILL_NET_CAP_MIN, HILL_NET_CAP_MAX } from './transport/contract.gen.js';
 
 export const STATION_KINDS = Object.freeze(['respawn', 'powerup', 'extraction', 'bomb', 'control']);
 // 32 is the phone's long-standing display cap (utility.js sliced valid_ids to 32 before A4). It is not an air limit: it
@@ -40,7 +41,7 @@ export function parseStationConfig(body) {
     starts_in_ms: typeof b.starts_in_ms === 'number' && Number.isFinite(b.starts_in_ms) ? Math.trunc(b.starts_in_ms) : null,
     ends_in_ms: typeof b.ends_in_ms === 'number' && Number.isFinite(b.ends_in_ms) && b.ends_in_ms >= 0 ? Math.trunc(b.ends_in_ms) : -1,
     // F559: a hill's pace from MC, integers in 3-60 s and 1-6; anything else is null and the station keeps its own
-    capture_s: isInt(b.capture_s) && b.capture_s >= 3 && b.capture_s <= 60 ? b.capture_s : null,
-    net_cap: isInt(b.net_cap) && b.net_cap >= 1 && b.net_cap <= 6 ? b.net_cap : null,
+    capture_s: isInt(b.capture_s) && b.capture_s >= HILL_CAPTURE_S_MIN && b.capture_s <= HILL_CAPTURE_S_MAX ? b.capture_s : null,
+    net_cap: isInt(b.net_cap) && b.net_cap >= HILL_NET_CAP_MIN && b.net_cap <= HILL_NET_CAP_MAX ? b.net_cap : null,
   };
 }

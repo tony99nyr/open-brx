@@ -14,7 +14,8 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER, setDeviceModel } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
-import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
+import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP,
+  HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -57,6 +58,12 @@ const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? locatio
 const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }); } catch (_) { return { ...DEFAULTS }; } })();
 /** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
 const thr = () => stationThreshold(settings);
+// Milestone round 3: a pace saved under the old +/- range (2-120 s, 1-12) comes back inside A77's bounds
+const clampPace = () => {
+  settings.captureS = Math.min(HILL_CAPTURE_S_MAX, Math.max(HILL_CAPTURE_S_MIN, Math.round(+settings.captureS) || HILL_CAPTURE_S));
+  settings.netCap = Math.min(HILL_NET_CAP_MAX, Math.max(HILL_NET_CAP_MIN, Math.round(+settings.netCap) || HILL_NET_CAP));
+};
+clampPace();
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
 // F365 / A67: who set the radius and the strength last (this station or MC), when, and the edit log MC is told about.
 // Its own key: RESET TO DEFAULTS forgets `brx.utility`, but the edit `seq` must keep rising or MC would drop new edits.
@@ -193,6 +200,7 @@ async function applyStationConfig(body) {
   const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.tx, settings.game,
     settings.item, settings.mcArmed && settings.mcArmed.valid_ids, settings.captureS, settings.netCap]);   // F559: a pace change is a change
   const wasArmed = !!settings.mcArmed, before = armKey();
+  const sameStation = settings.kind === cfg.kind && settings.id === cfg.id;   // milestone round 3: the live-resend rule's guard
   settings.kind = cfg.kind; settings.team = cfg.team; settings.id = cfg.id;
   // F365 / A67: the last edit wins, per field. An on-station edit younger than MC's value (`*_age_ms`) is kept; an
   // older one, or any value from an MC that sends no age, is replaced by MC's. MC sends `tx_power` only once it holds
@@ -217,7 +225,7 @@ async function applyStationConfig(body) {
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
-  if (cfg.kind === 'control') applyHillClock(cfg, Date.now());
+  if (cfg.kind === 'control') applyHillClock(cfg, Date.now(), sameStation);
   // F559: MC's hill pace wins on every arming that carries it; absent keeps the station's own (a +/- edit holds until then)
   if (cfg.kind === 'control' && cfg.capture_s != null) settings.captureS = cfg.capture_s;
   if (cfg.kind === 'control' && cfg.net_cap != null) settings.netCap = cfg.net_cap;
@@ -237,7 +245,7 @@ async function applyStationConfig(body) {
  *  in the countdown (`starts_in_ms > 0`) wipes whatever a lobby counted and makes the point wait; a LIVE re-send (start
  *  already past) leaves it alone. `ends_in_ms` sets the whistle, 0 = now; a config with no timing (a lobby or an abort
  *  re-send) clears both, so the point counts as before. F555: MC scores the hill on this tally. */
-function applyHillClock(cfg, now) {
+function applyHillClock(cfg, now, sameStation = true) {
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
@@ -247,9 +255,12 @@ function applyHillClock(cfg, now) {
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
   // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
   // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.
+  // Milestone review: a re-send whose start is already past and which names no deadline (F568's adopted LIVE match: MC
+  // trusts no time limit) keeps the deadline the original START gave, or the hill counts past its whistle until END.
+  const liveResend = cfg.starts_in_ms != null && cfg.starts_in_ms <= 0 && sameStation;   // as the Stick: the same point only
   if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
   else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
-  else settings.hillEndsAt = null;
+  else if (!liveResend) settings.hillEndsAt = null;
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
@@ -1044,10 +1055,10 @@ function wire() {
   let sliderFrom = null;
   $('thrRange').oninput = e => { if (sliderFrom == null) sliderFrom = settings.threshold; settings.threshold = +e.target.value; save(); render(); };
   $('thrRange').onchange = e => { const to = +e.target.value; if (sliderFrom != null) settings.threshold = sliderFrom; sliderFrom = null; stationEdit('threshold', to); };
-  $('capMinus').onclick = () => { settings.captureS = Math.max(2, settings.captureS - 1); point.captureS = settings.captureS; save(); render(); };
-  $('capPlus').onclick = () => { settings.captureS = Math.min(120, settings.captureS + 1); point.captureS = settings.captureS; save(); render(); };
-  $('capMinus2').onclick = () => { settings.netCap = Math.max(1, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
-  $('capPlus2').onclick = () => { settings.netCap = Math.min(12, settings.netCap + 1); point.netCap = settings.netCap; save(); render(); };
+  $('capMinus').onclick = () => { settings.captureS -= 1; clampPace(); /* A77's bounds, as MC and the Stick read them */ point.captureS = settings.captureS; save(); render(); };
+  $('capPlus').onclick = () => { settings.captureS += 1; clampPace(); point.captureS = settings.captureS; save(); render(); };
+  $('capMinus2').onclick = () => { settings.netCap -= 1; clampPace(); point.netCap = settings.netCap; save(); render(); };
+  $('capPlus2').onclick = () => { settings.netCap += 1; clampPace(); point.netCap = settings.netCap; save(); render(); };
   // Between games: hand the point back to nobody without wiping the operator's radius calibration.
   $('btnPointReset').onclick = () => { resetPoint('operator'); restartIfLive(); };
   $('dwellMinus').onclick = () => { settings.dwell = Math.max(0, settings.dwell - 500); presence.dwellMs = settings.dwell; save(); render(); };
@@ -1184,7 +1195,7 @@ function wireExit() {
     connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
-    applyNativeInset, controlTick };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    applyNativeInset, controlTick, clampPace };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 

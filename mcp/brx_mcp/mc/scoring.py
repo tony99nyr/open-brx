@@ -121,6 +121,9 @@ def _rank_key(r):
     return (-r["kills"], -r["kd"], r["deaths"])
 
 
+STATION_FRESH_MS = 60_000   # milestone review: a station reading older than this at the whistle is stale
+
+
 class Scorer:
     def __init__(self, match_id: str, go_live_t: int, time_limit_s: int | None, mode: str,
                  players: dict[str, Player], teams: list[Team],
@@ -186,6 +189,17 @@ class Scorer:
         # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
         # station reading is scored on it; the phones' readings for that site are only the cross-check.
         self.station_possession_ms: dict[str, dict[int, int]] = {}
+        # Milestone review: when MC last heard each site's station (its own heartbeat time). A reading older than
+        # STATION_FRESH_MS at the whistle (or now) no longer outranks the phones for its site. Unknown = fresh.
+        self.station_seen_ms: dict[str, int] = {}
+        # Milestone round 3 (brx1): each site's latest reading MC received at or before end_t, the bound for a reading
+        # that arrives after it (a muster Stick that missed an early END counts on). A site first heard after end_t is
+        # unverified: it does not score, the phones decide it, and its recap row says so.
+        self.station_pre_end: dict[str, dict[int, int]] = {}
+        self.station_unverified: set[str] = set()
+        # Milestone review: False for an ADOPTED match, whose time limit is the draft's guess and whose go-live may be the
+        # adoption instant; then no hill reading is capped by either.
+        self.clock_trusted = True
         self.seen: set[tuple[str, int]] = set()
         # A6.1 end freeze: facts with effective t > end_t are recorded, never scored.
         self.end_t: int | None = (go_live_t + time_limit_s * 1000) if time_limit_s else None
@@ -1010,7 +1024,10 @@ class Scorer:
         except (TypeError, ValueError):
             return None
         ms = max(0, ms)
-        return min(ms, self.time_limit_s * 1000) if self.time_limit_s else ms
+        if not self.time_limit_s:
+            return ms
+        # an adopted match trusts no clock, but keeps a loose ceiling (twice the draft's limit) against a runaway reading
+        return min(ms, self.time_limit_s * 1000 if self.clock_trusted else 2 * self.time_limit_s * 1000)
 
     def _hold_readings(self, hold: dict):
         """The (tid, clamped ms) pairs of a `hold_ms` map; a key or value that is not a number is skipped."""
@@ -1023,7 +1040,7 @@ class Scorer:
             if ms is not None:
                 yield tid, ms
 
-    def station_possession(self, site: str, hold_ms, t: int | None = None) -> str:
+    def station_possession(self, site: str, hold_ms, t: int | None = None, seen_ms: int | None = None) -> str:
         """F555 (utility.md §5d.6): a control station's OWN cumulative `hold_ms` for its point, the AUTHORITY for that
         site. The station alone sees who is alive on the point (F554); a phone credits whatever owner it hears, so the
         phones' reading for the site becomes the cross-check (`possession()["phones_by_team"]`). Cumulative and merged
@@ -1036,13 +1053,33 @@ class Scorer:
         readings = list(self._hold_readings(hold_ms))
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
+        site = str(site)
+        end = self.end_t
+        late = end is not None and seen_ms is not None and seen_ms > end
+        if late and end is not None:
+            # Milestone round 3: a reading received after the whistle may raise the site only by the time between the last
+            # reading MC heard at or before it and the whistle, shared between the teams (one team banks at a time), so
+            # hold banked after an early END the station never heard cannot reach the score.
+            pre, pre_at = self.station_pre_end.get(site), self.station_seen_ms.get(site)
+            if pre is None or pre_at is None:
+                self.station_unverified.add(site)
+                return "ignored"
+            window = max(0, end - pre_at)
+            incs = {tid: max(0, ms - pre.get(tid, 0)) for tid, ms in readings}
+            total = sum(incs.values())
+            scale = 1.0 if total <= window else window / total
+            readings = [(tid, pre.get(tid, 0) + int(incs[tid] * scale)) for tid, _ms in readings]
         # brx3 review: no point is held longer than the match has been PLAYED -- the time so far while live, the whistle
         # once it has blown (an early END moves `end_t`). A station that missed the end and counted on cannot add it.
         now = self.now_ms()
         played = max(0, (min(self.end_t, now) if self.end_t is not None else now) - self.go_live_t)
-        per_tid = self.station_possession_ms.setdefault(str(site), {})
+        per_tid = self.station_possession_ms.setdefault(site, {})
         for tid, ms in readings:
-            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played))
+            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played) if self.clock_trusted else self._clamp_ms(ms) or 0)
+        if not late:
+            if seen_ms is not None:
+                self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
+            self.station_pre_end[site] = dict(per_tid)
         if t is not None:
             self._check_hold_target(t)
         return "scored"
@@ -1056,9 +1093,17 @@ class Scorer:
         by_team: dict[str, int] = {tid: 0 for tid in self.teams}
         neutral_ms = 0
         stations = {} if phones_only else self.station_possession_ms
+        now = self.now_ms()
+        ref = min(self.end_t, now) if self.end_t is not None else now
         for site in set(self.possession_ms) | set(stations):
-            if site in stations:
+            seen = self.station_seen_ms.get(site)
+            if site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):
                 per_site = dict(stations[site])
+            elif site in stations:
+                # milestone review: a stale station reading (not heard near the whistle) no longer outranks phones that
+                # kept counting: the site takes the larger of the two per team
+                phones = {tid: (max(per_node.values()) if per_node else 0) for tid, per_node in self.possession_ms[site].items()}
+                per_site = {tid: max(stations[site].get(tid, 0), phones.get(tid, 0)) for tid in set(stations[site]) | set(phones)}
             else:
                 per_site = {tid: (max(per_node.values()) if per_node else 0)
                             for tid, per_node in self.possession_ms[site].items()}

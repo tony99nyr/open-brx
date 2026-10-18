@@ -1149,6 +1149,7 @@ class StationRegistry:
         # in the lobby under this same game byte (it resets at START, but a max merge would keep the lobby count).
         unplayed = armed.get("kind") == "control" and self.play.phase not in ("live", "recap")
         if isinstance(hold, dict) and not old_game and not unplayed and rep.get("station_id") in (None, armed.get("id")):
+            tally["at"] = t_recv   # milestone round 3: when MC last RECEIVED this tally (a bare hello says nothing about it)
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
                     tally["hold_ms"][tid] = ms
@@ -1249,12 +1250,16 @@ class StationRegistry:
             # F558: the point's own inputs, carried through to the view only when well formed
             # (reviews: only values a station can send: a net up to the largest net_cap, tids 0 to 3, sane counts)
             net = control.get("net")
-            if isinstance(net, int) and not isinstance(net, bool) and 0 <= net <= 6:
+            if isinstance(net, int) and not isinstance(net, bool) and 0 <= net <= HILL_NET_CAP_MAX:
                 decoded_control["net"] = net
             counts = control.get("counts")
             if isinstance(counts, dict) and all(k in ("0", "1", "2", "3") and isinstance(v, int) and not isinstance(v, bool)
                                                 and 0 < v <= 255 for k, v in counts.items()):
                 decoded_control["counts"] = counts
+            for key, lo, hi in (("capture_s", HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), ("net_cap", HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)):
+                v = control.get(key)   # milestone review: the pace the hill runs (the generated A77 bounds)
+                if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi:
+                    decoded_control[key] = v
             lead = control.get("lead", ...)
             if lead is None or (isinstance(lead, int) and not isinstance(lead, bool) and 0 <= lead <= 3):
                 decoded_control["lead"] = lead

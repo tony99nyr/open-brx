@@ -54,6 +54,12 @@ JUDGED = {
     "SHIELD_REGEN_DELAY_MS": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
     "CURE_COOLDOWN_S": "F264: the floor between cure attempts, across lives. `_cure_at` is stamped only when a\n                       cure STARTS, inside `_cure_tick`, and no received frame of any kind resets it, a hill\n                       beacon included. So a beacon cannot hold a cure off, and cannot bring one on",
     "HEAD_WRITE_CAP_S": "F542: a `$QUERY` whose write never started is dropped this long after it was queued. The clock is\n                        the query's own `queued_at`, never an incoming frame, so a beacon cannot keep it from firing",
+    "STATION_FRESH_MS": "Milestone review: how old a station's last received TALLY may be at the whistle before the phones' reading\n"
+                        "competes with it. Its clock is the tally's own receipt (`_keep_tally` stamps `at`), never an IR frame, so a\n"
+                        "beacon can neither refresh nor age it",
+    "ECHO_HOLD_MAX_S": "Milestone review (F570 twin): the longest a write still on the BLE link holds its rows' echo windows. Its\n"
+                       "clock is the write's own call time, ended by the write settling; no received frame, a beacon included,\n"
+                       "extends it",
     "QUERY_POLL_S": "F264: the divergence poll's own cadence. `_poll_at` is stamped only when the poll itself\n                    asks, never by an incoming frame, so a beacon cannot keep it from firing",
     "STATION_LOCK_MAX_S": "A58 (2026-09-24): the cap on a station's tamper lock. It is a countdown on the STATION from\n"
                           "the station_config that set it; no IR frame resets or extends it, so a beacon cannot hold it",
