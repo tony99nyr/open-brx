@@ -2636,6 +2636,38 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved2.stored().find("threshold_default") == std::string::npos);  // additive: absent unless defaulted
 }
 
+static void test_f559_mc_sets_the_hill_pace_and_a_restart_keeps_it() {
+  StationLink hill;
+  bool ok = false;
+  hill.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9,"capture_s":8,"net_cap":2})", &ok)));
+  CHECK_EQ(hill.hill().capture_s, 8);
+  CHECK_EQ(hill.hill().net_cap, 2);
+  // a re-send without a pace keeps it
+  hill.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9,"lock_s":30})", &ok)));
+  CHECK_EQ(hill.hill().capture_s, 8);
+  // the saved copy carries it, so a restart comes back at MC's pace
+  StationAssignment a = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9,"capture_s":8,"net_cap":2})", &ok));
+  SavedStationConfig saved;
+  CHECK(saved.note_applied(a, "s1"));
+  StationLink restarted;
+  CHECK(restarted.restore_station_config(saved.restore()));   // the real boot door (mc_link_glue.h), not a fresh arming
+  CHECK_EQ(restarted.hill().capture_s, 8);
+  CHECK_EQ(restarted.hill().net_cap, 2);
+  // a lock-only re-push carries no pace: the Stick keeps 8 s, and so does the copy it saves (Opus review)
+  StationLink relock;
+  relock.apply_station_config(a);
+  relock.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9,"lock_s":30})", &ok)));
+  SavedStationConfig saved2;
+  saved2.note_applied(relock.assignment(), "s1");
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved2.restore()));
+  CHECK_EQ(rebooted.hill().capture_s, 8);
+  // CONTROL: a station never told keeps the default
+  StationLink plain;
+  plain.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok)));
+  CHECK_EQ(plain.hill().capture_s, contract::HILL_CAPTURE_S);
+}
+
 static void test_hill_default_threshold_separates_measurement_from_phone_advert() {
   StationLink hill;
   bool ok = false;
@@ -3118,6 +3150,7 @@ int main(int argc, char** argv) {
   test_restored_timed_hill_accepts_untimed_start_config();
   test_presence_threshold_is_the_phone_default_when_mc_sends_none();
   test_hill_default_threshold_separates_measurement_from_phone_advert();
+  test_f559_mc_sets_the_hill_pace_and_a_restart_keeps_it();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
   test_saved_hill_flushes_final_tally_once_at_whistle();

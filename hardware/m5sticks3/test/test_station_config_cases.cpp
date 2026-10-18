@@ -38,10 +38,12 @@ static void run_case(const Value& c) {
   const bool same = a.kind == e.get("kind").as_string() && a.team == (int)e.get("team").as_int() &&
                     a.id == (int)e.get("id").as_int() && a.game == (int)e.get("game").as_int() &&
                     a.valid_ids == want_ids && a.lock_s == (int)e.get("lock_s").as_int() &&
-                    a.item.present == e.get("has_item").as_bool(false);
+                    a.item.present == e.get("has_item").as_bool(false) &&
+                    a.capture_s == (e.has("capture_s") ? (int)e.get("capture_s").as_int() : 0) &&   // F559: 0 = absent
+                    a.net_cap == (e.has("net_cap") ? (int)e.get("net_cap").as_int() : 0);
   if (!same) {
-    std::printf("FAIL [%s] got kind %s team %d id %d game %d valid_ids %s lock_s %d item %d\n", name.c_str(), a.kind.c_str(),
-                a.team, a.id, a.game, ids_str(a.valid_ids).c_str(), a.lock_s, (int)a.item.present);
+    std::printf("FAIL [%s] got kind %s team %d id %d game %d valid_ids %s lock_s %d item %d capture_s %d net_cap %d\n", name.c_str(),
+                a.kind.c_str(), a.team, a.id, a.game, ids_str(a.valid_ids).c_str(), a.lock_s, (int)a.item.present, a.capture_s, a.net_cap);
     failures++;
   }
 }

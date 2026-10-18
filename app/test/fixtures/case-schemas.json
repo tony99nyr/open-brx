@@ -1944,7 +1944,9 @@
                       "game": {},
                       "valid_ids": {},
                       "lock_s": {},
-                      "item": {}
+                      "item": {},
+                      "capture_s": {},
+                      "net_cap": {}
                     },
                     "additionalProperties": false
                   },
@@ -2011,6 +2013,12 @@
                       },
                       "has_item": {
                         "type": "boolean"
+                      },
+                      "capture_s": {
+                        "type": "integer"
+                      },
+                      "net_cap": {
+                        "type": "integer"
                       }
                     },
                     "additionalProperties": false

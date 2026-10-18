@@ -13,7 +13,8 @@ const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'station-con
 /** The fields the shared cases compare: a refusal, or the parsed assignment without the platform's own threshold. */
 function shared(cfg) {
   if (!cfg.ok) return { refused: true };
-  return { kind: cfg.kind, team: cfg.team, id: cfg.id, game: cfg.game, valid_ids: cfg.valid_ids, lock_s: cfg.lock_s, has_item: cfg.item != null };
+  return { kind: cfg.kind, team: cfg.team, id: cfg.id, game: cfg.game, valid_ids: cfg.valid_ids, lock_s: cfg.lock_s, has_item: cfg.item != null,
+    ...(cfg.capture_s != null ? { capture_s: cfg.capture_s } : {}), ...(cfg.net_cap != null ? { net_cap: cfg.net_cap } : {}) };   // F559
 }
 
 test('the phone parses every station_config case as the Stick does', () => {

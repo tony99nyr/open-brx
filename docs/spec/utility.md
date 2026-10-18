@@ -251,6 +251,11 @@ The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. 
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
+**A hill's pace from MC (A77, F559).** `station_config` may carry `capture_s` (3-60 s) and `net_cap` (1-6) for a control station.
+MC's value wins on every arming that carries it; absent keeps the station's own. Unlike the range below there are no ages:
+the station keeps no edit record for these two, so a phone station's +/- edit holds only until the next arming that carries a value.
+A Stick has no +/- for them: its own value is the default or the last one MC pushed, which it saves and restores.
+
 **Range edited on the station, last edit wins (A67, F365).** An operator can change a station's RANGE (threshold)
 and STRENGTH (`tx_power`: `ultra_low`, `low`, `medium`, `high`) on the Stick itself behind a long hold, only while its station lock is unlocked. A phone station keeps its existing behaviour. The station applies it at once and reports it on every heartbeat: `threshold`/`tx_power` (applied now; a phone
 that cannot set its power, iOS, sends no `tx_power` and records no STRENGTH edit),
