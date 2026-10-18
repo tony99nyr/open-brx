@@ -576,7 +576,7 @@ def test_r4_the_reading_history_survives_an_mc_restart():
     assert sc2.station_possession_ms[str(sid)][blue["tid"]] == 70_000, sc2.station_possession_ms
 
 
-def _legacy_restart(after_s):
+def _legacy_restart(after_s, save_at_s=None, history=None):
     """A KOTH match with one hill heard at 1:40 whose snapshot predates round 3: the tally has no receipt time and the
     match carries no station_seen, station_pre_end or station_history. MC comes back `after_s` after go-live."""
     s, net, clock, ps = mk_stored_session(2, "koth")
@@ -592,6 +592,8 @@ def _legacy_restart(after_s):
     blue = s.config["teams"][1]
     clock["t"] = info["go_live_t"] + 100_000
     _beat(net, clock, sid, {str(blue["tid"]): 50_000})
+    if save_at_s is not None:
+        clock["t"] = info["go_live_t"] + save_at_s * 1000
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_last = 0.0
     s._persist()
@@ -599,6 +601,8 @@ def _legacy_restart(after_s):
     snap["station_locks"]["util-hill"]["tally"].pop("at")
     for key in ("station_seen", "station_pre_end", "station_history"):
         snap["match"].pop(key)
+    if history is not None:
+        snap["match"]["station_history"] = history(sid, blue)
     s._persist_path.write_text(json.dumps(snap))
     clock["t"] = info["go_live_t"] + after_s * 1000
     s2, net2 = restart_no_repersist(s, clock)
@@ -640,3 +644,38 @@ def test_r4_an_operator_end_after_a_clock_step_back_keeps_the_hill():
     r = s.last_recap
     assert r["possession"]["by_team"][red["team_id"]] == 90, r["possession"]
     assert not next(x for x in r["stations"] if x["id"] == sid).get("unverified"), r["stations"]
+
+
+def test_r4_a_pre_upgrade_tally_saved_after_the_whistle_is_unverified():
+    """Codex review r4: a tally with no receipt time in a snapshot written after the whistle may hold post-END time, and
+    nothing shows MC heard it in play. It does not score; the phones decide the site."""
+    s2, net2, clock, info, sid, blue = _legacy_restart(after_s=700, save_at_s=650)
+    s2.resume_match()
+    sc = s2._m().scorer
+    assert str(sid) in sc.station_unverified, sc.station_unverified
+    assert str(sid) not in sc.station_possession_ms, sc.station_possession_ms
+
+
+def test_r4_a_late_reading_already_bounded_is_bounded_again_when_the_end_moves_earlier():
+    """Opus review r4: a late reading bounded against the old end left the receipt time at the in-play reading, so a kill
+    cap that then moved the end earlier skipped the site."""
+    s, pid, red, blue, sc, clock = _ended_koth()
+    sc.station_possession("9", {str(red["tid"]): 100_000}, seen_ms=1_000_000 + 590_000)
+    sc.set_end(1_000_000 + 600_000)
+    clock["t"] = 1_000_000 + 620_000
+    sc.station_possession("9", {str(red["tid"]): 120_000}, seen_ms=1_000_000 + 620_000)   # late: 100 + 10 s
+    assert sc.possession()["by_team"][red["team_id"]] == 110
+    sc.set_end(1_000_000 + 595_000)                     # a kill cap, heard late, at 9:55
+    assert sc.possession()["by_team"][red["team_id"]] == 105, sc.station_possession_ms
+
+
+def test_r4_restored_history_rows_are_sorted_and_usable():
+    """Codex review r4: the restore keeps only rows with a reading, in receipt order."""
+    def history(sid, blue):
+        return {str(sid): [[5_090_000, {str(blue["tid"]): 40_000}], [5_050_000, {str(blue["tid"]): 20_000}],
+                           [5_070_000, {}], ["x", {str(blue["tid"]): 1}], [True, {str(blue["tid"]): 1}]]}
+    s2, net2, clock, info, sid, blue = _legacy_restart(after_s=300, history=history)
+    s2.resume_match()
+    rows = s2._m().scorer.station_history[str(sid)]
+    assert [at for at, _per in rows] == sorted(at for at, _per in rows), rows
+    assert [at for at, _per in rows][:2] == [5_050_000, 5_090_000], rows   # then the restored tally's own row

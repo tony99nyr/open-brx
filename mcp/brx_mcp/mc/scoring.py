@@ -276,6 +276,15 @@ class Scorer:
         this rule (an old snapshot) keeps only the time-played clamp."""
         for site, seen in list(self.station_seen_ms.items()):
             if seen <= end:
+                # Opus review r4: a late reading bounded against the old end leaves the receipt time at the in-play
+                # reading, so bound what it added again against the new end
+                pre, latest = self.station_pre_end.get(site), self.station_possession_ms.get(site, {})
+                if pre is not None and latest != pre:
+                    bound = self._late_bound(pre, seen, list(latest.items()), end)
+                    if self.clock_trusted:
+                        played = max(0, end - self.go_live_t)
+                        bound = [(tid, min(ms, played)) for tid, ms in bound]
+                    self.station_possession_ms[site] = {**pre, **dict(bound)}
                 continue
             hist = self.station_history.get(site)
             latest = self.station_possession_ms.get(site, {})
@@ -1103,6 +1112,8 @@ class Scorer:
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         site = str(site)
+        if seen_ms is None and site in self.station_unverified:
+            return "ignored"   # milestone r4: a reading with no receipt time cannot verify a site the scorer could not
         end = self.end_t
         late = end is not None and seen_ms is not None and seen_ms > end
         if late and end is not None:

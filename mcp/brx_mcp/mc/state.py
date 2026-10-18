@@ -30,7 +30,7 @@ from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose 
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
-from .scoring import Scorer
+from .scoring import STATION_HISTORY_MAX, Scorer
 from .match import Match, parse_snapshot
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
@@ -4132,19 +4132,30 @@ class Session:
         sc.station_seen_ms = {str(k): int(v) for k, v in (station_seen or {}).items() if isinstance(v, int) and not isinstance(v, bool)}
         sc.station_pre_end = {str(k): {tid: ms for tid, ms in sc._hold_readings(v)} for k, v in (station_pre_end or {}).items()
                               if isinstance(v, dict)}
-        sc.station_history = {str(k): [(int(row[0]), {tid: ms for tid, ms in sc._hold_readings(row[1])}) for row in rows
-                                       if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
-                                       and not isinstance(row[0], bool) and isinstance(row[1], dict)]
-                              for k, rows in (station_history or {}).items() if isinstance(rows, list)}
+        sc.station_history = {}
+        for k, rows in (station_history or {}).items():   # Codex r4: only rows with a reading, in receipt order, capped
+            got_rows = sorted([(row[0], per) for row in (rows if isinstance(rows, list) else ())
+                              if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
+                              and not isinstance(row[0], bool) and isinstance(row[1], dict)
+                              and (per := {tid: ms for tid, ms in sc._hold_readings(row[1])})], key=lambda r: r[0])
+            if len(got_rows) > STATION_HISTORY_MAX:
+                got_rows = got_rows[:1] + got_rows[-(STATION_HISTORY_MAX - 1):]
+            if got_rows:
+                sc.station_history[str(k)] = got_rows
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
                 site, hold, seen = got
                 if seen is None:
                     # milestone round 4: a tally saved before round 3 has no receipt time. MC received it at or before the
-                    # snapshot was written, so it counts as heard then, never after the whistle (one saved after it is
-                    # taken at the whistle: the old clamp to the time played is all that bounds it). No history row is
-                    # kept for a guessed time, so a whistle moved earlier falls back to that clamp, not to unverified.
-                    seen = min(x for x in (saved_ms, sc.end_t, self.now_ms()) if isinstance(x, int))
+                    # snapshot was written, so it counts as heard then. Saved after the whistle, it may hold post-END time
+                    # and nothing shows MC heard it in play (Codex r4): unverified, the phones decide the site. No history
+                    # row is kept for a guessed time, so a whistle moved earlier falls back to the time-played clamp.
+                    seen = saved_ms if saved_ms is not None else self.now_ms()
+                    if sc.end_t is not None and seen > sc.end_t:
+                        for table in (sc.station_possession_ms, sc.station_seen_ms, sc.station_pre_end, sc.station_history):
+                            table.pop(site, None)
+                        sc.station_unverified.add(site)
+                        continue
                     had_history = site in sc.station_history
                     sc.station_possession(site, hold, seen_ms=seen)
                     if not had_history:
