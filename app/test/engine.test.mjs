@@ -8108,3 +8108,13 @@ test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', 
   const s = h.eng.state();
   assert.equal(s.bolt, false); assert.equal(s.presented.takeover.kind, 'reload');
 });
+test('BOLT review: a bolt pull that the gun lands on a non-bolt slot shows that slot\'s RELOADING, not BOLT', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().bolt, true, 'setup: BOLT on slot 0');
+  h.eng.am.prevAmmo[1] = 1;                              // setup: the SMG nearly empty from an earlier life of fire
+  h.adv(500); h.frame('$ALCD,4,100,1,20,0,*');           // the gun was on slot 1 (the SMG): its magazine rises, short of its 6
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 1); assert.equal(s.bolt, false, 'no BOLT under the SMG');
+  assert.equal(s.presented.takeover && s.presented.takeover.kind, 'reload', 'the SMG reload shows RELOADING');
+});

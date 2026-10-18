@@ -7549,7 +7549,9 @@ export class Engine {
       // still set while `reloadingMs()` is already null, and a reader saw `reloading:false` beside a live
       // total and gain. `ms == null` is the single gate for all of them.
       ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: ms != null ? this.am.reloading.ms : null,
-                   bolt: ms != null && !!this.am.reloading.bolt,   // BOLT: the small cue under the ammo block (hud/live.js)
+                   // BOLT: the small cue under the ammo block (hud/live.js), only under the slot it is about (review: a bolt pull
+                   // inside an ALT swap reloads the old slot while the HUD has moved on)
+                   bolt: ms != null && !!this.am.reloading.bolt && this.am.reloading.slot === this.activeSlot,
                    // WHICH takeover this is. The HUD latches `reloadOverrun` for the life of one reload, and
                    // without an identity it could not tell a second reload from the first: a $ALCD (fired) and
                    // a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, and the new

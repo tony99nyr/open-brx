@@ -336,6 +336,9 @@ export class Ammo {
           const r = this.reloading;
           this.host.log(`reload moved from slot ${r.slot} to gun slot ${slot}`, 'li');
           r.slot = slot; r.from = prev; r.cap = this.spawnAmmo()[slot]?.[0] ?? null; r.mag = prev;
+          // BOLT review: the slot the gun really reloads decides the cue, not the slot the pull was judged on
+          { const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
+            r.bolt = !!(row && row.reload_type === 'bolt'); if (r.bolt) r.cap = prev + 1; }
           this.host.setActiveSlot(slot);
           if (slot < 2) this.altPtr = slot;
           this.switching = null; this.altEvidencePending = null;

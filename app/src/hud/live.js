@@ -75,7 +75,7 @@ export function _live(st) {
           : overheating ? `<span class="reload hot solid"><span class="unskew">${starved ? 'NOT ENOUGH ENERGY' : 'OVERHEAT'}</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
           : energyLow ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
-          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
+          : lowMag && !st.bolt ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 && !starved ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
