@@ -119,6 +119,42 @@ the Shotgun's `$HIR` on a target reads 20 and 20. Then the Shotgun with Armour P
 at least 500 ms apart. Ask Tony how the Shotgun's pump feels. **Control:** the Assault Rifle held fires every
 100 ms. Rows: F542 (the field session's single-shot calls), weapon-design.md Balance rules row 14.
 
+## P2b: the lanes' fix checks (about 45 min)
+
+Each row checks a fix that landed on 2026-10-17, from main after that land. One gun with its phone and MC unless the
+row says otherwise; `$VOL,65`.
+
+**L1. F548, the SMG primary after the fix (5 min).** Load a kit with the SMG as PRIMARY and push it from MC. **Pass:**
+the push acks first try (`ok:true` with a real `$ALCD` echo, not a zeroed `$LCD`), and the SMG fires and reloads.
+The compiled SMG frame is 45 fields ending `...,54,108,75,100,*` (t42 100 kept, the terminator after it). If the
+gun never echoes, the firmware may reject t42 on this capture: report it to brx3 (the fallback is dropping t42).
+
+**L2. F542 cause 2, the post-spawn ALT rule and GUN WAS ON (15 min).** Two weapons loaded: the two pistols (swap
+500), then the AMR and the Shotgun (swap 1105). Full capture.
+1. Fresh spawn, no trigger pull, press ALT. The phone shows no SWITCHING and logs "ALT ignored by the gun: no
+   trigger pull since the spawn". Pull the trigger: the `$ALCD` slot token must be 0. If it is 1, report it to brx4.
+2. After one pull, press ALT, then fire about 0.5 s into the swap. If the round's `$ALCD` is on the old slot, the
+   HUD closes SWITCHING, shows GUN WAS ON over the old weapon, and stays on it after the window.
+3. After an assumed swap the gun did not make, fire once: the HUD shows GUN WAS ON over the weapon the gun fired.
+4. An assumed swap to a full slot the gun did not make, then the lever: the gun reloads its own slot, and the HUD
+   moves to it with GUN WAS ON when the reload ends.
+5. Record whether the gun keeps slot 1 across `$SPAWN` after dying on slot 1 (the phone assumes slot 0).
+
+**L3. F549 and F550, no config and the headset (10 min).** (a) A normal push acks ok with an `$ALCD` echo. (b) Push
+a head the gun refuses: the ack is `ok:false`, `err:"no_config"`; the lobby reads GUN DID NOT TAKE THE KIT · TELL THE
+HOST (headset joined), and MC's Debug headset column reads ok. (c) Headset off: the lobby reads GUN NOT ANSWERING ·
+CHECK HEADSET, and the Debug headset column reads no.
+
+**L4. F554, a hill banks only with a living owner on it (10 min).** A station, a phone or a Stick hill. RED captures
+it; RED goes down on the point and stays down 20 s; then RED walks off while BLUE alone drains it. **Pass:** RED's
+HELD time stops rising the moment RED is down, and while BLUE drains; it resumes when a living RED stands on it
+again. The progress bar is unchanged (an owned point stays at 100 until an enemy drains it).
+
+**L5. The 10% larger hill (-78 dBm default) (10 min).** Repeat F383's flat-phone ladder at 5, 5.5, 7.5 and 8.25 m
+with the default threshold. **Pass:** the edge where a lone player stops counting moves out by about 10% (from
+about 5.2 m to about 5.7 m on the 2026-10-16 ladder). If it moves less than 5% or more than 20%, report the new
+ladder so the dB step can be re-derived (n = 6.8, from -74 at 5 m and -86 at 7.5 m).
+
 ## P3: tuning reads (about 25 min)
 
 **P3.1. The melee range ladder (20 min).** *Impact: melee reached 15-20 ft in the field.* Melee is emitted by the

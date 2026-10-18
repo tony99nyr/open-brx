@@ -2194,3 +2194,76 @@ test('F537 review r2: a pause in the middle of a dwell does not count towards it
   h.near(4); h.adv(700); h.near(4); h.adv(100);
   assert.ok(h.eng.pu._claim && h.eng.pu._claim.readyAt != null, 'CONTROL: the remaining live dwell completes it');
 });
+
+// ---- AMMO pickup (Tony 2026-10-18: "we need to add ammo pickups, i ran out of ammo in several games"; wire agreed with brx3) ----
+const AMMO = { kind: 'ammo', spawn_every_s: 45, first_at_s: 45, name: 'AMMO', color: '#9be22d', refill: 'reserve' };
+const AMMO_GAME = { stations: [{ id: 8, kind: 'powerup', item: AMMO }] };
+const ammoRows = (h, n) => h.since(n).filter(f => f.startsWith('$AMMO,'));
+
+test('AMMO: a take tops each short slot up to its spawn reserve and keeps the magazine; a full slot is not written', () => {
+  const h = harness({ ...AMMO_GAME, echo: true });      // the gun echoes the write: it must move nothing (F460)
+  h.at(46); h.fire(0, 20, 40);                          // slot 0: magazine 20, reserve spent to 40 (spawn 32/192); slot 1 untouched (6/24)
+  const n = h.mark(); h.take(8);
+  assert.deepEqual(ammoRows(h, n), ['$AMMO,0,20,192,1,*'], 'the magazine kept, the reserve back to the spawn 192');
+  const f = h.facts.filter(x => x.type === 'pickup');
+  assert.equal(f.length, 1); assert.equal(f[0].item_kind, 'ammo'); assert.deepEqual(f[0].refilled, { 0: 152 });
+  assert.equal(h.eng.state().reserve, 192, 'the ammo block shows the new reserve');
+  const hint = h.eng.state().presented.hint;
+  assert.equal(hint && hint.kind, 'granted'); assert.equal(hint.itemKind, 'ammo'); assert.equal(hint.added, 152);
+  assert.equal(h.eng.activeSlot, 0, 'the trigger stays where it was');
+});
+test('AMMO: a player with every slot at its spawn reserve does not claim, so the spawn is not wasted', () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); const n = h.mark(); h.near(8); h.adv(1500);
+  assert.equal(h.eng.state().powerupClaim, null, 'no claim_ready goes out');
+  h.near(8, { state: 0, value: 45, taker: 7 });
+  assert.deepEqual(ammoRows(h, n), []); assert.equal(h.facts.filter(x => x.type === 'pickup').length, 0);
+});
+test('AMMO: a take during a reload waits for the reload to end, then writes the magazine the reload left', () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 3, 40);
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');         // the lever: the gun is feeding the magazine
+  assert.equal(h.eng.state().reloading, true, 'setup: reloading');
+  const n = h.mark(); h.take(8);
+  assert.deepEqual(ammoRows(h, n), [], 'nothing written over a reload in progress');
+  h.frame('$ALCD,32,100,0,11,0,*'); h.adv(500);         // the reload lands: 32, reserve 11
+  assert.deepEqual(ammoRows(h, n), ['$AMMO,0,32,192,1,*'], 'then the top-up, with the reloaded magazine');
+  assert.deepEqual(h.facts.filter(x => x.type === 'pickup')[0].refilled, { 0: 181 });
+});
+test('AMMO: refill N adds N rounds per short slot, capped at the spawn reserve; "spawn" reads as "reserve"', () => {
+  const h = harness({ stations: [{ id: 8, kind: 'powerup', item: { ...AMMO, refill: 50 } }] });
+  h.at(46); h.fire(0, 20, 40);
+  const n = h.mark(); h.take(8);
+  assert.deepEqual(ammoRows(h, n), ['$AMMO,0,20,90,1,*']);
+  const g = harness({ stations: [{ id: 8, kind: 'powerup', item: { ...AMMO, refill: 'spawn' } }] });
+  g.at(46); g.fire(0, 20, 40);
+  const m = g.mark(); g.take(8);
+  assert.deepEqual(ammoRows(g, m), ['$AMMO,0,20,192,1,*']);
+});
+
+test('AMMO review: a refill taken with a held heavy on the trigger survives SELECT back to the loadout weapon', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 8, kind: 'powerup', item: AMMO }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(115); h.fire(0, 20, 40);
+  h.at(121); h.take(4);
+  assert.equal(h.eng.activeSlot, 2, 'setup: the Rockets on the trigger');
+  h.adv(2000); h.take(8);
+  const n = h.mark(); h.adv(1000); h.select();
+  const back = h.since(n).filter(f => f.startsWith('$AMMO,0,'));
+  assert.ok(back.length && back.every(f => f === '$AMMO,0,20,192,1,*'), 'SELECT puts slot 0 back with the refilled reserve: ' + JSON.stringify(back));
+});
+test('AMMO review: a gun write that fails is retried for the life', async () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 20, 40);
+  h.failNext(fr => fr.includes('$AMMO,0,20,192,1,*'));
+  const n = h.mark(); h.take(8);
+  await new Promise(r => setImmediate(r)); h.adv(2000);
+  assert.ok(h.since(n).filter(f => f === '$AMMO,0,20,192,1,*').length >= 2, 'the refill is written again after the failure');
+});
+test('AMMO review: with slot 1 on the trigger the hint names slot 1\'s own gain', () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 20, 40); h.pull(); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(1000); h.fire(1, 5, 10);
+  assert.equal(h.eng.activeSlot, 1, 'setup: on slot 1');
+  h.take(8);
+  assert.equal(h.eng.state().presented.hint.added, 14, 'slot 1: 10 -> 24');
+  assert.equal(h.eng.state().reserve, 24);
+});

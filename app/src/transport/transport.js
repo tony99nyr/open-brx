@@ -23,7 +23,7 @@
 import * as E from './envelope.js';
 import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
-import { APP_VER, platformName } from '../build.js';
+import { APP_VER, platformName, deviceModel } from '../build.js';
 import { newChallenge, matchingKey, validTrustKey } from './mcproof.js';
 
 /** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} TransportStorage */
@@ -356,7 +356,7 @@ export class Transport {
     // app_ver/platform ride EVERY heartbeat, not just the hello (A29): a phone that was updated and
     // relaunched mid-session keeps the same node_id, and MC's muster rollup must see the new build.
     /** @type {StatusBody} */ const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
-                   app_ver: this.appVer, platform: this.platformName(),
+                   app_ver: this.appVer, platform: this.platformName(), ...(deviceModel() ? { device: deviceModel() } : {}),   // F564
                    arm_state: 'connected', ...body, reach: this.reach,   // A28.3: the live socket's path, always ours to say
                    ...(this._claimedTransport() ? { transport: this._claimedTransport() } : {}),   // F309: restated every beat
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
@@ -648,6 +648,7 @@ export class Transport {
   _helloBody(via) {
     return {
       node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(), via,   // A29 + A28.3
+      ...(deviceModel() ? { device: deviceModel() } : {}),   // F564: the make and model, once Device.getInfo has answered
       // A60: a verify dial asks MC to prove itself; every other phone dial asks for its trust key (MC
       // issues one per node_id, once).
       ...(this.verify && this._challenge ? { mc_challenge: this._challenge } : {}),
