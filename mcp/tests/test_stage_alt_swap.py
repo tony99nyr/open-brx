@@ -47,7 +47,14 @@ def _texts(st) -> list[str]:
     return [e["text"] for e in st.log]
 
 
+def _pull(st) -> None:
+    """A trigger pull: since 3d07b60f (F445) the gun ignores ALT until the first pull of a life."""
+    st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")
+
+
 def _alt(st) -> None:
+    if st._pulled_life != st._life_queued and st._last_shot_life != st._life_queued:
+        _pull(st)
     st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
     assert st.switching is not None and st.switching["to"] == 1
 
@@ -340,4 +347,116 @@ def test_a_lever_inside_the_swap_gets_the_swap_window_on_its_deadline():
         st2._on_rx("$ALCD,20,100,0,192,0,*")
         st2._on_rx("$BUT,2,1,*")
         assert st2.reloading and st2.reloading["s"] == st2._reload_s(), "CONTROL"
+    asyncio.run(go())
+
+
+
+# ---- 3d07b60f: F445 (no ALT before the first pull of a life) and F542 cause 2 (an old-slot round closes the swap) ----
+def test_alt_before_the_first_pull_of_a_life_is_ignored():
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "the gun ignores ALT after $SPAWN until the first trigger pull"
+        assert any("no trigger pull since the spawn" in t for t in _texts(st)), _texts(st)[-4:]
+        _pull(st)
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is not None, "CONTROL: after a pull ALT swaps"
+    asyncio.run(go())
+
+
+def test_a_round_this_life_arms_alt_even_with_no_trigger_press_seen():
+    """ammo.js: a round is a pull too (a lost `$BUT`)."""
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$ALCD,31,100,0,182,0,*"); st._on_rx("$ALCD,30,100,0,182,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is not None
+    asyncio.run(go())
+
+
+def test_a_pull_while_this_lifes_burst_is_queued_does_not_arm_alt():
+    """engine.js `_onButton`: a pull before the life's `$SPAWN` reaches the gun is not the pull the gun waits for."""
+    async def go():
+        st, _gun, clock = await _live()
+        st._life_burst = {"at": clock.t, "sent": False, "reached": False, "cancelled": False, "life": st._life_queued}
+        before = st._pulled_life
+        _pull(st)
+        assert st._pulled_life == before, "a pull with the burst still queued armed ALT"
+        st._life_burst = None
+        _pull(st)
+        assert st._pulled_life == st._life_queued, "CONTROL"
+    asyncio.run(go())
+
+
+def test_an_old_slot_round_late_in_the_swap_closes_it_with_no_swap():
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$ALCD,31,100,0,182,0,*")
+        _alt(st)
+        await _tick(st, clock, 0.30)
+        st._on_rx("$ALCD,30,100,0,182,0,*")   # a round from the OLD slot, 300 ms after ALT
+        assert st.switching is None, "the old slot's round proves the gun did not take ALT"
+        assert st.active_slot == 0 and st._alt_ptr == 0 and st._alt_evidence_pending is None
+        await _tick(st, clock, st._switch_window_s())
+        assert st.active_slot == 0, "switchTick assumed a swap over the proof"
+        assert any("ALT not taken by the gun" in t for t in _texts(st)), _texts(st)[-4:]
+    asyncio.run(go())
+
+
+def test_an_old_slot_round_soon_after_alt_proves_nothing():
+    """A round within ALT_LATE_ROUND_MS can be in flight from before the press (F379)."""
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$ALCD,31,100,0,182,0,*")
+        _alt(st)
+        await _tick(st, clock, 0.10)
+        st._on_rx("$ALCD,30,100,0,182,0,*")
+        assert st.switching is not None
+        await _tick(st, clock, st._switch_window_s())
+        assert st.active_slot == 1, "the swap is assumed as before"
+    asyncio.run(go())
+
+
+def test_a_pull_or_a_round_from_the_last_life_does_not_arm_alt_in_the_next():
+    """Opus review: the gate is per life, not a flag."""
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st)
+        st._on_rx("$ALCD,31,100,0,182,0,*"); st._on_rx("$ALCD,30,100,0,182,0,*")
+        life = st._life_queued
+        await st.spawn(); await settle(st)
+        for _ in range(3):
+            clock.t += 0.5; st.mgr.pump(); st.poll(); await settle(st)
+        assert st._life_queued == life + 1, "setup: a new life"
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "a pull or a round from the last life armed ALT"
+    asyncio.run(go())
+
+
+def test_a_pull_before_the_burst_reaches_the_gun_still_leaves_alt_unarmed():
+    """engine.js `_onButton`: the pull is before the life's `$SPAWN`, so the gun still waits for one after it."""
+    async def go():
+        st, _gun, clock = await _live()
+        task = asyncio.ensure_future(st.spawn())
+        await asyncio.sleep(0)                      # the spawn has queued its burst and waits on the write
+        assert st._life_burst_queued(), "setup: the burst is in flight"
+        _pull(st)
+        await task; await settle(st)
+        assert not st._life_burst_queued()
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "the pull before the burst armed ALT"
+        _pull(st)
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is not None, "CONTROL: a pull after it does"
+    asyncio.run(go())
+
+
+def test_an_old_slot_round_at_exactly_250_ms_closes_the_swap():
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$ALCD,31,100,0,182,0,*")
+        _alt(st)
+        clock.t += 0.25
+        st._on_rx("$ALCD,30,100,0,182,0,*")
+        assert st.switching is None
     asyncio.run(go())

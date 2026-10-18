@@ -123,11 +123,11 @@ Row: F416.
 
 **1a. F493, an operator respawn about 100 ms after a death (P0; 15 min).** Only on a build
 with `c7f08cf0` (setup step 2's build check). On an older build the dead trigger is expected: record
-it and move on. One gun with a phone in a live match, a timed respawn with the normal 0.5 s weapon delay.
+it and move on. One gun with a phone in a live match, a timed respawn with the normal weapon delay (0.5 s when this sheet ran; the default moved to 1.5 s on 2026-10-17).
 1. **Control (A).** Kill the player and wait out the respawn timer. Pass: after the weapon delay, the trigger fires.
 2. **The bug (B), 5 times.** Kill the player, then press FORCE RESPAWN on MC within about 100 ms of the death, as
-   fast as possible, while the death scream still plays. **Pass:** after the respawn line and the 0.5 s weapon
-   delay, a trigger pull FIRES, 5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive
+   fast as possible, while the death scream still plays. **Pass:** after the respawn line and the weapon delay (0.5 s on
+   this sheet's build; 1.5 s from 2026-10-17, A74), a trigger pull FIRES, 5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive
    burst's `$SPAWN`. A dead trigger on any try is a FAIL (the bug): log it and recover with RESYNC GUN.
    **The REDEPLOYED card (F496/F497, in this APK):** on every quick respawn the card reads ACTIVATING WEAPON SYSTEMS
    until the trigger is live, then WEAPONS HOT; it must not clear, or read WEAPONS HOT, before the trigger fires.
