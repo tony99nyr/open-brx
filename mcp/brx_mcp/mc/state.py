@@ -7022,10 +7022,9 @@ class Session:
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and match.head and self.last_recap:
-            end_t = match.scorer.end_t if match.scorer else None
-            if end_t is None and self.end_reason == "time" and (tl := self.config.get("time_limit_s")):
-                end_t = match.head["go_live_t"] + int(tl) * 1000   # a timed end freezes nothing: the clock every phone ran
-            self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)   # F560: never "now"
+            # F560: the scorer's own end (a timed scorer is built with it); MC's clock, never the wall clock, if it has none
+            end_t = match.scorer.end_t if match.scorer and match.scorer.end_t is not None else self.now_ms()
+            self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)
         match.head = None            # no re-hydrating a finished match's `start`
         if match.scorer:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
