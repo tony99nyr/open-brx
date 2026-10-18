@@ -824,3 +824,22 @@ def test_f572_the_phone_brief_says_the_target_is_summed_when_two_hills_are_assig
     assert s.game_brief()["win_text"] == "FIRST TO HOLD 5:00 WINS", "CONTROL: one hill is unchanged"
     assign_koth_hill(s, "util-hill-2")
     assert s.game_brief()["win_text"] == "FIRST TO HOLD 5:00 SUMMED ACROSS HILLS WINS", s.game_brief()["win_text"]
+
+
+def test_f572_assigning_or_clearing_a_second_hill_resends_the_phone_brief():
+    """Codex review of 9c8bb8b9d: the win text depends on the hill count, so a bound phone must hear a hill added or
+    cleared before the match, or it keeps the old WIN row."""
+    import json
+    from _session import assign_koth_hill, mk_session, online
+    s, net, clock, ps = mk_session(1, mode="koth")
+    s.set_config({"scoring": {"hold_target_s": 300}})
+    online(s, net, clock, ps[0], 0)
+    assign_koth_hill(s, "util-hill")
+    n = len(net.pushes("assign"))
+    assign_koth_hill(s, "util-hill-2")
+    sent = net.pushes("assign")[n:]
+    assert sent and "FIRST TO HOLD 5:00 SUMMED ACROSS HILLS WINS" in json.dumps(sent[-1][2]), "the second hill did not reach the phone"
+    n = len(net.pushes("assign"))
+    s.clear_station("util-hill-2")
+    sent = net.pushes("assign")[n:]
+    assert sent and "FIRST TO HOLD 5:00 WINS" in json.dumps(sent[-1][2]), "clearing the second hill did not reach the phone"

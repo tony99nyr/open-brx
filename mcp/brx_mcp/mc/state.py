@@ -2790,13 +2790,18 @@ class Session:
     def release_station(self, nid: str) -> bool:
         return self.station_registry.release_station(nid)
 
-    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None:
+    def _brief_key(self) -> object:
+        """The parts of the BRIEFING a station change can move: the PICKUPS line (F403) and, since F572, the WIN row,
+        which says SUMMED ACROSS HILLS once two hills are assigned. `_after_station_change` re-sends on a change."""
+        return (self._brief_pickups(), self.game_brief().get("win_text"))
+
+    def _after_station_change(self, slots_before: list[PowerupSlot], brief_before: object = None) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
         a fresh head for the whole roster, because the spare slots are in the FRAMES, not only the config.
         Never in play: `_repush_stations_to_players` is lobby-only. `set_station`/`clear_station` refuse in
         play, but `release_station` does not: in play it drops the item's slot from `_powerup_slots()` at once,
         and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
-        if pickups_before is None or self._brief_pickups() != pickups_before:   # F403 r2: only when the line changed
+        if brief_before is None or self._brief_key() != brief_before:   # F403 r2: only when the brief changed
             self._resend_brief_pickups()
         if self.station_registry.powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
