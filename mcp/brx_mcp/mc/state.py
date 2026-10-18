@@ -4348,7 +4348,8 @@ class Session:
 
         MC holds no config for it, so the current draft config scores it; the go-live time is the phones'
         countdown when they are ARMED, else the earliest stored fact for it, else now. MC therefore never
-        ends it EARLIER than the phones do. Nothing is pushed: no config, no frames and no `start`."""
+        ends it EARLIER than the phones do. Nothing reaches a player phone: no config, no frames and no `start`. A
+        control station is told the start and no deadline (F568), so a Stick hill does not wait all match."""
         nids = self._fresh_orphans(match_id)
         if not nids:
             raise ConflictError("no phone reports that match any more")
@@ -4419,6 +4420,14 @@ class Session:
                                            f"({cap}). MC DOES NOT END AN ADOPTED MATCH ON A "
                                            f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED",
                                            t_match_s=max(0, (scorer.limit_reached_t - go) // 1000)))
+        # F568: a control station is told the match is live now (`starts_in_ms: 0`, no end): a Stick hill holding the lobby's
+        # same-game config with no start waits, and scored nothing all match. Same game byte, so no tally reset; player
+        # phones still get nothing.
+        reg = self.station_registry
+        for nid, st in list(reg.stations.items()):
+            a = st.get("assigned")
+            if a and a.get("kind") == "control" and not reg.stood_down(a):
+                reg.arm_station(nid, relock=True)
         self._changed()
         self.persist_now()
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
