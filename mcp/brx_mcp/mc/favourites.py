@@ -22,7 +22,8 @@ import uuid
 from typing import Any, Callable
 
 from ..storage import atomic_write_text, home_dir, load_versioned
-from .types import Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V, RUNWAY_MAX_S, RUNWAY_MIN_S, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS
+from .gamepick import hill_from
+from .types import HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, Favourite, GamePick, MatchSettings, PIECE_KINDS, FAVOURITES_STORE_V, RUNWAY_MAX_S, RUNWAY_MIN_S, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS
 from .named_store import StoreError, check_name
 
 log = logging.getLogger("brx.mc.favourites")
@@ -63,6 +64,13 @@ def _check_match(v: object) -> MatchSettings:
                          "night": v["night"], "silenced": v["silenced"]}
     if v.get("hold_target_s") is not None:
         out["hold_target_s"] = v["hold_target_s"]
+    if "hill" in v:
+        hill = hill_from(v["hill"])
+        if hill is None:
+            raise FavouriteError(400, f"HILL SETTINGS MUST BE CAPTURE_S {HILL_CAPTURE_S_MIN}-{HILL_CAPTURE_S_MAX} AND/OR NET_CAP "
+                                       f"{HILL_NET_CAP_MIN}-{HILL_NET_CAP_MAX}, WHOLE NUMBERS: CHECK THE VALUES")
+        if hill:
+            out["hill"] = hill
     # F413: absent is fine (the pick it was saved from had no real teams), present must be 2-4 unique
     # native colours -- same shape `gamepick.looks_like_pick` checks, this module's own copy of it.
     if "teams" in v:

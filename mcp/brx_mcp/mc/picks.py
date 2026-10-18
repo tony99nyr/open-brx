@@ -103,6 +103,8 @@ class GamePick:
             # A pick that never named teams (an older session) carries the roster's own.
             prev_teams = match.pop("teams", None) or _gamepick.match_from_config(s.config).get("teams")
             match.pop("hold_target_s", None)
+            # F559: `hill` is NOT reset here: like `PUT /api/config` (`_candidate_config`), a mode change keeps the hill
+            # tuning, and only a mode offering "hill" (koth) ever writes it, so a value kept under TDM is never sent.
             row = self._mode_row(mode)
             new_teams = cast(list[TeamColour], list(row.get("teams") or []))
             if new_teams != ["ffa"]:
@@ -112,6 +114,7 @@ class GamePick:
                 match["teams"] = (_gamepick.carry_teams(prev_teams, new_teams, mode)
                                   if "teams" in (row.get("match_items") or []) else new_teams)
         match = _gamepick.merge_match(match, match_patch or {})
+        match = self._hill_for_mode(match, mode)
         # From `resolved`, not the raw merged `ids` (M1, polish round 1): a kind that fell back to its
         # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
         # back in `game_pick` for the next request to trip over again.
@@ -131,6 +134,16 @@ class GamePick:
         return cast(PickResult, {"ok": res["ok"], "errors": res["errors"], "config": res["config"],
                                  "pick": s.game_pick, "fallbacks": fallbacks})
 
+    def _hill_for_mode(self, match: MatchSettings, mode: str) -> MatchSettings:
+        """F559: a mode without the "hill" item (house rule: auto-fix, no warning) drops a hill the pick or favourite names.
+        The pick then holds what the config holds (compose writes no hill for that mode, so the config keeps its carried
+        value), never a value the config lacks. Both `pick` and `load` come through here."""
+        if "hill" not in (self._mode_row(mode).get("match_items") or []):
+            match.pop("hill", None)
+            if carried := _gamepick.match_from_config(self.s.config).get("hill"):
+                match["hill"] = carried
+        return match
+
     def load(self, fav_pick: GamePickData) -> PickResult:
         """Applies the favourite's pieces + match through the SAME compose/precheck/set_config path
         `POST /api/play/pick` uses (same phase gating, `ok: false` changes nothing) -- the one
@@ -141,7 +154,7 @@ class GamePick:
         s._refuse_config_locked()   # Low (polish round 1): refuse an armed/live load before the precheck work
         resolved, fallbacks = _gamepick.resolve_pieces_with_fallback(self._pieces(), fav_pick["pieces"])
         mode = resolved["mode"]["value"]["mode"]
-        match = fav_pick["match"]
+        match = self._hill_for_mode(cast(MatchSettings, dict(fav_pick["match"])), mode)   # a copy: the stored favourite stays as saved
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
         patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS)
         res = self._apply_patch(patch)

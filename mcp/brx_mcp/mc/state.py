@@ -280,7 +280,7 @@ MODES: list[ModeRow] = [
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME", "respawn_text": "ON · TIMED",
      "teams": ["red", "blue"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "station_source": "phone", "proven": True, "mvp": True,
-     "match_items": ["time", "hold", "countdown", "daynight", "silenced", "teams"]},
+     "match_items": ["time", "hold", "hill", "countdown", "daynight", "silenced", "teams"]},
 ]
 
 

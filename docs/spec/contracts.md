@@ -206,7 +206,8 @@ GameConfig {
   hill?:       {capture_s?: number, net_cap?: number} | null,  // [F559] a control station's capture time (3..60 s) and
                                       //   net cap (1..6). A set key rides every station_config to a control station
                                       //   and wins over a station-side edit; an absent key keeps the station's own value.
-                                      //   A mode change carries it, like volume; a favourite or game piece does not store it.
+                                      //   A mode change carries it, like volume; a game piece does not store it, but a favourite does, through the pick's
+                                      //   `match.hill` (KOTH only, `MatchSettings`; the PLAY strip's HILL item sets it).
   // Six more fields ride here; types.py `GameConfigBase` is the full list and the comments there are canonical:
   siphon?:     { hp: number, armor: number },   // S14 heal-on-kill. Typed only: compile and the node do not act on it yet (modes.md §2)
   respawn_auto_teams?: number[],      // derived: teams with no station fall back to timed AUTO respawn
