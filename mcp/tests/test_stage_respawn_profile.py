@@ -126,11 +126,11 @@ def test_a_late_start_carries_the_table_in_front_of_the_spawn():
     asyncio.run(run())
 
 
-def test_timed_defaults_no_t8_the_trigger_held_and_live_at_half_a_second():
+def test_timed_defaults_no_t8_the_trigger_held_and_live_at_one_and_a_half_seconds():
     async def run():
         st, mgr, clock = _mk()
         rp = st.bundle["respawn_profile"]
-        assert (rp["protect_ms"], rp["trigger_ms"]) == (0, 500)
+        assert (rp["protect_ms"], rp["trigger_ms"]) == (0, 1500)
         await _live(st)
         n = await _revive(st, clock)
         new = tx(mgr)[n:]
@@ -138,13 +138,13 @@ def test_timed_defaults_no_t8_the_trigger_held_and_live_at_half_a_second():
         assert new[start:start + len(rp["revive"])] == rp["revive"], "the revive writes respawn_profile.revive"
         assert not _tmp(new) and HELD in new and LIVE not in new
         assert st._arm_pending is None, "no protection: armed at once"
-        assert st.state()["model"]["weapon_arming_s"] == 0.5
+        assert st.state()["model"]["weapon_arming_s"] == 1.5
         st._inject_rx("$BUT,0,1,*"); st._inject_rx("$BUT,0,0,*")
         assert st._shot_due_at is None, "weaponHold: a pull while the trigger is held owes no shot (F208)"
-        clock.advance(0.49); st.poll(); await settle(st)
-        assert LIVE not in tx(mgr)[n:], "still held at 0.49 s"
+        clock.advance(1.49); st.poll(); await settle(st)
+        assert LIVE not in tx(mgr)[n:], "still held at 1.49 s"
         clock.advance(0.01); st.poll(); await settle(st)
-        assert tx(mgr)[n:].count(LIVE) == 1, "trigger_live at 0.5 s"
+        assert tx(mgr)[n:].count(LIVE) == 1, "trigger_live at 1.5 s"
         assert st._trigger_pending is None and st.state()["model"]["weapon_arming_s"] is None
         k = len(tx(mgr)); clock.advance(5); st.poll(); await settle(st)
         assert LIVE not in tx(mgr)[k:] and not _tmp(tx(mgr)[n:]), "once, and never a $TMP"
@@ -381,10 +381,10 @@ def test_f493_r1_a_burst_that_starts_after_the_hold_cap_runs_the_weapon_delay_ag
         await _live(st)
         await _die(st)
         clock.advance(0.1)
-        _hold_gun(st, gate, cap + 1.0)
+        _hold_gun(st, gate, cap + 3.0)
         n = len(tx(mgr))
         task = asyncio.create_task(st.revive())
-        for _ in range(int((cap + 1.0) / 0.1)):
+        for _ in range(int((cap + 3.0) / 0.1)):
             await settle(st); clock.advance(0.1); st.poll(); await settle(st)
         assert not task.done(), "setup: the burst still waits past the cap"
         assert LIVE in tx(mgr)[n:], "setup: the cap let the trigger go"

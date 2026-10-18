@@ -7,7 +7,7 @@ import type {
   GamePiece, ItemKind, LifePiece, MiscLoadoutsPiece, Respawn, SlotChoice, SlotRule,
   StationProtectS, TimedProtectS, WeaponDelayMs,
 } from '../../api/contract.gen';
-import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../../api/contract.gen';
+import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, WEAPON_DELAY_MS_OPTIONS } from '../../api/contract.gen';
 import { BTN_RESET, Micro, OutlineTag, Seg, SEG_PAD_44, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
 import {
@@ -18,6 +18,11 @@ import {
 /** A catalogue row an editor can show (a weapon or a perk) — id, a display name, and whatever
  *  `ClassableItem` needs for the class shortcuts (weapons only; perks carry no `role`). */
 export interface CatalogueRow extends ClassableItem { name: string }
+
+/** The WEAPON DELAY picker's options, driven by the generated table so a new legal value cannot go missing. */
+export function weaponDelayOptions(): { value: string; label: string }[] {
+  return WEAPON_DELAY_MS_OPTIONS.map(ms => ({ value: String(ms), label: `${ms / 1000} S` }));
+}
 
 function Row({ label, children, note, testId }: { label: string; children: ReactNode; note?: string; testId?: string }) {
   return (
@@ -117,7 +122,7 @@ export function SpawnFields({ value, onChange, builtins }: { value: Respawn; onC
           </Row>
           <Row label="WEAPON DELAY">
             <Seg value={String(value.weapon_delay_ms ?? WEAPON_DELAY_MS_DEFAULT)} label="respawn weapon delay" pad={SEG_PAD_44}
-              options={[{ value: '500', label: '0.5 S' }, { value: '1000', label: '1 S' }, { value: '3000', label: '3 S' }]}
+              options={weaponDelayOptions()}
               onChange={v => onChange({ ...value, weapon_delay_ms: Number(v) as WeaponDelayMs })} />
           </Row>
         </>

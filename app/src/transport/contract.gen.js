@@ -128,7 +128,7 @@ export const STATION_BATTERY_LOW = 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WH
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export const STATION_NO_HILL = 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 export const TIMED_PROTECT_S_DEFAULT = 0;
-export const WEAPON_DELAY_MS_DEFAULT = 500;
+export const WEAPON_DELAY_MS_DEFAULT = 1500;
 export const STATION_PROTECT_S_DEFAULT = 2;
 /** A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
  *  STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push. */

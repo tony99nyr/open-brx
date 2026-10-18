@@ -70,7 +70,7 @@
   {"script":"happy","step":"pick TDM","patch":[
    ["set","/config/config_id","00000011"],
    ["set","/config/respawn/protect_s",0],
-   ["set","/config/respawn/weapon_delay_ms",500],
+   ["set","/config/respawn/weapon_delay_ms",1500],
    ["set","/config/time_limit_s",120],
    ["set","/game_pick/match/time_limit_s",120]
   ]},

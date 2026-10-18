@@ -128,7 +128,7 @@ export declare const STATION_BATTERY_LOW: 'BATTERY LOW: CHARGE OR SWAP IT BEFORE
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export declare const STATION_NO_HILL: 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 export declare const TIMED_PROTECT_S_DEFAULT: 0;
-export declare const WEAPON_DELAY_MS_DEFAULT: 500;
+export declare const WEAPON_DELAY_MS_DEFAULT: 1500;
 export declare const STATION_PROTECT_S_DEFAULT: 2;
 /** A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
  *  STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push. */
@@ -583,7 +583,7 @@ export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'r
  *  timed: seconds of `$TMP` t8 = -100 after `$SPAWN`; 0 = no `$TMP` at all */
 export type TimedProtectS = 0 | 1 | 2;
 /** timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN` */
-export type WeaponDelayMs = 500 | 1000 | 3000;
+export type WeaponDelayMs = 500 | 1000 | 1500 | 3000;
 /** station: seconds of t8 = -100; the trigger is live at once */
 export type StationProtectS = 0 | 2 | 3;
 export type WinBy = 'kills' | 'survival' | 'objective';

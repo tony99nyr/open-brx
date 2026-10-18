@@ -322,7 +322,7 @@ async function scream(h, kind) {
   if (kind === 'station') h.eng._revive(false, 3); else h.operatorRespawn();
   const arming0 = h.eng.state().weaponArming;
   const seen = [];   // [clock, weaponArming, takeover] after each tick
-  for (let k = 0; k < 5000 / TICK; k++) { await h.adv(TICK); const s = h.eng.state(); seen.push([h.now(), s.weaponArming, s.presented.takeover]); }
+  for (let k = 0; k < 7000 / TICK; k++) { await h.adv(TICK); const s = h.eng.state(); seen.push([h.now(), s.weaponArming, s.presented.takeover]); }
   return { w: h.since(n), t0, arming0, seen };
 }
 /** REDEPLOYED is open (null) before `live` (the trigger went live, or a station burst landed), then ends at `end`
