@@ -25,8 +25,13 @@ runs the same versioned scenario list in both, and prints a verdict with six nam
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
                          players who do (Tony, 2026-10-17).
 
-Scenario version 3 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
-ticks, aim-scaled close melee finishes, field aim and density. The hidden Haze runs in a separate optional report.
+Scenario version 8 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
+ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
+close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
+healing and a spawn-reserve pickup, and pistol
+finishers after a dry primary. The hidden Haze runs in a separate optional report.
+Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo stress score because
+the down time rule measures bolt exposure instead of ammunition.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
 so the published semi TTK and the fight sim disagree (F576). Heat cooling while firing is unproven (F575).
 
@@ -88,11 +93,12 @@ from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 3
+SCENARIO_VERSION = 8
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
 REPS = {"duel": 3000, "perk": 2000, "field": 600, "ambush": 3000, "peek": 3000, "rush": 3000,
+        "ammo": 600,
         "ttk": 2000, "finish": 3000, "rule": 10000}
 MIN_REPS = 4
 
@@ -119,23 +125,39 @@ CLOSE_EDGE_M = 10.0           # range bands for the rush model: close under 10 m
 MID_EDGE_M = 30.0
 RUSH_SPEED_MS = 5.0           # a rusher closes at 5 m/s ...
 RUSH_MOVE_ACC = 0.5           # ... hits at half its normal chance while moving, full chance once close
-RUSH_START_M = 20.0           # the rush starts 20 m away
+RUSH_STARTS_M = (20.0, 30.0)  # the two reported rush starts; the verdict still gates at 20 m
 RUSH_CAP_MS = 15_000.0
+HILL_SECOND_ATTACKER_MS = 3500.0  # the second hill attacker enters this long after the first
+HILL_ESCAPE_P = 0.0           # a holder who leaves the circle cannot count as holding it
 FIELD_NS = (2, 4, 6, 8)       # team sizes for the field ratio (geometric mean over them)
 FIELD_VENUE = "outdoor"
 SECONDARY = "deagle"          # every plain kit carries this secondary
 FULL_AUTO = frozenset({"smg", "suppressor", "energy_rifle"})   # automatics held down; the rest burst
 ANCHOR = "assault_rifle"      # the plain kit every perk, field and ambush number is measured against
+HILL_REFERENCES = (ANCHOR, "smg", "shotgun")  # the close-range KOTH attackers and contest opponents
+AMMO_STRESS_GAP_MS = 1500.0  # the next AR arrives 1.5 s after the previous fight
+AMMO_PICKUP_AFTER_KILLS = 4  # one AMMO pickup after the fourth kill
+AMMO_STRESS_MAX_ATTACKERS = 128  # bound one life; report cap hits in the matrix
+AMMO_STRESS_RANGE = "mid"  # all kits meet the attacker in the neutral band
+AMMO_STRESS_ATTACKER_AIM = 0.2  # a streaking holder has twice the incoming AR's aim
+AMMO_STRESS_DOWNTIME_ONLY = True  # the holder wins the exchange while able to fire; incoming rounds land only in down time
+AMMO_STRESS_HEAL = True  # restore the holder's pool between fights, while ammo and heat persist
+AMMO_STRESS_BAND_FIT = False  # mid-range ammo comparison does not penalise a kit's preferred band
+AMMO_STRESS_ATTACKER_REACT_MS = 1000.0  # a ready holder gets the first exchange on a streak
+AMMO_STRESS_FIGHT_CAP_MS = 120_000.0  # allow slow mid-range kits to finish a fight
+PISTOL_FINISH_RANGE = "close"  # the chipped target is at close range
 # Mixed kits that open with the first gun's big round and finish with the second (Tony 2026-10-17).
 COMBO_KITS = (("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor"),
               ("CR+Sniper+QS", "charge_rifle", "sniper_rifle", "quick_switch"))
 
-COLUMNS = ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact", "peek mid", "field", "ambush", "shields")
+COLUMNS = ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact", "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
 # Near-top margin: a kit within this of the column's best is "near the top". The duel columns are win
 # rates (a 5 point margin is about two standard errors of a 3000-rep cell averaged over ten opponents);
-# the field ratio and the ambush score are noisier and wider, so 0.10.
+# the field ratio and the ambush score are noisier and wider, so 0.10. Ammo stress uses its 0.10
+# as a relative ratio margin; the other columns use absolute margins.
 NEAR_TOP_MARGIN = {"1v1 close": 0.05, "1v1 mid": 0.05, "1v1 long": 0.05, "long contact": 0.05,
-                   "1v1 real aim": 0.05, "peek mid": 0.05, "field": 0.10, "ambush": 0.10, "shields": 0.05}
+                   "1v1 real aim": 0.05, "peek mid": 0.05, "field": 0.10, "ambush": 0.10,
+                   "shields": 0.05, "hill hold": 0.05, "ammo stress": 0.10}
 # Viability checks a plain primary alone, so a sidearm or a perk cannot rescue a weak weapon. The 0.50 floor
 # remains below every shipped primary in the version 2 field model.
 VIABLE_FIELD_FLOOR = 0.50
@@ -143,7 +165,7 @@ MARKSMAN_STRONG_BAR = 0.50    # peek-kill rate against a player who does not rus
 # The strong side also needs the marksman's kit near the top in this column. Pending brx1: it may move to
 # "peek mid" (then peek-kill plus near the top at peek). A one-line switch; do not change it without Tony.
 MARKSMAN_STRONG_COLUMN = "1v1 long"
-MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from RUSH_START_M
+MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from the 20 m start
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
 R10_PRIMARY_BAR = 0.65        # a new sidearm: each of B.R10_PRIMARIES still beats it on Standard, as R10b (Shields: SHIELDS_BAR)
 RULE_BAR_STANDARD = 0.65      # mirrors mcp/tests/test_balance_sim.py (RANGE_BAR_OVERRIDES)
@@ -175,7 +197,26 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "peek": {"window_ms": PEEK_WINDOW_MS, "react_ms": PEEK_REACT_MS, "p_escape": PEEK_P_ESCAPE},
         "ambush_react_ms": AMBUSH_REACT_MS,
         "rush": {"close_edge_m": CLOSE_EDGE_M, "mid_edge_m": MID_EDGE_M, "speed_m_s": RUSH_SPEED_MS,
-                 "move_acc": RUSH_MOVE_ACC, "start_m": RUSH_START_M},
+                 "move_acc": RUSH_MOVE_ACC, "starts_m": list(RUSH_STARTS_M)},
+        "hill": {"second_attacker_ms": HILL_SECOND_ATTACKER_MS, "references": list(HILL_REFERENCES),
+                 "escape_p": HILL_ESCAPE_P, "range_hold_contest": "close", "range_overwatch": "long"},
+        "ammo_stress": {"gap_ms": AMMO_STRESS_GAP_MS, "pickup_after_kills": AMMO_PICKUP_AFTER_KILLS,
+                        "max_attackers": AMMO_STRESS_MAX_ATTACKERS, "holder_aim": REAL_AIM,
+                        "attacker_aim": AMMO_STRESS_ATTACKER_AIM, "heal_between_fights": AMMO_STRESS_HEAL,
+                        "downtime_only": AMMO_STRESS_DOWNTIME_ONLY,
+                        "range": AMMO_STRESS_RANGE, "band_fit": AMMO_STRESS_BAND_FIT,
+                        "attacker_react_ms": AMMO_STRESS_ATTACKER_REACT_MS,
+                        "downtime_attacker_reaction_ms": [REACTION_MEAN_MS, REACTION_SD_MS],
+                        "fight_cap_ms": AMMO_STRESS_FIGHT_CAP_MS,
+                        "secondary_plan": "reload or vent the primary under fire; draw the secondary after the primary has no rounds",
+                        "enemy_response": "the holder wins the exchange while able to fire; incoming AR rounds land only during reload, vent, heat lock, swap or dry down time",
+                        "pickup": "once, top each held slot's reserve up to its compiled spawn reserve after a pending reload ends; leave magazines alone",
+                        "chain_reload": "ammo stress only: credit each shell at its own interval; a loaded shell can interrupt the reload. Firing between shells is unproven on a gun",
+                        "bolt_na": "a bolt's whole cycle is down time, so this column measures exposure instead of ammunition; bolt kits, including combos, are n/a"},
+        "pistol_finisher": {"pool_hp": B.R10_FINISH_POOL_HP, "aim": AIM,
+                            "range": PISTOL_FINISH_RANGE,
+                            "pistol_time": "sampled R10a median, including misses and reaction, plus the kit swap",
+                            "reload_time": "expected primary finish after reload and mean reaction"},
         "field": {"team_sizes": list(FIELD_NS), "venue": FIELD_VENUE, "anchor": ANCHOR,
                   "hit_probs": list(B.DEFAULT_HIT_PROBS), "contact_mean_s": B.SimConfig(pool=B.default_pool()).contact_mean_s,
                   "gap_mean_s": B.SimConfig(pool=B.default_pool()).gap_mean_s,
@@ -386,7 +427,7 @@ def make_kit(world: World, name: str, primary: str, secondary: str | None = None
 
 class _GunState:
     __slots__ = ("ammo", "reserve", "count", "state", "blen", "charged", "heat", "heat_t", "locked_until",
-                 "vent_until", "ready_at", "reload_amount", "venting")
+                 "vent_until", "ready_at", "reload_amount", "venting", "bolt_until", "pending_pickup")
 
     def __init__(self, g: Gun, charged=True):
         self.ammo, self.reserve = g.mag, g.reserve
@@ -395,6 +436,7 @@ class _GunState:
         self.heat, self.heat_t, self.locked_until, self.vent_until = 0.0, 0.0, 0.0, 0.0
         self.ready_at = 0.0
         self.reload_amount, self.venting = 0, False
+        self.bolt_until, self.pending_pickup = 0.0, 0
 
 
 def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
@@ -491,9 +533,10 @@ class Fighter:
     in that order, with no regeneration."""
 
     def __init__(self, kit: Kit, pool: int, aim: float, dist: int, rng, fit=True, pull_ms=PULL_MS,
-                 allow_melee=True, heat_cool_while_firing=True):
+                 allow_melee=True, heat_cool_while_firing=True, persistent_reload=False):
         self.kit, self.aim, self.dist, self.rng, self.fit, self.pull_ms = kit, aim, dist, rng, fit, pull_ms
         self.allow_melee, self.heat_cool_while_firing = allow_melee, heat_cool_while_firing
+        self.persistent_reload = persistent_reload
         self.health, self.armour, self.shield = pool if isinstance(pool, tuple) else (pool, 0, 0)
         self.blind_until = 0.0
         self.dot_next, self.dot_left, self.dot_dmg, self.dot_ms, self.dot_src = math.inf, 0, 0, 0.0, None
@@ -502,6 +545,7 @@ class Fighter:
         self.dist_m = None
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
+        self.swap_until = 0.0
         self.gs = [_GunState(g, charged=(i == 0)) for i, g in enumerate(kit.guns)]  # a slot not in hand holds no charge
         self.active, self.phase, self.next_t, self.alive = (1 if kit.plan == "haze" else 0), "open", 0.0, True
         self.targets: list = []
@@ -572,20 +616,35 @@ class Fighter:
             old.reload_amount, old.venting = 0, False
             old.vent_until = 0.0
             old.ready_at = min(old.ready_at, t)
+            if old.pending_pickup:
+                old.reserve = max(old.reserve, old.pending_pickup)
+                old.pending_pickup = 0
         self.active = idx
         chosen = self.gs[idx]
         draw = t + self.kit.swap_ms
+        self.swap_until = draw
         if self.kit.guns[idx].mode == "charge" and not chosen.charged:
             chosen.charged = True
             chosen.ready_at = max(chosen.ready_at, draw + self.kit.guns[idx].fire_ms)
         self.next_t = max(draw, chosen.ready_at)
 
     def _credit_reload(self, state, t):
-        if state.reload_amount and t >= state.ready_at:
-            state.ammo += state.reload_amount
-            state.reserve -= state.reload_amount
-            state.reload_amount = 0
-            state.ready_at = t
+        if state.reload_amount:
+            gun = self.kit.guns[self.gs.index(state)]
+            if gun.chain and self.persistent_reload:
+                first = state.ready_at - (state.reload_amount - 1) * gun.reload_ms
+                count = min(state.reload_amount, max(0, math.floor((t - first) / gun.reload_ms + 1e-9) + 1))
+            else:
+                count = state.reload_amount if t >= state.ready_at else 0
+            if count:
+                state.ammo += count
+                state.reserve -= count
+                state.reload_amount -= count
+                if not state.reload_amount:
+                    state.ready_at = t
+                    if state.pending_pickup:
+                        state.reserve = max(state.reserve, state.pending_pickup)
+                        state.pending_pickup = 0
         if state.venting and t >= state.vent_until:
             state.heat, state.locked_until = 0.0, 0.0
             state.venting, state.vent_until = False, 0.0
@@ -607,13 +666,25 @@ class Fighter:
                                heat_t=s.heat_t, heat_cool_while_firing=self.heat_cool_while_firing)
 
     def _maybe_swap(self, t):
-        if self.kit.plan != "single" or len(self.gs) < 2 or not self.kit.guns[1].lethal:
+        if len(self.gs) < 2 or not self.kit.guns[1].lethal:
             return False
         target = self.target()
         if target is None:
             return False
         primary, secondary = self.kit.guns
         ps, ss = self.gs
+        if self.persistent_reload:
+            if self.active == 0 and ps.ammo == 0 and ps.reserve == 0 and not ps.reload_amount and \
+                    (ss.ammo or ss.reserve):
+                self._swap(1, t)
+                return True
+            if self.active == 1 and ss.ammo == 0 and ss.reserve == 0 and not ss.reload_amount and \
+                    (ps.ammo or ps.reserve):
+                self._swap(0, t)
+                return True
+            return False
+        if self.kit.plan != "single":
+            return False
         if self.active == 0:
             blocked = ps.ammo == 0 or ps.locked_until > t or ps.ready_at > t
             if blocked and ss.ammo:
@@ -648,6 +719,12 @@ class Fighter:
             return None
         g, s = self.kit.guns[self.active], self.gs[self.active]
         heat = dict(g.heat)
+        if self.persistent_reload and g.chain and s.reload_amount and s.ammo:
+            s.reload_amount = 0
+            s.ready_at = t
+            if s.pending_pickup:
+                s.reserve = max(s.reserve, s.pending_pickup)
+                s.pending_pickup = 0
         if t < s.ready_at:
             self.next_t = s.ready_at
             return None
@@ -688,8 +765,8 @@ class Fighter:
             got = min(g.mag - s.ammo, s.reserve)
             s.reload_amount = got
             s.count, s.state, s.blen = 0, "crisp", 0
-            self.next_t = t + (g.reload_ms * got if g.chain else g.reload_ms)
-            s.ready_at = self.next_t
+            s.ready_at = t + (g.reload_ms * got if g.chain else g.reload_ms)
+            self.next_t = t + g.reload_ms if g.chain and self.persistent_reload else s.ready_at
             return None
         acc = 1.0
         if g.profile is not None and g.mode == "auto":
@@ -720,6 +797,7 @@ class Fighter:
                 s.ammo += 1
                 iv = max(iv, pull_gap(self.rng, self.pull_ms) + g.reload_ms + pull_gap(self.rng, self.pull_ms))
             self.next_t = t + iv
+            s.bolt_until = self.next_t if s.ammo else 0.0
         elif g.mode == "semi":
             self.next_t = t + B.fight_semi_interval(self.rng, g.fire_ms)
         elif g.mode == "burst":
@@ -760,11 +838,15 @@ class Fighter:
                 s.count = 0
             s.blen = 0
             self.next_t = max(self.next_t, t + RETARGET_MS)
+            if self.persistent_reload and self.kit.plan == "combo":
+                self.phase, self.active = "open", 0
+                self.gs[0].charged = True
         if self.kit.plan == "combo" and self.phase == "open" and self.active == 0 and alpha and not killed \
                 and len(self.kit.guns) > 1:
             alt = t + pull_gap(self.rng, self.pull_ms)    # the ALT press
             self.active, self.phase = 1, "finish"
             self.next_t = alt + self._semi(self.kit.swap_ms)
+            self.swap_until = self.next_t
 
 
 def exposed(f, t: float) -> bool:
@@ -776,7 +858,8 @@ def exposed(f, t: float) -> bool:
     return (t - f.last_shot_t) <= h or (f.next_t - t) <= h
 
 
-def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze_blind_ms=HAZE_BLIND_MS):
+def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze_blind_ms=HAZE_BLIND_MS,
+          fire_during_reload=False, land_hit=None, on_step=None, stop_when=None):
     """A race. `alert` {fighter: delay_ms}: that fighter idles until the delay after the first landed hit."""
     for f in side_a:
         f.targets = side_b
@@ -788,6 +871,8 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
         f.next_t = math.inf
     first_hit = None
     while True:
+        if stop_when and stop_when():
+            break
         cands = [f for f in allf if f.alive and f.next_t <= cap_ms and f.target() is not None]
         ticks = [f for f in allf if f.alive and f.dot_next <= cap_ms]
         if not cands and not ticks:
@@ -801,21 +886,29 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
         tgt = f.target()
         r = f.act(t)
         if r is None:
+            if fire_during_reload and f in side_a and f.gs[f.active].reload_amount:
+                for enemy in side_b:
+                    if enemy.alive and enemy.next_t == math.inf:
+                        enemy.next_t = t + _reaction(rng)
+            if on_step:
+                on_step(f, t)
             continue
         dmg, hp, alpha = r
         killed = False
-        if rng.random() < hp and exposed(tgt, t):
+        if (land_hit is None or land_hit(f, tgt, t)) and rng.random() < hp and exposed(tgt, t):
             effect = f.last_effect if isinstance(f.last_effect, Gun) else None
             killed = tgt.receive(dmg, bypass=bool(effect and effect.ap), src=f, t=t,
                                  gun=effect, haze_blind_ms=haze_blind_ms)
             if first_hit is None:
                 first_hit = t
                 for g in alert:
-                    if g.alive:
+                    if g.alive and g.next_t == math.inf:
                         g.next_t = t + alert[g]
             if killed:
                 f.kill_times.append(t)
         f.after(t, alpha, killed)
+        if on_step:
+            on_step(f, t)
 
 
 DIST = {"close": 0, "mid": 1, "long": 2}
@@ -891,7 +984,7 @@ def ambush(kit: Kit, enemy: Kit, dist: str, reps=3000, heat_cool_while_firing=Tr
     return both / reps, one / reps
 
 
-def peek_encounter(rng, m: Fighter, v: Fighter):
+def peek_encounter(rng, m: Fighter, v: Fighter, escape_p=PEEK_P_ESCAPE):
     """`m` peeks and opens at t=0; `v` is unaware until m's first LANDED hit. PEEK_REACT_MS later, v breaks
     line of sight with PEEK_P_ESCAPE (the encounter ends) or fights back through m's exposure windows.
     (peek_kill, m_died, escaped)."""
@@ -907,7 +1000,7 @@ def peek_encounter(rng, m: Fighter, v: Fighter):
         nxt = min(nxt, tick_t)
         if t_alert is not None and not alerted and t_alert <= nxt and t_alert <= FIGHT_CAP_MS:
             alerted = True
-            if rng.random() < PEEK_P_ESCAPE:
+            if rng.random() < escape_p:
                 escaped = True
                 break
             v.next_t = t_alert
@@ -994,32 +1087,303 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
     return (m.alive and not v.alive), (v.alive and not m.alive)
 
 
-def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_firing=True) -> dict:
+def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_firing=True,
+                          start_m=RUSH_STARTS_M[0], peek_result=None) -> dict:
     """Tony 2026-10-17: "sniper should feel strong until players recognize the strat to rush the sniper".
     peek_kill: the peek-kill rate at long range against a player who does not rush. rush_success: the rate
-    a rusher from RUSH_START_M kills the same peeking marksman."""
-    rng = B.cell_rng(SEED, "peek", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS,
-                     PEEK_P_ESCAPE, heat_cool_while_firing)
-    k = dd = e = 0
-    for _ in range(reps):
-        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
-                    heat_cool_while_firing=heat_cool_while_firing)
-        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
-                    heat_cool_while_firing=heat_cool_while_firing)
-        a, b, c = peek_encounter(rng, m, v)
-        k += a; dd += b; e += c  # noqa: E702
+    a rusher from start_m kills the same peeking marksman."""
+    if peek_result is None:
+        rng = B.cell_rng(SEED, "peek", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS,
+                         PEEK_P_ESCAPE, heat_cool_while_firing)
+        k = dd = e = 0
+        for _ in range(reps):
+            m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
+                        heat_cool_while_firing=heat_cool_while_firing)
+            v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
+                        heat_cool_while_firing=heat_cool_while_firing)
+            a, b, c = peek_encounter(rng, m, v)
+            k += a; dd += b; e += c  # noqa: E702
+        peek_result = (k / reps, dd / reps, e / reps)
     rng = B.cell_rng(SEED, "rush", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS,
-                     RUSH_START_M, heat_cool_while_firing)
+                     start_m, heat_cool_while_firing)
     mk = rs = 0
     for _ in range(reps):
         m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
                     heat_cool_while_firing=heat_cool_while_firing)
         v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
                     heat_cool_while_firing=heat_cool_while_firing)
-        a, b = rush_encounter(rng, m, v, RUSH_START_M)
+        a, b = rush_encounter(rng, m, v, start_m)
         mk += a; rs += b  # noqa: E702
-    return {"peek_kill": k / reps, "peek_death": dd / reps, "escape": e / reps,
+    return {"peek_kill": peek_result[0], "peek_death": peek_result[1], "escape": peek_result[2],
             "rush_success": rs / reps, "marksman_beats_rusher": mk / reps}
+
+
+def rush_table(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
+               heat_cool_while_firing=True) -> list[dict]:
+    """Every marksman and combo kit against the three plain rushers at both starts."""
+    pairs = []
+    for spec in specs:
+        if not (spec.combo or world.cat._row(spec.primary).get("role") == "marksman"):
+            continue
+        kit_name = spec.name if spec.combo else f"{spec.name} (plain)"
+        marksman = make_kit(world, kit_name, spec.primary,
+                            spec.secondary if spec.combo else None,
+                            spec.perk if spec.combo else None,
+                            "combo" if spec.combo else "single")
+        for rusher_id in (ANCHOR, "smg", "shotgun"):
+            rusher_name = "AR (plain)" if rusher_id == ANCHOR else f"{rusher_id} (plain)"
+            pairs.append((spec.name, rusher_id, marksman, make_kit(world, rusher_name, rusher_id)))
+    near_jobs = [("rush", m, r, reps, heat_cool_while_firing, RUSH_STARTS_M[0])
+                 for _, _, m, r in pairs]
+    near = run_cells(near_jobs, n_jobs)
+    far_jobs = [("rush", m, r, reps, heat_cool_while_firing, RUSH_STARTS_M[1],
+                 (v["peek_kill"], v["peek_death"], v["escape"]))
+                for (_, _, m, r), v in zip(pairs, near)]
+    far = run_cells(far_jobs, n_jobs)
+    return [{"marksman": name, "rusher": rid, "start_m": start, **value}
+            for (name, rid, _, _), near_v, far_v in zip(pairs, near, far)
+            for start, value in zip(RUSH_STARTS_M, (near_v, far_v))]
+
+
+def hill_hold(holder: Kit, attacker: Kit, reps: int, heat_cool_while_firing=True,
+              second_attacker=True) -> float:
+    """Chance that an alert, stationary holder kills two close attackers before dying."""
+    rng = B.cell_rng(SEED, "hill_hold", holder.name, attacker.name, HILL_SECOND_ATTACKER_MS,
+                     heat_cool_while_firing)
+    both = 0
+    for _ in range(reps):
+        h = Fighter(holder, holder.pool_parts("standard"), AIM, DIST["close"], rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        e1 = Fighter(attacker, attacker.pool_parts("standard"), AIM, DIST["close"], rng,
+                     heat_cool_while_firing=heat_cool_while_firing)
+        e2 = Fighter(attacker, attacker.pool_parts("standard"), AIM, DIST["close"], rng,
+                     heat_cool_while_firing=heat_cool_while_firing)
+        h.next_t, e1.next_t = _reaction(rng), _reaction(rng)
+        if not second_attacker:
+            fight(rng, [h], [e1])
+            both += h.alive and not e1.alive
+            continue
+        e2.next_t = HILL_SECOND_ATTACKER_MS + _reaction(rng)
+        fight(rng, [h], [e1], cap_ms=HILL_SECOND_ATTACKER_MS)
+        h.next_t = max(h.next_t, HILL_SECOND_ATTACKER_MS)
+        if h.alive:
+            fight(rng, [h], [e1, e2])
+        both += h.alive and not e1.alive and not e2.alive
+    return both / reps
+
+
+def hill_overwatch(long_gun: Kit, holder: Kit, reps: int, heat_cool_while_firing=True) -> float:
+    """Long-range peek kill when the holder cannot escape the circle."""
+    rng = B.cell_rng(SEED, "hill_overwatch", long_gun.name, holder.name, HILL_ESCAPE_P,
+                     heat_cool_while_firing)
+    kills = 0
+    for _ in range(reps):
+        m = Fighter(long_gun, long_gun.pool_parts("standard"), AIM, DIST["long"], rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        h = Fighter(holder, holder.pool_parts("standard"), AIM, DIST["long"], rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        kills += peek_encounter(rng, m, h, escape_p=HILL_ESCAPE_P)[0]
+    return kills / reps
+
+
+def hill_report(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
+                heat_cool_while_firing=True, anchor_world: World | None = None) -> dict:
+    """Close hold and contest rows for all kits; long overwatch rows for marksmen, combos and the AR."""
+    kits = {s.name: make_kit(world, s.name, s.primary, s.secondary, s.perk,
+                             "combo" if s.combo else "single") for s in specs}
+    aw = anchor_world or world
+    refs = {r: make_kit(aw, f"{r} (plain)", r, SECONDARY) for r in HILL_REFERENCES}
+    hold_jobs, contest_jobs, over_jobs = [], [], []
+    overwatch_names = {s.name for s in specs if s.combo or world.cat._row(s.primary).get("role") == "marksman"
+                       or s.primary == ANCHOR}
+    for name, kit in kits.items():
+        for ref, enemy in refs.items():
+            hold_jobs.append(("hill_hold", kit, enemy, reps, heat_cool_while_firing))
+            contest_jobs.append(("duel", kit, enemy, "close", "standard", AIM, FIGHT_CAP_MS, False,
+                                 reps, heat_cool_while_firing))
+        if name in overwatch_names:
+            for ref, holder in refs.items():
+                over_jobs.append(("hill_overwatch", kit, holder, reps, heat_cool_while_firing))
+    pairs = [(n, r) for n in kits for r in HILL_REFERENCES]
+    hold = [{"holder": n, "attacker": r, "kill_both": v}
+            for (n, r), v in zip(pairs, run_cells(hold_jobs, n_jobs))]
+    contest = [{"kit": n, "opponent": r, "win": v}
+               for (n, r), v in zip(pairs, run_cells(contest_jobs, n_jobs))]
+    over_pairs = [(n, r) for n in kits if n in overwatch_names for r in HILL_REFERENCES]
+    overwatch = [{"long_gun": n, "holder": r, "peek_kill": v}
+                 for (n, r), v in zip(over_pairs, run_cells(over_jobs, n_jobs))]
+    return {"hold": hold, "contest": contest, "overwatch": overwatch}
+
+
+def _ammo_pickup(holder: Fighter) -> None:
+    """Top up each held reserve after its pending reload ends."""
+    for gun, state in zip(holder.kit.guns, holder.gs):
+        if state.reload_amount:
+            state.pending_pickup = max(state.pending_pickup, gun.reserve)
+        else:
+            state.reserve = max(state.reserve, gun.reserve)
+
+
+def ammo_stress(kit: Kit, attacker: Kit, reps: int, pickup=True,
+                heat_cool_while_firing=True, report_caps=False, report_reasons=False):
+    """Mean AR kills in one life. The pool heals; ammunition, reloads and heat persist."""
+    rng = B.cell_rng(SEED, "ammo_stress", kit.name, attacker.name, AMMO_STRESS_GAP_MS,
+                     AMMO_PICKUP_AFTER_KILLS, AMMO_STRESS_RANGE, AMMO_STRESS_ATTACKER_AIM,
+                     AMMO_STRESS_HEAL, AMMO_STRESS_BAND_FIT, AMMO_STRESS_ATTACKER_REACT_MS,
+                     AMMO_STRESS_FIGHT_CAP_MS, AMMO_STRESS_DOWNTIME_ONLY,
+                     pickup, heat_cool_while_firing)
+    total = cap_hits = 0
+    reasons = dict.fromkeys(("dry", "died_reloading", "died_heat_locked_or_venting",
+                             "died_swapping", "cap"), 0)
+    for _ in range(reps):
+        holder = Fighter(kit, kit.pool_parts("standard"), REAL_AIM, DIST[AMMO_STRESS_RANGE], rng,
+                         fit=AMMO_STRESS_BAND_FIT,
+                         heat_cool_while_firing=heat_cool_while_firing, persistent_reload=True)
+        arrival = 0.0
+        end_reason = None
+
+        def dry():
+            return all(s.ammo + s.reserve + s.reload_amount == 0 for s in holder.gs)
+
+        def downtime(t):
+            state = holder.gs[holder.active]
+            gun = kit.guns[holder.active]
+            holder._credit_reload(state, t)
+            if t < holder.swap_until:
+                return "died_swapping"
+            if state.locked_until > t or state.venting or state.vent_until > t:
+                return "died_heat_locked_or_venting"
+            if state.bolt_until > t or (state.reload_amount and (not gun.chain or not state.ammo)) or \
+                    (state.ammo == 0 and state.reserve):
+                return "died_reloading"
+            if state.ammo == 0:
+                return "died_swapping" if not dry() else "dry"
+            return None
+
+        for index in range(AMMO_STRESS_MAX_ATTACKERS):
+            if dry():
+                end_reason = "dry"
+                break
+            enemy = Fighter(attacker, attacker.pool_parts("standard"), AMMO_STRESS_ATTACKER_AIM,
+                            DIST[AMMO_STRESS_RANGE], rng, fit=AMMO_STRESS_BAND_FIT,
+                            heat_cool_while_firing=heat_cool_while_firing, persistent_reload=True)
+            holder.next_t = max(holder.next_t, arrival)
+            state = holder.gs[holder.active]
+            holder._credit_reload(state, arrival)
+            if kit.guns[holder.active].chain and state.reload_amount and state.ammo:
+                holder.next_t = arrival
+            under_fire = downtime(arrival) is not None
+            enemy.next_t = arrival + _reaction(rng) if under_fire else math.inf
+            before = len(holder.kill_times)
+            alert = None if under_fire else {enemy: AMMO_STRESS_ATTACKER_REACT_MS}
+            exposure = [None]
+
+            def land_hit(shooter, target, t):
+                if shooter is holder or not AMMO_STRESS_DOWNTIME_ONLY:
+                    return True
+                exposure[0] = downtime(t)
+                return exposure[0] is not None
+
+            def on_step(fighter, t):
+                if fighter is holder and enemy.alive and enemy.next_t == math.inf and downtime(t):
+                    enemy.next_t = t + _reaction(rng)
+
+            fight(rng, [holder], [enemy], arrival + AMMO_STRESS_FIGHT_CAP_MS,
+                  alert=alert, fire_during_reload=True, land_hit=land_hit,
+                  on_step=on_step, stop_when=dry)
+            if holder.alive and enemy.alive and any(s.ammo + s.reserve + s.reload_amount for s in holder.gs):
+                raise ValueError(f"ammo stress fight cap hit after {AMMO_STRESS_FIGHT_CAP_MS:g} ms")
+            if not holder.alive:
+                end_reason = exposure[0]
+                break
+            if len(holder.kill_times) == before:
+                if dry():
+                    end_reason = "dry"
+                break
+            total += 1
+            ended = holder.kill_times[-1]
+            if AMMO_STRESS_HEAL:
+                holder.health, holder.armour, holder.shield = kit.pool_parts("standard")
+            if pickup and index + 1 == AMMO_PICKUP_AFTER_KILLS:
+                _ammo_pickup(holder)
+            if dry():
+                end_reason = "dry"
+                break
+            state = holder.gs[holder.active]
+            gun = kit.guns[holder.active]
+            if state.ammo < gun.mag and state.reserve and not state.reload_amount:
+                amount = min(gun.mag - state.ammo, state.reserve)
+                state.reload_amount = amount
+                state.ready_at = ended + (gun.reload_ms * amount if gun.chain else gun.reload_ms)
+                holder.next_t = max(holder.next_t, ended + gun.reload_ms if gun.chain else state.ready_at)
+            arrival = ended + AMMO_STRESS_GAP_MS
+        else:
+            cap_hits += 1
+            end_reason = "cap"
+        if end_reason is None:
+            raise ValueError("ammo stress life ended without death, dry ammunition or cap")
+        reasons[end_reason] += 1
+    if cap_hits and not report_caps:
+        raise ValueError(f"ammo stress attacker cap hit in {cap_hits}/{reps} reps")
+    if report_reasons:
+        return total / reps, cap_hits, reasons
+    return (total / reps, cap_hits) if report_caps else total / reps
+
+
+def pistol_finish_ms(gun: Gun, swap_ms: float, *, dry=False) -> float:
+    """Expected finish from a dry click, including a swap or a primary reload."""
+    chance = min(1.0, AIM * B.BAND_FIT[gun.band][DIST[PISTOL_FINISH_RANGE]])
+    return REACTION_MEAN_MS + swap_ms + finish_estimate(
+        gun, pool=B.R10_FINISH_POOL_HP, chance=chance,
+        ammo=0 if dry else gun.mag, reserve=gun.reserve, reload_amount=0,
+        ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=PULL_MS,
+        overshoot_ms=B.FIGHT_OVERSHOOT_MS, charged=not dry, count=0,
+        dist=DIST[PISTOL_FINISH_RANGE], heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+
+
+def pistol_finisher_report(world: World, scale: float = 1.0) -> list[dict]:
+    """Every visible pistol as the secondary of every shipped primary at the R10a finish pool."""
+    pistols = [r["weapon_id"] for r in world.cat._rows if r.get("role") == "sidearm"
+               and not r.get("hidden") and r.get("lethal") is not False]
+    model = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
+    reps = _reps("finish", scale)
+    sampled = {}
+    for pistol in pistols:
+        row = world.cat._row(pistol)
+        if row.get("heat"):
+            sampled[pistol] = time_to_kill(make_kit(world, f"r10:{pistol}", pistol),
+                                           B.R10_FINISH_POOL_HP, AIM, reps, fit=False, reaction=True)[0]
+            continue
+        if pistol in B.R10_SIDEARMS:
+            sampled[pistol] = B.finish_time_batch(model, pistol, reps, SEED).median_ms
+            continue
+        mag, reserve, reload_ms = world.cat._ammo(pistol, None)
+        dmg = world.cat.damage_per_pull(pistol)
+        fire_ms = float(world.cat.fire_ms(pistol))
+        profile = B.recoil_profile(row)
+        crit = int(row.get("crit_pct") or 0)
+        semi = world.cat._frame_int(pistol, "mode") == B.SEMI_MODE
+
+        def combatant(t, m, band, rng):
+            return B._ar_shots(t, dmg, fire_ms, mag, reserve, float(reload_ms), profile,
+                               m.aim_factor, rng=rng, crit_pct=crit, pull_ms=m.pull_ms if semi else 0.0)
+
+        B.RANGE_COMBATANTS[pistol] = combatant
+        try:
+            sampled[pistol] = B.finish_time_batch(model, pistol, reps, SEED).median_ms
+        finally:
+            del B.RANGE_COMBATANTS[pistol]
+    out = []
+    for primary in roster_ids(world)[0]:
+        for pistol in pistols:
+            kit = make_kit(world, f"{primary}+{pistol}", primary, pistol)
+            finish_ms = sampled[pistol] + kit.swap_ms
+            reload_ms = pistol_finish_ms(kit.guns[0], 0.0, dry=True)
+            out.append({"primary": primary, "pistol": pistol, "finish_ms": finish_ms,
+                        "reload_finish_ms": reload_ms, "bar_ms": B.R10_FINISH_BAR_MS,
+                        "beats_staying": finish_ms < reload_ms,
+                        "under_bar": finish_ms < B.R10_FINISH_BAR_MS})
+    return out
 
 
 def time_to_kill(kit: Kit, pool: int, aim: float, reps: int, fit=False, reaction=False, dist="mid",
@@ -1319,8 +1683,20 @@ def _run_cell(job):
     if kind == "rule":
         return _run_rule(*job[1:])
     if kind == "rush":
-        _, km, kv, reps, *heat = job
-        return marksman_rush_counter(km, kv, reps, heat[0] if heat else True)
+        _, km, kv, reps, *options = job
+        return marksman_rush_counter(km, kv, reps, options[0] if options else True,
+                                      options[1] if len(options) > 1 else RUSH_STARTS_M[0],
+                                      options[2] if len(options) > 2 else None)
+    if kind == "hill_hold":
+        _, holder, attacker, reps, *heat = job
+        return hill_hold(holder, attacker, reps, heat[0] if heat else True)
+    if kind == "hill_overwatch":
+        _, long_gun, holder, reps, *heat = job
+        return hill_overwatch(long_gun, holder, reps, heat[0] if heat else True)
+    if kind == "ammo":
+        _, kit, attacker, reps, *heat = job
+        return ammo_stress(kit, attacker, reps, heat_cool_while_firing=heat[0] if heat else True,
+                           report_caps=True, report_reasons=True)
     raise ValueError(kind)
 
 
@@ -1433,6 +1809,12 @@ def _top(values) -> float:
     return max(ok) if ok else float("nan")
 
 
+def _near_top(column: str, value: float, top: float) -> bool:
+    if column == "ammo stress":
+        return value >= top * (1 - NEAR_TOP_MARGIN[column])
+    return value >= top - NEAR_TOP_MARGIN[column]
+
+
 def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: int,
                      anchor_world: World | None = None, heat_cool_while_firing=True) -> dict:
     """The kit matrix. The field anchor and the ambush enemies are `anchor_world`'s plain AR (the baseline), so
@@ -1463,23 +1845,44 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                                                   True, dr, heat_cool_while_firing)))
     anchor_fk = field_kit(aw, "AR anchor", ANCHOR, SECONDARY)
     enemy = make_kit(aw, "AR enemy", ANCHOR, SECONDARY)
-    fr, ar = _reps("field", scale), _reps("ambush", scale)
+    hill_refs = {r: make_kit(aw, f"{r} (plain)", r, SECONDARY) for r in HILL_REFERENCES}
+    fr, ar, ammo_reps = _reps("field", scale), _reps("ambush", scale), _reps("ammo", scale)
+    ammo_anchor = make_kit(aw, "AR ammo anchor", ANCHOR, SECONDARY)
+    cells.append((("ammo_anchor",), ("ammo", ammo_anchor, enemy, ammo_reps, heat_cool_while_firing)))
+    bolt_names = {n for n in names if any(world.cat._row(g.wid).get("reload_type") == "bolt"
+                                          for g in kits[n].guns)}
     for n in names:
         for N in FIELD_NS:
             cells.append((("field", N, n), ("field", fks[n], anchor_fk, N, fr, heat_cool_while_firing)))
         for d in DIST:
             cells.append((("ambush", d, n), ("ambush", kits[n], enemy, d, ar, heat_cool_while_firing)))
+        for ref, attacker in hill_refs.items():
+            cells.append((("hill", ref, n), ("hill_hold", kits[n], attacker, dr,
+                                           heat_cool_while_firing)))
+        if n not in bolt_names:
+            cells.append((("ammo", n), ("ammo", kits[n], enemy, ammo_reps, heat_cool_while_firing)))
     res = run_cells([j for _, j in cells], n_jobs)
-    duel, field, amb = {}, {}, {}
+    duel, field, amb, hill, ammo, ammo_caps, ammo_reasons = {}, {}, {}, {}, {}, {}, {}
+    ammo_anchor_kills = 0.0
+    ammo_anchor_caps = 0
+    ammo_anchor_reasons = {}
     for (key, _), r in zip(cells, res):
-        if key[0] == "field":
+        if key[0] == "ammo_anchor":
+            ammo_anchor_kills, ammo_anchor_caps, ammo_anchor_reasons = r
+        elif key[0] == "ammo":
+            ammo[key[1]], ammo_caps[key[1]], ammo_reasons[key[1]] = r
+        elif key[0] == "field":
             field.setdefault(key[2], []).append(r)
         elif key[0] == "ambush":
             amb.setdefault(key[2], []).append(r[0] + r[1])
+        elif key[0] == "hill":
+            hill.setdefault(key[2], []).append(r)
         else:
             mode, d, a, b = key
             duel[f"{mode}|{d}|{a}|{b}"] = r
             duel[f"{mode}|{d}|{b}|{a}"] = 1.0 - r
+    for n in bolt_names:
+        ammo[n], ammo_caps[n], ammo_reasons[n] = float("nan"), 0, {}
 
     def mean1(mode, d, n):
         v = [duel[f"{mode}|{d}|{n}|{o}"] for o in names if o != n]
@@ -1493,14 +1896,19 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                    "long contact": mean1("long", "mid", n),
                    "peek mid": mean1("peek", "mid", n), "field": B.geo_mean(field[n]),
                    "ambush": sum(amb[n]) / len(amb[n]),
-                   "shields": sum(mean1("shields", d, n) for d in DIST) / 3}
+                   "shields": sum(mean1("shields", d, n) for d in DIST) / 3,
+                   "hill hold": sum(hill[n]) / len(hill[n]),
+                   "ammo stress": ammo[n] / ammo_anchor_kills if ammo_anchor_kills else float("nan")}
     top = {c: _top([cols[n][c] for n in names]) for c in COLUMNS}
-    near = {n: [c for c in COLUMNS if cols[n][c] >= top[c] - NEAR_TOP_MARGIN[c]] for n in names}
+    near = {n: [c for c in COLUMNS if _near_top(c, cols[n][c], top[c])] for n in names}
     keys = {s.name: (s.name if s.combo else s.primary) for s in specs}   # stable ids: weapon_id, or the combo name
     return {"kits": names, "keys": keys, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
                                                "shields_perk": s.shield_perk,
                                                "combo": s.combo} for s in specs},
-            "columns": cols, "top": top, "near_top": near, "duels": duel}
+            "columns": cols, "top": top, "near_top": near, "duels": duel,
+            "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills,
+            "ammo_stress_cap_hits": ammo_caps, "ammo_stress_anchor_cap_hits": ammo_anchor_caps,
+            "ammo_stress_end_reasons": ammo_reasons, "ammo_stress_anchor_end_reasons": ammo_anchor_reasons}
 
 
 # --------------------------------------------------------------------------- #
@@ -1918,8 +2326,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                             "near the top in at least one scenario, or a trigger mechanic the arsenal lacks")
 
     # no_domination ---------------------------------------------------------------------------------
-    everywhere = [k for k in mc["kits"] if len(mc["near_top"][k]) == len(COLUMNS)]
-    before = [k for k in mb["kits"] if len(mb["near_top"][k]) == len(COLUMNS)]
+    def near_everywhere(matrix, name):
+        applicable = [column for column in COLUMNS
+                      if not math.isnan(matrix["columns"][name][column])]
+        return bool(applicable) and all(column in matrix["near_top"][name] for column in applicable)
+
+    everywhere = [k for k in mc["kits"] if near_everywhere(mc, k)]
+    before = [k for k in mb["kits"] if near_everywhere(mb, k)]
     tests["no_domination"] = _test(not everywhere, {"near_top_everywhere": everywhere, "baseline_near_top_everywhere": before,
                                                     "margin": NEAR_TOP_MARGIN},
                                    "no kit near the top (within the margin) in every scenario")
@@ -1970,9 +2383,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         mk = make_kit(world, f"{_name(world, wid)} (plain)", wid)
         ar = make_kit(world, "AR (plain)", ANCHOR)
         ar_ba = make_kit(world, "AR+BA", ANCHOR, perk="body_armor") if world.perks.has("body_armor") else ar
-        r, r_ba = run_cells([("rush", mk, ar, rush_reps, heat_cool_while_firing),
-                             ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing)], n_jobs)
-        tests["marksman_rush_counter"] = marksman_verdict(r, r_ba, mc["near_top"].get(subject_kit, []))
+        r, r_ba, r30, r_ba30 = run_cells([
+            ("rush", mk, ar, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[0]),
+            ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[0]),
+            ("rush", mk, ar, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[1]),
+            ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[1])], n_jobs)
+        tests["marksman_rush_counter"] = marksman_verdict(
+            r, r_ba, mc["near_top"].get(subject_kit, []), r30, r_ba30)
     else:
         tests["marksman_rush_counter"] = _test(None, {}, "not a marksman candidate")
     watch = marksman_watch(base, world, wid, rush_reps, n_jobs, heat_cool_while_firing)
@@ -1990,7 +2407,12 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "tests": tests, "pass": all(t["pass"] is not False for t in tests.values()),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
-        "marksman_watch": watch, "ttk": ttk_table(world, ttk_ids, reps_scale, heat_cool_while_firing),
+        "marksman_watch": watch,
+        "rush_table": rush_table(world, specs_c, rush_reps, n_jobs, heat_cool_while_firing),
+        "hill": hill_report(world, specs_c, _reps("duel", reps_scale), n_jobs, heat_cool_while_firing,
+                            anchor_world=base),
+        "pistol_finishers": pistol_finisher_report(world, reps_scale),
+        "ttk": ttk_table(world, ttk_ids, reps_scale, heat_cool_while_firing),
         "not_modelled": skipped, "assumptions": assumptions(haze_blind_ms, heat_cool_while_firing),
         "heat": heat_comparison,
         "haze": haze_report(world, _reps("duel", reps_scale), haze_blind_ms,
@@ -2040,16 +2462,20 @@ def op_rule(shipped: World, base: World, world: World, scope: list[str], changed
                  "no close or crit pull reaches the lowest pool a player can field on Standard or Shields, unless pickup-only")
 
 
-def marksman_verdict(r: dict, r_ba: dict, near_cols: list) -> dict:
+def marksman_verdict(r: dict, r_ba: dict, near_cols: list,
+                     r30: dict | None = None, r_ba30: dict | None = None) -> dict:
     """Tony 2026-10-17: strong until players learn to rush. Strong = peek-kill at or over MARKSMAN_STRONG_BAR
     AND the kit near the top in MARKSMAN_STRONG_COLUMN; counter = rush success at or over MARKSMAN_RUSH_BAR."""
     col_near = MARKSMAN_STRONG_COLUMN in near_cols
     strong = r["peek_kill"] >= MARKSMAN_STRONG_BAR and col_near
     counter = r["rush_success"] >= MARKSMAN_RUSH_BAR
     return _test(strong and counter, {
-        "vs_plain_ar": r, "vs_ar_body_armor": r_ba, "strong_column": MARKSMAN_STRONG_COLUMN,
+        "vs_plain_ar": r, "vs_ar_body_armor": r_ba,
+        "vs_plain_ar_30m": r30, "vs_ar_body_armor_30m": r_ba30,
+        "strong_column": MARKSMAN_STRONG_COLUMN,
         "near_top_in_strong_column": col_near, "strong_ok": strong, "counter_ok": counter,
-        "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR}, "rush_start_m": RUSH_START_M},
+        "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR},
+        "rush_start_m": RUSH_STARTS_M[0]},
         f"strong against non-rushers (peek-kill, and near the top in {MARKSMAN_STRONG_COLUMN!r}), beaten by rushers from 20 m")
 
 
@@ -2146,8 +2572,8 @@ def tree_dirty() -> bool:
 
 def _fmt(col: str, v: float) -> str:
     if v is None or (isinstance(v, float) and math.isnan(v)):
-        return "-"
-    return f"{v:.2f}" if col in ("field", "ambush") else f"{v:.0%}"
+        return "n/a" if col == "ammo stress" else "-"
+    return f"{v:.2f}" if col in ("field", "ambush", "ammo stress") else f"{v:.0%}"
 
 
 def matrix_markdown(m: dict) -> str:
@@ -2167,8 +2593,23 @@ def matrix_markdown(m: dict) -> str:
 
 
 def _num(v):
+    if v is None:
+        return "n/a"
     if isinstance(v, float):
+        if math.isnan(v):
+            return "n/a"
         return "inf" if math.isinf(v) else (round(v, 3) if abs(v) < 10 else round(v))
+    return v
+
+
+def _json_finite(v):
+    """Keep n/a cells as null when a verdict crosses the JSON output boundary."""
+    if isinstance(v, float) and not math.isfinite(v):
+        return None
+    if isinstance(v, dict):
+        return {key: _json_finite(value) for key, value in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_finite(value) for value in v]
     return v
 
 
@@ -2227,9 +2668,21 @@ def report_markdown(v: dict) -> str:
         a, b = mr["vs_plain_ar"], mr["vs_ar_body_armor"]
         out += ["## Marksman rush counter", "",
                 f"Against a plain AR: peek-kill {a['peek_kill']:.2f} (bar {MARKSMAN_STRONG_BAR}), near the top in "
-                f"{mr['strong_column']!r}: {mr['near_top_in_strong_column']}; rush success from {RUSH_START_M:g} m {a['rush_success']:.2f} (bar {MARKSMAN_RUSH_BAR}). "
+                f"{mr['strong_column']!r}: {mr['near_top_in_strong_column']}; rush success from {RUSH_STARTS_M[0]:g} m {a['rush_success']:.2f} (bar {MARKSMAN_RUSH_BAR}). "
                 f"Against an AR with Body Armor: peek-kill {b['peek_kill']:.2f}, rush success {b['rush_success']:.2f}.", ""]
+        if mr.get("vs_plain_ar_30m"):
+            out += [f"From {RUSH_STARTS_M[1]:g} m: plain AR rush success "
+                    f"{mr['vs_plain_ar_30m']['rush_success']:.2f}; AR with Body Armor "
+                    f"{mr['vs_ar_body_armor_30m']['rush_success']:.2f}. The verdict bar remains at {RUSH_STARTS_M[0]:g} m.", ""]
     moved_m = {w: r for w, r in (v.get("marksman_watch") or {}).items() if r["moved"]}
+    if v.get("rush_table"):
+        out += ["## Marksman rushes", "", f"The verdict bar uses the {RUSH_STARTS_M[0]:g} m plain AR pair. Both starts are reported below.", "",
+                "| marksman kit | rusher | start (m) | rush success | peek kill |",
+                "|---|---|---:|---:|---:|"]
+        for row in v["rush_table"]:
+            out.append(f"| {row['marksman']} | {row['rusher']} | {row['start_m']:g} | "
+                       f"{row['rush_success']:.2f} | {row['peek_kill']:.2f} |")
+        out.append("")
     if moved_m:
         out += ["## Marksman numbers this candidate moves", "",
                 "The candidate is not that marksman, but it moves its rush-counter numbers (against each world's AR):", ""]
@@ -2237,6 +2690,53 @@ def report_markdown(v: dict) -> str:
             b, c = r["baseline"], r["candidate"]
             out.append(f"- {w}: peek-kill {b['peek_kill']:.2f} -> {c['peek_kill']:.2f}, rush success "
                        f"{b['rush_success']:.2f} -> {c['rush_success']:.2f}")
+        out.append("")
+    if v.get("hill"):
+        hill = v["hill"]
+        out += ["## Hill hold", "", f"P(holder kills both close attackers). The second arrives {HILL_SECOND_ATTACKER_MS / 1000:g} s later.", "",
+                "| holder | attacker | kill both |", "|---|---|---:|"]
+        for row in hill["hold"]:
+            out.append(f"| {row['holder']} | {row['attacker']} | {row['kill_both']:.2f} |")
+        out += ["", "## Hill overwatch", "", "Long-gun peek kill against a holder who cannot leave the circle.", "",
+                "| long gun | holder | peek kill |", "|---|---|---:|"]
+        for row in hill["overwatch"]:
+            out.append(f"| {row['long_gun']} | {row['holder']} | {row['peek_kill']:.2f} |")
+        out += ["", "## Hill contest", "", "Both kits start alert inside the circle at close range.", "",
+                "| kit | opponent | win |", "|---|---|---:|"]
+        for row in hill["contest"]:
+            out.append(f"| {row['kit']} | {row['opponent']} | {row['win']:.2f} |")
+        out.append("")
+    if v.get("pistol_finishers"):
+        out += ["## Pistol finishers", "", f"The primary runs dry with {B.R10_FINISH_POOL_HP:g} HP left on the target. Times start at the dry click.", "",
+                "| primary | pistol | swap and finish (ms) | reload and finish (ms) | R10a bar (ms) | beats reload |",
+                "|---|---|---:|---:|---:|---|"]
+        for row in v["pistol_finishers"]:
+            out.append(f"| {row['primary']} | {row['pistol']} | {_num(row['finish_ms'])} | "
+                       f"{_num(row['reload_finish_ms'])} | {row['bar_ms']:g} | {row['beats_staying']} |")
+        out.append("")
+    matrix = v["matrix"]["candidate"]
+    if matrix.get("ammo_stress_kills"):
+        out += ["## Ammo stress", "",
+                f"Mean kills in one life at mid range. The holder has {REAL_AIM:g} aim and heals between fights. "
+                f"Plain AR attackers have {AMMO_STRESS_ATTACKER_AIM:g} aim. Their rounds land only while the holder reloads, "
+                "vents, is heat-locked, swaps or has no rounds. "
+                f"One AMMO pickup tops held reserves after {AMMO_PICKUP_AFTER_KILLS} kills. "
+                "The chain reload can be interrupted only in ammo stress; firing between shells is unproven. "
+                "Bolt kits are n/a because their whole cycle is down time, so this column measures exposure instead of ammunition.", "",
+                f"Plain AR anchor: {matrix['ammo_stress_anchor_kills']:.2f} kills; "
+                f"attacker cap hit in {matrix['ammo_stress_anchor_cap_hits']} reps. "
+                f"End reasons: {matrix['ammo_stress_anchor_end_reasons']}.", "",
+                "| kit | kills | ratio to AR | dry | died reloading | died heat-locked or venting | died swapping | cap |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|"]
+        for name in matrix["kits"]:
+            if matrix["columns"][name]["ammo stress"] is None or math.isnan(matrix["columns"][name]["ammo stress"]):
+                out.append(f"| {name} | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
+                continue
+            reasons = matrix["ammo_stress_end_reasons"][name]
+            out.append(f"| {name} | {matrix['ammo_stress_kills'][name]:.2f} | "
+                       f"{matrix['columns'][name]['ammo stress']:.2f} | "
+                       f"{reasons['dry']} | {reasons['died_reloading']} | "
+                       f"{reasons['died_heat_locked_or_venting']} | {reasons['died_swapping']} | {reasons['cap']} |")
         out.append("")
     if v.get("sidearm_r10"):
         sr = v["sidearm_r10"]
@@ -2246,7 +2746,9 @@ def report_markdown(v: dict) -> str:
                 + ", ".join(f"{k} {v2:.0%}" for k, v2 in sr["r10b"].items()), ""]
     out += ["## Dominance matrix, candidate world", "",
             "Bold = near the top (within the margin of the column's best). 1v1 columns are mean win rates against "
-            "every other kit; field is the kill-rate ratio against AR carriers; ambush is P(kill both) + P(kill one or more).",
+            "every other kit; field is the kill-rate ratio against AR carriers; ambush is P(kill both) + P(kill one or more). "
+            "Hill hold is P(kill both sequential attackers); ammo stress is kills divided by the plain AR anchor. "
+            "Bolt kits have no ammo stress score.",
             "", matrix_markdown(v["matrix"]["candidate"]), "", "## Dominance matrix, baseline", "",
             matrix_markdown(v["matrix"]["baseline"]), ""]
     if v.get("haze"):
@@ -2387,7 +2889,7 @@ def main(argv=None) -> int:
     md = report_markdown(v)
     sys.stdout.write(md)
     if args.out:
-        Path(args.out).write_text(json.dumps(v, indent=1, default=str))
+        Path(args.out).write_text(json.dumps(_json_finite(v), indent=1, default=str, allow_nan=False))
     if args.report:
         Path(args.report).write_text(md)
     if args.record:

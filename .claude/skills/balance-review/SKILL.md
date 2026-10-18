@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 3. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 8. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -72,7 +72,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 3 uses these models:
+Scenario version 8 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
   rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
@@ -111,6 +111,43 @@ Scenario version 3 uses these models:
   the catalogue cooling rate; `--heat-cool-while-firing off` disables cooling entirely.
   A lockout resets heat to zero.
   Heated sidearm R10 pairs use the kit engine. The CI rule engine has no heat state.
+- The report checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from 20 m and 30 m.
+  `marksman_rush_counter` still gates the plain AR rush from 20 m. The report shows 30 m beside it.
+- `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
+  The second attacker arrives 3,500 ms after the first. The holder fights the first attacker alone until then.
+  The holder is alert and can fire when the second attacker arrives, with no reaction delay.
+  The second attacker waits a reaction delay after arrival before firing.
+  Each reference attacker carries the baseline world's Deagle. The holder cannot leave the circle.
+  The report also shows long-range overwatch by marksmen, combo kits and the AR without escape.
+  Close contests start with both kits alert.
+- `ammo stress` is kills in one life against a mid-range stream of plain AR attackers, divided by the
+  baseline plain AR kit's kills under the same rules. The holder fires at 0.4 aim and the attackers at
+  the invented 0.2 aim. Range-band fit is off, so the column compares ammunition rather than band reach.
+  The holder's pool heals after each kill. Ammunition, reloads and heat persist.
+  The holder wins the exchange while able to fire. Incoming rounds land only during reload, vent,
+  heat lock, swap or dry down time (`AMMO_STRESS_DOWNTIME_ONLY`). Bolt kits, including combos with a bolt
+  slot, score n/a. Their whole bolt cycle is down time, so this rule measures exposure instead of ammunition.
+  Only ammo stress credits each chain-reload shell separately and lets the holder fire between shells.
+  This Shotgun behaviour is unproven on a gun. Other scenarios credit the full reload at completion.
+  The next attacker arrives 1,500 ms
+  after the last fight. An attacker arriving during down time starts after a normal reaction delay.
+  Otherwise, it reacts 1,000 ms after the holder's first landed hit.
+  After four kills, one AMMO pickup tops each held slot's reserve to its compiled spawn reserve.
+  A pending reload delays the top-up until that reload ends. The pickup leaves the magazine alone.
+  The holder reloads or vents the primary under fire. It draws the secondary when the primary has no rounds.
+  The model caps the stream at 128 attackers and
+  reports how many reps reach the cap. Direct calls without cap reporting raise an error on a cap hit.
+  A life ends when the holder dies during down time or all held slots have no rounds. The report counts
+  dry, reload, heat or vent, swap and cap endings per kit. A fight can last 120 seconds. An unresolved
+  fight raises an error instead of ending the life.
+- The pistol finisher report pairs every visible sidearm with every shipped primary.
+  It starts when the primary runs dry with 35 HP left at close range. It compares swapping and finishing with reloading
+  the primary, and reports the R10a 1,200 ms bar. The pistol path uses R10a's sampled median, including misses and
+  reaction, plus the kit swap. The primary reload path uses the expected finish time and mean reaction.
+  The sidearm `viable` test keeps its existing rule.
+- `hill hold` uses a 0.05 absolute near-top margin. `ammo stress` uses a 0.10 relative margin.
+  Both enter `value_addition`,
+  `no_domination` and the last-near-top check in `balance_kept` through the matrix.
 
 Read `assumptions()` in each verdict for the exact values used by that run. Treat `--haze-blind-ms` as a
 scenario parameter, and report its value with the Haze comparison.

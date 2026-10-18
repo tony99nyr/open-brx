@@ -36,8 +36,10 @@ balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/ba
 bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damage bolt action with a 2.2 s bolt
 (Tony's call, `docs/balance-decisions.md`); he judges it in the next real match. The balance sims now model heat,
 the secondary slot, Armour Piercing, the Toxin Rifle, the Haze, melee and the field's pace (scenario version 2).
-**Next:** sim gaps branch B (rush from 20 and 30 m at every marksman, KOTH, ammo stress, the pistol finisher), then
-the sweep re-run. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+The review also gained rush from 20 and 30 m at every marksman, a KOTH hill hold column, an ammo stress column and
+the pistol finisher (scenario version 8).
+**Next:** sim gaps branch C (the Codex sim critique, `~/reviews-2026-10-18-sandbox/sim-critique.md`), then the sweep
+re-run. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony.
