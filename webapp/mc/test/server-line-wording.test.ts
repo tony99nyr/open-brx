@@ -21,6 +21,7 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
   ['GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT', 'blocker', 'armory-guncard-link-lost', 'amber'],
   ['IDENTITY REVERTED: RE-STAMP $NAME', 'blocker', 'armory-blocker-identity-reverted', 'amber'],
   ['GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH', 'blocker', 'armory-blocker-gun-did-not-answer', 'amber'],
+  ['GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH', 'blocker', 'armory-blocker-gun-did-not-answer', 'amber'],
   ['ACKED AN OLDER CONFIG (9f2a1c04): RE-PUSH', 'blocker', 'armory-blocker-stale-ack', 'amber'],
   ['GUN ECHO ≠ CONFIG (WEAPON 8/24 ECHOED, 8/26 EXPECTED, MAG/RESERVE): RE-PUSH', 'blocker', 'armory-blocker-echo-mismatch', 'red'],
   ['GUN CONFIG ≠ PUSHED HEAD (HP 44 READ BACK, 45 PUSHED): RE-PUSH', 'blocker', 'armory-blocker-gun-config-fault', 'red'],

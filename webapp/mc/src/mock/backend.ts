@@ -9,7 +9,7 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATIO
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
-  OBJECTIVE_MODES, STATION_NO_HILL,
+  OBJECTIVE_MODES, STATION_NO_HILL, GUN_DID_NOT_TAKE_CONFIG,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
 import { defaultModeParams, mergeModeParams } from '../rules/modeParams';
@@ -128,7 +128,7 @@ const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'readback' | 'n
   'GUN-A': 'stale', 'GUN-B': 'echo', 'GUN-C': 'pool', 'GUN-G': 'readback', 'GUN-E': 'noecho',
 };
 // F549: state.py GUN_DID_NOT_TAKE_CONFIG, verbatim
-const DEMO_NO_CONFIG_LINE = 'GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH';
+const DEMO_NO_CONFIG_LINE = GUN_DID_NOT_TAKE_CONFIG;
 const DEMO_OLD_CFG = '9f2a1c04';
 const DEMO_STALE_LINE = `${STALE_ACK_FAULT} (${DEMO_OLD_CFG}): RE-PUSH`;
 const DEMO_ECHO_LINE = `${ECHO_FAULT} (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH`;
@@ -907,7 +907,8 @@ export class MockBackend implements Api {
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
-      const proof = red || confirming || flapping ? null : this.pushed ? 'echo' as const : 'link' as const;
+      // F549: a no_config ack proves nothing by echo; the link still stands (state.py leaves the headset to it)
+      const proof = red || confirming || flapping ? null : this.pushed && this.faultOf(sticker) !== 'noconfig' ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and

@@ -472,6 +472,17 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
     m.unmount();
   });
 
+  it('F549: a no_config ack is the kit, so LOBBY never says "headset off" about it', async () => {
+    const { d, state: base } = await lobbyWith(
+      { 0: { status: 'red', blockers: ['GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH'] } }, { all_acked: false });
+    const [kit] = base.players;
+    const acks = { ...base.lobby.acks, [kit.player_id]: { ok: false, err: 'no_config', config_id: base.config.config_id } };
+    const state = { ...base, lobby: { ...base.lobby, acks, all_acked: false } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text()).not.toContain(`No config echo from ${kit.display}`);
+    m.unmount();
+  });
+
   it('mixed failed and pending acknowledgements name both guns and keep their conditions distinct', async () => {
     const { d, state: base } = await lobbyWith(
       { 0: { status: 'red', blockers: ['GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH'] } },
@@ -636,6 +647,7 @@ describe('?mock&faults=noconfig · F549, the gun loaded nothing', () => {
     const row = state.readiness.board.find(r => r.gun_id === 'GUN-A')!;
     expect(row.blockers).toContain('GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH');
     expect(row.headset).not.toBe('absent');
+    expect(row.headset_proof, 'a no_config ack proves nothing by echo: the link stands').toBe('link');
     expect(state.lobby.acks[state.players.find(p => p.gun_id === 'GUN-A')!.player_id]).toMatchObject({ ok: false, err: 'no_config' });
   });
 });

@@ -147,7 +147,8 @@ State {
                                                // its own. `absent` is unchanged: the head echoed nothing, and `GUN DID NOT ANSWER CONFIG:
                                                // CHECK THE HEADSET IS ON, THEN RE-PUSH` stays a blocker that outranks any link evidence
                                                // F549: an ack `err: "no_config"` (the gun answered a zeroed `$LCD`, so it loaded nothing) is its own blocker,
-                                               // `GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH`, and leaves `headset` as the link proved it
+                                               // `GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH` (forced, as GUN DID NOT ANSWER), and leaves `headset` as the
+                                               // echo or link proved it, or unknown; LOBBY never reads it as "headset off"
   options: { log_sync: "auto" | "manual" },    // A25 (GET/PUT /api/options). "auto" = MC asks every player node for its log at
                                                // recap, on each offer, and on the reconnect of a node whose last-match log never
                                                // arrived; "manual" = only the operator's LOGS button ever asks.
