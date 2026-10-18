@@ -89,6 +89,8 @@ struct StationAssignment {
   int id = 0;
   int threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN;  // dBm; parse_station_config resolves 0/absent to stick_default_threshold_dbm(kind)
   bool threshold_defaulted = false;  // MC sent 0/absent: `threshold` is the Stick's default, not MC's
+  int capture_s = 0;  // F559: MC's hill pace, 3-60 s; 0 = absent, the Stick keeps its own
+  int net_cap = 0;    // F559: MC's net cap, 1-6; 0 = absent
   int game = 0;         // per-match byte; 0 = "any" (v1, unscoped)
   std::vector<int> valid_ids;
   StationItem item;  // A56, additive: absent on an older MC or a non-powerup kind
@@ -464,6 +466,12 @@ inline StationAssignment parse_station_config(const json::Value& body) {
         a.valid_ids.push_back((int)x.num);   // station ids, so 1..65535 as the id rule above
   }
   if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
+  {  // F559 (stationconfig.js): integers in range, else absent
+    const json::Value& cs = body.get("capture_s");
+    if (json_is_int(cs) && cs.num >= 3 && cs.num <= 60) a.capture_s = (int)cs.num;
+    const json::Value& nc = body.get("net_cap");
+    if (json_is_int(nc) && nc.num >= 1 && nc.num <= 6) a.net_cap = (int)nc.num;
+  }
   if (body.has("ends_in_ms")) {
     const json::Value& end = body.get("ends_in_ms");
     const double d = end.type == json::Value::Type::Number ? end.num : -1.0;
@@ -520,6 +528,8 @@ inline std::string station_config_storage_body(const StationAssignment& a) {
   if (a.tx_power >= 0) j += ",\"tx_power\":" + json::quote(tx_power_name(a.tx_power));
   if (a.duration_ms > 0) j += ",\"duration_ms\":" + std::to_string(a.duration_ms);
   j += ",\"game\":" + std::to_string(a.game);
+  if (a.capture_s) j += ",\"capture_s\":" + std::to_string(a.capture_s);   // F559: a restart keeps MC's pace
+  if (a.net_cap) j += ",\"net_cap\":" + std::to_string(a.net_cap);
   if (a.kind == "control" && (a.ends_in_ms >= 0 || a.duration_ms > 0 || a.timed_hill)) j += ",\"timed_hill\":true";
   j += ",\"valid_ids\":[";
   for (size_t i = 0; i < a.valid_ids.size(); i++) {
@@ -1484,6 +1494,9 @@ class StationLink {
     // logic below -- a same-game re-push (MC's mid-match lock carrier) must change the lock and
     // nothing else, and lock_s 0 (or absent) unlocks at once.
     lock_.start(a.lock_s, received_at_ms);
+    // F559: MC's hill pace wins on every arming that carries it; absent keeps the Stick's own
+    if (a.kind == "control" && a.capture_s) hill_.capture_s = a.capture_s;
+    if (a.kind == "control" && a.net_cap) hill_.net_cap = a.net_cap;
     // Restart survival: the first MC config after a boot-time restore is MC's answer to "I am back".
     // It replaces the restored copy (with the current lock), and from here on `restored()` is false.
     bool after_restore = restored_;
@@ -1580,6 +1593,10 @@ class StationLink {
     // with (`actions_dropped_game`) and MC shows the count only while that is the current game.
     if (game_changed || kind_or_id_changed) pending_actions_.reset_dropped();
     assignment_ = a;
+    if (a.kind == "control") {  // F559 (Opus review): the saved copy carries the pace the Stick RUNS, so a lock-only re-push
+      assignment_.capture_s = hill_.capture_s;   // with no pace cannot save it away; a same-value re-push still compares equal
+      assignment_.net_cap = hill_.net_cap;
+    }
     lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);
     state_ = LinkState::ASSIGNED;
@@ -1693,6 +1710,8 @@ class StationLink {
     heard_down_.clear();
     powerup_ended_ = false;  // a fresh powerup schedule (assume_available below) is never restored ended
     assignment_ = a;
+    if (a.kind == "control" && a.capture_s) hill_.capture_s = a.capture_s;   // F559: the boot path brings MC's pace back
+    if (a.kind == "control" && a.net_cap) hill_.net_cap = a.net_cap;
     if (a.kind == "control" && a.timed_hill) hill_.freeze();
     // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
     // NVS copy (restore_range), with its age unknown.

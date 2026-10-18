@@ -173,3 +173,26 @@ test('F558: status.control carries the inputs: net, counts and lead', async () =
   assert.deepEqual(empty.counts, {});
   assert.equal(empty.lead, null, 'nobody counted: no lead');
 });
+
+test('F559: MC sets the hill pace when the arming carries it, and an arming without it keeps the station own', async () => {
+  await armFresh({ capture_s: 5, net_cap: 2 });
+  assert.equal(api.settings.captureS, 5);
+  assert.equal(api.settings.netCap, 2);
+  await api.applyStationConfig({ ...hill, game, lock_s: 30 });   // a re-send with no pace
+  assert.equal(api.settings.captureS, 5, 'an arming without a pace changed it');
+  const now = Date.now();
+  for (let t = 0; t <= 5_250; t += 250) api.controlTick(now + t);   // RED alone: 5 s at net 1 takes it
+  assert.equal(api.point.owner, RED, 'the pushed pace did not reach the point');
+  await api.applyStationConfig({ ...hill, game, capture_s: 2, net_cap: 9 });   // out of range: ignored
+  assert.equal(api.settings.captureS, 5);
+  assert.equal(api.settings.netCap, 2);
+});
+
+test('F559: a pushed net cap limits a crowd on the point', async () => {
+  await armFresh({ capture_s: 10, net_cap: 1 });
+  api.presence.players = () => [1, 2, 3].map(id => ({ id, team: RED, state: 1, present: true, inCircle: true, fading: false }));
+  const now = Date.now();
+  for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
+  assert.equal(api.point.net, 1, 'three RED at net_cap 1 convert at net 1');
+  assert.ok(Math.abs(api.point.progress - 20) < 1e-6, `2 s at net 1 builds 20%: ${api.point.progress}`);
+});

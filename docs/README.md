@@ -102,6 +102,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the Updated stamp, id, 
   parity targets it sets. It is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)**: the Balance rules table, the damage model and the balance rationale
   for every shipped weapon.
+- **[balance-decisions.md](balance-decisions.md)**: the balance decision log. One section per reviewed weapon,
+  weapon change or perk change, with the review verdict and Tony's call (`mcp/tools/balance_review.py`).
 - **[ir-effects-design.md](ir-effects-design.md)**: the `$SIR` layer and the IR-effects study. It covers what a
   victim's row does to a hit, the weapon axes and archetypes that opens, and why range is a carrier frequency.
 - **[perk-design.md](perk-design.md)** — the third kit slot: the rules a perk has to obey here, the core set and
