@@ -7,7 +7,7 @@ fix. How a bench run works with Tony: the [`bench-session` skill](../.claude/ski
 index is [`bench-plan.md`](bench-plan.md).
 
 1. **P1, about 70 min**: a large reserve, the SMG frame, the ALT swallow matrix, the lever on a full magazine, the charge rifle.
-2. **P2, about 30 min**: the hill off the ground, the shotgun hold, the Desert Eagle reload time.
+2. **P2, about 40 min**: the hill off the ground, the shotgun hold, the Desert Eagle reload time, the single-shot retune.
 3. **P3, about 25 min**: the melee range ladder and the single-shot fire rate.
 
 The lanes add their own bench rows for the field fixes to P2 as the fixes land.
@@ -84,7 +84,7 @@ Log the heat and the time until a reload takes, if one does. End with `$AMMO,0,<
 recipe (F226: only an `$AMMO` refill clears the lock), then re-arm. **Control:** from exactly 10 rounds, a charge
 fires. Rows: F226, F238.
 
-## P2: the hill and the reloads (about 30 min)
+## P2: the hill and the reloads (about 40 min)
 
 **P2.1. The hill off the ground (20 min).** *Impact: a KOTH hill on grass counts players only to about 5 m.* The
 black Pixel 5 as the hill, the green Pixel 5 as the only player phone. Walk the C.5 ladder (1, 5, 7.5, 9 and 12 m
