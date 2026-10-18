@@ -233,8 +233,12 @@ describe('BUILD — a pistols-only round, players pick (field 2026-10-17)', () =
     await m.click('PISTOL ROUND');
     const pistols = d.weapons.filter(w => w.role === 'sidearm' && !w.pickup_only);
     expect(pistols.length, 'setup: the demo catalogue has pistols').toBeGreaterThan(0);
-    for (const w of pistols) expect(m.text(), `${w.name} is offered as a primary`).toContain(w.name.toUpperCase());
-    for (const w of d.weapons.filter(x => x.lethal === false)) expect(m.text()).not.toContain(w.name.toUpperCase());
+    const only = m.find('[data-testid="slot-only-row"]')[0]?.textContent ?? '';
+    for (const w of pistols) expect(only, `${w.name} is offered as a primary`).toContain(w.name.toUpperCase());
+    for (const w of d.weapons.filter(x => x.lethal === false)) expect(only).not.toContain(w.name.toUpperCase());
+    const types = m.find('[data-testid="slot-type-row"]')[0]?.textContent ?? '';
+    expect(types).toContain('SIDEARM');
+    expect(types, 'a support weapon is never a primary, so no SUPPORT chip').not.toContain('SUPPORT');
     m.unmount();
   });
 });

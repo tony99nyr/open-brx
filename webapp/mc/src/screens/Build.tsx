@@ -27,7 +27,10 @@ const weaponCatalogue = (weapons: WeaponView[], slot: 'primary' | 'secondary'): 
     // A pistol IS offered (field 2026-10-17, Tony: "a first match which was pistols only ... I could not select
     // pistols"): MC arms a pistol primary (loadout.md, a pistol round), and its pool and piece checks accept one.
     .filter(w => slot === 'secondary' || w.lethal !== false)
-    .map(w => ({ id: w.weapon_id, name: w.name, types: w.types ?? [] }));
+    // On PRIMARY a pistol counts only under SIDEARM (review): its `close` type would otherwise put pistols into a CLOSE
+    // RANGE primary, which an old CLOSE piece never meant (pieces.py keeps that meaning on load).
+    .map(w => ({ id: w.weapon_id, name: w.name,
+      types: slot === 'primary' && (w.types ?? []).includes('sidearm') ? ['sidearm'] : (w.types ?? []) }));
 const perkCatalogue = (perks: PerkView[]): CatalogueRow[] =>
   perks.filter(p => !p.hidden).map(p => ({ id: p.perk_id, name: p.name }));
 

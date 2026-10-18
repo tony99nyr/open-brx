@@ -1157,9 +1157,15 @@ def test_type_token_migration_keeps_sidearms_out_of_primary_and_leaves_perks_alo
 
 
 def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
-    """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
+    """A token that expands to nothing for its slot must not migrate to an empty (unrestricted) list. Since field
+    2026-10-17 a PRIMARY ["sidearm"] means the pistols (a pistols-only round), so the empty case is a type no visible
+    weapon carries."""
     from brx_mcp.mc.pieces import _migrate_type_tokens
-    assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]
+    pistols = sorted(w["weapon_id"] for w in WeaponCatalog().all()
+                     if "sidearm" in (w.get("types") or []) and not w.get("pickup_only"))
+    assert pistols, "the catalogue has no visible pistol: this test proves nothing"
+    assert sorted(_migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"]) == pistols
+    assert _migrate_type_tokens("primary", {"only_ids": ["nosuchtype_xyz"]})["only_ids"] == ["nosuchtype_xyz"]
 
 
 def test_clearing_the_hold_target_on_pick_clears_it_in_the_config():
