@@ -595,3 +595,8 @@ def test_f552_the_operator_is_told_once_in_the_feed():
     s.note_new_identity()
     lines = [f["text"] for f in s.feed if "NEW MC IDENTITY" in (f.get("text") or "")]
     assert lines == ["NEW MC IDENTITY: EVERY PHONE WILL NEED ONE TAP OR THE QR"], lines
+    # A restored feed from an earlier run that already carries the line must not hide a new rotation in this run
+    t = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    t.feed = [{"t_match_s": 0, "tag": "ALERT", "kind": "alert", "text": Session.NEW_IDENTITY_LINE}]
+    t.note_new_identity()
+    assert sum(f.get("text") == Session.NEW_IDENTITY_LINE for f in t.feed) == 2, t.feed
