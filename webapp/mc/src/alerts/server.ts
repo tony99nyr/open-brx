@@ -142,6 +142,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'GUN LINK LOST', id: 'armory-guncard-link-lost' },
   { head: 'IDENTITY REVERTED', id: 'armory-blocker-identity-reverted' },
   { head: 'GUN DID NOT ANSWER CONFIG', id: 'armory-blocker-gun-did-not-answer' },
+  { head: 'GUN DID NOT TAKE THE CONFIG', id: 'armory-blocker-gun-did-not-answer' },   // F549: same family and colour
   { head: STALE_ACK_FAULT, id: 'armory-blocker-stale-ack' },
   { head: ECHO_FAULT, id: 'armory-blocker-echo-mismatch' },
   { head: GUN_CONFIG_FAULT, id: 'armory-blocker-gun-config-fault' },

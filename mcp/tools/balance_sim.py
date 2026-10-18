@@ -44,6 +44,8 @@ MECHANICS MODELLED
   moment a contact opens, then taps (``tap_damage()``, 1 round) at ``CHARGE_TAP_CADENCE_MS``.
 - Charge without a tap (Rail Gun, Laser Cannon): every shot, the first included, waits t14.
 - ``reload_type: chain`` (Shotgun): ``reload_ms`` is per shell.
+- Single shot (t20 = 7): the next round fires on the first sampled trigger press at or after t14
+  (``semi_interval``, ``--pull-ms``; field 2026-10-17).
 - The DoT block: ``per_tick`` every ``tick_ms`` for ``duration_ms``, refreshed on each hit, never
   stacked. A tick takes damage from the outermost non-empty layer only, with no spill
   (spec/node.md §3.17). A stacking DoT (``stack: true``) or a non-refreshing one (``refresh: false``)
@@ -112,7 +114,8 @@ from dataclasses import dataclass, field, replace
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
-from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, WeaponCatalog  # noqa: E402
+from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, PULL_SIGMA, SEMI_PULL_MS,  # noqa: E402
+                                WeaponCatalog)
 from brx_mcp.mc.types import RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG  # noqa: E402
 
 # --------------------------------------------------------------------------- #
@@ -142,6 +145,24 @@ INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
 DEFAULT_N = tuple(range(2, 11))
 DEFAULT_HIT_PROBS = (0.35, 0.5, 0.65)
+# A single-shot weapon (t20 = 7) fires on the first trigger press at or after t14 (`compile.SEMI_PULL_MS` holds the
+# field evidence). Here the pull gaps are SAMPLED, lognormal with log-sigma `PULL_SIGMA` and mean `--pull-ms`
+# (default `SEMI_PULL_MS`); 0 restores the old model, a press every t14.
+DEFAULT_PULL_MS = float(SEMI_PULL_MS)
+SEMI_MODE = WeaponCatalog._SEMI_MODE
+
+
+def semi_interval(rng: random.Random, fire_ms: float, pull_ms: float) -> float:
+    """ms from one single-shot round to the next: the sum of lognormal pull gaps (mean `pull_ms`) until it reaches
+    `fire_ms` (t14). `pull_ms` <= 0 gives `fire_ms` exactly (a perfect trigger finger)."""
+    if pull_ms <= 0:
+        return fire_ms
+    assert rng is not None, "a sampled pull needs the caller's rng"
+    mu = math.log(pull_ms) - PULL_SIGMA * PULL_SIGMA / 2
+    t = 0.0
+    while t < fire_ms:
+        t += rng.lognormvariate(mu, PULL_SIGMA)
+    return t
 
 
 def p_join(n: int) -> float:
@@ -183,6 +204,7 @@ class SimConfig:
     match_ms: float = 150_000.0
     contact_mean_s: float = 2.0
     gap_mean_s: float = 3.0
+    pull_ms: float = DEFAULT_PULL_MS   # a single-shot weapon's mean trigger-pull gap (`semi_interval`)
 
 
 @dataclass(frozen=True)
@@ -203,6 +225,7 @@ class WeaponModel:
     fire_ms: float          # t14
     burst_gap_ms: float     # t23 on a burst weapon, else 0
     charged: bool           # t20 in the charge modes
+    semi: bool              # t20 = 7: one round a pull, so the pull rate caps the cycle (`semi_interval`)
     mag: int
     reserve: int
     reload_ms: float
@@ -248,6 +271,7 @@ def weapon_model(cat: WeaponCatalog, weapon_id: str) -> WeaponModel:
         tap_dmg=cat.tap_damage(weapon_id), rounds_per_charge=cat.rounds_per_charge(weapon_id),
         fire_ms=float(cat.fire_ms(weapon_id)), burst_gap_ms=float(burst),
         charged=cat._frame_int(weapon_id, "mode") in cat._CHARGE_MODES,
+        semi=cat._frame_int(weapon_id, "mode") == SEMI_MODE,
         mag=mag, reserve=reserve, reload_ms=float(reload_ms),
         chain_reload=row.get("reload_type") == "chain",
         crit_pct=int(row.get("crit_pct") or 0),
@@ -418,6 +442,8 @@ class Match:
             if w.burst_gap_ms:
                 p.burst_i += 1
                 interval = w.burst_gap_ms if p.burst_i % 3 == 0 else w.fire_ms
+            elif w.semi:
+                interval = semi_interval(self.rng, w.fire_ms, self.cfg.pull_ms)
             else:
                 interval = w.fire_ms
         p.ammo -= cost
@@ -929,7 +955,7 @@ def _accuracy_pct(profile: RecoilProfile | None, state: str) -> float:
 def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
              profile: RecoilProfile | None, aim_factor: float, *, burst_min: int | None = None,
              burst_max: int | None = None, pause_min_ms: float = 0.0, pause_max_ms: float = 0.0,
-             rng: random.Random | None = None, crit_pct: int = 0):
+             rng: random.Random | None = None, crit_pct: int = 0, pull_ms: float = 0.0):
     """Yields `(t, hit_p, dmg)` for one Assault Rifle combatant, in firing order. Full auto
     (`burst_min` is None) empties the magazine in one unbroken hold: the recoil ladder is never
     released, so it walks up and stays wherever the round count lands it, all the way to the reload.
@@ -967,7 +993,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             yield (t, hit_p, round_dmg)
             ammo -= 1
             state, burst = _recoil_step(profile, state, burst)
-            t += fire_ms
+            t += semi_interval(rng, fire_ms, pull_ms) if pull_ms > 0 else fire_ms   # `pull_ms`: a single-shot weapon
         if not burst_mode:
             continue   # full auto never releases; the mag running dry is the only interruption
         if state == "crisp":
@@ -1007,9 +1033,10 @@ def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charg
 
 
 def _pump_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
-                aim_factor: float):
+                aim_factor: float, *, rng: random.Random | None = None, pull_ms: float = 0.0):
     """Yields `(t, hit_p, dmg)` for a single-word-per-pull, no-recoil, chain-reload combatant (the
-    Shotgun): a fixed `fire_ms` between pulls (t14, the gun-enforced PUMP gap, not a recoil model --
+    Shotgun): `fire_ms` between pulls, or with `pull_ms` the first sampled press at or after it
+    (`semi_interval`) (t14, the gun-enforced PUMP gap, not a recoil model --
     weapon-design.md's Balance rules table row 6/R8), reload PER SHELL (`reload_type: chain`) once the
     tube runs dry, same convention as `Match._start_reload()`'s chain branch."""
     ammo, res = mag, reserve
@@ -1023,7 +1050,7 @@ def _pump_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: 
             ammo, res = got, res - got
         yield (t, aim_factor, dmg)
         ammo -= 1
-        t += fire_ms
+        t += semi_interval(rng, fire_ms, pull_ms) if pull_ms > 0 else fire_ms
 
 
 def _burst3_shots(first_time: float, dmg: int, fire_ms: float, gap_ms: float, mag: int, reserve: int,
@@ -1167,12 +1194,14 @@ class RecoilDuelModel:
     # F310: which health preset `pool_hp` came from (`compile.HEALTH_PRESETS`): the rules are Tony's at Standard,
     # and F310 asks whether they hold, looser, on Shields (health + shield) and Hardcore (health alone).
     health_preset: str = "standard"
+    pull_ms: float = DEFAULT_PULL_MS   # the single-shot combatants' mean trigger-pull gap (`semi_interval`)
 
     @classmethod
     def from_catalog(cls, cat: WeaponCatalog, *, aim_factor: float = 0.9, reaction_mean_ms: float = 250.0,
                      reaction_sd_ms: float = 80.0, burst_min: int = 3, burst_max: int = 5,
                      burst_pause_min_ms: float = 150.0, burst_pause_max_ms: float = 300.0,
-                     time_cap_ms: float = 10_000.0, health_preset: str = "standard") -> "RecoilDuelModel":
+                     time_cap_ms: float = 10_000.0, health_preset: str = "standard",
+                     pull_ms: float = DEFAULT_PULL_MS) -> "RecoilDuelModel":
         # The duel treats the whole pool as one number: damage drains shield, then armour, then health, with
         # overflow cascading (docs/manual/dev.md). The shield refills only after 6.5 s with no damage
         # (types.py SHIELD_REGEN_DELAY_MS), which no duel here allows, so the refill is left out.
@@ -1188,7 +1217,7 @@ class RecoilDuelModel:
         sup_mag, sup_reserve, sup_reload_ms = cat._ammo("suppressor", None)
         amr_mag, amr_reserve, amr_reload_ms = cat._ammo("amr", None)
         bolt_mag, bolt_reserve, bolt_reload_ms = cat._ammo("bolt_rifle", None)
-        return cls(health_preset=health_preset, pool_hp=hp + armour + shield, ar_dmg=cat.damage_per_pull("assault_rifle"),
+        return cls(health_preset=health_preset, pull_ms=pull_ms, pool_hp=hp + armour + shield, ar_dmg=cat.damage_per_pull("assault_rifle"),
                    ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
                    ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
                    cr_charge_dmg=cat.damage_per_pull("charge_rifle"), cr_tap_dmg=cat.tap_damage("charge_rifle"),
@@ -1377,7 +1406,8 @@ def _smg_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
 
 def _shotgun_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     dmg = _pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, band)
-    return _pump_shots(t, dmg, m.sg_fire_ms, m.sg_mag, m.sg_reserve, m.sg_reload_ms, m.aim_factor)
+    return _pump_shots(t, dmg, m.sg_fire_ms, m.sg_mag, m.sg_reserve, m.sg_reload_ms, m.aim_factor,
+                       rng=rng, pull_ms=m.pull_ms)
 
 
 def _burst_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
@@ -1410,12 +1440,12 @@ def _ar_full_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rand
 
 def _usp_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.usp_dmg, m.usp_fire_ms, m.usp_mag, m.usp_reserve, m.usp_reload_ms, None,
-                     m.aim_factor)
+                     m.aim_factor, rng=rng, pull_ms=m.pull_ms)
 
 
 def _deagle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.deagle_dmg, m.deagle_fire_ms, m.deagle_mag, m.deagle_reserve,
-                     m.deagle_reload_ms, None, m.aim_factor)
+                     m.deagle_reload_ms, None, m.aim_factor, rng=rng, pull_ms=m.pull_ms)
 
 
 def _energy_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
@@ -1430,12 +1460,12 @@ def _suppressor_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.R
 
 def _amr_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.amr_dmg, m.amr_fire_ms, m.amr_mag, m.amr_reserve, m.amr_reload_ms, None,
-                     m.aim_factor, rng=rng, crit_pct=m.amr_crit_pct)
+                     m.aim_factor, rng=rng, crit_pct=m.amr_crit_pct, pull_ms=m.pull_ms)
 
 
 def _bolt_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.bolt_dmg, m.bolt_fire_ms, m.bolt_mag, m.bolt_reserve, m.bolt_reload_ms, None,
-                     m.aim_factor)
+                     m.aim_factor, rng=rng, pull_ms=m.pull_ms)
 
 
 RANGE_COMBATANTS = {
@@ -1462,7 +1492,7 @@ R10_PRIMARY_NAMES = {"ar_burst": "Assault Rifle", "burst_rifle": "Burst Rifle", 
 R10_SIDEARMS = ("usp", "deagle")
 R10_SIDEARM_NAMES = {"usp": "USP", "deagle": "Desert Eagle"}
 R10_FINISH_POOL_HP = 35        # "finishes a player on 35 HP" -- health only, no armour: a closing shot
-R10_FINISH_BAR_MS = 1000.0
+R10_FINISH_BAR_MS = 1200.0
 
 # F310: the balance rules on the Shields preset (45 health + 105 shield = 150). Tony, 2026-09-23: "looser but
 # generally yes". Bar: 60%, Tony 2026-09-23 ("60 is fine"), set from the first three-preset run (lowest Shields cell R8 at
@@ -1511,6 +1541,17 @@ RANGE_RULES = {
     "7": ("R7: the Burst Rifle beats a full-auto AR", "burst_rifle", "burst_rifle", "ar_full", "mid"),
     "8": ("R8 close range: the Shotgun beats the SMG (full auto)", "shotgun", "shotgun", "smg", "close"),
     "9": ("R9 past headset range: the SMG (full auto) beats the Shotgun", "smg", "smg", "shotgun", "mid"),
+    # R11/R12, Tony 2026-10-17: "shotgun should win close range battles" and "definitely lose out of headset
+    # range battles" -- against the rifles (not the SMG or sidearms) past headset range. R4c/R4d/R8 and R5c
+    # already cover the bursting AR, the Burst Rifle and the SMG; these add the rest that have a combatant.
+    # The Sniper Rifle, the Toxin Rifle and the Stripper have none here (the Stripper cannot kill).
+    "11a": ("R11 close range: the Shotgun beats a full-auto AR", "shotgun", "shotgun", "ar_full", "close"),
+    "11b": ("R11 close range: the Shotgun beats the AMR", "shotgun", "shotgun", "amr", "close"),
+    "12a": ("R12 past headset range: a full-auto AR beats the Shotgun", "ar_full", "ar_full", "shotgun", "mid"),
+    "12b": ("R12 past headset range: the Burst Rifle beats the Shotgun", "burst_rifle", "burst_rifle", "shotgun", "mid"),
+    "12c": ("R12 past headset range: the AMR beats the Shotgun", "amr", "amr", "shotgun", "mid"),
+    "12d": ("R12 past headset range: the Suppressor beats the Shotgun", "suppressor", "suppressor", "shotgun", "mid"),
+    "12e": ("R12 past headset range: the Energy Rifle beats the Shotgun", "energy_rifle", "energy_rifle", "shotgun", "mid"),
 }
 
 
@@ -1556,8 +1597,8 @@ def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel)
 #
 # Two halves, both gated at reps=10,000 in CI:
 #   (a) each live sidearm (USP, Desert Eagle -- the Glock is `hidden`, out of scope) finishes an
-#       undefended 35-HP target (health only, no armour: a closing shot, not an opener) in under
-#       1.0s median, reaction delay included ("the sim's aim and reaction model").
+#       undefended 35-HP target (health only, no armour: a closing shot, not an opener) within
+#       `R10_FINISH_BAR_MS` median (1.2 s since 2026-10-17, Tony), reaction delay included.
 #   (b) every primary this engine can model beats each live sidearm from FULL Standard health (115)
 #       at least 65% of the time -- reusing `run_range_duel`/`RANGE_COMBATANTS` exactly as R4-R9 do.
 
@@ -1673,6 +1714,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--match-seconds", type=float, default=150.0)
     ap.add_argument("--contact-mean-s", type=float, default=2.0)
     ap.add_argument("--gap-mean-s", type=float, default=3.0)
+    ap.add_argument("--pull-ms", type=float, default=DEFAULT_PULL_MS,
+                    help="a single-shot weapon's mean trigger-pull gap, ms (0 = a pull every t14, the old model)")
     ap.add_argument("--reps", type=int, default=120, help="matches per team cell")
     ap.add_argument("--duel-reps", type=int, default=300, help="matches per duel pair")
     ap.add_argument("--seed", type=int, default=20260919)
@@ -1718,7 +1761,7 @@ def _apply_preset(args, ap) -> None:
 
 def _run_recoil_duel(args) -> int:
     cat = WeaponCatalog()
-    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, pull_ms=args.pull_ms, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
@@ -1740,7 +1783,7 @@ def _run_recoil_duel(args) -> int:
 
 def _run_range_duel(args) -> int:
     cat = WeaponCatalog()
-    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, pull_ms=args.pull_ms, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
@@ -1761,7 +1804,7 @@ def _run_range_duel(args) -> int:
 
 def _run_r10_duel(args) -> int:
     cat = WeaponCatalog()
-    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, reaction_mean_ms=args.reaction_mean_ms,
+    m = RecoilDuelModel.from_catalog(cat, aim_factor=args.aim_factor, pull_ms=args.pull_ms, reaction_mean_ms=args.reaction_mean_ms,
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
@@ -1804,7 +1847,7 @@ def main(argv=None) -> int:
                     tactical_reload=not args.no_tactical_reload,
                     hit_probs=tuple(float(x) for x in parse_values(args.hit_prob)),
                     match_ms=args.match_seconds * 1000.0, contact_mean_s=args.contact_mean_s,
-                    gap_mean_s=args.gap_mean_s)
+                    gap_mean_s=args.gap_mean_s, pull_ms=args.pull_ms)
     ns = [int(n) for n in parse_values(args.n)]
     cat = WeaponCatalog()
     summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")

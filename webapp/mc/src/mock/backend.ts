@@ -9,7 +9,7 @@ import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATIO
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
-  OBJECTIVE_MODES, STATION_NO_HILL,
+  OBJECTIVE_MODES, STATION_NO_HILL, GUN_DID_NOT_TAKE_CONFIG,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
 import { defaultModeParams, mergeModeParams } from '../rules/modeParams';
@@ -124,9 +124,11 @@ class ConfigMergeError extends Error {}
 // The strings are the SERVER'S, verbatim (`state.py` `STALE_ACK_FAULT` / `ECHO_FAULT` /
 // `POOL_FAULT` / `GUN_CONFIG_FAULT`, generated from `types.py`) — a paraphrase would demo a screen the field never shows.
 // Five guns that are otherwise GREEN, so each state is the only thing wrong with its row.
-const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'readback' | 'noecho'> = {
+const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'readback' | 'noecho' | 'noconfig'> = {
   'GUN-A': 'stale', 'GUN-B': 'echo', 'GUN-C': 'pool', 'GUN-G': 'readback', 'GUN-E': 'noecho',
 };
+// F549: state.py GUN_DID_NOT_TAKE_CONFIG, verbatim
+const DEMO_NO_CONFIG_LINE = GUN_DID_NOT_TAKE_CONFIG;
 const DEMO_OLD_CFG = '9f2a1c04';
 const DEMO_STALE_LINE = `${STALE_ACK_FAULT} (${DEMO_OLD_CFG}): RE-PUSH`;
 const DEMO_ECHO_LINE = `${ECHO_FAULT} (WEAPON 31/192 ECHOED, 32/192 EXPECTED, MAG/RESERVE): RE-PUSH`;
@@ -246,6 +248,8 @@ export class MockBackend implements Api {
    *  it is the v4.32 firmware declining to echo its weapon, which no push can change. */
   private faultOf(gun_id?: string | null) {
     if (this.demoReadbackOnly) return !this.demoCured && gun_id === 'GUN-G' ? 'readback' : undefined;
+    // F549 `?mock&faults=noconfig`: GUN-A acks no_config (the gun loaded nothing), until the first re-push
+    if (this.demoNoConfigOnly) return !this.demoCured && gun_id === 'GUN-A' ? 'noconfig' : undefined;
     const f = this.demoFaults && gun_id ? DEMO_FAULT_GUN[gun_id] : undefined;
     return this.demoCured && f !== 'noecho' ? undefined : f;
   }
@@ -272,10 +276,11 @@ export class MockBackend implements Api {
       // Answered with `$START`'s `$LCD` and nothing else — the NORMAL answer on v4.32 firmware, and
       // the reason the echo check has a third state at all (A37).
       case 'noecho': ack = { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId }; break;
+      case 'noconfig': ack = { ok: false, err: 'no_config', config_id: cfgId }; break;   // F549: the phone's own ack
       default: ack = { ok: true, gun_echo: echo, config_id: cfgId };
     }
     // The server serialises a clear error as null. The generated LobbyAck type still omits null.
-    return { ...ack, err: null } as unknown as State['lobby']['acks'][string];
+    return { err: null, ...ack } as unknown as State['lobby']['acks'][string];   // F549: an ack's own err (no_config) wins
   }
 
   /** `state.py all_acked()`: every rostered player with a node bound has answered for THIS config. */
@@ -642,6 +647,7 @@ export class MockBackend implements Api {
    *  and the console's rendering of all four was unverifiable by eye. STICKY: the faults survive a
    *  re-push (the point is to look at them), so this is a demo switch, not a scripted failure. */
   private demoReadbackOnly = typeof location !== 'undefined' && new URLSearchParams(location.search).get('faults') === 'readback';
+  private demoNoConfigOnly = typeof location !== 'undefined' && new URLSearchParams(location.search).get('faults') === 'noconfig';
   private demoFaults = typeof location !== 'undefined' && ['1', 'stale', 'on', 'readback'].includes(new URLSearchParams(location.search).get('faults') ?? '');
   /** T2 review S5: the phones this demo treats as having GONE SILENT, keyed by gun tail. `state.py`
    *  raises `stale` on a node nothing has been heard from in STALE_AFTER_MS (8 s) and clears it on the
@@ -878,6 +884,7 @@ export class MockBackend implements Api {
       if (pl?.node_id && this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
       if (pl?.node_id && this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
       if (pl?.node_id && this.pushed && fault === 'readback') blockers.push(DEMO_READBACK_LINE);
+      if (pl?.node_id && this.pushed && fault === 'noconfig') blockers.push(DEMO_NO_CONFIG_LINE);
       // …and they are REDS, like the server's. `noecho` is deliberately not here: NOT ECHOED is the
       // absence of a proof, not a fault, and a row that went amber for it would be amber all night
       // on every gun in the field.
@@ -900,7 +907,8 @@ export class MockBackend implements Api {
       if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
-      const proof = red || confirming || flapping ? null : this.pushed ? 'echo' as const : 'link' as const;
+      // F549: a no_config ack proves nothing by echo; the link still stands (state.py leaves the headset to it)
+      const proof = red || confirming || flapping ? null : this.pushed && this.faultOf(sticker) !== 'noconfig' ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and
@@ -1261,7 +1269,7 @@ export class MockBackend implements Api {
   private applyPolicy() {
     const pl = this.pool();
     for (const p of this.players) {
-      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS);
+      const next = applyPolicy(this.config.loadout_policy, p.loadout, pl, WEAPONS, PERKS);
       if (JSON.stringify(next) !== JSON.stringify(p.loadout)) { p.loadout = next; delete this.trying[p.player_id]; }
     }
   }
@@ -2220,7 +2228,7 @@ export class MockBackend implements Api {
     const gun = GUNS.find(g => g[0].toUpperCase() === p.gun_id?.toUpperCase());
     const node_id = gun && gun[2] !== 'r' && !this.evicted.has(`node_${gun[1]}`) ? `node_${gun[1]}` : null;
     const pl: Player = { player_id: uid('p'), player_num: n, display: storedTag(p.display), team_id: teamId, node_id,
-      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS), voice: p.voice ?? 'male', ready: false };
+      gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), WEAPONS, PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.cachedCompilerResult = undefined; this.emit(); return clone(pl);
   }
   async patchPlayer(id: string, patch: Partial<Player>): Promise<Player> {

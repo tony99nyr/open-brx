@@ -151,14 +151,18 @@
    "mag": 18,
    "reserve": 180,
    "reload_ms": 2000,
-   "dmg": 11,
-   "rof": 33,
+   "dmg": 13,
+   "rof": 50,
    "rng": 75,
-   "htk": 9,
-   "ttk_ms": 1800,
+   "htk": 8,
+   "ttk_ms": 2487,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
+   },
+   "wire": {
+    "fire_ms": 150,
+    "dmg": 15
    },
    "verified": true,
    "captured": true,
@@ -166,7 +170,7 @@
    "tags": [
     "assault"
    ],
-   "notes": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold."
+   "notes": "Single shot, deliberate cadence. 15 a hit, a round every 150ms at most (2026-10-17, the player-paced retune), with 18 up and 180 back. That is 24 kills from a full kit, for operators who would rather aim than hold."
   },
   {
    "weapon_id": "smg",
@@ -245,12 +249,12 @@
    "reload_ms": 400,
    "reload_type": "chain",
    "dmg": 35,
-   "rof": 11,
+   "rof": 19,
    "rng": 75,
    "range_band": "close",
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
-   "ttk_ms": 1400,
+   "ttk_ms": 1211,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -266,7 +270,7 @@
     "headset_dmg": 20,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
-    "fire_ms": 700,
+    "fire_ms": 400,
     "range_outdoor_pct": 30
    },
    "min_app": "0.4.5",
@@ -276,8 +280,8 @@
     "cqb"
    ],
    "ap_dmg": 15,
-   "ap_fire_ms": 1000,
-   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, 40 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 20 from the gun alone, same as the SMG's 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). Sustained pressure from the shallowest ammo pool outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
+   "ap_fire_ms": 500,
+   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 20 from the gun and 20 from the shooter's own headset, 40 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 20 from the gun alone, same as the SMG's 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). 2026-10-17 (field; Tony: \"shotgun is kinda weak\"): the pump gap 700ms to 400ms under the player-paced single-shot model (Balance rules row 14), so it wins close range against every rifle (R11) and still loses past headset range (R12); the pull stays 20+20, because 45 or more would one-shot the 45-health presets. Sustained pressure from the shallowest ammo pool outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
   },
   {
    "weapon_id": "stinger",
@@ -335,7 +339,7 @@
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
    "htk": 2,
-   "ttk_ms": 1500,
+   "ttk_ms": 1705,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -386,7 +390,7 @@
    "rof": 19,
    "rng": 75,
    "htk": 4,
-   "ttk_ms": 1200,
+   "ttk_ms": 1816,
    "capture": {
     "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
     "frame": "$WEAP,0,2,100,0,0,80,0,,,,,,80,80,225,850,10,80,2000,0,7,100,100,,30,,,E17,,,,D35,D34,D36,A73,D122,,,,10,40,75,40,*"
@@ -419,13 +423,13 @@
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
-   "dmg": 18,
-   "rof": 19,
+   "dmg": 23,
+   "rof": 21,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
-   "htk": 6,
-   "ttk_ms": 2000,
+   "htk": 5,
+   "ttk_ms": 2221,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -437,8 +441,8 @@
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
    },
    "wire": {
-    "dmg": 21,
-    "fire_ms": 400,
+    "dmg": 26,
+    "fire_ms": 350,
     "range_outdoor_pct": 85
    },
    "crit_pct": 30,
@@ -454,7 +458,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 21 a hit every 400ms, six hits to a kill, 14 up and only 56 behind. The hardest hit outside the power tier, and the shallowest reserve. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands."
+   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 350ms at most, five hits to a kill, 14 up and only 56 behind. The hardest hit outside the power tier, and the shallowest reserve. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it."
   },
   {
    "weapon_id": "suppressor",
@@ -620,7 +624,7 @@
    "rof": 31,
    "rng": 75,
    "htk": 9,
-   "ttk_ms": 1920,
+   "ttk_ms": 3562,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -672,11 +676,11 @@
    "mag": 12,
    "reserve": 120,
    "reload_ms": 2200,
-   "dmg": 8,
-   "rof": 47,
+   "dmg": 10,
+   "rof": 39,
    "rng": 75,
-   "htk": 13,
-   "ttk_ms": 1920,
+   "htk": 10,
+   "ttk_ms": 3557,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {
@@ -694,8 +698,8 @@
     "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
    },
    "wire": {
-    "dmg": 9,
-    "fire_ms": 160,
+    "dmg": 12,
+    "fire_ms": 190,
     "swap_ms": 500
    },
    "overrides": {
@@ -730,7 +734,7 @@
     "sidearm",
     "pistol"
    ],
-   "notes": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 12 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 left the Deagle strictly dominating the USP; 19 was the smallest cut off 20 that left neither pistol beating the other on every axis. 2026-09-23 (R10, F308): Tony rejected an unrealistic magazine (\"no pistol clip is that small\") and asked for the real-world one instead -- a USP .45 holds 12, so that is what ships, even though 12 is smaller than the 14 the 2026-09-17 pass rejected for dominance reasons. 13 hits still drop a Standard target, so a full-health kill now forces a mid-fight reload: see the Balance rules table row 10 (\"the sidearms should be finish-a-kill weapons, not competitive against rifles\") and `test_ttk_band_and_no_strictly_dominant_weapon`'s sidearm-family check, re-verified against the new mag."
+   "notes": "The quiet one. Suppressed and flashless: 12 a hit, a round every 190ms at most, 10 hits to drop, 12 in the mag with 120 behind it: 13 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20\u219219 -- Tony's ask was 20\u219214, but 14 left the Deagle strictly dominating the USP; 19 was the smallest cut off 20 that left neither pistol beating the other on every axis. 2026-09-23 (R10, F308): Tony rejected an unrealistic magazine (\"no pistol clip is that small\") and asked for the real-world one instead -- a USP .45 holds 12, so that is what ships, even though 12 is smaller than the 14 the 2026-09-17 pass rejected for dominance reasons. Until 2026-10-17, 13 hits dropped a Standard target, so a full-health kill forced a mid-fight reload: see the Balance rules table row 10 (\"the sidearms should be finish-a-kill weapons, not competitive against rifles\") and `test_ttk_band_and_no_strictly_dominant_weapon`'s sidearm-family check, re-verified against the new mag. 2026-10-17: 12 damage at 190ms for the 1.2 s R10a bar (Tony: \"ok to finish a player on standard life if you hit 10/12 shots\"), so the kill fits one magazine again and the forced reload is gone."
   },
   {
    "weapon_id": "deagle",
@@ -747,7 +751,7 @@
    "rof": 11,
    "rng": 75,
    "htk": 5,
-   "ttk_ms": 2800,
+   "ttk_ms": 3621,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {
@@ -1026,6 +1030,9 @@
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
     "frame": "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*"
+   },
+   "wire": {
+    "range_outdoor_pct": 60
    },
    "verified": true,
    "captured": true,

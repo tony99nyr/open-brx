@@ -7755,19 +7755,19 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
 });
 
 // ---------- shot-ready cue (bench 2026-09-17): `$WEAP` token 14 from the head, timed from the gun's own `$ALCD` ----------
-test('shot cue: a slow weapon (golden slot 1 shotgun, t14 700) reports a cooldown from the shot, then 0 left', () => {
-  // t14 700 (was 800 pre-2026-09-23, R8/F308: the pump gap tightened for the Shotgun-vs-SMG close-range
-  // rule -- see docs/weapon-design.md's Balance rules table), read from the regenerated golden bundle.
+test('shot cue: a slow weapon (golden slot 1 shotgun, t14 400) reports a cooldown from the shot, then 0 left', () => {
+  // t14 400 (800 before 2026-09-23, R8/F308; 700 until 2026-10-17, when the single-shot retune made it 400 --
+  // see docs/weapon-design.md's Balance rules table rows 6 and 14), read from the regenerated golden bundle.
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   assert.equal(h.eng.phase, 'live');
   h.frame('$ALCD,8,100,1,40,0,*');
   assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
   const at = h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   let c = h.eng.state().shotCooldown;
-  assert.deepEqual(c, { at, ms: 700, leftMs: 700 }, 'the cooldown starts at the frame that reported the round');
-  h.adv(500); c = h.eng.state().shotCooldown;
-  assert.equal(c.leftMs, 200);
-  h.adv(400); c = h.eng.state().shotCooldown;
+  assert.deepEqual(c, { at, ms: 400, leftMs: 400 }, 'the cooldown starts at the frame that reported the round');
+  h.adv(300); c = h.eng.state().shotCooldown;
+  assert.equal(c.leftMs, 100);
+  h.adv(200); c = h.eng.state().shotCooldown;
   assert.equal(c.leftMs, 0, 'past the interval the trigger is hot again');
 });
 
