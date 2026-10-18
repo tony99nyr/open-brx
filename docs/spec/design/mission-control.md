@@ -30,7 +30,7 @@ base and needs a dark theme, not a true blackout.
 
 **Real content, never lorem.** Handles a host would type: `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
 Gun names `GUN-A`, shown as `GUN-A-3D4F` (`<sticker>-<tail>`; real sticker ids never enter the repo). TDM
-defaults HP `45`, armor `70`, ammo `32 / 192` (the AR's captured Callsign numbers; the gun carries the full 192 spare rounds
+defaults HP `45`, armor `70`, ammo `32 / 384` (the AR; the gun carries the full spare rounds
 after `$SPAWN`, bench 2026-09-18, **F255**, closed). Modes: TDM, FFA, Infection, Last Man Standing,
 Extraction. Player numbers `#1`–`#63`. Scoreboard columns: Player · Team · K · D · A · K/D · Acc% · Streak ·
 Medals. Recap honors: MVP, Most Kills, Best K/D, Sharpshooter, Survivor, First Blood, Multikill, Assistant.

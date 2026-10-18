@@ -136,13 +136,13 @@ describe('slotNeedsFixedItem (QA-14: SAVE must never reach the server with FIXED
 describe('spawnBuiltinValue', () => {
   const builtins = [
     { piece_id: 'builtin:spawn:auto', kind: 'spawn', builtin: true, name: 'AUTO', note: '', post_mvp: false, created_t: 0, updated_t: 0,
-      value: { type: 'auto', delay_s: 15, protect_s: 0, weapon_delay_ms: 500 } },
+      value: { type: 'auto', delay_s: 15, protect_s: 0, weapon_delay_ms: 1500 } },
     { piece_id: 'builtin:spawn:station', kind: 'spawn', builtin: true, name: 'STATION', note: '', post_mvp: false, created_t: 0, updated_t: 0,
       value: { type: 'scanner', delay_s: 10, station_protect_s: 2, gate: 'trigger' } },
   ] as unknown as GamePiece[];
 
   it('finds the AUTO builtin by its value.type, not its id slug', () => {
-    expect(spawnBuiltinValue(builtins, 'auto')).toEqual({ type: 'auto', delay_s: 15, protect_s: 0, weapon_delay_ms: 500 });
+    expect(spawnBuiltinValue(builtins, 'auto')).toEqual({ type: 'auto', delay_s: 15, protect_s: 0, weapon_delay_ms: 1500 });
   });
   it('finds the STATION builtin (value.type is "scanner", brief §3)', () => {
     expect(spawnBuiltinValue(builtins, 'scanner')).toEqual({ type: 'scanner', delay_s: 10, station_protect_s: 2, gate: 'trigger' });

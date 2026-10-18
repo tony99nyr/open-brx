@@ -52,6 +52,23 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('ADDS UP');
   });
 
+  it('milestone 2026-10-18: a station-counted hill gets the station line and no floor caveat; a mixed match one floor line', async () => {
+    let m = await recap({}, { possession: { ...HELD, station_sites: 1, phones_by_team: { yellow: 200 } } });
+    const line = strip(m.find('[data-alert="recap-possession-station"]')[0]?.textContent ?? '');
+    expect(line).toContain('THE HILL COUNTED ITS OWN HOLD TIME. PHONES SAW');
+    expect(line).toContain('3:20');
+    expect(m.find('[data-alert="recap-possession-thin"]').length, 'no floor caveat').toBe(0);
+    m.unmount();
+    m = await recap({}, { possession: { ...HELD, sites: 2, station_sites: 1, phones_by_team: { yellow: 200 } } });
+    expect(strip(m.find('[data-alert="recap-possession-station"]')[0]?.textContent ?? '')).toContain('1 OF 2 HILLS COUNTED THEIR OWN HOLD TIME');
+    const floors = strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '').match(/FLOOR/g) ?? [];
+    expect(floors.length, 'mixed: exactly one floor line').toBe(1);
+    m.unmount();
+    m = await recap({}, { possession: HELD });
+    expect(m.find('[data-alert="recap-possession-station"]').length).toBe(0);
+    expect(m.find('[data-alert="recap-possession-thin"]').length, 'a phone-only hill keeps the caveat').toBe(1);
+  });
+
   it('labels the numbers KILLS when no held time was reported', async () => {
     const m = await recap();
     const h = m.find('[data-testid="recap-headline"]')[0];

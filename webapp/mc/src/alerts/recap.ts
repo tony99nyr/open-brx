@@ -35,6 +35,9 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
   // F556: why a two-hill match can read more held time than its length. A fact about the sum, not a fault.
   'recap-possession-sites': { sev: 'neutral',
     text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH.' },
+  // milestone review 2026-10-18: a site the hill station counted itself (F555) is the authority, not a floor
+  'recap-possession-station': { sev: 'neutral',
+    text: '{who} COUNTED ITS OWN HOLD TIME. PHONES SAW {team} {dur} · {team2} {dur2}.' },
   'recap-provisional-banner': { sev: 'amber',
     text: '{n} NODE(S) HAVE NOT FLUSHED ({names}): BRING THEM INTO RANGE TO FINALIZE '
       + '(KILLS LIVE IN THEIR REPORTS UNTIL THEN).' },

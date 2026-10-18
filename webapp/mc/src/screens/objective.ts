@@ -10,6 +10,30 @@ import { fmtDuration } from '../tokens';
 export const heldSeconds = (lv: Pick<LiveView, 'possession'>, teamId: string): number | null =>
   lv.possession ? (lv.possession.by_team[teamId] ?? 0) : null;
 
+/** Milestone review 2026-10-18 (brx5, Opus, Codex): where the held time came from. F555 scores a site on its control
+ *  station's own tally when it reported one (`station_sites`); that is the authority, not a floor, and `phones_by_team` (the
+ *  phones' own merge) is the cross-check, shown when a phone reported. Null when no station counted a site. `label` names a team. */
+export function stationSource(p: { sites: number; station_sites?: number; reports: number; phones_by_team?: Record<string, number> },
+                              word: string, label: (id: string) => string = id => id.toUpperCase()): string | null {
+  const st = p.station_sites ?? 0;
+  if (st <= 0) return null;
+  const who = st >= p.sites ? (p.sites > 1 ? `EVERY ${word}` : `THE ${word}`) : `${st} OF ${p.sites} ${word}S`;
+  const counted = st >= p.sites ? 'COUNTED ITS OWN HOLD TIME' : 'COUNTED THEIR OWN HOLD TIME';
+  const seen = Object.entries(p.phones_by_team ?? {}).filter(([, secs]) => secs > 0).sort((a, b) => b[1] - a[1]);
+  const check = p.reports > 0 && seen.length
+    ? `PHONES SAW ${seen.map(([id, secs]) => `${label(id)} ${fmtDuration(secs)}`).join(' · ')}`
+    : 'NO PHONE REPORTED, SO THERE IS NO CROSS-CHECK';
+  return `${who} ${counted}. ${check}.`;
+}
+
+/** The floor caveat for phone-measured time: the whole tally when no station counted, else only the other sites. */
+export function floorSource(p: { sites: number; station_sites?: number }, word: string): string | null {
+  const st = p.station_sites ?? 0;
+  if (st >= p.sites && st > 0) return null;
+  return st > 0 ? `THE OTHER ${word}S ARE A FLOOR: ONLY A GUN IN RANGE SEES THE ${word}.`
+    : `ONLY A GUN IN RANGE SEES THE ${word}, SO THIS IS A FLOOR.`;
+}
+
 /** F556: `by_team` adds every hill that reported, so with two a team can pass the match length; `of_s` stays the match
  *  length. The note LIVE, RECAP and SPECTATE show then, or null for one hill. `sites` counts the hills that reported. */
 export function sitesNote(p: { sites: number; of_s: number | null } | null | undefined): string | null {
