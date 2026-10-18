@@ -1614,6 +1614,34 @@ class GunStage:
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                     on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
                     should_send: Callable[[], bool] | None = None) -> bool | None:
+        """engine.js `_write` around the send (F570, milestone review 2026-10-18): a write that carries `$AMMO`/`$WEAP` rows
+        holds those rows' echo windows open while it is on the link (at most ECHO_HOLD_MAX_S), because the gun echoes each
+        row as it reads it and a real link takes seconds for a head; when it settles, delivered or not, they restart, so
+        they close ACC_ECHO_S later. Only the write that still owns a window touches it (`_echo_gens`, bug 3 r2 M2)."""
+        rows = [f for f in frames if f and (f.startswith("$AMMO,") or f.startswith("$WEAP,"))]
+        gens = self._echo_gens(rows) if rows else None
+        before = {sl: a["echo_until"] for sl, a in self._shot_acct.items()} if rows else {}
+        if rows:
+            self._hold_echoes(rows, gens)
+        result: bool | None = False
+        try:
+            result = await self._write_frames(frames, why, gap_ms, exact, take, on_start, model=model, life=life,
+                                              should_send=should_send)
+            return result
+        finally:
+            if rows and result is False:
+                # bug 3 r2 M1: a write that never left (the link was down) lands nothing, and on the phone it returns false
+                # at once, so it neither holds nor restarts a window: put back what the hold changed
+                for sl, until in before.items():
+                    a = self._shot_acct.get(sl)
+                    if a is not None and a["echo_until"] > until and (gens is None or gens.get(sl) == a.get("echo_gen")):
+                        a["echo_until"] = until
+            elif rows:
+                self._restamp_echoes(rows, gens)
+
+    async def _write_frames(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
+                            on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
+                            should_send: Callable[[], bool] | None = None) -> bool | None:
         """The one public write path (engine.js `_write`): filter, restore the team, drop queued fillers, then send
         the result as one `_WriteJob` per `$PLAY` group (`_send_job`).
         `model` False: a stop the caller books in the gun audio model itself (engine.js `_mustWrite`).
@@ -2165,6 +2193,25 @@ class GunStage:
                 if a is not None and a.get("echo_pending"):
                     a["echo_until"] = now + self.ACC_ECHO_S
 
+    ECHO_HOLD_MAX_S = 8.0   # ammo.js ECHO_HOLD_MAX_MS: a write that never settles holds its windows no longer than this
+
+    def _hold_echoes(self, frames, gens: dict | None = None) -> None:
+        """ammo.js `holdEchoes` (F570): a write still on the link keeps its rows' windows open until `_restamp_echoes`, at
+        most ECHO_HOLD_MAX_S. Only a window still waiting for its echo, and still owned by this write."""
+        now = self.now()
+        for f in frames or []:
+            if not isinstance(f, str) or not (f.startswith("$AMMO,") or f.startswith("$WEAP,")):
+                continue
+            try:
+                slot = int(f.split(",")[1])
+            except (IndexError, ValueError):
+                continue
+            a = self._shot_acct.get(slot)
+            if gens is not None and (a is None or gens.get(slot) != a.get("echo_gen")):
+                continue
+            if a is not None and a.get("echo_pending", 0) > 0:
+                a["echo_until"] = max(a["echo_until"], now + self.ECHO_HOLD_MAX_S)
+
     def _echo_gens(self, frames) -> dict:
         """ammo.js `echoGens` (bug 3 r2 M2): {slot: echo_gen} for each slot a write names, taken when it is called."""
         out = {}
@@ -2287,9 +2334,7 @@ class GunStage:
     async def _write_ammo(self, frames: list[str], why: str, **kw) -> None:
         """A write that carries `$AMMO` rows: its echo windows restart when it lands (bug 3 r1 M1), and only when
         `write` DELIVERED it (r2 M1: a write while the link is down returns False and lands nothing)."""
-        gens = self._echo_gens(frames)
-        if await self.write(frames, why, **kw) is not False:
-            self._restamp_echoes(frames, gens)
+        await self.write(frames, why, **kw)   # F570: `write` holds the rows' windows and restarts them when it settles
 
     def _forget_counts(self) -> None:
         """ammo.js `forgetCounts`: a new life or head forgets the counts and the ALT pointer, but KEEPS an echo window

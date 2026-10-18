@@ -2033,7 +2033,7 @@ _AMMO_PAIRS = {
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
-    "am.acctWroteRows": "_acct_wrote_rows", "am.forgetCounts": "_forget_counts",
+    "am.acctWroteRows": "_acct_wrote_rows", "am.holdEchoes": "_hold_echoes", "am.forgetCounts": "_forget_counts",
     # bug 3 r1 M1: the window restarts when the write lands
     "am.restampEchoes": "_restamp_echoes", "am.echoGens": "_echo_gens",
 }
@@ -2185,8 +2185,6 @@ def test_every_powerup_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
-    # F570: holds a write's echo windows while the link sends it; the stage's writes land at once, so nothing is ever held
-    "am.holdEchoes",
     # AMMO pickup (2026-10-18): the claim's range test; the stage has no pickup claim or presence (its `_ammo_short` and
     # `grant_ammo` twins are a hand-driven grant, pinned with the phone by app/test/fixtures/ammo-grant-cases.json)
     "pu._inRangeOf",
