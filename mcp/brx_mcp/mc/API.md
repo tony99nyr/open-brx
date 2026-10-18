@@ -233,7 +233,7 @@ State {
                                               // and the phones cannot disagree. `mc_verify` is present ONLY when this
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
                                               // survival mode) AND `config.coverage != "full"` AND at least one
-                                              // rostered phone has no backhaul (A28) — and it NAMES those phones:
+                                              // rostered phone has no backhaul (A28) — and it NAMES those phones unless every phone is listed:
                                               // `WIN IS CONFIRMED AT MC, 2 PHONES WITH NO ROUTE BACK (OP0, OP1):
                                               // TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE`, or, when EVERY
                                               // rostered phone is off-grid (a Wi-Fi-only match), the unnamed

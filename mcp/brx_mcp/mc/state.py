@@ -1301,8 +1301,8 @@ class Session:
 
     def _notices(self) -> NoticesView:
         """A31: the HOST's standing lines (API.md `State.notices`). Same decision as the player's line —
-        the compiler makes it once — but the host's copy NAMES the phones, because the host is the one
-        who can walk over and tell those players to come back."""
+        the compiler makes it once — but the host's copy NAMES the phones (unless every phone is listed, when the
+        names are wallpaper), because the host is the one who can walk over and tell those players to come back."""
         out: NoticesView = {}
         off = self._off_grid()
         if self._mc_verify_player_line():

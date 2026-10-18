@@ -213,6 +213,12 @@ describe('A31 · the verify-at-MC host line', () => {
       .toBe('Wins are confirmed at MC, and no phone can reach MC away from the Wi-Fi: tell players to come back after the whistle.');
   });
 
+  it('still reads an older server\'s OFF-GRID line (Codex review)', async () => {
+    const { friendlyMcVerifyLine } = await import('../src/ui/McVerify');
+    expect(friendlyMcVerifyLine('WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (SABLE, DRIFT): TELL PLAYERS TO RETURN AFTER THE WHISTLE'))
+      .toContain('SABLE, DRIFT');
+  });
+
   const notice = 'WIN IS CONFIRMED AT MC, 2 PHONES WITH NO ROUTE BACK (SABLE, DRIFT): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE';
 
   it('LOBBY shows it, reworded short and sentence-case, never the server\'s raw shouted copy', async () => {
