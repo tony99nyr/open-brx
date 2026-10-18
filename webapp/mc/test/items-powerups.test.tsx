@@ -43,7 +43,8 @@ describe('ITEMS — the powerup item picker', () => {
     await m.click('POWERUP');
     const picker = m.find('[data-testid="item-picker"]');
     expect(picker.length, `no picker, card says: ${card().textContent}`).toBe(1);
-    for (const p of ['rockets', 'rail_gun', 'overshield']) expect(pick(m, p), `no ${p} button`).toBeTruthy();
+    for (const p of ['rockets', 'rail_gun', 'overshield', 'ammo']) expect(pick(m, p), `no ${p} button`).toBeTruthy();
+    expect(pick(m, 'ammo')!.textContent).toMatch(/AMMO.*EVERY 0:45, FIRST AT 0:45/);
     expect(pick(m, 'rockets')!.textContent).toMatch(/ROCKETS/);
     expect(pick(m, 'rockets')!.textContent).toMatch(/EVERY 2:00, FIRST AT 2:00/);
     expect(pick(m, 'overshield')!.textContent).toMatch(/EVERY 1:00, FIRST AT 1:00/);
@@ -125,7 +126,7 @@ describe('ITEMS — the powerup item picker', () => {
       const { m } = await muster({}, { phase });
       await m.click('POWERUP');
       expect(m.find('[data-testid="item-picker"]').length, phase).toBe(1);
-      for (const p of ['rockets', 'rail_gun', 'overshield']) expect(pick(m, p)!.disabled, `${phase} ${p}`).toBe(true);
+      for (const p of ['rockets', 'rail_gun', 'overshield', 'ammo']) expect(pick(m, p)!.disabled, `${phase} ${p}`).toBe(true);
       expect(m.find('[data-testid="item-picker"]')[0].textContent).toMatch(/LOCKED FOR THE MATCH/);
       m.unmount();
     }
@@ -274,7 +275,10 @@ describe('ITEMS — the ?mock backend speaks A56', () => {
     const api = new MockBackend();
     const pv = await api.getPowerups();
     expect(pv.enabled).toBe(true);
-    expect(pv.presets.map(p => p.preset)).toEqual(['rockets', 'rail_gun', 'overshield']);
+    expect(pv.presets.map(p => p.preset)).toEqual(['rockets', 'rail_gun', 'overshield', 'ammo']);
+    expect(pv.presets[3].item).toEqual({ kind: 'ammo', refill: 'spawn', name: 'AMMO', color: '#9be22d', spawn_every_s: 45, first_at_s: 45 });
+    await expect(api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'ammo', charges: 2 })).rejects.toThrow(/CHARGES ONLY APPLIES TO A WEAPON/);
+    await expect(api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'ammo', amount: 50 })).rejects.toThrow(/AMOUNT ONLY APPLIES TO AN OVERSHIELD/);
     expect(pv.presets[0].item).toMatchObject({ kind: 'weapon', weapon_id: 'rocket_launcher', spawn_every_s: 120, first_at_s: 120 });
     expect(pv.presets[2].item).toMatchObject({ kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60 });
     const v = await api.putStation(NODE, { kind: 'powerup', team: 'any', id: 4, item_preset: 'rail_gun' });
@@ -574,5 +578,13 @@ describe('polish round 1: the lows on the ITEMS card', () => {
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-note"]')[0].textContent).toContain('./start.sh (no --no-powerups flag)');
     m.unmount();
+  });
+});
+
+describe('ITEMS — the AMMO item detail', () => {
+  it('reads as a reserve top-up, never a charge count', async () => {
+    const { itemDetail } = await import('../src/ui/powerupData');
+    expect(itemDetail({ kind: 'ammo', refill: 'spawn', name: 'AMMO', color: '#9be22d', spawn_every_s: 45, first_at_s: 45 })).toBe('TOPS UP RESERVE');
+    expect(itemDetail({ kind: 'overshield', amount: 75, name: 'O', color: '#ff4fd8', spawn_every_s: 60, first_at_s: 60 })).toBe('+75 SHIELD');
   });
 });

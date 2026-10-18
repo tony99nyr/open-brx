@@ -20,6 +20,7 @@ from .types import (POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP,
 # The schedule (Tony, 2026-09-24: "like Halo"): first spawn after one interval, then every interval.
 HEAVY_SPAWN_EVERY_S = 120
 OVERSHIELD_SPAWN_EVERY_S = 60
+AMMO_SPAWN_EVERY_S = 45           # Tony, field 2026-10-17: "i ran out of ammo in several games"
 OVERSHIELD_AMOUNT = 75            # shield on top of whatever the player has; hit first, gone at death
 OVERSHIELD_DECAY_PER_S = 0        # it does not bleed away over time
 OVERSHIELD_REGEN = False          # nothing refills it
@@ -44,8 +45,14 @@ _PRESETS: dict[str, dict] = {
     # ~313 deg) clear of team purple, team red, Rockets (orange) and Rail Gun (cyan).
     "overshield": {"kind": "overshield", "amount": OVERSHIELD_AMOUNT, "name": "OVERSHIELD", "color": "#ff4fd8",
                    "spawn_every_s": OVERSHIELD_SPAWN_EVERY_S, "first_at_s": OVERSHIELD_SPAWN_EVERY_S},
+    # Ammo (2026-10-17): tops the taker's held slots 0 and 1 up to each slot's spawn reserve, never lowers them,
+    # leaves the magazine alone. `refill` "spawn" is the only value MC sets (the phone also reads "reserve" or an
+    # integer). Lime, clear of the team colours (types.py TEAM_COLOUR_HEX) and the three presets above.
+    "ammo": {"kind": "ammo", "name": "AMMO", "color": "#9be22d", "refill": "spawn",
+             "spawn_every_s": AMMO_SPAWN_EVERY_S, "first_at_s": AMMO_SPAWN_EVERY_S},
 }
 PRESET_IDS = tuple(_PRESETS)
+AMMO_REFILLS = ("spawn",)
 
 REFUSED_FLAG_OFF = ("powerups are OFF: Mission Control was started with --no-powerups. Drop that flag "
                     "(or restart with ./start.sh, no flag needed) to give a station an item")
@@ -105,7 +112,7 @@ def apply_overrides(item: StationItem, a: dict) -> StationItem:
     optional and the whole thing is stateless (as `set_station` already is for `item_preset` itself): a PUT
     that names none of `OVERRIDE_KEYS` gets back exactly today's item, the preset's own defaults, and one
     that names a field this item's kind does not carry -- `amount` on a weapon, `charges` on the overshield
-    -- is refused rather than silently ignored. `first_at_s` always follows `spawn_every_s` (Halo's "first
+    -- is refused rather than silently ignored. An ammo item carries neither. `first_at_s` always follows `spawn_every_s` (Halo's "first
     after one interval", docs/spec/powerups.md), whether that value is the preset default or an override."""
     out: dict = dict(item)
     if (charges := a.get("charges")) is not None:
@@ -158,7 +165,7 @@ def invalid_reason(item: object) -> str | None:
     key raises on every tick."""
     if not isinstance(item, dict):
         return "not an object"
-    if item.get("kind") not in ("weapon", "overshield"):
+    if item.get("kind") not in ("weapon", "overshield", "ammo"):
         return f"kind {item.get('kind')!r}"
     for key in ("spawn_every_s", "first_at_s"):
         v = item.get(key)
@@ -174,6 +181,8 @@ def invalid_reason(item: object) -> str | None:
         return "weapon_id or charges missing"
     if item["kind"] == "overshield" and not isinstance(item.get("amount"), int):
         return "amount missing"
+    if item["kind"] == "ammo" and item.get("refill") not in AMMO_REFILLS:
+        return f"refill {item.get('refill')!r} (one of {', '.join(AMMO_REFILLS)})"
     return None
 
 
