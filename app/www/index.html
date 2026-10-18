@@ -198,6 +198,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Bench 2026-09-17: NOT ENOUGH ENERGY is now a secondary note, never a second big prompt beside
    OUT OF ENERGY/RECHARGE -- one small line under the digits, right-aligned like the rest of the column. */
 .ammo .enote{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.16em;color:var(--warn)}
+/* BOLT (Tony 2026-10-17): a bolt-action lever pull is a small cue under the digits, never a takeover over the scope. The
+   sweep runs on the weapon's reload time from the pull (a negative delay picks up a cue drawn late). */
+.ammo .bolt{display:flex;align-items:center;gap:8px;margin-top:2px}
+.ammo .bolt .bk{font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.18em;color:var(--num)}
+.ammo .bolt .bt{position:relative;flex:1 1 auto;height:4px;background:rgba(95,214,255,.18);overflow:hidden;min-width:60px}
+.ammo .bolt .bt i{position:absolute;inset:0 auto 0 0;width:100%;background:var(--glow);transform-origin:left;animation-name:boltsweep;animation-timing-function:linear;animation-fill-mode:both}
+@keyframes boltsweep{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+[data-env="night"] .ammo .bolt .bk{color:#e0664a}[data-env="night"] .ammo .bolt .bt i{background:#7a2a20}
 .pips{display:flex;gap:4px}
 /* `> i`, not `i`: this styles the discrete bullet pips only (direct children of #pips). A descendant
    `.pips i` also matched the ammo/energy bar's OWN fill `<i>` two levels down (`.pips > .bar > i`) at equal
@@ -1126,7 +1134,10 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* Tony 2026-09-25: the recap is icon-first (app/src/hud/medalicons.js). The name is the icon's title and accessible
    label, and the legend (.mleg) under the list teaches the icons. The in-game lanes never draw these icons. */
 .result .mi{display:block;flex:none}
-.result .lbr .c.m{display:flex;align-items:center;gap:3px;text-overflow:clip}
+/* F561 (field 2026-10-17): medals WRAP. One flex row held six chips in this cell, so a seventh was cut and an eighth and
+   ninth drew outside the frame. Never shrink the chip (the 24 px-on-screen icon floor) and never cap the record: the
+   row grows a line and .lbrows scrolls. */
+.result .lbr .c.m{display:flex;flex-wrap:wrap;align-items:center;gap:3px;text-overflow:clip;white-space:normal}
 .result .lbr .c.m .mc{position:relative;display:inline-flex;align-items:flex-end;flex:none}
 .result .lbr .c.m .mc b,.result .awi b{font-size:11px;font-weight:700;letter-spacing:0;color:var(--num);margin-left:1px}
 .result .mleg{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:center;padding:3px 6px 1px;grid-column:1/-1}
@@ -1142,6 +1153,13 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rstrip .ch{border:1px solid var(--edge);padding:0 7px;white-space:nowrap;color:var(--num);overflow:hidden;text-overflow:ellipsis;line-height:18px}
 .result .rstrip .ch b{font-family:var(--fd);font-size:12px}
 .result .rstrip.hon .ch{color:var(--warn);border-color:var(--warn)}
+/* F561: the strip is one chip per HOLDER (name ×count); the medal names and stats are on the AWARDS tab, which .go names */
+.result .rstrip.hon .go{color:var(--mut);white-space:nowrap}
+.result .rstrip.hon .ch{flex:none}.result .rstrip.hon .ch.more{color:var(--mut);border-color:var(--edge)}
+/* F561 review: MORE ↓ sticks to the bottom of the scrolling rows. Sticky inside .lbrows, never a positioned .rlb, which
+   painted over the tab buttons' hit areas (QA-11). */
+.result .lbrows .awmore.lbmore{position:sticky;bottom:0;right:auto;display:block;width:max-content;margin-left:auto}
+.result .lbrows .awmore.lbmore[hidden]{display:none}
 .result .rstrip.after .k{color:var(--warn)}
 .result .rstrip.after .ch{border-style:dashed;color:var(--mut)}
 /* --- this player's own line, as a LIST of tiles (never five fixed cells) --- */

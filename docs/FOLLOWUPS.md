@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 115.** Desk 32 · bench 80 · decision 3.
+**MVP open: 116.** Desk 33 · bench 80 · decision 3.
 
-**MVP DESK (32),** a keyboard is enough:
+**MVP DESK (33),** a keyboard is enough:
 - 🔴 **F533** · **F548** · **F552** · **F554** · **F560**
-- 🟠 **F549** · **F550** · **F551** · **F555** · **F556** · **F557** · **F561** · **F562** · **F563** · **F565** · **F157**
+- 🟠 **F549** · **F550** · **F551** · **F555** · **F556** · **F557** · **F561** · **F562** · **F563** · **F565** · **F157** · **F568**
 - 🟡 **F532** · **F539** · **F540** · **F546** · **F547** · **F553** · **F558** · **F559** · **F564** · **F566** · **F567** · **F238**
 - 🟢 **F512** · **F538** · **F543** · **F544**
 
@@ -35,7 +35,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F568 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F569 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -67,7 +67,7 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 - **F564 🟡 THE HELLO CARRIES NO DEVICE MODEL, SO A BATTERY OR RADIO REPORT CANNOT BE TIED TO HARDWARE.** Field 2026-10-17: status carries `platform: "android"` and `app_ver` only, so "this Pixel 4 drains fast" could not be matched to a node. A few lines. `desk`.
 - **F565 🟠 `pnpm run test:all` CAN DEADLOCK FOR EVER ON macOS.** Field 2026-10-17: the runner took the checkout lock and spawned nothing for 21 minutes. `pool.mjs:29` `memAvailableMb()` parses `/proc/meminfo` and falls back to `os.freemem()` on Darwin, which counts only genuinely free pages -- 206 MB measured while `vm_stat` showed ~1.5 GB reclaimable -- and the admit tests have no starvation escape. **The match-day target is a MacBook and this is the documented pre-commit gate.** Add a Darwin branch and a floor so one job is always eventually admitted. `desk`.
 - **F566 🟡 A NORMAL PERSISTED-CONTEXT EXPIRY REPORTS AS A CRASH.** Field 2026-10-17 (4 occurrences). `engine.js:1125` logs inside `_load()`, which runs inside the Engine constructor (`:771`), while `app.js:37-39`'s logger starts with `const mid = engine.matchId` -- esbuild hoists that `const` to `var`, so `engine` is undefined during construction and the TypeError is caught at `:1163` and reported as "persisted context unreadable". `persisted context expired` appears 0 times in 12 device logs, i.e. it is unreachable. This invented a false node-identity-churn theory and cost real investigation time. Fix: `const mid = engine && engine.matchId`, and defer `:1125` like its neighbours. `desk`.
-- **F567 🟡 MELEE SHIPS `$WEAP` t2 = 90, INSIDE THE RECEIVER'S PASS-BAND.** Field 2026-10-17 (Tony: melee hit from 15-20 ft). Range is a carrier frequency, and a melee word is emitted by the HEADSET, slope `38000 - 140*(100-range)` Hz, so t2 = 90 is 36.6 kHz -- full gun-like reach, and anything above the knee "probably is not felt" (§6). The knee is bench-measured for the gun barrel only (~29.4 kHz at t2 = 31); solved on the headset slope that is ~t2 40, which is arithmetic, not measurement. Needs its own ladder on slot 4. `bench` + `decision`.
+- **F567 🟡 BENCH: DOES MELEE AT `$WEAP` t2 = 60 CUT ITS REACH?** Field 2026-10-17 (Tony: melee hit from 15-20 ft). Range is a carrier frequency, and a melee word is emitted by the HEADSET, slope `38000 - 140*(100-range)` Hz, so t2 = 90 is 36.6 kHz -- full gun-like reach, and anything above the knee "probably is not felt" (§6). The knee is bench-measured for the gun barrel only (~29.4 kHz at t2 = 31); solved on the headset slope that is ~t2 40, which is arithmetic, not measurement. Needs its own ladder on slot 4. **→ 2026-10-17:** Tony decided 60 outdoors (about 32.4 kHz on the headset slope, still inside the pass-band by the model); it ships with the single-shot batch. Indoor keeps the captured 90. Left: the ladder (`bench-field-1017.md` P3.1) says whether 60 is felt or the value must sit near the knee. `bench`.
 
 A keyboard is enough. Highest value first.
 
@@ -85,6 +85,8 @@ A keyboard is enough. Highest value first.
 - **F157 🟠 THE LOG-OFFER LOOP IS BACK, AND ITS BUDGET THEN KILLS THE LOGS BUTTON.** Reopened 2026-10-17 (brx2, [`field-2026-10-17.md`](field-2026-10-17.md) §2 item 2; the bundle's FINDINGS.md §B). The `log_offer` → `pull_log` → re-offer loop ran twice: 49 and 36 offers a minute at 15:59 and 16:02 (one phone that took three `node_id`s), then 130 a minute from all four phones at 17:52 (these figures are from the bundle, not the report). Each burst ended only on the ~1 MB per-node budget. Then every `pull_log` was refused with `budget_spent`, the manual LOGS button too (the cap is checked before the `manual` exemption, `state.py:5386`), until the next match start. After 17:52 there was no device log at all. The 2026-09-12 fix covered only multi-chunk streams. Owner brx4 (the offer side). History: fixed 2026-09-12: MC's `_log_inflight` gate stops the `log_offer`-mid-upload free-run that held 126 `log_offer` + 126 `log_data` rows of ~30-40 KB in one session (~4 MB over cellular, the phone re-offering on every reconnect/status while MC re-pulled the same log). One ask outstanding per node; measured 44 rounds to the 1 MB cap on 2026-09-12 (integration of the field branch).
 
 - **F238 🟡 NOT ENOUGH ENERGY IS HIDDEN WHILE THE GUN OVERHEATS.** Reopened 2026-10-17 (brx2, [`field-2026-10-17.md`](field-2026-10-17.md) §3.12). `app/src/hud/live.js:78` shows NOT ENOUGH ENERGY only when `!overheating`, but a charge below `rounds_per_charge` is what spikes the heat (F226). So the HUD says OVERHEAT, which tells the player to wait, and waiting never clears it. Fix: NOT ENOUGH ENERGY wins when `ammo < rounds_per_charge`. Owner brx4. History: closed 2026-09-18, the energy gauge on the charge rifle reads correctly: the cell as a percentage, the reserve as cell pills, and HOLD TO RECHARGE once the cell cannot pay for a charge. NOT ENOUGH ENERGY correctly stays hidden until the cell is part-full. (The out-of-energy wording it exposed is **F257**.)
+
+- **F568 🟠 A STICK HILL SCORES NOTHING IN AN ADOPTED LIVE MATCH.** brx5, 2026-10-17 (the F555 review). MC sends no station timing for an ADOPTED live match, so a connected StickS3 hill gets a same-game config with no start (`hardware/m5sticks3/station_link.h:1501`), waits, and scores nothing, while a phone hill counts. Fix: an explicit untimed LIVE signal from MC, or a Stick hill that starts on adoption. Owner brx3 (MC) and the Stick. `build`.
 
 ## MVP BENCH
 

@@ -213,10 +213,12 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);
     indoor and an unset venue both keep the weapon's captured t2, because indoor is unmeasured
     (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut
-    weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
+    weapon, the sidearms) keeps its captured t2 at every venue, same as before this fix. Melee joined
+    the table on 2026-10-17 (Tony: 90 -> 60, the field's melee reached 15-20 ft); its melee word comes
+    from the headset, so the felt change waits on the bench ladder (`bench-field-1017.md` P3.1)."""
     shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
                "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 40,
-               "shotgun": 30, "rocket_launcher": 40, "rail_gun": 100}
+               "shotgun": 30, "rocket_launcher": 40, "rail_gun": 100, "melee": 60}
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
     for wid, want in shipped.items():
@@ -230,7 +232,7 @@ def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
                    else CAT.resolve(wid, 0, environment=env).split(","))[WeaponCatalog._T["range_outdoor"] + 1]
             assert got == captured, f"{wid} @ {env!r}: t2 moved off the captured value ({captured!r} -> {got!r})"
     # a weapon with no catalogue value keeps its captured t2 at every venue, outdoor included
-    for wid in ("usp", "deagle", "melee"):
+    for wid in ("usp", "deagle"):
         captured = _tok(wid, "range_outdoor")
         for env in (None, "indoor", "outdoor"):
             got = (CAT.resolve(wid, 0).split(",") if env is None
@@ -413,7 +415,7 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
     # widened again, 410ms->550ms, once modelling the crit reopened R6, then 2567->2530 on 2026-09-24
     # (polish round 2, F308, "full auto point blank ... too harsh") when the gap eased 550ms->540ms --
     # htk is unchanged throughout, only cycle_ms moved, see the Balance rules table
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 2221), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \

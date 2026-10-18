@@ -183,6 +183,9 @@ class Scorer:
         # MAX per (site, tid) in `possession()`, never summed — four teammates on one hill all report it.
         self.possession_ms: dict[str, dict[int, dict[str, int]]] = {}
         self.possession_observed: dict[str, int] = {}    # node_id -> ms it was hearing the point at all
+        # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
+        # station reading is scored on it; the phones' readings for that site are only the cross-check.
+        self.station_possession_ms: dict[str, dict[int, int]] = {}
         self.seen: set[tuple[str, int]] = set()
         # A6.1 end freeze: facts with effective t > end_t are recorded, never scored.
         self.end_t: int | None = (go_live_t + time_limit_s * 1000) if time_limit_s else None
@@ -743,7 +746,7 @@ class Scorer:
         against a 300 s target read as "300" and fired half a second before it actually reached one."""
         if not self.hold_target_s or "hold_target" in self._announced or self.win_by != "objective":
             return
-        if not self.possession_ms and not self.possession_observed:
+        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:
             return
         by_team_ms, _neutral_ms = self._possession_ms()
         target_ms = self.hold_target_s * 1000
@@ -988,43 +991,78 @@ class Scorer:
         hold = ev.get("hold_ms")
         if not isinstance(hold, dict):
             return "ignored"
-        cap = self.time_limit_s * 1000 if self.time_limit_s else None
-        def clamp(v) -> int | None:
-            try:
-                ms = int(v)
-            except (TypeError, ValueError):
-                return None
-            ms = max(0, ms)
-            return min(ms, cap) if cap is not None else ms
         seen_any = False
-        for tid_raw, ms_raw in hold.items():
-            try:
-                tid = int(tid_raw)
-            except (TypeError, ValueError):
-                continue
-            ms = clamp(ms_raw)
-            if ms is None:
-                continue
+        for tid, ms in self._hold_readings(hold):
             per_node = self.possession_ms.setdefault(site, {}).setdefault(tid, {})
             per_node[node_id] = max(per_node.get(node_id, 0), ms)   # a node's own total only ever grows
             seen_any = True
-        obs = clamp(ev.get("observed_ms"))
+        obs = self._clamp_ms(ev.get("observed_ms"))
         if obs is not None:
             self.possession_observed[node_id] = max(self.possession_observed.get(node_id, 0), obs)
         if not seen_any and obs is None:
             return "ignored"
         return "scored"
 
-    def _possession_ms(self) -> tuple[dict[str, int], int]:
+    def _clamp_ms(self, v) -> int | None:
+        """A reported ms total as an int, floored at 0 and clamped to the match length (no team holds longer)."""
+        try:
+            ms = int(v)
+        except (TypeError, ValueError):
+            return None
+        ms = max(0, ms)
+        return min(ms, self.time_limit_s * 1000) if self.time_limit_s else ms
+
+    def _hold_readings(self, hold: dict):
+        """The (tid, clamped ms) pairs of a `hold_ms` map; a key or value that is not a number is skipped."""
+        for tid_raw, ms_raw in hold.items():
+            try:
+                tid = int(tid_raw)
+            except (TypeError, ValueError):
+                continue
+            ms = self._clamp_ms(ms_raw)
+            if ms is not None:
+                yield tid, ms
+
+    def station_possession(self, site: str, hold_ms, t: int | None = None) -> str:
+        """F555 (utility.md §5d.6): a control station's OWN cumulative `hold_ms` for its point, the AUTHORITY for that
+        site. The station alone sees who is alive on the point (F554); a phone credits whatever owner it hears, so the
+        phones' reading for the site becomes the cross-check (`possession()["phones_by_team"]`). Cumulative and merged
+        by max per (site, tid), like a phone's: a restarted Stick's lower report never walks a total back (so a station
+        that truly restarts from 0, a reloaded phone or a Stick whose NVS failed, is undercounted, never overcounted). `t` is the
+        receipt time of a LIVE reading, which may cross the hold target; the whistle's final reading passes None.
+        The Session decides which readings belong to this match (`Session._station_hold`)."""
+        if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
+            return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
+        readings = list(self._hold_readings(hold_ms))
+        if not readings:
+            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
+        # brx3 review: no point is held longer than the match has been PLAYED -- the time so far while live, the whistle
+        # once it has blown (an early END moves `end_t`). A station that missed the end and counted on cannot add it.
+        now = self.now_ms()
+        played = max(0, (min(self.end_t, now) if self.end_t is not None else now) - self.go_live_t)
+        per_tid = self.station_possession_ms.setdefault(str(site), {})
+        for tid, ms in readings:
+            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played))
+        if t is not None:
+            self._check_hold_target(t)
+        return "scored"
+
+    def _possession_ms(self, phones_only: bool = False) -> tuple[dict[str, int], int]:
         """The raw (unrounded) merge `possession()` reports in seconds, and `_check_hold_target` compares
         against the target in -- one computation, so the two can never quietly disagree on what "reached"
-        means. Returns (by_team ms, neutral ms), the max reading per (site, team)."""
+        means. Returns (by_team ms, neutral ms): per site, the station's own reading when it gave one (F555),
+        else the max phone reading per (site, team). `phones_only` is the cross-check: the phones' merge alone."""
         tid_team = {t["tid"]: tid for tid, t in self.teams.items()}
         by_team: dict[str, int] = {tid: 0 for tid in self.teams}
         neutral_ms = 0
-        for sites in self.possession_ms.values():
-            for tid, per_node in sites.items():
-                best = max(per_node.values()) if per_node else 0
+        stations = {} if phones_only else self.station_possession_ms
+        for site in set(self.possession_ms) | set(stations):
+            if site in stations:
+                per_site = dict(stations[site])
+            else:
+                per_site = {tid: (max(per_node.values()) if per_node else 0)
+                            for tid, per_node in self.possession_ms[site].items()}
+            for tid, best in per_site.items():
                 team_id = tid_team.get(tid)
                 if team_id is None:            # tid 2 on a hill = NEUTRAL, and any tid nobody is on
                     neutral_ms += best
@@ -1041,16 +1079,21 @@ class Scorer:
         coverage: possession from a grenade is only ever a lower bound, because the beacon is IR and
         only a gun in range hears it (F92), so a match nobody watched reads as 0 rather than as a lie.
         """
-        if not self.possession_ms and not self.possession_observed:
+        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:
             return None
         by_team_ms, neutral_ms = self._possession_ms()
-        return {"by_team": {k: round(v / 1000) for k, v in by_team_ms.items()},
+        out: PossessionView = {"by_team": {k: round(v / 1000) for k, v in by_team_ms.items()},
                 "neutral_s": round(neutral_ms / 1000),
-                "sites": len(self.possession_ms),
+                "sites": len(set(self.possession_ms) | set(self.station_possession_ms)),
                 "reports": len(set(self.possession_observed) | {n for s in self.possession_ms.values()
                                                                 for p in s.values() for n in p}),
                 "observed_s": round(max(self.possession_observed.values(), default=0) / 1000),
                 "of_s": self.time_limit_s}
+        if self.station_possession_ms:   # F555: the station decided these sites; the phones' merge is the check
+            phones_ms, _ = self._possession_ms(phones_only=True)
+            out["station_sites"] = len(self.station_possession_ms)
+            out["phones_by_team"] = {k: round(v / 1000) for k, v in phones_ms.items()}
+        return out
 
     def team_scores(self) -> dict[str, int]:
         scores = {tid: self.team_credit.get(tid, 0) for tid in self.teams}   # A65: team-only kills first

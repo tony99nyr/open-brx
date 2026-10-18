@@ -117,6 +117,9 @@ export declare const STALE_ACK_FAULT: 'ACKED AN OLDER CONFIG';
 export declare const ECHO_FAULT: 'GUN ECHO ≠ CONFIG';
 export declare const POOL_FAULT: 'GUN POOL ≠ CONFIG';
 export declare const GUN_CONFIG_FAULT: 'GUN CONFIG ≠ PUSHED HEAD';
+/** F549 (brx4): the phone acked `err: "no_config"`: the gun answered a zeroed `$LCD`, so it loaded nothing (F548's broken
+ *  SMG head). The gun answered, so the headset is fine and the kit is the fault. A push cures it once the kit is fixed. */
+export declare const GUN_DID_NOT_TAKE_CONFIG: 'GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH';
 /** Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off). */
 export declare const GUN_FLAPPING_LINE: 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON';
 export declare const GUN_LINK_LOST: 'GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT';
@@ -1523,6 +1526,8 @@ export interface NodeView {
   claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
+  /** F564: the phone's make and model (`Device.getInfo()`), e.g. "Google Pixel 4" */
+  device?: string | null;
   log?: LogView | null;
   /** F309: the phone's own last `status.transport` claim; absent = never reported (older app). */
   transport?: 'wifi' | 'cellular' | 'none' | 'unknown';
@@ -1910,6 +1915,8 @@ export interface StationControl {
   progress?: number;
   contested?: boolean;
   hold_ms?: Record<string, number>;
+  /** F555: the game byte the hill counts under (absent from an older station) */
+  game?: number;
 }
 
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
@@ -2176,6 +2183,10 @@ export interface PossessionView {
   reports: number;
   observed_s: number;
   of_s: number | null;
+  /** F555: present once a control station reported its own tally. `by_team` then scores those sites on the station's
+   *  reading (utility.md §5d.6); `phones_by_team` is the phones' own merge, the cross-check. */
+  station_sites?: number;
+  phones_by_team?: Record<string, number>;
 }
 
 export interface AfterEndPlayer {

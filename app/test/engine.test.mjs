@@ -7755,19 +7755,19 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
 });
 
 // ---------- shot-ready cue (bench 2026-09-17): `$WEAP` token 14 from the head, timed from the gun's own `$ALCD` ----------
-test('shot cue: a slow weapon (golden slot 1 shotgun, t14 700) reports a cooldown from the shot, then 0 left', () => {
-  // t14 700 (was 800 pre-2026-09-23, R8/F308: the pump gap tightened for the Shotgun-vs-SMG close-range
-  // rule -- see docs/weapon-design.md's Balance rules table), read from the regenerated golden bundle.
+test('shot cue: a slow weapon (golden slot 1 shotgun, t14 400) reports a cooldown from the shot, then 0 left', () => {
+  // t14 400 (800 before 2026-09-23, R8/F308; 700 until 2026-10-17, when the single-shot retune made it 400 --
+  // see docs/weapon-design.md's Balance rules table rows 6 and 14), read from the regenerated golden bundle.
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   assert.equal(h.eng.phase, 'live');
   h.frame('$ALCD,8,100,1,40,0,*');
   assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
   const at = h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   let c = h.eng.state().shotCooldown;
-  assert.deepEqual(c, { at, ms: 700, leftMs: 700 }, 'the cooldown starts at the frame that reported the round');
-  h.adv(500); c = h.eng.state().shotCooldown;
-  assert.equal(c.leftMs, 200);
-  h.adv(400); c = h.eng.state().shotCooldown;
+  assert.deepEqual(c, { at, ms: 400, leftMs: 400 }, 'the cooldown starts at the frame that reported the round');
+  h.adv(300); c = h.eng.state().shotCooldown;
+  assert.equal(c.leftMs, 100);
+  h.adv(200); c = h.eng.state().shotCooldown;
   assert.equal(c.leftMs, 0, 'past the interval the trigger is hot again');
 });
 
@@ -8098,4 +8098,49 @@ test('F277 review: a shot after the failed reload retires the prompt; a failed r
   assert.equal(h.eng.state().reloadFailed, false, 'the shot retires it');
   h.eng.am.reloadOutcome = { ok: false, why: 'timeout', slot: 1, at: h.eng.now() };
   assert.equal(h.eng.state().reloadFailed, false, 'a slot-1 failure is not shown over slot 0');
+});
+// BOLT cue (Tony 2026-10-17 via brx2): a bolt-action weapon (catalogue `reload_type: "bolt"`, magazine 1) needs a lever pull
+// per shot. The pull opens the same reconciled reload, but with no RELOADING takeover: a small BOLT cue, so the scope stays.
+function boltHarness() {
+  const h = liveSwapHarness();
+  h.eng.catalog = { ...(h.eng.catalog || {}), weapons: [{ weapon_id: 'assault_rifle', name: 'BOLT RIFLE', reload_s: 2, reload_type: 'bolt' }, { weapon_id: 'smg', name: 'SMG', reload_s: 1.4 }] };
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,0,100,0,24,0,*'); h.frame('$BUT,0,0,*');   // the shot empties the one-round chamber
+  return h;
+}
+test('BOLT: a lever pull on a bolt weapon shows the BOLT cue, never the RELOADING takeover, and the chambered round ends it', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  let s = h.eng.state();
+  assert.equal(s.bolt, true, 'the BOLT cue is up');
+  assert.notEqual(s.presented.takeover && s.presented.takeover.kind, 'reload', 'no RELOADING takeover over the scope');
+  h.adv(1900); h.frame('$ALCD,1,100,0,23,0,*');
+  s = h.eng.state();
+  assert.equal(s.bolt, false, 'the round chambered: the cue ends');
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, true);
+});
+test('BOLT: with no chambered round by the deadline the cue ends as a failed reload, never left up', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().bolt, true);
+  h.adv(6000); h.eng.tick();
+  const s = h.eng.state();
+  assert.equal(s.bolt, false, 'not left up');
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false); assert.equal(s.reloadOutcome.why, 'timeout');
+});
+test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  const s = h.eng.state();
+  assert.equal(s.bolt, false); assert.equal(s.presented.takeover.kind, 'reload');
+});
+test('BOLT review: a bolt pull that the gun lands on a non-bolt slot shows that slot\'s RELOADING, not BOLT', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().bolt, true, 'setup: BOLT on slot 0');
+  h.eng.am.prevAmmo[1] = 1;                              // setup: the SMG nearly empty from an earlier life of fire
+  h.adv(500); h.frame('$ALCD,4,100,1,20,0,*');           // the gun was on slot 1 (the SMG): its magazine rises, short of its 6
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 1); assert.equal(s.bolt, false, 'no BOLT under the SMG');
+  assert.equal(s.presented.takeover && s.presented.takeover.kind, 'reload', 'the SMG reload shows RELOADING');
 });

@@ -94,3 +94,18 @@ def test_a_ruleset_that_fixes_armor_piercing_keeps_primaries_it_cannot_ride_out_
     for p in s.players.values():
         assert p["loadout"]["weapons"][0]["weapon_id"] in lp["primary"], p["loadout"]
     s.push_config(force=True)            # nothing on the roster can refuse
+
+
+def test_a_host_fixing_the_primary_to_a_weapon_the_perk_cannot_ride_drops_the_perk():
+    """Codex via brx4: `policy.apply` re-fits every player's kit when the ruleset changes. Fixing the primary to the
+    sniper rifle kept an equipped Armor Piercing perk, which the push then refused."""
+    s, net, clock, ps = _real()
+    pid = ps[0]["player_id"]
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
+    assert s.players[pid]["loadout"].get("perk") == "armor_piercing", "setup"
+    pol = s.policy()
+    pol["primary"] = {**pol["primary"], "choice": "fixed", "fixed_id": "sniper_rifle"}
+    s.set_config({"loadout_policy": pol})
+    lo = s.players[pid]["loadout"]
+    assert lo["weapons"][0]["weapon_id"] == "sniper_rifle" and "perk" not in lo, lo
+    s.push_config(force=True)            # nothing on the roster can refuse
