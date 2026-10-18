@@ -25,9 +25,9 @@ runs the same versioned scenario list in both, and prints a verdict with six nam
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
                          players who do (Tony, 2026-10-17).
 
-Scenario version 3 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
+Scenario version 4 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
-close hill holds and contests, long hill overwatch, ammo stress with a spawn-reserve pickup, and pistol
+close hill holds and contests, long hill overwatch, mid-range ammo stress with healing and a spawn-reserve pickup, and pistol
 finishers after a dry primary. The hidden Haze runs in a separate optional report.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
 so the published semi TTK and the fight sim disagree (F576). Heat cooling while firing is unproven (F575).
@@ -90,7 +90,7 @@ from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 3
+SCENARIO_VERSION = 4
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -134,8 +134,13 @@ ANCHOR = "assault_rifle"      # the plain kit every perk, field and ambush numbe
 HILL_REFERENCES = (ANCHOR, "smg", "shotgun")  # the close-range KOTH attackers and contest opponents
 AMMO_STRESS_GAP_MS = 1500.0  # the next AR arrives 1.5 s after the previous fight
 AMMO_PICKUP_AFTER_KILLS = 4  # one AMMO pickup after the fourth kill
-AMMO_STRESS_MAX_ATTACKERS = 64  # bound one life when a kit survives unusually long
-AMMO_STRESS_RANGE = "close"  # the attacker stream presses the holder at close range
+AMMO_STRESS_MAX_ATTACKERS = 128  # bound one life; report cap hits in the matrix
+AMMO_STRESS_RANGE = "mid"  # all kits meet the attacker in the neutral band
+AMMO_STRESS_ATTACKER_AIM = 0.2  # a streaking holder has twice the incoming AR's aim
+AMMO_STRESS_HEAL = True  # restore the holder's pool between fights, while ammo and heat persist
+AMMO_STRESS_BAND_FIT = False  # mid-range ammo comparison does not penalise a kit's preferred band
+AMMO_STRESS_ATTACKER_REACT_MS = 1000.0  # a ready holder gets the first exchange on a streak
+AMMO_STRESS_FIGHT_CAP_MS = 120_000.0  # allow slow mid-range kits to finish a fight
 PISTOL_FINISH_RANGE = "close"  # the chipped target is at close range
 # Mixed kits that open with the first gun's big round and finish with the second (Tony 2026-10-17).
 COMBO_KITS = (("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor"),
@@ -191,9 +196,13 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "hill": {"second_attacker_ms": HILL_SECOND_ATTACKER_MS, "references": list(HILL_REFERENCES),
                  "escape_p": HILL_ESCAPE_P, "range_hold_contest": "close", "range_overwatch": "long"},
         "ammo_stress": {"gap_ms": AMMO_STRESS_GAP_MS, "pickup_after_kills": AMMO_PICKUP_AFTER_KILLS,
-                        "max_attackers": AMMO_STRESS_MAX_ATTACKERS, "aim": REAL_AIM,
-                        "range": AMMO_STRESS_RANGE,
-                        "enemy_response": "a plain AR starts firing when it finds the holder reloading",
+                        "max_attackers": AMMO_STRESS_MAX_ATTACKERS, "holder_aim": REAL_AIM,
+                        "attacker_aim": AMMO_STRESS_ATTACKER_AIM, "heal_between_fights": AMMO_STRESS_HEAL,
+                        "range": AMMO_STRESS_RANGE, "band_fit": AMMO_STRESS_BAND_FIT,
+                        "attacker_react_ms": AMMO_STRESS_ATTACKER_REACT_MS,
+                        "fight_cap_ms": AMMO_STRESS_FIGHT_CAP_MS,
+                        "secondary_plan": "reload or vent the primary under fire; draw the secondary after the primary has no rounds",
+                        "enemy_response": "a plain AR fires on arrival during reload or heat lock; otherwise after the first landed hit and reaction",
                         "pickup": "once, top each held slot's reserve up to its compiled spawn reserve; leave magazines alone"},
         "pistol_finisher": {"pool_hp": B.R10_FINISH_POOL_HP, "aim": AIM,
                             "range": PISTOL_FINISH_RANGE, "first_shot": "at draw or reload completion"},
@@ -512,9 +521,10 @@ class Fighter:
     in that order, with no regeneration."""
 
     def __init__(self, kit: Kit, pool: int, aim: float, dist: int, rng, fit=True, pull_ms=PULL_MS,
-                 allow_melee=True, heat_cool_while_firing=True):
+                 allow_melee=True, heat_cool_while_firing=True, persistent_reload=False):
         self.kit, self.aim, self.dist, self.rng, self.fit, self.pull_ms = kit, aim, dist, rng, fit, pull_ms
         self.allow_melee, self.heat_cool_while_firing = allow_melee, heat_cool_while_firing
+        self.persistent_reload = persistent_reload
         self.health, self.armour, self.shield = pool if isinstance(pool, tuple) else (pool, 0, 0)
         self.blind_until = 0.0
         self.dot_next, self.dot_left, self.dot_dmg, self.dot_ms, self.dot_src = math.inf, 0, 0, 0.0, None
@@ -635,6 +645,16 @@ class Fighter:
             return False
         primary, secondary = self.kit.guns
         ps, ss = self.gs
+        if self.persistent_reload:
+            if self.active == 0 and ps.ammo == 0 and ps.reserve == 0 and not ps.reload_amount and \
+                    (ss.ammo or ss.reserve):
+                self._swap(1, t)
+                return True
+            if self.active == 1 and ss.ammo == 0 and ss.reserve == 0 and not ss.reload_amount and \
+                    (ps.ammo or ps.reserve):
+                self._swap(0, t)
+                return True
+            return False
         if self.active == 0:
             blocked = ps.ammo == 0 or ps.locked_until > t or ps.ready_at > t
             if blocked and ss.ammo:
@@ -1129,32 +1149,47 @@ def hill_report(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
 
 
 def ammo_stress(kit: Kit, attacker: Kit, reps: int, pickup=True,
-                heat_cool_while_firing=True) -> float:
-    """Mean AR kills in one persistent life, with reloads during the gap and one spawn-reserve pickup."""
+                heat_cool_while_firing=True, report_caps=False) -> float | tuple[float, int]:
+    """Mean AR kills in one life. The pool heals; ammunition, reloads and heat persist."""
     rng = B.cell_rng(SEED, "ammo_stress", kit.name, attacker.name, AMMO_STRESS_GAP_MS,
-                     AMMO_PICKUP_AFTER_KILLS, heat_cool_while_firing)
-    total = 0
+                     AMMO_PICKUP_AFTER_KILLS, AMMO_STRESS_RANGE, AMMO_STRESS_ATTACKER_AIM,
+                     AMMO_STRESS_HEAL, AMMO_STRESS_BAND_FIT, AMMO_STRESS_ATTACKER_REACT_MS,
+                     AMMO_STRESS_FIGHT_CAP_MS,
+                     pickup, heat_cool_while_firing)
+    total = cap_hits = 0
     for _ in range(reps):
         holder = Fighter(kit, kit.pool_parts("standard"), REAL_AIM, DIST[AMMO_STRESS_RANGE], rng,
-                         heat_cool_while_firing=heat_cool_while_firing)
+                         fit=AMMO_STRESS_BAND_FIT,
+                         heat_cool_while_firing=heat_cool_while_firing, persistent_reload=True)
         arrival = 0.0
         for index in range(AMMO_STRESS_MAX_ATTACKERS):
-            enemy = Fighter(attacker, attacker.pool_parts("standard"), REAL_AIM, DIST[AMMO_STRESS_RANGE], rng,
-                            heat_cool_while_firing=heat_cool_while_firing)
+            enemy = Fighter(attacker, attacker.pool_parts("standard"), AMMO_STRESS_ATTACKER_AIM,
+                            DIST[AMMO_STRESS_RANGE], rng, fit=AMMO_STRESS_BAND_FIT,
+                            heat_cool_while_firing=heat_cool_while_firing, persistent_reload=True)
             holder.next_t = max(holder.next_t, arrival)
             state = holder.gs[holder.active]
             holder._credit_reload(state, arrival)
             reloading = bool(state.reload_amount and state.ready_at > arrival)
-            enemy.next_t = arrival + _reaction(rng) if reloading else math.inf
+            heat_locked = state.locked_until > arrival or state.vent_until > arrival
+            under_fire = reloading or heat_locked
+            enemy.next_t = arrival if under_fire else math.inf
             before = len(holder.kill_times)
-            fight(rng, [holder], [enemy], arrival + FIGHT_CAP_MS, fire_during_reload=True)
+            alert = None if under_fire else {enemy: AMMO_STRESS_ATTACKER_REACT_MS}
+            fight(rng, [holder], [enemy], arrival + AMMO_STRESS_FIGHT_CAP_MS,
+                  alert=alert, fire_during_reload=True)
+            if holder.alive and enemy.alive and any(s.ammo + s.reserve + s.reload_amount for s in holder.gs):
+                raise ValueError(f"ammo stress fight cap hit after {AMMO_STRESS_FIGHT_CAP_MS:g} ms")
             if not holder.alive or len(holder.kill_times) == before:
                 break
             total += 1
             ended = holder.kill_times[-1]
+            if AMMO_STRESS_HEAL:
+                holder.health, holder.armour, holder.shield = kit.pool_parts("standard")
             if pickup and index + 1 == AMMO_PICKUP_AFTER_KILLS:
                 for gun, state in zip(kit.guns, holder.gs):
                     state.reserve = max(state.reserve, gun.reserve)
+            if all(s.ammo + s.reserve + s.reload_amount == 0 for s in holder.gs):
+                break
             state = holder.gs[holder.active]
             gun = kit.guns[holder.active]
             if state.ammo < gun.mag and state.reserve and not state.reload_amount:
@@ -1163,7 +1198,11 @@ def ammo_stress(kit: Kit, attacker: Kit, reps: int, pickup=True,
                 state.ready_at = ended + (gun.reload_ms * amount if gun.chain else gun.reload_ms)
                 holder.next_t = max(holder.next_t, state.ready_at)
             arrival = ended + AMMO_STRESS_GAP_MS
-    return total / reps
+        else:
+            cap_hits += 1
+    if cap_hits and not report_caps:
+        raise ValueError(f"ammo stress attacker cap hit in {cap_hits}/{reps} reps")
+    return (total / reps, cap_hits) if report_caps else total / reps
 
 
 def pistol_finish_ms(gun: Gun, swap_ms: float, *, dry=False) -> float:
@@ -1502,7 +1541,8 @@ def _run_cell(job):
         return hill_overwatch(long_gun, holder, reps, heat[0] if heat else True)
     if kind == "ammo":
         _, kit, attacker, reps, *heat = job
-        return ammo_stress(kit, attacker, reps, heat_cool_while_firing=heat[0] if heat else True)
+        return ammo_stress(kit, attacker, reps, heat_cool_while_firing=heat[0] if heat else True,
+                           report_caps=True)
     raise ValueError(kind)
 
 
@@ -1659,13 +1699,14 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                                            heat_cool_while_firing)))
         cells.append((("ammo", n), ("ammo", kits[n], enemy, ammo_reps, heat_cool_while_firing)))
     res = run_cells([j for _, j in cells], n_jobs)
-    duel, field, amb, hill, ammo = {}, {}, {}, {}, {}
+    duel, field, amb, hill, ammo, ammo_caps = {}, {}, {}, {}, {}, {}
     ammo_anchor_kills = 0.0
+    ammo_anchor_caps = 0
     for (key, _), r in zip(cells, res):
         if key[0] == "ammo_anchor":
-            ammo_anchor_kills = r
+            ammo_anchor_kills, ammo_anchor_caps = r
         elif key[0] == "ammo":
-            ammo[key[1]] = r
+            ammo[key[1]], ammo_caps[key[1]] = r
         elif key[0] == "field":
             field.setdefault(key[2], []).append(r)
         elif key[0] == "ambush":
@@ -1699,7 +1740,8 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                                                "shields_perk": s.shield_perk,
                                                "combo": s.combo} for s in specs},
             "columns": cols, "top": top, "near_top": near, "duels": duel,
-            "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills}
+            "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills,
+            "ammo_stress_cap_hits": ammo_caps, "ammo_stress_anchor_cap_hits": ammo_anchor_caps}
 
 
 # --------------------------------------------------------------------------- #
@@ -2487,13 +2529,17 @@ def report_markdown(v: dict) -> str:
     matrix = v["matrix"]["candidate"]
     if matrix.get("ammo_stress_kills"):
         out += ["## Ammo stress", "",
-                "Mean kills in one life against plain AR attackers at realistic aim. An attacker starts firing "
-                "when it finds the holder reloading. One AMMO pickup tops held reserves after four kills.", "",
-                f"Plain AR anchor: {matrix['ammo_stress_anchor_kills']:.2f} kills.", "",
-                "| kit | kills | ratio to AR |", "|---|---:|---:|"]
+                "Mean kills in one life at mid range. The holder has 0.4 aim and heals between fights. "
+                "Plain AR attackers have 0.2 aim. They fire on arrival during a reload or heat lock, "
+                "or react to the first landed hit. "
+                "One AMMO pickup tops held reserves after four kills.", "",
+                f"Plain AR anchor: {matrix['ammo_stress_anchor_kills']:.2f} kills; "
+                f"attacker cap hit in {matrix['ammo_stress_anchor_cap_hits']} reps.", "",
+                "| kit | kills | ratio to AR | cap hits |", "|---|---:|---:|---:|"]
         for name in matrix["kits"]:
             out.append(f"| {name} | {matrix['ammo_stress_kills'][name]:.2f} | "
-                       f"{matrix['columns'][name]['ammo stress']:.2f} |")
+                       f"{matrix['columns'][name]['ammo stress']:.2f} | "
+                       f"{matrix['ammo_stress_cap_hits'][name]} |")
         out.append("")
     if v.get("sidearm_r10"):
         sr = v["sidearm_r10"]

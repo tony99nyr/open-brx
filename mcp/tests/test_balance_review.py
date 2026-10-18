@@ -1,8 +1,10 @@
 """The balance review tool (`mcp/tools/balance_review.py`) gives the same verdict for the same input, and
 each named test catches the candidate it exists to catch.
 
-Every test runs at `REPS_SCALE` (the test-only `reps_scale`): the same seeds and code paths as a real
-review, with far fewer reps. A scaled verdict is never recorded. Nothing here writes to docs/.
+Verdict tests run at `REPS_SCALE`; the dominance candidate keeps a larger scale for its margin.
+Matrix repeatability checks use `MATRIX_REPS_SCALE`.
+Both use the same seeds and code paths as a real review, with fewer reps. A scaled verdict is never
+recorded. Nothing here writes to docs/.
 """
 import contextlib
 import copy
@@ -23,7 +25,9 @@ import balance_sim as B  # noqa: E402
 from brx_mcp.mc.compile import PULL_SIGMA, WeaponCatalog, armed_armor, armed_shield  # noqa: E402
 from brx_mcp.mc.perks import PerkCatalog  # noqa: E402
 
-REPS_SCALE = 0.01
+REPS_SCALE = 0.005
+DOMINANCE_REPS_SCALE = 0.008
+MATRIX_REPS_SCALE = 0.003
 
 
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
@@ -48,7 +52,7 @@ def _review_cli(candidate: dict) -> tuple[int, dict]:
         src, out = pathlib.Path(d) / "cand.json", pathlib.Path(d) / "verdict.json"
         src.write_text(json.dumps(candidate))
         with contextlib.redirect_stdout(io.StringIO()):
-            code = R.main(["--candidate", str(src), "--out", str(out), "--jobs", "1", "--reps-scale", str(REPS_SCALE)])
+            code = R.main(["--candidate", str(src), "--out", str(out), "--jobs", "1", "--reps-scale", str(DOMINANCE_REPS_SCALE)])
         return code, json.loads(out.read_text())
 
 
@@ -67,7 +71,7 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     for _ in range(2):
         R.clear_cache()
         w, specs = _shipped_specs()
-        runs.append(R.dominance_matrix(w, specs, REPS_SCALE, 1, anchor_world=w))
+        runs.append(R.dominance_matrix(w, specs, MATRIX_REPS_SCALE, 1, anchor_world=w))
     a, b = runs
     assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
@@ -76,6 +80,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
                          "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
     assert set(R.NEAR_TOP_MARGIN) == set(R.COLUMNS)
     assert a["columns"]["Assault Rifle"]["ammo stress"] > 0
+    assert set(a["ammo_stress_cap_hits"]) == set(a["kits"])
+    assert a["ammo_stress_anchor_cap_hits"] == 0
+    assert a["ammo_stress_cap_hits"]["Energy Rifle"] == 0
     assert a["columns"] == b["columns"] and a["duels"] == b["duels"]
 
 
@@ -83,9 +90,9 @@ def test_four_workers_give_the_numbers_one_worker_gives():
     """--jobs changes nothing. Break it once (key a cell's rng on the worker's pid) and watch it differ."""
     w, specs = _shipped_specs()
     R.clear_cache()
-    one = R.dominance_matrix(w, specs, REPS_SCALE, 1, anchor_world=w)
+    one = R.dominance_matrix(w, specs, MATRIX_REPS_SCALE, 1, anchor_world=w)
     R.clear_cache()
-    four = R.dominance_matrix(w, specs, REPS_SCALE, 4, anchor_world=w)
+    four = R.dominance_matrix(w, specs, MATRIX_REPS_SCALE, 4, anchor_world=w)
     assert one["columns"] == four["columns"] and one["duels"] == four["duels"]
 
 
@@ -98,14 +105,11 @@ def test_the_column_top_ignores_nan():
 # --------------------------------------------------------------------------- the named tests, end to end
 
 def test_a_dominant_candidate_fails_no_domination():
-    """A 200-damage AR with a 100 ms reload tops every column, including ammo stress.
-    Break it once (every margin -1) and watch it pass."""
-    row = _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=200)
-    row["reload_ms"] = 100
-    code, v = _review_cli({"title": "dominant", "row": row})
+    """A 40-damage AR copy tops every column under the ammo-isolated scenario."""
+    code, v = _review_cli({"title": "dominant", "row": _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=40)})
     t = v["tests"]["no_domination"]
     assert t["status"] == "fail" and "Test AR heavy" in t["numbers"]["near_top_everywhere"], t
-    assert code == 1 and v["pass"] is False and v["reps_scale"] == REPS_SCALE
+    assert code == 1 and v["pass"] is False and v["reps_scale"] == DOMINANCE_REPS_SCALE
 
 
 def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
@@ -302,13 +306,67 @@ def test_hill_report_covers_each_kit_and_reference():
 
 def test_ammo_stress_rewards_extended_mags_and_spawn_reserve_pickup():
     world = R.shipped_world()
-    plain = R.make_kit(world, "Shotgun plain", "shotgun")
-    mags = R.make_kit(world, "Shotgun mags", "shotgun", perk="extended_mags")
-    anchor = R.make_kit(world, "AR attacker", R.ANCHOR)
-    assert R.ammo_stress(mags, anchor, 120) > R.ammo_stress(plain, anchor, 120)
-    with_pickup = R.ammo_stress(plain, anchor, 120)
-    without_pickup = R.ammo_stress(plain, anchor, 120, pickup=False)
-    assert with_pickup > without_pickup
+    plain = R.make_kit(world, "Shotgun plain", "shotgun", R.SECONDARY)
+    mags = R.make_kit(world, "Shotgun mags", "shotgun", R.SECONDARY, "extended_mags")
+    anchor = R.make_kit(world, "AR attacker", R.ANCHOR, R.SECONDARY)
+    plain_kills = R.ammo_stress(plain, anchor, 160)
+    mags_kills = R.ammo_stress(mags, anchor, 160)
+    assert mags_kills > plain_kills, (mags_kills, plain_kills)
+    ar_holder = R.make_kit(world, "AR holder", R.ANCHOR, R.SECONDARY)
+    with_pickup = R.ammo_stress(ar_holder, anchor, 160)
+    without_pickup = R.ammo_stress(ar_holder, anchor, 160, pickup=False)
+    assert with_pickup > without_pickup, (with_pickup, without_pickup)
+
+
+def test_ammo_stress_quick_hands_helps_a_kit_reloading_under_fire():
+    row = _copy(R.ANCHOR, "test_slow_reload", "Slow reload", dmg=40)
+    row.update(mag=8, reserve=100, reload_ms=15000)
+    world = R.World(WeaponCatalog(WeaponCatalog()._rows + [row]), PerkCatalog())
+    attacker = R.make_kit(world, "AR attacker", R.ANCHOR, R.SECONDARY)
+    plain = R.make_kit(world, "Slow reload plain", "test_slow_reload")
+    quick = R.make_kit(world, "Slow reload quick", "test_slow_reload", perk="quick_hands")
+    plain_kills = R.ammo_stress(plain, attacker, 160)
+    quick_kills = R.ammo_stress(quick, attacker, 160)
+    assert quick_kills >= plain_kills, (quick_kills, plain_kills)
+
+
+def test_ammo_stress_anchor_and_isolation_assumptions():
+    world = R.shipped_world()
+    anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
+    plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
+    enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
+    assert R.SCENARIO_VERSION == 4
+    assert R.AMMO_STRESS_RANGE == "mid"
+    assert R.AMMO_STRESS_BAND_FIT is False
+    assert R.AMMO_STRESS_HEAL is True
+    assert 0 < R.AMMO_STRESS_ATTACKER_AIM < R.REAL_AIM
+    anchor_kills = R.ammo_stress(anchor, enemy, 160)
+    assert anchor_kills >= 3, anchor_kills
+    assert 0.8 <= R.ammo_stress(plain, enemy, 160) / anchor_kills <= 1.2
+    with mock.patch.object(R, "AMMO_STRESS_HEAL", False):
+        without_heal = R.ammo_stress(anchor, enemy, 160)
+    assert anchor_kills > without_heal, (anchor_kills, without_heal)
+    assumptions = R.assumptions()["ammo_stress"]
+    assert assumptions["holder_aim"] == R.REAL_AIM
+    assert assumptions["attacker_aim"] == R.AMMO_STRESS_ATTACKER_AIM
+    assert assumptions["heal_between_fights"] is True
+    assert assumptions["band_fit"] is False
+
+
+def test_ammo_stress_reports_an_attacker_cap_hit():
+    world = R.shipped_world()
+    anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
+    with mock.patch.object(R, "AMMO_STRESS_MAX_ATTACKERS", 1):
+        _raises(lambda: R.ammo_stress(anchor, anchor, 8), "cap")
+        _, cap_hits = R.ammo_stress(anchor, anchor, 8, report_caps=True)
+        assert cap_hits > 0
+
+
+def test_ammo_stress_does_not_end_a_life_when_a_fight_times_out():
+    world = R.shipped_world()
+    anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
+    with mock.patch.object(R, "AMMO_STRESS_FIGHT_CAP_MS", 1):
+        _raises(lambda: R.ammo_stress(anchor, anchor, 1), "fight cap")
 
 
 def test_pistol_finisher_lists_every_primary_and_pistol_and_respects_cycle():
@@ -488,6 +546,37 @@ def test_a_dry_primary_draws_a_lethal_secondary_and_pays_both_swaps():
     assert solo.active == 0 and solo.shots == shots and len(solo.gs) == 1
 
 
+def test_a_loaded_secondary_fires_before_returning_to_an_empty_primary():
+    world = R.shipped_world()
+    kit = R.make_kit(world, "AR + Deagle", R.ANCHOR, R.SECONDARY)
+    holder = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0, persistent_reload=True)
+    target = R.Fighter(kit, 115, 0, 1, random.Random(3))
+    holder.targets = [target]
+    holder.active = 1
+    holder.gs[0].ammo = 0
+    before = holder.gs[1].ammo
+    assert holder.act(0) is not None
+    assert holder.active == 1 and holder.gs[1].ammo == before - 1
+
+
+def test_a_dry_primary_draws_a_secondary_with_reserve_to_reload():
+    world = R.shipped_world()
+    kit = R.make_kit(world, "AR + Deagle", R.ANCHOR, R.SECONDARY)
+    holder = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0, persistent_reload=True)
+    holder.targets = [R.Fighter(kit, 115, 0, 1, random.Random(3))]
+    holder.gs[0].ammo = holder.gs[0].reserve = 0
+    holder.gs[1].ammo = 0
+    assert holder.gs[1].reserve > 0
+    assert holder.act(0) is None and holder.active == 1
+    assert holder.act(holder.next_t) is None and holder.gs[1].reload_amount > 0
+    both_dry = R.Fighter(kit, 115, 1, 1, random.Random(4), pull_ms=0, persistent_reload=True)
+    both_dry.targets = holder.targets
+    both_dry.active = 1
+    both_dry.gs[0].ammo = both_dry.gs[1].ammo = 0
+    assert both_dry.act(0) is None and both_dry.active == 1
+    assert both_dry.gs[1].reload_amount > 0
+
+
 def test_haze_blinds_then_swaps_and_zero_blind_cannot_improve_the_kit():
     w = R.shipped_world()
     haze = R.make_kit(w, "AR Haze", "assault_rifle", "smoke_gun", plan="haze")
@@ -565,7 +654,8 @@ def test_plain_baselines_carry_the_matrix_secondary():
 
     with mock.patch.object(R, "make_kit", side_effect=gun), mock.patch.object(R, "field_kit", side_effect=field):
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [
-                1.0 if j[0] == "field" else (0.0, 0.0) if j[0] == "ambush" else 0.5 for j in jobs]):
+                1.0 if j[0] == "field" else (0.0, 0.0) if j[0] == "ambush" else
+                (0.5, 0) if j[0] == "ammo" else 0.5 for j in jobs]):
             R.dominance_matrix(w, [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False)], REPS_SCALE, 1)
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [0.5] * len(jobs)):
             R.choose_perks(w, [R.ANCHOR], REPS_SCALE, 1, w)
