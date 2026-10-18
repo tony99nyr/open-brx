@@ -414,6 +414,8 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
         {p && (
           <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
             {p.neutral_s > 0 ? `NEUTRAL ${fmtDuration(p.neutral_s)} · ` : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} · {p.reports} PHONE{p.reports === 1 ? '' : 'S'} REPORTED. ONLY A GUN IN RANGE SEES THE {word}, SO THIS IS A FLOOR.
+            {/* F556: `by_team` adds the sites up, so with two hills a team can pass the match length; `of_s` stays the match length */}
+            {p.sites > 1 && p.of_s ? ` HELD TIME ADDS UP ${p.sites} HILLS, SO A TEAM CAN HOLD UP TO ${fmtDuration(p.of_s * p.sites)}.` : ''}
           </div>
         )}
       </div>

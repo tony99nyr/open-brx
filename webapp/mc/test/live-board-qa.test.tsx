@@ -60,6 +60,16 @@ describe('H2 · the KOTH board headlines possession', () => {
     m.unmount();
   });
 
+  it('F556: with two hills, the panel says held time adds the hills up, so 12:37 in a 10:00 match is not a fault', async () => {
+    const two = { ...POSS, by_team: { blue: 757, purple: 300 }, sites: 2 };
+    let r = await board('live', await kothOver(), [row()], { possession: two });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('HELD TIME ADDS UP 2 HILLS, SO A TEAM CAN HOLD UP TO 20:00.');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: POSS });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'one hill: no note').not.toContain('ADDS UP');
+    r.m.unmount();
+  });
+
   it('with no possession reported, the headline is a dash and the panel says why', async () => {
     const { m } = await board('live', await kothOver());
     expect(m.find('[data-team-score="blue"]')[0]?.textContent).toBe('—');

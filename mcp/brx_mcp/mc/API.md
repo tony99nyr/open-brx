@@ -333,7 +333,7 @@ RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
                                        // `{player_id: null, tie: [...]}`, so each of them is told `outcome: "draw"`.
                                        // `rows[0]` is a sort artefact and used to be published as the winner, which
                                        // is how a phone was shown LOSE on a 1-1 board
-            possession?: { by_team: { [team_id]: number /* SECONDS held */ }, neutral_s: number, sites: number,
+            possession?: { by_team: { [team_id]: number /* SECONDS held, added up over every site, so with two hills it can pass of_s (F556) */ }, neutral_s: number, sites: number,
                            reports: number /* nodes that reported */, observed_s: number /* best single observer */,
                            of_s: number|null /* the match length it is measured against */,
                            station_sites?: number /* F555: sites scored on a control station's own tally */,

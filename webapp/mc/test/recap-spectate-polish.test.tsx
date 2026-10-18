@@ -42,6 +42,15 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(m.find('[data-headline-team]').map(e => e.dataset.headlineTeam)).toEqual(['yellow', 'blue']);
   });
 
+  it('F556: two hills get a note that held time adds them up; one hill gets none', async () => {
+    let m = await recap({}, { possession: { ...HELD, by_team: { blue: 95, yellow: 457 }, sites: 2 } });
+    expect(strip(m.find('[data-alert="recap-possession-sites"]')[0]?.textContent ?? ''))
+      .toContain('HELD TIME ADDS UP 2 HILLS, SO A TEAM CAN HOLD UP TO 10:00 IN A 5:00 MATCH.');
+    m.unmount();
+    m = await recap({}, { possession: HELD });
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('ADDS UP');
+  });
+
   it('labels the numbers KILLS when no held time was reported', async () => {
     const m = await recap();
     const h = m.find('[data-testid="recap-headline"]')[0];
