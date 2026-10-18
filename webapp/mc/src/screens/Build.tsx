@@ -22,10 +22,11 @@ import { NAME_MAX } from '../api/contract.gen';
 
 const weaponCatalogue = (weapons: WeaponView[], slot: 'primary' | 'secondary'): CatalogueRow[] =>
   weapons.filter(w => !w.pickup_only)
-    // PRIMARY excludes the sidearm role (no pistol is ever a primary) AND a `lethal: false` support
-    // weapon (weapons.json's own placement rule -- a support weapon may never be a PRIMARY, so its
-    // TYPE toggle and its FIXED ITEM list must never offer one there either).
-    .filter(w => slot === 'secondary' || (w.role !== 'sidearm' && w.lethal !== false))
+    // PRIMARY excludes a `lethal: false` support weapon (weapons.json's own placement rule -- a support weapon
+    // may never be a PRIMARY, so its TYPE toggle and its FIXED ITEM list must never offer one there either).
+    // A pistol IS offered (field 2026-10-17, Tony: "a first match which was pistols only ... I could not select
+    // pistols"): MC arms a pistol primary (loadout.md, a pistol round), and its pool and piece checks accept one.
+    .filter(w => slot === 'secondary' || w.lethal !== false)
     .map(w => ({ id: w.weapon_id, name: w.name, types: w.types ?? [] }));
 const perkCatalogue = (perks: PerkView[]): CatalogueRow[] =>
   perks.filter(p => !p.hidden).map(p => ({ id: p.perk_id, name: p.name }));

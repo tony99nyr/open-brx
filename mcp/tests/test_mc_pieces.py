@@ -1200,3 +1200,19 @@ def test_a_match_only_pick_keeps_a_kit_edit_of_the_mode_params():
     r = c.post("/api/play/pick", json={"match": {"time_limit_s": 900}})
     assert r.json()["ok"]
     assert s.config.get("mode_params", {}).get("score_target") == 100, s.config.get("mode_params")
+
+
+def test_a_pistols_only_primary_players_pick_is_accepted_picked_and_compiles():
+    """Field 2026-10-17 (Tony): a pistols-only first match, where players pick their own pistol. BUILD now offers the
+    pistols for PRIMARY; the server already accepts the piece, fits every player to a pistol, and arms the push."""
+    from brx_mcp.mc.compile import Compiler
+    s, _net, _clock, _players = mk_loadout_session(2, compiler=Compiler())
+    with tempfile.TemporaryDirectory() as folder:
+        s.attach_pieces(PieceStore(pathlib.Path(folder) / "pieces.json"))
+        piece = s.pieces.create("primary", "PISTOLS ONLY", "", {"choice": "player", "kinds": ["weapon"], "exclude_tags": [],
+                                                               "exclude_ids": [], "only_ids": ["usp", "deagle"], "fixed_id": None})
+        result = GamePick(s).pick({"primary": piece["piece_id"]}, {})
+        assert result["ok"], result.get("errors")
+        assert sorted(s.loadout_pool()["primary"]) == ["deagle", "usp"], s.loadout_pool()["primary"]
+        assert all(p["loadout"]["weapons"][0]["weapon_id"] in ("usp", "deagle") for p in s.players.values())
+        s.push_config(force=True)
