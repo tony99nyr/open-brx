@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 4. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 5. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -72,7 +72,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 4 uses these models:
+Scenario version 5 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
   rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
@@ -121,13 +121,17 @@ Scenario version 4 uses these models:
   baseline plain AR kit's kills under the same rules. The holder fires at 0.4 aim and the attackers at
   the invented 0.2 aim. Range-band fit is off, so the column compares ammunition rather than band reach.
   The holder's pool heals after each kill. Ammunition, reloads and heat persist.
-  The next attacker arrives 1,500 ms after the last fight. It fires on arrival when the holder reloads
-  or is heat-locked. Otherwise, it reacts 1,000 ms after the holder's first landed hit. After four kills, one AMMO
+  The holder wins the exchange while able to fire. Incoming rounds land only during reload, vent,
+  heat lock, swap or dry down time (`AMMO_STRESS_DOWNTIME_ONLY`). The next attacker arrives 1,500 ms
+  after the last fight. It fires on arrival during down time. Otherwise, it reacts 1,000 ms after
+  the holder's first landed hit. After four kills, one AMMO
   pickup tops each held slot's reserve to its compiled
   spawn reserve. The holder reloads or vents the primary under fire and draws the secondary when the
   primary has no rounds. The pickup leaves the magazine alone. The model caps the stream at 128 attackers and
   reports how many reps reach the cap. Direct calls without cap reporting raise an error on a cap hit.
-  A fight can last 120 seconds. An unresolved fight raises an error instead of ending the life.
+  A life ends when the holder dies during down time or all held slots have no rounds. The report counts
+  dry, reload, heat or vent, swap and cap endings per kit. A fight can last 120 seconds. An unresolved
+  fight raises an error instead of ending the life.
 - The pistol finisher report pairs every visible sidearm with every shipped primary.
   It starts when the primary runs dry with 35 HP left at close range. It compares swapping and finishing with reloading
   the primary, and reports the R10a 1,200 ms bar. The sidearm `viable` test keeps its existing rule.

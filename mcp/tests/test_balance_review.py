@@ -81,6 +81,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert set(R.NEAR_TOP_MARGIN) == set(R.COLUMNS)
     assert a["columns"]["Assault Rifle"]["ammo stress"] > 0
     assert set(a["ammo_stress_cap_hits"]) == set(a["kits"])
+    assert set(a["ammo_stress_end_reasons"]) == set(a["kits"])
+    assert all(sum(counts.values()) == R._reps("ammo", MATRIX_REPS_SCALE)
+               for counts in a["ammo_stress_end_reasons"].values())
     assert a["ammo_stress_anchor_cap_hits"] == 0
     assert a["ammo_stress_cap_hits"]["Energy Rifle"] == 0
     assert a["columns"] == b["columns"] and a["duels"] == b["duels"]
@@ -335,7 +338,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 4
+    assert R.SCENARIO_VERSION == 5
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -351,6 +354,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     assert assumptions["attacker_aim"] == R.AMMO_STRESS_ATTACKER_AIM
     assert assumptions["heal_between_fights"] is True
     assert assumptions["band_fit"] is False
+    assert assumptions["downtime_only"] is True
 
 
 def test_ammo_stress_reports_an_attacker_cap_hit():
@@ -367,6 +371,60 @@ def test_ammo_stress_does_not_end_a_life_when_a_fight_times_out():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     with mock.patch.object(R, "AMMO_STRESS_FIGHT_CAP_MS", 1):
         _raises(lambda: R.ammo_stress(anchor, anchor, 1), "fight cap")
+
+
+def test_ammo_stress_holder_without_downtime_never_dies():
+    row = _copy(R.ANCHOR, "test_endless_mag", "Endless magazine", dmg=100)
+    row.update(mag=10000, reserve=10000)
+    world = R.World(WeaponCatalog(WeaponCatalog()._rows + [row]), PerkCatalog())
+    holder = R.make_kit(world, "Endless holder", "test_endless_mag")
+    attacker = R.make_kit(world, "AR attacker", R.ANCHOR)
+    with mock.patch.object(R, "AMMO_STRESS_MAX_ATTACKERS", 20):
+        kills, caps, reasons = R.ammo_stress(holder, attacker, 30, report_caps=True, report_reasons=True)
+    assert kills == 20 and caps == 30
+    assert reasons == {"dry": 0, "died_reloading": 0, "died_heat_locked_or_venting": 0,
+                       "died_swapping": 0, "cap": 30}
+
+
+def test_ammo_stress_long_reload_dies_more_than_quick_hands():
+    row = _copy(R.ANCHOR, "test_reload_exposure", "Reload exposure", dmg=45)
+    row.update(mag=5, reserve=15, reload_ms=3000)
+    world = R.World(WeaponCatalog(WeaponCatalog()._rows + [row]), PerkCatalog())
+    attacker = R.make_kit(world, "AR attacker", R.ANCHOR)
+    plain = R.make_kit(world, "Reload plain", "test_reload_exposure")
+    quick = R.make_kit(world, "Reload quick", "test_reload_exposure", perk="quick_hands")
+    _, _, plain_reasons = R.ammo_stress(plain, attacker, 100, report_reasons=True)
+    _, _, quick_reasons = R.ammo_stress(quick, attacker, 100, report_reasons=True)
+    assert plain_reasons["died_reloading"] > quick_reasons["died_reloading"], (plain_reasons, quick_reasons)
+
+
+def test_ammo_stress_energy_life_ends_on_ammo_or_heat():
+    world = R.shipped_world()
+    holder = R.make_kit(world, "Energy holder", "energy_rifle", R.SECONDARY)
+    attacker = R.make_kit(world, "AR attacker", R.ANCHOR, R.SECONDARY)
+    deaths = []
+    receive = R.Fighter.receive
+
+    def capture_death(fighter, dmg, **kwargs):
+        killed = receive(fighter, dmg, **kwargs)
+        if killed and fighter.kit.name == holder.name:
+            state = fighter.gs[0]
+            deaths.append((state.ammo, state.locked_until > kwargs["t"] or state.venting))
+        return killed
+
+    with mock.patch.object(R.Fighter, "receive", capture_death):
+        _, _, reasons = R.ammo_stress(holder, attacker, 100, report_reasons=True)
+    assert reasons["dry"] + reasons["died_heat_locked_or_venting"] + reasons["died_reloading"] == 100, reasons
+    assert all(ammo == 0 or heat_locked for ammo, heat_locked in deaths), deaths
+
+
+def test_ammo_stress_end_reasons_sum_to_reps():
+    world = R.shipped_world()
+    holder = R.make_kit(world, "AR holder", R.ANCHOR, R.SECONDARY)
+    attacker = R.make_kit(world, "AR attacker", R.ANCHOR, R.SECONDARY)
+    _, caps, reasons = R.ammo_stress(holder, attacker, 40, report_reasons=True)
+    assert sum(reasons.values()) == 40
+    assert reasons["cap"] == caps
 
 
 def test_pistol_finisher_lists_every_primary_and_pistol_and_respects_cycle():
@@ -655,7 +713,9 @@ def test_plain_baselines_carry_the_matrix_secondary():
     with mock.patch.object(R, "make_kit", side_effect=gun), mock.patch.object(R, "field_kit", side_effect=field):
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [
                 1.0 if j[0] == "field" else (0.0, 0.0) if j[0] == "ambush" else
-                (0.5, 0) if j[0] == "ammo" else 0.5 for j in jobs]):
+                (0.5, 0, {"dry": j[3], "died_reloading": 0,
+                          "died_heat_locked_or_venting": 0, "died_swapping": 0, "cap": 0})
+                if j[0] == "ammo" else 0.5 for j in jobs]):
             R.dominance_matrix(w, [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False)], REPS_SCALE, 1)
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [0.5] * len(jobs)):
             R.choose_perks(w, [R.ANCHOR], REPS_SCALE, 1, w)
