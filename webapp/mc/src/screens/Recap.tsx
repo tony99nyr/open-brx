@@ -374,7 +374,7 @@ export function Recap() {
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />
-      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} />}
+      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} holdTargetS={scoring?.hold_target_s} />}
       {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
@@ -611,7 +611,7 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
  *  a hill mode is won. `reports`/`observed` are shown because possession from a grenade is a LOWER
  *  BOUND — the beacon is IR and only a gun in range hears it (F92), so a match nobody watched reads 0
  *  and must not be dressed up as the result. */
-function Possession({ p, label, word }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string; word: string }) {
+function Possession({ p, label, word, holdTargetS }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string; word: string; holdTargetS?: number | null }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
   return (
@@ -636,9 +636,9 @@ function Possession({ p, label, word }: { p: NonNullable<RecapView['possession']
           </Alert>
         )}
         {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
-        {sitesNote(p) && (
+        {sitesNote(p, holdTargetS) && (
           <Alert id="recap-possession-sites" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-            {sitesNote(p)}
+            {sitesNote(p, holdTargetS)}
           </Alert>
         )}
         {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever

@@ -816,7 +816,10 @@ class Scorer:
 
         Low (brx1 review of e8811fea): compares RAW milliseconds against the target, not the SECONDS
         `possession()` reports -- those are `round()`ed for display, so a team at 299_600 ms (299.6 s)
-        against a 300 s target read as "300" and fired half a second before it actually reached one."""
+        against a 300 s target read as "300" and fired half a second before it actually reached one.
+
+        F572 (Tony 2026-10-18, "It should add both hills"): `by_team` sums every hill, so with two hills the target
+        counts the time held across both (70 s on one plus 50 s on the other meets 120 s)."""
         if not self.hold_target_s or "hold_target" in self._announced or self.win_by != "objective":
             return
         if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:

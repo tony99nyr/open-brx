@@ -78,6 +78,23 @@ describe('H2 · the KOTH board headlines possession', () => {
     r.m.unmount();
   });
 
+  it('F572: with two hills and a hold target, LIVE and SPECTATE say the target is summed across hills; one hill does not', async () => {
+    const two = { ...POSS, by_team: { blue: 70, purple: 50 }, sites: 2 };
+    const targeted = async () => { const o = await kothOver(); return { ...o, config: { ...o.config!, scoring: { ...o.config!.scoring, hold_target_s: 120 } } }; };
+    let r = await board('live', await targeted(), [row()], { possession: two });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.');
+    r.m.unmount();
+    r = await board('spectate', await targeted(), [row()], { possession: two });
+    expect(r.m.find('[data-spectate="hill"]')[0]?.textContent, 'the room screen says it too').toContain('THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.');
+    r.m.unmount();
+    r = await board('live', await targeted(), [row()], { possession: POSS });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'one hill: no target note').not.toContain('SUMMED ACROSS HILLS');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: two });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'no target: no target note').not.toContain('HOLD TARGET');
+    r.m.unmount();
+  });
+
   it('milestone 2026-10-18: a station-counted hill is not a floor, shows the phones as its check, and says when there is none', async () => {
     const st = { ...POSS, station_sites: 1, phones_by_team: { blue: 190, purple: 120 } };
     let r = await board('live', await kothOver(), [row()], { possession: st });

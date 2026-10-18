@@ -415,7 +415,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
           <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
             {p.neutral_s > 0 ? `NEUTRAL ${fmtDuration(p.neutral_s)} · ` : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} · {p.reports} PHONE{p.reports === 1 ? '' : 'S'} REPORTED. {[stationSource(p, word, name), floorSource(p, word)].filter(Boolean).join(' ')}
             {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
-            {sitesNote(p) ? ` ${sitesNote(p)}` : ''}
+            {sitesNote(p, state.config.scoring.hold_target_s) ? ` ${sitesNote(p, state.config.scoring.hold_target_s)}` : ''}
           </div>
         )}
       </div>

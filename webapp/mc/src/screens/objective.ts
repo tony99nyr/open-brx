@@ -35,11 +35,13 @@ export function floorSource(p: { sites: number; station_sites?: number }, word: 
 }
 
 /** F556: `by_team` adds every hill that reported, so with two a team can pass the match length; `of_s` stays the match
- *  length. The note LIVE, RECAP and SPECTATE show then, or null for one hill. `sites` counts the hills that reported. */
-export function sitesNote(p: { sites: number; of_s: number | null } | null | undefined): string | null {
+ *  length. The note LIVE, RECAP and SPECTATE show then, or null for one hill. `sites` counts the hills that reported.
+ *  F572 (Tony 2026-10-18, "It should add both hills"): the hold target counts that same sum, so a set target says so. */
+export function sitesNote(p: { sites: number; of_s: number | null } | null | undefined, holdTargetS?: number | null): string | null {
   if (!p || p.sites < 2) return null;
   const most = p.of_s ? `, SO A TEAM CAN HOLD UP TO ${fmtDuration(p.of_s * p.sites)} IN A ${fmtDuration(p.of_s)} MATCH` : '';
-  return `HELD TIME ADDS UP OVER THE ${p.sites} HILLS THAT REPORTED${most}.`;
+  const target = holdTargetS ? ` THE ${fmtDuration(holdTargetS)} HOLD TARGET IS SUMMED ACROSS HILLS.` : '';
+  return `HELD TIME ADDS UP OVER THE ${p.sites} HILLS THAT REPORTED${most}.${target}`;
 }
 
 /** A hill broadcasts tid 2 while nobody owns it (bench 2026-09-10); 255 is a station's "any / nobody". */
