@@ -80,10 +80,12 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
-    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact",
+    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact",
                          "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
     assert set(R.NEAR_TOP_MARGIN) == set(R.COLUMNS)
     assert a["columns"]["Assault Rifle"]["ammo stress"] > 0
+    assert len(a["field_counts"]["Assault Rifle"]) == len(R.FIELD_NS)
+    assert all(test > 0 and anchor > 0 for test, anchor in a["field_counts"]["Assault Rifle"])
     assert set(a["ammo_stress_cap_hits"]) == set(a["kits"])
     assert set(a["ammo_stress_end_reasons"]) == set(a["kits"])
     assert all(sum(counts.values()) == R._reps("ammo", MATRIX_REPS_SCALE)
@@ -92,6 +94,26 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert a["ammo_stress_cap_hits"]["Energy Rifle"] == 0
     assert json.dumps(a["columns"], sort_keys=True) == json.dumps(b["columns"], sort_keys=True)
     assert a["duels"] == b["duels"]
+    for distance in R.DIST:
+        expected = sum(a["duels"][f"real|{distance}|Assault Rifle|{other}"]
+                       for other in a["kits"] if other != "Assault Rifle") / (len(a["kits"]) - 1)
+        assert a["columns"]["Assault Rifle"][f"real aim {distance}"] == expected
+    assert all(f"real aim {distance}" in R.matrix_markdown(a) for distance in R.DIST)
+    assert R.domination_verdict(a, a)["status"] == "pass"
+    assert max(row["field"] for row in a["columns"].values()) < R.FIELD_RATIO_CEILING
+
+
+def test_field_score_is_zero_when_one_team_size_gets_no_kills():
+    shipped = R.shipped_world()
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=3)
+    world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
+    specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
+             R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
+    matrix = R.dominance_matrix(world, specs, 0.001, 1, anchor_world=shipped)
+    counts = matrix["field_counts"]["Weak AR"]
+    assert any(kills == 0 and anchor > 0 for kills, anchor in counts), counts
+    assert any(kills > 0 for kills, _ in counts), counts
+    assert matrix["columns"]["Weak AR"]["field"] == 0.0
 
 
 def test_four_workers_give_the_numbers_one_worker_gives():
@@ -144,6 +166,7 @@ def test_bolt_kits_have_no_ammo_stress_cell_or_last_cell_loss():
     candidate["near_top"]["Sniper"] = [column for column in ("ammo stress",)
                                           if math.isfinite(candidate["columns"]["Sniper"][column])]
     assert candidate["near_top"]["Sniper"] == []
+    candidate["columns"]["Sniper"]["peek mid"] = 0.0
     lost = R.balance_kept({}, {}, {}, baseline, candidate, None)
     assert lost["status"] == "fail"
     assert lost["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"]
@@ -196,6 +219,14 @@ def test_report_scenario_copy_uses_the_current_assumptions():
                "candidate": {}, "facts": {}, "matrix": {"baseline": matrix, "candidate": matrix},
                "rules": {"shipped": {}, "baseline": {}, "candidate": {}}, "ttk": [],
                "assumptions": {}, "not_modelled": [],
+               "rush_speed_sweep": {"rows": [{"speed_m_s": speed,
+                   "plain": {"rush_success": 0.4}, "body_armor": {"rush_success": 0.5}}
+                   for speed in R.RUSH_SPEED_SWEEP], "verdict_flips": True},
+               "aim_sweep": R.aim_sweep_status(
+                   [{"aim": aim, "mid": 0.4, "long": 0.5} for aim in R.AIM_SWEEP],
+                   {"1v1 mid": 0.5, "1v1 long": 0.5}),
+               "haze_blind_sweep": [{"blind_ms": ms, "win_vs_ar_body_armor": 0.7}
+                                    for ms in R.HAZE_BLIND_SWEEP_MS],
                "hill": {"hold": [], "overwatch": [], "contest": []},
                "pistol_finishers": [{"primary": "AR", "pistol": "USP", "finish_ms": 1,
                                      "reload_finish_ms": 2, "bar_ms": 3, "beats_staying": True}]}
@@ -212,6 +243,9 @@ def test_report_scenario_copy_uses_the_current_assumptions():
     assert "Bolt kits are n/a" in report
     assert "chain reload can be interrupted only in ammo stress" in report
     assert "| Sniper | n/a | n/a |" in report
+    assert "## Rush speed sensitivity" in report
+    assert "## In-fight aim sensitivity" in report
+    assert "## Haze blind-duration sensitivity" in report
 
 
 # --------------------------------------------------------------------------- the named tests, end to end
@@ -223,6 +257,51 @@ def test_a_dominant_candidate_fails_no_domination():
     t = v["tests"]["no_domination"]
     assert t["status"] == "fail" and "Test AR heavy" in t["numbers"]["near_top_everywhere"], t
     assert code == 1 and v["pass"] is False and v["reps_scale"] == DOMINANCE_REPS_SCALE
+
+
+def test_an_ar_at_27_damage_fails_no_domination():
+    v = R.review({"row": _copy("assault_rifle", "crit_ar_27", "Crit AR 27", dmg=27)},
+                 reps_scale=DOMINANCE_REPS_SCALE)
+    t = v["tests"]["no_domination"]
+    assert t["status"] == "fail", t
+    assert t["numbers"]["field_ceiling_exceeded"] or t["numbers"]["priority_near_top"], t
+
+
+def test_priority_column_dominance_fails_without_a_field_ceiling_breach():
+    row = {column: 0.5 for column in R.COLUMNS}
+    row["field"] = 1.2
+    matrix = {"kits": ["candidate"], "columns": {"candidate": row},
+              "near_top": {"candidate": list(R.DOMINATION_PRIORITY)}}
+    result = R.domination_verdict(matrix, matrix)
+    assert result["status"] == "fail"
+    assert result["numbers"]["priority_near_top"] == ["candidate"]
+    assert result["numbers"]["field_ceiling_exceeded"] == []
+
+
+def test_real_aim_is_one_value_cell_and_requires_all_distances_for_domination():
+    near = [c for c in R.COLUMNS if c != "real aim long"]
+    row = {c: 0.5 for c in R.COLUMNS}
+    matrix = {"kits": ["candidate"], "columns": {"candidate": row},
+              "near_top": {"candidate": near}}
+    result = R.domination_verdict(matrix, matrix)
+    assert result["numbers"]["near_top_everywhere"] == []
+    assert R._value_near_top_cells(near) == [c for c in near if not c.startswith("real aim")] + ["real aim"]
+    matrix["columns"]["candidate"]["real aim long"] = float("nan")
+    assert R.domination_verdict(matrix, matrix)["numbers"]["near_top_everywhere"] == ["candidate"]
+
+
+def test_branch_domination_compares_new_kits_even_when_baseline_already_fails():
+    before = {"near_top_everywhere": ["Old"], "field_ceiling_exceeded": [],
+              "priority_near_top": []}
+    for key in before:
+        after = {**before, key: [*before[key], "New"]}
+        assert R._new_dominance_kits(before, after) == ["New"]
+
+
+def test_heat_sensitivity_excludes_primary_branch_failures():
+    flips = {"throughout": ["shields|R1"], "after_lockout": ["shields|R1", "no_domination"],
+             "none": ["shields|R1"]}
+    assert R._heat_sensitive_flips(flips, "throughout") == {"after_lockout": ["no_domination"]}
 
 
 def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
@@ -261,6 +340,49 @@ def test_a_pickup_only_candidate_is_not_judged_on_loadout_value():
     assert v["tests"]["value_addition"]["status"] == "n/a", v["tests"]["value_addition"]
     assert v["tests"]["viable"]["status"] == "n/a"
     assert v["tests"]["op_rule"]["status"] == "pass"
+    assert v["tests"]["pickup_utility"]["status"] == "fail"
+    assert v["pass"] is False
+
+
+def test_shipped_pickups_clear_the_pickup_utility_bars():
+    world = R.shipped_world()
+    for row in world.cat._rows:
+        if row.get("pickup_only") and row.get("lethal") is not False:
+            result = R.pickup_utility(world, row["weapon_id"], REPS_SCALE)
+            assert result["status"] == "pass", (row["weapon_id"], result)
+
+
+def test_pickup_assumptions_match_the_shipped_minimum():
+    assert R.assumptions()["pickup_utility"]["shipped_margin"] == \
+        "about 0.62 kills per stock and 900 ms at full repetitions"
+    skill = pathlib.Path(__file__).resolve().parents[2] / ".claude/skills/balance-review/SKILL.md"
+    assert "laser_cannon has the shipped minimum: 1.62 kills per stock against 45 + 70" in skill.read_text()
+
+
+def test_pickup_utility_handles_every_band_and_resets_each_fight_cap():
+    standard = R.HEALTH_PRESETS["standard"]
+    for band in B.BAND_FIT:
+        row = _copy("assault_rifle", f"test_pickup_{band}", "Test pickup")
+        row["range_band"] = band
+        world = R.World(WeaponCatalog(WeaponCatalog()._rows + [row]), PerkCatalog())
+        caps, pools = [], []
+
+        def fake_fight(rng, side_a, side_b, cap_ms, **kwargs):
+            caps.append(cap_ms)
+            pools.append((side_b[0].health, side_b[0].armour, side_b[0].shield))
+            side_a[0].next_t = 10_000.0
+            side_b[0].alive = len(caps) == 2
+
+        with mock.patch.object(R, "_reps", return_value=1), mock.patch.object(R, "fight", side_effect=fake_fight), \
+                mock.patch.object(R, "time_to_kill", return_value=(1000.0, 1.0)) as ttk:
+            R.pickup_utility(world, row["weapon_id"], 0.001)
+        assert caps == [R.PICKUP_STOCK_CAP_MS, 10_000.0 + R.PICKUP_STOCK_CAP_MS]
+        assert pools == [standard, standard]
+        assert ttk.call_args.args[1] == standard
+
+
+def test_an_all_na_verdict_cannot_pass():
+    assert not R._overall_pass({"value_addition": R._test(None, {}, "n/a")})
 
 
 def test_a_perk_candidate_that_strips_armour_fails_viable_and_op_rule():
@@ -310,6 +432,68 @@ def test_balance_kept_judges_with_context_against_shipped_and_keys_kits_by_weapo
     renamed_c = _m({"Sniper Mk2": ("sniper_rifle", []), "AMR": ("amr", ["1v1 long"])})
     t = R.balance_kept(ok, ok, ok, renamed_b, renamed_c, "amr")
     assert t["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"], t
+
+
+def test_last_near_top_cell_ignores_sampling_noise_but_catches_a_real_drop():
+    baseline = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
+    baseline["columns"] = {"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}}
+    baseline["top"] = {"1v1 close": 0.85}
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Top"]["1v1 close"] = 0.851
+    candidate["top"]["1v1 close"] = 0.851
+    candidate["near_top"]["Other"] = []
+    quiet = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert quiet["status"] == "pass", quiet
+    candidate["columns"]["Other"]["1v1 close"] = 0.75
+    real = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert real["status"] == "fail", real
+
+
+def test_last_cell_noise_uses_mean_precision_and_non_binomial_errors():
+    many = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
+    many["kits"] += [f"Opponent {i}" for i in range(9)]
+    many.update(columns={"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}},
+                top={"1v1 close": 0.85}, reps={"duel": 100})
+    dropped = copy.deepcopy(many)
+    dropped["columns"]["Other"]["1v1 close"] = 0.70
+    assert R._last_cell_material_loss(many, dropped, "Other", "Other")
+
+    baseline = _m({"Top": ("top", ["field"]), "Other": ("other", ["field"])})
+    baseline.update(columns={"Top": {"field": 1.0}, "Other": {"field": 0.99}},
+                    top={"field": 1.0}, reps={"field": 600})
+    candidate = copy.deepcopy(baseline)
+    candidate["near_top"]["Other"] = []
+    candidate["columns"]["Other"]["field"] = 0.8
+    assert R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+
+
+    # The same ratio from two kills has much less precision than one from thousands of kills.
+    candidate["field_counts"] = {"Top": [(2, 2)] * len(R.FIELD_NS),
+                                  "Other": [(2, 2)] * len(R.FIELD_NS)}
+    assert not R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+    candidate["field_counts"] = {"Top": [(2000, 2000)] * len(R.FIELD_NS),
+                                  "Other": [(1600, 2000)] * len(R.FIELD_NS)}
+    assert R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+
+    baseline["near_top"]["Other"] = ["ambush"]
+    baseline["columns"]["Other"] = {"ambush": 1.25}
+    baseline["top"] = {"ambush": 1.3}
+    baseline["reps"] = {"ambush": 100}
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Other"]["ambush"] = 1.19
+    assert not R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+
+
+def test_zero_field_kills_do_not_hide_a_last_near_top_loss():
+    baseline = _m({"Top": ("top", ["field"]), "Other": ("other", ["field"])})
+    baseline.update(columns={"Top": {"field": 1.0}, "Other": {"field": 0.99}},
+                    top={"field": 1.0}, reps={"field": 600})
+    candidate = copy.deepcopy(baseline)
+    candidate["near_top"]["Other"] = []
+    candidate["columns"]["Other"]["field"] = 0.0
+    candidate["field_counts"] = {"Top": [(10000, 10000)] * len(R.FIELD_NS),
+                                  "Other": [(0, 10000)] + [(10000, 10000)] * (len(R.FIELD_NS) - 1)}
+    assert R.balance_kept({}, {}, {}, baseline, candidate, None)["numbers"]["kits_losing_last_near_top"] == ["other"]
 
 
 def test_a_real_rule_flip_is_caught():
@@ -374,11 +558,119 @@ def test_marksman_rush_counter_catches_both_sides():
     assert not lo["numbers"]["strong_ok"] and lo["status"] == "fail", lo
     good = {"peek_kill": 0.7, "rush_success": 0.6}
     assert R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN])["status"] == "pass"
+    armoured = {"peek_kill": 0.7, "rush_success": 0.0}
+    assert R.marksman_verdict(good, armoured, [R.MARKSMAN_STRONG_COLUMN])["status"] == "fail"
     assert R.marksman_verdict(good, good, [])["status"] == "fail"
     far = {"peek_kill": 0.7, "rush_success": 0.3}
     numbers = R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN], far, far)["numbers"]
     assert numbers["vs_plain_ar_30m"] == far and numbers["rush_start_m"] == 20.0
     assert R.MARKSMAN_STRONG_COLUMN in R.COLUMNS
+
+
+def test_rush_speed_sweep_reports_three_speeds_and_a_constructed_verdict_flip():
+    assert R.RUSH_SPEED_SWEEP == (2.5, 5.0, 8.0)
+    rows = [{"speed_m_s": speed, "plain": {"rush_success": plain},
+             "body_armor": {"rush_success": armoured}}
+            for speed, plain, armoured in ((2.5, 0.2, 0.3), (5.0, 0.4, 0.45), (8.0, 0.6, 0.7))]
+    assert R.rush_sweep_flips(rows, strong_ok=True, verdict_pass=False)
+    assert not R.rush_sweep_flips(rows, strong_ok=False, verdict_pass=False)
+
+
+def test_aim_sweep_flags_a_near_top_change():
+    assert R.AIM_SWEEP == (0.33, 0.40, 0.48)
+    rows = [{"aim": aim, "mid": mid, "long": long}
+            for aim, mid, long in ((0.33, 0.30, 0.65), (0.40, 0.40, 0.66), (0.48, 0.51, 0.67))]
+    assert R.aim_sweep_status(rows, {"1v1 mid": 0.55, "1v1 long": 0.70})["near_top_changes"] == ["mid"]
+
+
+def test_unhiding_haze_fails_only_when_it_crosses_the_blind_sweep_bar():
+    shipped = R.shipped_world()
+    hidden = copy.deepcopy(shipped.cat._row("smoke_gun"))
+    hidden["hidden"] = True
+    visible = copy.deepcopy(hidden)
+    visible["hidden"] = False
+    baseline = R.World(WeaponCatalog([hidden if row["weapon_id"] == "smoke_gun" else row
+                                      for row in shipped.cat._rows]), shipped.perks)
+    candidate = R.World(WeaponCatalog([visible if row["weapon_id"] == "smoke_gun" else row
+                                       for row in shipped.cat._rows]), shipped.perks)
+    assert R.HAZE_BLIND_SWEEP_MS == (1000, 1500, 2000, 3000)
+    sweep = R.haze_blind_sweep(candidate, 300)
+    assert [row["blind_ms"] for row in sweep] == list(R.HAZE_BLIND_SWEEP_MS)
+    assert sweep[-1]["win_vs_ar_body_armor"] > R.HAZE_WIN_BAR
+    with mock.patch.object(R, "haze_blind_sweep", return_value=sweep):
+        assert R.haze_gate(baseline, candidate, 4)["fail"]
+        assert not R.haze_gate(baseline, baseline, 4)["fail"]
+        assert not R.haze_gate(shipped, shipped, 4)["fail"]
+    with mock.patch.object(R, "haze_blind_sweep", return_value=sweep):
+        verdict = R.review({"row": visible, "with": [{"row": hidden}]}, reps_scale=0.001)
+    assert verdict["tests"]["balance_kept"]["status"] == "fail"
+    assert verdict["tests"]["balance_kept"]["numbers"]["haze_flip_over_bar"]
+    assert "## Haze blind-duration sensitivity" in R.report_markdown(verdict)
+    result = R.balance_kept({}, {}, {}, {"keys": {}, "near_top": {}},
+                            {"keys": {}, "near_top": {}}, "smoke_gun", haze_failure=True)
+    assert result["status"] == "fail" and "Haze" in result["why"]
+
+
+def test_haze_gate_reports_standing_shipped_failure_without_candidate_failure():
+    shipped = R.shipped_world()
+    baseline, candidate = R.build_worlds(R.load_candidate(
+        {"weapon_id": "shotgun", "changes": {"wire.dmg": 30}}))
+    result = R.haze_gate(baseline, candidate, 300)
+    assert not result["fail"]
+    assert any(row["weapon_id"] == "smoke_gun" and row["blind_ms"] == 3000
+               for row in result["standing_shipped_failures"])
+
+
+def test_haze_gate_uses_newly_selectable_fn23_variant_row():
+    shipped = R.shipped_world()
+    hidden = _copy("smoke_gun", "haze_variant", "Haze variant")
+    hidden["hidden"] = True
+    visible = copy.deepcopy(hidden)
+    visible["hidden"] = False
+    baseline = R.World(WeaponCatalog(shipped.cat._rows + [hidden]), shipped.perks)
+    candidate = R.World(WeaponCatalog(shipped.cat._rows + [visible]), shipped.perks)
+    with mock.patch.object(R, "haze_blind_sweep", side_effect=lambda world, reps, heat_cool_while_firing=True,
+                           weapon_id="smoke_gun": [{"blind_ms": 3000, "win_vs_ar_body_armor":
+                           0.8 if weapon_id == "haze_variant" else 0.7}]):
+        result = R.haze_gate(baseline, candidate, 4)
+    assert result["fail"]
+    assert any(row["weapon_id"] == "haze_variant" for row in result["flips"])
+
+
+def test_haze_gate_does_not_fail_when_shipped_blind_lengthens():
+    shipped = R.shipped_world()
+    changed = copy.deepcopy(shipped.cat._row("smoke_gun"))
+    changed["wire"]["swap_ms"] = 100
+    candidate = R.World(WeaponCatalog([changed if row["weapon_id"] == "smoke_gun" else row
+                                       for row in shipped.cat._rows]), shipped.perks)
+    def longer(world, reps, heat_cool_while_firing=True, weapon_id="smoke_gun"):
+        return [{"blind_ms": 3000, "win_vs_ar_body_armor": 0.8 if world is candidate else 0.7}]
+    with mock.patch.object(R, "haze_blind_sweep", side_effect=longer):
+        result = R.haze_gate(shipped, candidate, 4)
+    assert not result["fail"]
+    assert result["standing_shipped_failures"]
+
+
+def test_haze_gate_reuses_the_shipped_sweep():
+    shipped = R.shipped_world()
+    R.clear_cache()
+    with mock.patch.object(R, "haze_blind_sweep", return_value=[
+            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep:
+        R.haze_gate(shipped, shipped, 4)
+        R.haze_gate(shipped, shipped, 4)
+    assert sweep.call_count == 5
+
+
+def test_review_uses_gate_rows_for_the_haze_sweep():
+    rows = [{"weapon_id": "smoke_gun", "blind_ms": 3000, "baseline": 0.5,
+             "candidate": 0.6, "bar": R.HAZE_WIN_BAR}]
+    gate = {"rows": rows, "flips": [], "fail": False, "standing_shipped_failures": []}
+    with mock.patch.object(R, "haze_gate", return_value=gate), \
+         mock.patch.object(R, "haze_blind_sweep", side_effect=AssertionError("duplicate sweep")):
+        v = R.review({"weapon_id": "smoke_gun", "changes": {"wire.dmg": 0}},
+                     reps_scale=0.001, haze=True)
+    assert v["haze_gate"] == gate
+    assert "## Haze blind-duration sensitivity" in R.report_markdown(v)
 
 
 def test_rush_table_covers_every_marksman_and_both_starts():
@@ -551,7 +843,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 8
+    assert R.SCENARIO_VERSION == 12
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1062,8 +1354,8 @@ def test_real_aim_column_uses_the_field_aim_factor():
     ar = R.make_kit(w, "AR", "assault_rifle")
     assert R.REAL_AIM == 0.4
     assert 0.33 <= R.REAL_AIM * B.BAND_FIT[ar.guns[0].band][R.DIST["mid"]] <= 0.43
-    assert "1v1 real aim" in R.COLUMNS
-    assert "1v1 real aim" in R.NEAR_TOP_MARGIN
+    assert all(f"real aim {distance}" in R.COLUMNS for distance in R.DIST)
+    assert all(f"real aim {distance}" in R.NEAR_TOP_MARGIN for distance in R.DIST)
     ar = R.replace(ar, guns=(R.replace(ar.guns[0], gun_dmg=1, head_dmg=0),))
     landed = shots = 0
     for seed in range(5):
@@ -1335,17 +1627,209 @@ def test_op_rule_checks_ap_against_lowest_health():
     assert checked["ap_dmg"] == 45 and not checked["pass"]
 
 
-def test_heat_candidate_reports_both_cooling_assumptions():
+def test_heat_candidate_reports_all_cooling_assumptions():
     args = R.build_parser().parse_args(["--candidate", "x.json", "--heat-cool-while-firing", "off"])
     assert args.heat_cool_while_firing == "off"
     v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
                  reps_scale=0.001, heat_cool_while_firing=False)
     assert v["facts"]["candidate"]["heat"]["cool_per_s"] == 29
-    assert set(v["heat"]["charge_rifle"]) == {"on", "off"}
-    assert v["heat"]["charge_rifle"]["on"]["candidate"]["columns"]
-    assert v["heat"]["charge_rifle"]["off"]["candidate"]["duels"]
-    assert "CR+Sniper+BA" in v["heat"]["charge_rifle"]["off"]["candidate"]["kits"]
-    assert "Heat: cooling while firing on / off" in R.report_markdown(v)
+    assert set(v["heat"]["charge_rifle"]) == set(B.HEAT_COOLING_BRANCHES)
+    assert v["heat"]["charge_rifle"]["throughout"]["candidate"]["columns"]
+    assert v["heat"]["charge_rifle"]["none"]["candidate"]["duels"]
+    assert "CR+Sniper+BA" in v["heat"]["charge_rifle"]["after_lockout"]["candidate"]["kits"]
+    assert "Heat: cooling throughout / after lockout / none" in R.report_markdown(v)
+    assert "| field | 150 s kill-count match |" in R.report_markdown(v)
+    assert "## Heated Balance rule cells" in R.report_markdown(v)
+    assert "shields|R1" not in v.get("failed_heat_branches", {}).get("none", [])
+    assert "shields|R1" in v["heat_rules"]
+    assert not v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
+
+
+def test_heated_pickup_utility_checks_every_cooling_branch():
+    row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
+    row.update(pickup_only=True, hidden=True)
+    row["wire"]["tap_dmg"] = 45
+    v = R.review({"row": row}, reps_scale=0.001)
+    utility = v["heat_pickup_utility"]
+    assert set(utility) == set(B.HEAT_COOLING_BRANCHES)
+    assert {branch: (result["numbers"]["kills_per_stock"], result["numbers"]["median_ttk_ms"])
+            for branch, result in utility.items()} == {
+                "throughout": (30.5, 855.0), "after_lockout": (31.0, 570.0), "none": (31.0, 5940.0)}
+    assert utility["throughout"]["pass"]
+    assert utility["throughout"]["numbers"]["median_ttk_ms"] <= R.PICKUP_TTK_BAR_MS
+    assert not utility["none"]["pass"]
+    assert utility["none"]["numbers"]["median_ttk_ms"] > R.PICKUP_TTK_BAR_MS
+    assert "pickup_utility" in v["failed_heat_branches"]["none"]
+    assert not v["tests"]["heat_sensitivity"]["pass"]
+    assert "| none |" in R.report_markdown(v).split("## Heated pickup utility", 1)[1]
+
+
+def test_unheated_candidate_has_no_heat_section_or_alternate_rule_runs():
+    with mock.patch.object(R, "run_rules", wraps=R.run_rules) as rules, \
+         mock.patch.object(R, "run_heated_rules", wraps=R.run_heated_rules) as heated_rules, \
+         mock.patch.object(R, "dominance_matrix", wraps=R.dominance_matrix) as matrices:
+        v = R.review({"weapon_id": "shotgun", "changes": {"wire.dmg": 30}}, reps_scale=0.001)
+    assert "heat_sensitivity" not in v["tests"]
+    assert not v["heat"]
+    assert rules.call_count == 3
+    assert heated_rules.call_count == 0
+    assert matrices.call_count == 2
+
+
+def test_pickup_only_heated_candidate_gets_heat_branches():
+    row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
+    row.update(pickup_only=True, hidden=True)
+    v = R.review({"row": row}, reps_scale=0.001)
+    assert "heat_sensitivity" in v["tests"]
+
+
+def test_a_rule_flip_only_after_lockout_names_that_branch():
+    real = R.run_heated_rules
+
+    def altered(world, scale, n_jobs, branch, ids):
+        result = real(world, scale, n_jobs, branch, ids)
+        changed = world.cat._row("charge_rifle").get("heat", {}).get("cool_per_s") == 29
+        if branch == "after_lockout":
+            result["standard|R1"] = {"value": 0.5 if changed else 0.9, "bar": 0.65,
+                                      "pass": not changed}
+        return result
+
+    with mock.patch.object(R, "run_heated_rules", side_effect=altered):
+        v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
+                     reps_scale=0.001)
+    assert "standard|R1" in v["failed_heat_branches"]["after_lockout"]
+    assert "standard|R1" not in v["failed_heat_branches"].get("throughout", [])
+
+
+def test_branch_last_cell_loss_is_recorded_beside_a_rule_flip():
+    real_matrix = R.dominance_matrix
+    real_rules = R.run_heated_rules
+
+    def matrix(world, specs, scale, n_jobs, *, anchor_world, heat_cool_while_firing):
+        result = real_matrix(world, specs, scale, n_jobs, anchor_world=anchor_world,
+                             heat_cool_while_firing=heat_cool_while_firing)
+        if heat_cool_while_firing == "none":
+            result = copy.deepcopy(result)
+            if world.cat._row("charge_rifle")["heat"]["cool_per_s"] == 29:
+                result["near_top"]["Shotgun"] = []
+                result["columns"]["Shotgun"]["1v1 close"] = 0.0
+                result["top"]["1v1 close"] = 0.9
+            else:
+                result["near_top"]["Shotgun"] = ["1v1 close"]
+            result["reps"]["duel"] = 1_000_000
+        return result
+
+    def rules(world, scale, n_jobs, branch, ids):
+        result = real_rules(world, scale, n_jobs, branch, ids)
+        if branch == "none":
+            changed = world.cat._row("charge_rifle")["heat"]["cool_per_s"] == 29
+            result["standard|R1"] = {"value": 0.5 if changed else 0.9, "bar": 0.65,
+                                      "pass": not changed}
+        return result
+
+    with mock.patch.object(R, "dominance_matrix", side_effect=matrix), \
+         mock.patch.object(R, "run_heated_rules", side_effect=rules):
+        v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
+                     reps_scale=0.001)
+    assert "standard|R1" in v["failed_heat_branches"]["none"]
+    assert "balance_kept:shotgun" in v["failed_heat_branches"]["none"]
+    assert "balance_kept:shotgun" not in v["failed_heat_branches"].get("throughout", [])
+    assert v["heat_last_cell_losses"]["none"] == ["shotgun"]
+    assert "shotgun" not in v["heat_last_cell_losses"]["throughout"]
+
+
+def test_reference_heat_keeps_field_ambush_hill_and_ammo_on_selected_branch():
+    shipped = R.shipped_world()
+    heated = []
+    for row in shipped.cat._rows:
+        copy_row = copy.deepcopy(row)
+        if row["weapon_id"] in {R.ANCHOR, R.HILL_REFERENCES[0]}:
+            copy_row["heat"] = {"per_round": 1, "lock_at": 100, "cool_per_s": 30}
+        heated.append(copy_row)
+    baseline = R.World(WeaponCatalog(heated), shipped.perks)
+    specs = [R.KitSpec("Shotgun", "shotgun", R.SECONDARY, None, False)]
+    R.clear_cache()
+    with mock.patch.object(R, "run_cells", wraps=R.run_cells) as cells:
+        R.dominance_matrix(shipped, specs, 0.001, 1, anchor_world=baseline,
+                           heat_cool_while_firing="none")
+    jobs = cells.call_args.args[0]
+    affected = [job for job in jobs if job[0] in {"field", "ambush", "hill_hold", "ammo"}
+                and any(gun.heat for participant in job[1:-1]
+                        for gun in getattr(participant, "guns", getattr(participant, "models", ())))]
+    assert {job[0] for job in affected} == {"field", "ambush", "hill_hold", "ammo"}
+    assert all(job[-1] == "none" for job in affected)
+
+
+def test_unheated_matrix_cells_share_cache_across_heat_branches():
+    w = R.shipped_world()
+    specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
+             R.KitSpec("Shotgun", "shotgun", R.SECONDARY, None, False),
+             R.KitSpec("CR", "charge_rifle", R.SECONDARY, None, False)]
+    R.clear_cache()
+    throughout = R.dominance_matrix(w, specs, 0.001, 1, anchor_world=w,
+                                     heat_cool_while_firing="throughout")
+    old_jobs = set(R._CACHE)
+    none = R.dominance_matrix(w, specs, 0.001, 1, anchor_world=w,
+                              heat_cool_while_firing="none")
+    assert all(job[-1] == "none" for job in set(R._CACHE) - old_jobs)
+    assert throughout["duels"]["standard|close|AR|Shotgun"] == none["duels"]["standard|close|AR|Shotgun"]
+    assert throughout["columns"]["AR"]["field"] == none["columns"]["AR"]["field"]
+
+
+def test_heated_perk_candidate_runs_heat_branches():
+    v = R.review({"perk_id": "body_armor", "changes": {"max_armor_add": 31}}, reps_scale=0.001)
+    assert "heat_sensitivity" in v["tests"]
+    assert "charge_rifle" in v["heat"]
+
+
+def test_rush_sweep_reuses_verdict_at_five_metres_per_second():
+    w = R.shipped_world()
+    mk = R.make_kit(w, "Sniper", "sniper_rifle")
+    ar = R.make_kit(w, "AR", R.ANCHOR)
+    ba = R.make_kit(w, "AR+BA", R.ANCHOR, perk="body_armor")
+    plain = {"peek_kill": 0.7, "peek_death": 0.1, "escape": 0.2, "rush_success": 0.6}
+    armoured = {**plain, "rush_success": 0.55}
+    original = R.marksman_rush_counter
+    def other_speeds(*args, **kwargs):
+        assert kwargs["speed_m_s"] != R.RUSH_SPEED_MS
+        return original(*args, **kwargs)
+    with mock.patch.object(R, "marksman_rush_counter", side_effect=other_speeds):
+        rows = R.rush_speed_sweep(mk, ar, ba, 4, verdict_plain=plain, verdict_armoured=armoured)
+    assert rows[1]["plain"] is plain and rows[1]["body_armor"] is armoured
+
+
+def test_shields_regenerate_after_quiet_window():
+    f = R.Fighter(R.make_kit(R.shipped_world(), "target", "assault_rifle"),
+                  (45, 0, 105), 1.0, 1, random.Random(2))
+    f.receive(30, t=0)
+    f.advance_shield(6499)
+    assert f.shield == 75
+    f.advance_shield(6500)
+    assert f.shield == 102
+    f.advance_shield(7500)
+    assert f.shield == 105
+
+
+def test_energy_vent_keeps_heat_until_reload_finishes():
+    kit = R.make_kit(R.shipped_world(), "energy", "energy_rifle")
+    f = R.Fighter(kit, 115, 1.0, 1, random.Random(2), pull_ms=0)
+    s = f.gs[0]
+    s.heat = 197
+    assert f.act(0) is not None
+    assert s.heat == 200 and s.locked_until == math.inf
+    assert f.act(kit.guns[0].fire_ms) is None
+    assert s.vent_heat_after == 95 and s.heat == 200
+    f._credit_reload(s, s.vent_until)
+    assert s.heat == 95 and s.locked_until == 0
+
+
+def test_heat_review_names_all_branches_and_horizons():
+    args = R.build_parser().parse_args(["--candidate", "x.json", "--heat-cooling", "after_lockout"])
+    assert args.heat_cooling == "after_lockout"
+    a = R.assumptions()
+    assert a["horizons"]["field"] == "150 s kill-count match"
+    assert a["horizons"]["long contact"] == "20 s first kill"
+    assert set(a["heat_cooling_branches"]) == {"throughout", "after_lockout", "none"}
 
 
 def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():

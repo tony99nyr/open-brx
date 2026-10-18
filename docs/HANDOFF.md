@@ -38,11 +38,12 @@ bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damag
 the secondary slot, Armour Piercing, the Toxin Rifle, the Haze, melee and the field's pace (scenario version 2).
 The review also gained rush from 20 and 30 m at every marksman, a KOTH hill hold column, an ammo stress column and
 the pistol finisher (scenario version 8).
-**Next:** sim gaps branch C (the Codex sim critique, `~/reviews-2026-10-18-sandbox/sim-critique.md`), then the sweep
-re-run. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+The Codex sim critique is folded in too: heat in the rule engines with three cooling branches (fail on a flip),
+Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12).
+**Next:** phase B, the combo sweep re-run on the fixed sims, for brx1. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F575 on the CR heat-while-firing bench row, then Tony.
+**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F577 (the Haze) on Tony.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the

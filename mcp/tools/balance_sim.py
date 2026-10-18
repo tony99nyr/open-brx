@@ -13,8 +13,8 @@ the other team. Every state change (a shot, a poison tick, a contact window endi
 respawn) is an event on a priority queue, processed in time order.
 
 Scenarios:
-  duel    every weapon against every weapon, 1v1, win rate (more kills at the whistle wins, a tie
-          counts half).
+  duel    every weapon against every weapon, 150 s 1v1 kill-count win rate (more kills at the
+          whistle wins, a tie counts half). The CSV scenario name stays `duel` for consumers.
   team    per weapon under test and team size N = 2..10: each team fields ONE test weapon and N-1
           anchor weapons of its own slot kind (assumption 5). The number is the kill-rate ratio, test carriers'
           kills per minute over anchor carriers' kills per minute, with a 95% interval.
@@ -48,7 +48,8 @@ MECHANICS MODELLED
   (``--fight-overshoot-ms``). The bolt lever and its following press retain ``--pull-ms``.
   Compile's published semi ``ttk_ms`` still uses a 300 ms pull, so its values differ from the sim.
 - Catalogue heat: a crossing round fires, then the Charge Rifle waits through a self lockout.
-  The Energy Rifle vents with a lever pull and a cell reload. Heat cooling while firing is optional.
+  The Energy Rifle vents in declared lever pulls until heat falls below lock_at, then reloads its cell.
+  The match and rule engines use the same three cooling branches.
 - The DoT block: ``per_tick`` every ``tick_ms`` for ``duration_ms``, refreshed on each hit, never
   stacked. A tick takes damage from the outermost non-empty layer only, with no spill
   (spec/node.md §3.17). A stacking DoT (``stack: true``) or a non-refreshing one (``refresh: false``)
@@ -84,9 +85,10 @@ INVENTED ASSUMPTIONS (the numbers that move the answer most)
    not bias the ratio.
 8. A reload or vent progresses only while its gun stays in hand. Swapping away cancels it.
    This one-slot engine has no swap event. Ammo is credited when the reload completes.
-9. Heat cools while firing by default. ``--heat-cool-while-firing off`` disables
-   cooling entirely; a lockout resets heat to zero. The bench has not established
-   which cooling rule the tagger uses.
+9. ``--heat-cooling`` selects throughout (passive cooling between every shot),
+   after_lockout (passive cooling starts after the first lockout), or none.
+   A self lockout resets heat to zero in all branches. The bench has not established
+   which cooling rule the tagger uses. The former boolean flag remains an alias.
 
 SIMPLIFICATIONS (things the model leaves out)
 ---------------------------------------------
@@ -159,7 +161,33 @@ DEFAULT_HIT_PROBS = (0.35,)
 # Both clocks use the same lognormal spread. A zero overshoot restores a press at t14.
 DEFAULT_PULL_MS = float(SEMI_PULL_MS)
 FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3  # least-squares fit to field median residuals
-HEAT_COOL_WHILE_FIRING = True
+HEAT_COOLING_BRANCHES = ("throughout", "after_lockout", "none")
+HEAT_COOL_WHILE_FIRING = True  # compatibility with callers of the old boolean option
+
+
+def normalise_heat_cooling(value: str | bool) -> str:
+    """Accept the named cooling branch or the former on/off boolean."""
+    if isinstance(value, bool):
+        return "throughout" if value else "none"
+    if value not in HEAT_COOLING_BRANCHES:
+        raise ValueError(f"unknown heat cooling branch: {value}")
+    return value
+
+
+def cools_between_shots(value: str | bool, has_locked: bool = False) -> bool:
+    """The after_lockout branch starts passive cooling after its first timed lockout."""
+    branch = normalise_heat_cooling(value)
+    return branch == "throughout" or (branch == "after_lockout" and has_locked)
+
+
+def vent_pulls(heat_value: float, heat_rule: dict) -> int:
+    """Number of declared lever actions needed to bring heat below lock_at."""
+    per_pull = float(heat_rule["vent_per_pull"])
+    if per_pull <= 0:
+        raise ValueError("vent_per_pull must be positive")
+    return max(0, math.floor((heat_value - float(heat_rule["lock_at"])) / per_pull) + 1)
+
+
 DEFAULT_RESPAWN_SEEK_MEAN_S = 7.0
 TOXIN_PRESET_GAP_MEAN_S = 3.0   # the published §7.5b run predates the field density refit
 TOXIN_PRESET_RESPAWN_SEEK_MEAN_S = 0.0
@@ -229,7 +257,13 @@ class SimConfig:
     respawn_seek_mean_s: float = DEFAULT_RESPAWN_SEEK_MEAN_S
     pull_ms: float = DEFAULT_PULL_MS   # the bolt lever and post-bolt press
     fight_overshoot_ms: float = FIGHT_OVERSHOOT_MS
-    heat_cool_while_firing: bool = HEAT_COOL_WHILE_FIRING
+    heat_cooling: str = "throughout"
+    heat_cool_while_firing: bool | None = None  # old call compatibility
+
+    @property
+    def effective_heat_cooling(self) -> str:
+        return normalise_heat_cooling(self.heat_cool_while_firing if self.heat_cool_while_firing is not None
+                                      else self.heat_cooling)
 
 
 @dataclass(frozen=True)
@@ -339,7 +373,7 @@ class Player:
     __slots__ = ("pid", "team", "w", "alive", "shield", "armour", "health", "ammo", "reserve",
                  "reload_until", "reload_amount", "next_ready", "last_pull", "burst_i", "target", "contact_end",
                  "engage_id", "attackers", "hit_p", "poison_gen", "poison_src", "poison_left",
-                 "poison_dmg", "poison_tick_ms", "heat", "last_heat_ms", "heat_lock_until",
+                 "poison_dmg", "poison_tick_ms", "heat", "last_heat_ms", "heat_lock_until", "heat_has_locked",
                  "kills", "deaths", "dot_kills", "shots")
 
     def __init__(self, pid: int, team: int, w: WeaponModel, pool: Pool):
@@ -365,6 +399,7 @@ class Player:
         self.heat = 0.0
         self.last_heat_ms = 0.0
         self.heat_lock_until = -1.0
+        self.heat_has_locked = False
         self.kills = self.deaths = self.dot_kills = self.shots = 0
 
 
@@ -472,11 +507,14 @@ class Match:
             if t < p.heat_lock_until:
                 self.push(p.heat_lock_until, self.SHOT, p.pid, gen)
                 return
-            p.heat = 0.0
-            p.last_heat_ms = t
+            if heat.get("vent") == "self":
+                p.heat = 0.0
+            p.last_heat_ms = p.heat_lock_until
             p.heat_lock_until = -1.0
-        if heat and self.cfg.heat_cool_while_firing:
+            p.heat_has_locked = True
+        if heat and cools_between_shots(self.cfg.effective_heat_cooling, p.heat_has_locked):
             p.heat = max(0.0, p.heat - max(0.0, t - p.last_heat_ms) * float(heat.get("cool_per_s", 0)) / 1000.0)
+        if heat:
             p.last_heat_ms = t
         if t < p.reload_until:
             self.push(p.reload_until, self.SHOT, p.pid, gen)
@@ -516,7 +554,10 @@ class Match:
                 if heat.get("vent") == "self":
                     p.heat_lock_until = t + float(heat["lockout_ms"])
                 elif heat.get("vent") == "lever":
-                    lever = t + (semi_interval(self.rng, 1e-9, self.cfg.pull_ms) if self.cfg.pull_ms > 0 else 0.0)
+                    lever = t
+                    for _ in range(vent_pulls(p.heat, heat)):
+                        lever += semi_interval(self.rng, 1e-9, self.cfg.pull_ms) if self.cfg.pull_ms > 0 else 0.0
+                        p.heat = max(0.0, p.heat - float(heat["vent_per_pull"]))
                     self._start_reload(p, lever)
                     p.heat_lock_until = max(lever + w.reload_ms, p.reload_until)
         if target.alive:
@@ -623,6 +664,7 @@ class Match:
         p.heat = 0.0
         p.last_heat_ms = t
         p.heat_lock_until = -1.0
+        p.heat_has_locked = False
         delay = self.rng.expovariate(1.0 / self.cfg.respawn_seek_mean_s) * 1000.0 if self.cfg.respawn_seek_mean_s > 0 else 0.0
         self.push(t + delay, self.SEEK, p.pid)
 
@@ -832,7 +874,7 @@ def geo_mean(xs) -> float:
 
 def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns,
                  anchors: dict | None = None) -> list[dict]:
-    """One line per weapon, furthest from parity first. `duel_field` is the mean 1v1 win rate against the
+    """One line per weapon, furthest from parity first. `duel_field` is the mean match-length kill-count win rate against the
     weapons that share its anchor (its own slot kind), NaN when no duel ran. A pick-up-only weapon gets
     no flag."""
     anchors = anchors or {}
@@ -875,7 +917,7 @@ def summary_text(ranked: list[dict], cfg: SimConfig, anchor: str, ns, skipped: l
              f"one test carrier a side, N = {ns[0]}..{ns[-1]}",
              "",
              f"{'weapon':<17}{'role':<10}{'band':<11}{'anchor':<15}{'team gm':>8}{'N=' + str(ns[0]):>7}"
-             f"{'N=' + str(ns[-1]):>7}{'duel/field':>11}  flag"]
+             f"{'N=' + str(ns[-1]):>7}{'kills/1v1':>11}  flag"]
     num = lambda x, fmt: format(x, fmt) if isinstance(x, float) and math.isfinite(x) else "-"  # noqa: E731
     for r in ranked:
         note = " ".join(x for x in (r["flag"], "pickup-only" if r["pickup_only"] else "",
@@ -884,8 +926,8 @@ def summary_text(ranked: list[dict], cfg: SimConfig, anchor: str, ns, skipped: l
                      f"{num(r['team_gm'], '.2f'):>8}{num(r['team_n2'], '.2f'):>7}{num(r['team_nmax'], '.2f'):>7}"
                      f"{num(r['duel_field'], '.0%'):>11}  {note}")
     lines += ["", "DOMINATES / DOMINATED: the 95% interval of the team ratio sits above / below 1.00 at every N.",
-              "A pick-up-only weapon gets no flag. duel/field: mean 1v1 win rate against the weapons with the same "
-              "anchor; '-' when that did not run.",
+              f"A pick-up-only weapon gets no flag. kills/1v1: mean {cfg.match_ms / 1000:g} s kill-count win rate against "
+              "weapons with the same anchor; '-' when that did not run.",
               "band ending in '?': no range_band on the row, counted as mid."]
     if skipped:
         lines.append("not simulated (lethal: false, cannot score a kill): " + ", ".join(skipped))
@@ -1097,15 +1139,21 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
 
 
 def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charge: int, tap_ms: float,
-             mag: int, reserve: int, reload_ms: float, aim_factor: float, *, start_charged: bool):
+             mag: int, reserve: int, reload_ms: float, aim_factor: float, *, start_charged: bool,
+             heat: dict | None = None, heat_cooling: str | bool = "throughout"):
     """Yields `(t, hit_p, dmg)` for one Charge Rifle combatant. The Charge Rifle's own `recoil` block
     (`ceiling == floor == 100`) carries no profile at all, so its accuracy is always 100: every hit
     chance here is `aim_factor` alone, charge or tap. `start_charged` fires the pre-built charge as the
     first action (rule 1); otherwise the combatant is caught mid-fight with no charge ready and taps
-    only, for the whole duel — rule 2's own premise, not a thing this generator re-derives."""
+    only, for the whole duel. Catalogue heat applies to each charge and tap; a crossing round
+    fires before its timed lockout. A lockout resets heat and enables the after_lockout branch."""
     ammo, res = mag, reserve
     t = first_time
     charged = start_charged
+    heat = heat or {}
+    heat_value = 0.0
+    last_heat_ms = first_time
+    has_locked = False
     while True:
         need = rounds_per_charge if charged else 1
         if ammo < need:
@@ -1117,9 +1165,22 @@ def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charg
             t += reload_ms
             ammo, res = got, res - got
             continue
+        if heat:
+            if cools_between_shots(heat_cooling, has_locked):
+                heat_value = max(0.0, heat_value - max(0.0, t - last_heat_ms) * float(heat.get("cool_per_s", 0)) / 1000.0)
+            last_heat_ms = t
         dmg = charge_dmg if charged else tap_dmg
         yield (t, aim_factor, dmg)
         ammo -= need
+        if heat:
+            heat_value += float(heat.get("per_charge" if charged else "per_tap", 0))
+            if heat_value >= float(heat["lock_at"]):
+                t += max(tap_ms, float(heat["lockout_ms"]))
+                heat_value = 0.0
+                last_heat_ms = t
+                has_locked = True
+                charged = False
+                continue
         charged = False
         t += tap_ms
 
@@ -1219,6 +1280,7 @@ class RecoilDuelModel:
     cr_mag: int
     cr_reserve: int
     cr_reload_ms: float
+    cr_heat: tuple[tuple[str, object], ...]
     # R4-R9 (F308): the SMG, the Shotgun and the Burst Rifle, read the same way -- see `run_range_duel()`.
     smg_gun_dmg: int
     smg_headset_dmg: int
@@ -1258,6 +1320,7 @@ class RecoilDuelModel:
     er_reserve: int
     er_reload_ms: float
     er_profile: RecoilProfile | None
+    er_heat: tuple[tuple[str, object], ...]
     sup_dmg: int
     sup_fire_ms: float
     sup_mag: int
@@ -1287,13 +1350,14 @@ class RecoilDuelModel:
     # and F310 asks whether they hold, looser, on Shields (health + shield) and Hardcore (health alone).
     health_preset: str = "standard"
     pull_ms: float = DEFAULT_PULL_MS   # the single-shot combatants' mean trigger-pull gap (`semi_interval`)
+    heat_cooling: str = "throughout"
 
     @classmethod
     def from_catalog(cls, cat: WeaponCatalog, *, aim_factor: float = 0.9, reaction_mean_ms: float = 250.0,
                      reaction_sd_ms: float = 80.0, burst_min: int = 3, burst_max: int = 5,
                      burst_pause_min_ms: float = 150.0, burst_pause_max_ms: float = 300.0,
                      time_cap_ms: float = 10_000.0, health_preset: str = "standard",
-                     pull_ms: float = DEFAULT_PULL_MS) -> "RecoilDuelModel":
+                     pull_ms: float = DEFAULT_PULL_MS, heat_cooling: str = "throughout") -> "RecoilDuelModel":
         # The duel treats the whole pool as one number: damage drains shield, then armour, then health, with
         # overflow cascading (docs/manual/dev.md). The shield refills only after 6.5 s with no damage
         # (types.py SHIELD_REGEN_DELAY_MS), which no duel here allows, so the refill is left out.
@@ -1309,12 +1373,14 @@ class RecoilDuelModel:
         sup_mag, sup_reserve, sup_reload_ms = cat._ammo("suppressor", None)
         amr_mag, amr_reserve, amr_reload_ms = cat._ammo("amr", None)
         bolt_mag, bolt_reserve, bolt_reload_ms = cat._ammo("bolt_rifle", None)
-        return cls(health_preset=health_preset, pull_ms=pull_ms, pool_hp=hp + armour + shield, ar_dmg=cat.damage_per_pull("assault_rifle"),
+        return cls(health_preset=health_preset, pull_ms=pull_ms, heat_cooling=normalise_heat_cooling(heat_cooling),
+                   pool_hp=hp + armour + shield, ar_dmg=cat.damage_per_pull("assault_rifle"),
                    ar_fire_ms=float(cat.fire_ms("assault_rifle")), ar_mag=ar_mag, ar_reserve=ar_reserve,
                    ar_reload_ms=float(ar_reload_ms), ar_profile=recoil_profile(cat._row("assault_rifle")),
                    cr_charge_dmg=cat.damage_per_pull("charge_rifle"), cr_tap_dmg=cat.tap_damage("charge_rifle"),
                    cr_rounds_per_charge=cat.rounds_per_charge("charge_rifle"), cr_mag=cr_mag,
                    cr_reserve=cr_reserve, cr_reload_ms=float(cr_reload_ms),
+                   cr_heat=tuple(sorted((cat._row("charge_rifle").get("heat") or {}).items())),
                    smg_gun_dmg=cat.damage("smg"), smg_headset_dmg=cat.damage_per_pull("smg") - cat.damage("smg"),
                    smg_fire_ms=float(cat.fire_ms("smg")), smg_mag=smg_mag, smg_reserve=smg_reserve,
                    smg_reload_ms=float(smg_reload_ms), smg_profile=recoil_profile(cat._row("smg")),
@@ -1334,6 +1400,7 @@ class RecoilDuelModel:
                    er_dmg=cat.damage_per_pull("energy_rifle"), er_fire_ms=float(cat.fire_ms("energy_rifle")),
                    er_mag=er_mag, er_reserve=er_reserve, er_reload_ms=float(er_reload_ms),
                    er_profile=recoil_profile(cat._row("energy_rifle")),
+                   er_heat=tuple(sorted((cat._row("energy_rifle").get("heat") or {}).items())),
                    sup_dmg=cat.damage_per_pull("suppressor"), sup_fire_ms=float(cat.fire_ms("suppressor")),
                    sup_mag=sup_mag, sup_reserve=sup_reserve, sup_reload_ms=float(sup_reload_ms),
                    sup_profile=recoil_profile(cat._row("suppressor")),
@@ -1356,7 +1423,8 @@ def run_recoil_duel_rule1(rng: random.Random, m: RecoilDuelModel, tap_ms: float)
     Assault Rifle reacts on its own clock and opens full auto. `"cr"`/`"ar"`/`None` (a draw)."""
     t_cr, t_ar = m._reaction(rng), m._reaction(rng)
     gen_cr = _cr_shots(t_cr, m.cr_charge_dmg, m.cr_tap_dmg, m.cr_rounds_per_charge, tap_ms, m.cr_mag,
-                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=True)
+                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=True,
+                       heat=dict(m.cr_heat), heat_cooling=m.heat_cooling)
     gen_ar = _ar_shots(t_ar, m.ar_dmg, m.ar_fire_ms, m.ar_mag, m.ar_reserve, m.ar_reload_ms, m.ar_profile,
                        m.aim_factor)
     return {"a": "cr", "b": "ar", None: None}[_race(rng, gen_cr, gen_ar, m.pool_hp, m.pool_hp, m.time_cap_ms)]
@@ -1375,7 +1443,8 @@ def run_recoil_duel_rule2(rng: random.Random, m: RecoilDuelModel, tap_ms: float)
                        m.aim_factor, burst_min=m.burst_min, burst_max=m.burst_max,
                        pause_min_ms=m.burst_pause_min_ms, pause_max_ms=m.burst_pause_max_ms, rng=rng)
     gen_cr = _cr_shots(t_cr, m.cr_charge_dmg, m.cr_tap_dmg, m.cr_rounds_per_charge, tap_ms, m.cr_mag,
-                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=False)
+                       m.cr_reserve, m.cr_reload_ms, m.aim_factor, start_charged=False,
+                       heat=dict(m.cr_heat), heat_cooling=m.heat_cooling)
     return {"a": "ar", "b": "cr", None: None}[_race(rng, gen_ar, gen_cr, m.pool_hp, m.pool_hp, CHARGE_BUILD_MS)]
 
 
@@ -1526,9 +1595,8 @@ def _ar_full_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rand
 # (`profile=None`, the sidearms/AMR/Bolt Rifle all ship `floor == ceiling`) or a real recoil ladder
 # (Energy Rifle, Suppressor) held down full auto, no controlled-burst discipline either way -- a
 # sidearm is semi-automatic (one round a pull) and none of these rifles are the AR, so there is no
-# "bursting" reading to give them. crit_pct (AMR 30%) and overheat (Energy Rifle/Suppressor, t24) are
-# NOT modelled, same simplification as the Burst Rifle's crit_pct in R4-R9 and as `Match`'s own
-# documented overheat exclusion above -- this is not a new gap, it is the existing one restated.
+# "bursting" reading to give them. Energy Rifle catalogue heat applies to the rule combatant.
+# Other overheat behaviour without a catalogue heat block remains outside this model.
 
 def _usp_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
     return _ar_shots(t, m.usp_dmg, m.usp_fire_ms, m.usp_mag, m.usp_reserve, m.usp_reload_ms, None,
@@ -1540,9 +1608,56 @@ def _deagle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rando
                      m.deagle_reload_ms, None, m.aim_factor, rng=rng, pull_ms=m.pull_ms)
 
 
+def _heated_auto_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int,
+                       reload_ms: float, profile: RecoilProfile | None, aim_factor: float,
+                       heat: dict, cooling: str, pull_ms: float, rng: random.Random):
+    """Fire held-auto rounds with catalogue heat, cell reloads, and recoil releases."""
+    t = first_time
+    ammo, res = mag, reserve
+    state, burst = "crisp", 0
+    heat_value = 0.0
+    last_heat_ms = first_time
+    has_locked = False
+    while True:
+        if ammo <= 0:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            t += reload_ms
+            ammo, res = got, res - got
+            state, burst = "crisp", 0
+        if cools_between_shots(cooling, has_locked):
+            heat_value = max(0.0, heat_value - (t - last_heat_ms) * float(heat.get("cool_per_s", 0)) / 1000.0)
+        last_heat_ms = t
+        yield (t, (_accuracy_pct(profile, state) / 100.0) * aim_factor, dmg)
+        ammo -= 1
+        state, burst = _recoil_step(profile, state, burst)
+        heat_value += float(heat.get("per_shot", 0))
+        if heat_value >= float(heat["lock_at"]):
+            vent_ms = 0.0
+            if heat.get("vent") == "lever":
+                for _ in range(vent_pulls(heat_value, heat)):
+                    vent_ms += semi_interval(rng, 1e-9, pull_ms) if pull_ms > 0 else 0.0
+                    heat_value = max(0.0, heat_value - float(heat["vent_per_pull"]))
+                vent_ms += reload_ms
+            else:
+                vent_ms = float(heat["lockout_ms"])
+                heat_value = 0.0
+            t += vent_ms
+            if heat.get("vent") == "lever" and res > 0:
+                got = min(mag - ammo, res)
+                ammo += got
+                res -= got
+            state, burst = "crisp", 0
+            last_heat_ms = t
+            has_locked = True
+        else:
+            t += fire_ms
+
+
 def _energy_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
-    return _ar_shots(t, m.er_dmg, m.er_fire_ms, m.er_mag, m.er_reserve, m.er_reload_ms, m.er_profile,
-                     m.aim_factor)
+    return _heated_auto_shots(t, m.er_dmg, m.er_fire_ms, m.er_mag, m.er_reserve, m.er_reload_ms,
+                              m.er_profile, m.aim_factor, dict(m.er_heat), m.heat_cooling, m.pull_ms, rng)
 
 
 def _suppressor_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
@@ -1808,7 +1923,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--gap-mean-s", type=float, default=70.0)
     ap.add_argument("--respawn-seek-mean-s", type=float, default=DEFAULT_RESPAWN_SEEK_MEAN_S)
     ap.add_argument("--fight-overshoot-ms", type=float, default=FIGHT_OVERSHOOT_MS)
-    ap.add_argument("--heat-cool-while-firing", choices=("on", "off"), default="on")
+    ap.add_argument("--heat-cooling", choices=HEAT_COOLING_BRANCHES, default="throughout")
+    ap.add_argument("--heat-cool-while-firing", choices=("on", "off"), default=None,
+                    help="old alias: on=throughout, off=none")
     ap.add_argument("--pull-ms", type=float, default=DEFAULT_PULL_MS,
                     help="bolt lever and legacy duel mean pull gap, ms (0 = a press at t14)")
     ap.add_argument("--reps", type=int, default=120, help="matches per team cell")
@@ -1860,7 +1977,8 @@ def _run_recoil_duel(args) -> int:
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
-                                     health_preset=args.health_preset)
+                                     health_preset=args.health_preset,
+                                     heat_cooling=(args.heat_cool_while_firing == "on" if args.heat_cool_while_firing is not None else args.heat_cooling))
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     tap_current = args.tap_ms if args.tap_ms is not None else float(CHARGE_TAP_CADENCE_MS)
     rules = ("1", "2", "3") if args.recoil_rule == "all" else (args.recoil_rule,)
@@ -1882,7 +2000,8 @@ def _run_range_duel(args) -> int:
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
-                                     health_preset=args.health_preset)
+                                     health_preset=args.health_preset,
+                                     heat_cooling=(args.heat_cool_while_firing == "on" if args.heat_cool_while_firing is not None else args.heat_cooling))
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     keys = tuple(sorted(RANGE_RULES)) if args.range_rule == "all" else (args.range_rule,)
     t0 = walltime.time()
@@ -1903,7 +2022,8 @@ def _run_r10_duel(args) -> int:
                                      reaction_sd_ms=args.reaction_sd_ms, burst_min=args.burst_min,
                                      burst_max=args.burst_max, burst_pause_min_ms=args.burst_pause_min_ms,
                                      burst_pause_max_ms=args.burst_pause_max_ms,
-                                     health_preset=args.health_preset)
+                                     health_preset=args.health_preset,
+                                     heat_cooling=(args.heat_cool_while_firing == "on" if args.heat_cool_while_firing is not None else args.heat_cooling))
     seed = args.recoil_seed if args.recoil_seed is not None else args.seed
     t0 = walltime.time()
     finish, duels = r10_report(m, args.recoil_reps, seed)
@@ -1944,7 +2064,8 @@ def main(argv=None) -> int:
                     match_ms=args.match_seconds * 1000.0, contact_mean_s=args.contact_mean_s,
                     gap_mean_s=args.gap_mean_s, respawn_seek_mean_s=args.respawn_seek_mean_s,
                     pull_ms=args.pull_ms, fight_overshoot_ms=args.fight_overshoot_ms,
-                    heat_cool_while_firing=args.heat_cool_while_firing == "on")
+                    heat_cooling=args.heat_cooling,
+                    heat_cool_while_firing=None if args.heat_cool_while_firing is None else args.heat_cool_while_firing == "on")
     ns = [int(n) for n in parse_values(args.n)]
     cat = WeaponCatalog()
     summary_path = args.summary or (os.path.splitext(args.out)[0] + "_summary.txt")
@@ -1986,7 +2107,8 @@ def main(argv=None) -> int:
                  f"pool {pool.health}/{pool.armour}/{pool.shield}, respawn {pool.respawn_ms / 1000:g} s, venue "
                  f"{cfg.venue}, range {'on' if cfg.range_model else 'off'}, tactical reload "
                  f"{'on' if cfg.tactical_reload else 'off'}, N {ns[0]}..{ns[-1]}", "",
-                 f"{'params':<50}{'team gm':>8}{'N=' + str(ns[0]):>7}{'N=' + str(ns[-1]):>7}{'1v1':>6}{'dot kills':>10}"]
+                 f"{'params':<50}{'team gm':>8}{'N=' + str(ns[0]):>7}{'N=' + str(ns[-1]):>7}"
+                 f"{f'{cfg.match_ms / 1000:g}s 1v1':>9}{'dot kills':>10}"]
         for _dist, params, gm, d in results[:25]:
             t = d["team"]
             kt = sum(r.kills_test for r in t)

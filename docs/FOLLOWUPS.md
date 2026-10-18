@@ -12,7 +12,7 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 102.** Desk 16 · bench 81 · decision 5.
+**MVP open: 103.** Desk 16 · bench 81 · decision 6.
 
 **MVP DESK (16),** a keyboard is enough:
 - 🔴 **F533** · **F548**
@@ -26,8 +26,8 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F545**
 
-**MVP DECISION (5),** awaiting Tony:
-- 🟠 **F391** · **F572** · **F575**
+**MVP DECISION (6),** awaiting Tony:
+- 🟠 **F391** · **F572** · **F575** · **F577**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
@@ -35,7 +35,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F577 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F578 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -320,7 +320,8 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 
 Tony's call. Each row says what the answer unblocks.
 
-- **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim modelled heat then, so every Charge Rifle verdict before 2026-10-18 missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call. **→ 2026-10-18 (brx2, sim gaps):** the sims now model heat from the rows' `heat` blocks (bench F229). Our own bench says the Charge Rifle cools about 30 a second on its own; if it also cools while firing, a charge plus five taps at the 285 ms cadence reaches about 84 heat and 55/14 does NOT lock before the kill. Whether it cools while firing is unproven, so every Charge Rifle verdict reports both ways (`--heat-cool-while-firing`). This waits for the bench row "Charge Rifle heat while firing" before Tony picks; 70/16 fits the budget either way.
+- **F577 🟠 THE HAZE'S 3 s BLIND IS SELECTABLE TODAY, AND THE SIMS CALL IT A WIN BUTTON.** brx2, 2026-10-18 (sim gaps, branch C). The `smoke_gun` row (the Haze, `$SIR` fn 23) carries no `hidden` flag and policy allows it as a secondary, so any player can carry it. In the balance review, AR + Haze against AR + Body Armor at mid wins about 0.94 at the 3 s blind, 0.62 at 2 s and 0.29 at 1.5 s (the sandbox gaps review, re-run by the new Haze sweep). Its own `caution` says it needs the S53 HUD first. Tony picks: hide it until the blind can be shortened (whether a `$SIR` magnitude sets the blind is unmeasured: bench first), or keep it. `decision`.
+- **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim modelled heat then, so every Charge Rifle verdict before 2026-10-18 missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call. **→ 2026-10-18 (brx2, sim gaps):** the sims now model heat from the rows' `heat` blocks (bench F229). Our own bench says the Charge Rifle cools about 30 a second on its own; if it also cools while firing, a charge plus five taps at the 285 ms cadence reaches about 84 heat and 55/14 does NOT lock before the kill. Whether it cools while firing is unproven, so every Charge Rifle verdict reports three cooling branches (throughout, after a lockout only, none; `--heat-cooling`) and fails only on a flip under one of them. With cooling only after a lockout or none, the shipped 70/16 already fails the Shields R1 rule (a 150 pool needs a charge plus five taps, 126 heat), so the bench row also decides whether today's Charge Rifle holds on Shields. This waits for the bench row "Charge Rifle heat while firing" before Tony picks; 70/16 fits the budget either way.
 
 - **F572 🟠 THE TWO-HILL HOLD TARGET: THE SUM ACROSS HILLS, OR PER HILL?** brx3 asked brx1 on 2026-10-18 (F556's console half, `b7715848f`). In a two-hill KOTH match, does the hold target count (a) the time held summed across both hills (today's code; brx1's and brx3's recommendation) or (b) the time held on any one hill? The answer unblocks the hold-target copy on LIVE, RECAP and SPECTATE and the scorer's win check. Owner brx3 (MC). `decision`.
 
