@@ -551,7 +551,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 8
+    assert R.SCENARIO_VERSION == 9
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1335,17 +1335,55 @@ def test_op_rule_checks_ap_against_lowest_health():
     assert checked["ap_dmg"] == 45 and not checked["pass"]
 
 
-def test_heat_candidate_reports_both_cooling_assumptions():
+def test_heat_candidate_reports_all_cooling_assumptions():
     args = R.build_parser().parse_args(["--candidate", "x.json", "--heat-cool-while-firing", "off"])
     assert args.heat_cool_while_firing == "off"
     v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
                  reps_scale=0.001, heat_cool_while_firing=False)
     assert v["facts"]["candidate"]["heat"]["cool_per_s"] == 29
-    assert set(v["heat"]["charge_rifle"]) == {"on", "off"}
-    assert v["heat"]["charge_rifle"]["on"]["candidate"]["columns"]
-    assert v["heat"]["charge_rifle"]["off"]["candidate"]["duels"]
-    assert "CR+Sniper+BA" in v["heat"]["charge_rifle"]["off"]["candidate"]["kits"]
-    assert "Heat: cooling while firing on / off" in R.report_markdown(v)
+    assert set(v["heat"]["charge_rifle"]) == set(B.HEAT_COOLING_BRANCHES)
+    assert v["heat"]["charge_rifle"]["throughout"]["candidate"]["columns"]
+    assert v["heat"]["charge_rifle"]["none"]["candidate"]["duels"]
+    assert "CR+Sniper+BA" in v["heat"]["charge_rifle"]["after_lockout"]["candidate"]["kits"]
+    assert "Heat: cooling throughout / after lockout / none" in R.report_markdown(v)
+    assert "| field | 150 s kill-count match |" in R.report_markdown(v)
+    assert "## Heated Balance rule cells" in R.report_markdown(v)
+    assert any("shields|R1" in name for name in v["failed_heat_branches"]["none"])
+    assert v["tests"]["heat_sensitivity"]["status"] == "fail"
+
+
+def test_shields_regenerate_after_quiet_window():
+    f = R.Fighter(R.make_kit(R.shipped_world(), "target", "assault_rifle"),
+                  (45, 0, 105), 1.0, 1, random.Random(2))
+    f.receive(30, t=0)
+    f.advance_shield(6499)
+    assert f.shield == 75
+    f.advance_shield(6500)
+    assert f.shield == 102
+    f.advance_shield(7500)
+    assert f.shield == 105
+
+
+def test_energy_vent_keeps_heat_until_reload_finishes():
+    kit = R.make_kit(R.shipped_world(), "energy", "energy_rifle")
+    f = R.Fighter(kit, 115, 1.0, 1, random.Random(2), pull_ms=0)
+    s = f.gs[0]
+    s.heat = 197
+    assert f.act(0) is not None
+    assert s.heat == 200 and s.locked_until == math.inf
+    assert f.act(kit.guns[0].fire_ms) is None
+    assert s.vent_heat_after == 95 and s.heat == 200
+    f._credit_reload(s, s.vent_until)
+    assert s.heat == 95 and s.locked_until == 0
+
+
+def test_heat_review_names_all_branches_and_horizons():
+    args = R.build_parser().parse_args(["--candidate", "x.json", "--heat-cooling", "after_lockout"])
+    assert args.heat_cooling == "after_lockout"
+    a = R.assumptions()
+    assert a["horizons"]["field"] == "150 s kill-count match"
+    assert a["horizons"]["long contact"] == "20 s first kill"
+    assert set(a["heat_cooling_branches"]) == {"throughout", "after_lockout", "none"}
 
 
 def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():

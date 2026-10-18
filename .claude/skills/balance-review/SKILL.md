@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 8. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 9. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -72,12 +72,14 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 8 uses these models:
+Scenario version 9 uses these models:
 
-- The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
-  rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
-  verdict that touches a heat weapon runs with `HEAT_COOL_WHILE_FIRING` on and off. In the off case,
-  heat does not cool; a lockout resets heat to zero. The Energy Rifle vents through its reload lever.
+- The two catalogue `heat` blocks control lockout. The crossing round fires. `--heat-cooling` selects
+  `throughout`, `after_lockout`, or `none`. The first branch cools between all shots at the catalogue rate.
+  The second starts cooling after the first lockout. The third never cools. A self lockout resets heat.
+  Cooling remains unproven (F575). Each heat-sensitive matrix row and Balance rule cell reports all three
+  branches. Every branch must pass the verdict gates, and a failure names its branch.
+  The Energy Rifle vents in `vent_per_pull` steps until heat falls below `lock_at`, then reloads the cell.
 - A lethal secondary can cover an empty or heat-locked primary. The kit also draws it when its expected finish
   time, including the swap, is shorter. Estimate the real shot sequence, including bolt and charge cycles,
   magazine and reserve reloads, and count the first shot at draw time. Reject a secondary that cannot finish
@@ -107,10 +109,13 @@ Scenario version 8 uses these models:
 - A close-range kit can finish a weak target with the catalogue melee row's damage and cooldown. The swing uses
   `MELEE_SWING_MS` 150 ms. `MELEE_HIT_P` 0.9 is the hit chance at aim 1; aim and blindness
   scale it. The rush model limits it to `MELEE_REACH_M` 6 metres. Melee is excluded from the published TTK.
-- Heat cooling while firing is an unproven assumption pending bench check F575. The default is on, matching
-  the catalogue cooling rate; `--heat-cool-while-firing off` disables cooling entirely.
-  A lockout resets heat to zero.
-  Heated sidearm R10 pairs use the kit engine. The CI rule engine has no heat state.
+- Heat cooling while firing is an unproven assumption pending bench check F575. The default is
+  `--heat-cooling throughout`. The old `--heat-cool-while-firing on|off` flag remains an alias.
+  Heated sidearm R10 pairs use the kit engine. The Charge Rifle and Energy Rifle rule combatants read
+  their catalogue heat blocks.
+- Shields targets regain shield after 6.5 seconds without damage. The refill has four grants, one second
+  apart. The report names each scoring horizon: the matrix 1v1 cells score first kill within 10 seconds,
+  long contact allows 20 seconds, and the field ratio uses a 150-second kill-count match.
 - The report checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from 20 m and 30 m.
   `marksman_rush_counter` still gates the plain AR rush from 20 m. The report shows 30 m beside it.
 - `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).

@@ -259,6 +259,50 @@ def test_charge_heat_toggle_at_real_tap_cadence():
         assert shooter.heat_lock_until < 0, (cooling, shooter.heat)
 
 
+def test_three_cooling_branches_at_tap_cadence():
+    for charge, tap, shots, locks in ((55, 14, 6, {"after_lockout", "none"}),
+                                      (70, 16, 4, set())):
+        cat = _edited("charge_rifle", heat__per_charge=charge, heat__per_tap=tap)
+        weapon = B.weapon_model(cat, "charge_rifle")
+        for branch in B.HEAT_COOLING_BRANCHES:
+            clock = list(B._cr_shots(0, weapon.pull_dmg, weapon.tap_dmg, weapon.rounds_per_charge,
+                                     285, weapon.mag, weapon.reserve, weapon.reload_ms, 1.0,
+                                     start_charged=True, heat=dict(weapon.heat), heat_cooling=branch))
+            assert (clock[shots - 1][0] > (shots - 1) * 285) is (branch in locks)
+
+
+def test_energy_vent_uses_each_catalogue_pull():
+    heat = dict(B.weapon_model(CAT, "energy_rifle").heat)
+    assert B.vent_pulls(99, heat) == 1
+    assert B.vent_pulls(200, heat) == 3
+    assert B.vent_pulls(heat["lock_at"], {**heat, "vent_per_pull": 100}) == 1
+    energy = B.weapon_model(CAT, "energy_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    players = [B.Player(0, 0, energy, B.default_pool()), B.Player(1, 1, dummy, B.default_pool())]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False, pull_ms=0), 1.0, 1)
+    shooter = players[0]
+    shooter.target, shooter.contact_end, shooter.engage_id = 1, 20_000, 1
+    shooter.heat = 197
+    match._shot(shooter, 0, 1)
+    assert shooter.heat == 95
+    assert shooter.heat_lock_until == energy.reload_ms
+
+
+def test_shields_rule_reads_charge_heat_and_cooling_branch():
+    for branch, expected in (("throughout", True), ("none", False)):
+        model = B.RecoilDuelModel.from_catalog(CAT, health_preset="shields", heat_cooling=branch)
+        assert dict(model.cr_heat) == CAT._row("charge_rifle")["heat"]
+        result = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 200, SEED, "gate_rule1",
+                                     model, float(B.CHARGE_TAP_CADENCE_MS))
+        assert (result.win_rate > 0.6) is expected
+
+
+def test_kill_count_summary_names_its_horizon():
+    summary = B.summary_text([], _cfg(), "assault_rifle", [2], [], "balance")
+    assert "150 s kill-count win rate" in summary
+    assert "kills/1v1" in summary
+
+
 def test_reload_credits_ammo_only_after_completion():
     ar = B.weapon_model(CAT, "assault_rifle")
     players = [B.Player(i, i, ar, B.default_pool()) for i in range(2)]
