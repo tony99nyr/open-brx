@@ -8072,3 +8072,39 @@ test('F537 review r3: while our scan is closed (paused entries) the hill neither
   runControl(h, 2000, { team: 1, state: HELD, value: 100 });
   assert.ok(h.eng.hold['11'][1] >= held + 1500 && h.eng.hold['11'][1] <= held + 2250, `the clock resumes from the next fresh advert, with no lump (${h.eng.hold['11'][1] - held} ms)`);
 });
+
+// BOLT cue (Tony 2026-10-17 via brx2): a bolt-action weapon (catalogue `reload_type: "bolt"`, magazine 1) needs a lever pull
+// per shot. The pull opens the same reconciled reload, but with no RELOADING takeover: a small BOLT cue, so the scope stays.
+function boltHarness() {
+  const h = liveSwapHarness();
+  h.eng.catalog = { ...(h.eng.catalog || {}), weapons: [{ weapon_id: 'assault_rifle', name: 'BOLT RIFLE', reload_s: 2, reload_type: 'bolt' }, { weapon_id: 'smg', name: 'SMG', reload_s: 1.4 }] };
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,0,100,0,24,0,*'); h.frame('$BUT,0,0,*');   // the shot empties the one-round chamber
+  return h;
+}
+test('BOLT: a lever pull on a bolt weapon shows the BOLT cue, never the RELOADING takeover, and the chambered round ends it', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  let s = h.eng.state();
+  assert.equal(s.bolt, true, 'the BOLT cue is up');
+  assert.notEqual(s.presented.takeover && s.presented.takeover.kind, 'reload', 'no RELOADING takeover over the scope');
+  h.adv(1900); h.frame('$ALCD,1,100,0,23,0,*');
+  s = h.eng.state();
+  assert.equal(s.bolt, false, 'the round chambered: the cue ends');
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, true);
+});
+test('BOLT: with no chambered round by the deadline the cue ends as a failed reload, never left up', () => {
+  const h = boltHarness();
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().bolt, true);
+  h.adv(6000); h.eng.tick();
+  const s = h.eng.state();
+  assert.equal(s.bolt, false, 'not left up');
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false); assert.equal(s.reloadOutcome.why, 'timeout');
+});
+test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  const s = h.eng.state();
+  assert.equal(s.bolt, false); assert.equal(s.presented.takeover.kind, 'reload');
+});

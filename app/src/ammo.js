@@ -526,8 +526,10 @@ export class Ammo {
     // Bench 2026-10-17: inside an ALT swap the gun reloads the old slot only once the swap ends, so the deadline waits out the window.
     const swapTo = this.switching && !this.switching.pu ? this.switching.to : null;
     this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
-                       from: this.host.ammo, cap: cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
+                       // BOLT: one lever chambers one round, so the bolt is done at the magazine plus one, whatever the spawn cap
+                       from: this.host.ammo, cap: row && row.reload_type === 'bolt' ? (this.host.ammo || 0) + 1 : cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
+                       bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo };   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout

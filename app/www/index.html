@@ -198,6 +198,14 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Bench 2026-09-17: NOT ENOUGH ENERGY is now a secondary note, never a second big prompt beside
    OUT OF ENERGY/RECHARGE -- one small line under the digits, right-aligned like the rest of the column. */
 .ammo .enote{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.16em;color:var(--warn)}
+/* BOLT (Tony 2026-10-17): a bolt-action lever pull is a small cue under the digits, never a takeover over the scope. The
+   sweep runs on the weapon's reload time from the pull (a negative delay picks up a cue drawn late). */
+.ammo .bolt{display:flex;align-items:center;gap:8px;margin-top:2px}
+.ammo .bolt .bk{font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.18em;color:var(--num)}
+.ammo .bolt .bt{position:relative;flex:1 1 auto;height:4px;background:rgba(95,214,255,.18);overflow:hidden;min-width:60px}
+.ammo .bolt .bt i{position:absolute;inset:0 auto 0 0;width:100%;background:var(--glow);transform-origin:left;animation-name:boltsweep;animation-timing-function:linear;animation-fill-mode:both}
+@keyframes boltsweep{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+[data-env="night"] .ammo .bolt .bk{color:#e0664a}[data-env="night"] .ammo .bolt .bt i{background:#7a2a20}
 .pips{display:flex;gap:4px}
 /* `> i`, not `i`: this styles the discrete bullet pips only (direct children of #pips). A descendant
    `.pips i` also matched the ammo/energy bar's OWN fill `<i>` two levels down (`.pips > .bar > i`) at equal

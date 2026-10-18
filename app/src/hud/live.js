@@ -79,7 +79,7 @@ export function _live(st) {
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 && !starved ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
-        <div class="pips" id="pips">${this._pips(st)}</div>
+        ${st.bolt && st.alive ? `<div class="bolt" role="status"><span class="bk">BOLT</span><span class="bt"><i style="animation-duration:${Math.max(1, st.reloadTotalMs || 0)}ms;animation-delay:-${Math.max(0, st.reloadMs || 0)}ms"></i></span></div>` : ''}<div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
         <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
