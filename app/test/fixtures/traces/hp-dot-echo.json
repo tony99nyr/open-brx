@@ -132,7 +132,7 @@
       "at": "poisoned_kill",
       "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"poison":null,"moment":{"kind":"down","data":null}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":83,"ir_proto":11,"ir_subtype":0,"sensor":0,"shot_group":"epoch:3"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,4,4,4,0,10,,*",
         "$LIFE,0,-4,0,*",

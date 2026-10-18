@@ -115,7 +115,7 @@
       "at": "no_tick_while_dead",
       "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":3750}},"observed_ms":{"11":3750},"source":"station"},"hillCallout":null,"hillLane":null},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$HLOOP,1,2500,*"
       ]

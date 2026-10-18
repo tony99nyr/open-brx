@@ -121,3 +121,25 @@ describe('KIT · perk slot (A14)', () => {
 
 // F411: the GAME DESIGNER is retired (docs/spec/design/games-presets.md) — its own perk-slot-rule
 // test went with it. BUILD (screens/Build.tsx) replaces it; that lane owns its own tests.
+
+// F551 (field 2026-10-17): the kit offered Armor Piercing with a primary it is not priced on, and the push then refused.
+describe('KIT · a perk the push would refuse is not offered (F551)', () => {
+  it('Armor Piercing is disabled with a primary it cannot ride, and named', async () => {
+    const d = await demo();
+    await d.api.patchPlayer('p1', { loadout: { weapons: [{ weapon_id: 'burst_rifle' }] } });
+    const m = await mountScreen(<Kit />, { ...d, state: await d.api.getState(), view: 'kit', selPlayer: 'p1' });
+    await m.click('PERK');
+    const ap = m.find('[aria-label^="Armor Piercing perk"]')[0];
+    expect(ap?.getAttribute('aria-disabled')).toBe('true');
+    expect(ap?.getAttribute('aria-label')).toContain('does not work with the Burst Rifle');
+    m.unmount();
+  });
+
+  it('the mock drops an ineligible perk from a loadout, as MC does', async () => {
+    const d = await demo();
+    const p = await d.api.patchPlayer('p1', { loadout: { weapons: [{ weapon_id: 'burst_rifle' }], perk: 'armor_piercing' } });
+    expect(p.loadout.perk).toBeUndefined();
+    const q = await d.api.patchPlayer('p1', { loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'armor_piercing' } });
+    expect(q.loadout.perk).toBe('armor_piercing');
+  });
+});

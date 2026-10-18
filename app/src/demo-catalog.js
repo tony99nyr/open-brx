@@ -199,6 +199,7 @@ export const DEMO_WEAPONS = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -913,7 +914,9 @@ export const DEMO_PERKS = [
       "RELOADS 1.2× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "extended_mags",
@@ -936,7 +939,9 @@ export const DEMO_PERKS = [
       "SWAPS 1.3× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_hands",
@@ -958,7 +963,9 @@ export const DEMO_PERKS = [
       "×0.8 AMMO"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_switch",
@@ -980,7 +987,9 @@ export const DEMO_PERKS = [
       "-20 ARMOR"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "armor_piercing",
@@ -1001,7 +1010,21 @@ export const DEMO_PERKS = [
       "FIXED DAMAGE, SLOWER CYCLE"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [
+      "burst_rifle",
+      "sniper_rifle",
+      "amr",
+      "charge_rifle",
+      "usp",
+      "deagle",
+      "rocket_launcher",
+      "rail_gun",
+      "stripper",
+      "smoke_gun",
+      "toxin_rifle"
+    ],
+    "blocked_secondary": []
   }
 ];
 // GENERATED-END perks

@@ -273,7 +273,7 @@ MODES: list[ModeRow] = [
     # cap. With NO possession reported at all, the winner stays `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
-     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
+     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it with a living player on it banks possession. Most possession time when the clock runs out takes the match.",
      # F415 (2026-09-27): `app/src/engine.js` now sends a `possession` fact, and `scoring.py` names the
      # winner from it (`Scorer.winner()`) -- the "· HOST CALL" clause this used to carry was honest only
      # until that shipped (operator review 2026-09-10's own finding); dropped now that it has.
@@ -697,6 +697,7 @@ class Session:
         # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
         # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
         self._app_blocked_alerted: dict[str, tuple[str, ...]] = {}
+        self._identity_told = False                 # F552: `note_new_identity` already told this process's operator
         # S16 review 2026-09-19: node_id -> the weapon ids last told to the feed by `_alert_plan_withheld`,
         # deduped for the same reason as the line above. Cleared beside it.
         self._plan_blocked_alerted: dict[str, tuple[str, ...]] = {}
@@ -1301,14 +1302,19 @@ class Session:
 
     def _notices(self) -> NoticesView:
         """A31: the HOST's standing lines (API.md `State.notices`). Same decision as the player's line —
-        the compiler makes it once — but the host's copy NAMES the phones, because the host is the one
-        who can walk over and tell those players to come back."""
+        the compiler makes it once — but the host's copy NAMES the phones (unless every phone is listed, when the
+        names are wallpaper), because the host is the one who can walk over and tell those players to come back."""
         out: NoticesView = {}
         off = self._off_grid()
         if self._mc_verify_player_line():
-            shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
-            out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} OFF-GRID "
-                                f"({shown}): TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+            if len(off) >= len(self.players):
+                # Wi-Fi-only match: EVERY phone is off-grid, so naming them would be wallpaper.
+                out["mc_verify"] = ("WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, "
+                                    "TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+            else:
+                shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
+                out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} "
+                                    f"WITH NO ROUTE BACK ({shown}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE")
         return out
 
     def game_brief(self) -> dict:
@@ -1833,7 +1839,12 @@ class Session:
             _, perks = self._catalog_rows()
             if perks and perk not in {r.get("perk_id") for r in perks}:
                 raise ValueError(f"unknown perk_id {perk!r}")
-            out["perk"] = perk                        # A14: a perk is its own slot — it rides beside a secondary weapon
+            w0 = weapons[0]["weapon_id"]
+            w1 = weapons[1]["weapon_id"] if len(weapons) > 1 else None
+            # F551 (field 2026-10-17): a perk the compiler would refuse with these weapons blocked the whole push. Drop
+            # it here instead (Tony's rule: fix the pick, no warning); the kit pickers hide it from `PerkView.blocked_*`.
+            if self.compiler.perk_block_reason(perk, w0, w1) is None:
+                out["perk"] = perk                    # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
             if not isinstance(ov, dict):
@@ -4817,7 +4828,7 @@ class Session:
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
-                self._archive("match_ended", sc.match_id, self.last_recap)
+                self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
             self._push_result()          # A24: the field is re-told whenever the recap moves
         except Exception:
             import logging
@@ -5813,6 +5824,7 @@ class Session:
         new = before
         if ok:
             new = _policy.set_slot(before, slot, kind, rid, perks, weapons)
+            asked_perk = new.get("perk")
             try:
                 new = self._check_loadout(new)
             except ValueError as e:
@@ -5821,6 +5833,17 @@ class Session:
                 dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
                 if dropped:
                     reason = why
+                elif asked_perk and not new.get("perk"):
+                    # F551 (Codex review): `_check_loadout` dropped a perk these weapons cannot carry; say so, or the
+                    # phone shows a perk the player no longer has
+                    ws = [w["weapon_id"] for w in new.get("weapons") or []]
+                    # the weapon that clashes: the primary unless only the secondary does (Codex review)
+                    w0 = ws[0] if ws and self.compiler.perk_block_reason(asked_perk, ws[0]) is not None \
+                        else (ws[1] if len(ws) > 1 else (ws[0] if ws else None))
+                    pname = next((k.get("name") for k in perks if k.get("perk_id") == asked_perk), asked_perk)
+                    wname = next((w.get("name") for w in weapons if w.get("weapon_id") == w0), w0)
+                    dropped = {"slot": "perk", "id": asked_perk, "name": pname}
+                    reason = f"{pname} does not work with the {wname}"
         if ok:
             p["loadout"] = new
             self.browsing.pop(pid, None)
@@ -5914,7 +5937,20 @@ class Session:
         plan = self._hit_plan()
         if plan is not None:
             kw["plan"] = plan
-        bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        try:
+            bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        except Exception as e:
+            # F551 (field 2026-10-17): a push-blocking compile error left no trace in mc.log, so the field could not
+            # read back why Armor Piercing refused twice. Log it with the traceback, tell the operator, then refuse.
+            import logging
+            who = p.get("display") or p["player_id"]
+            logging.getLogger("brx.mc").exception("COULD NOT COMPILE %s's frames: %s", who, e)
+            # Once per player and error while the line is in the feed: a phone retrying its hello every few seconds must
+            # not flush it (Opus review), and a new session's empty feed tells it again (Codex review)
+            line = f"COULD NOT COMPILE {who.upper()}'S FRAMES: {e}"
+            if not any(f.get("text") == line for f in self.feed):
+                self._on_feed(self._feed_alert("WITHHELD", line))
+            raise
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
             import logging
@@ -6737,6 +6773,19 @@ class Session:
         for t, shooter, victim, dmg in new_hits:
             self._relay_hit_feedback(shooter, victim, dmg, t)
 
+    NEW_IDENTITY_LINE = "NEW MC IDENTITY: EVERY PHONE WILL NEED ONE TAP OR THE QR"
+
+    def note_new_identity(self) -> None:
+        """F552 (field 2026-10-17): MC made a new install identity at launch, so no phone's stored trust key matches
+        and each one asks for a tap (or the QR). The proof stays strict; the operator is told once, up front."""
+        # Once per process (Codex and Opus review): matching the saved feed's text would skip a second rotation in a
+        # later run and would read an old run's line as news
+        if self._identity_told:
+            return
+        self._identity_told = True
+        self._on_feed(self._feed_alert("ALERT", self.NEW_IDENTITY_LINE))
+        self._changed()
+
     def _feed_alert(self, tag: str, text: str, *, at_ms: int | None = None,
                     t_match_s: int | None = None) -> FeedEntry:
         """Build an alert with the phase-gated operator clock or a caller's existing clock."""
@@ -7022,7 +7071,9 @@ class Session:
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and match.head and self.last_recap:
-            self._archive("match_ended", match.head["match_id"], self.last_recap)
+            # F560: the scorer's own end (a timed scorer is built with it); MC's clock, never the wall clock, if it has none
+            end_t = match.scorer.end_t if match.scorer and match.scorer.end_t is not None else self.now_ms()
+            self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)
         match.head = None            # no re-hydrating a finished match's `start`
         if match.scorer:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
@@ -7206,7 +7257,7 @@ class Session:
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
             if self.store:
-                self._archive("match_ended", mid, recap)
+                self._archive("match_ended", mid, recap, sc.end_t)   # F560
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact re-store for a retired match failed (play continues)")

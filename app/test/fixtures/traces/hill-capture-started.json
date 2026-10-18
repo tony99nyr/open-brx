@@ -122,7 +122,7 @@
       "at": "blue_badge_cleared_on_tick",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":7750}},"observed_ms":{"11":7750},"source":"station"},"hillLane":null},
       "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":250},"observed_ms":250,"source":"station"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*"
       ]

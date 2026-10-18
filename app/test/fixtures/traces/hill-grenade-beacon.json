@@ -129,7 +129,7 @@
       "at": "one_tick_and_possession",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":null},"possession":{"by_site":{"":{"1":3014,"2":50}},"observed_ms":{"":3064},"source":"beacon"},"hillCallout":null,"hillLane":{"kind":"hill_captured","src":"IR","id":1,"at":3060}},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$PLAY,U100,4,6,,,,,*"
       ]

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseMcQr, parseMcJoin } from '../src/mcurl.js';
+import { parseMcQr, parseMcJoin, kickHeld, CELLULAR_KICK_GAP_MS } from '../src/mcurl.js';
 
 test('a bare websocket URL is the code', () => {
   assert.equal(parseMcQr('ws://192.168.1.20:8765/ws'), 'ws://192.168.1.20:8765/ws');
@@ -89,4 +89,17 @@ test('utility QR connection keeps the complete MC join contract', () => {
     'the utility connector must pass the complete join contract to Transport');
   const link = readFileSync(new URL('../src/transport/mclink.js', import.meta.url), 'utf8');
   assert.match(link, /transport\.connect\(options\.connect\)/, 'the shared controller hands that contract on unchanged');
+});
+
+test('F563: within 30 s of a cellular kick that dialled, every kick but Wi-Fi waits; any kick within 1 s coalesces', () => {
+  assert.equal(CELLULAR_KICK_GAP_MS, 30000);
+  assert.equal(kickHeld('cellular', 0, null), false, 'the first kick dials');
+  const cell = { at: 0, why: 'cellular' };
+  assert.equal(kickHeld('cellular', 10000, cell), true);
+  assert.equal(kickHeld('online', 10000, cell), true, 'the webview online event does not slip past the cellular gap');
+  assert.equal(kickHeld('wifi', 10000, cell), false, 'Wi-Fi coming back always dials');
+  assert.equal(kickHeld('cellular', 30000, cell), false);
+  const wifi = { at: 0, why: 'wifi' };
+  assert.equal(kickHeld('online', 500, wifi), true, 'the doubled event');
+  assert.equal(kickHeld('cellular', 2000, wifi), false, 'Wi-Fi dropping back to cellular dials at once');
 });

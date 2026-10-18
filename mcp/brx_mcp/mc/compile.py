@@ -2463,7 +2463,7 @@ class Compiler:
             t[4], t[5] = cell[0], cell[1]
         return ",".join(t)
 
-    def _refuse_if_ap_ineligible(self, weapon_id: str, player: Player) -> None:
+    def _ap_block(self, weapon_id: str) -> str | None:
         """S50: Armour Piercing may only key a PLAIN-DAMAGE primary. Refused, not silently skipped
         (the task's own choice of the two options offered: "a weapon whose damage key is already
         special must be refused or left alone" -- refusing matches this codebase's existing style,
@@ -2477,7 +2477,6 @@ class Compiler:
           `slot_frame` mechanism lives in the VICTIM's table the same way, on the secondary, so this
           also guards a future primary built the same way.
         """
-        name = player.get("display") or player.get("player_id") or "this player"
         if self.catalog._row(weapon_id).get("ap_dmg") is None or self.catalog._row(weapon_id).get("ap_fire_ms") is None:
             # 2026-09-18 (§7.7): most weapons have NO fair Armour Piercing damage, and that is
             # arithmetic rather than an oversight. Bypassing armour takes a standard target from a 115
@@ -2486,31 +2485,32 @@ class Compiler:
             # unchanged, so the perk is free) and 2 (which is useless), with nothing between. A weapon
             # that cannot be priced must not carry the perk, or Armour Piercing is strictly better than
             # not taking it, which is what shipped until this was measured.
-            raise ValueError(
-                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
-                f"{weapon_id!r} — the catalogue gives it no `ap_dmg`, so there is no damage value that "
-                f"makes the perk a trade rather than a free upgrade on this weapon (weapon-design.md "
-                f"§7.7). Armour Piercing needs a low-damage, high-rate primary")
+            return ("the catalogue gives it no `ap_dmg`, so there is no damage value that makes the perk a trade "
+                    "rather than a free upgrade on this weapon (weapon-design.md §7.7). Armour Piercing needs a "
+                    "low-damage, high-rate primary")
         if self.catalog.rounds_per_charge(weapon_id) > 1:
-            raise ValueError(
-                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
-                f"{weapon_id!r} — it is a CHARGE weapon (rounds_per_charge > 1): its hits-to-kill is "
-                "release+tap math, not a flat damage cut, so a $SIR key swap would silently change "
-                "what its charge and taps do rather than just skip armour and shields. Armour "
-                "Piercing is refused on a charge weapon; pick a different primary.")
+            return ("it is a CHARGE weapon (rounds_per_charge > 1): its hits-to-kill is release+tap math, not a flat "
+                    "damage cut, so a $SIR key swap would silently change what its charge and taps do rather than "
+                    "just skip armour and shields. Armour Piercing is refused on a charge weapon; pick a different "
+                    "primary.")
         cell = self._weapon_cell(weapon_id)
         if cell is None:
-            return                                # unknown id -- already reported elsewhere
+            return None                           # unknown id -- already reported elsewhere
         fn = _sir_index(_SIR_TABLE).get(cell)
         if fn is not None and fn not in _SIR_PLAIN_DAMAGE:
-            raise ValueError(
-                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
-                f"{weapon_id!r} — its stock $SIR cell <{cell[0]},{cell[1]}> is fn {fn}, not plain "
-                "damage (a grant/heal/status row): re-keying it would change what the weapon DOES, "
-                "not just where its damage goes. Armour Piercing is refused on a weapon whose damage "
-                "key is already special; pick a different primary.")
+            return (f"its stock $SIR cell <{cell[0]},{cell[1]}> is fn {fn}, not plain damage (a grant/heal/status "
+                    "row): re-keying it would change what the weapon DOES, not just where its damage goes. Armour "
+                    "Piercing is refused on a weapon whose damage key is already special; pick a different primary.")
+        return None
 
-    def _refuse_if_crit_perk_ineligible(self, weapon_id: str, player: Player) -> None:
+    def _refuse_if_ap_ineligible(self, weapon_id: str, player: Player) -> None:
+        """S50: `_ap_block`, refused at compile time (F551: the kit hides it first, `perk_block_reason`)."""
+        if (why := self._ap_block(weapon_id)) is not None:
+            name = player.get("display") or player.get("player_id") or "this player"
+            raise ValueError(f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
+                             f"{weapon_id!r} — {why}")
+
+    def _crit_block(self, weapon_id: str) -> str | None:
         """F278: `test_a_two_word_weapon_never_also_carries_a_crit_chance` refuses a CATALOGUE row that
         declares both `wire.headset_dmg` and `crit_pct` -- the crit flag rides on both IR words but the
         multiplier reaches only the barrel word, a split nothing in the catalogue models. That guard
@@ -2518,14 +2518,33 @@ class Compiler:
         writes the gun's crit token at RUNTIME (bench-found: `$TMP` t10), so it can reach the identical
         combination without ever touching the row the lint guard reads. This refuses it here too, one
         condition, fails safe, filed and fixed before any such perk ships (docs/FOLLOWUPS.md F278)."""
-        name = player.get("display") or player.get("player_id") or "this player"
         headset = (self.catalog._row(weapon_id).get("wire") or {}).get("headset_dmg")
         if headset:
-            raise ValueError(
-                f"F278 CRIT-PERK GUARD: refusing to compile {name}'s crit-chance perk with {weapon_id!r} "
-                f"armed — it carries a second IR word (wire.headset_dmg {headset}); the crit flag rides "
-                "on both words but the multiplier reaches only the barrel word, and that combination has "
-                "never been measured. Pick a different weapon, or a different perk.")
+            return (f"it carries a second IR word (wire.headset_dmg {headset}); the crit flag rides on both words "
+                    "but the multiplier reaches only the barrel word, and that combination has never been measured. "
+                    "Pick a different weapon, or a different perk.")
+        return None
+
+    def _refuse_if_crit_perk_ineligible(self, weapon_id: str, player: Player) -> None:
+        """F278: `_crit_block`, refused at compile time."""
+        if (why := self._crit_block(weapon_id)) is not None:
+            name = player.get("display") or player.get("player_id") or "this player"
+            raise ValueError(f"F278 CRIT-PERK GUARD: refusing to compile {name}'s crit-chance perk with "
+                             f"{weapon_id!r} armed — {why}")
+
+    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None) -> str | None:
+        """F551: why `perk_id` cannot ride with this primary/secondary, or None. The same rules the compile guards
+        refuse on, so a pick MC accepts can never be refused at push."""
+        if not perk_id or not self.perks.has(perk_id):
+            return None
+        fx = self.perks.effects(perk_id)
+        if fx.get("armor_piercing") and primary and (why := self._ap_block(primary)) is not None:
+            return why
+        if fx.get("crit_pct_add"):
+            for w in (primary, secondary):
+                if w and (why := self._crit_block(w)) is not None:
+                    return why
+        return None
 
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
@@ -3578,8 +3597,15 @@ class Compiler:
         return self.catalog.all()
 
     def perk_catalog(self) -> list[PerkView]:
-        """Visible perks (loadout.md §1.2) — `PerkView` rows."""
-        return self.perks.all()
+        """Visible perks (loadout.md §1.2) — `PerkView` rows. F551: each says which weapons it cannot ride with as the
+        primary and as the secondary (`perk_block_reason`), so the kit pickers hide what the push would refuse."""
+        ids = [w["weapon_id"] for w in self.catalog.all()]
+        out: list[PerkView] = []
+        for v in self.perks.all():
+            v["blocked_primary"] = [w for w in ids if self.perk_block_reason(v["perk_id"], w) is not None]
+            v["blocked_secondary"] = [w for w in ids if self.perk_block_reason(v["perk_id"], None, w) is not None]
+            out.append(v)
+        return out
 
 # Module singleton + the committed golden bundle other lanes import as their fixture (M10).
 _DEFAULT = Compiler()

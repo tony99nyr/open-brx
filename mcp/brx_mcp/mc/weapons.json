@@ -566,6 +566,7 @@
    "reserve": 80,
    "reload_ms": 2500,
    "rounds_per_charge": 10,
+   "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
    "dmg": 61,
    "rof": 6,
    "rng": 75,

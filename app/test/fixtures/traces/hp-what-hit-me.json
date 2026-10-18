@@ -122,7 +122,7 @@
       "at": "whole_pool_magnitude_not_lethal",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":20,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":21,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":20,"shield":0,"weapon":{"id":"amr","name":"AMR","source":"catalog"}}}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":21,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:3","weapon_id":"amr"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,9,4,4,0,10,,*"
       ]
