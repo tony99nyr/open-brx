@@ -607,6 +607,18 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "blocked_primary": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "blocked_secondary": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "additionalProperties": false

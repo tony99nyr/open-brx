@@ -933,7 +933,9 @@ export const PERKS: PerkView[] = [
       "RELOADS 1.2× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "extended_mags",
@@ -956,7 +958,9 @@ export const PERKS: PerkView[] = [
       "SWAPS 1.3× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_hands",
@@ -978,7 +982,9 @@ export const PERKS: PerkView[] = [
       "×0.8 AMMO"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_switch",
@@ -1000,7 +1006,9 @@ export const PERKS: PerkView[] = [
       "-20 ARMOR"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "armor_piercing",
@@ -1021,7 +1029,21 @@ export const PERKS: PerkView[] = [
       "FIXED DAMAGE, SLOWER CYCLE"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [
+      "burst_rifle",
+      "sniper_rifle",
+      "amr",
+      "charge_rifle",
+      "usp",
+      "deagle",
+      "rocket_launcher",
+      "rail_gun",
+      "stripper",
+      "smoke_gun",
+      "toxin_rifle"
+    ],
+    "blocked_secondary": []
   }
 ];
 // GENERATED-END perks

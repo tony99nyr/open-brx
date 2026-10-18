@@ -287,13 +287,17 @@ class Store:
                         (match_id, self.session_id, json.dumps(config), go_live_t))
         self.db.commit()
 
-    def match_ended(self, match_id: str, recap: dict) -> int:
+    def match_ended(self, match_id: str, recap: dict, ended_t: int | None = None) -> int:
         """Store the result. Returns the rows updated: 0 means the match has no row (its `match_started` was lost), so the
-        result was NOT kept, and the caller must treat that as a failed write (O7). A closed store returns 1 (not a failure)."""
+        result was NOT kept, and the caller must treat that as a failed write (O7). A closed store returns 1 (not a failure).
+
+        F560 (field 2026-10-17): `ended_t` is the match's own end (the scorer's `end_t`, MC's clock, like `go_live_t`).
+        A recap re-written after the whistle used to stamp the wall clock every time, so a 838 s match read 6705 s. With
+        no `ended_t` a stored end time is kept, and only a row with none takes "now"."""
         if self._closed:
             return 1
-        cur = self.db.execute("UPDATE matches SET ended_t=?, recap=? WHERE match_id=?",
-                              (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
+        cur = self.db.execute("UPDATE matches SET ended_t=COALESCE(?, ended_t, ?), recap=? WHERE match_id=?",
+                              (ended_t, int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
         return cur.rowcount
 

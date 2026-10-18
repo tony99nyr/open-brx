@@ -112,7 +112,9 @@ def load_install_secret(data_dir: Path | None) -> tuple[bytes, bool]:
             return value, False
         log.warning("%s is malformed (%d bytes): making a new one, so every phone taps JOIN once", path, len(value))
     except FileNotFoundError:
-        pass
+        # F552 (field 2026-10-17): this branch was a bare `pass`, so a missing file rotated the identity, forced a tap
+        # or the QR on every phone, and left no trace. A brand-new install takes it too, which is harmless to say.
+        log.warning("%s not found: making a NEW MC IDENTITY, so every phone taps JOIN once or scans the QR", path)
     except Exception as e:
         log.warning("%s unreadable (%s): making a new one, so every phone taps JOIN once", path, e)
     value = secrets.token_bytes(SECRET_BYTES)
@@ -178,6 +180,9 @@ class TrustRegistry:
         self._by_peer: dict[str, deque] = {}
         self._last_log: dict[str, float] = {}
         self._quiet: dict[str, int] = {}
+        # F552: True when this process made a NEW persisted identity, so the operator can be told every phone must
+        # confirm MC once. Never for an in-memory one (demo, ephemeral, tests).
+        self.identity_created = False
         if install_secret is not None:
             self.secret, created = install_secret, self.data_dir is None
         else:
@@ -187,6 +192,7 @@ class TrustRegistry:
                 self.secret, created = secrets.token_bytes(SECRET_BYTES), True
                 self._fail_closed(f"could not create the install identity in {self.data_dir} ({e})")
                 return
+            self.identity_created = bool(created and self.data_dir is not None)
         if self.data_dir is None or created:
             return
         path = self.data_dir / ENROLLED_FILE
