@@ -8090,3 +8090,12 @@ test('F570: an echo of a head row that lands while the head is still being writt
   h.adv(1000);                                              // the write landed; its windows close ACC_ECHO_MS later
   assert.equal(h.eng.am.acctEchoing(4), false, 'the held window closes after the write lands, never left open');
 });
+test('F570 review: a write whose promise never settles holds its echo windows at most ECHO_HOLD_MAX_MS', () => {
+  const h = harness().kit();
+  h.eng.writer = frames => { h.writes.push(...frames); return frames.some(f => f.startsWith('$WEAP,')) ? new Promise(() => {}) : true; };
+  h.config_();
+  h.adv(2000);
+  assert.equal(h.eng.am.acctEchoing(4), true, 'held while the head is on the link');
+  h.adv(7000);
+  assert.equal(h.eng.am.acctEchoing(4), false, 'never held for ever');
+});

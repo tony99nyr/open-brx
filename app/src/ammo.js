@@ -80,6 +80,9 @@ export const TRIGGER_NO_FIRE_MS = 1500;
 // horizon is a millisecond the HUD shows an account instead of the gun. Sitting just under
 // TRIGGER_NO_FIRE_MS would have been a coincidence, not a reason.
 export const ACC_ECHO_MS = 700;
+// F570 review: a write still on the link holds its echo windows at most this long, so a promise that never settles cannot hold
+// one for ever (a head is about 30 frames, a few seconds); `restampEchoes` closes it ACC_ECHO_MS after the write lands.
+export const ECHO_HOLD_MAX_MS = 8000;
 // Bench 2026-09-17 (Tony): weapon heat ($ALCD token 5) rises while firing a heat weapon, and the gun will not
 // fire once it reaches the lockout line. Below it, heat is build-up, not a fault; the HUD shows the level either
 // way, but only calls it OVERHEAT at or past this line. pl4 (brx-weapons bench, same day): the line is 99, not
@@ -776,7 +779,7 @@ export class Ammo {
     a.echoPending++;
     a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
-    a.echoUntil = now + ACC_ECHO_MS; a.echoExpect = mag;
+    a.echoUntil = Math.max(now < a.echoUntil ? a.echoUntil : 0, now + ACC_ECHO_MS); a.echoExpect = mag;   // F570 review: a held window is never shortened
   }
   /** Bug 3a: `acctWrote` for every `$AMMO,<slot>,<mag>,<res>` row in a write the node is about to send, so the gun's
    *  echo of each row (brx1, 2026-10-02: one `$ALCD` per row, with that row's slot token) is bookkeeping. `skip(slot)`
@@ -814,13 +817,13 @@ export class Ammo {
       if (a && a.echoPending > 0) a.echoUntil = now + ACC_ECHO_MS;
     }
   }
-  /** F570: a write that carried `$AMMO`/`$WEAP` rows is still on the link: its windows stay open until `restampEchoes`. */
+  /** F570: a write that carried `$AMMO`/`$WEAP` rows is still on the link: its windows stay open until `restampEchoes`, at most ECHO_HOLD_MAX_MS. */
   holdEchoes(frames, gens = null) {
     for (const f of frames || []) {
       if (typeof f !== 'string' || !(f.startsWith('$AMMO,') || f.startsWith('$WEAP,'))) continue;
       const slot = +f.split(',')[1], a = this.acct[slot];
       if (gens && (!a || gens[slot] !== a.echoGen)) continue;
-      if (a && a.echoPending > 0) a.echoUntil = Infinity;
+      if (a && a.echoPending > 0) a.echoUntil = Math.max(a.echoUntil, this.host.now() + ECHO_HOLD_MAX_MS);
     }
   }
   /** Bug 3 r2 M2: {slot: echoGen} for each slot a write's rows name, taken when the write is called. PURE. */
