@@ -387,7 +387,7 @@ rate   = net * 100 / capture_s        progress points per second; net 0 means no
 | **2 v 1 v 1** | **1** | the pair converts, **slowly** — two opponents on two different teams do NOT stall a pair |
 | 2 v 2 v 1 | 0 | stalled — only a single rival team of equal size can stall you |
 | 3 v 2 v 1 | 1 | converts |
-| nobody | 0 | an owned point holds and keeps scoring; a neutral part-built bar drains after 0.5 s (F464) |
+| nobody | 0 | an owned point holds its bar but scores nothing (F554); a neutral part-built bar drains after 0.5 s (F464) |
 
 **C.7: to capture you must be close; to contest you can be at the edge** (Tony, 2026-10-16). A present player whose
 exit level has been under the exit band for `PRESENCE_FADE_AFTER_MS` (1 s) or more is **fading**: still in the circle,
@@ -422,6 +422,16 @@ not because a special case says so, and one extra body always moves the needle. 
 nothing (the station reads `alive` from the player advert, byte 10 bit 0 — already decoded and already rendered),
 and a present-but-dead player is a body that does not help: reviving matters on the point.
 
+**F554: an owned point scores only while its owner holds it in person** (field 2026-10-17; Tony: *"hills should
+ignore dead players"*, overruling the earlier "an owned point holds and keeps scoring"). The station banks
+possession for the owner only on a tick where the owner has at least one **living** player counted on the point
+(`counts[owner] > 0`) and the point is not contested. `counts`, not `capCounts`: a fading owner at the edge still
+holds what it owns. The bar itself does not change: an owned point with nobody on it keeps its 100 and its `held`
+flag, and only an enemy's net drains it. So a point whose owners are all down, or have walked away, or are being
+drained by a lone enemy, pays nobody. The field caught the last case three times (station 2, match 3: +14.8 s to RED
+while BLUE alone drained it from 100 to 10). Pinned in `presence-hill-cases.json` (the F554 cases) for the phone
+(`control.js`) and the Stick (`presence.h`).
+
 `net` is clamped to `net_cap` (**proposed default 3**, tunable, not measured) so a six-player rush is fast and
 not instant.
 
@@ -442,7 +452,8 @@ scale so it fits advert byte 11:
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
 to arrive in the middle of it. **Only the team named in byte 9 scores** (possession seconds, or a Domination point
-per second); progress itself scores nothing. **Neutral pays nobody** (the archived utility-roadmap §8 5f.6).
+per second), and only on a tick where it has a living player counted on the point and nobody contests it (F554,
+§5d.1); progress itself scores nothing. **Neutral pays nobody** (the archived utility-roadmap §8 5f.6).
 
 ⚠ **Team 2 (F82).** A hill mode must not put anyone on tid 2 — that constraint comes from the grenade's polarity
 gate, not from this advert, but a park will run both objectives, so MC's team assignment (0, 1, 3) is the same
@@ -492,7 +503,7 @@ F93's note about byte 15 being the cheap spare for relaying grenade-hill ownersh
 | fact | where it lives |
 |---|---|
 | **who** is contributing (ids, teams, alive) | the station's own screen only (§5d.4). The station knows it from player adverts; it cannot fan a per-player list out in 16 bytes, and no player phone needs it |
-| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (the archived utility-roadmap "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
+| **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (the archived utility-roadmap "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). Since F554 the station also banks nothing while its owner has no living player on the point; a player phone cannot see that (the advert carries no counts), so the station's tally is the one that knows (F555). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
 | **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (the archived utility-roadmap §8 5e) |
 
 ### 5d.4 The station screen ANIMATES the contest and the transition

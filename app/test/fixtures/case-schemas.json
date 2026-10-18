@@ -1734,6 +1734,13 @@
                         "type": "string"
                       },
                       "minItems": 2
+                    },
+                    "hold_ms": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      },
+                      "minProperties": 1
                     }
                   },
                   "additionalProperties": false,
@@ -1770,6 +1777,12 @@
                       "items": {
                         "type": "integer"
                       }
+                    },
+                    "state": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "additionalProperties": false
@@ -1793,6 +1806,12 @@
                     },
                     "rssi": {
                       "type": "integer"
+                    },
+                    "state": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
                   "additionalProperties": false

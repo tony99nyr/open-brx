@@ -1949,6 +1949,21 @@ static void test_untimed_hill_start_config_releases_muster_without_changing_hill
   CHECK(!link.powerup().known());
 }
 
+// F554: a living BLUE (tid 1) player counted on the point, so an owned point banks. Nothing in these tests ticks the presence
+// again, so the player stays present.
+static PlayerPresence blue_on_the_point(uint32_t t) {
+  PlayerPresence pr;
+  pr.dwell_ms = 0;
+  Advert a;
+  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.id = 5;
+  a.team = 1;
+  a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
+  pr.observe(a, -50, t);
+  pr.tick(t);
+  return pr;
+}
+
 static void test_hill_waits_for_go_live_before_capture_or_tally() {
   StationLink link;
   StationAssignment c;
@@ -1956,7 +1971,7 @@ static void test_hill_waits_for_go_live_before_capture_or_tally() {
   c.starts_known = true; c.starts_in_ms = 20000;
   link.apply_station_config(c, 100);
   CHECK(link.take_muster_drop(100));
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.hill().owner = 1;
   link.hill().progress = 100;
   link.tick_players(p, 10100);  // armed, go_live_t is still in the future
@@ -1974,7 +1989,7 @@ static void test_held_hill_starts_after_sixty_seconds_offline_without_start() {
   link.apply_station_config(c, 100);
   link.hill().owner = 1;
   link.hill().progress = 100;
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.wifi_down();
   link.tick_players(p, 1000);
   link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS - 1);
@@ -2137,10 +2152,11 @@ static void test_hill_stops_accruing_when_deadline_freezes_it() {
   BleControlPoint h;
   h.owner = 1;
   h.progress = 100;
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   h.update(p, 1000);
   h.update(p, 2000);
   const uint32_t whistle_tally = h.hold_ms[1];
+  CHECK(whistle_tally > 0u);  // CONTROL: the hill banked before the whistle, or the freeze proves nothing
   h.freeze();
   h.update(p, 12000);
   CHECK_EQ(h.owner, 1);
@@ -2154,7 +2170,7 @@ static void test_hill_starts_only_at_config_go_live_and_stops_at_deadline() {
   a.starts_known = true; a.starts_in_ms = 2000; a.ends_in_ms = 4000;
   link.apply_station_config(a, 100);
   link.hill().owner = 1; link.hill().progress = 100;
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.tick_players(p, 2099);
   CHECK(link.hill_waiting(2099));
   CHECK_EQ(link.hill().hold_ms[1], 0u);
@@ -2183,7 +2199,7 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(!link.anchor_hill_on_advert(unscoped, 1000));
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(link.anchor_hill_on_advert(alive, 5000));
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.hill().owner = 1; link.hill().progress = 100;
   CHECK(!link.hill_waiting(5000));
   link.tick_players(p, 5000);
@@ -2328,7 +2344,7 @@ static void test_duration_clock_survives_an_offline_restart() {
   CHECK(rebooted.resume_hill_clock(rem, 100));
   CHECK(!rebooted.hill_waiting(100));
   CHECK(!rebooted.hill_ended());
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   rebooted.hill().owner = 1; rebooted.hill().progress = 100;
   rebooted.tick_players(p, 100);
   rebooted.tick_players(p, 1100);
@@ -2458,7 +2474,7 @@ static void test_same_game_config_without_times_cancels_a_pending_start() {
   a.starts_known = false; a.ends_in_ms = -1;
   link.apply_station_config(a, 200);
   CHECK(link.hill_waiting(200));
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.hill().owner = 1; link.hill().progress = 100;
   link.tick_players(p, 3100);
   CHECK_EQ(link.hill().hold_ms[1], 0u);
@@ -2471,7 +2487,7 @@ static void test_late_start_discards_offline_fallback_capture() {
   StationAssignment a = control_config(7);
   link.apply_station_config(a, 0);
   link.wifi_down();
-  PlayerPresence p;
+  PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
   link.tick_players(p, 1000);
   link.tick_players(p, 1000 + MUSTER_WAIT_OFFLINE_MS);
   link.hill().owner = 1; link.hill().progress = 100;
