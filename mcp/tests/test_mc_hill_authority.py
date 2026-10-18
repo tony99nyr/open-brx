@@ -679,3 +679,33 @@ def test_r4_restored_history_rows_are_sorted_and_usable():
     rows = s2._m().scorer.station_history[str(sid)]
     assert [at for at, _per in rows] == sorted(at for at, _per in rows), rows
     assert [at for at, _per in rows][:2] == [5_050_000, 5_090_000], rows   # then the restored tally's own row
+
+
+def test_r4_an_undated_tally_never_erases_a_reading_the_snapshot_already_timed():
+    """Codex review r4 round 2: after one restart the snapshot holds the hill's timed reading, but the registry's tally can
+    stay undated (the hill never beat again). A second restart from a snapshot saved after the whistle must keep the
+    timed reading, not unverify the site."""
+    s2, net2, clock, info, sid, blue = _legacy_restart(after_s=300)
+    assert s2.resume_match() == "live"
+    clock["t"] = info["go_live_t"] + 650_000
+    s2._persist_last = 0.0
+    s2._persist()
+    clock["t"] = info["go_live_t"] + 700_000
+    s3, _net3 = restart_no_repersist(s2, clock)
+    s3.resume_match()
+    sc = s3._m().scorer
+    assert str(sid) not in sc.station_unverified, sc.station_unverified
+    assert sc.station_possession_ms[str(sid)][blue["tid"]] == 50_000, sc.station_possession_ms
+
+
+def test_r4_thinning_keeps_the_first_and_the_newest_rows_dense():
+    """Opus r1 and Codex r2: thinning the whole list made the newest pre-END row coarse; it keeps the newest rows."""
+    from brx_mcp.mc.scoring import STATION_HISTORY_MAX
+    s, pid, red, blue, sc, clock = _ended_koth(time_limit_s=3600, end_at_s=3600)
+    for i in range(STATION_HISTORY_MAX + 40):
+        sc.station_possession("9", {str(red["tid"]): i * 1000}, seen_ms=1_000_000 + i * 1000)
+    rows = sc.station_history["9"]
+    assert len(rows) <= STATION_HISTORY_MAX, len(rows)
+    assert rows[0][0] == 1_000_000, rows[0]
+    newest = [at for at, _per in rows[-64:]]
+    assert newest == [newest[0] + i * 1000 for i in range(64)], newest[:3]

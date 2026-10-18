@@ -122,7 +122,8 @@ def _rank_key(r):
 
 
 STATION_FRESH_MS = 60_000   # milestone review: a station reading older than this at the whistle is stale
-STATION_HISTORY_MAX = 512   # milestone round 4: in-play readings kept per site; past it, every other one is dropped
+STATION_HISTORY_MAX = 512   # milestone round 4: in-play readings kept per site; past it, older rows are halved
+STATION_HISTORY_DENSE = 64  # the newest rows, never thinned, so the last reading before a moved whistle stays close to it
 
 
 class Scorer:
@@ -1144,14 +1145,14 @@ class Scorer:
     def _remember_reading(self, site: str, at: int, per_tid: dict[int, int]) -> None:
         """Milestone round 4: one history row per receipt time. The hold is merged by max, so a reading that arrives out of
         order folds into the newest row (it can only be credited later, never earlier). Past STATION_HISTORY_MAX every
-        other row goes, the first and the newest kept: an older pre-END row only widens the bound's base, never its total."""
+        other row older than the newest STATION_HISTORY_DENSE goes, the first kept: any earlier row keeps the bound sound, only looser."""
         hist = self.station_history.setdefault(site, [])
         if hist and hist[-1][0] >= at:
             hist[-1] = (hist[-1][0], dict(per_tid))
         else:
             hist.append((at, dict(per_tid)))
         if len(hist) > STATION_HISTORY_MAX:
-            self.station_history[site] = hist[:-1:2] + [hist[-1]]
+            self.station_history[site] = hist[:-STATION_HISTORY_DENSE:2] + hist[-STATION_HISTORY_DENSE:]
 
     def _possession_ms(self, phones_only: bool = False) -> tuple[dict[str, int], int]:
         """The raw (unrounded) merge `possession()` reports in seconds, and `_check_hold_target` compares

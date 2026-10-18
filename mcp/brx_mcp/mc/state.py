@@ -4145,6 +4145,8 @@ class Session:
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
                 site, hold, seen = got
+                if seen is None and site in sc.station_seen_ms:
+                    continue   # Codex r4 round 2: the snapshot already holds this hill's timed reading; an undated tally adds nothing
                 if seen is None:
                     # milestone round 4: a tally saved before round 3 has no receipt time. MC received it at or before the
                     # snapshot was written, so it counts as heard then. Saved after the whistle, it may hold post-END time
