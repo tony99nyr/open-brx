@@ -13,14 +13,16 @@ says the rule is judgement only.
 | 3 | Recoil floors are 60 for the SMG and the Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/45, degraded from round 6 and heavy from round 7 (tightened from round 8 the same day, R7 row 11; `heavy` eased 40 → 45 the following day, polish round 2 — "full auto point blank … too harsh") — only a player who holds past round 6 is punished. The Suppressor is the exception the OTHER way (R10, row 12): Tony — "it should be weaker since its silent but not too weak" — so its `heavy` is declared at 70, not the 60 floor; `degraded` derives between crisp and the new heavy, to 85 (was 80). | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23; tightened 2026-09-23 (R7); eased 2026-09-24 (F308, polish round 2); the Suppressor exception 2026-09-23 (R10) | F268; F291 (`1884c90e`); F308 | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
 | 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
 | 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
-| 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. | Tony, 2026-09-18; retuned 2026-09-23 (R8) | F291; F308 | 3-pull kill is judgement; the 700 ms cadence is gated by row 11's test |
+| 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. 2026-10-17: 700 → 400 ms, so it wins close range against the rifles and the SMG under the player-paced model (row 14). Its pull stays at 40 (20 + 20): 45 or more would one-shot the 45-health presets, and 3 pulls at 140 keep Armour Piercing a trade (AP 15 at 500 ms). | Tony, 2026-09-18; retuned 2026-09-23 (R8) and 2026-10-17 (R11/R12) | F291; F308 | 3-pull kill is judgement; the cadence is gated by row 11's test |
 | 7 | One-shot heavies (Rocket Launcher, Rail Gun, Laser Cannon, Energy Launcher, Ion Sniper) are a pickup-only tier: 2-round magazine, 4 kills total, earned at close range rather than out-reaching the rest of the arsenal. On the Shields preset (150): the Rocket Launcher's headset word adds 35 (`wire.headset_dmg`), so a close hit still kills (the word's reach is unmeasured, F275); the Rail Gun does 149 (`wire.dmg`), a kill on Standard and Hardcore that leaves a full Shields player on 1 HP. | Tony, 2026-09-17; Shields 2026-09-23 (F310) | weapon-design.md §2.1 principle 7; §7.5f | `mcp/tests/test_weapon_derivations.py` §2.5 rows; the bench check in `bench-2026-09-24.md` 4.9 |
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
 | 9 | Easy Reload is accessibility, not balance: it is never tuned or cut on balance grounds, and it lives beside the per-player pool handicap, independent of the perk slot. | Tony, 2026-09-17 ("my daughter cant reload the brx normally") | S50 | `mcp/tests/test_mc_loadout.py::test_easy_reload_is_refused_beside_a_chain_reload_weapon`, `::test_easy_reload_is_refused_beside_a_second_weapon_end_to_end` |
 | 10 | The rebalance changes numbers, not feel: every weapon keeps Battle Company's captured fire mode, burst pattern, heat/overheat mechanic and sound; only the declared balance tokens move. | design principle, ongoing | weapon-design.md §2.1 principles 1-3 | judgement, not tested |
 | 11 | R4-R9: six close/mid-range duel rules (close = gun + headset word, mid = gun word alone), each **≥ 65%** — except R7 (the Burst Rifle beats a full-auto AR), whose bar is **≥ 55%**. Modelling the Burst Rifle's 40% crit reopened R4b and R6; Tony kept the crit and moved the burst gap again, 410 → 550 ms, the smallest single-token value that clears all four affected cells — see §7.5d. **2026-09-24, polish round 2** (bench 4.3, "full auto point blank … too harsh"): Tony chose to ease the Assault Rifle's `heavy` recoil 40 → 45 and the Burst Rifle's burst gap 550 → 540 ms rather than hold the deeper numbers — "leave the AR at 45 … I like our rock paper scissor design": a bursting AR still beats a full-auto AR and the Burst Rifle, and the Burst Rifle still beats a full-auto AR, now **more often than not** (R7, ~57%) rather than most of the time. R3 and R6 stay at 65% (both clear it, ~67%/~66%). | Tony, 2026-09-23; eased 2026-09-24 | F308 | §7.5d; `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_their_bar` |
-| 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. | Tony, 2026-09-23 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
-| 13 | Every rule R1-R10b also holds on the Shields preset (150 pool) at a looser **≥ 60%** bar; Hardcore is reported, not gated. | Tony, 2026-09-23 (F310: "looser but generally yes", then "60 is fine") | F310 | `mcp/tests/test_balance_sim.py::test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9`, `::test_shields_preset_primaries_beat_sidearms_r10b`; detail §7.5f |
+| 12 | R10: sidearms finish a kill, they do not compete with rifles — real-world Desert Eagle cadence and USP magazine levers, plus the Suppressor's own recoil exception. All fourteen checks clear their bars. See §7.5e. **2026-10-17:** the R10a finish bar moved 1.0 → 1.2 s (Tony: "1.2s on the pistol time to finish seems fine"), and the USP moved to 12 damage at 190 ms (Tony: "ok to finish a player on standard life if you hit 10/12 shots"). It now kills on one 12-round magazine, which ends the 2026-09-23 forced reload. Tony also wants both pistols to "feel weak against the rifles": they are out of the 1.2-3.5 s TTK band (about 3.6 s at 115). | Tony, 2026-09-23; 2026-10-17 | F308 | §7.5e; `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_within_the_bar`, `::test_r10_primaries_beat_sidearms_at_65_percent` |
+| 13 | Every rule R1-R12 also holds on the Shields preset (150 pool) at a looser **≥ 60%** bar; Hardcore is reported, not gated. | Tony, 2026-09-23 (F310: "looser but generally yes", then "60 is fine") | F310 | `mcp/tests/test_balance_sim.py::test_shields_preset_recoil_rules_r1_to_r3`, `::test_shields_preset_range_rules_r4_to_r9`, `::test_shields_preset_primaries_beat_sidearms_r10b`; detail §7.5f |
+| 14 | A single-shot weapon (`t20` = 7) is player-paced. The gun fires on the first trigger press at or after `t14` and swallows a press inside it, so the sustained cycle is `t14` plus the overshoot of the player's pull rate: about `t14` + 205 ms at the modelled 300 ms mean pull. The 300 ms is the four-player field average (2026-10-17: 126 press-to-press gaps, median 271 ms, mean 325 ms), not one player's. Every rule holds at 250 and 350 ms too. Retuned for it: Shotgun 400 ms; AMR 26 damage at 350 ms; USP 12 at 190 ms; the hidden Bolt Rifle 15 at 150 ms; the Desert Eagle and the Sniper Rifle unchanged. | Tony, 2026-10-17 ("all the single shot guns need sim", "average across players") | field 2026-10-17 | `compile.SEMI_PULL_MS`; `mcp/tests/test_balance_sim.py::test_sampled_single_shot_pulls_match_the_paced_cycle` |
+| 15 | R11/R12: the Shotgun wins close range against every rifle with a combatant (a full-auto AR, the AMR, beside R4's bursting AR and Burst Rifle) and loses past headset range to each of them, ≥ 65% (Shields 60%). | Tony, 2026-10-17 ("shotgun should win close range battles", "definitely lose out of headset range battles" against other rifles) | field 2026-10-17 | `mcp/tests/test_balance_sim.py::test_range_duel_rules_clear_their_bar` |
 
 ## ⚠️ Three arsenals, and only one of them is ours
 
@@ -195,14 +197,14 @@ sounds — and moves the numbers.
 | weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | one-mag kill % (p=0.7) | heat | changed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
-| Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 20 | 700 | 3 | **1.40** | 28.6 | 26.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull. **F276 asked whether two IDENTICAL words survive and the answer is yes** (bench 2026-09-18: five pulls, two `$HIR` of 20 every time, 60-75 ms apart, both registering even when they landed on the same sensor as byte-identical frames), so the 159 ms beacon block does not apply to this pair; the second word itself is measured (Callsign's own 70, cap30), the split is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24. **2026-09-23** (R8, F308): pump gap (t14, `wire.fire_ms`) tightened 800→700ms, the slowest of Tony's sweep {800,750,700,650,600} that gets the Shotgun to beat a full-auto SMG at close range most of the time — see the Balance rules table. That also took the Shotgun's TTK past the Sniper Rifle's, so `test_ttk_band_and_no_strictly_dominant_weapon` now also names `(shotgun, sniper_rifle)` in `KNOWN_DOMINANCE`, beside the now-empty `(amr, shotgun)` history. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating; §7 |
-| Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
-| AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
+| Sniper Rifle | marksman | 60 | 1500 | 2 | **1.71** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
+| Shotgun | cqb | 20 | 400 | 3 | **1.21** | 50.0 | 42.9 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull. **F276 asked whether two IDENTICAL words survive and the answer is yes** (bench 2026-09-18: five pulls, two `$HIR` of 20 every time, 60-75 ms apart, both registering even when they landed on the same sensor as byte-identical frames), so the 159 ms beacon block does not apply to this pair; the second word itself is measured (Callsign's own 70, cap30), the split is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24. **2026-09-23** (R8, F308): pump gap (t14, `wire.fire_ms`) tightened 800→700ms, the slowest of Tony's sweep {800,750,700,650,600} that gets the Shotgun to beat a full-auto SMG at close range most of the time — see the Balance rules table. That also took the Shotgun's TTK past the Sniper Rifle's, so `test_ttk_band_and_no_strictly_dominant_weapon` now also names `(shotgun, sniper_rifle)` in `KNOWN_DOMINANCE`, beside the now-empty `(amr, shotgun)` history. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating; §7 |
+| Plasma Sniper | marksman | 25 | 400 | 4 | **1.82** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
+| AMR | support | 26 | 350 | 5 | **2.22** | 74.3 | 57.8 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
 | Burst Rifle | assault | 10 | 75 +540 | 12 | **2.53** | 43.5 | 36.1 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. **2026-09-23** (R6, F308): burst gap (t23, `overrides.t23`) widened 275→410ms so a disciplined AR burst beats it most of the time. **2026-09-23, polish round 1** (F308): modelling the crit reopened R6 at 410ms, so the gap widened again, 410→550ms — see the Balance rules table §7.5d; htk unchanged, only cycle/TTK moved. **2026-09-24, polish round 2** (F308, "full auto point blank ... too harsh"): the gap eased 550→540ms alongside the AR's own `heavy` easing (see the AR row below); htk still unchanged. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
-| Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
+| Bolt Rifle | assault | 15 | 150 | 8 | **2.49** | 100.0 | 57.4 | 18 | 180 | 2000 | 99% | — | **stock** |
 | SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 216 | 2500 | 100% | 5 | **2026-09-20 playtest**: a covered gun emitter produced no headset hit because captured t12 was empty. Open BRX now deliberately adds a headset word at the known-good carrier 100; cycle 95→100 and mag/reserve 72/288→54/216 keep the added word priced and preserve the Suppressor's magazine lead. **2026-09-23** (R5, F308): the split moved 8+1→7+2 (close range still 9); `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE (7), same caveat as the Shotgun |
 | Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 180 | 1600 | 99% | 5 | **2026-09-18**, in the picker since 2026-09-19: the gun lands the direct hit and the POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17). 4 damage a second for 5 s, refreshed on each hit, never stacked: worth 20, so twelve hits make it lethal even if the target breaks contact, and twelve hits take 1.21 s -- close to the Assault Rifle's own 1.20 s (§7.5's own pair). §7.5 |
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
@@ -214,9 +216,9 @@ sounds — and moves the numbers.
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
 | Rail Gun | power | 149 | 1200 | 1 | **1.20** | 124.2 | 62.1 | 2 | 2 | 2400 | 91% | — | mag 1→2, res 6→2 |
 | Laser Cannon | power | 115 | 1500 | 1 | **1.50** | 76.7 | 50.0 | 2 | 2 | 1600 | 91% | — | mag 4→2, res 8→2, reload 2000→1600 |
-| Desert Eagle | sidearm | 26 | 700 | 5 | **2.80** | 37.1 | 25.6 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame). **2026-09-23** (R10, F308): cadence 480→700ms, the real-world lever (.50 AE recoil) Tony chose over touching the magazine — a finishing weapon, not a rifle-competitive one; see the Balance rules table row 10 |
-| USP-S | sidearm | 9 | 160 | 13 | **1.92** | 56.2 | 26.2 | 12 | 120 | 2200 | 0% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance). **2026-09-23** (R10, F308): mag 19→12, the real-world lever (a USP .45 holds 12) — its own 13-hit kill no longer fits one magazine on purpose, `test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool`'s narrow, named exemption; see the Balance rules table row 10 |
-| Glock-18 | sidearm | 13 | 240 | 9 | **1.92** | 54.2 | 34.4 | 16 | 64 | 2200 | 93% | — | **D2 2026-09-12** (Bolt Rifle frame) |
+| Desert Eagle | sidearm | 26 | 700 | 5 | **3.62** | 37.1 | 25.6 | 7 | 48 | 2200 | 65% | — | **D2 2026-09-12** (Bolt Rifle frame). **2026-09-23** (R10, F308): cadence 480→700ms, the real-world lever (.50 AE recoil) Tony chose over touching the magazine — a finishing weapon, not a rifle-competitive one; see the Balance rules table row 10 |
+| USP-S | sidearm | 12 | 190 | 10 | **3.56** | 63.2 | 32.1 | 12 | 120 | 2200 | 25% | — | **D2 2026-09-12** (Bolt Rifle frame, suppressed); **2026-09-17**: mag 20→19 (§2.3, family-scoped dominance). **2026-09-23** (R10, F308): mag 19→12, the real-world lever (a USP .45 holds 12) — its own 13-hit kill no longer fits one magazine on purpose, `test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool`'s narrow, named exemption; see the Balance rules table row 10 |
+| Glock-18 | sidearm | 13 | 240 | 9 | **3.56** | 54.2 | 34.4 | 16 | 64 | 2200 | 93% | — | **D2 2026-09-12** (Bolt Rifle frame) |
 
 **"One-mag kill %"** (2026-09-17, replaces the old "mag/total kills" column) is `P(at least htk hits in
 mag shots)` at a stated field accuracy `p=0.7`, binomial exact — the same formula the sidearm proposal
@@ -342,7 +344,8 @@ Both are hidden from the picker. The Burst Rifle shipped stock until its 2026-09
   ideal TTK from 1.92s to 2.80s. Both still clear neither dominates the other
   (`test_ttk_band_and_no_strictly_dominant_weapon` stays green with no new sidearm-family exemption),
   because both weapons got weaker together. See the Balance rules table row 10 for the two new duel
-  checks this adds: each pistol still finishes a 35-HP target in under a second, and every modelled
+  checks this adds: each pistol still finishes a 35-HP target within the R10a bar (1.0 s then, 1.2 s from
+  2026-10-17), and every modelled
   primary rifle now beats each pistol from full health at least 65% of the time.
 
   Nothing dominates: with all three tied on ideal TTK, sustained DPS and total-kills rank in the SAME
@@ -499,17 +502,17 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
-| AMR | 5 | **6** | 8 | 10 |
+| AMR | 4 | **5** | 6 | 8 |
 | Burst Rifle | 10 | **12** | 15 | 20 |
 | Stinger | 7 | **8** | 10 | 14 |
-| Bolt Rifle | 8 | **9** | 12 | 16 |
+| Bolt Rifle | 7 | **8** | 10 | 14 |
 | Force Rifle | 10 | **12** | 15 | 20 |
 | Assault Rifle / Energy Rifle | 12 | **13** | 17 | 23 |
 | SMG | 12 | **13** | 17 | 23 |
 | Suppressor | 13 | **15** | 19 | 25 |
 | Toxin Rifle | 13 | **15** | 19 | 25 |
 | Desert Eagle | 4 | **5** | 6 | 8 |
-| USP-S | 12 | **13** | 17 | 23 |
+| USP-S | 9 | **10** | 13 | 17 |
 | Glock-18 | 8 | **9** | 12 | 16 |
 
 The Rocket Launcher's 1 at 150 counts its headset word (35). How far that word reaches is unmeasured (F275);
@@ -691,6 +694,7 @@ sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma S
 | SMG | 40 | close | **Tony's F231 decision, 2026-09-25: "SMG and rockets should be like 40%."** Moved off the 13-26 transition band, just short of the pass-band. This is the gun word's carrier; the headset word (2 damage since 2026-09-23, R5) uses the known-good 100 carrier so it actually emits reliably |
 | Shotgun | 30 | close | **Moved onto the flat shelf 2026-09-18, then corrected 2026-09-23** (Tony, R4/R5): 100 (full distance) let the gun word out-reach the game it is played at; set to match the SMG's OLD value of 30 so the two close-range weapons shared one outdoor reach. Left at 30 by the 2026-09-25 F231 decision (the SMG moved to 40, the Shotgun did not). See §7's dual-emitter write-up: the Shotgun's real close/far shape lives in `wire.headset_dmg`'s reach (`t13`/`t42`), which stays at 100 — the headset word's own real range is unmeasured, F275 |
 | Rocket Launcher | 40 | close | **Tony's F231 decision, 2026-09-25: "and rockets should be like 40%."** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17); the 40 replaces the old close-range guess (22) with the same reach as the SMG |
+| Melee | 60 | — | **Tony, 2026-10-17: 90 → 60** (the field's melee reached 15-20 ft). The melee word comes from the headset; 60 is about 32.4 kHz on the headset slope, still inside the pass-band by the bench model, so the felt change may be small: `bench-field-1017.md` P3.1 measures it. Indoor and an unknown venue keep the captured `t2` 90 and `t41` 20 |
 | Rail Gun | 100 | close | **Tony's F231 decision, 2026-09-25: "railgun 100."** Moved onto the flat shelf, matching the Sniper Rifle; `range_band` stays `close` (declared catalogue copy, never wired) pending a re-pick, but the wire carrier is now full reach |
 
 Every value from 40 up sits on or near the flat shelf the garden test found (roughly 31 to 100): they
@@ -712,7 +716,7 @@ unmeasured at that value. Keep the numbers until S49 measures the receiver's res
 read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is unmeasured;
 bench Block 5.**
 
-A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
+A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
 Indoor and an unset venue both keep the weapon's captured `t2`, because nobody has run this ladder
 indoors (F231 open). A floor guard refuses to compile any `t2` under **13**: F231 measured `t2 = 5`
@@ -1187,10 +1191,14 @@ sidearms (USP, Desert Eagle; the Glock is `hidden`, untouched). Both levers are 
 magazine cuts ("no pistol clip is that small"): Desert Eagle cadence 480 → 700 ms (`wire.fire_ms`, `.50
 AE` recoil, magazine unchanged at 7); USP magazine 19 → 12 (a real USP .45's own capacity), so its own
 13-hit kill no longer fits one magazine (`test_shipped_roster_satisfies_the_mag_invariant_at_the_
-default_pool`'s named exemption).
+default_pool`'s named exemption). **2026-10-17:** the USP moved to 12 damage at 190 ms for the 1.2 s R10a
+bar, so it kills in 10 hits on one magazine again and the exemption is gone (Tony: "ok to finish a player on
+standard life if you hit 10/12 shots").
 
 Two halves, each ≥ 65% for (b): **(a)** each live sidearm finishes an undefended 35 HP target (health
-only) in under 1.0 s median, reaction delay included — USP ~779 ms, Deagle ~974 ms, both clear.
+only) within the R10a bar median, reaction delay included. The bar was 1.0 s (USP ~779 ms, Deagle ~974 ms
+under the old gun-limited cycle); from 2026-10-17 it is 1.2 s, with the player-paced cycle (row 14): USP
+(12 at 190 ms) ~1066 ms, Deagle ~1173 ms at 300 ms pulls.
 **(b)** every primary this engine can model (Assault Rifle, Burst Rifle, Energy Rifle, Suppressor, AMR,
 Bolt Rifle) beats each live sidearm from full Standard health — all twelve pairs clear it, including the
 Suppressor against both pistols (99.8% USP, 77.9% Deagle). The Toxin Rifle (DoT) and the Force Rifle
@@ -1203,7 +1211,7 @@ derived — every other reference-calibre weapon ships the 60 floor), so `degrad
 trails every other primary against a bursting AR (92.4%, the highest of the six), so it stays the
 weakest primary by design.
 
-`python3 mcp/tools/balance_sim.py --scenario r10-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_under_a_second`
+`python3 mcp/tools/balance_sim.py --scenario r10-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_r10_sidearms_finish_a_kill_within_the_bar`
 and `::test_r10_primaries_beat_sidearms_at_65_percent`; `test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering`.
 
 ### 7.5f F310: the rules on the Shields and Hardcore presets
@@ -1272,7 +1280,7 @@ what your gun IS rather than just weakening it.
 |---|---|---|---|
 | Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
 | SMG | 7+2 at 100 ms | 5 at 184 ms | 0.27 s slower |
-| Shotgun | 20 at 700 ms | 15 at 1000 ms | 0.40 s slower |
+| Shotgun | 20+20 at 400 ms | 15 at 500 ms | 0.20 s slower (2026-10-17: was 20+20 at 700 ms and 15 at 1000 ms) |
 | Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
 | Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |
 

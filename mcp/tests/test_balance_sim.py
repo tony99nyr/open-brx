@@ -161,9 +161,11 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
     around it. Covers a plain weapon, a burst-free two-word pull (Shotgun), a charge-without-tap weapon
     (Rail Gun, Laser Cannon) and a charge-with-tap weapon (Charge Rifle); the Toxin Rifle runs with its
     DoT zeroed, because `hits_to_kill()`/`time_to_kill()` are gun-body numbers and do not model a tick.
-    Breaking `_shot()`'s own interval (e.g. `interval = w.fire_ms + 1`) must fail this."""
+    Breaking `_shot()`'s own interval (e.g. `interval = w.fire_ms + 1`) must fail this. A perfect trigger
+    finger (`pull_ms` 0) on both sides, because the paced single-shot cycle is sampled, not exact: its own test
+    is `test_sampled_single_shot_pulls_match_the_paced_cycle`."""
     cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
-                      match_ms=20_000.0)
+                      match_ms=20_000.0, pull_ms=0.0)
     pool_pts = cfg.pool.health + cfg.pool.armour
     for weapon_id, cat in (
         ("assault_rifle", CAT), ("smg", CAT), ("shotgun", CAT), ("sniper_rifle", CAT),
@@ -172,10 +174,39 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
     ):
         m = B.weapon_model(cat, weapon_id)
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
-        ttk = CAT.time_to_kill(weapon_id, pool_pts)
+        ttk = CAT.time_to_kill(weapon_id, pool_pts, pull_ms=0)
         n_hits, kill_ms = _kill_trace(m, cfg, SEED)
         assert n_hits == htk, (weapon_id, n_hits, htk)
         assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
+
+
+def test_sampled_single_shot_pulls_match_the_paced_cycle():
+    """Field 2026-10-17: a single-shot round fires on the first press at or after t14. The sim samples the presses
+    (`semi_interval`); `WeaponCatalog.paced_cycle_ms()` is the closed form the published ttk uses. They must agree,
+    at every pull rate Tony asked about, or the arsenal shows a TTK the sim does not play."""
+    rng = random.Random(SEED)
+    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+        fire = CAT.fire_ms(weapon_id)
+        for pull in (250, 300, 350):
+            n = 20_000
+            mean = sum(B.semi_interval(rng, fire, pull) for _ in range(n)) / n
+            want = CAT.paced_cycle_ms(weapon_id, pull)
+            # The closed form is the renewal limit, exact for a long t14; a t14 well under the pull runs up to
+            # about 2.5% short (the USP at 350 ms: 359 against 367).
+            assert abs(mean - want) / want < 0.03, (weapon_id, pull, round(mean), round(want))
+        assert B.semi_interval(rng, fire, 0) == fire                  # a perfect finger: the gun's own t14
+        assert min(B.semi_interval(rng, fire, 300) for _ in range(2000)) >= fire   # never inside t14
+
+
+def test_only_single_shot_weapons_are_player_paced():
+    """The model touches t20 = 7 alone: an automatic, burst or charge weapon keeps its gun-limited cycle, and the
+    sim marks exactly the single-shot rows as `semi`."""
+    for weapon_id in ("assault_rifle", "smg", "burst_rifle", "charge_rifle", "rail_gun"):
+        assert CAT.paced_cycle_ms(weapon_id) == CAT.cycle_ms(weapon_id), weapon_id
+        assert not B.weapon_model(CAT, weapon_id).semi, weapon_id
+    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+        assert CAT.paced_cycle_ms(weapon_id) > CAT.cycle_ms(weapon_id), weapon_id
+        assert B.weapon_model(CAT, weapon_id).semi, weapon_id
 
 
 def test_a_non_refreshing_dot_is_refused_like_a_stacking_one():
@@ -561,13 +592,13 @@ def test_range_duel_cli_runs_end_to_end():
         shutil.rmtree(out, ignore_errors=True)
 
 
-def test_r10_sidearms_finish_a_kill_under_a_second():
+def test_r10_sidearms_finish_a_kill_within_the_bar():
     """The CI gate for R10(a) (Tony, 2026-09-23, F308, docs/weapon-design.md's Balance rules table
     row 10): each live sidearm (USP, Desert Eagle -- the Glock is `hidden`) finishes an undefended
-    35 HP target in under 1.0s median, reaction delay included. Both real-world levers (USP mag
-    19->12, Deagle cadence 480->700ms) land comfortably inside the bar: at 100,000 reps the USP
-    reads ~779ms, the Deagle ~974ms -- close for the Deagle, but stable across 10k and 100k reps,
-    not seed noise."""
+    35 HP target within `R10_FINISH_BAR_MS` median, reaction delay included. The bar moved 1.0 -> 1.2 s
+    on 2026-10-17 (Tony: "1.2s on the pistol time to finish seems fine"), when the single-shot cycle
+    became player-paced: at 300 ms pulls the USP (12 at 190 ms) reads about 1066 ms and the unchanged
+    Desert Eagle about 1173 ms, and both stay under 1.2 s at 250 and 350 ms pulls."""
     m = _recoil_model()
     reps = 10_000
     for kind in B.R10_SIDEARMS:

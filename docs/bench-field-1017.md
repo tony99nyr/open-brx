@@ -97,6 +97,14 @@ fails.* The Desert Eagle, magazine part-empty. One lever pull; time the pull to 
 times. **Read:** expect 2.7 to 2.8 s, inside the 3.3 s deadline. **Control:** the Assault Rifle's reload under the
 same timer. Row: F542.
 
+**P2.4. The single-shot retune on a real gun (10 min).** *Impact: the new Shotgun, AMR and USP intervals reach
+the gun as the sim assumes.* Push a kit from MC on main after the single-shot land: the Shotgun (t14 400 ms),
+the AMR (26 at 350 ms) and the USP (12 at 190 ms). For each, tap the trigger as fast as you can for 5 s, then
+at a steady pace. Log each round's time from `$ALCD`. **Pass:** no two rounds closer than the weapon's t14, and
+the Shotgun's `$HIR` on a target reads 20 and 20. Then the Shotgun with Armour Piercing (15 at 500 ms): rounds
+at least 500 ms apart. Ask Tony how the Shotgun's pump feels. **Control:** the Assault Rifle held fires every
+100 ms. Rows: F542 (the field session's single-shot calls), weapon-design.md Balance rules row 14.
+
 ## P3: tuning reads (about 25 min)
 
 **P3.1. The melee range ladder (20 min).** *Impact: melee reached 15-20 ft in the field.* Melee is emitted by the
