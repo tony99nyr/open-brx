@@ -347,3 +347,18 @@ def test_f559_a_favourite_saves_and_reloads_hill_and_refuses_a_bad_one():
     assert "hill" not in s.config
     r2 = c.post(f"/api/favourites/{fav['favourite_id']}/load")
     assert r2.json()["ok"] and s.config["hill"] == {"capture_s": 15}, r2.json()
+
+
+def test_f559_a_favourite_naming_a_hill_for_a_mode_without_one_loads_without_it():
+    """Codex re-review 2026-10-18: a pick drops a hill its mode does not offer, but a favourite load skipped that drop, so the
+    pick could hold a hill the config never got."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    pick = _pick(hill={"capture_s": 30})
+    assert pick["pieces"]["mode"] != "builtin:mode:koth", pick["pieces"]["mode"]
+    fav = c.post("/api/favourites", json={"name": "Odd Hill", "countdown_s": 20, "pick": pick}).json()
+    assert fav["pick"]["match"]["hill"] == {"capture_s": 30}, fav
+    r = c.post(f"/api/favourites/{fav['favourite_id']}/load")
+    assert r.json()["ok"], r.json()
+    assert "hill" not in s.config and "hill" not in s.game_pick["match"], (s.config.get("hill"), s.game_pick["match"])
+    assert c.get("/api/favourites").json()[0]["pick"]["match"]["hill"] == {"capture_s": 30}, "the stored favourite stays as saved"

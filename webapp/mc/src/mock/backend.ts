@@ -1806,6 +1806,14 @@ export class MockBackend implements Api {
     }
     return Object.keys(hill).length ? hill as HillSettings : undefined;
   }
+  /** picks.py `_hill_for_mode`: a mode without the hill item drops a hill the pick or favourite names, and the pick then
+   *  holds what the config holds. A pick and a favourite load both come through here. */
+  private hillForMode(match: MatchSettings, mode: string): void {
+    if (MODES.find(m => m.mode === mode)?.match_items?.includes('hill')) return;
+    delete match.hill;
+    if (this.config.hill && Object.keys(this.config.hill).length) match.hill = { ...this.config.hill };
+  }
+
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings, resetModeParams = true): Partial<GameConfig> {
     const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
     const modeV = valueOf<{ mode: string }>('mode');
@@ -1919,11 +1927,7 @@ export class MockBackend implements Api {
       const hill = this.mergeHillPatch(match.hill, pm.hill);
       if (hill) match.hill = hill; else delete match.hill;
     }
-    // picks.py: a mode without the hill item drops a hill the pick names, and the pick then holds what the config holds.
-    if (!modeInfo.match_items?.includes('hill')) {
-      delete match.hill;
-      if (this.config.hill && Object.keys(this.config.hill).length) match.hill = { ...this.config.hill };
-    }
+    this.hillForMode(match, modeInfo.mode);
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
@@ -2039,6 +2043,7 @@ export class MockBackend implements Api {
     if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
+    this.hillForMode(match, (this.pieces.find(x => x.piece_id === ids.mode)!.value as { mode: string }).mode);
     const partial = this.composePartial(ids, match);
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();

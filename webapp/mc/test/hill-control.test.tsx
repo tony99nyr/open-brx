@@ -218,6 +218,18 @@ describe('F559 review fixes', () => {
     expect(s.game_pick?.match.hill, 'and the pick holds exactly that').toEqual({ capture_s: 12 });
   });
 
+  it('a favourite naming hill for a mode without the item loads without it (picks.py `_hill_for_mode`)', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });
+    const pick = (await api.getState()).game_pick!;
+    const fav = await api.createFavourite({ name: 'Odd', countdown_s: 30, pick: { ...pick, match: { ...pick.match, hill: { capture_s: 30 } } } });
+    const r = await api.loadFavourite(fav.favourite_id);
+    expect(r.ok).toBe(true);
+    const s = await api.getState();
+    expect(s.config.hill).toBeUndefined();
+    expect(s.game_pick?.match.hill).toBeUndefined();
+  });
+
   it('the mock refuses a favourite with a bad hill in the server words', async () => {
     const api = new MockBackend();
     const pick = (await api.getState()).game_pick!;
