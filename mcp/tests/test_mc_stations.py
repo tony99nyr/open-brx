@@ -309,7 +309,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s._arm_station("stick-1")
     assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
-    assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == 0   # F568: live now, no deadline
+    assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == -1000   # F568: the go-live, no deadline
     head_of(s)["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
@@ -451,7 +451,7 @@ def test_adopted_live_match_starts_a_control_station_now_and_pushes_nothing_to_p
     # now (`starts_in_ms: 0`) and sends no end it does not know (an adopted match has no trusted time limit).
     stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
     assert [kind for kind, _ in stick] == ["station_config"], stick
-    assert stick[0][1].get("starts_in_ms") == 0 and "ends_in_ms" not in stick[0][1] and "duration_ms" not in stick[0][1], stick
+    assert stick[0][1].get("starts_in_ms", 1) <= 0 and "ends_in_ms" not in stick[0][1] and "duration_ms" not in stick[0][1], stick
     assert stick[0][1]["game"] == s._game_byte()
     assert not [kind for nid, kind, _ in s.net.pushed if nid.startswith("phone-")], \
         "adoption must not reconfigure a player phone"
@@ -459,7 +459,24 @@ def test_adopted_live_match_starts_a_control_station_now_and_pushes_nothing_to_p
     s.net.pushed.clear()
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     body = _pushed(s, "station_config", "stick-1")[-1]
-    assert body.get("starts_in_ms") == 0 and "ends_in_ms" not in body, body
+    assert body.get("starts_in_ms", 1) <= 0 and "ends_in_ms" not in body, body
+
+
+def test_f568_an_adoption_during_the_countdown_sends_the_go_live_and_the_phones_game_byte():
+    """Codex and Opus review: adopted while the phones count down, MC is ARMED, and the flip to LIVE re-arms nothing. So the
+    adoption itself sends the phones' go-live (a positive start the Stick waits on), and the byte the phones play under."""
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    theirs = (s._game_byte() + 5 - 1) % 255 + 1
+    s.net.simulate_status("phone-0", {"arm_state": "armed", "match_id": "other-match", "t_minus_ms": 30_000,
+                                       "game_byte": theirs, "synced": True}, s.now_ms())
+    s.net.pushed.clear()
+    s.adopt_orphan("other-match")
+    assert s.phase == "armed", s.phase
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert 0 < body["starts_in_ms"] <= 30_000 and "ends_in_ms" not in body, body
+    assert body["game"] == theirs == s._game_byte(), (body["game"], theirs)
 
 
 def test_threshold_0_or_absent_means_the_stations_own_platform_default():

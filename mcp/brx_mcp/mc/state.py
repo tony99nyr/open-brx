@@ -4293,7 +4293,8 @@ class Session:
 
         MC holds no config for it, so the current draft config scores it; the go-live time is the phones'
         countdown when they are ARMED, else the earliest stored fact for it, else now. MC therefore never
-        ends it EARLIER than the phones do. Nothing is pushed: no config, no frames and no `start`."""
+        ends it EARLIER than the phones do. Nothing reaches a player phone: no config, no frames and no `start`. A
+        control station is told the start and no deadline (F568), so a Stick hill does not wait all match."""
         nids = self._fresh_orphans(match_id)
         if not nids:
             raise ConflictError("no phone reports that match any more")
