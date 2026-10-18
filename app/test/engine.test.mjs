@@ -3412,7 +3412,7 @@ function armRecoil(recoil, { recoilConfig, dmg = 8 } = {}) {
   // backstop clock, so every test below measures the writer itself and not the hold. The hold has its own
   // tests ("S42 x A44/A47/F15" further down).
   h.adv(ACC_HOLD_MS + 10); h.eng.tick(); h.eng._lastTeamRepaintAt = h.eng.now();
-  // Bug 3a: the spawn wrote the bundle's `$AMMO,0,32,192` and opened its echo window, so a report of anything else
+  // Bug 3a: the spawn wrote the bundle's slot-0 `$AMMO` row (`$AMMO,0,32,384`) and opened its echo window, so a report of anything else
   // inside it is not the gun's count. This fake gun holds 36/216 and never echoes, so it reports once that window
   // has lapsed (ACC_HOLD_MS > ACC_ECHO_MS).
   h.frame('$LCD,45,70,0,0,36,216,*');
