@@ -1800,7 +1800,9 @@ export class MockBackend implements Api {
       if (x == null) { delete hill[k]; continue; }
       const [lo, hi] = bounds[k];
       if (typeof x !== 'number' || !Number.isInteger(x) || x < lo || x > hi) {
-        throw Object.assign(new Error(`${k === 'capture_s' ? 'CAPTURE TIME' : 'NET CAP'} MUST BE A WHOLE NUMBER ${lo}-${hi}: CHECK THE VALUE`), { status: 400 });
+        // two literal lines, as gamepick.py words them (test_mc_mock_lines matches the mock's lines against MC's)
+        throw Object.assign(new Error(k === 'capture_s' ? `CAPTURE TIME MUST BE A WHOLE NUMBER ${lo}-${hi}: CHECK THE VALUE`
+          : `NET CAP MUST BE A WHOLE NUMBER ${lo}-${hi}: CHECK THE VALUE`), { status: 400 });
       }
       hill[k] = x;
     }
