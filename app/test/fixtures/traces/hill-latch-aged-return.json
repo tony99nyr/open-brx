@@ -111,7 +111,7 @@
     },
     {
       "at": "point_silent_5s",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":6750}},"observed_ms":{"11":6750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":5750}},"observed_ms":{"11":5750},"source":"station"},"hillLane":null},
       "facts": [],
       "reports": [],
       "writes": [
@@ -121,7 +121,7 @@
     },
     {
       "at": "old_point_back_after_new",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":7250}},"observed_ms":{"11":7250},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"0":250},"11":{"1":6000}},"observed_ms":{"8":250,"11":6000},"source":"station"},"hillLane":null},
       "facts": [],
       "reports": [],
       "writes": [
@@ -130,8 +130,8 @@
     },
     {
       "at": "still_on_old_point",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":10250}},"observed_ms":{"11":10250},"source":"station"},"hillLane":null},
-      "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":10250},"observed_ms":10250,"source":"station"}],
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"0":3250},"11":{"1":9000}},"observed_ms":{"8":3250,"11":9000},"source":"station"},"hillLane":null},
+      "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"0":3250},"observed_ms":3250,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":9000},"observed_ms":9000,"source":"station"}],
       "reports": [],
       "writes": [
         "$PLAY,U100,4,6,,,,,*"

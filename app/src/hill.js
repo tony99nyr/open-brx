@@ -466,7 +466,7 @@ export class HillListener {
     // this accumulator exists to avoid.
     if (!slot._holdAt) slot._holdAt = (h.at != null && h.at <= now) ? h.at : now;
     const goLive = this.host.goLiveT;   // F556 review: a point last heard before go-live banks nothing from before it
-    if (Number.isFinite(goLive) && slot._holdAt < goLive) slot._holdAt = Math.min(goLive, now);
+    if (Number.isFinite(goLive) && goLive <= now && slot._holdAt < goLive) slot._holdAt = goLive;   // a go-live still ahead (a clock step) clamps nothing
     const dt = Math.max(0, Math.min(HOLD_STEP_MAX_MS, now - slot._holdAt));
     slot._holdAt = now;
     if (!dt) return;
