@@ -331,3 +331,16 @@ def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():
         _raises(lambda: R.main(["--record-from", str(verdict)]), "call")
         # --record takes no path: the decision log is the only file it can write (round-2 review)
         _raises(lambda: R.main(["--record-from", str(verdict), "--record", str(p), "--call", "Tony: x"]), "")
+        # A log that ends on one newline still gets a blank line before the heading, and a FAIL names its
+        # failing tests in words, not only in the table (F573 record)
+        q = pathlib.Path(d) / "tight.md"
+        q.write_text("# log\n\nlast paragraph.\n")
+        bad = dict(v, title="f", tests={"op_rule": {"status": "pass", "numbers": {}},
+                                        "viable": {"status": "fail", "numbers": {}},
+                                        "balance_kept": {"status": "fail", "numbers": {}}})
+        bad["pass"] = False
+        R.record(bad, "Tony: ship it anyway", q)
+        tight = q.read_text()
+        assert "last paragraph.\n\n## 2026-10-18: f\n" in tight, tight
+        assert "- Fails: viable, balance_kept." in tight, tight
+        assert "- Fails:" not in text

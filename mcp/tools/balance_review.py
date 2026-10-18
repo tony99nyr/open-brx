@@ -1757,11 +1757,16 @@ def record(v: dict, call: str, path: Path = DECISIONS, command: str = "") -> str
              f"- Tony's call: {call}"]
     if command:
         lines.append(f"- Command: `{command}`")
+    if not v["pass"]:
+        lines.append(f"- Fails: {', '.join(n for n, r in v['tests'].items() if r['status'] == 'fail')}.")
     lines += ["", "| test | result | numbers |", "|---|---|---|"]
     for name, r in v["tests"].items():
         lines.append(f"| {name} | {r['status']} | {_short(r['numbers'])} |")
     lines += ["", "Candidate:", "", "```json", json.dumps(v["candidate"], indent=1), "```", ""]
     text = "\n".join(lines) + "\n"
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    if old and not old.endswith("\n\n"):
+        text = ("\n" if old.endswith("\n") else "\n\n") + text
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(text)
     return text
