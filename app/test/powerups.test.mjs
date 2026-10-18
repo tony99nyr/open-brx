@@ -2201,7 +2201,7 @@ const AMMO_GAME = { stations: [{ id: 8, kind: 'powerup', item: AMMO }] };
 const ammoRows = (h, n) => h.since(n).filter(f => f.startsWith('$AMMO,'));
 
 test('AMMO: a take tops each short slot up to its spawn reserve and keeps the magazine; a full slot is not written', () => {
-  const h = harness(AMMO_GAME);
+  const h = harness({ ...AMMO_GAME, echo: true });      // the gun echoes the write: it must move nothing (F460)
   h.at(46); h.fire(0, 20, 40);                          // slot 0: magazine 20, reserve spent to 40 (spawn 32/192); slot 1 untouched (6/24)
   const n = h.mark(); h.take(8);
   assert.deepEqual(ammoRows(h, n), ['$AMMO,0,20,192,1,*'], 'the magazine kept, the reserve back to the spawn 192');
@@ -2239,4 +2239,31 @@ test('AMMO: refill N adds N rounds per short slot, capped at the spawn reserve; 
   g.at(46); g.fire(0, 20, 40);
   const m = g.mark(); g.take(8);
   assert.deepEqual(ammoRows(g, m), ['$AMMO,0,20,192,1,*']);
+});
+
+test('AMMO review: a refill taken with a held heavy on the trigger survives SELECT back to the loadout weapon', () => {
+  const h = harness({ stations: [{ id: 4, kind: 'powerup', item: ROCKETS }, { id: 8, kind: 'powerup', item: AMMO }], powerups: [{ weapon_id: 'rocket_launcher', slot: 2 }] });
+  h.at(115); h.fire(0, 20, 40);
+  h.at(121); h.take(4);
+  assert.equal(h.eng.activeSlot, 2, 'setup: the Rockets on the trigger');
+  h.adv(2000); h.take(8);
+  const n = h.mark(); h.adv(1000); h.select();
+  const back = h.since(n).filter(f => f.startsWith('$AMMO,0,'));
+  assert.ok(back.length && back.every(f => f === '$AMMO,0,20,192,1,*'), 'SELECT puts slot 0 back with the refilled reserve: ' + JSON.stringify(back));
+});
+test('AMMO review: a gun write that fails is retried for the life', async () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 20, 40);
+  h.failNext(fr => fr.includes('$AMMO,0,20,192,1,*'));
+  const n = h.mark(); h.take(8);
+  await new Promise(r => setImmediate(r)); h.adv(2000);
+  assert.ok(h.since(n).filter(f => f === '$AMMO,0,20,192,1,*').length >= 2, 'the refill is written again after the failure');
+});
+test('AMMO review: with slot 1 on the trigger the hint names slot 1\'s own gain', () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 20, 40); h.pull(); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(1000); h.fire(1, 5, 10);
+  assert.equal(h.eng.activeSlot, 1, 'setup: on slot 1');
+  h.take(8);
+  assert.equal(h.eng.state().presented.hint.added, 14, 'slot 1: 10 -> 24');
+  assert.equal(h.eng.state().reserve, 24);
 });

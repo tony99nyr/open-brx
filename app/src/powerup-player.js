@@ -314,9 +314,10 @@ export class PlayerPowerups {
       // Never to a dead gun, and never over a hit whose `$HP` is still in flight (polish M1: a lethal one would be revived by
       // the absolute `$LIFE`). The claim latch stays warm, so the grant goes out on the next tick once the `$HP` is in.
       if (item.kind === 'overshield' && (h.hp <= 0 || (h.latch && h.latch.at > this._hpAt && now - h.latch.at < OVERSHIELD_HIR_WAIT_MS))) continue;
-      // AMMO: never over a reload the gun is feeding (the write would undo it) or a stun (the gun is disarmed; its restore
-      // rewrites the counts). The latch stays warm and the grant goes out on the first tick after.
-      if (item.kind === 'ammo' && (h.stunned || h.reloading)) { r.at = now; continue; }
+      // AMMO: never over a reload the gun is feeding (the write would undo it) or an ALT swap in flight (the phone's other
+      // writers stand down there too). The latch stays warm only while the player is still in range, the F331 rule; a stun
+      // never reaches here (`_claimTick`'s stunned branch keeps the latch the same way).
+      if (item.kind === 'ammo' && (h.reloading || (h.switching && !h.switching.pu))) { if (this._inRangeOf(r.station, items, now)) r.at = now; continue; }
       this._readyFor = null; this._claim = null;
       const granted = item.kind === 'weapon' ? this.grantWeapon(+id, item, now) : item.kind === 'ammo' ? this.grantAmmo(+id, item, now) : this.grantShield(+id, item, now);
       if (!granted) continue;
@@ -840,6 +841,11 @@ export class PlayerPowerups {
     h.announceStatus('shield_charging');
     return true;
   }
+  /** Is the player still heard inside station `id`'s circle, with the exit margin (the stun path's own test)? */
+  _inRangeOf(id, items, now) {
+    const st = this._station(items, now);
+    return !!st && String(st.id) === String(id) && Number.isFinite(this._median(st)) && this._median(st) >= this._threshold(st) - POWERUP_EXIT_DB;
+  }
   /** AMMO (wire agreed with brx3, 2026-10-18): `{slot: [liveMag, newReserve, added]}` for each loadout slot (0 and 1, never
    *  melee or a pickup weapon) whose reserve is under its spawn reserve, or null when every slot is full. `refill` is
    *  "reserve" (or "spawn": the same) for the spawn reserve, or an integer N for +N capped at it. */
@@ -867,10 +873,17 @@ export class PlayerPowerups {
       h.acctWrote(+slot, mag, res); h.setPrev(+slot, mag, res);
       frames.push(`$AMMO,${slot},${mag},${res},1,*`); refilled[slot] = add; added += add;
     }
-    h.write(frames, `powerup: ${item.name || 'AMMO'} +${added} reserve (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`);
+    // Review: a failed write is retried for this life, or the phone would book a reserve the gun never got
+    const life = h.lifeSeq;
+    h.writeMust(frames, `powerup: ${item.name || 'AMMO'} +${added} reserve (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`, () => h.lifeSeq === life && h.alive);
     if (short[h.activeSlot]) h.showSlot(h.activeSlot);
+    // Review (High): a held heavy keeps the loadout slot's counts to put back on SELECT or the next pickup; they take the refill
+    const b = this._held && this._held.back;
+    if (b && short[b.slot]) this._held.back = { slot: b.slot, mag: b.mag, res: short[b.slot][1] };
     const name = String(item.name || 'AMMO').toUpperCase();
-    this._grant = { kind: 'ammo', name, color: item.color || null, at: now, added };
+    // the hint names what the player's own weapon gained: the slot on the trigger when it was refilled, else the total
+    const shown = short[h.activeSlot] ? short[h.activeSlot][2] : added;
+    this._grant = { kind: 'ammo', name, color: item.color || null, at: now, added: shown };
     return { refilled };
   }
   /** The overshield is over: the `$PSET` back at the preset shield max, so no later spawn or refill fills to the raised one. */
