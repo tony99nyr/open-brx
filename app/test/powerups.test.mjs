@@ -663,7 +663,7 @@ const shown = h => { const s = h.eng.state(); return { slot: s.activeSlot, ammo:
 
 test('F394: an assumed ALT swap shows the secondary\'s own magazine, reserve and pip size', () => {
   const h = alt(armed());
-  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 }, 'the spawn counts of slot 1, not the AR\'s 30/190');
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 48, mag: 6 }, 'the spawn counts of slot 1, not the AR\'s 30/190');
   alt(h);
   assert.deepEqual(shown(h), { slot: 0, ammo: 30, reserve: 190, mag: 32 }, 'back on the AR: its own account');
 });
@@ -700,9 +700,9 @@ test('F394: an echo of a slot that is not on the trigger never changes the numbe
   const h = alt(armed());
   h.eng.am.acctWrote(0, 29, 189, true);   // a switch-back resend: `$WEAP` + `$AMMO` (bug 3 r1)
   h.frame('$ALCD,32,100,0,192,0,*');   // the `$WEAP` reset of slot 0, inside its echo window
-  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 48, mag: 6 });
   h.frame('$ALCD,29,100,0,189,0,*');   // ...and the restore landing
-  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 24, mag: 6 });
+  assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 48, mag: 6 });
 });
 
 test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
@@ -927,7 +927,7 @@ test('a death with the heavy held: the item is lost, and after the revive burst 
   const w = puw(h.since(n)), sp = h.since(n).indexOf('$SPAWN,,*');
   const i = w.indexOf(WEAP0);
   assert.ok(sp >= 0 && i >= 0 && h.since(n).indexOf(WEAP0) > sp, `slot 0's $WEAP follows the $SPAWN: ${JSON.stringify(w)}`);
-  assert.equal(w[i + 1], '$AMMO,0,32,192,1,*', 'then the spawn $AMMO for slot 0');
+  assert.equal(w[i + 1], '$AMMO,0,32,384,1,*', 'then the spawn $AMMO for slot 0');
   assert.equal(h.eng.state().activeSlot, 0);
   const m = h.mark(); h.adv(9000); h.die(); h.adv(9000);
   assert.ok(!h.since(m).includes(WEAP0), 'CONTROL: a later death with no heavy held re-equips nothing');
@@ -1234,7 +1234,7 @@ test('r2 M1: a reconcile keeps a pending switch-back (the disarm echo is not its
   assert.ok(h.eng.pu.backPending, 'setup: a switch-back pending');
   const b0 = h.batches.length;
   h.eng.onBleDropped(); h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.adv(6000);
-  const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,1,6,24,1,*'));   // the re-arm (F164: slot 0 at its live 30/190)
+  const bs = h.batches.slice(b0), ri = bs.findIndex(b => b.includes('$AMMO,1,6,48,1,*'));   // the re-arm (F164: slot 0 at its live 30/190)
   assert.ok(ri >= 0 && bs.slice(ri).some(b => b.includes(WEAP0) && b.includes('$AMMO,0,30,190,1,*')), `re-sent after the re-arm: ${JSON.stringify(bs)}`);
   assert.equal(h.eng.pu.backPending, null, 'answered by the real echo afterwards');
 });
@@ -1984,7 +1984,7 @@ const ptr = h => ({ slot: h.eng.activeSlot, ptr: h.eng.am.altPtr });
 test('bug 3a: the gun\'s echo of the spawn burst\'s own `$AMMO` rows leaves the trigger and the ALT pointer on slot 0', () => {
   const h = harness({ ...ROCKET_GAME, echo: true });   // the spawn writes slot 0, slot 1 and the empty pickup slot 2
   assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the gun is on slot 0 after a spawn (brx1: `$QUERY` reads slot 0)');
-  assert.deepEqual(shown(h), { slot: 0, ammo: 32, reserve: 192, mag: 32 }, 'the AR on the HUD, at its spawn counts');
+  assert.deepEqual(shown(h), { slot: 0, ammo: 32, reserve: 384, mag: 32 }, 'the AR on the HUD, at its spawn counts');
   h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   assert.equal(h.eng.am.switching.to, 1, 'the first ALT goes to the secondary, as the gun does');

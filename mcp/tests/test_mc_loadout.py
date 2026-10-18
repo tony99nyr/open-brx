@@ -284,7 +284,7 @@ def test_compile_no_slot_1_when_no_secondary():
     assert not any(f.startswith("$AMMO,1,") for f in b["spawn"] + b["revive"])
     assert sum(1 for f in b["spawn"] if f.startswith("$AMMO,0,")) == 1
     b2 = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), TEAMS)
-    assert any(f.startswith("$WEAP,1,") for f in b2["head"]) and any(f == "$AMMO,1,6,24,1,*" for f in b2["spawn"])
+    assert any(f.startswith("$WEAP,1,") for f in b2["head"]) and any(f == "$AMMO,1,6,48,1,*" for f in b2["spawn"])
 
 
 def _tok(frame: str, doc_tok: int) -> str:
@@ -300,6 +300,8 @@ def test_compile_perk_effects():
     # (t15) on EVERY slot (the gun takes the larger of slots 0/1).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    # The AR's reserve is 384 and RESERVE_PROVEN_MAX is 384, so x2 would be 768 and the ceiling holds it:
+    # the mag still doubles, the reserve stays put. The doubling itself is shown on the Charge Rifle below.
     assert _tok(f, 16) == _tok(f, 39) == "64" and _tok(f, 17) == "384" and _tok(f, 40) == "192"
     assert "$AMMO,0,64,384,1,*" in b["spawn"] and "$AMMO,0,64,384,1,*" in b["revive"]
     assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
@@ -347,7 +349,22 @@ def test_compile_perk_effects():
     assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
-    assert any(f == "$AMMO,0,32,192,1,*" for f in tut)
+    assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
+
+
+def test_extended_mags_doubles_a_reserve_below_the_ceiling_and_stops_at_it():
+    """Reserves x2 (2026-10-17): `compile.RESERVE_PROVEN_MAX` (384) caps any compiled reserve at
+    max(384, the row's own reserve). Extended Mags doubles the Charge Rifle (160 -> 320), but the
+    Assault Rifle (384) and the Energy Rifle (600, above the ceiling by its own row) stay where they are."""
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "charge_rifle"}], "perk": "extended_mags"}), TEAMS)
+    f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+    assert _tok(f, 17) == "320" and _tok(f, 40) == "160"
+    assert f"$AMMO,0,{_tok(f, 16)},320,1,*" in b["spawn"]
+    for wid, want in (("assault_rifle", "384"), ("energy_rifle", "600")):
+        b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "extended_mags"}), TEAMS)
+        f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
+        assert _tok(f, 17) == want, (wid, _tok(f, 17))
+        assert f",{want},1,*" in "".join(x for x in b["spawn"] if x.startswith("$AMMO,0,")), wid
 
 
 def test_extended_mags_is_half_price_on_a_pistol_primary():
@@ -358,19 +375,20 @@ def test_extended_mags_is_half_price_on_a_pistol_primary():
     applies `ammo_mult` (`WeaponCatalog._ammo`), so it can never drift between the compiled frame and
     the phone's own `$AMMO` report.
     """
-    # USP-S: mag 12 -> 18, reserve 120 -> 180 (both exact at +50%, no rounding to prove).
+    # USP-S: mag 12 -> 18, reserve 240 -> 360 (both exact at +50%, no rounding to prove; 360 is under the
+    # 384 reserve ceiling).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "usp"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "18"
-    assert _tok(f, 17) == "180" and _tok(f, 40) == "90"
-    assert "$AMMO,0,18,180,1,*" in b["spawn"] and "$AMMO,0,18,180,1,*" in b["revive"]
+    assert _tok(f, 17) == "360" and _tok(f, 40) == "180"
+    assert "$AMMO,0,18,360,1,*" in b["spawn"] and "$AMMO,0,18,360,1,*" in b["revive"]
 
-    # Desert Eagle: mag 7 -> 10 (7 * 1.5 = 10.5, ROUNDED DOWN, not to 11), reserve 48 -> 72.
+    # Desert Eagle: mag 7 -> 10 (7 * 1.5 = 10.5, ROUNDED DOWN, not to 11), reserve 96 -> 144.
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "deagle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert _tok(f, 16) == _tok(f, 39) == "10"
-    assert _tok(f, 17) == "72" and _tok(f, 40) == "36"
-    assert "$AMMO,0,10,72,1,*" in b["spawn"]
+    assert _tok(f, 17) == "144" and _tok(f, 40) == "72"
+    assert "$AMMO,0,10,144,1,*" in b["spawn"]
 
     # Deagle's own damage and cadence are UNCHANGED by D5 -- Tony kept it as shipped.
     deagle_row = next(r for r in ROWS if r["weapon_id"] == "deagle")

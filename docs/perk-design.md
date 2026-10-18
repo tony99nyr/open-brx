@@ -79,6 +79,14 @@ case: `perks.json`'s extended_mags row carries `ammo_mult_pistol` beside `ammo_m
 `compile.py`'s `WeaponCatalog._ammo` is the one place either number is applied, for the compiled
 `$WEAP`/`$AMMO` frame and the phone's own resolved-perk report alike.
 
+**Extended Mags and the reserve ceiling (2026-10-17).** Tony doubled every loadout reserve ("could we keep the
+same balance but increase reserves across the whole armory?"). A compiled reserve never exceeds
+max(`RESERVE_PROVEN_MAX` = 384, the row's own reserve), because 384 is the largest ordinary reserve a gun has
+echoed back. So until a bench lifts the ceiling, Extended Mags adds **little or nothing to the reserve** of
+the Assault Rifle, Burst Rifle, SMG (all 384), Suppressor (384) and Energy Rifle (600); its magazine
+doubling still applies. It still doubles the reserve below the ceiling: the Charge Rifle 160 to 320, the AMR
+112 to 224; on a pistol the USP 240 to 360. The bench that lifts it is `bench-field-1017.md` P1.0.
+
 **Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
 compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
 the preset was designed not to have. Under Shields, Body Armor grants **shield**, not armour. That is a

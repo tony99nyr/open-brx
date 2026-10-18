@@ -1150,6 +1150,13 @@ def _load_weapons() -> list[dict]:
 # slower. 285 ms remains the only hardware-measured figure this constant has ever had.
 CHARGE_TAP_CADENCE_MS = 285
 
+# The largest ordinary reserve a gun has echoed back (2026-09: `$AMMO,0,32,384,1` -> `$ALCD,32,100,0,384,0`,
+# experiment-log/2026-09.md). The gun also echoed the "unlimited" sentinels 9999999 and 32768 (2026-08), so a long
+# number parses, but nobody has watched a large ordinary reserve count down. Reserves x2 (Tony, 2026-10-17) and
+# Extended Mags therefore stop at max(this, the row's own reserve): the Energy Rifle keeps its 600, nothing new and
+# unproven ships. The bench row in `bench-field-1017.md` (a reserve of 1200 and 2400) lifts it.
+RESERVE_PROVEN_MAX = 384
+
 # A single-shot weapon (`$WEAP` t20 = 7) fires on the first trigger press at or after t14: the gun swallows a press
 # inside t14 (field 2026-10-17: taps about 150 ms apart on the AMR, t14 400, landed about 600 ms apart). So its
 # sustained cycle is set by the player, not by t14 alone. The field's 126 press-to-press gaps under 1 s from four
@@ -1351,6 +1358,9 @@ class WeaponCatalog:
         eff_mods = {**mods, "ammo_mult": pistol_mult} if pistol_mult and mods else mods
         mag, reserve, reload_ms = self._mods(eff_mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]),
                                               floor=bool(pistol_mult))
+        # The reserve ceiling (2026-10-17, reserves x2): never compile a reserve no gun has echoed. A perk's
+        # `ammo_mult` can scale past the row, but not past max(RESERVE_PROVEN_MAX, the row's own reserve).
+        reserve = min(reserve, max(RESERVE_PROVEN_MAX, int(w["reserve"])))
         if (w.get("capture") or {}).get("frame"):
             reserve = (reserve // 2) * 2
         return mag, reserve, reload_ms

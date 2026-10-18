@@ -68,7 +68,7 @@ test('A47 resync: waits for a live $HP answer, then writes current state without
   h.frame('$HP,30,10,0,*');
   const w = h.since(n);
   // F121 rebuild: the resync re-sends the table whatever the node believes (a rebooted gun has none, F11), then t8 = 0.
-  assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE, golden.spawn_protect_off]);
+  assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,48,1,*', '$BMAP,0,0,,,,,*', ...TAKE, golden.spawn_protect_off]);
   assert.deepEqual(heads(w), [], 'no $SPAWN, $PSET or head frame');
   assert.equal(h.eng.hp, hp); assert.equal(h.eng.armor, armor); assert.equal(h.eng.deaths, deaths);
   assert.deepEqual(h.facts.slice(nFacts), [{ type: 'operator_result', cmd: 'resync', ok: true, match_id: 'm1', player_id: 'p1' }], 'no death, kill or respawn fact: only the outcome for MC');

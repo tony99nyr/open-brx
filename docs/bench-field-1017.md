@@ -29,6 +29,14 @@ The lanes add their own bench rows for the field fixes to P2 as the fixes land.
 
 ## P1: the bugs that broke real matches (about 60 min)
 
+**P1.0. A large reserve counts down normally (5 min).** *Impact: reserves are capped at 384 (Energy Rifle 600)
+until this passes, so Extended Mags adds nothing to the reserve of five rifles.* One gun, `$VOL,65`. Arm the
+Energy Rifle from the recipe, then send `$AMMO,0,300,1200,1,*` and read the `$ALCD` echo. Fire a magazine, reload
+twice, and read each `$ALCD`: the reserve must fall by the rounds loaded. Then repeat with 2400. **Pass:** the echo
+reads 1200 (then 2400) and counts down normally. **Control:** `$AMMO,0,300,384,1,*` (proven 2026-09) echoes 384.
+End re-armed. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value. Row: reserves x2 (Tony,
+2026-10-17); see `perk-design.md`.
+
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* One gun, no IR rig. Arm normally (`$VOL,65`, `$CLEAR,*`, `$START,*`, a `$PSET`). Then send the field's
 SMG frame with `,*` appended, then `$SPAWN,,*`:
