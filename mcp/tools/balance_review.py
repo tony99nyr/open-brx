@@ -1883,12 +1883,17 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     elif subject_kit is None:
         tests["viable"] = _test(None, {}, f"role {role!r} has no kit in the matrix")
     else:
-        f = mc["columns"][subject_kit]["field"]
+        spec = mc["specs"][subject_kit]
+        primary_fk = field_kit(world, f"{subject_kit} primary only", spec["primary"])
+        anchor_fk = field_kit(base, "AR anchor", ANCHOR, SECONDARY)
+        f = B.geo_mean([field_ratio(primary_fk, anchor_fk, n, _reps("field", reps_scale)) for n in FIELD_NS])
+        kit_f = mc["columns"][subject_kit]["field"]
         beats = [o for o in mc["kits"] if o != subject_kit and
                  any(mc["duels"][f"standard|{d}|{subject_kit}|{o}"] > 0.5 for d in DIST)]
         tests["viable"] = _test(f >= VIABLE_FIELD_FLOOR and bool(beats),
-                                {"field": f, "floor": VIABLE_FIELD_FLOOR, "beats_in_some_band": beats},
-                                "field ratio (against the baseline AR) at or over the floor, and it beats at least one kit in some 1v1 band")
+                                {"field": f, "kit_field": kit_f, "floor": VIABLE_FIELD_FLOOR,
+                                 "beats_in_some_band": beats},
+                                "plain primary-only field ratio (against the baseline AR) at or over the floor, and the kit beats another kit in a 1v1 band")
 
     # balance_kept ----------------------------------------------------------------------------------
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side)
