@@ -520,18 +520,21 @@ def test_waiting_head_allows_bypass_within_window(tmp_path):
     holder_acquired, holder_release = tmp_path / "holder.acquired", tmp_path / "holder.release"
     head_acquired, head_release = tmp_path / "head.acquired", tmp_path / "head.release"
     later_acquired, later_release = tmp_path / "later.acquired", tmp_path / "later.release"
-    holder = _child(directory, "holder", 300, extra="bypassMs: 1500",
+    # The bypass window opens bypassMs after the head queued and closes at twice that. The later run starts
+    # as soon as the head's ticket exists, so it is already polling when the window opens. It used to start
+    # after a fixed 1.6 s sleep, and under a full test:all a slow Node start missed a 1.5-3 s window (brx3,
+    # 2026-10-17). 3000 ms gives a start-up 3 s of slack.
+    holder = _child(directory, "holder", 300, extra="bypassMs: 3000",
                     acquired_file=holder_acquired, release_file=holder_release)
     head = later = None
     try:
         _wait_file(holder_acquired)
-        head = _child(directory, "head", 900, extra="bypassMs: 1500",
+        head = _child(directory, "head", 900, extra="bypassMs: 3000",
                       acquired_file=head_acquired, release_file=head_release)
         _wait_entries(directory, ".ticket")
-        time.sleep(1.6)
-        later = _child(directory, "later", 200, extra="bypassMs: 1500",
+        later = _child(directory, "later", 200, extra="bypassMs: 3000",
                        acquired_file=later_acquired, release_file=later_release)
-        _wait_file(later_acquired)
+        _wait_file(later_acquired, timeout=10)   # the window opens 3 s after the head queued
         assert not head_acquired.exists(), "the head entered without enough capacity"
         later_release.touch()
         holder_release.touch()
