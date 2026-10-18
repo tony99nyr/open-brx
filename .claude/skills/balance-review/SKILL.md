@@ -137,7 +137,8 @@ Scenario version 12 uses these models:
   Near-top sensitivity uses the saved 0.9-aim matrix top as a fixed reference. Only the subject row reruns.
 - The Haze sensitivity report tests 1, 1.5, 2 and 3-second blind windows against AR with Body Armor at mid range.
   Each selectable fn-23 row fails `balance_kept` only when the candidate crosses 0.65 from a passing
-  baseline at the same blind duration. The shipped `smoke_gun` failure at 3 seconds is a warning (F577).
+  baseline at the same blind duration. Since F577 the shipped `smoke_gun` is hidden, so no Haze failure ships; a
+  candidate that un-hides it is judged as newly selectable.
 - `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
   The second attacker arrives 3,500 ms after the first. The holder fights the first attacker alone until then.
   The holder is alert and can fire when the second attacker arrives, with no reaction delay.

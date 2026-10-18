@@ -686,7 +686,8 @@ def test_hidden_and_non_lethal_rows_are_filtered():
     visible, skipped = B.catalogue_ids(CAT)
     hidden = {r["weapon_id"] for r in CAT._rows if r.get("hidden")}
     assert not hidden & set(visible)
-    assert {r["weapon_id"] for r in CAT._rows if r.get("lethal") is False} == set(skipped)
+    # a hidden non-lethal row (the Haze since F577) is skipped as hidden, before the lethal check
+    assert {r["weapon_id"] for r in CAT._rows if r.get("lethal") is False and not r.get("hidden")} == set(skipped)
     with_hidden, _ = B.catalogue_ids(CAT, include_hidden=True)
     assert hidden - {r["weapon_id"] for r in CAT._rows if r.get("lethal") is False} <= set(with_hidden)
 

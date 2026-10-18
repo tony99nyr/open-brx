@@ -329,9 +329,11 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # 2026-09-18 (weapon-design.md §7.4): the stripper and the smoke joined as `lethal: false`
     # SECONDARIES, visible in the catalogue like everything above, so the roster is now 15.
     # 2026-09-19 (S16): the Toxin Rifle is visible now that the node tick clock is built: 10 primaries.
-    assert len(ids) == 16, (
-        f"the §3 roster is 10 primaries + 2 sidearms + 2 pickup-only heavies + 2 support "
-        f"secondaries, got {len(ids)}")
+    # F577 (Tony 2026-10-18): the Haze is hidden, so one support secondary is left: 15.
+    assert len(ids) == 15, (
+        f"the §3 roster is 10 primaries + 2 sidearms + 2 pickup-only heavies + 1 support "
+        f"secondary, got {len(ids)}")
+    assert "smoke_gun" not in ids, "F577: the Haze is hidden"
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17 moved two more weapons off it: the
     # AR is rebalanced (now at the captured 100 ms rather than the earlier 140 ms throttle), and the
