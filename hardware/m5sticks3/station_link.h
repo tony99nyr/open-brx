@@ -671,13 +671,15 @@ inline int presence_threshold_dbm(const StationAssignment& a) {
 }
 
 // ---- the saved hill owner (F332: a restart must not wipe an enemy hold) ----------------------------
+// The hill clock and the growing hill tally share one write budget: at most one save each per this long (F557).
+constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 // A mirror of Preferences "brxmc" hill_owner / hill_game / hill_id / hill_sid / hill_hold, like
 // SavedStationConfig: it owns no I/O, and each call answers whether the glue must write or erase now.
-// Written when the owner changes and once at the whistle, never on a progress tick,
+// Written when the owner changes, once at the whistle, and at most once per HILL_CLOCK_SAVE_MS while the tally
+// grows (F557),
 // with the possession tally as it stood then. Tagged with the game byte, the station id AND
 // the MC session the config came in, because a new MC session numbers its games from 1 again and must
 // not revive an old match's owner. `held` is `owner != contract::STATION_TEAM_ANY` (control.js: held <=> owner).
-constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 class SavedHill {
  public:
   // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
@@ -689,6 +691,7 @@ class SavedHill {
     tag_.session_id = session_id;
     for (int t = 0; t < 4; t++) hold_[t] = hold ? hold[t] : 0;
     final_saved_ = false;
+    written_at_ = 0;
   }
   bool has() const { return has_; }
   int owner() const { return owner_; }

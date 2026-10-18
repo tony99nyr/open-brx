@@ -2752,12 +2752,29 @@ static void test_f557_a_long_hold_is_saved_as_it_grows() {
   link.apply_station_config(a, 0);
   SavedHill saved;
   int writes = 0;
+  std::vector<uint32_t> at;
   for (uint32_t t = 0; t <= 75000; t += 250) {   // red captures at about 10 s, then holds for over a minute
     PlayerPresence pr = red_on_the_point(t);
     link.tick_players(pr, t);
-    if (saved.note_owner(a, "s1", link.hill(), t)) writes++;
+    if (saved.note_owner(a, "s1", link.hill(), t)) { writes++; at.push_back(t); }
   }
-  CHECK_EQ(writes, 3);   // the capture, then once per HILL_CLOCK_SAVE_MS of growth (about 40 s and 70 s)
+  CHECK_EQ(writes, 3);   // the capture, then once per HILL_CLOCK_SAVE_MS of growth after it
+  // Opus review: the capture's write resets the throttle, so the next two come 30 s and 60 s after the capture
+  CHECK(at.size() == 3 && at[1] - at[0] >= HILL_CLOCK_SAVE_MS && at[1] - at[0] <= HILL_CLOCK_SAVE_MS + 250);
+  CHECK(at.size() == 3 && at[2] - at[1] >= HILL_CLOCK_SAVE_MS && at[2] - at[1] <= HILL_CLOCK_SAVE_MS + 250);
+  // a flat tally (contested, or frozen) never writes on the clock alone
+  SavedHill still;
+  BleControlPoint flat = held_by(1);
+  flat.hold_ms[1] = 7000;
+  CHECK(still.note_owner(a, "s1", flat, 1000));
+  CHECK(!still.note_owner(a, "s1", flat, 1000 + 3 * HILL_CLOCK_SAVE_MS));
+  // millis() wraps: the throttle measures modulo 2^32
+  SavedHill wrap;
+  BleControlPoint w = held_by(1);
+  CHECK(wrap.note_owner(a, "s1", w, 0xFFFFF000u));
+  w.hold_ms[1] = 5000;
+  CHECK(!wrap.note_owner(a, "s1", w, 0x00000100u));          // about 4.4 s later, across the wrap: throttled
+  CHECK(wrap.note_owner(a, "s1", w, 0x00000100u + HILL_CLOCK_SAVE_MS));
   CHECK(saved.hold_ms()[0] + HILL_CLOCK_SAVE_MS >= link.hill().hold_ms[0]);   // a restart loses at most the throttle
   CHECK(saved.hold_ms()[0] >= 50000u);
   // CONTROL: with no clock given, only the edges write (the old behaviour)
