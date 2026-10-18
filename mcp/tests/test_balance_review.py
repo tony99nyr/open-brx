@@ -73,7 +73,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
     assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact",
-                         "peek mid", "field", "ambush", "shields")
+                         "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
+    assert set(R.NEAR_TOP_MARGIN) == set(R.COLUMNS)
+    assert a["columns"]["Assault Rifle"]["ammo stress"] > 0
     assert a["columns"] == b["columns"] and a["duels"] == b["duels"]
 
 
@@ -96,9 +98,11 @@ def test_the_column_top_ignores_nan():
 # --------------------------------------------------------------------------- the named tests, end to end
 
 def test_a_dominant_candidate_fails_no_domination():
-    """An Assault Rifle copy at about four and a half times the damage (40) is near the top everywhere (at three times, 27, the 75-damage
-    bolt Sniper still out-peeks it at range: F573). Break it once (every margin -1) and watch it pass."""
-    code, v = _review_cli({"title": "dominant", "row": _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=40)})
+    """A 200-damage AR with a 100 ms reload tops every column, including ammo stress.
+    Break it once (every margin -1) and watch it pass."""
+    row = _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=200)
+    row["reload_ms"] = 100
+    code, v = _review_cli({"title": "dominant", "row": row})
     t = v["tests"]["no_domination"]
     assert t["status"] == "fail" and "Test AR heavy" in t["numbers"]["near_top_everywhere"], t
     assert code == 1 and v["pass"] is False and v["reps_scale"] == REPS_SCALE
@@ -254,7 +258,70 @@ def test_marksman_rush_counter_catches_both_sides():
     good = {"peek_kill": 0.7, "rush_success": 0.6}
     assert R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN])["status"] == "pass"
     assert R.marksman_verdict(good, good, [])["status"] == "fail"
+    far = {"peek_kill": 0.7, "rush_success": 0.3}
+    numbers = R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN], far, far)["numbers"]
+    assert numbers["vs_plain_ar_30m"] == far and numbers["rush_start_m"] == 20.0
     assert R.MARKSMAN_STRONG_COLUMN in R.COLUMNS
+
+
+def test_rush_table_covers_every_marksman_and_both_starts():
+    world, specs = _shipped_specs()
+    rows = R.rush_table(world, specs, 80, 1)
+    marks = {s.name for s in specs if s.combo or world.cat._row(s.primary).get("role") == "marksman"}
+    expected = {(m, r, d) for m in marks for r in (R.ANCHOR, "smg", "shotgun")
+                for d in (20.0, 30.0)}
+    assert {(r["marksman"], r["rusher"], r["start_m"]) for r in rows} == expected
+    by_pair = {(r["marksman"], r["rusher"], r["start_m"]): r for r in rows}
+    for marksman in marks:
+        for rusher in (R.ANCHOR, "smg", "shotgun"):
+            near = by_pair[(marksman, rusher, 20.0)]
+            far = by_pair[(marksman, rusher, 30.0)]
+            assert far["rush_success"] <= near["rush_success"] + 0.15, (near, far)
+            assert 0 <= far["peek_kill"] <= 1
+
+
+def test_hill_hold_rewards_shotgun_and_overwatch_has_no_escape():
+    world, specs = _shipped_specs()
+    kits = {s.name: R.make_kit(world, s.name, s.primary, s.secondary, s.perk) for s in specs}
+    ar = R.make_kit(world, "AR", R.ANCHOR)
+    shotgun = kits["Shotgun"]
+    sniper = R.make_kit(world, "Sniper", "sniper_rifle")
+    assert R.hill_hold(shotgun, ar, 1000) > R.hill_hold(kits["Assault Rifle"], ar, 1000)
+    assert R.hill_overwatch(sniper, ar, 160) + 0.05 >= R.marksman_rush_counter(sniper, ar, 160)["peek_kill"]
+
+
+def test_hill_report_covers_each_kit_and_reference():
+    world, specs = _shipped_specs()
+    report = R.hill_report(world, specs, 12, 1)
+    expected = {(s.name, ref) for s in specs for ref in R.HILL_REFERENCES}
+    assert {(r["holder"], r["attacker"]) for r in report["hold"]} == expected
+    assert {(r["kit"], r["opponent"]) for r in report["contest"]} == expected
+    assert {r["holder"] for r in report["overwatch"]} == set(R.HILL_REFERENCES)
+    assert "Assault Rifle" in {r["long_gun"] for r in report["overwatch"]}
+
+
+def test_ammo_stress_rewards_extended_mags_and_spawn_reserve_pickup():
+    world = R.shipped_world()
+    plain = R.make_kit(world, "Shotgun plain", "shotgun")
+    mags = R.make_kit(world, "Shotgun mags", "shotgun", perk="extended_mags")
+    anchor = R.make_kit(world, "AR attacker", R.ANCHOR)
+    assert R.ammo_stress(mags, anchor, 120) > R.ammo_stress(plain, anchor, 120)
+    with_pickup = R.ammo_stress(plain, anchor, 120)
+    without_pickup = R.ammo_stress(plain, anchor, 120, pickup=False)
+    assert with_pickup > without_pickup
+
+
+def test_pistol_finisher_lists_every_primary_and_pistol_and_respects_cycle():
+    world = R.shipped_world()
+    rows = R.pistol_finisher_report(world)
+    primaries = set(R.roster_ids(world)[0])
+    pistols = {row["weapon_id"] for row in world.cat._rows if row.get("role") == "sidearm"
+               and not row.get("hidden") and row.get("lethal") is not False}
+    assert {(r["primary"], r["pistol"]) for r in rows} == {(p, s) for p in primaries for s in pistols}
+    assert all(r["bar_ms"] == B.R10_FINISH_BAR_MS and r["reload_finish_ms"] >= 0 for r in rows)
+    gun = R.make_gun(world.cat, "usp")
+    slow = R.replace(gun, fire_ms=gun.fire_ms * 2)
+    assert R.pistol_finish_ms(slow, 500) >= R.pistol_finish_ms(gun, 500)
 
 
 # --------------------------------------------------------------------------- candidates, pools, the record
@@ -498,7 +565,7 @@ def test_plain_baselines_carry_the_matrix_secondary():
 
     with mock.patch.object(R, "make_kit", side_effect=gun), mock.patch.object(R, "field_kit", side_effect=field):
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [
-                1.0 if j[0] == "field" else (0.0, 0.0) for j in jobs]):
+                1.0 if j[0] == "field" else (0.0, 0.0) if j[0] == "ambush" else 0.5 for j in jobs]):
             R.dominance_matrix(w, [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False)], REPS_SCALE, 1)
         with mock.patch.object(R, "run_cells", side_effect=lambda jobs, _n: [0.5] * len(jobs)):
             R.choose_perks(w, [R.ANCHOR], REPS_SCALE, 1, w)

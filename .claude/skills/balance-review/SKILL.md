@@ -111,6 +111,21 @@ Scenario version 3 uses these models:
   the catalogue cooling rate; `--heat-cool-while-firing off` disables cooling entirely.
   A lockout resets heat to zero.
   Heated sidearm R10 pairs use the kit engine. The CI rule engine has no heat state.
+- The report checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from 20 m and 30 m.
+  `marksman_rush_counter` still gates the plain AR rush from 20 m. The report shows 30 m beside it.
+- `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
+  The second attacker arrives 3,500 ms after the first. The holder cannot leave the circle.
+  The report also shows long-range overwatch by marksmen, combo kits and the AR without escape.
+  Close contests start with both kits alert.
+- `ammo stress` is kills in one life against a close-range stream of plain AR attackers, divided by the plain AR's kills.
+  The next attacker arrives 1,500 ms after the last fight. It starts firing when it finds the holder reloading.
+  After four kills, one AMMO pickup tops each held slot's reserve to its compiled spawn reserve.
+  The pickup leaves the magazine alone. The model caps the stream at 64 attackers.
+- The pistol finisher report pairs every visible sidearm with every shipped primary.
+  It starts when the primary runs dry with 35 HP left at close range. It compares swapping and finishing with reloading
+  the primary, and reports the R10a 1,200 ms bar. The sidearm `viable` test keeps its existing rule.
+- `hill hold` and `ammo stress` each use a 0.10 near-top margin. Both enter `value_addition`,
+  `no_domination` and the last-near-top check in `balance_kept` through the matrix.
 
 Read `assumptions()` in each verdict for the exact values used by that run. Treat `--haze-blind-ms` as a
 scenario parameter, and report its value with the Haze comparison.
