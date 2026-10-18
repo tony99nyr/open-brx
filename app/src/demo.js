@@ -389,6 +389,18 @@ export function startDemo({ engine, log }) {
         { medal: 'MULTIKILL', key: 'multikill', player_id: 'p-3', display: 'HAVOC', stat: 'TRIPLE KILL ×2' },
         { medal: 'WINGMAN', key: 'wingman', player_id: 'p-3', display: 'HAVOC', stat: '6 ASSISTS' },
         { medal: 'OBJECTIVE HERO', key: 'objective_hero', player_id: 'p-2', display: 'VIPER', stat: 'IN RANGE · 2:48' }] }),
+      // F561 (field 2026-10-17): the day's worst recap, names invented: nine medals on one row (6 fitted, 7 were cut) and
+      // nine honours (the strip truncated every one to 7-9 characters). The shape MC sent; seven honours share one holder.
+      resultNine: () => { const nine = ['MVP', 'MOST KILLS', 'SHARPSHOOTER', 'SURVIVOR', 'IRON MAN', 'FIRST BLOOD', 'OBJECTIVE HERO', 'KILLING SPREE', 'BEAT DOWN ×5'];
+        const rows = RESULT_ROWS.map((r, i) => i === 0 ? { ...r, medals: nine } : i === 1 ? { ...r, medals: ['BEST K/D · NON-MVP', 'WINGMAN', 'BEAT DOWN'] } : r);
+        const me = (medal, key, stat) => ({ medal, key, player_id: 'p-demo', display: 'REAPER', stat });
+        ev.result('win', { rows, my: rows[0], honors: [me('MVP', 'mvp', '13 K · 6.5 K/D · ×8 STREAK'), me('MOST KILLS', 'most_kills', '13 ELIMINATIONS'),
+          { medal: 'BEST K/D · NON-MVP', key: 'best_kd', player_id: 'p-2', display: 'VIPER', stat: 'K/D 0.8 · 5 K' }, me('SHARPSHOOTER', 'sharpshooter', '42% ACCURACY'),
+          me('SURVIVOR', 'survivor', 'LONGEST LIFE 6:01'), me('IRON MAN', 'iron_man', 'FEWEST DEATHS · 2'), me('FIRST BLOOD', 'first_blood', 'AT 00:41'),
+          { medal: 'WINGMAN', key: 'wingman', player_id: 'p-2', display: 'VIPER', stat: '5 ASSISTS' }, me('OBJECTIVE HERO', 'objective_hero', 'IN RANGE · 4:20')] }); },
+      // F561 review: a tied field, one honour per tied holder (MC's shape): eight holders, two of them both called ACE.
+      resultManyHolders: () => { const names = ['REAPER', 'VIPER', 'HAVOC', 'SABLE', 'ACE', 'ACE', 'NOMAD', 'WRAITH'];
+        ev.result('win', { honors: names.map((display, i) => ({ medal: 'MOST KILLS', key: 'most_kills', player_id: i ? `p-x${i}` : 'p-demo', display, stat: '9 ELIMINATIONS' })) }); },
       resultFfa: (outcome = 'lose') => engine.onMcMessage({ kind: 'result', body: {
         match_id: engine.matchId, outcome, winner: { player_id: 'p-2' }, mode: 'ffa', win_by: 'kills',
         team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },
@@ -777,6 +789,9 @@ export function startDemo({ engine, log }) {
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
       'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],
+      'result-nine-medals': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultNine()], [2700, () => ev.rtab('player')]],   // F561
+      'result-many-holders': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultManyHolders()]],   // F561 review
+      'result-nine-teams': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultNine()]],   // F561: the TEAMS tab it lands on
       'result-awards':     [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultAwards()], [2700, () => ev.rtab('awards')]],   // PROVISIONAL (TODO: brx3)
       // the two medals Tony added on 2026-09-24 (TODO: contract): BEAT DOWN (a melee kill) and KILLJOY (ending an enemy's spree)
       'live-kill-beat-down': [...live, [2300, () => ev.killMedals(['melee_kill'], 'VIPER')]],
