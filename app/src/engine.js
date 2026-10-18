@@ -1361,7 +1361,11 @@ export class Engine {
       const result = this.writer(frames, why, writeOptions);
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
       if (ammoRows && result && typeof result.then === 'function') {
-        result.then(ok => { if (ok !== false) this.am.restampEchoes(frames, gens); }, () => {});
+        // F570 (bench 2026-10-17): the gun echoes each row as it READS it, so a long write's early rows echo while it is still
+        // on the link, past a window stamped at the call. Hold this write's windows open until it settles, then restart them;
+        // a failed write restarts them too, so they close ACC_ECHO_MS later instead of staying open.
+        this.am.holdEchoes(frames, gens);
+        result.then(() => this.am.restampEchoes(frames, gens), () => this.am.restampEchoes(frames, gens));
       }
       if (!hasPlay && onSent) onSent();
       const playFrame = hasPlay ? frames.find(f => typeof f === 'string' && f.startsWith('$PLAY,')) : null;

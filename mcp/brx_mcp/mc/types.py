@@ -773,13 +773,14 @@ STATION_EDIT_AGE_UNKNOWN_MS = 24 * 3600 * 1000
 ADOPT_SLACK_MS = 10_000
 
 
-StationItemKind = Literal["weapon", "overshield"]
+StationItemKind = Literal["weapon", "overshield", "ammo"]
 
 
 class StationItem(TypedDict):
     """A56 (S58, docs/spec/powerups.md): what a `powerup` station grants, and when it spawns on the match clock.
     A weapon item grants `charges` rounds of `weapon_id` (armed at start in a spare slot, `GameConfig.powerups`);
-    an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s`/`first_at_s`
+    an overshield grants `amount` shield on top, hit first, no regen, gone at death; an ammo item tops the taker's held
+    slots 0 and 1 up to each slot's spawn reserve (`refill` "spawn"), never lowered, magazine kept. `spawn_every_s`/`first_at_s`
     are a positive integer (ARMORY's own per-station override caps `spawn_every_s` 30-240, `powerups.py`
     `SPAWN_EVERY_MIN`/`MAX`; the schedule mechanism itself tolerates any positive value); a spawn further off
     than the advert's value byte (255 s) just clamps the claim-proximity advert's remaining-seconds
@@ -789,6 +790,7 @@ class StationItem(TypedDict):
     weapon_id: NotRequired[str]
     charges: NotRequired[int]
     amount: NotRequired[int]
+    refill: NotRequired[str]   # ammo only: "spawn" = top slots 0 and 1 up to each slot's spawn reserve (MC ships only "spawn")
     spawn_every_s: int
     first_at_s: int
     name: str
@@ -1328,6 +1330,7 @@ class Event(TypedDict, total=False):
     # pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored.
     station_id: int
     item_kind: StationItemKind
+    refilled: dict[str, int]   # ammo pickup only: rounds added per slot, e.g. {"0": 12, "1": 3}; may be absent
     next_spawn_in_s: int   # F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone)
     # team_change
     tid: int

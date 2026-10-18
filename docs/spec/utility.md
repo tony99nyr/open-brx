@@ -251,7 +251,7 @@ The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. 
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
 `config.stations` in the game bundle. Absent `game` = 0 (any). This is a **contracts A13.5** addition.
 
-**A hill's pace from MC (A76, F559).** `station_config` may carry `capture_s` (3-60 s) and `net_cap` (1-6) for a control station.
+**A hill's pace from MC (A77, F559).** `station_config` may carry `capture_s` (3-60 s) and `net_cap` (1-6) for a control station.
 MC's value wins on every arming that carries it; absent keeps the station's own. Unlike the range below there are no ages:
 the station keeps no edit record for these two, so a phone station's +/- edit holds only until the next arming that carries a value.
 A Stick has no +/- for them: its own value is the default or the last one MC pushed, which it saves and restores.
@@ -268,7 +268,7 @@ Stick cannot know the edit's time, so it reports a large age and MC's value wins
 change: they read the station's advert. Each new edit is a feed line and an attention line on the ITEMS card.
 
 
-**Hill timing (A68, Stick hill).** MC sends `starts_in_ms` and `ends_in_ms` in the same station config whenever it knows those times. Each value is relative to MC send time; `starts_in_ms` can be negative after go-live. A future or unknown go-live keeps a same-game hill waiting, neutral and without accrual. MUSTER releases that wait on a config with `starts_in_ms`, including an untimed START. A same-game config without either time means no match is running. The hill counts only from local go-live to its local deadline, then freezes its owner, bar and possession tally and shows MATCH OVER. At match end, RECALL or PANIC, MC sends `ends_in_ms: 0` to connected stations and on reconnect. After abort, the same-game config omits both times and returns the hill to waiting. MC sends no `station_update` for a hill. A MUSTER Stick that takes F374's 60 s offline fallback without hearing START starts counting as before; it cannot know go-live or enforce the deadline. An early score cap or operator END reaches only a Stick still in Wi-Fi. An adopted match pushes nothing to stations, so its Stick hill receives no go-live or deadline and counts as before.
+**Hill timing (A68, Stick hill).** MC sends `starts_in_ms` and `ends_in_ms` in the same station config whenever it knows those times. Each value is relative to MC send time; `starts_in_ms` can be negative after go-live. A future or unknown go-live keeps a same-game hill waiting, neutral and without accrual. MUSTER releases that wait on a config with `starts_in_ms`, including an untimed START. A same-game config without either time means no match is running. The hill counts only from local go-live to its local deadline, then freezes its owner, bar and possession tally and shows MATCH OVER. At match end, RECALL or PANIC, MC sends `ends_in_ms: 0` to connected stations and on reconnect. After abort, the same-game config omits both times and returns the hill to waiting. MC sends no `station_update` for a hill. A MUSTER Stick that takes F374's 60 s offline fallback without hearing START starts counting as before; it cannot know go-live or enforce the deadline. An early score cap or operator END reaches only a Stick still in Wi-Fi. An adopted match sends a control station its go-live (`starts_in_ms`, from the phones' countdown or first fact) and no deadline, because MC has no trusted clock for it (F568); the hill then counts until END freezes it.
 
 **One game byte per match (A59, F339).** `game` is MC's match counter (1..255, bumped by the first push after a
 match has started). Every player `config` MC sends carries the same number as `config.game_byte`, so a player
@@ -711,7 +711,7 @@ A68 also retains `starts_in_ms` and `ends_in_ms` as MC's known clock offsets. A 
 takes one last step to the deadline and holds (`ends_in_ms` 0 = now, never later than a whistle already passed). MC seeds
 its scoring tally only from LIVE and RECAP beats. Known limit: a phone hill that hears LOAD but no START (out of Wi-Fi
 from LOAD until LIVE) still carries its lobby time; MC clamps every reading to the time played, and the phone has no
-muster fallback like the Stick's, because waiting for a START it may never hear would stop an offline hill altogether. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends no station config timing.
+muster fallback like the Stick's, because waiting for a START it may never hear would stop an offline hill altogether. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends `starts_in_ms` and never `ends_in_ms` or `duration_ms` (F568).
 
 For a Stick `control` station, threshold 0 or absent selects the separate -78 dBm hill default (Tony, 2026-09-25 -75, UNPROVEN; 10% larger, 2026-10-17)
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). A Stick `powerup` uses

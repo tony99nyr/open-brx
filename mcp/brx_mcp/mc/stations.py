@@ -1017,6 +1017,11 @@ class StationRegistry:
                 body["starts_in_ms"] = head["go_live_t"] - now
                 if tl_s := self.roster.config.get("time_limit_s"):
                     body["ends_in_ms"] = max(0, head["go_live_t"] + tl_s * 1000 - now)
+            elif self.play.in_play() and self.play.is_adopted():
+                # F568: an adopted match has a go-live (the phones' own countdown, or the first fact) but no trusted end,
+                # so: the start, no deadline. Positive in ARMED, zero or less once live, which every station reads as
+                # live now. A Stick hill holding a same-game config with no start would otherwise wait all match.
+                body["starts_in_ms"] = (head["go_live_t"] - now) if head else 0
         if not self.play.is_adopted() and (self.roster.lobby_pushed or self.play.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:
