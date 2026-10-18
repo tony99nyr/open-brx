@@ -169,6 +169,7 @@ def test_to_snapshot_without_session_keeps_match_merge_and_order():
     class ScorerStub:
         joined_t = {"p1": 123}
         cap_recv = 456
+        station_possession_ms = {"7": {0: 5000}}
 
         def match_state_alerts(self):
             return {"leader": "p1"}
@@ -198,7 +199,7 @@ def test_to_snapshot_without_session_keeps_match_merge_and_order():
         "current_nodes": {"p1": "live", "p2": "new"},
         "evicted_nodes": ["a", "z"], "unbound_nodes": ["b", "y"],
         "synced_at_lobby": {"live": True}, "clock_suspect": {"n": 3},
-        "joined_t": {"p1": 123}, "cap_recv": 456, "alerts": {"leader": "p1"},
+        "joined_t": {"p1": 123}, "cap_recv": 456, "station_possession": {"7": {"0": 5000}}, "alerts": {"leader": "p1"},
         "departed_stations": [
             {"node_id": "station-a", "kind": "respawn", "id": 1, "team": 0,
              "heard": False, "revives": 0},

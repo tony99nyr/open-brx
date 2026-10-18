@@ -14,7 +14,7 @@ const isInt = v => typeof v === 'number' && Number.isSafeInteger(v);   // the St
  * @param {unknown} body
  * @returns {{ok: false, refused: string} | {ok: true, kind: string, team: number, id: number, game: number,
  *   valid_ids: number[]|null, lock_s: number, item: object|null, threshold: unknown, threshold_age_ms: unknown,
- *   tx_power: unknown, tx_power_age_ms: unknown}}
+ *   tx_power: unknown, tx_power_age_ms: unknown, starts_in_ms: number|null, ends_in_ms: number}}
  */
 export function parseStationConfig(body) {
   const no = refused => ({ ok: /** @type {false} */ (false), refused });
@@ -34,5 +34,9 @@ export function parseStationConfig(body) {
     lock_s: lock,
     item: b.kind === 'powerup' && b.item && typeof b.item === 'object' && !Array.isArray(b.item) ? b.item : null,
     threshold: b.threshold, threshold_age_ms: b.threshold_age_ms, tx_power: b.tx_power, tx_power_age_ms: b.tx_power_age_ms,
+    // A68 (the Stick's parse, station_link.h): MC's go-live and deadline, ms from receipt. `starts_in_ms` null = no start
+    // sent (it may be negative after go-live); `ends_in_ms` -1 = unknown, 0 = the match is over.
+    starts_in_ms: typeof b.starts_in_ms === 'number' && Number.isFinite(b.starts_in_ms) ? Math.trunc(b.starts_in_ms) : null,
+    ends_in_ms: typeof b.ends_in_ms === 'number' && Number.isFinite(b.ends_in_ms) && b.ends_in_ms >= 0 ? Math.trunc(b.ends_in_ms) : -1,
   };
 }

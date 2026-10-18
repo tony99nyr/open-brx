@@ -2874,6 +2874,38 @@ class Session:
                 row["synced"] = self.nodes.get(row["node_id"], {}).get("last_seen_ms", 0) >= end_t
         return recap
 
+    def _station_hold(self, nid: str) -> tuple[str, dict] | None:
+        """F555: (site, hold_ms) of a control station's tally for THIS match, else None. Only the tally `_keep_tally` keyed
+        to the station's current arming counts: its game must be this match's game byte and its id the assigned id, and
+        the station must report that id. The raw report can still carry a previous game's beat (inside one heartbeat of
+        an arming, or from a station silent since the last match), and a merge that keeps the maximum could never take
+        it out again. A stood-down hill scores nothing (F535)."""
+        reg = self.station_registry
+        st = reg.stations.get(nid) or {}
+        a = st.get("assigned")
+        if not a or a.get("kind") != "control" or reg.stood_down(a):
+            return None
+        # The tally's key is the arming it was seeded under, and it survives a restart (`armed` does not). A newer arming
+        # that has not reseeded the tally yet is a different game.
+        armed, tally = st.get("armed"), st.get("tally") or {}
+        if tally.get("key") != [self._game_byte(), "control", a["id"]]:
+            return None
+        if armed and (armed.get("game") != self._game_byte() or armed.get("id") != a["id"]):
+            return None
+        if (st.get("report") or {}).get("station_id") not in (None, a["id"]):
+            return None
+        hold = tally.get("hold_ms")
+        return (str(a["id"]), hold) if isinstance(hold, dict) and hold else None
+
+    def _station_possession(self, nid: str, t_recv: int | None) -> None:
+        """F555: hand a control station's own tally for this match to the scorer, the authority for its point. A LIVE beat
+        passes its receipt time and may cross the hold target; the whistle and a late RECAP report pass None."""
+        sc = self._m().scorer
+        if sc is None or (t_recv is not None and self.phase != "live"):
+            return
+        if (got := self._station_hold(nid)) is not None:
+            sc.station_possession(got[0], got[1], t_recv)
+
     def _recap_stations(self) -> list[RecapStationRow]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
         self-authoritative heartbeat (utility.md §5c/§5d.6 -- a station answers to nobody mid-match, so
@@ -2927,6 +2959,7 @@ class Session:
             return   # the assignment moved on -- this heartbeat belongs to the NEXT match's setup
         rep = self.station_registry.station_view(nid)["report"]
         self._merge_station_recap_report(frozen, rep)
+        self._station_possession(nid, None)   # F555: the station's late final tally is the authority for its point
         self._restore_recap()
 
     # ---------- nodes ----------
@@ -3654,13 +3687,17 @@ class Session:
             # player whitelist above dropped every one of these fields, so nothing MC showed came from a station.
             self.station_registry.on_heartbeat(nid, body, t_recv)
             nv["node_type"] = "utility"
+            was_live = self.phase == "live"
+            self._station_possession(nid, t_recv)   # F555: a live hill's own tally is the authority for its point
+            ended_here = was_live and self.phase != "live"   # this beat crossed the hold target: `_finish` already ran
             # RELEASE freezes a fallback row before asking the phone to reload, but the old utility
             # socket may have one final, newer self-authoritative tally already in flight. Preserve the
             # released assignment metadata and advance only counters that this heartbeat actually names.
             if self.in_play() and (departed := self._m().departed_stations.get(nid)):
                 report = self.station_registry.station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
-            self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
+            if not ended_here:
+                self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
             # F401: this heartbeat is what proves the node itself is back in Wi-Fi range, whichever match
             # it is now assigned to -- `_late_station_report`'s own guard (RECAP only, same assignment)
             # must not also gate LOAD's sync warning, which has to clear after a roll forward too.
@@ -4041,15 +4078,19 @@ class Session:
             if (win_by, frag_limit, hold_target_s) != (None, None, None):
                 raise ValueError("_scorer_like: pass same_limits=False to set limits")   # never dropped silently
             win_by, frag_limit, hold_target_s = old.win_by, old.frag_limit, old.hold_target_s
-        return Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
-                      players if players is not None else old.players, list(old.teams.values()),
-                      node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
-                      now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
-                      clock_watch=old.clock_watch)
+        new = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
+                     players if players is not None else old.players, list(old.teams.values()),
+                     node_player if node_player is not None else dict(old.node_player), old.synced_at_lobby,
+                     now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
+                     clock_watch=old.clock_watch)
+        if same_limits:   # F555: a station's hill tally is not a stored fact, so a replay cannot rebuild it: it carries over
+            new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
+        return new
 
     def _build_scorer(self, match_id: str, go_live_t: int, node_player: dict[str, str],
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
-                      derive_cap: bool = False, alerts: dict | None = None) -> Scorer:
+                      derive_cap: bool = False, alerts: dict | None = None,
+                      station_ms: dict[str, dict] | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4067,6 +4108,13 @@ class Session:
         base = dict(sc.node_player)
         for r in facts:
             self._replay_ingest(sc, r, base)
+        # F555: the hills' readings are not facts. The snapshot's validated readings (a hill RELEASED in play included),
+        # then each assigned hill's persisted tally (`_keep_tally`), which may have grown after the snapshot.
+        for site, per in (station_ms or {}).items():
+            sc.station_possession(site, per)
+        for nid in list(self.station_registry.stations):
+            if (got := self._station_hold(nid)) is not None:
+                sc.station_possession(got[0], got[1])
         self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
@@ -4162,9 +4210,13 @@ class Session:
                   if isinstance(p, str) and isinstance(t, int) and not isinstance(t, bool)}
         cap_recv = m.get("cap_recv")
         cap_recv = cap_recv if isinstance(cap_recv, int) and not isinstance(cap_recv, bool) else None
+        raw_sp = m.get("station_possession")
+        station_ms = {str(site): per for site, per in (raw_sp.items() if isinstance(raw_sp, dict) else ())
+                      if isinstance(per, dict)}
         scorer = self._build_scorer(mid, go, node_player, joined, cap_recv=cap_recv,
                                     derive_cap=not m.get("adopted"),
-                                    alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None)
+                                    alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None,
+                                    station_ms=station_ms)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)
@@ -7071,6 +7123,8 @@ class Session:
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
+        for nid in list(self.station_registry.stations):   # F555: each hill's final word, before the rows freeze
+            self._station_possession(nid, None)
         match.frozen_stations = self._recap_stations() if match.scorer else None
         self._match_end_t = match.scorer.end_t if match.scorer else None   # F401
         self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
