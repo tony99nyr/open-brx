@@ -46,7 +46,7 @@ function harness({ fail = () => false, profile = true } = {}) {
       const frames = { ...golden, player_id: 'p1' };
       if (!profile) delete frames.respawn_profile;   // an older bundle: the spawn itself carries the protection
       eng.onMcMessage({ kind: 'config', body: { config, frames, roster } });
-      eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+      eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
       eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + 4000, config_id: golden.config_id, seq: 1, countdown_s: 4 } });
       return h;
     },
@@ -207,7 +207,7 @@ test('F416 review: an $LCD 0/0 does not close the check on the engine\'s own shi
   h.gun.answer = false;
   await h.adv(4000 + 100);
   h.eng.shield = 20;                               // an overshield or regen the engine holds; `$LCD` carries none
-  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.eng.feedFrame('$ALCD,32,100,0,192,0,*');
   assert.ok(!h.logs.some(l => /the gun reads its pools/.test(l)), 'the check stays open');
   assert.ok(h.eng._spawnCheck, 'the spawn check is still open');
 });

@@ -418,7 +418,8 @@ export function startDemo({ engine, log }) {
       // OVERHEAT: the charge rifle, then the gun's own $ALCD at heat 108 (past the lockout), fed until the engine
       // takes it (F259's echo window can swallow a single frame, see screens.mjs `setAmmo`).
       overheat: () => { engine.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; let n = 0;
-        const feed = () => { engine.feedFrame(`$ALCD,3,100,${gunSlot},80,108,*`); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
+        // F238 reopened: a cell of 12, above one 10-round charge; a cell below one charge reads NOT ENOUGH ENERGY, not OVERHEAT
+        const feed = () => { engine.feedFrame(`$ALCD,12,100,${gunSlot},80,108,*`); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
       // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
       stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
@@ -430,6 +431,10 @@ export function startDemo({ engine, log }) {
         if (engine._slotCount() < 2) ev.twoWeapons();
         reply(() => ev.alt(), 50);
       },
+      // BOLT (Tony 2026-10-17 via brx2): the primary's catalogue row marked a bolt action, then one lever pull with no round
+      // chambered yet, so the stage holds the BOLT cue (the gun answers nothing until the bolt closes).
+      boltPull: () => { const id = (player.loadout.weapons[gunSlot] || player.loadout.weapons[0] || {}).weapon_id, r = engine.weaponRow(id);
+        if (r) r.reload_type = 'bolt'; engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*'); },
       reloadCycle: () => {                                  // what a real reload looks like: handle pull, then the refill after the weapon's reload_s
         if (mag >= capOf(gunSlot)) { log('demo: mag is full — fire first, then reload', 'li'); return; }
         engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*');
@@ -718,6 +723,7 @@ export function startDemo({ engine, log }) {
       // An MC older than S56: its roster carries no weapons, it pushes no score and relays no hit. The phone can name
       // the killer from the roster but no weapon, and has nothing dealt: the screen must say so, not invent it.
       'down-old-mc':       [[0, () => { for (const r of roster) delete r.weapons; }], ...live, [2000, () => { ev.fire(3); ev.hitFrom(19, 9, 20); }], [2350, () => ev.dieFrom(19, 9)]],                                   // the board is old now: shown with its age
+      'live-bolt':         [...live, [2300, () => ev.fire(12)], [2600, 'boltPull']],   // BOLT cue
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],

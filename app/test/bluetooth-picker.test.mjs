@@ -14,7 +14,7 @@ test('F211 guard: watchEnabled only opens the picker with no remembered gun', ()
   const src = readFileSync(APP_JS, 'utf8');
   const i = src.indexOf('link.watchEnabled(');
   assert.ok(i > 0, 'the watchEnabled wiring is gone from app.js -- FIX this guard, do not delete it');
-  const block = src.slice(i, i + 700);
+  const block = src.slice(i, i + 1000);   // F563 added a comment and the resting-loop wake to this branch
   assert.match(block, /!link\.connected\s*&&\s*!link\.deviceId\s*&&\s*!scanning/,
     'the "Bluetooth back on" branch must not open the picker when a gun is already remembered (its reconnect loop owns the radio)');
 });

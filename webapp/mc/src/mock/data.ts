@@ -212,6 +212,7 @@ export const WEAPONS: WeaponView[] = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -1133,7 +1134,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "name": "KING OF THE HILL",
     "abbr": "KOTH",
     "desc": "Hold the hill; possession scores",
-    "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
+    "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it with a living player on it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
     "win_text": "POSSESSION TIME",
     "respawn_text": "ON · TIMED",

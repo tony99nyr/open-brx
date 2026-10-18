@@ -2,7 +2,7 @@
   "name": "hill-two-sites-loudest",
   "why": "F522: two present control points, the quieter one first in the step. The engine reads the first present site of a list a phone sorts loudest first (beacon.js Presence.stations), so it adopts the louder point, held by blue, not the neutral one.",
   "source": "app/src/engine.js _controlStation; app/src/beacon.js Presence._list; app/test/trace-station-age.test.mjs",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}]},
     "fields": ["hill"],
@@ -11,7 +11,7 @@
   "steps": [
     {"advance_ms":10},
     {"advance_ms":3000},
-    {"check": "live", "preamble": true},
+    {"check":"live","preamble":true},
     {"stations":[{"id":11,"kind":"control","team":255,"state":0,"value":0,"threshold":-74,"median":-70,"present":true},{"id":8,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"median":-50,"present":true}]},
     {"advance_ms":500},
     {"check":"the_louder_point_adopted"}

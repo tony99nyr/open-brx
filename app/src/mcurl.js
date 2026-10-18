@@ -62,3 +62,15 @@ export function parseMcQr(text) {
   const j = parseMcJoin(text);
   return j ? j.url : null;
 }
+
+/** F563 (field 2026-10-17): a field Wi-Fi that keeps dropping fired `network up (cellular)` 91 times, and each one aborted
+ *  the transport's backoff and redialled a LAN address cellular cannot reach, so the phone never settled. `last` is the
+ *  last kick that DIALLED ({at, why}) or null. Any kick within 1 s of it is the same transition reaching us twice; and
+ *  within CELLULAR_KICK_GAP_MS of a cellular kick, every kick but Wi-Fi's waits (the webview's `online` included). */
+export const CELLULAR_KICK_GAP_MS = 30000;
+/** @param {string} why @param {number} now @param {{at:number, why:string}|null} last @returns {boolean} */
+export function kickHeld(why, now, last) {
+  if (!last) return false;
+  if (now - last.at < 1000) return true;
+  return why !== 'wifi' && last.why === 'cellular' && now - last.at < CELLULAR_KICK_GAP_MS;
+}

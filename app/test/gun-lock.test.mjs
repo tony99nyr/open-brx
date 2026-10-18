@@ -157,7 +157,7 @@ test('F272: a zero-pool head echo before async success cannot pre-empt the one d
   h.eng.writer = frames => frames.includes('$CLEAR,*') ? new Promise(resolve => { land = resolve; }) : true;
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   assert.equal(h.eng.state().gunRecovery, 'rearming');
-  h.frame('$LCD,0,0,0,0,0,0,*'); h.advance(250);
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*'); h.advance(250);
   assert.equal(h.eng.alive, true, 'the recovery head echo is not a combat death');
   assert.equal(h.facts.filter(f => f.type === 'death').length, 0);
   land(true); await Promise.resolve(); await Promise.resolve();
@@ -179,7 +179,7 @@ test('F272: failed locked-relink head writes stay alive and latched, retry at a 
   };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   assert.equal(h.eng.statusBody().gun_locked, undefined, 'MC must not say POWER-CYCLE while the phone says KEEP POWER ON');
-  h.frame('$LCD,0,0,0,0,0,0,*'); h.advance(250);
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*'); h.advance(250);
   assert.equal(h.eng.alive, true); assert.equal(h.facts.filter(f => f.type === 'death').length, 0);
   rejectHead(new Error('bridge rejected'));
   await Promise.resolve(); await Promise.resolve();
@@ -187,7 +187,7 @@ test('F272: failed locked-relink head writes stay alive and latched, retry at a 
   assert.equal(h.eng.state().gunLocked, true, 'the instruction remains until a head actually lands');
   h.advance(GUN_RECOVERY_RETRY_MS - 1); assert.equal(attempts, 1, 'no tight tick-loop retry');
   h.advance(1); assert.equal(attempts, 2);
-  h.frame('$LCD,0,0,0,0,0,0,*'); h.advance(250);
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*'); h.advance(250);
   settleHead(false); await Promise.resolve(); await Promise.resolve();
   assert.equal(h.eng.alive, true, 'a zero echo before false settlement still cannot start respawn');
   h.advance(GUN_RECOVERY_RETRY_MS);

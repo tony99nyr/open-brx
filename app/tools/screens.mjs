@@ -290,7 +290,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-bolt', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -838,6 +838,23 @@ for (const view of VIEWS) {
     await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1', null, 2300); /* T6 review r2: the old 2.3 s limit */ const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
     must(r.up && r.chips === '0', 'chips visible over the takeover: ' + JSON.stringify(r)); must(after === '1', 'chips stayed hidden after the reload');
   });
+  // BOLT (Tony 2026-10-17 via brx2): a bolt-action lever pull shows a small BOLT cue under the digits, never the RELOADING
+  // takeover, so the player keeps the scope view; the chips and the vitals stay.
+  for (const night of [false, true]) {
+    await step(`${view.name} BOLT ${night ? 'night' : 'day'}: a bolt lever pull shows the BOLT cue, not the RELOADING takeover`, async () => {
+      const pg = await open(view, 'live-bolt', night ? '&night' : '', 3000);
+      const r = await pg.evaluate(() => { const b = document.querySelector('.ammo .bolt'), fr = document.getElementById('frame').getBoundingClientRect(), bb = b && b.getBoundingClientRect();
+        return { cue: !!b, text: b ? b.querySelector('.bk').textContent : null, fs: b ? parseFloat(getComputedStyle(b.querySelector('.bk')).fontSize) : 0,
+          inFrame: !!bb && bb.left >= fr.left && bb.right <= fr.right && bb.bottom <= fr.bottom, takeover: !!document.querySelector('.mo.reloading'),
+          chips: getComputedStyle(document.getElementById('chips')).opacity }; });
+      await pg.screenshot({ path: `${OUT}/${view.name}-bolt-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(r.cue && r.text === 'BOLT' && r.inFrame, 'the BOLT cue must show under the digits: ' + JSON.stringify(r));
+      must(!r.takeover && r.chips === '1', 'no RELOADING takeover, the chips stay: ' + JSON.stringify(r));
+      must(r.fs >= 11, 'BOLT too small: ' + JSON.stringify(r));
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
   await step(`${view.name} breaker-2 a reload does not survive death and respawn`, async () => {
     const pg = await open(view, 'live'); const t0 = Date.now(); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await until(pg, () => window.brx.engine.state().alive && !!document.querySelector('.mo.redeploy'), null, 1400);
     await pg.waitForTimeout(Math.max(0, 1400 - (Date.now() - t0)));   // fixed on purpose (T6 review r2): read 800 ms into the new life, as before, so a RELOADING that comes back late still fails
@@ -3639,7 +3656,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
     await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: heat past the lockout shows the prompt and the full-frame overlay, vitals stay visible, no taps blocked`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
       const r = await heatState(pg);
       must(r.barPresent && r.barHot, `heat 108 must show the heat bar, hot: ${JSON.stringify(r)}`);
       must(r.overlay && r.word === 'OVERHEAT', `heat 108 must show the full-frame OVERHEAT overlay: ${JSON.stringify(r)}`);
@@ -3661,12 +3678,26 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
   }
 }
-await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+// F238 reopened (field 2026-10-17, F226): a charge from a cell below one full charge spikes the heat and fires nothing, and
+// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the word and the prompt.
+await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY, never OVERHEAT', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  const r = await heatState(pg);
+  const note = await pg.evaluate(() => document.querySelectorAll('.ammo .enote').length);
+  must(r.overlay && r.word === 'NOT ENOUGH ENERGY', `the full-frame word must be NOT ENOUGH ENERGY: ${JSON.stringify(r)}`);
+  must(r.prompt === 'NOT ENOUGH ENERGY', `the prompt must be NOT ENOUGH ENERGY, not OVERHEAT: ${JSON.stringify(r)}`);
+  must(note === 0, `no second NOT ENOUGH ENERGY note under the digits: ${note}`);
+  const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+  await pg.screenshot({ path: `${OUT}/se-starved-overheat.png` });
+  await pg.close();
+});
+await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 0);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
   r = await heatState(pg);
   must(!r.overlay, `heat back to 0 must clear the full-frame overlay: ${JSON.stringify(r)}`);
   must(r.prompt !== 'OVERHEAT', `heat back to 0 must clear the OVERHEAT prompt: ${JSON.stringify(r)}`);
@@ -3682,7 +3713,7 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
 // drive this directly since the demo engine cannot set the new field itself). ----------
 await step('heat bar se: st.overheatShown, once set, overrides the stale st.overheating field', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
   // a stale-but-true st.overheating with overheatShown explicitly false must hide the takeover
@@ -3701,7 +3732,7 @@ await step('heat bar se: st.overheatShown, once set, overrides the stale st.over
 // text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
 await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload.hot'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
   must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OVERHEAT: ${JSON.stringify(r)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OVERHEAT, not the bright day block: ${JSON.stringify(r)}`);
@@ -3979,21 +4010,27 @@ for (const view of VIEWS) {
 }
 
 // ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
+// F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
+    for (const [cell, word] of [[12, 'OVERHEAT'], [3, 'NOT ENOUGH ENERGY']]) {
+    await step(`${tag} ${word} ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, cell, 108);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
-        return { word: rect(document.querySelector('.heatword')), pill: rect(pill) };
+        const w = document.querySelector('.heatword');
+        return { word: rect(w), text: w ? w.textContent : null, pill: rect(pill), vw: innerWidth };
       });
-      await pg.screenshot({ path: `${OUT}/${tag}-overheat-weapons-hot-${night ? 'night' : 'day'}.png` });
+      await pg.screenshot({ path: `${OUT}/${tag}-${cell < 10 ? 'starved' : 'overheat'}-weapons-hot-${night ? 'night' : 'day'}.png` });
       await pg.close();
       must(r.word && r.pill, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
-      must(apart(r.word, r.pill), `OVERHEAT and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
+      must(r.text === word, `a cell of ${cell} must read ${word}: ${JSON.stringify(r)}`);
+      must(r.word.l >= 0 && r.word.r <= r.vw, `${word} must fit the screen width: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.pill), `${word} and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
     });
+    }
   }
 }
 
@@ -4094,7 +4131,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
       const pg = await open(view, 'live', night ? '&night' : '');
       await pg.evaluate(() => window.brxDemo.smoke());
       await settled(pg);
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const word = document.querySelector('.heatword'), aim = document.querySelector('.aimfx');

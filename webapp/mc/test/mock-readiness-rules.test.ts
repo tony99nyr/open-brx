@@ -87,10 +87,14 @@ describe('server readiness rules in the mock', () => {
   it('truncates the host notice after six off-grid names and honours full coverage', () => {
     const offGrid = ['PLAYER2', 'PLAYER3', 'PLAYER4', 'PLAYER5', 'PLAYER6', 'PLAYER7', 'PLAYER8'];
     const cfg = { mode: 'tdm', scoring: { win_by: 'kills' as const, frag_limit: 10 }, coverage: 'partial' as const };
-    expect(sessionNoticesMcVerify(cfg, offGrid)).toBe(
-      'WIN IS CONFIRMED AT MC, 7 PHONES OFF-GRID (PLAYER2, PLAYER3, PLAYER4, PLAYER5, PLAYER6, PLAYER7 +1 MORE): TELL PLAYERS TO RETURN AFTER THE WHISTLE');
-    expect(sessionNoticesMcVerify({ ...cfg, coverage: 'full' }, offGrid)).toBeUndefined();
-    expect(sessionNoticesMcVerify({ ...cfg, scoring: { ...cfg.scoring, frag_limit: null } }, offGrid)).toBeUndefined();
+    expect(sessionNoticesMcVerify(cfg, offGrid, 8)).toBe(
+      'WIN IS CONFIRMED AT MC, 7 PHONES WITH NO ROUTE BACK (PLAYER2, PLAYER3, PLAYER4, PLAYER5, PLAYER6, PLAYER7 +1 MORE): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE');
+    expect(sessionNoticesMcVerify(cfg, offGrid.slice(0, 1), 8)).toBe(
+      'WIN IS CONFIRMED AT MC, 1 PHONE WITH NO ROUTE BACK (PLAYER2): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE');
+    expect(sessionNoticesMcVerify(cfg, offGrid, 7)).toBe(
+      'WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE');
+    expect(sessionNoticesMcVerify({ ...cfg, coverage: 'full' }, offGrid, 8)).toBeUndefined();
+    expect(sessionNoticesMcVerify({ ...cfg, scoring: { ...cfg.scoring, frag_limit: null } }, offGrid, 8)).toBeUndefined();
   });
 
   it('serves the teams selected in the current config', async () => {

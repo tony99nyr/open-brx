@@ -30,7 +30,7 @@ function live() {
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team, roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster: [] } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick(); eng.feedFrame('$LCD,45,70,0,0,36,216,*');
   assert.equal(eng.phase, 'live');
