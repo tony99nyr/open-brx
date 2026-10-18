@@ -8,7 +8,7 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
-import { sitesNote } from './objective';
+import { possessionSource, sitesNote } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -643,9 +643,17 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
         )}
         {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
             `thin` says, though it used to render amber under 75%. */}
-        <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-          BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
-        </Alert>
+        {/* Milestone review 2026-10-18: a site the station counted is the authority, not a floor (F555, objective.ts `possessionSource`) */}
+        {(p.station_sites ?? 0) > 0 && (
+          <Alert id="recap-possession-station" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+            {possessionSource(p, 'HILL')}
+          </Alert>
+        )}
+        {(p.station_sites ?? 0) < p.sites && (
+          <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+            BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+          </Alert>
+        )}
       </div>
     </div>
   );

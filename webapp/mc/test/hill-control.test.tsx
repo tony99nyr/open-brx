@@ -20,13 +20,13 @@ const txt = (m: { find(s: string): HTMLElement[] }, id: string) => m.find(`[data
 const btn = (m: { find(s: string): HTMLElement[] }, label: string) => m.find(`button[aria-label="${label}"]`)[0] as HTMLButtonElement;
 
 describe('HillControl', () => {
-  it('starts at STATION DEFAULT, steps from the station default, and CLEAR returns to it', async () => {
+  it('starts at SET ON THE HILL, steps from the station default, and CLEAR returns to it', async () => {
     const calls: unknown[] = [];
     let hill: { capture_s?: number; net_cap?: number } | undefined;
     const view = () => <HillControl hill={hill} onChange={p => { calls.push(p); hill = { ...hill, ...p } as typeof hill; }} />;
     const m = await mount(view());
-    expect(txt(m, 'match-hill-capture-value')).toBe('STATION DEFAULT');
-    expect(txt(m, 'match-hill-net-value')).toBe('STATION DEFAULT');
+    expect(txt(m, 'match-hill-capture-value')).toBe('SET ON THE HILL');
+    expect(txt(m, 'match-hill-net-value')).toBe('SET ON THE HILL');
     expect(btn(m, 'hill capture time clear').disabled, 'nothing to clear yet').toBe(true);
     await act(async () => { btn(m, 'hill capture time plus').click(); });
     await act(async () => { btn(m, 'hill net cap plus').click(); });
@@ -39,11 +39,11 @@ describe('HillControl', () => {
     await act(async () => { btn(m, 'hill net cap clear').click(); });
     expect(calls[3]).toEqual({ net_cap: null });
     await m.update(view());
-    expect(txt(m, 'match-hill-net-value')).toBe('STATION DEFAULT');
+    expect(txt(m, 'match-hill-net-value')).toBe('SET ON THE HILL');
     m.unmount();
   });
 
-  it('a minus from STATION DEFAULT starts one below the default, and the bounds disable the steppers', async () => {
+  it('a minus from SET ON THE HILL starts one below the default, and the bounds disable the steppers', async () => {
     const calls: unknown[] = [];
     const m = await mount(<HillControl hill={undefined} onChange={p => calls.push(p)} />);
     await act(async () => { btn(m, 'hill capture time minus').click(); });
@@ -71,7 +71,7 @@ describe('PLAY — the HILL strip item', () => {
     const api = new MockBackend();
     await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
     const m = await renderPlay(api);
-    expect(txt(m, 'match-hill-capture-value')).toBe('STATION DEFAULT');
+    expect(txt(m, 'match-hill-capture-value')).toBe('SET ON THE HILL');
     m.unmount();
   });
 
@@ -139,17 +139,17 @@ describe('LOBBY and ITEMS — the hill values in force', () => {
     return { api, state: hill ? s : { ...s, config: { ...s.config, hill: undefined } } };
   }
 
-  it('LOBBY reads the set values and STATION DEFAULT for an absent key', async () => {
+  it('LOBBY reads the set values and SET ON THE HILL for an absent key', async () => {
     const { api, state } = await kothState({ capture_s: 15 });
     const m = await mountScreen(<Lobby />, { state, view: 'lobby', api: fixtureApi({}, api as unknown as Api) });
-    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE 15 S · NET CAP STATION DEFAULT');
+    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE 15 S · NET CAP SET ON THE HILL');
     m.unmount();
   });
 
-  it('LOBBY reads one HILL: STATION DEFAULT with no config.hill (an older server), and shows nothing outside KOTH', async () => {
+  it('LOBBY reads one HILL: PACE SET ON EACH HILL with no config.hill (an older server), and shows nothing outside KOTH', async () => {
     const { state } = await kothState();
     const m = await mountScreen(<Lobby />, { state, view: 'lobby' });
-    expect(txt(m, 'hill-readout')).toBe('HILL: STATION DEFAULT');
+    expect(txt(m, 'hill-readout')).toBe('HILL: PACE SET ON EACH HILL');
     m.unmount();
     const t = await kothState(undefined, 'tdm');
     const m2 = await mountScreen(<Lobby />, { state: t.state, view: 'lobby' });
@@ -171,7 +171,7 @@ describe('LOBBY and ITEMS — the hill values in force', () => {
 });
 
 describe('F559 review fixes', () => {
-  it('LAST MATCH recorded at STATION DEFAULT clears the hill now in force', async () => {
+  it('LAST MATCH recorded at SET ON THE HILL clears the hill now in force', async () => {
     const api = new MockBackend();
     await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
     await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
@@ -238,10 +238,10 @@ describe('F559 review fixes', () => {
     await api.createFavourite({ name: 'Good', countdown_s: 30, pick: { ...pick, match: { ...pick.match, hill: { capture_s: 20 } } } });
   });
 
-  it('the readout reads one STATION DEFAULT when neither key is set, the long form when one is', () => {
-    expect(hillReadoutText({ mode: 'koth' })).toBe('HILL: STATION DEFAULT');
-    expect(hillReadoutText({ mode: 'koth', hill: {} })).toBe('HILL: STATION DEFAULT');
-    expect(hillReadoutText({ mode: 'koth', hill: { net_cap: 4 } })).toBe('HILL: CAPTURE STATION DEFAULT · NET CAP 4');
+  it('the readout reads one SET ON THE HILL when neither key is set, the long form when one is', () => {
+    expect(hillReadoutText({ mode: 'koth' })).toBe('HILL: PACE SET ON EACH HILL');
+    expect(hillReadoutText({ mode: 'koth', hill: {} })).toBe('HILL: PACE SET ON EACH HILL');
+    expect(hillReadoutText({ mode: 'koth', hill: { net_cap: 4 } })).toBe('HILL: CAPTURE SET ON THE HILL · NET CAP 4');
     expect(hillReadoutText({ mode: 'tdm', hill: { net_cap: 4 } })).toBeNull();
   });
 });

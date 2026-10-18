@@ -10,6 +10,19 @@ import { fmtDuration } from '../tokens';
 export const heldSeconds = (lv: Pick<LiveView, 'possession'>, teamId: string): number | null =>
   lv.possession ? (lv.possession.by_team[teamId] ?? 0) : null;
 
+/** Milestone review 2026-10-18 (brx5): where the held time came from. F555 scores a site on its control station's own tally
+ *  when it reported one (`station_sites`), and that is the authority, not a floor; only a phone-measured site is a floor,
+ *  because only a gun in beacon range sees the hill. `word` is the mode's objective word (HILL). */
+export function possessionSource(p: { sites: number; station_sites?: number }, word: string): string {
+  const st = p.station_sites ?? 0;
+  if (st > 0 && st >= p.sites) {
+    return p.sites > 1 ? `EVERY ${word} COUNTED ITS OWN HOLD TIME; THE PHONES ARE THE CROSS-CHECK.`
+      : `THE ${word} COUNTED ITS OWN HOLD TIME; THE PHONES ARE THE CROSS-CHECK.`;
+  }
+  if (st > 0) return `${st} OF ${p.sites} ${word}S COUNTED THEIR OWN HOLD TIME. THE REST ARE A FLOOR: ONLY A GUN IN RANGE SEES THE ${word}.`;
+  return `ONLY A GUN IN RANGE SEES THE ${word}, SO THIS IS A FLOOR.`;
+}
+
 /** F556: `by_team` adds every hill that reported, so with two a team can pass the match length; `of_s` stays the match
  *  length. The note LIVE, RECAP and SPECTATE show then, or null for one hill. `sites` counts the hills that reported. */
 export function sitesNote(p: { sites: number; of_s: number | null } | null | undefined): string | null {

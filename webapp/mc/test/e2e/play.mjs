@@ -520,11 +520,11 @@ step('stepper-width', async ({ browser, base }) => {
   await until(() => pg2.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item (KOTH)');
   const holdMoved = await walk(pg2, 'hold target minus', 'hold target plus', seq(8, 20));
   expect(holdMoved.length === 0, `HOLD − / + never move, NO TARGET through double digits (saw ${JSON.stringify(holdMoved)})`);
-  // F559: HILL on the same KOTH page: STATION DEFAULT -> 9 S -> floor 3 S (one digit) -> 20 S, and NET CAP across its range.
+  // F559: HILL on the same KOTH page: SET ON THE HILL -> 9 S -> floor 3 S (one digit) -> 20 S, and NET CAP across its range.
   const captureMoved = await walk(pg2, 'hill capture time minus', 'hill capture time plus', seq(7, 17));
-  expect(captureMoved.length === 0, `HILL CAPTURE TIME − / + never move, STATION DEFAULT through double digits (saw ${JSON.stringify(captureMoved)})`);
+  expect(captureMoved.length === 0, `HILL CAPTURE TIME − / + never move, SET ON THE HILL through double digits (saw ${JSON.stringify(captureMoved)})`);
   const netMoved = await walk(pg2, 'hill net cap minus', 'hill net cap plus', seq(2, 5));
-  expect(netMoved.length === 0, `HILL NET CAP − / + never move, STATION DEFAULT, 1 through 6 (saw ${JSON.stringify(netMoved)})`);
+  expect(netMoved.length === 0, `HILL NET CAP − / + never move, SET ON THE HILL, 1 through 6 (saw ${JSON.stringify(netMoved)})`);
 
   ok(`every stepper's − / + stay put across its control's range   ${await shot(pg, 'stepper-width')}`);
   await pg.context().close();
@@ -809,7 +809,7 @@ step('real-teams-hold', async ({ browser }) => {
 });
 
 step('real-hill', async ({ browser }) => {
-  // F559: the KOTH HILL item (CAPTURE TIME, NET CAP) against a REAL MC: STATION DEFAULT first, a tap reaches
+  // F559: the KOTH HILL item (CAPTURE TIME, NET CAP) against a REAL MC: SET ON THE HILL first, a tap reaches
   // config.hill, LOBBY reads it back, CLEAR removes the key, a refused pick shows its words and leaves the
   // value alone, and an older server (no `hill` item or key anywhere) still renders both screens.
   const mc = await startRealMC();
@@ -820,16 +820,16 @@ step('real-hill', async ({ browser }) => {
     await pickMode(pg, 'KING OF THE HILL');
     const capV = pg.getByTestId('match-hill-capture-value'), netV = pg.getByTestId('match-hill-net-value');
     await until(() => capV.count().then(n => n > 0), 8000, 'the HILL item (KOTH offers it)');
-    expect((await capV.innerText()) === 'STATION DEFAULT', `CAPTURE TIME starts at STATION DEFAULT (saw ${JSON.stringify(await capV.innerText())})`);
-    expect((await netV.innerText()) === 'STATION DEFAULT', `NET CAP starts at STATION DEFAULT (saw ${JSON.stringify(await netV.innerText())})`);
-    expect(await pg.getByTestId('match-hill-capture-clear').isDisabled(), 'the CAPTURE TIME CLEAR button is disabled at STATION DEFAULT');
-    expect(await pg.getByTestId('match-hill-net-clear').isDisabled(), 'the NET CAP CLEAR button is disabled at STATION DEFAULT');
-    ok('HILL: both values start at STATION DEFAULT with CLEAR disabled');
+    expect((await capV.innerText()) === 'SET ON THE HILL', `CAPTURE TIME starts at SET ON THE HILL (saw ${JSON.stringify(await capV.innerText())})`);
+    expect((await netV.innerText()) === 'SET ON THE HILL', `NET CAP starts at SET ON THE HILL (saw ${JSON.stringify(await netV.innerText())})`);
+    expect(await pg.getByTestId('match-hill-capture-clear').isDisabled(), 'the CAPTURE TIME CLEAR button is disabled at SET ON THE HILL');
+    expect(await pg.getByTestId('match-hill-net-clear').isDisabled(), 'the NET CAP CLEAR button is disabled at SET ON THE HILL');
+    ok('HILL: both values start at SET ON THE HILL with CLEAR disabled');
 
     await pg.getByRole('button', { name: 'hill capture time plus' }).click();
     await until(async () => (await capV.innerText()) === '11 S', 6000, 'CAPTURE TIME to read 11 S');
     await until(async () => (await state()).config.hill?.capture_s === 11, 6000, 'capture_s 11 on the real server');
-    ok('HILL: + from STATION DEFAULT reads 11 S and the real config.hill.capture_s is 11');
+    ok('HILL: + from SET ON THE HILL reads 11 S and the real config.hill.capture_s is 11');
 
     await pg.getByRole('button', { name: 'hill net cap plus' }).click();
     await until(async () => (await netV.innerText()) === '4', 6000, 'NET CAP to read 4');
@@ -872,10 +872,10 @@ step('real-hill', async ({ browser }) => {
     await pg.evaluate(() => { location.hash = '#build'; });
     await until(() => capV.count().then(n => n > 0), 8000, 'PLAY again');
     await pg.getByTestId('match-hill-capture-clear').click();
-    await until(async () => (await capV.innerText()) === 'STATION DEFAULT', 6000, 'CAPTURE TIME back to STATION DEFAULT');
+    await until(async () => (await capV.innerText()) === 'SET ON THE HILL', 6000, 'CAPTURE TIME back to SET ON THE HILL');
     await until(async () => { const h = (await state()).config.hill; return h != null && !('capture_s' in h); }, 6000, 'capture_s gone from the real config.hill');
     expect((await state()).config.hill?.net_cap === 5, 'CLEAR on one key leaves the other (net_cap 5)');
-    ok('HILL: CLEAR returns CAPTURE TIME to STATION DEFAULT and drops capture_s on the server');
+    ok('HILL: CLEAR returns CAPTURE TIME to SET ON THE HILL and drops capture_s on the server');
 
     // The refusal: the real client reads `error` from a 400 body (client.ts `j`).
     await pg.route('**/api/play/pick', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'PROBE REFUSAL' }) }));
@@ -919,8 +919,8 @@ step('real-hill', async ({ browser }) => {
     const oldLine = old.getByTestId('hill-readout');
     await until(() => oldLine.count().then(n => n > 0), 8000, 'the LOBBY readout on the stale server');
     const stale = await oldLine.innerText();
-    expect(stale === 'HILL: STATION DEFAULT', `LOBBY reads one STATION DEFAULT (saw ${JSON.stringify(stale)})`);
-    ok('HILL: a stale server renders PLAY without the item and LOBBY with one STATION DEFAULT');
+    expect(stale === 'HILL: PACE SET ON EACH HILL', `LOBBY reads one SET ON THE HILL (saw ${JSON.stringify(stale)})`);
+    ok('HILL: a stale server renders PLAY without the item and LOBBY with one SET ON THE HILL');
     await old.unrouteAll({ behavior: 'ignoreErrors' });   // a route.fetch still in flight must not outlive the context
     await ctx.close();
   } finally { await vite.stop(); await mc.stop(); }

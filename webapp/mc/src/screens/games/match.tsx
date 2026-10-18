@@ -85,7 +85,7 @@ export function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, c
         </span>
       );
     case 'hill':
-      // F559: a set key goes to every control station; a cleared one is a null, which the server turns back into STATION DEFAULT.
+      // F559: a set key goes to every control station; a cleared one is a null, which the server turns back into SET ON THE HILL.
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>HILL</span>

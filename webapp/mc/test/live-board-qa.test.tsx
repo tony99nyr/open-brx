@@ -78,6 +78,20 @@ describe('H2 · the KOTH board headlines possession', () => {
     r.m.unmount();
   });
 
+  it('milestone 2026-10-18: a hill the station counted is not called a floor; a phone-only hill still is', async () => {
+    let r = await board('live', await kothOver(), [row()], { possession: { ...POSS, station_sites: 1 } });
+    let t = r.m.find('[data-testid="hill-panel"]')[0]?.textContent ?? '';
+    expect(t).toContain('THE HILL COUNTED ITS OWN HOLD TIME; THE PHONES ARE THE CROSS-CHECK.');
+    expect(t, 'no floor wording for a station-counted hill').not.toContain('SO THIS IS A FLOOR');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: { ...POSS, sites: 2, station_sites: 1 } });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('1 OF 2 HILLS COUNTED THEIR OWN HOLD TIME. THE REST ARE A FLOOR');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: POSS });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('ONLY A GUN IN RANGE SEES THE HILL, SO THIS IS A FLOOR.');
+    r.m.unmount();
+  });
+
   it('with no possession reported, the headline is a dash and the panel says why', async () => {
     const { m } = await board('live', await kothOver());
     expect(m.find('[data-team-score="blue"]')[0]?.textContent).toBe('—');

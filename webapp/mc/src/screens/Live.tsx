@@ -8,7 +8,7 @@ import { columnEdges, type Column } from './columns';
 import { Blink, ClockSub, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
-import { heldSeconds, hillOwner, sitesNote } from './objective';
+import { heldSeconds, hillOwner, possessionSource, sitesNote } from './objective';
 import { objectiveWord } from '../rules/scoring';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
@@ -413,7 +413,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
         )}
         {p && (
           <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
-            {p.neutral_s > 0 ? `NEUTRAL ${fmtDuration(p.neutral_s)} · ` : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} · {p.reports} PHONE{p.reports === 1 ? '' : 'S'} REPORTED. ONLY A GUN IN RANGE SEES THE {word}, SO THIS IS A FLOOR.
+            {p.neutral_s > 0 ? `NEUTRAL ${fmtDuration(p.neutral_s)} · ` : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} · {p.reports} PHONE{p.reports === 1 ? '' : 'S'} REPORTED. {possessionSource(p, word)}
             {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
             {sitesNote(p) ? ` ${sitesNote(p)}` : ''}
           </div>

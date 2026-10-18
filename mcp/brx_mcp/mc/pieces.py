@@ -23,7 +23,7 @@ from typing import Any, Callable, Mapping
 
 from ..storage import atomic_write_text, home_dir, load_versioned
 from . import policy as _policy
-from .types import RESPAWN_DELAY_MAX_S   # review #4: the bound Session._merge_config checks
+from .types import RESPAWN_DELAY_MAX_S, WEAPON_DELAY_MS_DEFAULT   # review #4: the bound Session._merge_config checks
 import functools
 
 from .compile import HEALTH_PRESETS, WeaponCatalog, respawn_settings
@@ -82,7 +82,7 @@ def _builtin_pieces() -> list[GamePiece]:
         rows.append(_piece(f"builtin:life:{name_lower}", "life", name_lower.upper(),
                            {"max_hp": hp, "max_armor": armor, "max_shield": shield}))
     rows.append(_piece("builtin:spawn:auto", "spawn", "AUTO",
-                       {"type": "auto", "delay_s": 15, "protect_s": 0, "weapon_delay_ms": 1500}))
+                       {"type": "auto", "delay_s": 15, "protect_s": 0, "weapon_delay_ms": WEAPON_DELAY_MS_DEFAULT}))
     rows.append(_piece("builtin:spawn:station", "spawn", "STATION",
                        {"type": "scanner", "delay_s": 10, "station_protect_s": 2, "gate": "trigger"}))
     _open = _policy.preset_rules("open")   # ALL is exactly the shipped OPEN rules, so it reads back "open"

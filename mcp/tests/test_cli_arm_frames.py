@@ -505,7 +505,7 @@ def test_a_cancel_during_the_hold_still_releases_the_trigger():
         sent.append(list(cmds))
 
     async def hang(s):
-        await asyncio.Event().wait()           # the 500 ms hold, never ending
+        await asyncio.Event().wait()           # the weapon-delay hold (1500 ms since A74), never ending
 
     async def go():
         cli.asyncio.sleep = hang
