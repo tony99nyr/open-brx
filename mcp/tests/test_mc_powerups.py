@@ -836,8 +836,6 @@ def test_f403_the_phone_demo_paints_each_item_in_mc_s_own_colour():
     demo = (Path(__file__).resolve().parents[2] / "app" / "src" / "demo.js").read_text()
     shown = dict(re.findall(r"name: '([A-Z ]+)', color: '(#[0-9a-fA-F]{6})'", demo))
     for row in pu._PRESETS.values():
-        if row["kind"] == "ammo" and row["name"] not in shown:
-            continue   # TODO(brx4): the phone half adds an AMMO demo item to app/src/demo.js; then drop this exemption
         assert shown.get(row["name"]) == row["color"], (row["name"], shown.get(row["name"]), row["color"])
 
 

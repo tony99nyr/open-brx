@@ -527,6 +527,7 @@ export function startDemo({ engine, log }) {
       rockets: { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' },
       rail: { kind: 'weapon', weapon_id: 'rail_gun', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'RAIL GUN', color: '#22d3ee' },
       overshield: { kind: 'overshield', amount: 75, spawn_every_s: 60, first_at_s: 60, name: 'OVERSHIELD', color: '#ff4fd8' },   // F427: moved off the team-purple hue family
+      ammo: { kind: 'ammo', refill: 'spawn', spawn_every_s: 60, first_at_s: 60, name: 'AMMO', color: '#9be22d' },   // A76: MC's own preset and colour
     };
     const PU_WEAP = { 2: '$WEAP,2,2,100,10,0,115,0,,,,,,35,100,1000,850,2,2,2600,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,1,75,100,*',
       3: '$WEAP,3,0,100,6,0,149,0,,,,,,,,1200,850,2,2,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,2,1,75,*' };
@@ -542,7 +543,8 @@ export function startDemo({ engine, log }) {
       // older than PU_ANNOUNCE_LATE_MS, so no AVAILABLE card joins the other stages.
       powerups: (firstOvershield = null) => { const past = it => ({ ...it, first_at_s: -it.spawn_every_s / 2 });
         config.stations = [{ id: 4, kind: 'powerup', item: past(PU.rockets) }, { id: 5, kind: 'powerup', item: past(PU.rail) },
-        { id: 6, kind: 'powerup', item: firstOvershield == null ? past(PU.overshield) : { ...PU.overshield, first_at_s: firstOvershield } }];
+        { id: 6, kind: 'powerup', item: firstOvershield == null ? past(PU.overshield) : { ...PU.overshield, first_at_s: firstOvershield } },
+        { id: 7, kind: 'powerup', item: past(PU.ammo) }];
         config.powerups = [{ weapon_id: 'rocket_launcher', slot: 2 }, { weapon_id: 'rail_gun', slot: 3 }];
         // F403: the BRIEFING's PICKUPS line — one entry per distinct item (powerup-player.js `pu.items()` reads the
         // same `config.stations`), in station order, so a player knows what the game carries before it starts.
