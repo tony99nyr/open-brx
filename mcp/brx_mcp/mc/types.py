@@ -442,7 +442,8 @@ class Scoring(TypedDict):
     frag_limit: int | None
     win_by: WinBy
     # F415: KOTH only. The first team to hold the hill this long wins; else the most possession at the
-    # clock. Absent or None = no target (the pre-F415 rule).
+    # clock. Absent or None = no target (the pre-F415 rule). F572: with two or more hills the time held is
+    # summed across the hills (Tony 2026-10-18).
     hold_target_s: NotRequired[int | None]
 
 

@@ -1038,7 +1038,7 @@ export class MockBackend implements Api {
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
     const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
-    const holdWarning = holdTargetWarning(this.config);
+    const holdWarning = holdTargetWarning(this.config, Object.values(this.stations).filter(st => st.assigned?.kind === 'control').length);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {
       this.cachedCoverageLevel = coverage.level;

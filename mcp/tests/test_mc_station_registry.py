@@ -34,7 +34,7 @@ def _registry(*, now_ms=lambda: 100_000, config=None, nodes=None, phase="muster"
         _operator_t_match=lambda now: 0, in_play=in_play or (lambda: False), is_adopted=lambda: False,
     )
     changes = SimpleNamespace(
-        _after_station_change=lambda slots, pickups=None: None, _brief_pickups=lambda: [],
+        _after_station_change=lambda slots, brief=None: None, _brief_key=lambda: None,
         _changed=lambda: None, _refuse_station_change_in_play=lambda: None,
         _validate=lambda roster=None: {},
     )

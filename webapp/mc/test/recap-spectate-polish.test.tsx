@@ -52,6 +52,16 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('ADDS UP');
   });
 
+  it('F572: two hills with a hold target say the target is summed across hills; one hill does not', async () => {
+    const d = await demo();
+    const target = { config: { ...d.state!.config, mode: 'koth', scoring: { ...d.state!.config.scoring, win_by: 'objective' as const, hold_target_s: 120 } } };
+    let m = await recap(target, { possession: { ...HELD, by_team: { blue: 50, yellow: 70 }, sites: 2 } });
+    expect(strip(m.find('[data-alert="recap-possession-sites"]')[0]?.textContent ?? '')).toContain('THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.');
+    m.unmount();
+    m = await recap(target, { possession: HELD });
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('SUMMED ACROSS HILLS');
+  });
+
   it('milestone 2026-10-18: a station-counted hill gets the station line and no floor caveat; a mixed match one floor line', async () => {
     let m = await recap({}, { possession: { ...HELD, station_sites: 1, phones_by_team: { yellow: 200 } } });
     const line = strip(m.find('[data-alert="recap-possession-station"]')[0]?.textContent ?? '');

@@ -299,11 +299,14 @@ export function compilerWarnings(config: ConfigView, players: Player[], weapons:
   return compilerValidation(config, players, weapons, covered).warnings;
 }
 
-// Port of state.py Session._validate(): a hold target at the time limit cannot end a match.
-export function holdTargetWarning(config: ConfigView): string | null {
+// Port of state.py Session._validate(): a hold target at the time limit cannot end a match. F572: the target counts
+// the time summed across hills, so `hills` assigned CONTROL stations can bank `hills` times the limit.
+export function holdTargetWarning(config: ConfigView, hills = 1): string | null {
   const hold = config.scoring.hold_target_s;
   const limit = config.time_limit_s;
-  if (!Number.isInteger(hold) || !Number.isInteger(limit) || hold == null || limit == null || hold < limit) return null;
+  const n = Math.max(1, hills);
+  if (!Number.isInteger(hold) || !Number.isInteger(limit) || hold == null || limit == null || hold < limit * n) return null;
   const mmss = (value: number) => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
-  return `SETUP: THE HOLD TARGET (${mmss(hold)}) IS AT OR PAST THE TIME LIMIT (${mmss(limit)}): THE MATCH WILL ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT`;
+  const past = n === 1 ? `THE TIME LIMIT (${mmss(limit)})` : `THE TIME LIMIT (${mmss(limit)}) TIMES ${n} HILLS`;
+  return `SETUP: THE HOLD TARGET (${mmss(hold)}) IS AT OR PAST ${past}: THE MATCH WILL ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT`;
 }

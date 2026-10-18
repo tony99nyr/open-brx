@@ -16,7 +16,7 @@ import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { PowerupsLobbyLine } from '../ui/Powerups';
 import { ARM_TIMEOUT_MS } from './OperatorMenu';
-import { operatorNote } from './operatorNote';
+import { hillCount, operatorNote } from './operatorNote';
 
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
  *  (`_refuse_push_in_play`), `ready_all` and a re-team all refuse in ARMED and LIVE, so LOBBY there is
@@ -233,7 +233,7 @@ export function Lobby() {
   // QA-04 (visual QA round 1, 2026-09-26): the same operator note PLAY shows beside the mode picker
   // (`Games.tsx`) -- "the last reminder before players scatter" (games-redesign.md §9) -- so it has to
   // survive the tab switch too, not just be true the moment the game was picked.
-  const note = operatorNote(state.config);
+  const note = operatorNote(state.config, hillCount(state.stations));
 
   // QA-02 (visual QA round 1, 2026-09-26): ONE outcome line for "are the guns ready", read straight off
   // the readiness board -- the same rows `faults`/`redRows`/`waitRows` above already read, so this can

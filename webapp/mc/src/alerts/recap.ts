@@ -32,9 +32,9 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
   'recap-possession-thin': { sev: 'neutral', why: 'a measurement caveat, not a fault',
     text: 'BEST COVERAGE {dur} OF {dur2}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, '
       + 'NOT A FULL ACCOUNT.' },
-  // F556: why a two-hill match can read more held time than its length. A fact about the sum, not a fault.
+  // F556: why a two-hill match can read more held time than its length. A fact about the sum, not a fault. F572: the hold-target sentence shows only when a target is set.
   'recap-possession-sites': { sev: 'neutral',
-    text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH.' },
+    text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH. THE {dur3} HOLD TARGET IS SUMMED ACROSS HILLS.' },
   // milestone review 2026-10-18: a site the hill station counted itself (F555) is the authority, not a floor
   'recap-possession-station': { sev: 'neutral',
     text: '{who} COUNTED ITS OWN HOLD TIME. PHONES SAW {team} {dur} · {team2} {dur2}.' },

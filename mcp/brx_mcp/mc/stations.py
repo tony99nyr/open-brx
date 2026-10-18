@@ -53,8 +53,8 @@ class StationRoster(Protocol):
 
 class StationChanges(Protocol):
     """Session reactions to a station or node change."""
-    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None: ...
-    def _brief_pickups(self) -> list[dict]: ...
+    def _after_station_change(self, slots_before: list[PowerupSlot], brief_before: object = None) -> None: ...
+    def _brief_key(self) -> object: ...
     def _changed(self) -> None: ...
     def _refuse_station_change_in_play(self) -> None: ...
     def _validate(self, roster: list[Player] | None = None) -> dict: ...
@@ -555,7 +555,7 @@ class StationRegistry:
         if prev_a and prev_a["kind"] != kind and thr == prev_a["threshold"]:
             thr = 0                            # A67: a new kind starts at its own default, not the old kind's range
         rng = self.range_fields(prev_a, thr, a)   # A67: validates tx_power
-        slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
+        slots_before, brief_before = self.powerup_slots(), self.changes._brief_key()
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
         assignment.update(rng)
@@ -572,7 +572,7 @@ class StationRegistry:
         self.roster.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                            "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
-        self.changes._after_station_change(slots_before, pickups_before)
+        self.changes._after_station_change(slots_before, brief_before)
         self.changes._validate()
         self.changes._changed()
         return self.station_view(nid)
@@ -706,10 +706,10 @@ class StationRegistry:
         if not st:
             return False
         self.changes._refuse_station_change_in_play()
-        slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
+        slots_before, brief_before = self.powerup_slots(), self.changes._brief_key()
         st["assigned"] = None
         st["armed"] = None
-        self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
+        self.changes._after_station_change(slots_before, brief_before)   # the survivors' valid_ids shrink
         self.changes._validate()
         self.changes._changed()
         return True
@@ -751,12 +751,12 @@ class StationRegistry:
                 rec = self._station_recap_row(self.station_view(nid))
                 if rec is not None:
                     self.note_departed_station(nid, rec)
-            slots_before, pickups_before = self.powerup_slots(), self.changes._brief_pickups()
+            slots_before, brief_before = self.powerup_slots(), self.changes._brief_key()
             st["assigned"], st["armed"], st["arm_pending"] = None, None, False
             for k in _STATION_LOCK_KEYS:
                 if k != "boot":                # the last boot seen stays: a restart is judged against it
                     st.pop(k, None)            # A58: a release unlocks the Stick too (utility.md)
-            self.changes._after_station_change(slots_before, pickups_before)   # the survivors' valid_ids shrink
+            self.changes._after_station_change(slots_before, brief_before)   # the survivors' valid_ids shrink
             self.changes._validate()                       # ...and the SETUP warnings tell the truth again
             self.changes._changed()
         return ok

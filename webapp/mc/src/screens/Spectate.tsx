@@ -168,7 +168,7 @@ export function Spectate() {
             : <span data-alert="spectate-hill-owner-none" data-sev="neutral">OWNER NOT REPORTED LIVE</span>}
           {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}`
             : <span data-alert="spectate-no-possession-yet" data-sev="neutral">NO POSSESSION REPORTED YET</span>}
-          {sitesNote(lv.possession) && <span data-spectate-sites="1">{' · '}{sitesNote(lv.possession)}</span>}
+          {sitesNote(lv.possession, state.config.scoring.hold_target_s) && <span data-spectate-sites="1">{' · '}{sitesNote(lv.possession, state.config.scoring.hold_target_s)}</span>}
         </div>
       )}
       <div style={{ display: 'flex', gap: 22, alignItems: 'stretch', flexWrap: 'wrap',

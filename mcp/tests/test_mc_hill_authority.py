@@ -709,3 +709,28 @@ def test_r4_thinning_keeps_the_first_and_the_newest_rows_dense():
     assert rows[0][0] == 1_000_000, rows[0]
     newest = [at for at, _per in rows[-64:]]
     assert newest == [newest[0] + i * 1000 for i in range(64)], newest[:3]
+
+
+def test_f572_the_hold_target_counts_the_time_summed_across_hills():
+    # Tony 2026-10-18 (F572): "It should add both hills." 70 s on hill A plus 50 s on hill B meets a 120 s target.
+    s, pid, red, _blue = _koth()
+    fired: list[int] = []
+    sc = Scorer("m1", 1_000_000, 600, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+                now_ms=lambda: 1_200_000, win_by="objective", hold_target_s=120, on_limit=fired.append)
+    sc.station_possession("9", {str(red["tid"]): 70_000}, 1_150_000)
+    sc.station_possession("10", {str(red["tid"]): 49_000}, 1_160_000)
+    assert fired == [], "119 s across the two hills is under the target"
+    sc.station_possession("10", {str(red["tid"]): 50_000}, 1_170_000)
+    assert fired == [1_170_000], f"70 s + 50 s did not meet a 120 s target: {fired}"
+    assert sc.possession()["by_team"][red["team_id"]] == 120
+
+
+def test_f572_phone_reports_on_two_hills_also_sum_to_the_hold_target():
+    s, pid, red, _blue = _koth()
+    fired: list[int] = []
+    sc = Scorer("m1", 1_000_000, 600, "koth", s.players, s.teams, {"n1": pid}, {"n1": True},
+                now_ms=lambda: 1_200_000, win_by="objective", hold_target_s=120, on_limit=fired.append)
+    sc.ingest("n1", _poss({str(red["tid"]): 70_000}, site="A"), 1_150_000)
+    assert fired == [], "70 s on one hill is under the target"
+    sc.ingest("n1", _poss({str(red["tid"]): 50_000}, site="B"), 1_160_000)
+    assert fired == [1_160_000], f"70 s + 50 s over phone reports did not meet a 120 s target: {fired}"

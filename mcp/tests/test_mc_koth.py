@@ -798,3 +798,48 @@ def test_forget_limit_reopens_the_hold_target_gate():
     assert sc.limit_reached_t is None
     sc.recheck_limits(1_160_000)
     assert fired == [1_150_000, 1_160_000], f"the reopened gate fires again on a real crossing: {fired}"
+
+
+def test_f572_two_hills_can_reach_a_target_past_the_time_limit_so_it_does_not_warn():
+    """F572 (Tony 2026-10-18, "It should add both hills"): the target counts the time summed across hills, so with two
+    assigned hills a 12:00 target in a 10:00 match can fire, and the warning would be false. It warns only at or past
+    the time limit times the number of assigned hills."""
+    from _session import assign_koth_hill
+    s = _sess("koth")
+    s.set_config({"time_limit_s": 600, "scoring": {"hold_target_s": 720}})
+    assign_koth_hill(s, "util-hill")
+    s._validate()
+    assert any("HOLD TARGET (12:00)" in w for w in s.config_warnings), "CONTROL: one hill still warns"
+    assign_koth_hill(s, "util-hill-2")
+    assert not any("HOLD TARGET" in w for w in s.config_warnings), f"assigning the second hill left the warning: {s.config_warnings}"
+    s.set_config({"scoring": {"hold_target_s": 1200}})
+    assert any("HOLD TARGET (20:00)" in w and "2 HILLS" in w for w in s.config_warnings), s.config_warnings
+
+
+def test_f572_the_phone_brief_says_the_target_is_summed_when_two_hills_are_assigned():
+    from _session import assign_koth_hill
+    s = _sess("koth")
+    s.set_config({"scoring": {"hold_target_s": 300}})
+    assign_koth_hill(s, "util-hill")
+    assert s.game_brief()["win_text"] == "FIRST TO HOLD 5:00 WINS", "CONTROL: one hill is unchanged"
+    assign_koth_hill(s, "util-hill-2")
+    assert s.game_brief()["win_text"] == "FIRST TO HOLD 5:00 SUMMED ACROSS HILLS WINS", s.game_brief()["win_text"]
+
+
+def test_f572_assigning_or_clearing_a_second_hill_resends_the_phone_brief():
+    """Codex review of 9c8bb8b9d: the win text depends on the hill count, so a bound phone must hear a hill added or
+    cleared before the match, or it keeps the old WIN row."""
+    import json
+    from _session import assign_koth_hill, mk_session, online
+    s, net, clock, ps = mk_session(1, mode="koth")
+    s.set_config({"scoring": {"hold_target_s": 300}})
+    online(s, net, clock, ps[0], 0)
+    assign_koth_hill(s, "util-hill")
+    n = len(net.pushes("assign"))
+    assign_koth_hill(s, "util-hill-2")
+    sent = net.pushes("assign")[n:]
+    assert sent and "FIRST TO HOLD 5:00 SUMMED ACROSS HILLS WINS" in json.dumps(sent[-1][2]), "the second hill did not reach the phone"
+    n = len(net.pushes("assign"))
+    s.clear_station("util-hill-2")
+    sent = net.pushes("assign")[n:]
+    assert sent and "FIRST TO HOLD 5:00 WINS" in json.dumps(sent[-1][2]), "clearing the second hill did not reach the phone"

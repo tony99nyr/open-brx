@@ -1360,7 +1360,9 @@ class Session:
         elif scoring.get("win_by") == "objective" and (hold := scoring.get("hold_target_s")):
             # F415: the KOTH hold target, the same text shape as the kills-mode cap above -- the phone's
             # existing BRIEFING WIN row (`app/src/hud/hud.js`) renders `win_text` verbatim, no app change.
-            win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d} WINS"
+            # F572 (Tony 2026-10-18): with two or more hills assigned, the target counts the time summed across them
+            hills = sum(1 for _nid, a in self.station_registry.assignments() if a.get("kind") == "control")
+            win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d}{' SUMMED ACROSS HILLS' if hills > 1 else ''} WINS"
         else:
             win_text = mode.get("win_text")
         return {
@@ -2602,13 +2604,17 @@ class Session:
         # would be a promise the config cannot keep. A config error would refuse the pick outright; this
         # is playable (the clock still ends it, exactly as a mode with no target does), so it is a
         # warning, not a 400.
+        # F572 (Tony 2026-10-18, "It should add both hills"): the target counts the time summed across hills, so n
+        # assigned hills can bank n times the time limit, and only a target at or past that can never fire.
         scoring = self.config.get("scoring") or {}
         hts, tl = scoring.get("hold_target_s"), self.config.get("time_limit_s")
-        if isinstance(hts, int) and not isinstance(hts, bool) and isinstance(tl, int) and not isinstance(tl, bool) and hts >= tl:
+        hills = max(1, sum(1 for _nid, a in self.station_registry.assignments() if a.get("kind") == "control"))
+        if isinstance(hts, int) and not isinstance(hts, bool) and isinstance(tl, int) and not isinstance(tl, bool) and hts >= tl * hills:
             def _mmss(s: int) -> str:
                 return f"{s // 60}:{s % 60:02d}"
+            limit = f"THE TIME LIMIT ({_mmss(tl)})" if hills == 1 else f"THE TIME LIMIT ({_mmss(tl)}) TIMES {hills} HILLS"
             self.config_warnings.append(
-                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST THE TIME LIMIT ({_mmss(tl)}): THE MATCH WILL "
+                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST {limit}: THE MATCH WILL "
                 "ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT")
         return res
 
@@ -2784,13 +2790,18 @@ class Session:
     def release_station(self, nid: str) -> bool:
         return self.station_registry.release_station(nid)
 
-    def _after_station_change(self, slots_before: list[PowerupSlot], pickups_before: list[dict] | None = None) -> None:
+    def _brief_key(self) -> object:
+        """The parts of the BRIEFING a station change can move: the PICKUPS line (F403) and, since F572, the WIN row,
+        which says SUMMED ACROSS HILLS once two hills are assigned. `_after_station_change` re-sends on a change."""
+        return (self._brief_pickups(), self.game_brief().get("win_text"))
+
+    def _after_station_change(self, slots_before: list[PowerupSlot], brief_before: object = None) -> None:
         """Re-arm every station and re-push the players' allow-list -- or, when the pickup weapons moved (A56),
         a fresh head for the whole roster, because the spare slots are in the FRAMES, not only the config.
         Never in play: `_repush_stations_to_players` is lobby-only. `set_station`/`clear_station` refuse in
         play, but `release_station` does not: in play it drops the item's slot from `_powerup_slots()` at once,
         and the guns already armed keep the slot in their frames because nothing re-pushes a live gun here."""
-        if pickups_before is None or self._brief_pickups() != pickups_before:   # F403 r2: only when the line changed
+        if brief_before is None or self._brief_key() != brief_before:   # F403 r2: only when the brief changed
             self._resend_brief_pickups()
         if self.station_registry.powerup_slots() != slots_before and self.lobby_pushed and not self.in_play():
             self._fresh_head_repush()              # re-arms the stations too
