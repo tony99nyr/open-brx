@@ -48,12 +48,14 @@ export function HoldControl({ seconds, onChange }: { seconds: number | null; onC
   );
 }
 
-/** F559: KOTH's hill pace. Each of CAPTURE TIME and NET CAP is either STATION DEFAULT (the key is absent: every hill phone keeps
- *  its own +/- value) or a number MC sends to every control station. The first + or - from STATION DEFAULT steps from the
- *  station default (HILL_CAPTURE_S 10, HILL_NET_CAP 3), so one tap shows a real number; CLEAR returns to STATION DEFAULT.
+/** F559: KOTH's hill pace. Each of CAPTURE TIME and NET CAP is either SET ON THE HILL (the key is absent, so MC sends
+ *  nothing) or a number MC sends to every control station. Milestone review 2026-10-18 (brx5): absent does NOT reset a hill
+ *  to the factory pace. The hill keeps whatever it last had, MC's last value included, until someone changes it on the hill,
+ *  so the label names who sets it, not a default. The first + or - from SET ON THE HILL steps from the factory value
+ *  (HILL_CAPTURE_S 10, HILL_NET_CAP 3), so one tap shows a real number; CLEAR returns to SET ON THE HILL.
  *  `onChange` gets a whole-patch value for `pickMatch({ hill })`: the changed key, a null for a cleared one. */
-// Fixed, not min: the value reads "11 S" or "STATION DEFAULT", and a box that grows with its text shoves the − / + pair
-// sideways under the finger (bench 2026-09-28, the QuickPick note below). Wide enough for STATION DEFAULT at this font.
+// Fixed, not min: the value reads "11 S" or "SET ON THE HILL", and a box that grows with its text shoves the − / + pair
+// sideways under the finger (bench 2026-09-28, the QuickPick note below). Wide enough for SET ON THE HILL at this font.
 const HILL_VALUE_W = 172;
 
 export function HillControl({ hill, onChange }: { hill: HillSettings | null | undefined; onChange: (patch: { capture_s?: number | null; net_cap?: number | null }) => void }) {
@@ -71,7 +73,7 @@ export function HillControl({ hill, onChange }: { hill: HillSettings | null | un
 function HillRow({ label, slug, value, unit, def, min, max, onChange }:
   { label: string; slug: string; value: number | undefined; unit: string; def: number; min: number; max: number; onChange: (v: number | null) => void }) {
   const ref = useRef<HTMLSpanElement>(null);
-  const text = value == null ? 'STATION DEFAULT' : `${value}${unit}`;
+  const text = value == null ? 'SET ON THE HILL' : `${value}${unit}`;
   useFlashOnChange(ref, text);
   const step = (dir: 1 | -1) => onChange(Math.max(min, Math.min(max, (value ?? def) + dir)));
   const name = label.toLowerCase();

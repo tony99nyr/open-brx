@@ -8,7 +8,7 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
-import { sitesNote } from './objective';
+import { sitesNote, stationSource } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -374,7 +374,7 @@ export function Recap() {
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />
-      {rc.possession && <Possession p={rc.possession} label={teamLabel} />}
+      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} />}
       {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
@@ -611,7 +611,7 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
  *  a hill mode is won. `reports`/`observed` are shown because possession from a grenade is a LOWER
  *  BOUND — the beacon is IR and only a gun in range hears it (F92), so a match nobody watched reads 0
  *  and must not be dressed up as the result. */
-function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
+function Possession({ p, label, word }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string; word: string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
   return (
@@ -643,9 +643,17 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
         )}
         {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
             `thin` says, though it used to render amber under 75%. */}
-        <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-          BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
-        </Alert>
+        {/* Milestone review 2026-10-18: a site the station counted is the authority, not a floor (F555, objective.ts `possessionSource`) */}
+        {stationSource(p, word, label) && (
+          <Alert id="recap-possession-station" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+            {stationSource(p, word, label)}
+          </Alert>
+        )}
+        {(p.station_sites ?? 0) < p.sites && (
+          <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+            BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+          </Alert>
+        )}
       </div>
     </div>
   );
