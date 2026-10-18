@@ -143,7 +143,7 @@
       "at": "recharge_started",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":36,"armor":0,"shield":54,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"shield","amount":27,"hp":36,"armor":0,"shield":54}}},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,9,9,9,0,10,,*",
         "$GLED,3,3,3,0,10,,*",

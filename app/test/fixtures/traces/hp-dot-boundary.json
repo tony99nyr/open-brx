@@ -109,7 +109,7 @@
       "at": "tick_written",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":62,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"poison":{"ticks":1,"perTick":4},"moment":{"kind":"hit","data":{"dmg":8,"shooter_team":2,"shooter_key":"yellow","sensor":0,"hp":45,"armor":62,"shield":0,"weapon":null}}},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,9,9,9,0,10,,*",
         "$GLED,4,4,4,0,10,,*",

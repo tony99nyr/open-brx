@@ -66,7 +66,7 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
     adv: t => { clock += t; return clock; }, at: t => { clock = t; },
     kit() { eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); eng.onMcMessage({ kind: 'assign', body: { player, team, roster } }); return api; },
     config_() { eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); return api; },
-    echo() { eng.feedFrame('$LCD,0,0,0,0,0,0,*'); return api; },
+    echo() { eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*'); return api; },
     queryConfig() { eng.feedFrame('$QUERY,7,1,45,70,0,,1,0,,0,*'); return api; },
     start(runwayMs = 0) { eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + runwayMs, config_id: golden.config_id, seq: 1, countdown_s: Math.round(runwayMs / 1000) } }); return api; },
     frame(f) { eng.feedFrame(f); return api; },
@@ -1457,7 +1457,7 @@ test('F206 (node half): a $PSET the COMPILER never saw gets a $TID behind it, an
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
@@ -1901,7 +1901,7 @@ test('F86: after an infection flip the gun is TAKEN with the new team\'s frames,
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   const oldRest = golden.gun.take[golden.gun.take.length - 1];
@@ -1918,7 +1918,7 @@ test('F86: after an infection flip the gun is TAKEN with the new team\'s frames,
   const e2 = new Engine({ writer: f => w2.push(...f), emit: () => {}, report: () => {}, now: () => clock2, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
   e2.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   e2.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
-  e2.onMcMessage({ kind: 'config', body: { config, frames: c, roster: [] } }); e2.feedFrame('$LCD,0,0,0,0,0,0,*');
+  e2.onMcMessage({ kind: 'config', body: { config, frames: c, roster: [] } }); e2.feedFrame('$LCD,0,0,0,0,0,0,*'); e2.feedFrame('$ALCD,32,100,0,192,0,*');
   e2.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock2, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock2 += 10; e2.tick(); e2.feedFrame('$HIR,4,0,19,2,9,0,3,*'); e2.feedFrame('$HP,0,0,0,*'); w2.length = 0; clock2 += 8000; e2.tick();
   assert.ok(w2.includes(oldRest));
@@ -1944,7 +1944,7 @@ test('infection: death writes team_flip and emits team_change', () => {
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
@@ -2036,7 +2036,7 @@ test('infection flip resolves the new team from config.teams by tid', () => {
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [] }, voice: 'male' }, team: config.teams[0], roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
@@ -2070,7 +2070,7 @@ test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   h.config_();                                             // MC re-pushes config on a LIVE gun → head re-write
   const headWrites = h.writes.filter(f => f === '$CLEAR,*').length;
   assert.ok(headWrites >= 2, 'head re-written');
-  h.frame('$LCD,0,0,0,0,0,0,*');                            // the head echo
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*');                            // the head echo
   assert.equal(h.eng.shots, 2, 'echo counted as a reset, not a magazine dump');
   h.adv(9000); h.eng.tick(); h.adv(ACC_ECHO_MS + 10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');   // bug 3a: past the revive's echo window (this gun never echoes)
   assert.equal(h.eng.shots, 2, 'the refill is an increase, not shots');
@@ -2175,7 +2175,7 @@ test('head re-write with slot 1 active: echo + refill book 0 shots (activeSlot r
   assert.equal(h.eng.activeSlot, 1); assert.equal(h.eng.shots, 1);
   h.config_();                                             // MC re-pushes config on a LIVE gun → head re-write
   assert.equal(h.eng.activeSlot, 0, '$CLEAR puts the gun on slot 0');
-  h.frame('$LCD,0,0,0,0,0,0,*');
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*');
   h.adv(9000); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   assert.equal(h.eng.shots, 1, 'no phantom shots from the head echo / refill');
   h.frame('$ALCD,6,100,1,24,0,*');
@@ -2790,6 +2790,7 @@ test('ALT raises the swap indicator only with a real second weapon', () => {
   const h = goLive(harness());
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, false, 'single-weapon loadout, no easy_reload: ALT is not a swap');
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   twoWeapons(h).frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, true);
 });
@@ -2834,6 +2835,7 @@ test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not',
 
 test('death clears the swap indicator', () => {
   const h = twoWeapons(goLive(harness()));
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, true);
   h.frame('$HIR,4,0,19,2,24,0,0,*'); h.frame('$HP,0,0,0,*');
@@ -3317,7 +3319,7 @@ test('A11.6 headset in_play=team: the rest frame is the team colour and a hit re
     start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]], hit: [['$HLED,0,2,100,100,10,2,*', 0.5], [teamRest, 0]], respawn: [[golden.headset.respawn[0][0], 0.6], [teamRest, 0]] } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: bundle, roster: h.roster } });
-  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.eng.feedFrame('$ALCD,32,100,0,192,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   assert.equal(h.writes.filter(f => f === teamRest).length >= 1, true, 'start ends on the team colour');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
@@ -3335,7 +3337,7 @@ test('F68: a life with NO hits at all still gets its team colour repainted, on a
     start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]] } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: bundle, roster: h.roster } });
-  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.eng.feedFrame('$ALCD,32,100,0,192,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.writes.length = 0;
   // Just under one interval, ticked repeatedly (never a single tick() call): nothing repaints yet.
   // F68 × A11.6 (merge 2026-09-17): the strip has ONE owner, and the spawn flash was this life's first
@@ -4481,7 +4483,7 @@ test('F68 x A11.6: a deliberate headset paint owns the strip, and the periodic r
     start: [[golden.headset.start[0][0], 0.6], [teamRest, 0]], hit: [['$HLED,0,2,100,100,10,2,*', 0.5], [teamRest, 0]] } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: bundle, roster: h.roster } });
-  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.eng.feedFrame('$ALCD,32,100,0,192,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.eng._lastTeamRepaintAt = h.eng.now();
   // Most of an interval passes, then a HIT paints the strip. That paint is the strip's owner now, so the
   // backstop clock restarts from it: the repaint must NOT fire a moment later on the old schedule.
@@ -4930,6 +4932,101 @@ test('F542 hardware: the next shot\'s $ALCD slot snaps the HUD when the gun did 
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'and the next ALT targets slot 1 again');
 });
 
+// Field 2026-10-17 (report §3.2 cause 2): a round from the OLD slot inside the swap window proves the gun did not swap.
+// `switchTick` used to assume the swap anyway, so the HUD sat on a weapon the gun was not holding.
+test('F542 cause 2: a round on the old slot inside the swap closes it with no swap, and the window never assumes one', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'setup: SWITCHING');
+  h.adv(300); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.switching, false, 'the round on slot 0 closes the card');
+  assert.equal(s.activeSlot, 0, 'the trigger stays on slot 0');
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+  h.adv(900); h.eng.tick();
+  s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the window does not assume the swap over the round');
+  assert.ok(!logs.some(l => /swap to slot 1 assumed/.test(l)), 'no assumed swap is logged');
+  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'the next ALT targets slot 1 again');
+});
+test('F542 cause 2 review: a round in flight past a refused pull inside the swap does not close it', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');      // a pull; its round is still in flight
+  h.adv(20); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');      // ALT: the gun takes it
+  h.adv(10); h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');      // a pull the swapping gun refuses
+  h.adv(20); h.frame('$ALCD,30,100,0,384,0,*');                 // the first pull's round lands, 30 ms after ALT
+  assert.equal(h.eng.state().switching, true, 'an early old-slot round proves nothing');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'the window assumes the swap');
+});
+// Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull.
+test('F542 / F445: ALT before the first trigger pull of a life opens no swap and assumes none', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'no SWITCHING: the gun ignores the press');
+  assert.ok(logs.some(l => /ALT ignored by the gun: no trigger pull since the spawn/.test(l)), 'the reason is logged');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'no assumed swap');
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(200); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'after a pull, ALT opens the swap');
+});
+// Field 2026-10-17 (report E10): the gun's slot correcting the HUD is the player's "ALT switched back"; say so.
+test('F542 E10: a shot that corrects an assumed swap shows GUN WAS ON, and a reload on the other slot does too', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap');
+  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.activeSlot, 0);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap again');
+  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,5,100,1,288,0,*'); h.frame('$BUT,0,0,*');   // the phone sees slot 1 spent... (a missed swap back)
+  assert.equal(h.eng.state().activeSlot, 1);
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: assumed swap to slot 0');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to slot 1, which is not full');
+  h.adv(2000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'the phone opens the reload on slot 1');
+  h.adv(1500); h.frame('$ALCD,30,100,0,383,0,*');
+  s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the reload on slot 0 moves the trigger');
+  assert.notEqual(s.moment.data && s.moment.data.gunWas, true, 'no card under the RELOAD takeover');
+  h.frame('$ALCD,32,100,0,381,0,*');
+  s = h.eng.state();
+  assert.equal(s.reloading, false);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+});
+test('F542 E10 review: a lever the phone refuses (a full slot) and a rise on the other slot shows GUN WAS ON', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to the full slot 1');
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'setup: a full slot opens no reload');
+  h.adv(1500); h.frame('$ALCD,32,100,0,383,0,*');
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 0);
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
+});
+test('F542 review: a pull while the life burst waits in the play queue does not arm ALT for that life', () => {
+  const h = liveSwapHarness();
+  h.eng._lifeBurst = { life: h.eng._lifeSeq, at: h.eng.now(), sent: false, reached: false };   // the revive's `$SPAWN` not on the gun yet
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');
+  h.eng._lifeBurst = null;                                                                        // it reaches the gun
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun still wants a pull after its $SPAWN');
+});
+
 test('M5: a busy magazine query does not delay the spawn read-back', () => {
   const h = liveSwapHarness();
   h.eng._probedLife = null;
@@ -5042,7 +5139,7 @@ test('a silenced bundle (no leds, empty announcer cues, no gun readout) plays no
     gun: { ...h.bundle.gun, readout: { ...h.bundle.gun.readout, pools: [] } } };
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' }); h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: silenced, roster: h.roster } });
-  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
+  h.eng.feedFrame('$LCD,0,0,0,0,0,0,*'); h.eng.feedFrame('$ALCD,32,100,0,192,0,*'); h.start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,61,0,*');
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0);
@@ -5545,7 +5642,7 @@ test('ANTI-CHEAT: force-close alive at low HP → reopen restores that HP, no fa
   a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   a.onMcMessage({ kind: 'assign', body: { player, team, roster: [player] } });
   a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
-  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  a.feedFrame('$LCD,0,0,0,0,0,0,*'); a.feedFrame('$ALCD,32,100,0,192,0,*');
   a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; a.tick();
   a.feedFrame('$HIR,4,0,19,2,60,0,0,*'); a.feedFrame('$HP,10,0,0,*');
@@ -5579,7 +5676,7 @@ test('S7.1 reconcile: a rejoin disarms then re-arms to the real pools — never 
   a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   a.onMcMessage({ kind: 'assign', body: { player, team: cfg.teams[0], roster: [player] } });
   a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
-  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  a.feedFrame('$LCD,0,0,0,0,0,0,*'); a.feedFrame('$ALCD,32,100,0,192,0,*');
   a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; a.tick();
   a.feedFrame('$HIR,4,0,19,2,60,0,0,*'); a.feedFrame('$HP,25,0,0,*');
@@ -5773,7 +5870,7 @@ test('cue pools: a seeded rng picks the expected take, no pool falls back to cue
     eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
     eng.onMcMessage({ kind: 'assign', body: { player, team, roster } });
     eng.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } });
-    eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+    eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
     return { eng, writes, logs, bundle };
   };
   // rng 0.5 -> index floor(0.5 * 5) = 2 -> VA9; the write reason names the take
@@ -6067,7 +6164,7 @@ test('A16 role: infection turning assigns the infected role through headset.role
   const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
-  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
   eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
@@ -7028,7 +7125,7 @@ test('B4/T2-B-1: probeSent survives an app restart mid-match, so the relink rese
   a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   a.onMcMessage({ kind: 'assign', body: { player, team, roster: [player] } });
   a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
-  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  a.feedFrame('$LCD,0,0,0,0,0,0,*'); a.feedFrame('$ALCD,32,100,0,192,0,*');
   assert.ok(a.probeSent, 'the very first connect ran the probe');
   a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   clock += 10; a.tick();
@@ -7231,16 +7328,45 @@ test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that 
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the slot-0 ammo echo is what MC gets');
   assert.equal(ack.b.config_id, h.config.config_id);
-  // ...and the headset proof is untouched: a gun that answered at all answered.
-  assert.equal(h.eng.statusBody().preflight.headset_ok, true);
+  // F550: `headset_ok` is the headset's own reading (BrxLink's probe), never this echo; this rig has no probe.
+  assert.equal(h.eng.statusBody().preflight.headset_ok, false);
 });
 
-test('A36: a gun that only answers $LCD still acks -- with the $LCD (no evidence is not a fault)', () => {
-  const h = harness().kit().config_().echo();
+// F549 (field 2026-10-17): `$LCD,0,0,0,0,0,0` is a gun with no config (protocol `$LCD`). Twice it acked a broken SMG head green.
+test('F549: a gun that answers only a zeroed $LCD acks no_config, never ok', () => {
+  const h = harness().kit().config_();
+  h.frame('$LCD,0,0,0,0,0,0,*');
   h.adv(1600); h.eng.tick(); h.queryConfig();
   const ack = h.reports.find(r => r.k === 'ack_config');
-  assert.equal(ack.b.ok, true);
-  assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*');
+  assert.equal(ack.b.ok, false);
+  assert.equal(ack.b.err, 'no_config');
+});
+test('F549: a malformed or wiped $ALCD proves nothing; a non-zero $LCD or a slot-0 shot after a button does', () => {
+  const bad = harness().kit().config_();
+  bad.frame('$LCD,0,0,0,0,0,0,*'); bad.frame('$ALCD,32,100*');
+  bad.adv(1600); bad.eng.tick();
+  assert.equal(bad.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'a cut frame is no ammo report');
+  const lcd = harness().kit().config_();
+  lcd.frame('$LCD,45,70,0,0,32,96,*');
+  lcd.adv(1600); lcd.eng.tick(); lcd.queryConfig();
+  assert.equal(lcd.reports.find(r => r.k === 'ack_config')?.b.ok, true, 'an $LCD with pools is a configured gun');
+  const cut = harness().kit().config_();
+  cut.frame('$LCD,*');
+  cut.adv(1600); cut.eng.tick();
+  assert.equal(cut.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'an $LCD with no fields proves nothing');
+  const other = harness().kit().config_();
+  other.frame('$LCD,0,0,0,0,0,0,*'); other.frame('$ALCD,1,100,4,0,0,*');
+  other.adv(1600); other.eng.tick();
+  assert.equal(other.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'another slot loading is no proof for slot 0');
+  assert.equal(other.eng.state().configRefused, true, 'the lobby line reads the refusal');
+  const wiped = harness().kit().config_();
+  wiped.frame('$LCD,0,0,0,0,0,0,*'); wiped.frame('$ALCD,0,0,0,0,0,*');   // docs/manual/dev.md: a gun with no config
+  wiped.adv(1600); wiped.eng.tick();
+  assert.equal(wiped.reports.find(r => r.k === 'ack_config')?.b.err, 'no_config', 'the wiped-gun $ALCD is no proof');
+  const shot = harness().kit().config_();
+  shot.frame('$LCD,0,0,0,0,0,0,*'); shot.frame('$BUT,0,1,*'); shot.frame('$ALCD,31,100,0,192,0,*');
+  shot.adv(1600); shot.eng.tick(); shot.queryConfig();
+  assert.equal(shot.reports.find(r => r.k === 'ack_config')?.b.ok, true, 'a slot-0 round proves slot 0 loaded');
 });
 
 test('F271: a head echo starts $QUERY readback and defers ack_config', () => {
@@ -7258,7 +7384,7 @@ test('F271: a valid $QUERY body reports player, team, and pool maxima in ack_con
   const ack = h.reports.find(r => r.k === 'ack_config');
   assert.deepEqual(ack && ack.b.gun_config, { player_id: 7, team: 1, hp: 45, armor: 70, shield: 0 });
   assert.equal(ack.b.ok, true);
-  assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*', 'the existing echo proof remains in the ack');
+  assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the existing echo proof remains in the ack');
 });
 
 test('F271: malformed or missing $QUERY bodies time out to the backward-compatible ack shape', () => {
@@ -7270,7 +7396,7 @@ test('F271: malformed or missing $QUERY bodies time out to the backward-compatib
     h.adv(2601); h.eng.tick();
     const ack = h.reports.find(r => r.k === 'ack_config');
     assert.equal(ack && ack.b.ok, true, 'query readback is optional when the gun does not provide it');
-    assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*');
+    assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
     assert.equal(Object.hasOwn(ack.b, 'gun_config'), false, 'older/malformed replies do not invent readback data');
   }
 });

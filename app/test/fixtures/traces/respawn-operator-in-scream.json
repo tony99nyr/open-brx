@@ -30,7 +30,7 @@
       "at": "live",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$STOP,*",
         "$PHONE,*",
@@ -136,9 +136,9 @@
         "$AMMO,0,32,192,1,*",
         "$AMMO,1,6,24,1,*",
         "$PLAY,,4,6,VAI,,,,*",
-        "$BMAP,0,0,,,,,*",
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",
+        "$BMAP,0,0,,,,,*",
         "$HLED,9,0,,,10,,*"
       ]
     }

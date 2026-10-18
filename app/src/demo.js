@@ -418,7 +418,8 @@ export function startDemo({ engine, log }) {
       // OVERHEAT: the charge rifle, then the gun's own $ALCD at heat 108 (past the lockout), fed until the engine
       // takes it (F259's echo window can swallow a single frame, see screens.mjs `setAmmo`).
       overheat: () => { engine.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; let n = 0;
-        const feed = () => { engine.feedFrame(`$ALCD,3,100,${gunSlot},80,108,*`); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
+        // F238 reopened: a cell of 12, above one 10-round charge; a cell below one charge reads NOT ENOUGH ENERGY, not OVERHEAT
+        const feed = () => { engine.feedFrame(`$ALCD,12,100,${gunSlot},80,108,*`); if (!engine.state().overheatShown && ++n < 25) setTimeout(feed, 200); }; feed(); },
       // F15 stun: the host's `config.stun` on (set before the bundle, see the stage), then one EMP word (proto 8) from VIPER.
       stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).

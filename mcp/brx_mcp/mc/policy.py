@@ -408,6 +408,12 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         sp = [pr_fid] if pr_fid and any(p["perk_id"] == pr_fid for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
+    if pr["choice"] == "fixed" and sp:
+        # F551 (Codex review): a FIXED perk that cannot ride with a weapon (`PerkView.blocked_*`, the compile guards'
+        # own rule) takes that weapon out of the pool, so a pick, a fill or `apply` can never pair them and refuse the push
+        fixed = _perk_row(perks, sp[0]) or {}
+        primary = [w for w in primary if w not in (fixed.get("blocked_primary") or [])]
+        sw = [w for w in sw if w not in (fixed.get("blocked_secondary") or [])]
     pruned_swap: list[str] = []
     if not sw:
         # S37: with no legal secondary there is nothing to switch to, so a swap perk is not a choice —

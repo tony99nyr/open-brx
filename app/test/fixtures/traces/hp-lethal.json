@@ -122,7 +122,7 @@
       "at": "revived",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"redeploy","data":null}},
       "facts": [{"type":"respawn","match_id":"m1"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$IRTX,100,15,7,0,26,0,0,100,1,,0,*",
         "$HLOOP,1,2500,*",
@@ -149,9 +149,9 @@
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":96,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:4"},{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":10,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:5"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2}],
       "reports": [],
       "writes": [
-        "$BMAP,0,0,,,,,*",
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",
+        "$BMAP,0,0,,,,,*",
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$GLED,1,1,1,0,1,,*",

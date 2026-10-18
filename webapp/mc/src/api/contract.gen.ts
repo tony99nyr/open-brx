@@ -128,7 +128,7 @@ export const STATION_BATTERY_LOW = 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WH
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export const STATION_NO_HILL = 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 export const TIMED_PROTECT_S_DEFAULT = 0;
-export const WEAPON_DELAY_MS_DEFAULT = 500;
+export const WEAPON_DELAY_MS_DEFAULT = 1500;
 export const STATION_PROTECT_S_DEFAULT = 2;
 /** A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
  *  STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push. */
@@ -146,11 +146,15 @@ export const SPAWN_KILL_WINDOW_MS = 10000;
  *  contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
  *  Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
  *  phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
- *  bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
- *  sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
- *  2026-09-28, about 30 cm. sticks3 control -75: UNPROVEN, Sitting B 2026-09-25, a 5-7 m target. Any other Stick
- *  kind takes the Stick respawn value. */
-export const STATION_DEFAULT_THRESHOLD_DBM = { phone: { respawn: -70, powerup: -55, extraction: -74, bomb: -74, control: -75 }, sticks3: { respawn: -57, powerup: -45, extraction: -57, bomb: -57, control: -75 } } as const;
+ *  bench 4.11. phone control -78: F383's -75 (Tony 2026-09-27), then the hill 10% larger (Tony 2026-10-17). Any other
+ *  phone kind -74. sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434,
+ *  Tony 2026-09-28, about 30 cm. sticks3 control -78: UNPROVEN, Sitting B 2026-09-25 set -75 for a 5-7 m target, then the
+ *  same +10%. Any other Stick kind takes the Stick respawn value.
+ *  The +10% (field 2026-10-17, report 3.7): F383's flat-phone ladder reads -74 at 5 m and -86 at 7.5 m, so at the circle
+ *  edge the path-loss exponent is n = 12 / (10 log10 1.5) = 6.8. A radius 1.1x wider is 10 n log10 1.1 = 2.8 dB weaker,
+ *  so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. The n is
+ *  from the PHONE ladder only (a confounded bench); the Stick hears players over another path, so its 10% is unproven. */
+export const STATION_DEFAULT_THRESHOLD_DBM = { phone: { respawn: -70, powerup: -55, extraction: -74, bomb: -74, control: -78 }, sticks3: { respawn: -57, powerup: -45, extraction: -57, bomb: -57, control: -78 } } as const;
 /** A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
  *  Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at
  *  STATION_DEFAULT_THRESHOLD_DBM["sticks3"]["control"]. Its own constant, so retuning the Stick respawn does not move it. */
@@ -160,7 +164,7 @@ export const STICK_HILL_ADVERT_THRESHOLD_DBM = -57;
 export const PHONE_RESPAWN_THRESHOLD_DBM = -70;
 export const PHONE_STATION_THRESHOLD_DBM = -74;
 export const PHONE_POWERUP_THRESHOLD_DBM = -55;
-export const PHONE_CONTROL_THRESHOLD_DBM = -75;
+export const PHONE_CONTROL_THRESHOLD_DBM = -78;
 /** Cross-lane review #7: the powerup claim advert carries the station id in ONE byte, so a powerup station's id is 1..this
  *  (a respawn or hill station keeps 1..65535). MC refuses a larger one; the Stick and the phones read the same constant. */
 export const POWERUP_STATION_ID_MAX = 255;
@@ -398,7 +402,7 @@ export const STATION_GATED_MODES: readonly string[] = ["bomb","cs","ctf","domina
 /** Allowed timed respawn protection seconds (types.py). */
 export const TIMED_PROTECT_S_OPTIONS: readonly number[] = [0,1,2];
 /** Allowed respawn weapon delays (types.py). */
-export const WEAPON_DELAY_MS_OPTIONS: readonly number[] = [500,1000,3000];
+export const WEAPON_DELAY_MS_OPTIONS: readonly number[] = [500,1000,1500,3000];
 /** Allowed station respawn protection seconds (types.py). */
 export const STATION_PROTECT_S_OPTIONS: readonly number[] = [0,2,3];
 /** Catalogue order and raw weapon fields read by the mock (weapons.json). */
@@ -437,7 +441,7 @@ export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'r
  *  timed: seconds of `$TMP` t8 = -100 after `$SPAWN`; 0 = no `$TMP` at all */
 export type TimedProtectS = 0 | 1 | 2;
 /** timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN` */
-export type WeaponDelayMs = 500 | 1000 | 3000;
+export type WeaponDelayMs = 500 | 1000 | 1500 | 3000;
 /** station: seconds of t8 = -100; the trigger is live at once */
 export type StationProtectS = 0 | 2 | 3;
 export type WinBy = 'kills' | 'survival' | 'objective';
@@ -774,6 +778,11 @@ export interface PerkView {
   cost: string[];
   verified: boolean;
   hidden: boolean;
+  /** F551 (field 2026-10-17): the weapon ids this perk cannot ride with as the primary / the secondary -- the same rule
+   *  the compile guards refuse a push on (`Compiler.perk_block_reason`). A kit picker hides the perk for those.
+   *  Absent from an older MC: hide nothing. */
+  blocked_primary?: string[];
+  blocked_secondary?: string[];
 }
 
 /** S50 build 4: a wire number before and after a perk touched it. Integers, always both present

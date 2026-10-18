@@ -760,7 +760,7 @@ class StationRegistry:
         """F345: the `station_config.threshold` one station is sent. 0 means "your own platform default", but a phone
         app older than PHONE_THRESHOLD_ZERO_APP clamps 0 to -30 dBm (a few cm: no revive is possible). Such a phone,
         or one whose version MC cannot parse, gets the explicit value instead: the new phone respawn default for a
-        respawn station, F383's -75 for a control (hill) station, the old -74 for any other kind. A StickS3
+        respawn station, F383's -75 made 10% larger, -78, for a control (hill) station, the old -74 for any other kind. A StickS3
         (platform `esp32`) has always read 0 correctly."""
         thr = a["threshold"]
         if thr != 0 or is_stick({**st, "node_id": nid}):

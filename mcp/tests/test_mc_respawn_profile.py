@@ -38,7 +38,7 @@ def _raises(fn, text):
 
 def test_defaults_timed_writes_no_tmp_and_holds_the_trigger():
     rp = _bundle()["respawn_profile"]
-    assert (rp["protect_ms"], rp["trigger_ms"], rp["station_protect_ms"]) == (0, 500, 2000)
+    assert (rp["protect_ms"], rp["trigger_ms"], rp["station_protect_ms"]) == (0, 1500, 2000)
     assert not [f for f in rp["revive"] if f.startswith("$TMP")]
     assert _after_spawn(rp["revive"])[0].startswith("$TID,")
     assert TRIGGER_HELD in rp["revive"] and TRIGGER_LIVE not in rp["revive"]
@@ -95,10 +95,10 @@ def test_infection_flips_use_the_timed_profile():
 
 def test_settings_refuse_values_outside_the_options():
     _raises(lambda: respawn_settings({"protect_s": 5}), "respawn.protect_s must be one of 0, 1, 2")
-    _raises(lambda: respawn_settings({"weapon_delay_ms": 700}), "respawn.weapon_delay_ms must be one of 500, 1000, 3000")
+    _raises(lambda: respawn_settings({"weapon_delay_ms": 700}), "respawn.weapon_delay_ms must be one of 500, 1000, 1500, 3000")
     _raises(lambda: respawn_settings({"station_protect_s": 1}), "respawn.station_protect_s must be one of 0, 2, 3")
     _raises(lambda: respawn_settings({"protect_s": True}), "respawn.protect_s")
-    assert respawn_settings(None) == (0, 500, 2000)
+    assert respawn_settings(None) == (0, 1500, 2000)
 
 
 def test_the_guard_refuses_a_timed_list_that_maps_the_trigger_or_a_trigger_inside_protection():

@@ -1027,7 +1027,7 @@ export class MockBackend implements Api {
     // The server retains the same node record after disconnect. Readiness can say "none" while
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
-    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
     const holdWarning = holdTargetWarning(this.config);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {
@@ -2260,6 +2260,15 @@ export class MockBackend implements Api {
       if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
       const cc = chainConflict(lo, WEAPONS);   // Codex r1: MC refuses Easy Reload on a chain-reload weapon (policy.py)
       if (cc) throw new Error(`${WEAPONS.find(w => w.weapon_id === cc.weapon)?.name ?? cc.weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it`);
+    }
+    if (patch.loadout?.perk) {
+      // F551, as state.py `_check_loadout`: a perk the push would refuse with these weapons is dropped, not kept
+      const k = PERKS.find(x => x.perk_id === patch.loadout!.perk);
+      const w0 = patch.loadout.weapons[0]?.weapon_id, w1 = patch.loadout.weapons[1]?.weapon_id;
+      if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1)))) {
+        const { perk: _dropped, ...rest } = patch.loadout;
+        patch = { ...patch, loadout: rest };
+      }
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];

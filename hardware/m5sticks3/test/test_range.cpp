@@ -315,14 +315,14 @@ static StationLink armed_hill_defaulted(uint32_t at_ms = 0) {
   return link;
 }
 
-// A defaulted control station (MC sent threshold 0, so the platform hill default -75 applies): an
-// edit to -77, then RANGE CLEAR restores -75, src "default" -- MC never actually sent a value here.
+// A defaulted control station (MC sent threshold 0, so the platform hill default -78 applies): an
+// edit to -80, then RANGE CLEAR restores -78, src "default" -- MC never actually sent a value here.
 static void test_range_clear_restores_the_platform_default() {
   StationLink link = armed_hill_defaulted(0);
   CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK_EQ(std::string(link.threshold_src_label()), std::string("default"));
-  CHECK(link.edit_threshold(-2, 10));  // -75 -> -77
-  CHECK_EQ(link.threshold_dbm(), -77);
+  CHECK(link.edit_threshold(-2, 10));  // -78 -> -80
+  CHECK_EQ(link.threshold_dbm(), -80);
   CHECK(link.threshold_setting().from_station());
   CHECK(link.clear_range_edit(20));
   CHECK_EQ(link.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
@@ -352,7 +352,7 @@ static void test_range_clear_restores_mcs_explicit_value() {
 // second clear is a true no-op.
 static void test_range_clear_drops_both_fields_and_keeps_the_log() {
   StationLink link = armed_hill_defaulted(0);
-  CHECK(link.edit_threshold(-2, 10));  // -75 -> -77
+  CHECK(link.edit_threshold(-2, 10));  // -78 -> -80
   CHECK(link.edit_tx_power(-1, 10));   // high -> medium
   CHECK_EQ(link.range_edits().edits().size(), (size_t)2);
   CHECK(link.clear_range_edit(20));
@@ -364,7 +364,7 @@ static void test_range_clear_drops_both_fields_and_keeps_the_log() {
   const auto& e = link.range_edits().edits();
   CHECK_EQ(e.size(), (size_t)4);  // the two edits, still there, plus the two clears
   CHECK(!e[2].tx_power);
-  CHECK_EQ(e[2].from, -77);
+  CHECK_EQ(e[2].from, -80);
   CHECK_EQ(e[2].to, contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
   CHECK(e[3].tx_power);
   CHECK_EQ(e[3].from, TX_POWER_MEDIUM);

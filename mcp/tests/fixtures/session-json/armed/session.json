@@ -223,7 +223,7 @@
           ],
           "station_protect_ms": 2000,
           "trigger_live": "$BMAP,0,0,,,,,*",
-          "trigger_ms": 500
+          "trigger_ms": 1500
         },
         "revive": [
           "$SPAWN,,*",
@@ -319,7 +319,7 @@
           ],
           "station_protect_ms": 2000,
           "trigger_live": "$BMAP,0,0,,,,,*",
-          "trigger_ms": 500
+          "trigger_ms": 1500
         },
         "revive": [
           "$SPAWN,,*",

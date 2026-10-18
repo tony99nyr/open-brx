@@ -71,10 +71,24 @@ export const FLAP_HOLD_MS = 30000;
 export const FLAP_BACKOFF_MS = 5000;
 export const QUIET_AFTER = 3;
 export const QUIET_MS = 30000;
-/** How long to wait after the `streak`th flap in a row (0 below streak 2). */
+/** F563 (field 2026-10-17, battery): the quiet period doubles per further flap, up to this. */
+export const QUIET_MAX_MS = 300000;
+/** How long to wait after the `streak`th flap in a row (0 below streak 2). F563: from QUIET_AFTER it doubles each flap. */
 export function flapDelay(streak, backoffMs = FLAP_BACKOFF_MS, quietMs = QUIET_MS) {
   if (streak < 2) return 0;
-  return streak >= QUIET_AFTER ? quietMs : backoffMs;
+  if (streak < QUIET_AFTER) return backoffMs;
+  return Math.min(quietMs * (QUIET_MAX_MS / QUIET_MS), quietMs * 2 ** Math.min(streak - QUIET_AFTER, 10));   // a scaled test quiet scales the cap
+}
+/** F563 (field 2026-10-17: a phone showing GUN LINK LOST drained fast, one connect every ~10 s for ever). A failed reconnect
+ *  waits at most 10 s for its first RECONNECT_FAST_TRIES tries, then the cap climbs the ladder. Outside ARMED and LIVE the
+ *  loop stops after RECONNECT_GIVE_UP tries (about 16 min) into GUN LINK LOST, TAP TO RECONNECT; in a match it keeps going
+ *  at RECONNECT_MATCH_CAP_MS, so a player who walks back into range is relinked without a tap. */
+export const RECONNECT_FAST_TRIES = 12;   // review: about 14 min of waits to the stop, plus each attempt's own time
+export const RECONNECT_GIVE_UP = 30;
+export const RECONNECT_MATCH_CAP_MS = 30000;
+export function reconnectCapMs(tries, inMatch) {
+  const cap = tries <= RECONNECT_FAST_TRIES ? 10000 : tries <= 20 ? 30000 : 60000;
+  return inMatch ? Math.min(cap, RECONNECT_MATCH_CAP_MS) : cap;
 }
 
 // Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN in a LIVE match took the phone off the gun for 34 s. The
@@ -460,7 +474,7 @@ export class BrxLink {
   }
 
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false, onAttempt = null) {
-    let last, quick133 = 0, timeouts = 0;   // F297: fast 133 failures of the native connect, in a row
+    let last, quick133 = 0, timeouts = 0, outTries = 0;   // F297: fast 133 failures of the native connect, in a row
     for (let i = 1; ; i++) {
       // Game day 2026-09-19: a flap wait now holds THIS loop. It used to run beside the loop, so a loop
       // already running reconnected in the middle of the wait. A manual action clears `_flapNextAt` and wakes us.
@@ -510,7 +524,9 @@ export class BrxLink {
       } catch (e) {
         if (this._probing === seq) this._probing = 0;
         last = e; this.retries = i;
-        const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
+        const inMatch = this.unbounded();
+        if (forever && !inMatch) outTries++;   // F563 review: only tries made outside a match count towards the rest
+        const keep = relink ? i < attempts : forever ? inMatch || outTries < RECONNECT_GIVE_UP : inMatch || i < attempts;   // F563: the forever loop rests
         timeouts = nativeFail && /Connection timeout/i.test(String(e && e.message || e)) ? timeouts + 1 : 0;
         const restart = this._relinkRestart;
         if ((relink || forever) && (restart || timeouts >= RECOVERY_TIMEOUTS)) {
@@ -520,12 +536,15 @@ export class BrxLink {
           timeouts = 0;
         }
         if (gen !== this._gen) return false;
-        if (!keep) throw last;
+        if (!keep) {
+          if (forever && !relink) this._log(`reconnect: ${outTries} tries failed outside a match, stopping to save the battery. Tap GUN LINK LOST to try again`, 'le');
+          throw last;
+        }
         const is133 = nativeFail && isGatt133(e) && this.now() - t0 < GATT133_FAST_MS;
         const fast133 = is133 && quick133 < GATT133_QUICK_RETRIES;
         quick133 = is133 ? quick133 + 1 : 0;
         const delay = restart ? 0 : fast133 ? GATT133_GAP_MS
-          : relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
+          : relink ? this.relinkGapMs : Math.min(reconnectCapMs(i, inMatch), 500 * 2 ** Math.min(i - 1, 8)) * (0.8 + 0.4 * Math.random());
         // the time the attempt took and the plugin's reason: a 10 s "Connection timeout." and a fast GATT error need different fixes
         this._log(`connect ${i}${!relink && (forever || this.unbounded()) ? '' : '/' + attempts} failed after ${this.now() - t0} ms (${e && e.message || e}) — retrying in ${Math.round(delay)} ms`, 'le');
         await this._waitOrWake(delay);
@@ -656,6 +675,14 @@ export class BrxLink {
     });
   }
 
+  /** F563 review: a resting reconnect loop (it stopped outside a match to save the battery) starts again on a match
+   *  arming, an app resume or Bluetooth coming back, without the player tapping. A running loop is left alone. */
+  resumeReconnect(why) {
+    if (!this.deviceId || this.connected || this._reconnecting) return false;
+    this._log(`reconnect: starting again (${why})`, 'li');
+    this._reconnect();
+    return true;
+  }
   /** The user asked to reconnect NOW: skip the remaining backoff, or start a loop if none is running. */
   retryNow() {
     this.resetFlap();
@@ -728,11 +755,14 @@ export class BrxLink {
     // as it is; only a link held FLAP_HOLD_MS clears it (the hold timer).
     const held = this._upAt ? this.now() - this._upAt : Infinity;
     const streak = held < this.flapWindowMs ? this._flapStreak + 1 : held >= this.flapHoldMs ? 0 : this._flapStreak;
-    const wait = held < this.flapWindowMs ? flapDelay(streak, this.flapBackoffMs, this.quietMs) : 0;
+    // F563 review: in a match the quiet period stays at its old 30 s; a player told to power-cycle the headset must not wait 5 min
+    const wait = held < this.flapWindowMs ? Math.min(flapDelay(streak, this.flapBackoffMs, this.quietMs), this.unbounded() ? this.quietMs : Infinity) : 0;
     if (wait) {
       this._setFlap(streak, this.now() + wait);
-      if (streak >= QUIET_AFTER) this._log(`gun keeps dropping (${streak} in a row). Quiet period: no reconnect for ${wait} ms. Power-cycle the headset`, 'le');
-      else this._log(`gun keeps dropping seconds after connecting (${streak} in a row). Is the headset on? Backing off ${wait} ms`, 'li');
+      // F550 (field 2026-10-17): a joined headset is not the cause, so the advice must not send the player to it
+      const hint = this._hs === 'joined' ? 'The headset is joined: tell the host' : streak >= QUIET_AFTER ? 'Power-cycle the headset' : 'Is the headset on?';
+      if (streak >= QUIET_AFTER) this._log(`gun keeps dropping (${streak} in a row). Quiet period: no reconnect for ${wait} ms. ${hint}`, 'le');
+      else this._log(`gun keeps dropping seconds after connecting (${streak} in a row). ${hint}. Backing off ${wait} ms`, 'li');
     } else this._setFlap(streak);
     this._reconnect();   // the one retry loop waits out the flap wait itself
   }

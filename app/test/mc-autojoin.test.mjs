@@ -648,3 +648,32 @@ test('F346 (d) r1: a first contact that fails after discovery saw a second host 
   const src = readFileSync(APP_JS, 'utf8');
   assert.match(src, /offerMc\(url, source, autoJoin\.onFirstContactFailed\(url\)\)/, 'app.js shows the row the policy returns');
 });
+
+// F553 (field 2026-10-17): `bad_proof` covered an empty trust-key list too, so the phone called the real MC an impostor.
+test('F553 transport: a welcome checked against no trust key at all fails no_key, not bad_proof', async ctx => {
+  const mc = new FakeMc();
+  const { storage } = enrolledPhone(ctx, mc);
+  const f = factory();
+  const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://192.168.7.20:8766/ws', verify: true });
+  p.catch(() => {});
+  f.sockets[0].open();
+  const hello = helloOf(f.sockets[0]);
+  t.trustKeys = () => [];                                   // the key list emptied after the dial (a cleared or replaced store)
+  f.sockets[0].recv(mc.welcome(hello, { enrol: false, proof: mcProof(mc.keyFor(t.nodeId), hello.mc_challenge, mc.session) }));
+  assert.equal(t.verifyFailed, 'no_key');
+});
+test('F553 review: a welcome with no proof and no trust key held is no_key too', async ctx => {
+  const mc = new FakeMc();
+  const { storage } = enrolledPhone(ctx, mc);
+  const f = factory();
+  const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9 });
+  ctx.after(() => t.close());
+  t.connect({ url: 'ws://192.168.7.20:8766/ws', verify: true }).catch(() => {});
+  f.sockets[0].open();
+  const hello = helloOf(f.sockets[0]);
+  t.trustKeys = () => [];
+  f.sockets[0].recv(mc.welcome(hello, { enrol: false, proof: null }));
+  assert.equal(t.verifyFailed, 'no_key');
+});

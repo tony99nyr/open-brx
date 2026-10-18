@@ -70,7 +70,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     if (frames.respawn_profile) frames.respawn_profile = { ...frames.respawn_profile, spawn: withEmpty(frames.respawn_profile.spawn), revive: withEmpty(frames.respawn_profile.revive), revive_station: withEmpty(frames.respawn_profile.revive_station) };
   }
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
     eng, writes, facts, batches, logs, echoQ, get clock() { return clock; },
@@ -1985,6 +1985,7 @@ test('bug 3a: the gun\'s echo of the spawn burst\'s own `$AMMO` rows leaves the 
   const h = harness({ ...ROCKET_GAME, echo: true });   // the spawn writes slot 0, slot 1 and the empty pickup slot 2
   assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the gun is on slot 0 after a spawn (brx1: `$QUERY` reads slot 0)');
   assert.deepEqual(shown(h), { slot: 0, ammo: 32, reserve: 192, mag: 32 }, 'the AR on the HUD, at its spawn counts');
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
   assert.equal(h.eng.am.switching.to, 1, 'the first ALT goes to the secondary, as the gun does');
 });

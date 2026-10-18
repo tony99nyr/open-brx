@@ -1,7 +1,7 @@
 // The ITEMS DEFAULT button shows the threshold that 0 resolves to. A phone powerup station resolves to
 // PHONE_POWERUP_THRESHOLD_DBM (-55) on the server (state.py `_wire_threshold`) and on the phone
 // (beacon.js `phoneStationThreshold`), so the console must not show the -74 of the other kinds. F383
-// (Tony, 2026-09-27): a control (hill) station resolves to its own -75, not the -74 either, until the
+// (Tony, 2026-09-27): a control (hill) station resolves to its own -78 (F383's -75, 10% larger since 2026-10-17), not the -74 either, until the
 // outdoor walk measures a real one.
 import { describe, expect, it } from 'vitest';
 import { bubbleDefault } from '../src/screens/Items';
@@ -16,8 +16,8 @@ describe('bubbleDefault', () => {
     expect(bubbleDefault('respawn', false).start).toBe(PHONE_RESPAWN_THRESHOLD_DBM);
     expect(bubbleDefault('extraction', false).start).toBe(PHONE_STATION_THRESHOLD_DBM);
   });
-  it('shows the hill\'s own -75 default for a control station, on both a phone and a Stick', () => {
-    expect(PHONE_CONTROL_THRESHOLD_DBM).toBe(-75);
+  it('shows the hill\'s own -78 default for a control station, on both a phone and a Stick', () => {
+    expect(PHONE_CONTROL_THRESHOLD_DBM).toBe(-78);
     expect(bubbleDefault('control', false).start).toBe(PHONE_CONTROL_THRESHOLD_DBM);
     expect(bubbleDefault('control', true).start).toBe(PHONE_CONTROL_THRESHOLD_DBM);
   });

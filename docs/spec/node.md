@@ -80,17 +80,19 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    gun sits configured-but-unspawned until M-START's T-0. The head write is silent on the gun (bench
    2026-08-25, protocol §7r);
 3. **captures the gun's echo**: a configured gun answers the head with `$LCD,…`/`$ALCD,…` lines (protocol §7e).
-   The node waits ~1.5 s for them. **What the echo proves:** the gun *answered* and holds the config. It does
-   **not** report state — after `$CLEAR` the head echo is `$LCD,0,0,0,0,0,0` on a healthy gun, not HP. **Silence
-   = the gun did not answer**: with the headset OFF the head write echoes nothing and the gun drops the link
-   (`$DISCONNECT`; bench 2026-08-25 §7r), so link + echo IS the headset proof and an empty echo is **red after
-   the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
+   The node waits ~1.5 s for them. **What the echo proves:** the gun *answered*. It does **not** report state:
+   `$START` answers `$LCD,0,0,0,0,0,0` (no config loaded yet), then the slot-0 `$WEAP` load answers its `$ALCD`.
+   Only that slot-0 `$ALCD` (or a non-zero `$LCD`) proves the config loaded (F549, field 2026-10-17: a broken
+   slot-0 frame answered only the zeroed `$LCD`). **Silence = the gun did not answer**: with the headset OFF the
+   head write echoes nothing and the gun drops the link (`$DISCONNECT`; bench 2026-08-25 §7r), so an empty echo
+   is **red after the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
 4. after a successful echo window, sends `$QUERY,*` and waits up to 2.6 s after that write settles for its status
    body. A well-formed reply contributes tokens 1–5 as `gun_config{player_id, team, hp, armor, shield}`; a missing,
    late or malformed body simply omits this optional proof;
 5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
    the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
-   `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error.
+   `ok:false, err:"no_echo"`; only a zeroed `$LCD,0,0,0,0,0,0` (no config loaded) and no well-formed slot-0 `$ALCD` →
+   `ok:false, err:"no_config"` (F549, field 2026-10-17); a BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
@@ -151,8 +153,11 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
 - **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
   round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node assumes the swap. The
   gun sends no frame when a swap completes, and a `$QUERY` reads the last shot's slot, so the node never asks. The next
-  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it. The gun ignores ALT during a
-  reload, so the node does too.
+  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it, and the ACTIVE card reads GUN WAS
+  ON (field 2026-10-17). A round from the old slot 250 ms or more into the window closes SWITCHING with no swap; an
+  earlier one can be in flight from before the press, so it closes nothing. The gun ignores ALT during a reload, so the
+  node does too. After `$SPAWN` the node also ignores ALT until the first trigger pull after the life's burst reached
+  the gun: the gun ignores a phone equip there (F436 bench), and ALT there is unbenched (field report bench #2).
   A stunned gun ignores ALT.
 - **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A lever pulled inside an ALT swap reloads the old slot, and the swap still completes, so that rise books on the old slot and leaves the trigger on the new one (bench 2026-10-17). A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
@@ -405,8 +410,8 @@ node re-applies `frames.head` (`_beginResync` for those phases) and the schedule
 Config survives a BLE drop but is wiped by a power-cycle (§7r), so the head re-write is what restores a
 power-cycled gun. The old trigger-first evidence protocol (A6.6) survives ONLY here.
 
-**Why the reconcile never blind-writes `spawn`:** (1) the head's echo is `$LCD,0,0,0,0,0,0` on a healthy gun
-(bench 2026-08-25) — it cannot reveal a death; (2) `$SPAWN` is a full heal + refill. Persistence removed the
+**Why the reconcile never blind-writes `spawn`:** (1) the head's first echo is `$LCD,0,0,0,0,0,0` on a healthy gun
+(bench 2026-08-25), before its slot-0 `$ALCD` — it cannot reveal a death; (2) `$SPAWN` is a full heal + refill. Persistence removed the
 NEED to probe, so the evidence protocol was retired for the live path — it mis-concluded "dead" on reconnect
 and let auto-respawn heal.
 
@@ -734,7 +739,7 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag reaches its cap on the gun's slot, a shot fires on any slot, or the deadline passes after the last gain. Never while dead, in resync/reconcile, or with a dry reserve |
-| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | a shot on the new slot or a queried `$LCD` confirms the slot. A reply on the old slot closes the card without a swap. No query answer by `QUERY_REPLY_MS` gives an unconfirmed assumed swap (§3.2a) |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; `quick_switch` halves it) | a shot on the new slot confirms the slot. A round on the old slot 250 ms or more after the press closes the card without a swap (GUN WAS ON). With neither by `swap_ms`, the node assumes the swap (READY), and the next shot's slot corrects it (§3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |
@@ -761,8 +766,8 @@ inspectable on the field:
   SSID (`ssid_ok`), MC reachable + last `welcome` age (`mc_reachable`), field SSID saved with auto-join
   (`auto_join_ok`), mobile data state where readable (`cellular_off`, a diagnostic only: the player is never told to change it), Do-Not-Disturb (`dnd_on`), clock-sync
   age and sample count (`synced`), phone battery % + charging (`phone_batt`), `screen_on` / `foreground`
-  flags, gun link (`gun_linked`), headset (`headset_ok` = the last config/spawn echo arrived — amber until
-  then), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
+  flags, gun link (`gun_linked`), headset (`headset_ok` = the link is up and the `$VERSION` probe read the headset joined; it is not the
+  config echo, F550), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
   Each row green/amber/red; the HUD chip is the rollup.
 - **BLE link:** deviceId (opaque handle §8), connection state, retry count, last disconnect **HCI
   reason code** with plain-English gloss (`0x16` local, `0x13` gun/headset gate, `0x08` out-of-range,

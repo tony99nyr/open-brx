@@ -20,7 +20,7 @@ Source of truth, in every case the thing MC actually publishes:
   weapons  `Compiler().weapon_catalog()` -> `views.weapon_views()`  (the API.md `WeaponView`, so the
            derived fields (mags, dmg_per_hit, pool, ttk_ms, ammo_total, bars, caution) come along,
            and a `hidden` row like `melee` is dropped exactly where the server drops it)
-  perks    `perks.default_perks().all()` -> the API.md `PerkView` (`PerkCatalog.view()`, the same rows
+  perks    `Compiler().perk_catalog()` -> the API.md `PerkView` (`PerkCatalog.view()`, the same rows
            `GET /api/perks` serves), so hidden `slot_frame` rows are dropped where the server drops them
   modes    `mc/state.py MODES`, prose fields only (`params`/`defaults` stay hand-written TS)
 
@@ -52,12 +52,12 @@ def weapon_views() -> list[dict]:
 
 
 def perk_views() -> list[dict]:
-    """Every VISIBLE perk as a `PerkView` — `PerkCatalog.all()` is the exact list `/api/perks` serves,
-    so the demo browses the perks the server would hand a phone, with perks.json's own copy."""
+    """Every VISIBLE perk as a `PerkView` — `Compiler().perk_catalog()` is the exact list `/api/perks` serves (F551:
+    with `blocked_primary`/`blocked_secondary`), so the demo browses the perks the server would hand a phone."""
     sys.path.insert(0, str(REPO / "mcp"))
-    from brx_mcp.mc.perks import default_perks
+    from brx_mcp.mc.compile import Compiler
 
-    return default_perks().all()
+    return Compiler().perk_catalog()
 
 
 def mode_text() -> list[dict]:

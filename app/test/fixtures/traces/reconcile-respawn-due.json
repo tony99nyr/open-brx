@@ -20,7 +20,7 @@
     {"check":"due_inside_window"},
     {"advance_ms":1750},
     {"check":"revived_after_window"},
-    {"advance_ms":1000},
+    {"advance_ms":2000},
     {"check":"settled"}
   ],
   "stage_ignores": [
@@ -111,7 +111,7 @@
       "at": "due_inside_window",
       "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"reconciling":true},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$IRTX,100,15,7,0,26,0,0,100,1,,0,*",
         "$HLOOP,1,2500,*",
@@ -144,9 +144,10 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$BMAP,0,0,,,,,*",
         "$HLOOP,0,0,*",
-        "$HLED,6,2,120,120,10,2,*"
+        "$HLED,6,2,120,120,10,2,*",
+        "$BMAP,0,0,,,,,*",
+        "$HLED,9,0,,,10,,*"
       ]
     }
   ]
