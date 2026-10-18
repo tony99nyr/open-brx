@@ -1580,6 +1580,10 @@ class StationLink {
     // with (`actions_dropped_game`) and MC shows the count only while that is the current game.
     if (game_changed || kind_or_id_changed) pending_actions_.reset_dropped();
     assignment_ = a;
+    if (a.kind == "control") {  // F559 (Opus review): the saved copy carries the pace the Stick RUNS, so a lock-only re-push
+      assignment_.capture_s = hill_.capture_s;   // with no pace cannot save it away; a same-value re-push still compares equal
+      assignment_.net_cap = hill_.net_cap;
+    }
     lock_deadline_known_ = a.lock_s > 0;
     assignment_.timed_hill = a.kind == "control" && (deadline_known_ || hill_.frozen || a.duration_ms > 0);
     state_ = LinkState::ASSIGNED;
@@ -1693,6 +1697,8 @@ class StationLink {
     heard_down_.clear();
     powerup_ended_ = false;  // a fresh powerup schedule (assume_available below) is never restored ended
     assignment_ = a;
+    if (a.kind == "control" && a.capture_s) hill_.capture_s = a.capture_s;   // F559: the boot path brings MC's pace back
+    if (a.kind == "control" && a.net_cap) hill_.net_cap = a.net_cap;
     if (a.kind == "control" && a.timed_hill) hill_.freeze();
     // A67: MC's saved values come back as MC's; an on-station edit is restored after this, from its own
     // NVS copy (restore_range), with its age unknown.

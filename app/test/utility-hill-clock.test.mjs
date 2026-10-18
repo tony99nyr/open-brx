@@ -187,3 +187,12 @@ test('F559: MC sets the hill pace when the arming carries it, and an arming with
   assert.equal(api.settings.captureS, 5);
   assert.equal(api.settings.netCap, 2);
 });
+
+test('F559: a pushed net cap limits a crowd on the point', async () => {
+  await armFresh({ capture_s: 10, net_cap: 1 });
+  api.presence.players = () => [1, 2, 3].map(id => ({ id, team: RED, state: 1, present: true, inCircle: true, fading: false }));
+  const now = Date.now();
+  for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
+  assert.equal(api.point.net, 1, 'three RED at net_cap 1 convert at net 1');
+  assert.ok(Math.abs(api.point.progress - 20) < 1e-6, `2 s at net 1 builds 20%: ${api.point.progress}`);
+});

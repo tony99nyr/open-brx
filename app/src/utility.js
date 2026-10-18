@@ -191,7 +191,7 @@ async function applyStationConfig(body) {
   // phone applies without re-arming. An arming that changes nothing a phone uses must not restart the advert or close the
   // seven-tap drawer; a real change (another game, kind, team, id, threshold, item or allow-list) re-arms.
   const armKey = () => JSON.stringify([settings.kind, settings.team, settings.id, settings.threshold, settings.tx, settings.game,
-    settings.item, settings.mcArmed && settings.mcArmed.valid_ids]);
+    settings.item, settings.mcArmed && settings.mcArmed.valid_ids, settings.captureS, settings.netCap]);   // F559: a pace change is a change
   const wasArmed = !!settings.mcArmed, before = armKey();
   settings.kind = cfg.kind; settings.team = cfg.team; settings.id = cfg.id;
   // F365 / A67: the last edit wins, per field. An on-station edit younger than MC's value (`*_age_ms`) is kept; an

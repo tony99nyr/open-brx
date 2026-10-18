@@ -2650,9 +2650,18 @@ static void test_f559_mc_sets_the_hill_pace_and_a_restart_keeps_it() {
   SavedStationConfig saved;
   CHECK(saved.note_applied(a, "s1"));
   StationLink restarted;
-  restarted.apply_station_config(saved.restore());
+  CHECK(restarted.restore_station_config(saved.restore()));   // the real boot door (mc_link_glue.h), not a fresh arming
   CHECK_EQ(restarted.hill().capture_s, 8);
   CHECK_EQ(restarted.hill().net_cap, 2);
+  // a lock-only re-push carries no pace: the Stick keeps 8 s, and so does the copy it saves (Opus review)
+  StationLink relock;
+  relock.apply_station_config(a);
+  relock.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9,"lock_s":30})", &ok)));
+  SavedStationConfig saved2;
+  saved2.note_applied(relock.assignment(), "s1");
+  StationLink rebooted;
+  CHECK(rebooted.restore_station_config(saved2.restore()));
+  CHECK_EQ(rebooted.hill().capture_s, 8);
   // CONTROL: a station never told keeps the default
   StationLink plain;
   plain.apply_station_config(parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok)));
