@@ -121,6 +121,9 @@ def _rank_key(r):
     return (-r["kills"], -r["kd"], r["deaths"])
 
 
+STATION_FRESH_MS = 60_000   # milestone review: a station reading older than this at the whistle is stale
+
+
 class Scorer:
     def __init__(self, match_id: str, go_live_t: int, time_limit_s: int | None, mode: str,
                  players: dict[str, Player], teams: list[Team],
@@ -186,6 +189,12 @@ class Scorer:
         # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
         # station reading is scored on it; the phones' readings for that site are only the cross-check.
         self.station_possession_ms: dict[str, dict[int, int]] = {}
+        # Milestone review: when MC last heard each site's station (its own heartbeat time). A reading older than
+        # STATION_FRESH_MS at the whistle (or now) no longer outranks the phones for its site. Unknown = fresh.
+        self.station_seen_ms: dict[str, int] = {}
+        # Milestone review: False for an ADOPTED match, whose time limit is the draft's guess and whose go-live may be the
+        # adoption instant; then no hill reading is capped by either.
+        self.clock_trusted = True
         self.seen: set[tuple[str, int]] = set()
         # A6.1 end freeze: facts with effective t > end_t are recorded, never scored.
         self.end_t: int | None = (go_live_t + time_limit_s * 1000) if time_limit_s else None
@@ -1010,7 +1019,7 @@ class Scorer:
         except (TypeError, ValueError):
             return None
         ms = max(0, ms)
-        return min(ms, self.time_limit_s * 1000) if self.time_limit_s else ms
+        return min(ms, self.time_limit_s * 1000) if self.time_limit_s and self.clock_trusted else ms
 
     def _hold_readings(self, hold: dict):
         """The (tid, clamped ms) pairs of a `hold_ms` map; a key or value that is not a number is skipped."""
@@ -1023,7 +1032,7 @@ class Scorer:
             if ms is not None:
                 yield tid, ms
 
-    def station_possession(self, site: str, hold_ms, t: int | None = None) -> str:
+    def station_possession(self, site: str, hold_ms, t: int | None = None, seen_ms: int | None = None) -> str:
         """F555 (utility.md §5d.6): a control station's OWN cumulative `hold_ms` for its point, the AUTHORITY for that
         site. The station alone sees who is alive on the point (F554); a phone credits whatever owner it hears, so the
         phones' reading for the site becomes the cross-check (`possession()["phones_by_team"]`). Cumulative and merged
@@ -1042,7 +1051,9 @@ class Scorer:
         played = max(0, (min(self.end_t, now) if self.end_t is not None else now) - self.go_live_t)
         per_tid = self.station_possession_ms.setdefault(str(site), {})
         for tid, ms in readings:
-            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played))
+            per_tid[tid] = max(per_tid.get(tid, 0), min(ms, played) if self.clock_trusted else ms)
+        if seen_ms is not None:
+            self.station_seen_ms[str(site)] = max(self.station_seen_ms.get(str(site), seen_ms), seen_ms)
         if t is not None:
             self._check_hold_target(t)
         return "scored"
@@ -1056,9 +1067,17 @@ class Scorer:
         by_team: dict[str, int] = {tid: 0 for tid in self.teams}
         neutral_ms = 0
         stations = {} if phones_only else self.station_possession_ms
+        now = self.now_ms()
+        ref = min(self.end_t, now) if self.end_t is not None else now
         for site in set(self.possession_ms) | set(stations):
-            if site in stations:
+            seen = self.station_seen_ms.get(site)
+            if site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):
                 per_site = dict(stations[site])
+            elif site in stations:
+                # milestone review: a stale station reading (not heard near the whistle) no longer outranks phones that
+                # kept counting: the site takes the larger of the two per team
+                phones = {tid: (max(per_node.values()) if per_node else 0) for tid, per_node in self.possession_ms[site].items()}
+                per_site = {tid: max(stations[site].get(tid, 0), phones.get(tid, 0)) for tid in set(stations[site]) | set(phones)}
             else:
                 per_site = {tid: (max(per_node.values()) if per_node else 0)
                             for tid, per_node in self.possession_ms[site].items()}

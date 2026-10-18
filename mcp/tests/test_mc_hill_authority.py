@@ -85,6 +85,7 @@ def test_the_station_tally_at_the_whistle_decides_the_winner():
                                  "hold_ms": {str(red["tid"]): 200_000}, "observed_ms": 200_000}, clock["t"], seq=1)
     s.station_registry.stations["util-hill"]["tally"] = {"key": [s._game_byte(), "control", sid],
                                                          "hold_ms": {str(blue["tid"]): 90_000}, "revives": None}
+    s.station_registry.stations["util-hill"]["last_seen_ms"] = clock["t"]   # heard at the whistle: a fresh reading
     s.control("end")
     r = s.last_recap
     assert r["winner"] == {"team_id": blue["team_id"]}, r["winner"]
@@ -336,7 +337,7 @@ def test_a_stood_down_or_re_armed_hill_is_not_this_points_authority():
     red = s.config["teams"][0]
     st = s.station_registry.stations["util-hill"]
     st["tally"] = {"key": [s._game_byte(), "control", sid], "hold_ms": {str(red["tid"]): 30_000}, "revives": None}
-    assert s._station_hold("util-hill") == (str(sid), {str(red["tid"]): 30_000}), "CONTROL"
+    assert s._station_hold("util-hill")[:2] == (str(sid), {str(red["tid"]): 30_000}), "CONTROL"
     armed = dict(st["armed"])
     st["armed"] = {**armed, "game": (s._game_byte() % 255) + 1}   # a newer arming that has not reseeded the tally
     assert s._station_hold("util-hill") is None
@@ -383,3 +384,39 @@ def test_f558_the_station_view_carries_the_hills_inputs():
     net.simulate_status("util-hill", body, clock["t"] + 4_000)
     c = s.station_registry.station_view("util-hill")["report"]["control"]
     assert "net" not in c and "counts" not in c and "lead" not in c, c
+
+
+def test_milestone_a_stale_station_reading_does_not_outrank_growing_phones():
+    """Opus (seam 5): a hill heard once at 2:00 and never again must not decide its site over phones that kept counting."""
+    s, pid, red, _blue = _koth()
+    sc = _scorer(s, time_limit_s=600, nodes=[("n1", pid)])   # the scorer's clock reads the whistle (1_000_000 + 600 s)
+    sc.station_possession("9", {str(red["tid"]): 60_000}, seen_ms=1_000_000 + 120_000)   # last heard at 2:00
+    sc.ingest("n1", _poss({str(red["tid"]): 400_000}), 1_100_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 400, "a stale station reading outranked the phones"
+    # CONTROL: heard near the whistle, the station decides even against larger phone readings
+    sc.station_possession("9", {str(red["tid"]): 70_000}, seen_ms=1_000_000 + 590_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 70
+
+
+def test_milestone_an_adopted_match_does_not_clamp_hill_time_to_an_untrusted_clock():
+    """Codex and Opus (seam 5): an adopted match's draft time limit and its go-live (often `now` at adoption) are guesses,
+    so neither may cap a hill's tally."""
+    s, pid, red, _blue = _koth()
+    sc = _scorer(s, time_limit_s=600, nodes=[("n1", pid)])
+    sc.clock_trusted = False
+    sc.station_possession("9", {str(red["tid"]): 660_000})
+    sc.ingest("n1", _poss({str(red["tid"]): 700_000}, site="A"), 1_100_000)
+    poss = sc.possession()
+    assert poss["by_team"][red["team_id"]] == 660 + 700, poss
+    # CONTROL: a match MC scheduled clamps both to the 600 s it ran
+    sc2 = _scorer(s, time_limit_s=600, nodes=[("n1", pid)])
+    sc2.station_possession("9", {str(red["tid"]): 660_000})
+    assert sc2.possession()["by_team"][red["team_id"]] == 600
+
+
+def test_milestone_an_adopted_session_marks_its_scorer_untrusted():
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    assert s._m().scorer.clock_trusted is True, "a match MC scheduled trusts its clock"
+    assert s._scorer_like(s._m().scorer).clock_trusted is True
+    s._m().scorer.clock_trusted = False
+    assert s._scorer_like(s._m().scorer).clock_trusted is False, "a rescore of an adopted match trusted its clock again"
