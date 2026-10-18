@@ -37,13 +37,15 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
        python3 mcp/tools/balance_review.py --candidate <file.json> --out <scratch>/verdict.json --report <scratch>/report.md
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
-   A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change.
+   A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
+   version is 3. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
      (overheat, charge, burst, bolt, shell reload, two-word pull). A stat change alone is not a mechanic.
    - `no_domination`: no kit near the top in every scenario.
-   - `viable`: field ratio at or over the floor, and it beats at least one kit in some 1v1 band. A sidearm
-     instead finishes 35 HP inside the R10a bar.
+   - `viable`: the plain primary's field ratio clears the floor, and its full kit beats another kit in a 1v1
+     band. A sidearm instead finishes 35 HP inside the R10a bar.
    - `balance_kept`: no Balance rule cell (R1-R12, R10a, Standard and Shields) flips to fail, and no other kit
      loses its last near-top cell.
    - `op_rule`: no loadout weapon's pull, or crit pull, one-shots the lowest pool a player can field on Standard
@@ -69,6 +71,49 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
    row go through the normal land lane, and quote the decision section.
 
 ## Rules
+
+Scenario version 3 uses these models:
+
+- The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
+  rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
+  verdict that touches a heat weapon runs with `HEAT_COOL_WHILE_FIRING` on and off. In the off case,
+  heat does not cool; a lockout resets heat to zero. The Energy Rifle vents through its reload lever.
+- A lethal secondary can cover an empty or heat-locked primary. The kit also draws it when its expected finish
+  time, including the swap, is shorter. Estimate the real shot sequence, including bolt and charge cycles,
+  magazine and reserve reloads, and count the first shot at draw time. Reject a secondary that cannot finish
+  the remaining pool with its magazine and reserve reloads. Swapping back pays the same catalogue swap delay.
+  Combo kits keep their opener and finisher plan. A support secondary does not enter the ordinary finish choice.
+  Reloads and lever vents progress only while that weapon is in hand. A swap credits a finished reload.
+  A swap cancels an unfinished reload or vent. When cooling is on, heat cools while holstered.
+- Armour Piercing uses the primary row's `ap_dmg` and `ap_fire_ms`. Its hit drains health directly, past shield
+  and armour. It removes the headset word. A primary without both values cannot carry the perk.
+- Toxin Rifle damage over time refreshes on a new hit and does not stack. Each tick drains shield, then armour,
+  then health. A tick can kill after the shooter stops.
+- `--haze` reports AR + Haze against reference kits at close and mid range. A landed Haze opener blinds the
+  target for `HAZE_BLIND_MS` (3,000 ms by default), keyed by the row's `sir_fn` 23. A non-lethal Haze hit
+  deals no damage. The shooter then pays a swap to its primary. Haze remains outside the shipped kit matrix
+  while it is hidden.
+- The matrix has a `1v1 real aim` column at `REAL_AIM` 0.4. The existing 0.9 aim columns remain. The real aim
+  value gives about 0.38 landed hits per round for a mid rifle at mid range.
+- The field sim uses hit probability 0.35, mean contact 3 seconds and mean ordinary gap 70 seconds. A respawn
+  has a separate mean seek delay, currently `DEFAULT_RESPAWN_SEEK_MEAN_S` 7 seconds. An attacker
+  who waits for a defeated target's respawn seeks that target first. A stale seek cannot replace a live
+  engagement.
+- Semi-automatic fight shots use `FIGHT_OVERSHOOT_MS`, an additive lognormal overshoot after the row's `t14`.
+  Its fitted median is 36.67 ms, from the USP, AMR and Desert Eagle field medians.
+  The bolt lever and the press after it retain the ordinary pull model.
+  The published `compile.py` `ttk_ms` still uses its 300 ms pull for semi weapons, so
+  its semi-weapon TTK differs from the fight sim.
+- A close-range kit can finish a weak target with the catalogue melee row's damage and cooldown. The swing uses
+  `MELEE_SWING_MS` 150 ms. `MELEE_HIT_P` 0.9 is the hit chance at aim 1; aim and blindness
+  scale it. The rush model limits it to `MELEE_REACH_M` 6 metres. Melee is excluded from the published TTK.
+- Heat cooling while firing is an unproven assumption pending bench check F575. The default is on, matching
+  the catalogue cooling rate; `--heat-cool-while-firing off` disables cooling entirely.
+  A lockout resets heat to zero.
+  Heated sidearm R10 pairs use the kit engine. The CI rule engine has no heat state.
+
+Read `assumptions()` in each verdict for the exact values used by that run. Treat `--haze-blind-ms` as a
+scenario parameter, and report its value with the Haze comparison.
 
 - State the invented assumptions every time you report a verdict, in chat as well as in the doc.
 - A scaled run (`--reps-scale`, tests only) is never a verdict and `--record` refuses it.

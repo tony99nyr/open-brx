@@ -34,11 +34,13 @@ frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
 flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
 balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/balance-review/SKILL.md`); FOLLOWUPS
 bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damage bolt action with a 2.2 s bolt
-(Tony's call, `docs/balance-decisions.md`); he judges it in the next real match.
-**Next:** the 2.2 s bolt bench row (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+(Tony's call, `docs/balance-decisions.md`); he judges it in the next real match. The balance sims now model heat,
+the secondary slot, Armour Piercing, the Toxin Rifle, the Haze, melee and the field's pace (scenario version 2).
+**Next:** sim gaps branch B (rush from 20 and 30 m at every marksman, KOTH, ammo stress, the pistol finisher), then
+the sweep re-run. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F575 on Tony (the Charge Rifle's numbers under the heat budget).
+**Blocked:** F575 on the CR heat-while-firing bench row, then Tony.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the

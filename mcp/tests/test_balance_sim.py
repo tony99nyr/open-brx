@@ -38,6 +38,279 @@ def _cfg(**kw) -> B.SimConfig:
     return B.SimConfig(pool=B.default_pool(), **kw)
 
 
+def test_field_contact_defaults_follow_the_refit():
+    cfg = _cfg()
+    assert cfg.hit_probs == (0.35,)
+    assert cfg.contact_mean_s == 3.0
+    assert cfg.gap_mean_s == 70.0
+    assert cfg.respawn_seek_mean_s == 7.0
+    assert cfg.fight_overshoot_ms == B.FIGHT_OVERSHOOT_MS
+
+
+def test_respawn_seek_has_its_own_delay():
+    ar = B.weapon_model(CAT, "assault_rifle")
+    players = [B.Player(i, i, ar, B.default_pool()) for i in range(2)]
+    cfg = _cfg(respawn_seek_mean_s=7.0)
+    match = B.Match(players, random.Random(SEED), cfg, 0.35, 1)
+    players[0].alive = False
+    players[0].reload_amount = 3
+    players[0].next_ready = 9999
+    match._respawn(players[0], 1000.0)
+    assert players[0].reload_amount == 0 and players[0].next_ready == 1000.0
+    seek = [t for t, _, kind, pid, _ in match.heap if kind == match.SEEK and pid == 0]
+    assert len(seek) == 1 and seek[0] > 1000.0
+    assert seek[0] < 1000.0 + 70_000.0
+
+
+def test_an_attacker_can_seek_again_after_its_target_respawns():
+    ar = B.weapon_model(CAT, "assault_rifle")
+    players = [B.Player(i, i, ar, B.default_pool()) for i in range(2)]
+    cfg = _cfg(respawn_seek_mean_s=7.0)
+    match = B.Match(players, random.Random(SEED), cfg, 0.35, 1)
+    players[0].target = 1
+    players[1].attackers = 1
+    match._death(players[1], players[0], 1000.0, dot=False)
+    seek = [(t, gen) for t, _, kind, pid, gen in match.heap if kind == match.SEEK and pid == 0]
+    assert len(seek) == 1
+    assert seek[0][0] > 1000.0 + cfg.pool.respawn_ms
+    assert seek[0][0] < 1000.0 + cfg.pool.respawn_ms + 7_000.0
+    assert seek[0][1] == players[1].pid + 1
+
+
+def test_refit_respawn_to_first_hit_stays_near_the_field():
+    """The TDM roster is the slowest field case. The field median is 7.2 s (CI 5.0 to 11.2)."""
+    ids = ("assault_rifle", "sniper_rifle", "sniper_rifle", "charge_rifle")
+    teams = (0, 1, 1, 0)
+    cfg = _cfg(match_ms=651_700.0)
+
+    class HitMatch(B.Match):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.hits = []
+            self.respawns = []
+
+        def _hit(self, src, tgt, dmg, t):
+            self.hits.append((t, tgt.pid))
+            super()._hit(src, tgt, dmg, t)
+
+        def _respawn(self, p, t, gen=0):
+            self.respawns.append((t, p.pid))
+            super()._respawn(p, t, gen)
+
+    rng = B.cell_rng(SEED, "respawn_fit")
+    delays = []
+    for _ in range(40):
+        players = [B.Player(i, teams[i], B.weapon_model(CAT, wid), cfg.pool) for i, wid in enumerate(ids)]
+        match = HitMatch(players, rng, cfg, cfg.hit_probs[0], 2)
+        match.run()
+        for t, pid in match.respawns:
+            next_hits = [ht for ht, victim in match.hits if victim == pid and ht >= t]
+            if next_hits:
+                delays.append((min(next_hits) - t) / 1000.0)
+    assert len(delays) > 100
+    assert 5.0 <= sorted(delays)[len(delays) // 2] <= 11.2
+
+
+def test_fight_press_medians_track_the_field():
+    rng = random.Random(SEED)
+    for weapon_id, observed in (("usp", 196), ("amr", 440), ("deagle", 714), ("sniper_rifle", 1528)):
+        fire = CAT.fire_ms(weapon_id)
+        samples = sorted(B.fight_semi_interval(rng, fire) for _ in range(3000))
+        median = samples[len(samples) // 2]
+        assert fire <= median <= fire * 1.25, (weapon_id, median)
+        assert abs(median - observed) / observed < 0.18, (weapon_id, median, observed)
+
+
+def test_fight_press_keeps_bolt_lever_on_the_original_pull_model():
+    assert B.FIGHT_OVERSHOOT_MS < B.DEFAULT_PULL_MS
+    cfg = _cfg(range_model=False, tactical_reload=False, hit_probs=(1.0,), match_ms=20_000.0)
+    sniper = B.weapon_model(CAT, "sniper_rifle")
+    kills = [k for k in (_kill_trace(sniper, cfg, seed)[1] for seed in range(80)) if k is not None]
+    mean = sum(kills) / len(kills)
+    want = CAT.paced_cycle_ms("sniper_rifle")
+    assert abs(mean - want) / want < 0.06, (mean, want)
+
+
+def test_refit_two_shooter_victim_clusters_match_the_field():
+    """Group victim hits at a three second gap, as the field analysis does."""
+    ar = B.weapon_model(CAT, "assault_rifle")
+    cfg = _cfg(match_ms=150_000.0)
+
+    class HitMatch(B.Match):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.hits = []
+
+        def _hit(self, src, tgt, dmg, t):
+            self.hits.append((t, src.pid, tgt.pid))
+            super()._hit(src, tgt, dmg, t)
+
+    rng = B.cell_rng(SEED, "victim_clusters")
+    multi = total = 0
+    for _ in range(100):
+        players = [B.Player(pid, pid // 2, ar, cfg.pool) for pid in range(4)]
+        match = HitMatch(players, rng, cfg, cfg.hit_probs[0], 2)
+        match.run()
+        for victim in range(4):
+            hits = sorted((t, shooter) for t, shooter, target in match.hits if target == victim)
+            cluster = []
+            for hit in hits:
+                if cluster and hit[0] - cluster[-1][0] > 3000:
+                    total += 1
+                    multi += len({shooter for _, shooter in cluster}) >= 2
+                    cluster = []
+                cluster.append(hit)
+            if cluster:
+                total += 1
+                multi += len({shooter for _, shooter in cluster}) >= 2
+    assert total > 500
+    assert 0.05 <= multi / total <= 0.13, (multi, total)
+
+
+def test_heat_parameters_come_from_the_catalogue():
+    charge = B.weapon_model(CAT, "charge_rifle")
+    energy = B.weapon_model(CAT, "energy_rifle")
+    assert dict(charge.heat) == CAT._row("charge_rifle")["heat"]
+    assert dict(energy.heat) == CAT._row("energy_rifle")["heat"]
+    edited = B.weapon_model(_edited("charge_rifle", heat__per_tap=20), "charge_rifle")
+    assert dict(edited.heat)["per_tap"] == 20
+    assert isinstance(hash(charge), int)
+
+
+def test_charge_heat_locks_after_the_crossing_round_and_recovers():
+    charge = B.weapon_model(CAT, "charge_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    players = [B.Player(0, 0, charge, B.default_pool()), B.Player(1, 1, dummy, B.default_pool())]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 1.0, 1)
+    shooter = players[0]
+    shooter.target = 1
+    shooter.contact_end = 20_000
+    shooter.engage_id = 1
+    shooter.heat = 100.0
+    shooter.last_heat_ms = 0.0
+    match._shot(shooter, 0.0, 1)
+    assert shooter.shots == 1
+    assert shooter.heat_lock_until == dict(charge.heat)["lockout_ms"]
+    match._shot(shooter, 1000.0, 1)
+    assert shooter.shots == 1
+    match._shot(shooter, shooter.heat_lock_until, 1)
+    assert shooter.shots == 2
+
+
+def test_charge_heat_cools_between_rounds():
+    charge = B.weapon_model(CAT, "charge_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    players = [B.Player(0, 0, charge, B.default_pool()), B.Player(1, 1, dummy, B.default_pool())]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 1.0, 1)
+    shooter = players[0]
+    shooter.target = 1
+    shooter.contact_end = 20_000
+    shooter.engage_id = 1
+    shooter.heat = 80.0
+    shooter.last_heat_ms = 0.0
+    match._shot(shooter, 2000.0, 1)
+    assert shooter.heat == 76.0
+    assert shooter.heat_lock_until < 0
+
+
+def test_charge_heat_threshold_uses_catalogue_charge_and_tap_costs():
+    charge = B.weapon_model(CAT, "charge_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    pool = B.Pool(health=1000, armour=0, shield=0, respawn_ms=15_000)
+    players = [B.Player(0, 0, charge, pool), B.Player(1, 1, dummy, pool)]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 1.0, 1)
+    shooter = players[0]
+    shooter.target = 1
+    shooter.contact_end = 20_000
+    shooter.engage_id = 1
+    # Use one timestamp to isolate heat per pull from passive cooling.
+    match._shot(shooter, 0.0, 1)
+    for _ in range(3):
+        match._shot(shooter, 0.0, 1)
+    assert shooter.heat == 98
+    assert shooter.heat_lock_until < 0
+    for _ in range(2):
+        match._shot(shooter, 0.0, 1)
+    assert shooter.heat >= dict(charge.heat)["lock_at"]
+    assert shooter.shots == 5
+    assert shooter.heat_lock_until == dict(charge.heat)["lockout_ms"]
+
+
+def test_charge_heat_toggle_at_real_tap_cadence():
+    charge = B.weapon_model(_edited("charge_rifle", heat__per_charge=55, heat__per_tap=14), "charge_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    pool = B.Pool(health=1000, armour=0, shield=0, respawn_ms=15_000)
+    for cooling, locked in ((True, False), (False, True)):
+        players = [B.Player(0, 0, charge, pool), B.Player(1, 1, dummy, pool)]
+        match = B.Match(players, random.Random(SEED), _cfg(range_model=False, heat_cool_while_firing=cooling), 1.0, 1)
+        shooter = players[0]
+        shooter.target, shooter.contact_end, shooter.engage_id = 1, 20_000, 1
+        for i in range(6):
+            match._shot(shooter, i * 285.0, 1)
+        assert (shooter.heat_lock_until > 0) is locked, (cooling, shooter.heat)
+    shipped = B.weapon_model(CAT, "charge_rifle")
+    for cooling in (True, False):
+        players = [B.Player(0, 0, shipped, pool), B.Player(1, 1, dummy, pool)]
+        match = B.Match(players, random.Random(SEED), _cfg(range_model=False, heat_cool_while_firing=cooling), 1.0, 1)
+        shooter = players[0]
+        shooter.target, shooter.contact_end, shooter.engage_id = 1, 20_000, 1
+        for i in range(4):
+            match._shot(shooter, i * 285.0, 1)
+        assert shooter.heat_lock_until < 0, (cooling, shooter.heat)
+
+
+def test_reload_credits_ammo_only_after_completion():
+    ar = B.weapon_model(CAT, "assault_rifle")
+    players = [B.Player(i, i, ar, B.default_pool()) for i in range(2)]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 1.0, 1)
+    shooter = players[0]
+    shooter.ammo = 0
+    before = shooter.reserve
+    match._start_reload(shooter, 100.0)
+    assert shooter.ammo == 0 and shooter.reserve == before
+    shooter.target, shooter.contact_end, shooter.engage_id = 1, 20_000, 1
+    match._shot(shooter, shooter.reload_until, 1)
+    assert shooter.ammo == ar.mag - 1 and shooter.reserve == before - ar.mag
+
+
+def test_old_seek_does_not_replace_a_live_engagement():
+    ar = B.weapon_model(CAT, "assault_rifle")
+    players = [B.Player(i, i, ar, B.default_pool()) for i in range(2)]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 0.35, 1)
+    match._seek(players[0], 0.0)
+    match._release(players[0], 100.0)
+    match._death(players[0], players[1], 200.0, dot=False)
+    match._respawn(players[0], 300.0)
+    match._seek(players[0], 400.0)
+    target, gen, attackers = players[0].target, players[0].engage_id, players[1].attackers
+    match._seek(players[0], 500.0)
+    assert (players[0].target, players[0].engage_id, players[1].attackers) == (target, gen, attackers)
+
+
+def test_energy_heat_vents_with_one_lever_pull_and_a_reload():
+    energy = B.weapon_model(CAT, "energy_rifle")
+    dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
+    players = [B.Player(0, 0, energy, B.default_pool()), B.Player(1, 1, dummy, B.default_pool())]
+    match = B.Match(players, random.Random(SEED), _cfg(range_model=False), 1.0, 1)
+    shooter = players[0]
+    shooter.target = 1
+    shooter.contact_end = 20_000
+    shooter.engage_id = 1
+    shooter.heat = 96.0
+    shooter.last_heat_ms = 0.0
+    match._shot(shooter, 0.0, 1)
+    assert shooter.shots == 1
+    assert shooter.heat_lock_until >= energy.reload_ms
+    assert shooter.ammo == energy.mag - 1
+    assert shooter.reload_amount == 1
+    match._shot(shooter, 1000.0, 1)
+    assert shooter.shots == 1
+    match._shot(shooter, shooter.heat_lock_until, 1)
+    assert shooter.shots == 2
+    assert shooter.ammo == energy.mag - 1
+    assert shooter.reload_amount == 0
+
+
 def _edited(weapon_id: str, **changes) -> WeaponCatalog:
     """A copy of the real catalogue with one row changed through the sweep's own path syntax."""
     return B.catalogue_with(CAT, weapon_id, {k.replace("__", "."): v for k, v in changes.items()})
@@ -85,6 +358,17 @@ def test_the_toxin_preset_reproduces_its_published_parity():
     d = B.duel(toxin, ar, cfg, 600, SEED)
     lo, hi = d.ci()
     assert lo <= 0.51 <= hi, (d.win_rate, lo, hi)
+
+
+def test_toxin_cli_uses_the_published_gap_and_respawn_seek():
+    parser = B.build_parser()
+    args = parser.parse_args(["--preset", "toxin"])
+    B._apply_preset(args, parser)
+    expected = B.toxin_preset_config()
+    assert args.gap_mean_s == expected.gap_mean_s
+    assert args.respawn_seek_mean_s == expected.respawn_seek_mean_s
+    off = parser.parse_args(["--heat-cool-while-firing", "off"])
+    assert off.heat_cool_while_firing == "off"
 
 
 def test_every_number_is_read_from_the_catalogue():
@@ -201,9 +485,7 @@ def test_sampled_single_shot_pulls_match_the_paced_cycle():
 
 
 def test_the_engines_fire_single_shots_at_the_paced_cycle():
-    """The wiring, not the sampler: `Match._shot()` and the duel generators must use the sampled pulls for a
-    single-shot weapon (Codex and Opus review). Deleting `elif w.semi` in `_shot()`, or the `pull_ms` hand-off
-    to `_ar_shots`/`_pump_shots`, puts them back on a press every t14 and fails here."""
+    """A field fight waits t14 plus the fitted overshoot; legacy duel generators retain their sampled clock."""
     cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
                       match_ms=20_000.0)
     pool_pts = cfg.pool.health + cfg.pool.armour
@@ -212,7 +494,7 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
         kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
         mean = sum(k for k in kills if k is not None) / len([k for k in kills if k is not None])
-        want = (htk - 1) * CAT.paced_cycle_ms(weapon_id)
+        want = (htk - 1) * (CAT.fire_ms(weapon_id) + B.FIGHT_OVERSHOOT_MS)
         assert abs(mean - want) / want < 0.05, (weapon_id, round(mean), round(want))
     m = _recoil_model()
     rng = random.Random(SEED)

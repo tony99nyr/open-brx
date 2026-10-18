@@ -506,6 +506,13 @@
   },
   {
    "weapon_id": "energy_rifle",
+   "heat": {
+    "per_shot": 3,
+    "lock_at": 99,
+    "cool_per_s": 0,
+    "vent": "lever",
+    "vent_per_pull": 35
+   },
    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
    "name": "Energy Rifle",
    "desc": "The cell barely stops. When it finally does, the recharge is long enough to lose the fight you were winning.",
@@ -554,10 +561,18 @@
    ],
    "ap_dmg": 8,
    "ap_fire_ms": 405,
-   "notes": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats \u2014 full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it."
+   "notes": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats \u2014 full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it. The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: about +3 net a shot, a lockout at 99, no passive cooling, and the reload lever vents about 35 a pull."
   },
   {
    "weapon_id": "charge_rifle",
+   "heat": {
+    "per_tap": 14,
+    "per_charge": 56,
+    "lock_at": 103,
+    "lockout_ms": 4800,
+    "cool_per_s": 30,
+    "vent": "self"
+   },
    "name": "Charge Rifle",
    "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
    "cls": 5,
@@ -603,7 +618,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py)."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py). The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: +56 a charge, +14 a tap, a lockout at about 103 for about 4.8 s, then a restart from 0, and about 30 a second of passive cooling."
   },
   {
    "weapon_id": "glock",
