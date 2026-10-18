@@ -8072,3 +8072,21 @@ test('F537 review r3: while our scan is closed (paused entries) the hill neither
   runControl(h, 2000, { team: 1, state: HELD, value: 100 });
   assert.ok(h.eng.hold['11'][1] >= held + 1500 && h.eng.hold['11'][1] <= held + 2250, `the clock resumes from the next fresh advert, with no lump (${h.eng.hold['11'][1] - held} ms)`);
 });
+
+// F570 (bench 2026-10-17, 0.4.24): at go-live after a relink the HUD showed the AR as 01/0 for seconds, then 32. The head is
+// ~30 frames sent in 20-byte chunks over seconds; the gun echoes each `$WEAP` as it reads it, so the melee row's echo
+// (`$ALCD,1,100,4,0,0`) arrived past its 700 ms window, still mid-write, read as a round on slot 4 and took the ammo block.
+test('F570: an echo of a head row that lands while the head is still being written is bookkeeping, not a round', async () => {
+  const h = harness().kit();
+  let finish;
+  h.eng.writer = frames => { h.writes.push(...frames); return frames.some(f => f.startsWith('$WEAP,')) ? new Promise(r => { finish = r; }) : true; };
+  h.config_();
+  h.adv(1500);                                              // the head is still on the link, well past ACC_ECHO_MS
+  h.frame('$LCD,0,0,0,0,0,0,*'); h.frame('$ALCD,32,100,0,96,0,*'); h.frame('$ALCD,1,100,4,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the melee echo does not take the trigger');
+  assert.notEqual(s.ammo, 1, 'the ammo block does not show the melee row');
+  finish(true); await new Promise(r => setImmediate(r));
+  h.adv(1000);                                              // the write landed; its windows close ACC_ECHO_MS later
+  assert.equal(h.eng.am.acctEchoing(4), false, 'the held window closes after the write lands, never left open');
+});

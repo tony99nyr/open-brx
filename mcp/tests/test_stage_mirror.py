@@ -2172,6 +2172,8 @@ def test_every_hill_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # F570: holds a write's echo windows while the link sends it; the stage's writes land at once, so nothing is ever held
+    "am.holdEchoes",
     # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
     "headsetOk",
     # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)

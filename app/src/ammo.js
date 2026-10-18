@@ -814,6 +814,15 @@ export class Ammo {
       if (a && a.echoPending > 0) a.echoUntil = now + ACC_ECHO_MS;
     }
   }
+  /** F570: a write that carried `$AMMO`/`$WEAP` rows is still on the link: its windows stay open until `restampEchoes`. */
+  holdEchoes(frames, gens = null) {
+    for (const f of frames || []) {
+      if (typeof f !== 'string' || !(f.startsWith('$AMMO,') || f.startsWith('$WEAP,'))) continue;
+      const slot = +f.split(',')[1], a = this.acct[slot];
+      if (gens && (!a || gens[slot] !== a.echoGen)) continue;
+      if (a && a.echoPending > 0) a.echoUntil = Infinity;
+    }
+  }
   /** Bug 3 r2 M2: {slot: echoGen} for each slot a write's rows name, taken when the write is called. PURE. */
   echoGens(frames) {
     const out = {};
