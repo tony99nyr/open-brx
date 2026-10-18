@@ -1461,7 +1461,7 @@ export interface MatchSettings {
   teams?: TeamColour[];
   /** F415: KOTH's hold target (see Scoring.hold_target_s) */
   hold_target_s?: number | null;
-  /** F559: KOTH only. A set key goes to every control station; absent = the station default */
+  /** F559: KOTH only. A set key goes to every control station; absent = SET ON THE HILL (MC sends nothing; each hill keeps the pace it last had) */
   hill?: HillSettings;
 }
 

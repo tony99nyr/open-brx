@@ -1,5 +1,5 @@
 // F559: the hill pace in force, as one line: "HILL: CAPTURE 15 S · NET CAP 4". A key the game does not set reads SET ON THE HILL
-// (MC sends nothing, so each hill keeps the pace it last had, MC's last value included, until it is changed on the hill)
+// (MC sends nothing, so each hill keeps the pace it last had, MC's last value included, until it is changed on the hill).
 // KING OF THE HILL only; any other mode shows nothing. An older server sends no
 // `config.hill`: both keys then read SET ON THE HILL.
 import type { ConfigView } from '../api/types';

@@ -37,7 +37,7 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
     text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH.' },
   // milestone review 2026-10-18: a site the hill station counted itself (F555) is the authority, not a floor
   'recap-possession-station': { sev: 'neutral',
-    text: 'THE HILL COUNTED ITS OWN HOLD TIME; THE PHONES ARE THE CROSS-CHECK.' },
+    text: '{who} COUNTED ITS OWN HOLD TIME. PHONES SAW {team} {dur} · {team2} {dur2}.' },
   'recap-provisional-banner': { sev: 'amber',
     text: '{n} NODE(S) HAVE NOT FLUSHED ({names}): BRING THEM INTO RANGE TO FINALIZE '
       + '(KILLS LIVE IN THEIR REPORTS UNTIL THEN).' },

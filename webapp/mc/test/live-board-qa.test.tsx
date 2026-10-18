@@ -78,14 +78,20 @@ describe('H2 · the KOTH board headlines possession', () => {
     r.m.unmount();
   });
 
-  it('milestone 2026-10-18: a hill the station counted is not called a floor; a phone-only hill still is', async () => {
-    let r = await board('live', await kothOver(), [row()], { possession: { ...POSS, station_sites: 1 } });
+  it('milestone 2026-10-18: a station-counted hill is not a floor, shows the phones as its check, and says when there is none', async () => {
+    const st = { ...POSS, station_sites: 1, phones_by_team: { blue: 190, purple: 120 } };
+    let r = await board('live', await kothOver(), [row()], { possession: st });
     let t = r.m.find('[data-testid="hill-panel"]')[0]?.textContent ?? '';
-    expect(t).toContain('THE HILL COUNTED ITS OWN HOLD TIME; THE PHONES ARE THE CROSS-CHECK.');
-    expect(t, 'no floor wording for a station-counted hill').not.toContain('SO THIS IS A FLOOR');
+    expect(t).toContain('THE HILL COUNTED ITS OWN HOLD TIME. PHONES SAW BLUE TEAM 3:10 · PURPLE TEAM 2:00.');
+    expect(t, 'no floor wording for a station-counted hill').not.toContain('FLOOR');
     r.m.unmount();
-    r = await board('live', await kothOver(), [row()], { possession: { ...POSS, sites: 2, station_sites: 1 } });
-    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('1 OF 2 HILLS COUNTED THEIR OWN HOLD TIME. THE REST ARE A FLOOR');
+    r = await board('live', await kothOver(), [row()], { possession: { ...st, reports: 0, phones_by_team: {} } });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'no phone: no cross-check claimed').toContain('NO PHONE REPORTED, SO THERE IS NO CROSS-CHECK.');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: { ...st, sites: 2 } });
+    t = r.m.find('[data-testid="hill-panel"]')[0]?.textContent ?? '';
+    expect(t).toContain('1 OF 2 HILLS COUNTED THEIR OWN HOLD TIME.');
+    expect(t, 'mixed: one floor line, for the other hills').toContain('THE OTHER HILLS ARE A FLOOR');
     r.m.unmount();
     r = await board('live', await kothOver(), [row()], { possession: POSS });
     expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('ONLY A GUN IN RANGE SEES THE HILL, SO THIS IS A FLOOR.');

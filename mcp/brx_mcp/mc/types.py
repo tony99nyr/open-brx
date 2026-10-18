@@ -1177,7 +1177,7 @@ class MatchSettings(TypedDict):
     # for a mode without teams (FFA). The count is the list's length.
     teams: NotRequired[list[TeamColour]]
     hold_target_s: NotRequired[int | None]   # F415: KOTH's hold target (see Scoring.hold_target_s)
-    hill: NotRequired[HillSettings]          # F559: KOTH only. A set key goes to every control station; absent = the station default
+    hill: NotRequired[HillSettings]          # F559: KOTH only. A set key goes to every control station; absent = SET ON THE HILL (MC sends nothing; each hill keeps the pace it last had)
 
 
 class LastMatch(MatchSettings):
