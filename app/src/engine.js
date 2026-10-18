@@ -498,7 +498,7 @@ function hillHost(e) {
     _write: (frames, why) => e._write(frames, why), _sayMust: (frame, why) => e._sayMust(frame, why),
     show: (name, value) => e.show(name, value), _laneObj: (name, value) => e._laneObj(name, value),
     _laneAge: (at, now) => e._laneAge(at, now), _alertsMissed: () => e._alertsMissed(),
-    emitFact: fact => e.emitFact(fact), _controlStation: () => e._controlStation(),
+    emitFact: fact => e.emitFact(fact), _controlStation: () => e._controlStation(), _controlStations: () => e._controlStations(),
     get _lanes() { return e._lanes; },
     _ann: { push: item => e._ann.push(item), dead: () => e._ann.dead(),
       get queue() { return e._ann.queue; }, audioBusy: now => e._ann.audioBusy(now) },
@@ -5733,13 +5733,17 @@ export class Engine {
   /** The control point this player reads: one we are standing on first, else the strongest in range.
    *  Unlike a respawn station a control point is NOT team-filtered -- an enemy-held point is exactly the
    *  one you need to hear about. A stale advert is ignored (see CONTROL_STALE_MS). */
+  /** Every control point heard right now (F556: the possession clock counts each one, not only the one the HUD reads). */
+  _controlStations() {
+    return this.stations.filter(e => e && e.kind === 'control' && this._stationAllowed(e)
+      && !(Number.isFinite(e.ageMs) && e.ageMs > CONTROL_STALE_MS));
+  }
   _controlStation() {
     // ⚠ `ageMs`, never `this.now() - e.seenAt`. `Presence` stamps `seenAt` (and now `ageMs`) with the RAW
     // `Date.now()`; a node's `now()` is that plus the MC clock offset, so subtracting one from the other
     // made every advert look stale — or none of them ever — depending on which way MC's clock leaned, with
     // no log line to explain it. The age is computed on one clock where the stamp was made.
-    const live = this.stations.filter(e => e && e.kind === 'control' && this._stationAllowed(e)
-      && !(Number.isFinite(e.ageMs) && e.ageMs > CONTROL_STALE_MS));
+    const live = this._controlStations();
     // Latch the point we are already reading (item 2): `stations` arrives in RSSI order, so picking by
     // signal alone flips between two points as a player walks between them, and each flip looked like a
     // change of hands. Stay on the latched point while it is live; move only when it is gone, or when we

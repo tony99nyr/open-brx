@@ -4522,6 +4522,14 @@ class GunStage:
         ids = {(x.get("id") if isinstance(x, dict) else x) for x in allow}
         return e["id"] in ids
 
+    def _control_stations(self) -> list[StationEntry]:
+        """engine.js `_controlStations` (F556): every control point heard right now, strongest first."""
+        now = self.now()
+        live = [e for e in self.stations.values() if e.get("kind") == "control" and self._station_allowed(e)
+                and not (now - e["seen_at"] > CONTROL_STALE_S)]
+        live.sort(key=lambda e: -e.get("rssi", -50))
+        return live
+
     def _control_station(self) -> StationEntry | None:
         """The control point this player reads: one we are standing on first, else the strongest in range,
         LATCHED to the point already being read (engine.js `_controlStation`). Not team-filtered: an
@@ -4529,9 +4537,7 @@ class GunStage:
         F525: a present latched point holds only while it is heard (an advert in the last CONTROL_LATCH_HEARD_S),
         or while no other present point is heard. Time only, never signal strength."""
         now = self.now()
-        live = [e for e in self.stations.values() if e.get("kind") == "control" and self._station_allowed(e)
-                and not (now - e["seen_at"] > CONTROL_STALE_S)]
-        live.sort(key=lambda e: -e.get("rssi", -50))
+        live = self._control_stations()
         latched = next((e for e in live if e["id"] == self._control_site), None) if self._control_site is not None else None
 
         def heard(e: StationEntry) -> bool:
