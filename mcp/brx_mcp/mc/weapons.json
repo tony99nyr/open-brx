@@ -325,7 +325,7 @@
   {
    "weapon_id": "sniper_rifle",
    "name": "Sniper Rifle",
-   "desc": "One round, then the bolt. Three hits drop anyone from anywhere on the field, and you work the lever between them.",
+   "desc": "One round, then the bolt. Two hits drop anyone from anywhere on the field, and you work the lever between them.",
    "cls": 2,
    "role": "marksman",
    "types": ["rifle", "long"],
@@ -334,13 +334,13 @@
    "reserve": 48,
    "reload_ms": 1500,
    "reload_type": "bolt",
-   "dmg": 50,
+   "dmg": 65,
    "rof": 5,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
-   "htk": 3,
-   "ttk_ms": 4011,
+   "htk": 2,
+   "ttk_ms": 2005,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -352,7 +352,7 @@
     "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
    },
    "wire": {
-    "dmg": 57,
+    "dmg": 75,
     "fire_ms": 1500,
     "swap_ms": 500,
     "range_outdoor_pct": 100
@@ -369,7 +369,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "A bolt action since 2026-10-17 (Tony): one round in the magazine, then a lever pull and a 1.5 s bolt before the next. 57 a hit, three hits to a kill on 115, 140 and 150, with 48 behind it. It peeks, takes cover while the bolt runs, and peeks again; its counter is the rush, because it must hit every shot. Perks leave the bolt and the magazine alone. Until 2026-10-17 it was 60 a hit on a 1.5 s cycle, four in the mag."
+   "notes": "A bolt action since 2026-10-17 (Tony): one round in the magazine, then a lever pull and a 1.5 s bolt before the next. 75 a hit, two hits to a kill on 115, 140 and 150, with 48 behind it. It peeks, takes cover while the bolt runs, and peeks again; its counter is the rush, because it must hit every shot. Perks leave the bolt and the magazine alone. Until 2026-10-17 it was 60 a hit on a 1.5 s cycle, four in the mag."
   },
   {
    "weapon_id": "plasma_sniper",

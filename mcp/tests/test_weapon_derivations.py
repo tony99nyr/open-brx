@@ -566,7 +566,7 @@ def test_weapon_views_follow_the_hosts_health_config():
     The view must recompute against the pool it is given, and say which pool that was."""
     at = {p: {v["weapon_id"]: v for v in weapon_views(CAT.all(), p)} for p in (100, 115, 150, 200)}
     assert [at[p]["assault_rifle"]["htk"] for p in (100, 115, 150, 200)] == [12, 13, 17, 23]
-    assert [at[p]["sniper_rifle"]["htk"] for p in (100, 115, 150, 200)] == [2, 3, 3, 4]   # 57, the bolt action
+    assert [at[p]["sniper_rifle"]["htk"] for p in (100, 115, 150, 200)] == [2, 2, 2, 3]   # 75, the bolt action
     # the power tier stops one-shotting at 150 — the reason it ships 2+2 and not 1+3 (§2.5)
     assert at[115]["rail_gun"]["htk"] == 1 and at[150]["rail_gun"]["htk"] == 2
     for p in (100, 115, 150, 200):

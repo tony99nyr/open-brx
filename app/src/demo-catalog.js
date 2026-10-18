@@ -55,7 +55,7 @@ export const DEMO_WEAPONS = [
       "power": 64,
       "rof": 53,
       "ammo": 49,
-      "ttk": 53
+      "ttk": 47
     }
   },
   {
@@ -165,7 +165,7 @@ export const DEMO_WEAPONS = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 47
+      "ttk": 40
     }
   },
   {
@@ -282,7 +282,7 @@ export const DEMO_WEAPONS = [
       "power": 64,
       "rof": 40,
       "ammo": 43,
-      "ttk": 33
+      "ttk": 27
     }
   },
   {
@@ -623,16 +623,16 @@ export const DEMO_WEAPONS = [
     "name": "Sniper Rifle",
     "cls": "2",
     "weapon_class": "ballistic",
-    "desc": "One round, then the bolt. Three hits drop anyone from anywhere on the field, and you work the lever between them.",
+    "desc": "One round, then the bolt. Two hits drop anyone from anywhere on the field, and you work the lever between them.",
     "clip": 1,
     "mags": 48,
     "reserve": 48,
     "reload_s": 1.5,
     "reload_ms": 1500,
-    "dmg": 50,
+    "dmg": 65,
     "rpm": 5,
     "rng": 75,
-    "dmg_per_hit": 57,
+    "dmg_per_hit": 75,
     "dual_emitter": false,
     "reload_type": "bolt",
     "pool": 115,
@@ -646,8 +646,8 @@ export const DEMO_WEAPONS = [
       "rifle",
       "long"
     ],
-    "htk": 3,
-    "ttk_ms": 4011,
+    "htk": 2,
+    "ttk_ms": 2005,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -656,13 +656,13 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
-      57
+      75
     ],
     "cells": [
       {
         "proto": 0,
         "subtype": 1,
-        "mag": 57
+        "mag": 75
       }
     ],
     "ammo_total": 49,
@@ -670,7 +670,7 @@ export const DEMO_WEAPONS = [
       "power": 91,
       "rof": 20,
       "ammo": 31,
-      "ttk": 27
+      "ttk": 53
     }
   },
   {
@@ -887,7 +887,7 @@ export const DEMO_WEAPONS = [
       "power": 56,
       "rof": 60,
       "ammo": 66,
-      "ttk": 40
+      "ttk": 33
     }
   }
 ];

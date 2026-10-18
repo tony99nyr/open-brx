@@ -143,7 +143,7 @@
       "group": "the mock shows it wrong",
       "path": "$.config_warnings[*]",
       "count": 293,
-      "sha1": "5c1a4c059a12137e"
+      "sha1": "fdb2e75cc6cc6800"
     }
   ]
 }

@@ -493,9 +493,9 @@ def test_resolve_provisional_substitutes_mag_reserve():
 # ---- mag >= htk invariant (docs/weapon-design.md §2.1) ---------------------
 def test_hits_to_kill_reads_the_resolved_frame():
     cat = WeaponCatalog()
-    # rebalanced: wire.dmg wins. sniper 57 (the 2026-10-17 bolt action) -> 3 hits at the 45+70 default pool
-    assert cat.damage("sniper_rifle") == 57
-    assert cat.hits_to_kill("sniper_rifle", 115) == 3
+    # rebalanced: wire.dmg wins. sniper 75 (the 2026-10-17 bolt action) -> 2 hits at the 45+70 default pool
+    assert cat.damage("sniper_rifle") == 75
+    assert cat.hits_to_kill("sniper_rifle", 115) == 2
     # untuned damage is read back out of the captured frame — the AR really deals 9 (bench exp 2),
     # the manual's 24 was stale (docs/reference/weapons.md)
     assert cat.damage("assault_rifle") == 9

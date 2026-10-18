@@ -80,7 +80,7 @@ The JSON fixture pins each grouped path with a raw count and a digest of every s
 
 ### Games and Armory
 
-- `$.config_warnings[*]`: The recorded server and mock values differ. 293 raw gaps across 70 steps. First: happy / initial. Server: `"deagle keys $SIR 0,3 → function 37, a HEADSET-ONLY multiplier row: at this game's compiled crit_modifier (0) the mul...`. Mock: `"PRIMARY SNIPER RIFLE CANNOT KILL ON ONE MAGAZINE: mag 1 < 3 rounds for 3 hits at 57 dmg vs a 115 pool — a reload mid...`.
+- `$.config_warnings[*]`: The recorded server and mock values differ. 293 raw gaps across 70 steps. First: happy / initial. Server: `"deagle keys $SIR 0,3 → function 37, a HEADSET-ONLY multiplier row: at this game's compiled crit_modifier (0) the mul...`. Mock: `"PRIMARY SNIPER RIFLE CANNOT KILL ON ONE MAGAZINE: mag 1 < 2 rounds for 2 hits at 75 dmg vs a 115 pool — a reload mid...`.
 
 ## cosmetic
 
