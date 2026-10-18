@@ -100,9 +100,11 @@ same timer. Row: F542.
 ## P3: tuning reads (about 25 min)
 
 **P3.1. The melee range ladder (20 min).** *Impact: melee reached 15-20 ft in the field.* Melee is emitted by the
-headset. Change only `$WEAP` slot 4 token 2 (range): 90, then 50, 40 and 30. At each value, strike the target
-from 0.5, 1, 2, 3, 5 and 6 m, three times each (the field saw 15-20 ft, about 4.6-6.1 m). **Read:** the longest distance that hits at each value. The knee near
-40 is arithmetic, not a measurement: this ladder measures it. **Control:** 90 (the field value) hits at every
+headset. Change only `$WEAP` slot 4 token 2 (range): 90, then 60, 50, 40 and 30. Tony set 60 as the new value
+(2026-10-17, headset carrier about 32.4 kHz); 60 is still inside the receiver's pass-band by the bench model, so
+the felt change may be small. Goal: a reach of a few feet. At each value, strike the target
+from 0.5, 1, 2, 3, 5 and 6 m, three times each (the field saw 15-20 ft, about 4.6-6.1 m). **Read:** the longest distance that hits at each value: does 60 cut the reach, or must the value
+sit near the knee? The knee near 40 is arithmetic, not a measurement: this ladder measures it. **Control:** 90 (the field value) hits at every
 distance. Row: F567.
 
 **P3.2. The single-shot fire rate (5 min).** *Impact: the arsenal ranks single-shot weapons with a fire rate that
