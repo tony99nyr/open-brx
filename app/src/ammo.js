@@ -336,6 +336,9 @@ export class Ammo {
           const r = this.reloading;
           this.host.log(`reload moved from slot ${r.slot} to gun slot ${slot}`, 'li');
           r.slot = slot; r.from = prev; r.cap = this.spawnAmmo()[slot]?.[0] ?? null; r.mag = prev;
+          // BOLT review: the slot the gun really reloads decides the cue, not the slot the pull was judged on
+          { const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
+            r.bolt = !!(row && row.reload_type === 'bolt'); if (r.bolt) r.cap = prev + 1; }
           this.host.setActiveSlot(slot);
           if (slot < 2) this.altPtr = slot;
           this.switching = null; this.altEvidencePending = null;
@@ -526,8 +529,10 @@ export class Ammo {
     // Bench 2026-10-17: inside an ALT swap the gun reloads the old slot only once the swap ends, so the deadline waits out the window.
     const swapTo = this.switching && !this.switching.pu ? this.switching.to : null;
     this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
-                       from: this.host.ammo, cap: cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
+                       // BOLT: one lever chambers one round, so the bolt is done at the magazine plus one, whatever the spawn cap
+                       from: this.host.ammo, cap: row && row.reload_type === 'bolt' ? (this.host.ammo || 0) + 1 : cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
+                       bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo };   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
@@ -634,6 +639,8 @@ export class Ammo {
     // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
     // life. That bench measured phone equips; ALT before the first pull is the field report's bench #2 row (brx1's call to
     // ship it, 2026-10-17). Field 2026-10-17 (F542, F445): every assumed swap after a bare spawn preceded a failed reload.
+    // After an app restart neither counter is restored, so both read undefined and ALT is allowed: the phone cannot know
+    // whether this life has had a pull, and blocking ALT for a whole life is the worse error (brx5 stage twin review).
     const pulled = this.host.pulledLife === this.host.lifeSeq || !!(this.lastShot && this.lastShot.life === this.host.lifeSeq);   // a round is a pull too (a lost `$BUT`)
     if (!pulled) { this.host.log('ALT ignored by the gun: no trigger pull since the spawn', 'li'); return; }
     if (r) this.endReload('swapped');

@@ -290,7 +290,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-bolt', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -838,6 +838,23 @@ for (const view of VIEWS) {
     await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1', null, 2300); /* T6 review r2: the old 2.3 s limit */ const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
     must(r.up && r.chips === '0', 'chips visible over the takeover: ' + JSON.stringify(r)); must(after === '1', 'chips stayed hidden after the reload');
   });
+  // BOLT (Tony 2026-10-17 via brx2): a bolt-action lever pull shows a small BOLT cue under the digits, never the RELOADING
+  // takeover, so the player keeps the scope view; the chips and the vitals stay.
+  for (const night of [false, true]) {
+    await step(`${view.name} BOLT ${night ? 'night' : 'day'}: a bolt lever pull shows the BOLT cue, not the RELOADING takeover`, async () => {
+      const pg = await open(view, 'live-bolt', night ? '&night' : '', 3000);
+      const r = await pg.evaluate(() => { const b = document.querySelector('.ammo .bolt'), fr = document.getElementById('frame').getBoundingClientRect(), bb = b && b.getBoundingClientRect();
+        return { cue: !!b, text: b ? b.querySelector('.bk').textContent : null, fs: b ? parseFloat(getComputedStyle(b.querySelector('.bk')).fontSize) : 0,
+          inFrame: !!bb && bb.left >= fr.left && bb.right <= fr.right && bb.bottom <= fr.bottom, takeover: !!document.querySelector('.mo.reloading'),
+          chips: getComputedStyle(document.getElementById('chips')).opacity }; });
+      await pg.screenshot({ path: `${OUT}/${view.name}-bolt-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg); await pg.close();
+      must(r.cue && r.text === 'BOLT' && r.inFrame, 'the BOLT cue must show under the digits: ' + JSON.stringify(r));
+      must(!r.takeover && r.chips === '1', 'no RELOADING takeover, the chips stay: ' + JSON.stringify(r));
+      must(r.fs >= 11, 'BOLT too small: ' + JSON.stringify(r));
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
   await step(`${view.name} breaker-2 a reload does not survive death and respawn`, async () => {
     const pg = await open(view, 'live'); const t0 = Date.now(); await pg.evaluate(() => { const d = window.brxDemo; d.fire(10); d.reloadPull(); setTimeout(() => d.die(), 200); setTimeout(() => d.respawn(), 600); }); await until(pg, () => window.brx.engine.state().alive && !!document.querySelector('.mo.redeploy'), null, 1400);
     await pg.waitForTimeout(Math.max(0, 1400 - (Date.now() - t0)));   // fixed on purpose (T6 review r2): read 800 ms into the new life, as before, so a RELOADING that comes back late still fails
