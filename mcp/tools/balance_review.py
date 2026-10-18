@@ -11,21 +11,26 @@ WHAT IT DOES
 ------------
 It builds two worlds from `weapons.json` and `perks.json`: the BASELINE (the shipped catalogue plus any
 `with` context changes in the candidate file) and the CANDIDATE (the baseline plus the candidate). It
-runs the same versioned scenario list in both, and prints a verdict with six named tests:
+runs the same versioned scenario list in both, and prints a verdict with seven named tests:
 
   value_addition         the candidate is near the top in at least one scenario, or it brings a trigger
                          mechanic the arsenal lacks (docs/weapon-design.md, trigger diversity).
-  no_domination          no kit is near the top in every scenario (Tony's acceptance rule, criterion a).
+  no_domination          no kit is near the top everywhere or in all priority columns, or exceeds
+                         the field ratio ceiling.
   viable                 the candidate's plain primary field ratio clears `VIABLE_FIELD_FLOOR`, and its
                          kit beats another kit in a 1v1 band. A sidearm instead needs the R10a finish bar.
   balance_kept           no Balance rule (R1-R12, R10a, both presets) flips from pass to fail, and no
-                         other kit loses its last near-top cell.
+                         other kit loses its last near-top cell beyond sampling noise.
   op_rule                no non-pickup weapon one-shots the lowest pool a player can field on a gated
                          preset (rule 7: one-shot weapons are a pickup tier).
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
-                         players who do (Tony, 2026-10-17).
+                         plain AR and AR with Body Armor rushes at 20 m (Tony, 2026-10-17).
+  pickup_utility         pickup-only candidates: enough Standard kills per full stock and a prompt
+                         undefended Standard first kill at REAL_AIM.
 
-Scenario version 9 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
+An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
+
+Scenario version 10 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
@@ -34,7 +39,8 @@ Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo str
 the down time rule measures bolt exposure instead of ammunition.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
 so the published semi TTK and the fight sim disagree (F576). Heat cooling while firing is unproven (F575).
-Each matrix 1v1 column scores the first kill within 10 s. Long contact uses 20 s. The field ratio
+The matrix reports REAL_AIM separately at close, mid and long range. Each matrix 1v1 column scores
+the first kill within 10 s. Long contact uses 20 s. The field ratio
 uses a 150 s kill-count match. `assumptions()` names every other scoring horizon. The Shields preset
 regenerates its shield after 6.5 s without damage, in four grants one second apart.
 
@@ -96,7 +102,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 9
+SCENARIO_VERSION = 10
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -153,13 +159,14 @@ PISTOL_FINISH_RANGE = "close"  # the chipped target is at close range
 COMBO_KITS = (("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor"),
               ("CR+Sniper+QS", "charge_rifle", "sniper_rifle", "quick_switch"))
 
-COLUMNS = ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact", "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
+COLUMNS = ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact", "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
 # Near-top margin: a kit within this of the column's best is "near the top". The duel columns are win
 # rates (a 5 point margin is about two standard errors of a 3000-rep cell averaged over ten opponents);
 # the field ratio and the ambush score are noisier and wider, so 0.10. Ammo stress uses its 0.10
 # as a relative ratio margin; the other columns use absolute margins.
 NEAR_TOP_MARGIN = {"1v1 close": 0.05, "1v1 mid": 0.05, "1v1 long": 0.05, "long contact": 0.05,
-                   "1v1 real aim": 0.05, "peek mid": 0.05, "field": 0.10, "ambush": 0.10,
+                   "real aim close": 0.05, "real aim mid": 0.05, "real aim long": 0.05,
+                   "peek mid": 0.05, "field": 0.10, "ambush": 0.10,
                    "shields": 0.05, "hill hold": 0.05, "ammo stress": 0.10}
 # Viability checks a plain primary alone, so a sidearm or a perk cannot rescue a weak weapon. The 0.50 floor
 # remains below every shipped primary in the version 2 field model.
@@ -170,6 +177,12 @@ MARKSMAN_STRONG_BAR = 0.50    # peek-kill rate against a player who does not rus
 MARKSMAN_STRONG_COLUMN = "1v1 long"
 MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from the 20 m start
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
+PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.59; leave about 0.59 kills of room
+PICKUP_TTK_BAR_MS = 2500.0     # practical median against an undefended Standard target
+PICKUP_STOCK_CAP_MS = 120_000.0
+FIELD_RATIO_CEILING = 1.60      # shipped maximum is about 1.32; leave about 0.28 ratio units
+DOMINATION_PRIORITY = ("1v1 close", "1v1 mid", "1v1 long", "field")
+NOISE_Z = 2.0
 R10_PRIMARY_BAR = 0.65        # a new sidearm: each of B.R10_PRIMARIES still beats it on Standard, as R10b (Shields: SHIELDS_BAR)
 RULE_BAR_STANDARD = 0.65      # mirrors mcp/tests/test_balance_sim.py (RANGE_BAR_OVERRIDES)
 RULE_BAR_OVERRIDES = {"R7": 0.55}
@@ -193,7 +206,8 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
                                   "after_lockout": "catalogue cool_per_s begins after the first completed lockout",
                                   "none": "no passive cooling; timed self lockout still resets heat"},
         "horizons": {"1v1 close": "10 s first kill", "1v1 mid": "10 s first kill",
-                     "1v1 long": "10 s first kill", "1v1 real aim": "10 s first kill",
+                     "1v1 long": "10 s first kill", "real aim close": "10 s first kill",
+                     "real aim mid": "10 s first kill", "real aim long": "10 s first kill",
                      "shields": "10 s first kill", "long contact": "20 s first kill",
                      "peek mid": "10 s first kill", "field": "150 s kill-count match",
                      "ambush": "10 s first kill against two enemies", "hill hold": "two first kills",
@@ -210,6 +224,17 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "reaction_ms": [REACTION_MEAN_MS, REACTION_SD_MS], "retarget_ms": RETARGET_MS,
         "controlled_burst_rounds": list(BURST_LEN), "burst_pause_ms": list(BURST_PAUSE_MS),
         "fight_cap_ms": FIGHT_CAP_MS, "band_fit": {k: list(v) for k, v in B.BAND_FIT.items()},
+        "pickup_utility": {"stock_kill_floor": PICKUP_STOCK_KILL_FLOOR,
+                            "median_ttk_bar_ms": PICKUP_TTK_BAR_MS, "stock_cap_ms": PICKUP_STOCK_CAP_MS,
+                            "aim": REAL_AIM, "pool": "Standard", "range": "catalogue preferred band, mid by default",
+                            "shipped_margin": "about 0.59 kills per stock and 900 ms at full repetitions"},
+        "domination": {"field_ratio_ceiling": FIELD_RATIO_CEILING,
+                       "shipped_field_max_approx": 1.32, "shipped_margin_approx": 0.28,
+                       "priority_columns": list(DOMINATION_PRIORITY),
+                       "priority_reason": "the three first-kill distance bands and 150 s field performance"},
+        "near_top_noise_z": NOISE_Z,
+        "near_top_noise": "a lost last cell counts only when its margin shortfall exceeds two standard errors; binary cells use binomial errors, ratios use a count-scale approximation",
+        "overall_value_requirement": "at least one of value_addition, viable or pickup_utility must pass",
         "long_contact": {"aim": LONG_CONTACT_AIM, "cap_ms": LONG_CONTACT_CAP_MS, "range": "mid"},
         "peek": {"window_ms": PEEK_WINDOW_MS, "react_ms": PEEK_REACT_MS, "p_escape": PEEK_P_ESCAPE},
         "ambush_react_ms": AMBUSH_REACT_MS,
@@ -244,7 +269,8 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "anchors": "the perk choice, the field ratio and the ambush always use the baseline world's AR",
         "near_top_margin": dict(NEAR_TOP_MARGIN), "viable_field_floor": VIABLE_FIELD_FLOOR,
         "marksman_bars": {"strong": MARKSMAN_STRONG_BAR, "strong_column": MARKSMAN_STRONG_COLUMN,
-                          "rush": MARKSMAN_RUSH_BAR},
+                          "rush": MARKSMAN_RUSH_BAR, "rush_start_m": RUSH_STARTS_M[0],
+                          "rush_opponents": ["plain AR", "AR with Body Armor"]},
         "perk_exemption": "a row with reload_type 'bolt' ignores ammo_mult, ammo_mult_pistol and reload_mult",
         "rule_bars": {"standard": RULE_BAR_STANDARD, "overrides": dict(RULE_BAR_OVERRIDES),
                       "shields": B.SHIELDS_BAR, "r10a_ms": B.R10_FINISH_BAR_MS},
@@ -1476,6 +1502,37 @@ def time_to_kill(kit: Kit, pool: int, aim: float, reps: int, fit=False, reaction
     return times[len(times) // 2], sum(rounds) / len(rounds)
 
 
+def pickup_utility(world: World, wid: str, scale: float,
+                   heat_cool_while_firing=True) -> dict:
+    """Count kills from one pickup's magazine and reserve, then check its first-kill median."""
+    kit = make_kit(world, f"pickup {wid}", wid)
+    gun = kit.guns[0]
+    distance = {"close": "close", "mid": "mid", "full": "long"}[gun.band]
+    reps = _reps("ttk", scale)
+    rng = B.cell_rng(SEED, "pickup_stock", wid, distance, _heat_seed(heat_cool_while_firing))
+    kills = 0
+    for _ in range(reps):
+        shooter = Fighter(kit, 1, REAL_AIM, DIST[distance], rng, fit=True,
+                          allow_melee=False, heat_cool_while_firing=heat_cool_while_firing)
+        for _stock in range(gun.mag + gun.reserve):
+            target = Fighter(kit, 115, 0, DIST[distance], rng, fit=True,
+                             heat_cool_while_firing=heat_cool_while_firing)
+            target.next_t = math.inf
+            fight(rng, [shooter], [target], PICKUP_STOCK_CAP_MS)
+            if target.alive:
+                break
+            kills += 1
+    median_ms, _ = time_to_kill(kit, 115, REAL_AIM, reps, fit=True, dist=distance,
+                                heat_cool_while_firing=heat_cool_while_firing)
+    stock_kills = kills / reps
+    return _test(stock_kills >= PICKUP_STOCK_KILL_FLOOR and median_ms <= PICKUP_TTK_BAR_MS,
+                 {"kills_per_stock": stock_kills, "stock_kill_floor": PICKUP_STOCK_KILL_FLOOR,
+                  "median_ttk_ms": median_ms, "ttk_bar_ms": PICKUP_TTK_BAR_MS,
+                  "stock_rounds": gun.mag + gun.reserve, "aim": REAL_AIM, "range": distance,
+                  "pool": "Standard", "reps": reps},
+                 "a pickup kills enough Standard targets per full stock and kills one promptly at realistic aim")
+
+
 # --------------------------------------------------------------------------- #
 # The field (team) sim with kits: balance_sim.Match plus a swap step and a combo policy
 # --------------------------------------------------------------------------- #
@@ -1969,7 +2026,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     for n in names:
         cols[n] = {"1v1 close": mean1("standard", "close", n), "1v1 mid": mean1("standard", "mid", n),
                    "1v1 long": mean1("standard", "long", n),
-                   "1v1 real aim": sum(mean1("real", d, n) for d in DIST) / len(DIST),
+                   **{f"real aim {d}": mean1("real", d, n) for d in DIST},
                    "long contact": mean1("long", "mid", n),
                    "peek mid": mean1("peek", "mid", n), "field": B.geo_mean(field[n]),
                    "ambush": sum(amb[n]) / len(amb[n]),
@@ -1983,6 +2040,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                                                "shields_perk": s.shield_perk,
                                                "combo": s.combo} for s in specs},
             "columns": cols, "top": top, "near_top": near, "duels": duel,
+            "reps": {"duel": dr, "field": fr, "ambush": ar, "ammo": ammo_reps},
             "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills,
             "ammo_stress_cap_hits": ammo_caps, "ammo_stress_anchor_cap_hits": ammo_anchor_caps,
             "ammo_stress_end_reasons": ammo_reasons, "ammo_stress_anchor_end_reasons": ammo_anchor_reasons}
@@ -2266,6 +2324,33 @@ def _test(passed, numbers: dict, why: str) -> dict:
     return {"status": status, "pass": passed, "numbers": numbers, "why": why}
 
 
+def _overall_pass(tests: dict) -> bool:
+    value_tests = ("value_addition", "viable", "pickup_utility")
+    return (all(result["pass"] is not False for result in tests.values())
+            and any(tests.get(name, {}).get("pass") is True for name in value_tests))
+
+
+def domination_verdict(baseline: dict, candidate: dict) -> dict:
+    """Reject universal, priority-column or field-ratio dominance."""
+    def near_everywhere(matrix, name):
+        applicable = [column for column in COLUMNS
+                      if not math.isnan(matrix["columns"][name][column])]
+        return bool(applicable) and all(column in matrix["near_top"][name] for column in applicable)
+
+    everywhere = [k for k in candidate["kits"] if near_everywhere(candidate, k)]
+    before = [k for k in baseline["kits"] if near_everywhere(baseline, k)]
+    field_exceeded = [k for k in candidate["kits"]
+                      if candidate["columns"][k]["field"] > FIELD_RATIO_CEILING]
+    priority_near = [k for k in candidate["kits"]
+                     if all(c in candidate["near_top"][k] for c in DOMINATION_PRIORITY)]
+    return _test(not (everywhere or field_exceeded or priority_near),
+                 {"near_top_everywhere": everywhere, "baseline_near_top_everywhere": before,
+                  "field_ceiling_exceeded": field_exceeded, "field_ratio_ceiling": FIELD_RATIO_CEILING,
+                  "priority_near_top": priority_near, "priority_columns": DOMINATION_PRIORITY,
+                  "margin": NEAR_TOP_MARGIN},
+                 "no kit exceeds the field ceiling or nears the top in all priority columns or every scenario")
+
+
 def heat_rows(matrix: dict, weapon: str) -> dict | None:
     """Every matrix kit carrying a heated weapon, including secondary and combo slots."""
     names = [n for n, spec in matrix["specs"].items()
@@ -2391,16 +2476,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                             "near the top in at least one scenario, or a trigger mechanic the arsenal lacks")
 
     # no_domination ---------------------------------------------------------------------------------
-    def near_everywhere(matrix, name):
-        applicable = [column for column in COLUMNS
-                      if not math.isnan(matrix["columns"][name][column])]
-        return bool(applicable) and all(column in matrix["near_top"][name] for column in applicable)
-
-    everywhere = [k for k in mc["kits"] if near_everywhere(mc, k)]
-    before = [k for k in mb["kits"] if near_everywhere(mb, k)]
-    tests["no_domination"] = _test(not everywhere, {"near_top_everywhere": everywhere, "baseline_near_top_everywhere": before,
-                                                    "margin": NEAR_TOP_MARGIN},
-                                   "no kit near the top (within the margin) in every scenario")
+    tests["no_domination"] = domination_verdict(mb, mc)
 
     # viable ------------------------------------------------------------------------------------------
     if is_perk:
@@ -2432,6 +2508,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                 {"field": f, "kit_field": kit_f, "floor": VIABLE_FIELD_FLOOR,
                                  "beats_in_some_band": beats},
                                 "plain primary-only field ratio (against the baseline AR) at or over the floor, and the kit beats another kit in a 1v1 band")
+
+    tests["pickup_utility"] = (pickup_utility(world, wid, reps_scale, heat_cool_while_firing)
+                               if pickup else _test(None, {}, "not a pickup-only candidate"))
 
     # balance_kept ----------------------------------------------------------------------------------
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side)
@@ -2469,7 +2548,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "facts": ({"baseline": _facts(base.cat, wid) if wid in base.cat._by_id else None,
                    "candidate": _facts(world.cat, wid)} if wid else None),
         "sim_only_flags": {"styles": world.styles, "bolt_perk_exempt": _bolt_exempt_sim_only(world)},
-        "tests": tests, "pass": all(t["pass"] is not False for t in tests.values()),
+        "tests": tests, "pass": _overall_pass(tests),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
         "marksman_watch": watch,
@@ -2531,6 +2610,27 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     return verdict
 
 
+def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -> bool:
+    """A last-cell loss matters only when its margin shortfall exceeds sampling noise."""
+    material = []
+    for column in mb["near_top"][old_name]:
+        value = mc.get("columns", {}).get(new_name, {}).get(column)
+        top = mc.get("top", {}).get(column)
+        if value is None or top is None or not (math.isfinite(value) and math.isfinite(top)):
+            return True
+        limit = top * (1 - NEAR_TOP_MARGIN[column]) if column == "ammo stress" else top - NEAR_TOP_MARGIN[column]
+        shortfall = limit - value
+        kind = "ammo" if column == "ammo stress" else ("field" if column == "field" else
+                ("ambush" if column == "ambush" else "duel"))
+        reps = min(mb.get("reps", {}).get(kind, REPS[kind]), mc.get("reps", {}).get(kind, REPS[kind]))
+        if column in ("field", "ammo stress"):
+            se = math.hypot(top, value) / math.sqrt(reps)
+        else:
+            se = math.sqrt((max(0.0, top * (1 - top)) + max(0.0, value * (1 - value))) / reps)
+        material.append(shortfall > NOISE_Z * se)
+    return all(material)
+
+
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
                  side: dict | None = None) -> dict:
     """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
@@ -2540,11 +2640,16 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
              or (rules_s[k]["pass"] and not (rules_b[k]["pass"] and rules_c[k]["pass"]))]
     already = [k for k in rules_s if not rules_s[k]["pass"]]
     by_key_c = {key: name for name, key in mc["keys"].items()}
-    lost = [key for name, key in mb["keys"].items() if key != subject and mb["near_top"][name]
-            and key in by_key_c and not mc["near_top"][by_key_c[key]]]
+    candidates = [(name, key, by_key_c[key]) for name, key in mb["keys"].items()
+                  if key != subject and mb["near_top"][name] and key in by_key_c
+                  and not mc["near_top"][by_key_c[key]]]
+    lost = [key for name, key, new_name in candidates if _last_cell_material_loss(mb, mc, name, new_name)]
+    noise_excused = [key for name, key, new_name in candidates
+                     if not _last_cell_material_loss(mb, mc, name, new_name)]
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
                                "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
-            "already_failing_when_shipped": already, "kits_losing_last_near_top": lost}
+            "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
+            "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z}
     ok = not flips and not lost
     if side is not None:
         low = {k: v for k, v in side["r10b"].items()
@@ -2578,12 +2683,14 @@ def marksman_verdict(r: dict, r_ba: dict, near_cols: list,
     AND the kit near the top in MARKSMAN_STRONG_COLUMN; counter = rush success at or over MARKSMAN_RUSH_BAR."""
     col_near = MARKSMAN_STRONG_COLUMN in near_cols
     strong = r["peek_kill"] >= MARKSMAN_STRONG_BAR and col_near
-    counter = r["rush_success"] >= MARKSMAN_RUSH_BAR
+    counter = r["rush_success"] >= MARKSMAN_RUSH_BAR and r_ba["rush_success"] >= MARKSMAN_RUSH_BAR
     return _test(strong and counter, {
         "vs_plain_ar": r, "vs_ar_body_armor": r_ba,
         "vs_plain_ar_30m": r30, "vs_ar_body_armor_30m": r_ba30,
         "strong_column": MARKSMAN_STRONG_COLUMN,
         "near_top_in_strong_column": col_near, "strong_ok": strong, "counter_ok": counter,
+        "plain_counter_ok": r["rush_success"] >= MARKSMAN_RUSH_BAR,
+        "body_armor_counter_ok": r_ba["rush_success"] >= MARKSMAN_RUSH_BAR,
         "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR},
         "rush_start_m": RUSH_STARTS_M[0]},
         f"strong against non-rushers (peek-kill, and near the top in {MARKSMAN_STRONG_COLUMN!r}), beaten by rushers from 20 m")
@@ -2786,7 +2893,7 @@ def report_markdown(v: dict) -> str:
                     f"{mr['vs_ar_body_armor_30m']['rush_success']:.2f}. The verdict bar remains at {RUSH_STARTS_M[0]:g} m.", ""]
     moved_m = {w: r for w, r in (v.get("marksman_watch") or {}).items() if r["moved"]}
     if v.get("rush_table"):
-        out += ["## Marksman rushes", "", f"The verdict bar uses the {RUSH_STARTS_M[0]:g} m plain AR pair. Both starts are reported below.", "",
+        out += ["## Marksman rushes", "", f"The verdict bar uses both plain AR and AR with Body Armor at {RUSH_STARTS_M[0]:g} m. Both starts are reported below.", "",
                 "| marksman kit | rusher | start (m) | rush success | peek kill |",
                 "|---|---|---:|---:|---:|"]
         for row in v["rush_table"]:

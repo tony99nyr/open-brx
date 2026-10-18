@@ -1,6 +1,6 @@
 ---
 name: balance-review
-description: Judge a proposed weapon, a weapon variant, a weapon number change or a perk change for Open BRX, deterministically, and log Tony's decision. Runs mcp/tools/balance_review.py (a kit dominance matrix, the Balance rules before and after, and six named tests - value_addition, no_domination, viable, balance_kept, op_rule, marksman_rush_counter), proposes the smallest fix for a failed test, asks Tony for the call and records it in docs/balance-decisions.md. Use whenever someone (Tony, another session, a community member) proposes a new gun, a variant of a gun, a damage/cadence/magazine/reload/swap change, a perk change, or asks "does this break balance", "is this gun OP", "would X dominate", "rerun the sniper sims", "balance check", "balance review".
+description: Judge a proposed weapon, a weapon variant, a weapon number change or a perk change for Open BRX, deterministically, and log Tony's decision. Runs mcp/tools/balance_review.py (a kit dominance matrix, the Balance rules before and after, and seven named tests - value_addition, no_domination, viable, pickup_utility, balance_kept, op_rule, marksman_rush_counter), proposes the smallest fix for a failed test, asks Tony for the call and records it in docs/balance-decisions.md. Use whenever someone (Tony, another session, a community member) proposes a new gun, a variant of a gun, a damage/cadence/magazine/reload/swap change, a perk change, or asks "does this break balance", "is this gun OP", "would X dominate", "rerun the sniper sims", "balance check", "balance review".
 ---
 
 # Balance review
@@ -38,21 +38,24 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 9. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 10. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
      (overheat, charge, burst, bolt, shell reload, two-word pull). A stat change alone is not a mechanic.
-   - `no_domination`: no kit near the top in every scenario.
+   - `no_domination`: no kit is near the top in every column or all priority columns (1v1 close, mid and long,
+     plus field), and no kit exceeds the field-ratio ceiling of 1.60.
    - `viable`: the plain primary's field ratio clears the floor, and its full kit beats another kit in a 1v1
      band. A sidearm instead finishes 35 HP inside the R10a bar.
    - `balance_kept`: no Balance rule cell (R1-R12, R10a, Standard and Shields) flips to fail, and no other kit
-     loses its last near-top cell.
+     loses its last near-top cell by more than two standard errors beyond the near-top margin.
    - `op_rule`: no loadout weapon's pull, or crit pull, one-shots the lowest pool a player can field on Standard
      or Shields, with any visible perk (rule 7).
    - `marksman_rush_counter`: marksman rows only. Strong against players who do not rush (peek-kill, and near
-     the top in `MARKSMAN_STRONG_COLUMN`), beaten by rushers. The report also says when any candidate moves
+     the top in `MARKSMAN_STRONG_COLUMN`), beaten by plain AR and AR + Body Armor rushers at 20 m. The report also says when any candidate moves
      the other marksman rows' rush numbers.
+   - `pickup_utility`: pickup-only rows need at least 1.00 Standard kills per full stock at `REAL_AIM` and a
+     median undefended Standard first kill within 2,500 ms.
    Also read the matrix, the rule table, the time-to-kill table (perfect aim, recoil, crits) and the
    hits-to-kill: a damage step that changes hits-to-kill (57 x 2 = 114, under the 115 pool) changes the weapon.
 5. **Propose the smallest fix** for each failed test: one field, one value, with the reason. Run the fix as its
@@ -72,7 +75,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 9 uses these models:
+Scenario version 10 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. `--heat-cooling` selects
   `throughout`, `after_lockout`, or `none`. The first branch cools between all shots at the catalogue rate.
@@ -95,8 +98,8 @@ Scenario version 9 uses these models:
   target for `HAZE_BLIND_MS` (3,000 ms by default), keyed by the row's `sir_fn` 23. A non-lethal Haze hit
   deals no damage. The shooter then pays a swap to its primary. Haze remains outside the shipped kit matrix
   while it is hidden.
-- The matrix has a `1v1 real aim` column at `REAL_AIM` 0.4. The existing 0.9 aim columns remain. The real aim
-  value gives about 0.38 landed hits per round for a mid rifle at mid range.
+- The matrix reports `real aim close`, `real aim mid` and `real aim long` separately at `REAL_AIM` 0.4.
+  Each range can contribute a near-top cell to the verdict gates. The existing 0.9 aim columns remain.
 - The field sim uses hit probability 0.35, mean contact 3 seconds and mean ordinary gap 70 seconds. A respawn
   has a separate mean seek delay, currently `DEFAULT_RESPAWN_SEEK_MEAN_S` 7 seconds. An attacker
   who waits for a defeated target's respawn seeks that target first. A stale seek cannot replace a live
@@ -116,8 +119,9 @@ Scenario version 9 uses these models:
 - Shields targets regain shield after 6.5 seconds without damage. The refill has four grants, one second
   apart. The report names each scoring horizon: the matrix 1v1 cells score first kill within 10 seconds,
   long contact allows 20 seconds, and the field ratio uses a 150-second kill-count match.
-- The report checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from 20 m and 30 m.
-  `marksman_rush_counter` still gates the plain AR rush from 20 m. The report shows 30 m beside it.
+- The rush table checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from
+  20 m and 30 m. `marksman_rush_counter` separately gates plain AR and AR + Body Armor at 20 m.
+  The marksman verdict also reports both opponents at 30 m.
 - `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
   The second attacker arrives 3,500 ms after the first. The holder fights the first attacker alone until then.
   The holder is alert and can fire when the second attacker arrives, with no reaction delay.
@@ -153,6 +157,14 @@ Scenario version 9 uses these models:
 - `hill hold` uses a 0.05 absolute near-top margin. `ammo stress` uses a 0.10 relative margin.
   Both enter `value_addition`,
   `no_domination` and the last-near-top check in `balance_kept` through the matrix.
+- `no_domination` applies `FIELD_RATIO_CEILING` 1.60 and the priority set of 1v1 close, mid and long plus field.
+  The measured shipped maximum field ratio is about 1.32, so the ceiling leaves about 0.28 margin.
+- A pickup-only candidate must pass the `pickup_utility` gate: at least 1.00 expected kills per magazine plus reserve
+  at `REAL_AIM` against the Standard pool, and median first-kill time at most 2,500 ms. At full repetitions,
+  the shipped minimum is about 1.59 kills per stock, and the longest median first kill is 1,600 ms.
+- Overall PASS requires at least one substantive passing value test. A verdict with only n/a value tests cannot pass.
+- `balance_kept` treats a last near-top cell as lost only when its margin shortfall exceeds two standard errors.
+  Binary cells use binomial errors. Field and ammo ratios use a count-scale approximation.
 
 Read `assumptions()` in each verdict for the exact values used by that run. Treat `--haze-blind-ms` as a
 scenario parameter, and report its value with the Haze comparison.

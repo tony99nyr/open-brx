@@ -80,7 +80,7 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
-    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact",
+    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact",
                          "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
     assert set(R.NEAR_TOP_MARGIN) == set(R.COLUMNS)
     assert a["columns"]["Assault Rifle"]["ammo stress"] > 0
@@ -92,6 +92,13 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert a["ammo_stress_cap_hits"]["Energy Rifle"] == 0
     assert json.dumps(a["columns"], sort_keys=True) == json.dumps(b["columns"], sort_keys=True)
     assert a["duels"] == b["duels"]
+    for distance in R.DIST:
+        expected = sum(a["duels"][f"real|{distance}|Assault Rifle|{other}"]
+                       for other in a["kits"] if other != "Assault Rifle") / (len(a["kits"]) - 1)
+        assert a["columns"]["Assault Rifle"][f"real aim {distance}"] == expected
+    assert all(f"real aim {distance}" in R.matrix_markdown(a) for distance in R.DIST)
+    assert R.domination_verdict(a, a)["status"] == "pass"
+    assert max(row["field"] for row in a["columns"].values()) < R.FIELD_RATIO_CEILING
 
 
 def test_four_workers_give_the_numbers_one_worker_gives():
@@ -144,6 +151,7 @@ def test_bolt_kits_have_no_ammo_stress_cell_or_last_cell_loss():
     candidate["near_top"]["Sniper"] = [column for column in ("ammo stress",)
                                           if math.isfinite(candidate["columns"]["Sniper"][column])]
     assert candidate["near_top"]["Sniper"] == []
+    candidate["columns"]["Sniper"]["peek mid"] = 0.0
     lost = R.balance_kept({}, {}, {}, baseline, candidate, None)
     assert lost["status"] == "fail"
     assert lost["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"]
@@ -225,6 +233,25 @@ def test_a_dominant_candidate_fails_no_domination():
     assert code == 1 and v["pass"] is False and v["reps_scale"] == DOMINANCE_REPS_SCALE
 
 
+def test_an_ar_at_27_damage_fails_no_domination():
+    v = R.review({"row": _copy("assault_rifle", "crit_ar_27", "Crit AR 27", dmg=27)},
+                 reps_scale=DOMINANCE_REPS_SCALE)
+    t = v["tests"]["no_domination"]
+    assert t["status"] == "fail", t
+    assert t["numbers"]["field_ceiling_exceeded"] or t["numbers"]["priority_near_top"], t
+
+
+def test_priority_column_dominance_fails_without_a_field_ceiling_breach():
+    row = {column: 0.5 for column in R.COLUMNS}
+    row["field"] = 1.2
+    matrix = {"kits": ["candidate"], "columns": {"candidate": row},
+              "near_top": {"candidate": list(R.DOMINATION_PRIORITY)}}
+    result = R.domination_verdict(matrix, matrix)
+    assert result["status"] == "fail"
+    assert result["numbers"]["priority_near_top"] == ["candidate"]
+    assert result["numbers"]["field_ceiling_exceeded"] == []
+
+
 def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
     """The AR itself at 1 damage. The field ratio and the ambush anchor on the BASELINE AR, so the change cannot
     pass by being measured against itself. Break it once (anchor on the candidate world) and watch the ratio
@@ -261,6 +288,20 @@ def test_a_pickup_only_candidate_is_not_judged_on_loadout_value():
     assert v["tests"]["value_addition"]["status"] == "n/a", v["tests"]["value_addition"]
     assert v["tests"]["viable"]["status"] == "n/a"
     assert v["tests"]["op_rule"]["status"] == "pass"
+    assert v["tests"]["pickup_utility"]["status"] == "fail"
+    assert v["pass"] is False
+
+
+def test_shipped_pickups_clear_the_pickup_utility_bars():
+    world = R.shipped_world()
+    for row in world.cat._rows:
+        if row.get("pickup_only") and row.get("lethal") is not False:
+            result = R.pickup_utility(world, row["weapon_id"], REPS_SCALE)
+            assert result["status"] == "pass", (row["weapon_id"], result)
+
+
+def test_an_all_na_verdict_cannot_pass():
+    assert not R._overall_pass({"value_addition": R._test(None, {}, "n/a")})
 
 
 def test_a_perk_candidate_that_strips_armour_fails_viable_and_op_rule():
@@ -310,6 +351,21 @@ def test_balance_kept_judges_with_context_against_shipped_and_keys_kits_by_weapo
     renamed_c = _m({"Sniper Mk2": ("sniper_rifle", []), "AMR": ("amr", ["1v1 long"])})
     t = R.balance_kept(ok, ok, ok, renamed_b, renamed_c, "amr")
     assert t["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"], t
+
+
+def test_last_near_top_cell_ignores_sampling_noise_but_catches_a_real_drop():
+    baseline = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
+    baseline["columns"] = {"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}}
+    baseline["top"] = {"1v1 close": 0.85}
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Top"]["1v1 close"] = 0.851
+    candidate["top"]["1v1 close"] = 0.851
+    candidate["near_top"]["Other"] = []
+    quiet = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert quiet["status"] == "pass", quiet
+    candidate["columns"]["Other"]["1v1 close"] = 0.75
+    real = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert real["status"] == "fail", real
 
 
 def test_a_real_rule_flip_is_caught():
@@ -374,6 +430,8 @@ def test_marksman_rush_counter_catches_both_sides():
     assert not lo["numbers"]["strong_ok"] and lo["status"] == "fail", lo
     good = {"peek_kill": 0.7, "rush_success": 0.6}
     assert R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN])["status"] == "pass"
+    armoured = {"peek_kill": 0.7, "rush_success": 0.0}
+    assert R.marksman_verdict(good, armoured, [R.MARKSMAN_STRONG_COLUMN])["status"] == "fail"
     assert R.marksman_verdict(good, good, [])["status"] == "fail"
     far = {"peek_kill": 0.7, "rush_success": 0.3}
     numbers = R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN], far, far)["numbers"]
@@ -551,7 +609,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 9
+    assert R.SCENARIO_VERSION == 10
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1062,8 +1120,8 @@ def test_real_aim_column_uses_the_field_aim_factor():
     ar = R.make_kit(w, "AR", "assault_rifle")
     assert R.REAL_AIM == 0.4
     assert 0.33 <= R.REAL_AIM * B.BAND_FIT[ar.guns[0].band][R.DIST["mid"]] <= 0.43
-    assert "1v1 real aim" in R.COLUMNS
-    assert "1v1 real aim" in R.NEAR_TOP_MARGIN
+    assert all(f"real aim {distance}" in R.COLUMNS for distance in R.DIST)
+    assert all(f"real aim {distance}" in R.NEAR_TOP_MARGIN for distance in R.DIST)
     ar = R.replace(ar, guns=(R.replace(ar.guns[0], gun_dmg=1, head_dmg=0),))
     landed = shots = 0
     for seed in range(5):
