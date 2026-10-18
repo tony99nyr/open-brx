@@ -6,6 +6,11 @@ The single place Tony's balance decisions live. Every other page links here inst
 rule; only this table changes when a decision changes. "Enforced by" names a test, a bench id, or
 says the rule is judgement only.
 
+A proposed weapon, weapon change or perk change goes through the balance review first:
+`python3 mcp/tools/balance_review.py --candidate <file.json>` (the `balance-review` skill is the loop).
+It checks that the change adds value, dominates nothing, is viable, breaks no rule here and keeps one-shots
+in the pickup tier. Each review and Tony's call is logged in [balance-decisions.md](balance-decisions.md).
+
 | # | rule | decided | id | enforced by |
 |---|---|---|---|---|
 | 1 | Recoil rungs count ROUNDS PER TRIGGER PULL, scaled by calibre: a reference 8-damage weapon fires 5 clean rounds then degrades, 3 more then goes heavy, both counts scaled by `8 / dmg`. A trigger release resets the count while the weapon is still crisp; recovery from degraded or heavy needs 600 ms of quiet. | Tony, 2026-09-23 | S54/F268/F280 (`aa7b08b9`) | `app/test/engine.test.mjs` "S54: the round counts are derived from the row's dmg…"; `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_shipped_ar_against_the_engine_test`. The release-reset half is bench-provisional (F308) |
