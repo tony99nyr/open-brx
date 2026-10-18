@@ -364,3 +364,22 @@ def test_lobby_time_never_seeds_the_hill_tally():
     clock["t"] += 5_000
     _beat(net, clock, sid, {str(red["tid"]): 40_000})
     assert not (s.station_registry.stations["util-hill"].get("tally") or {}).get("hold_ms"), "a lobby beat seeded the tally"
+
+
+
+def test_f558_the_station_view_carries_the_hills_inputs():
+    """F558 (field 2026-10-17): the station reported none of its inputs, so every rate question was inferred from slopes."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    body = {"role": "utility", "kind": "control", "station_id": sid,
+            "control": {"owner": 0, "progress": 100, "contested": False, "net": 2, "counts": {"0": 3, "1": 1}, "lead": 0}}
+    net.simulate_status("util-hill", body, clock["t"])
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert (c["net"], c["counts"], c["lead"]) == (2, {"0": 3, "1": 1}, 0), c
+    body["control"] = {"owner": 255, "net": True, "counts": {"0": -1}, "lead": None}
+    net.simulate_status("util-hill", body, clock["t"] + 2_000)
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert "net" not in c and "counts" not in c and c["lead"] is None, c
+    body["control"] = {"owner": 255, "net": 9, "counts": {"7": 1}, "lead": 9}   # nothing a station can send
+    net.simulate_status("util-hill", body, clock["t"] + 4_000)
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert "net" not in c and "counts" not in c and "lead" not in c, c

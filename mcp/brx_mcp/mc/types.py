@@ -1589,6 +1589,11 @@ class StationControl(TypedDict):
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
     game: NotRequired[int]       # F555: the game byte the hill counts under (absent from an older station)
+    # F558: the point's own inputs: the clamped net its leader converts at, living players counted per tid, and the
+    # leading tid (null with nobody counted). Absent from an older station.
+    net: NotRequired[int]
+    counts: NotRequired[dict[str, int]]
+    lead: NotRequired[int | None]
 
 
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).

@@ -8,6 +8,7 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
+import { sitesNote } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -632,6 +633,12 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
         {p.neutral_s > 0 && (
           <Alert id="recap-possession-neutral" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.1em' }}>
             NEUTRAL {fmtDuration(p.neutral_s)}: NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
+          </Alert>
+        )}
+        {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
+        {sitesNote(p) && (
+          <Alert id="recap-possession-sites" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
+            {sitesNote(p)}
           </Alert>
         )}
         {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
