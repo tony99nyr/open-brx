@@ -374,7 +374,7 @@ export function Recap() {
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />
-      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(rc.mode)} />}
+      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} />}
       {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
