@@ -113,7 +113,7 @@
   {"script":"happy","step":"lobby","patch":[
   ]},
   {"script":"happy","step":"push to kit","patch":[
-   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,108,0,*","err":null,"config_id":"00000013"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,108,0,*","err":null,"config_id":"00000013"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000013"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,12,0,*","err":null,"config_id":"00000013"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000013"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000013"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000013"}}],
+   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,192,0,*","err":null,"config_id":"00000013"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,192,0,*","err":null,"config_id":"00000013"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000013"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,24,0,*","err":null,"config_id":"00000013"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000013"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000013"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000013"}}],
    ["set","/lobby/all_acked",true],
    ["set","/lobby/pushed",true],
    ["set","/mc_confidence/stale",[]],
@@ -466,7 +466,7 @@
   {"script":"abort","step":"lobby","patch":[
   ]},
   {"script":"abort","step":"push to kit","patch":[
-   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,108,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,108,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,12,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"}}],
+   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,192,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,24,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"}}],
    ["set","/lobby/all_acked",true],
    ["set","/lobby/pushed",true],
    ["set","/mc_confidence/stale",[]],
@@ -702,7 +702,7 @@
   {"script":"recall","step":"lobby","patch":[
   ]},
   {"script":"recall","step":"push to kit","patch":[
-   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,108,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,108,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,12,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"}}],
+   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,192,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,24,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"}}],
    ["set","/lobby/all_acked",true],
    ["set","/lobby/pushed",true],
    ["set","/mc_confidence/stale",[]],
@@ -1017,7 +1017,7 @@
   {"script":"panic","step":"lobby","patch":[
   ]},
   {"script":"panic","step":"push to kit","patch":[
-   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,108,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,108,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,12,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*","err":null,"config_id":"00000004"}}],
+   ["set","/lobby/acks",{"00000007":{"ok":true,"gun_echo":"$ALCD,36,100,0,192,0,*","err":null,"config_id":"00000004"},"00000008":{"ok":true,"gun_echo":"$ALCD,54,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000a":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"00000009":{"ok":true,"gun_echo":"$ALCD,4,100,0,24,0,*","err":null,"config_id":"00000004"},"0000000b":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000d":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"},"0000000e":{"ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*","err":null,"config_id":"00000004"}}],
    ["set","/lobby/all_acked",true],
    ["set","/lobby/pushed",true],
    ["set","/mc_confidence/stale",[]],

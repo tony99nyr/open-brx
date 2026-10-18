@@ -28,9 +28,9 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
         "$STOP,*",
         "$PHONE,*",
@@ -40,8 +40,8 @@
         "$START,*",
         "$GSET,0,0,1,0,1,0,0,1,*",
         "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
-        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
-        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,48,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,24,75,100,*",
         "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
         "$SIR,0,0,,28,0,0,1,,*",
         "$SIR,0,1,,28,0,0,1,,*",
@@ -83,8 +83,8 @@
         "$PLAYX,0,*",
         "$SPAWN,,*",
         "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
+        "$AMMO,0,32,384,1,*",
+        "$AMMO,1,6,48,1,*",
         "$BMAP,0,0,,,,,*",
         "$SFLASH,*",
         "$PLAY,U16,4,6,VAI,,,,*",
@@ -98,7 +98,7 @@
     },
     {
       "at": "dead",
-      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":1},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2}],
       "reports": [],
       "writes": [
@@ -108,7 +108,7 @@
     },
     {
       "at": "burst_queued",
-      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":1},
       "facts": [],
       "reports": [],
       "writes": [
@@ -117,14 +117,14 @@
     },
     {
       "at": "burst_landed",
-      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
+      "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":1},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "trigger_live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":1},
       "facts": [{"type":"respawn","match_id":"m1","operator":true},{"type":"operator_result","cmd":"respawn","ok":true,"match_id":"m1","player_id":"p1"}],
       "reports": [],
       "writes": [
@@ -133,8 +133,8 @@
         "$BMAP,0,98,,,,,*",
         "$SPAWN,,*",
         "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
+        "$AMMO,0,32,384,1,*",
+        "$AMMO,1,6,48,1,*",
         "$PLAY,,4,6,VAI,,,,*",
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",

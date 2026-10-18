@@ -168,12 +168,12 @@ def test_end_and_panic_are_the_known_sequences():
 
 
 def test_ammo_comes_from_selected_weapons():
-    # assault_rifle mag/reserve = 32/192 ; shotgun = 6/24 (weapons.json)
+    # assault_rifle mag/reserve = 32/384 ; shotgun = 6/48 (weapons.json)
     b = C.compile(_cfg(), _player(weapons=("assault_rifle", "shotgun")), TEAMS)
     a0 = [f for f in b["spawn"] if f.startswith("$AMMO,0,")][0]
     a1 = [f for f in b["spawn"] if f.startswith("$AMMO,1,")][0]
-    assert a0 == "$AMMO,0,32,192,1,*", a0
-    assert a1 == "$AMMO,1,6,24,1,*", a1
+    assert a0 == "$AMMO,0,32,384,1,*", a0
+    assert a1 == "$AMMO,1,6,48,1,*", a1
 
 
 # ---- player_num bounds (A5.1) --------------------------------------------

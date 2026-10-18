@@ -1703,8 +1703,8 @@ test('Reconcile bugs 1+2 r1 S3: a stun that expires inside the window defers its
 
 test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account
-  for (let m = 31; m >= 3; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.frame('$ALCD,32,100,0,384,0,*');                          // the life's first slot-0 report seeds the account
+  for (let m = 31; m >= 3; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,384,0,*`); }
   h.adv(120); h.frame('$ALCD,3,100,0,40,0,*');                // a low magazine AND a spent reserve
   h.adv(2000); h.eng.tick();
   h.eng.onBleDropped(); h.eng.onBleConnected();
@@ -1714,8 +1714,8 @@ test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a 
   h.adv(3000); h.eng.tick();
   const rearm = h.writes.slice(before).filter(f => f.startsWith('$AMMO,'));
   assert.ok(rearm.includes('$AMMO,0,3,40,1,*'), `slot 0 re-arms at its live 3/40: ${JSON.stringify(rearm)}`);
-  assert.ok(!rearm.includes('$AMMO,0,32,192,1,*'), 'never the spawn magazine plus the spawn reserve');
-  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), `slot 1 was never counted this life, so it takes the spawn row: ${JSON.stringify(rearm)}`);
+  assert.ok(!rearm.includes('$AMMO,0,32,384,1,*'), 'never the spawn magazine plus the spawn reserve');
+  assert.ok(rearm.includes('$AMMO,1,6,48,1,*'), `slot 1 was never counted this life, so it takes the spawn row: ${JSON.stringify(rearm)}`);
   // The node's account agrees with the re-arm, so the gun's echo of it is bookkeeping, not a shot or a refill.
   h.frame('$ALCD,3,100,0,40,0,*');
   assert.equal(h.eng.state().ammo, 3, 'the HUD shows the re-armed magazine');
@@ -1727,8 +1727,8 @@ test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a 
 
 test('F164: an app restart mid-match keeps the live counts, so the reconnect re-arms them, not a spawn magazine; a new life clears them', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$ALCD,32,100,0,192,0,*');
-  for (let m = 31; m >= 4; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.frame('$ALCD,32,100,0,384,0,*');
+  for (let m = 31; m >= 4; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,384,0,*`); }
   h.adv(120); h.frame('$ALCD,4,100,0,64,0,*');
   h.adv(2000); h.eng.tick();
   // The app process dies and relaunches: a fresh engine on the same storage, then the gun relinks.
@@ -1741,7 +1741,7 @@ test('F164: an app restart mid-match keeps the live counts, so the reconnect re-
   clock += 3000; eng2.tick();
   const rearm = w2.slice(before).filter(f => f.startsWith('$AMMO,'));
   assert.ok(rearm.includes('$AMMO,0,4,64,1,*'), `slot 0 re-arms at the saved 4/64: ${JSON.stringify(rearm)}`);
-  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), 'slot 1 was never counted, so it keeps the spawn row');
+  assert.ok(rearm.includes('$AMMO,1,6,48,1,*'), 'slot 1 was never counted, so it keeps the spawn row');
   // A new life starts from the spawn frames: the saved counts must not carry across it.
   eng2.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng2.feedFrame('$HP,0,0,0,*');
   assert.equal(eng2.alive, false, 'setup: down');
@@ -6570,7 +6570,7 @@ const ammoWrites = h => h.writes.filter(f => f.startsWith('$AMMO'));
 
 test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on a second word, and restores the LIVE counts on expiry', () => {
   const h = stunHarness();
-  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: live 20/150, not the frame's 32/192
+  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: live 20/150, not the frame's 32/384
   h.writes.length = 0;
   h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP word: proto 8, no $HP follows (fn 24 is a status row)
   assert.deepEqual(ammoWrites(h), ['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'both live slots disarmed (the F15 chain)');
@@ -6596,7 +6596,7 @@ test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on 
   // expiry: ONE restore, with the LIVE counts (slot 0) and the frame's counts for a slot that never fired (slot 1)
   h.adv(3600); h.eng.tick();
   assert.equal(h.eng.stunned, null);
-  assert.deepEqual(ammoWrites(h), ['$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*'], 'restore = live counts, never the frame\'s for a slot that fired');
+  assert.deepEqual(ammoWrites(h), ['$AMMO,0,20,150,1,*', '$AMMO,1,6,48,1,*'], 'restore = live counts, never the frame\'s for a slot that fired');
   assert.equal(h.eng.moment.kind, 'stun_over');
   h.writes.length = 0; h.adv(1000); h.eng.tick();
   assert.equal(ammoWrites(h).length, 0, 'restored once');

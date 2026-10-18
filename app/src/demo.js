@@ -436,7 +436,7 @@ export function startDemo({ engine, log }) {
       stun: () => { if (engine.config && !engine.config.stun) engine.config.stun = { duration_s: 10 }; engine.feedFrame(`$HIR,4,8,19,${foe.tid},8,0,0,*`); },   // the button turns the host's stun on first
       // 2026-09-19 station respawn: the bundle's respawn_profile gives a station life 2 s of visible protection (`shielded`).
       stationRespawn: () => { if (engine.alive) return; engine._revive(false, 3); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; reply(lcd, 250); },
-      chargeAmmo: (ammo, reserve = 80) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},80,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
+      chargeAmmo: (ammo, reserve = 160) => { engine.feedFrame(`$ALCD,40,100,${gunSlot},160,0,*`); engine.feedFrame(`$ALCD,${ammo},100,${gunSlot},${reserve},0,*`); },
       failWrites: (re, n = 1) => { failRe = re; failLeft = n; },   // F416: BrxLink resolving a batch false
       alt: () => { if (engine._slotCount() >= 2) gunAlt(); engine.feedFrame('$BUT,1,1,*'); engine.feedFrame('$BUT,1,0,*'); },   // F394: the gun's pointer moves, and it reports nothing   // the ALT button: a swap with two weapons, a reload with one
       altCycle: () => {                                     // what a real swap looks like: ALT and NO report (F394); the next shot reports the new slot
