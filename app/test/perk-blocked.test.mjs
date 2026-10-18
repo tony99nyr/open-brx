@@ -22,4 +22,6 @@ test('F551: a perk blocked for the current primary or secondary is not offered; 
   assert.deepEqual(ids(st('sniper_rifle', 'usp')), ['quick_switch', 'body_armor'], 'blocked by the primary');
   assert.deepEqual(ids(st('assault_rifle', 'deagle')), ['quick_switch', 'body_armor'], 'blocked by the secondary');
   assert.deepEqual(ids(st(null, null)), ['armor_piercing', 'quick_switch', 'body_armor'], 'nothing picked yet hides nothing');
+  assert.deepEqual(ids({ ...st('assault_rifle', 'usp'), pendingPick: { slot: 'primary', kind: 'weapon', id: 'sniper_rifle' } }), ['quick_switch', 'body_armor'],
+    'a primary pick still waiting for its ack counts');
 });
