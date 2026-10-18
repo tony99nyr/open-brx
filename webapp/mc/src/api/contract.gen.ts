@@ -774,6 +774,11 @@ export interface PerkView {
   cost: string[];
   verified: boolean;
   hidden: boolean;
+  /** F551 (field 2026-10-17): the weapon ids this perk cannot ride with as the primary / the secondary -- the same rule
+   *  the compile guards refuse a push on (`Compiler.perk_block_reason`). A kit picker hides the perk for those.
+   *  Absent from an older MC: hide nothing. */
+  blocked_primary?: string[];
+  blocked_secondary?: string[];
 }
 
 /** S50 build 4: a wire number before and after a perk touched it. Integers, always both present

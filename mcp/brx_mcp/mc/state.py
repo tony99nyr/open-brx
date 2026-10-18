@@ -1834,7 +1834,12 @@ class Session:
             _, perks = self._catalog_rows()
             if perks and perk not in {r.get("perk_id") for r in perks}:
                 raise ValueError(f"unknown perk_id {perk!r}")
-            out["perk"] = perk                        # A14: a perk is its own slot — it rides beside a secondary weapon
+            w0 = weapons[0]["weapon_id"]
+            w1 = weapons[1]["weapon_id"] if len(weapons) > 1 else None
+            # F551 (field 2026-10-17): a perk the compiler would refuse with these weapons blocked the whole push. Drop
+            # it here instead (Tony's rule: fix the pick, no warning); the kit pickers hide it from `PerkView.blocked_*`.
+            if self.compiler.perk_block_reason(perk, w0, w1) is None:
+                out["perk"] = perk                    # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
             if not isinstance(ov, dict):
@@ -5814,6 +5819,7 @@ class Session:
         new = before
         if ok:
             new = _policy.set_slot(before, slot, kind, rid, perks, weapons)
+            asked_perk = new.get("perk")
             try:
                 new = self._check_loadout(new)
             except ValueError as e:
@@ -5822,6 +5828,17 @@ class Session:
                 dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
                 if dropped:
                     reason = why
+                elif asked_perk and not new.get("perk"):
+                    # F551 (Codex review): `_check_loadout` dropped a perk these weapons cannot carry; say so, or the
+                    # phone shows a perk the player no longer has
+                    ws = [w["weapon_id"] for w in new.get("weapons") or []]
+                    # the weapon that clashes: the primary unless only the secondary does (Codex review)
+                    w0 = ws[0] if ws and self.compiler.perk_block_reason(asked_perk, ws[0]) is not None \
+                        else (ws[1] if len(ws) > 1 else (ws[0] if ws else None))
+                    pname = next((k.get("name") for k in perks if k.get("perk_id") == asked_perk), asked_perk)
+                    wname = next((w.get("name") for w in weapons if w.get("weapon_id") == w0), w0)
+                    dropped = {"slot": "perk", "id": asked_perk, "name": pname}
+                    reason = f"{pname} does not work with the {wname}"
         if ok:
             p["loadout"] = new
             self.browsing.pop(pid, None)
@@ -5915,7 +5932,20 @@ class Session:
         plan = self._hit_plan()
         if plan is not None:
             kw["plan"] = plan
-        bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        try:
+            bundle = self.compiler.compile(self._compile_config(), p, self.teams, **kw)
+        except Exception as e:
+            # F551 (field 2026-10-17): a push-blocking compile error left no trace in mc.log, so the field could not
+            # read back why Armor Piercing refused twice. Log it with the traceback, tell the operator, then refuse.
+            import logging
+            who = p.get("display") or p["player_id"]
+            logging.getLogger("brx.mc").exception("COULD NOT COMPILE %s's frames: %s", who, e)
+            # Once per player and error while the line is in the feed: a phone retrying its hello every few seconds must
+            # not flush it (Opus review), and a new session's empty feed tells it again (Codex review)
+            line = f"COULD NOT COMPILE {who.upper()}'S FRAMES: {e}"
+            if not any(f.get("text") == line for f in self.feed):
+                self._on_feed(self._feed_alert("WITHHELD", line))
+            raise
         rolled = (bundle.get("voice") or {}).get("rolled") if isinstance(bundle, dict) else None
         if rolled:
             import logging

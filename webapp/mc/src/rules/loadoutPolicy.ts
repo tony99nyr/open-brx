@@ -72,7 +72,7 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   // cannot kill, and it may NEVER be a primary. The server refuses one in slot 0 outright
   // (`Compiler.validate`) and keeps it out of the primary pool (`policy._support_ids`), so this mirror
   // must do the same or the console offers an operator a pick that is rejected at arming.
-  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only && w.lethal !== false).map(w => w.weapon_id)
+  let prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only && w.lethal !== false).map(w => w.weapon_id)
     : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? []) && w.lethal !== false).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
   let sw: string[] = [], sp: string[] = [];
@@ -81,6 +81,12 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
   if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot
   else if (k.choice !== 'off') sp = visiblePerks.filter(x => inPool(k, x.perk_id, x.tags ?? [])).map(x => x.perk_id);
+  if (k.choice === 'fixed' && sp.length) {
+    // F551, as policy.py pool(): a fixed perk takes the weapons it cannot ride with out of the pool
+    const fixed = visiblePerks.find(x => x.perk_id === sp[0]);
+    prim = prim.filter(w => !(fixed?.blocked_primary ?? []).includes(w));
+    sw = sw.filter(w => !(fixed?.blocked_secondary ?? []).includes(w));
+  }
   // S37 (field 2026-09-12): a swap perk (Quick Switch) with no legal secondary has nothing to switch
   // to — pruned from the pool itself, the same way apply()/a stored loadout drops it, so it disappears
   // from both UIs with no extra rule. `neededSecondary` records whether THIS is why `sp` went empty,

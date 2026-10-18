@@ -238,6 +238,10 @@ class FakeCompiler:
         from .perks import default_perks
         return default_perks().all()
 
+    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None) -> str | None:
+        """F551: the fake's demo weapons carry no Armour Piercing prices; it refuses nothing."""
+        return None
+
 def fake_app_ver() -> str:
     """A29: a version a fake node can honestly report — the shipped RELEASE when that is a build this MC
     is compatible with, else the bottom of MC's own tier. Never a literal: a hardcoded string here goes
