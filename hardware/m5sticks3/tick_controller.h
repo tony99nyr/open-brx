@@ -128,7 +128,7 @@ class TickController {
     const HillUpdate update = link.tick_players(presence, now_ms);
     TickIntents out;
     const StationAssignment& a = link.assignment();
-    if (link.has_control_assignment() && saved_hill.note_owner(a, session_id, link.hill()))
+    if (link.has_control_assignment() && saved_hill.note_owner(a, session_id, link.hill(), now_ms))
       out.push_back({TickIntentKind::SAVE_HILL});
     if (saved_clock.note(a, session_id, link.hill_clock_remaining_ms(now_ms), now_ms))
       out.push_back({TickIntentKind::SAVE_CLOCK});
