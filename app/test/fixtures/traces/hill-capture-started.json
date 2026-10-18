@@ -36,7 +36,7 @@
   "expect": [
     {
       "at": "live",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":null,"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":null,"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":null},
       "facts": [],
       "reports": [],
       "writes": [
@@ -48,8 +48,8 @@
         "$START,*",
         "$GSET,0,0,1,0,1,0,0,1,*",
         "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
-        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,192,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,96,75,*",
-        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*",
+        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,48,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,24,75,100,*",
         "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
         "$SIR,0,0,,28,0,0,1,,*",
         "$SIR,0,1,,28,0,0,1,,*",
@@ -90,8 +90,8 @@
         "$PLAYX,0,*",
         "$SPAWN,,*",
         "$TID,1,*",
-        "$AMMO,0,32,192,1,*",
-        "$AMMO,1,6,24,1,*",
+        "$AMMO,0,32,384,1,*",
+        "$AMMO,1,6,48,1,*",
         "$BMAP,0,0,,,,,*",
         "$SFLASH,*",
         "$PLAY,U16,4,6,VAI,,,,*",
@@ -106,37 +106,37 @@
     },
     {
       "at": "neutral_point_adopted",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":0},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":2,"contested":false,"progress":0},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":null},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "blue_capture_started",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":{"kind":"hill_capture_started","team":"blue","tid":1,"src":"BLE","id":1,"at":3010}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{},"observed_ms":{},"source":null},"hillLane":{"kind":"hill_capture_started","team":"blue","tid":1,"src":"BLE","id":1,"at":3010}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "blue_badge_cleared_on_tick",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":7750}},"observed_ms":{"11":7750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":7750}},"observed_ms":{"11":7750},"source":"station"},"hillLane":null},
       "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":250},"observed_ms":250,"source":"station"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*"
       ]
     },
     {
       "at": "red_capture_started",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":7750}},"observed_ms":{"11":7750},"source":"station"},"hillLane":{"kind":"hill_capture_started","team":"red","tid":0,"src":"BLE","id":2,"at":11010}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":7750}},"observed_ms":{"11":7750},"source":"station"},"hillLane":{"kind":"hill_capture_started","team":"red","tid":0,"src":"BLE","id":2,"at":11010}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "red_badge_cleared_on_tick",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":15750}},"observed_ms":{"11":15750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":2,"contested":false,"progress":4},"possession":{"by_site":{"11":{"2":15750}},"observed_ms":{"11":15750},"source":"station"},"hillLane":null},
       "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":10250},"observed_ms":10250,"source":"station"}],
       "reports": [],
       "writes": [
@@ -145,7 +145,7 @@
     },
     {
       "at": "second_site_adopted",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":4000},"11":{"2":19750}},"observed_ms":{"8":4000,"11":19750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":4000},"11":{"2":19750}},"observed_ms":{"8":4000,"11":19750},"source":"station"},"hillLane":null},
       "facts": [],
       "reports": [],
       "writes": [
@@ -154,7 +154,7 @@
     },
     {
       "at": "possession_sites_in_order",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":15000},"11":{"2":19750}},"observed_ms":{"8":15000,"11":19750},"source":"station"},"hillLane":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"8":{"1":15000},"11":{"2":19750}},"observed_ms":{"8":15000,"11":19750},"source":"station"},"hillLane":null},
       "facts": [{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":4250},"observed_ms":4250,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":19750},"observed_ms":19750,"source":"station"},{"type":"possession","match_id":"m1","site":"8","hold_ms":{"1":14250},"observed_ms":14250,"source":"station"},{"type":"possession","match_id":"m1","site":"11","hold_ms":{"2":19750},"observed_ms":19750,"source":"station"}],
       "reports": [],
       "writes": [

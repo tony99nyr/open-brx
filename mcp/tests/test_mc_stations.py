@@ -309,7 +309,7 @@ def test_station_config_carries_match_end_deadline_when_known_and_zero_after_end
     s._arm_station("stick-1")
     assert "duration_ms" not in _pushed(s, "station_config", "stick-1")[-1]
     assert "ends_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
-    assert "starts_in_ms" not in _pushed(s, "station_config", "stick-1")[-1]
+    assert _pushed(s, "station_config", "stick-1")[-1].get("starts_in_ms") == -1000   # F568: the go-live, no deadline
     head_of(s)["adopted"] = False
     s.config["time_limit_s"] = None
     s._arm_station("stick-1")
@@ -435,8 +435,8 @@ def test_timed_hill_gets_a_go_live_time_in_its_deadline_config():
     assert stick[0][1]["starts_in_ms"] == 0
 
 
-def test_adopted_live_match_pushes_nothing_to_stations_or_player_phones():
-    s = _joined(_sess())
+def test_adopted_live_match_starts_a_control_station_now_and_pushes_nothing_to_player_phones():
+    s = _joined(_sess("koth", station_source="phone"))   # a hill mode: in TDM a control station is stood down (F535)
     s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.net.simulate_status("phone-0", {"arm_state": "live", "match_id": "other-match",
@@ -446,10 +446,37 @@ def test_adopted_live_match_pushes_nothing_to_stations_or_player_phones():
     s.adopt_orphan("other-match")
 
     assert s.phase == "live"
+    # F568 (Codex on brx5's F555): a Stick hill holding the lobby's same-game config with no start WAITS, and scored
+    # nothing for the whole adopted match while a phone hill counted. MC now tells a control station the match is live
+    # now (`starts_in_ms: 0`) and sends no end it does not know (an adopted match has no trusted time limit).
     stick = [(kind, body) for nid, kind, body in s.net.pushed if nid == "stick-1"]
-    assert not stick
+    assert [kind for kind, _ in stick] == ["station_config"], stick
+    assert stick[0][1].get("starts_in_ms", 1) <= 0 and "ends_in_ms" not in stick[0][1] and "duration_ms" not in stick[0][1], stick
+    assert stick[0][1]["game"] == s._game_byte()
     assert not [kind for nid, kind, _ in s.net.pushed if nid.startswith("phone-")], \
         "adoption must not reconfigure a player phone"
+    # a later re-arm (the Stick's next hello) says the same
+    s.net.pushed.clear()
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert body.get("starts_in_ms", 1) <= 0 and "ends_in_ms" not in body, body
+
+
+def test_f568_an_adoption_during_the_countdown_sends_the_go_live_and_the_phones_game_byte():
+    """Codex and Opus review: adopted while the phones count down, MC is ARMED, and the flip to LIVE re-arms nothing. So the
+    adoption itself sends the phones' go-live (a positive start the Stick waits on), and the byte the phones play under."""
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_hello("stick-1", "", node_type="utility", platform="esp32")
+    s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
+    theirs = (s._game_byte() + 5 - 1) % 255 + 1
+    s.net.simulate_status("phone-0", {"arm_state": "armed", "match_id": "other-match", "t_minus_ms": 30_000,
+                                       "game_byte": theirs, "synced": True}, s.now_ms())
+    s.net.pushed.clear()
+    s.adopt_orphan("other-match")
+    assert s.phase == "armed", s.phase
+    body = _pushed(s, "station_config", "stick-1")[-1]
+    assert 0 < body["starts_in_ms"] <= 30_000 and "ends_in_ms" not in body, body
+    assert body["game"] == theirs == s._game_byte(), (body["game"], theirs)
 
 
 def test_threshold_0_or_absent_means_the_stations_own_platform_default():
@@ -1932,3 +1959,58 @@ def test_f535_an_older_session_file_seeds_the_hill_bytes_from_its_control_statio
     s3._persist_path = s2._persist_path
     s3.restore_snapshot()
     assert hill_byte in s3.station_registry._hill_bytes, s3.station_registry._hill_bytes
+
+
+# --------------------------------------------------------------------------- F559: hill capture time and net cap from MC
+def _koth_hill():
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    return s
+
+
+def test_f559_the_game_hill_settings_reach_a_control_station_and_absent_sends_nothing():
+    """Field 2026-10-17: capture time and net cap were only +/- buttons on each hill phone. A game's `hill` now reaches every
+    control station it arms; absent keys are not sent, so the station keeps its own (brx5's station half)."""
+    s = _koth_hill()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert "capture_s" not in body and "net_cap" not in body, body
+    r = s.set_config({"hill": {"capture_s": 15, "net_cap": 4}})
+    assert r["ok"], r
+    s.station_registry.arm_stations()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert body["capture_s"] == 15 and body["net_cap"] == 4, body
+    s.set_config({"hill": {"net_cap": None}})                 # a null clears one key, so the station keeps its own again
+    s.station_registry.arm_stations()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert body["capture_s"] == 15 and "net_cap" not in body, body
+
+
+def test_f559_a_hill_setting_out_of_range_is_refused_and_a_respawn_station_never_gets_one():
+    s = _koth_hill()
+    for bad in ({"capture_s": 2}, {"capture_s": 61}, {"net_cap": 0}, {"net_cap": 7}, {"capture_s": 5.5}, {"capture_s": True}, {"wobble": 3}):
+        try:
+            s.set_config({"hill": bad})
+            raise AssertionError(f"accepted hill {bad}")
+        except ValueError as e:
+            assert "hill" in str(e), (bad, e)
+    s.set_config({"hill": {"capture_s": 20}})
+    s.net.simulate_utility_hello("util-resp")
+    s.set_station("util-resp", {"kind": "respawn", "team": "any", "id": 5})
+    assert "capture_s" not in _pushed(s, "station_config", "util-resp")[-1]
+
+
+def test_f559_hill_null_clears_a_mode_switch_keeps_it_and_a_bad_restored_value_is_not_sent():
+    """Review 2026-10-18 (Opus, Codex): a switch into KOTH from another mode kept volume but dropped `hill`, and a restored
+    session.json is taken verbatim, so a bool or out-of-range number went straight to the hill."""
+    s = _sess("tdm", station_source="phone")
+    assert s.set_config({"hill": {"capture_s": 12}})["ok"]
+    assert s.set_config({"mode": "koth"})["ok"]
+    assert s.config.get("hill") == {"capture_s": 12}, s.config.get("hill")
+    s.set_config({"hill": None})
+    assert "hill" not in s.config, s.config.get("hill")
+    k = _koth_hill()
+    k.config["hill"] = {"capture_s": True, "net_cap": 99}     # what a hand-edited or older session.json can hold
+    k.station_registry.arm_stations()
+    body = _pushed(k, "station_config", "util-hill")[-1]
+    assert "capture_s" not in body and "net_cap" not in body, body

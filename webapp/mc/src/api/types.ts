@@ -10,7 +10,7 @@
 
 // ---- generated wire shapes (contract.gen.ts) ----
 export type {
-  ArmoryCorruptView, ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
+  ArmoryCorruptView, ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, HillSettings, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkEffectsResolved, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, RosterWeapon, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
@@ -36,7 +36,7 @@ export type {
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS,
   TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, STATION_PROTECT_S_DEFAULT,
-  GAME_VOLUME_MIN, GAME_VOLUME_MAX, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from './contract.gen';
+  GAME_VOLUME_MIN, GAME_VOLUME_MAX, HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from './contract.gen';
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, TxPower, VoiceList, PhaseRefusalBody, ModeInfo,

@@ -290,7 +290,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-bolt', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-reload-failed', 'live-bolt', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -837,6 +837,19 @@ for (const view of VIEWS) {
     const pg = await open(view, 'live-reload', '', 3200); const r = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reloading'), chips: getComputedStyle(document.getElementById('chips')).opacity }));
     await until(pg, () => getComputedStyle(document.getElementById('chips')).opacity === '1', null, 2300); /* T6 review r2: the old 2.3 s limit */ const after = await pg.evaluate(() => getComputedStyle(document.getElementById('chips')).opacity); await pg.close();
     must(r.up && r.chips === '0', 'chips visible over the takeover: ' + JSON.stringify(r)); must(after === '1', 'chips stayed hidden after the reload');
+  });
+  // F277 (field 2026-10-17): a reload the gun never answered was silent; the ammo block now says so, then lets it go
+  await step(`${view.name} F277 a reload the gun never answers says RELOAD DID NOT TAKE, then clears`, async () => {
+    const pg = await open(view, 'live-reload-failed', '', 2700);
+    const shown = await until(pg, () => /RELOAD DID NOT TAKE/.test((document.querySelector('.ammo .reload .unskew') || {}).textContent || ''), null, 9000);
+    if (!shown) { await pg.close(); must(false, 'RELOAD DID NOT TAKE never showed after the reload timed out'); }
+    const r = await pg.evaluate(() => { const e = document.querySelector('.ammo .reload'), b = e.getBoundingClientRect(), fr = document.getElementById('frame').getBoundingClientRect();
+      return { inFrame: b.left >= fr.left && b.right <= fr.right, takeover: !!document.querySelector('.mo.reloading'), fs: parseFloat(getComputedStyle(e.querySelector('.unskew')).fontSize) }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-f277-reload-failed.png` });
+    const cleared = await until(pg, () => !/RELOAD DID NOT TAKE/.test(document.body.textContent), null, 5000);
+    await pg.close();
+    must(r.inFrame && !r.takeover && r.fs >= 11, 'the prompt sits in the ammo block, not over it: ' + JSON.stringify(r));
+    must(cleared, 'RELOAD DID NOT TAKE must clear after a few seconds');
   });
   // BOLT (Tony 2026-10-17 via brx2): a bolt-action lever pull shows a small BOLT cue under the digits, never the RELOADING
   // takeover, so the player keeps the scope view; the chips and the vitals stay.

@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES,
+from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -124,6 +124,12 @@ def _ago(ms: int) -> str:
     if s < 3600:
         return f"{s // 60} MIN AGO"
     return f"{s // 3600} H AGO"
+
+
+def _hill_value(v: object, lo: int, hi: int) -> int | None:
+    """F559: a stored `config.hill` value fit to send, else None. `set_config` checks every PUT, but a restored
+    session.json is taken verbatim, so a bool or an out-of-range number would otherwise reach the hill."""
+    return v if isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi else None
 
 
 def _threshold_ok(v: object) -> bool:
@@ -992,6 +998,13 @@ class StationRegistry:
             body["tx_power_age_ms"] = _age("tx_power")
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
+        if a["kind"] == "control":
+            # F559: the game's hill tuning, when it names any; an absent key keeps the station's own value
+            hill = self.roster.config.get("hill") or {}
+            if (cs := _hill_value(hill.get("capture_s"), HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX)) is not None:
+                body["capture_s"] = cs
+            if (nc := _hill_value(hill.get("net_cap"), HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)) is not None:
+                body["net_cap"] = nc
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.
@@ -1004,6 +1017,11 @@ class StationRegistry:
                 body["starts_in_ms"] = head["go_live_t"] - now
                 if tl_s := self.roster.config.get("time_limit_s"):
                     body["ends_in_ms"] = max(0, head["go_live_t"] + tl_s * 1000 - now)
+            elif self.play.in_play() and self.play.is_adopted():
+                # F568: an adopted match has a go-live (the phones' own countdown, or the first fact) but no trusted end,
+                # so: the start, no deadline. Positive in ARMED, zero or less once live, which every station reads as
+                # live now. A Stick hill holding a same-game config with no start would otherwise wait all match.
+                body["starts_in_ms"] = (head["go_live_t"] - now) if head else 0
         if not self.play.is_adopted() and (self.roster.lobby_pushed or self.play.in_play()) and (tl_s := self.roster.config.get("time_limit_s")):
             body["duration_ms"] = tl_s * 1000
         if lock == 0 and st.get("locked_since") is not None and st.get("unlocked_at") is None:

@@ -68,6 +68,20 @@ describe('generated server rule inputs', () => {
     expect(roundHalfEven(3.5)).toBe(4);
   });
 
+  it('caps an Extended Mags reserve at the proven ceiling, as compile.py does', async () => {
+    // 2026-10-17 reserves x2: a reserve never passes max(RESERVE_PROVEN_MAX, the row's own reserve).
+    const backend = new MockBackend();
+    const state = await backend.getState();
+    const weapons = await backend.getWeapons(), perks = await backend.getPerks();
+    const reserveWith = (weaponId: string) => {
+      const player = structuredClone(state.players[0]);
+      player.loadout = { weapons: [{ weapon_id: weaponId }], perk: 'extended_mags' };
+      return perkEffectsResolved(state.config, player, weapons, perks)?.reserve?.resolved;
+    };
+    expect(reserveWith('assault_rifle')).toBeUndefined();   // 384 stays 384: no pair to show
+    expect(reserveWith('charge_rifle')).toBe(320);          // below the ceiling it still doubles
+  });
+
   it('keeps a hidden primary from throwing during a state snapshot', async () => {
     const backend = new MockBackend();
     const state = await backend.getState();
