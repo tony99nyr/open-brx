@@ -66,6 +66,7 @@ JUDGED = {
     "HEAVY_SPAWN_EVERY_S": "A56 (S58): a powerup's spawn interval on MC's match clock (`PowerupLedger.tick`); read off\n"
                            "                           go-live and MC's own clock, never an IR frame, and only a `pickup` fact moves the item",
     "OVERSHIELD_SPAWN_EVERY_S": "A56 (S58): as HEAVY_SPAWN_EVERY_S -- a match-clock schedule no beacon can reach",
+    "AMMO_SPAWN_EVERY_S": "as OVERSHIELD_SPAWN_EVERY_S -- a match-clock schedule no beacon can reach",
     "GAP_MAX_MS": "F321 (2026-09-24): the upper bound on the IR rig's TXN gap argument, a validation limit on a bench command, not a timer anything waits on",
     "OFFLINE_AFTER_MS": "node heartbeat age, fed by the phone's status cadence, not by any IR frame",
     "STALE_AFTER_MS": "same: a socket-liveness threshold on the status heartbeat",
