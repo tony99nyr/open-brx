@@ -1,13 +1,13 @@
 # Bench sheet: the tests from the 2026-10-17 field session
 
-Updated: 2026-10-17. This sheet holds the nine bench tests from the field session of 2026-10-17
+Updated: 2026-10-17. This sheet holds the nine bench tests from the field session of 2026-10-17, plus P1.0 and P2.4 added since
 ([`field-2026-10-17.md`](field-2026-10-17.md) §5), in order of gameplay impact. Each test settles a question that
 the desk cannot. Each has a control, a pass rule or a read, and its FOLLOWUPS row; the row holds the history and the
 fix. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md). The
 index is [`bench-plan.md`](bench-plan.md).
 
-1. **P1, about 60 min**: the SMG frame, the ALT swallow matrix, the lever on a full magazine, the charge rifle.
-2. **P2, about 30 min**: the hill off the ground, the shotgun hold, the Desert Eagle reload time.
+1. **P1, about 70 min**: a large reserve, the SMG frame, the ALT swallow matrix, the lever on a full magazine, the charge rifle.
+2. **P2, about 40 min**: the hill off the ground, the shotgun hold, the Desert Eagle reload time, the single-shot retune.
 3. **P3, about 25 min**: the melee range ladder and the single-shot fire rate.
 
 The lanes add their own bench rows for the field fixes to P2 as the fixes land.
@@ -27,7 +27,19 @@ The lanes add their own bench rows for the field fixes to P2 as the fixes land.
 - The black Pixel 5 as the KOTH hill, and the green Pixel 5 as the player phone, for the hill test (P2.1).
 - A tape measure (12 m), a stopwatch, a box or stand 20-30 cm high, and a USB cable for the player phone (F544).
 
-## P1: the bugs that broke real matches (about 60 min)
+## P1: the bugs that broke real matches (about 70 min)
+
+**P1.0. A large reserve counts down normally (10 min).** *Impact: reserves are capped at 384 (Energy Rifle 600)
+until this passes, so Extended Mags adds nothing to the reserve of five rifles.* One gun, `$VOL,65`. Take the
+Energy Rifle's frame from `compile.resolve()` and set its reserve tokens by hand: t17 = 1200 and t40 = 600 (the
+compiler writes the reserve into `$WEAP` as well as `$AMMO`, and `$SPAWN` refills from t17). Push that `$WEAP`,
+then `$SPAWN,,*`, and read the `$LCD`/`$ALCD` reserve; then send `$AMMO,0,300,1200,1,*` and read the echo. Fire a
+magazine and reload twice, reading each `$ALCD`: the reserve must fall by the rounds loaded. Then repeat with t17 =
+2400, t40 = 1200 and `$AMMO,0,300,2400,1,*`. **Pass:** each echo reads the reserve sent and counts down normally.
+A 600 echo after `$AMMO` alone would mean `$AMMO` clamps to t17, which is why the frame goes first. **Control:**
+the shipped frame (t17 600) with `$AMMO,0,300,384,1,*` echoes 384 (proven 2026-09). End re-armed from the shipped
+frame. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value. Row: reserves x2 (Tony, 2026-10-17);
+see `perk-design.md`.
 
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* One gun, no IR rig. Arm normally (`$VOL,65`, `$CLEAR,*`, `$START,*`, a `$PSET`). Then send the field's
@@ -72,7 +84,7 @@ Log the heat and the time until a reload takes, if one does. End with `$AMMO,0,<
 recipe (F226: only an `$AMMO` refill clears the lock), then re-arm. **Control:** from exactly 10 rounds, a charge
 fires. Rows: F226, F238.
 
-## P2: the hill and the reloads (about 30 min)
+## P2: the hill and the reloads (about 40 min)
 
 **P2.1. The hill off the ground (20 min).** *Impact: a KOTH hill on grass counts players only to about 5 m.* The
 black Pixel 5 as the hill, the green Pixel 5 as the only player phone. Walk the C.5 ladder (1, 5, 7.5, 9 and 12 m
@@ -106,6 +118,42 @@ does not assume), and
 the Shotgun's `$HIR` on a target reads 20 and 20. Then the Shotgun with Armour Piercing (15 at 500 ms): rounds
 at least 500 ms apart. Ask Tony how the Shotgun's pump feels. **Control:** the Assault Rifle held fires every
 100 ms. Rows: F542 (the field session's single-shot calls), weapon-design.md Balance rules row 14.
+
+## P2b: the lanes' fix checks (about 45 min)
+
+Each row checks a fix that landed on 2026-10-17, from main after that land. One gun with its phone and MC unless the
+row says otherwise; `$VOL,65`.
+
+**L1. F548, the SMG primary after the fix (5 min).** Load a kit with the SMG as PRIMARY and push it from MC. **Pass:**
+the push acks first try (`ok:true` with a real `$ALCD` echo, not a zeroed `$LCD`), and the SMG fires and reloads.
+The compiled SMG frame is 45 fields ending `...,54,108,75,100,*` (t42 100 kept, the terminator after it). If the
+gun never echoes, the firmware may reject t42 on this capture: report it to brx3 (the fallback is dropping t42).
+
+**L2. F542 cause 2, the post-spawn ALT rule and GUN WAS ON (15 min).** Two weapons loaded: the two pistols (swap
+500), then the AMR and the Shotgun (swap 1105). Full capture.
+1. Fresh spawn, no trigger pull, press ALT. The phone shows no SWITCHING and logs "ALT ignored by the gun: no
+   trigger pull since the spawn". Pull the trigger: the `$ALCD` slot token must be 0. If it is 1, report it to brx4.
+2. After one pull, press ALT, then fire about 0.5 s into the swap. If the round's `$ALCD` is on the old slot, the
+   HUD closes SWITCHING, shows GUN WAS ON over the old weapon, and stays on it after the window.
+3. After an assumed swap the gun did not make, fire once: the HUD shows GUN WAS ON over the weapon the gun fired.
+4. An assumed swap to a full slot the gun did not make, then the lever: the gun reloads its own slot, and the HUD
+   moves to it with GUN WAS ON when the reload ends.
+5. Record whether the gun keeps slot 1 across `$SPAWN` after dying on slot 1 (the phone assumes slot 0).
+
+**L3. F549 and F550, no config and the headset (10 min).** (a) A normal push acks ok with an `$ALCD` echo. (b) Push
+a head the gun refuses: the ack is `ok:false`, `err:"no_config"`; the lobby reads GUN DID NOT TAKE THE KIT · TELL THE
+HOST (headset joined), and MC's Debug headset column reads ok. (c) Headset off: the lobby reads GUN NOT ANSWERING ·
+CHECK HEADSET, and the Debug headset column reads no.
+
+**L4. F554, a hill banks only with a living owner on it (10 min).** A station, a phone or a Stick hill. RED captures
+it; RED goes down on the point and stays down 20 s; then RED walks off while BLUE alone drains it. **Pass:** RED's
+HELD time stops rising the moment RED is down, and while BLUE drains; it resumes when a living RED stands on it
+again. The progress bar is unchanged (an owned point stays at 100 until an enemy drains it).
+
+**L5. The 10% larger hill (-78 dBm default) (10 min).** Repeat F383's flat-phone ladder at 5, 5.5, 7.5 and 8.25 m
+with the default threshold. **Pass:** the edge where a lone player stops counting moves out by about 10% (from
+about 5.2 m to about 5.7 m on the 2026-10-16 ladder). If it moves less than 5% or more than 20%, report the new
+ladder so the dB step can be re-derived (n = 6.8, from -74 at 5 m and -86 at 7.5 m).
 
 ## P3: tuning reads (about 25 min)
 

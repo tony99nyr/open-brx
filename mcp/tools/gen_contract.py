@@ -199,6 +199,7 @@ def _console_source_tables() -> list[tuple[str, Any, str]]:
         ("STATION_GATED_MODES", sorted(C._STATION_GATED_MODES), "Modes needing an objective source (compile.py)."),
         ("TIMED_PROTECT_S_OPTIONS", list(get_args(T.TimedProtectS)), "Allowed timed respawn protection seconds (types.py)."),
         ("WEAPON_DELAY_MS_OPTIONS", list(get_args(T.WeaponDelayMs)), "Allowed respawn weapon delays (types.py)."),
+        ("RESERVE_PROVEN_MAX", C.RESERVE_PROVEN_MAX, "The largest reserve a gun has echoed: the reserve ceiling (compile.py)."),
         ("STATION_PROTECT_S_OPTIONS", list(get_args(T.StationProtectS)), "Allowed station respawn protection seconds (types.py)."),
         ("WEAPON_MOCK_FIELDS", fields, "Catalogue order and raw weapon fields read by the mock (weapons.json)."),
         ("SIR_TABLE", list(gameconfig._SIR_TABLE), "Base $SIR rows (gameconfig.py _SIR_TABLE)."),

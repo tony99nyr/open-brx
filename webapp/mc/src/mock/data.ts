@@ -23,8 +23,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Anti-materiel, and it reads like it. Heavy hits at a pace nothing else at that range can match.",
     "clip": 14,
-    "mags": 4,
-    "reserve": 56,
+    "mags": 8,
+    "reserve": 112,
     "reload_s": 1.4,
     "reload_ms": 1400,
     "dmg": 23,
@@ -63,7 +63,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 26
       }
     ],
-    "ammo_total": 70,
+    "ammo_total": 126,
     "bars": {
       "power": 64,
       "rof": 53,
@@ -78,8 +78,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "The one everything else is measured against. Nothing it does is remarkable, and there is no fight it cannot hold.",
     "clip": 32,
-    "mags": 6,
-    "reserve": 192,
+    "mags": 12,
+    "reserve": 384,
     "reload_s": 1.4,
     "reload_ms": 1400,
     "dmg": 8,
@@ -119,7 +119,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 9
       }
     ],
-    "ammo_total": 224,
+    "ammo_total": 416,
     "bars": {
       "power": 38,
       "rof": 93,
@@ -134,8 +134,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Three rounds a pull, and the gun decides the gap rather than your finger. Slower to the kill than the rifle, and far harder to waste.",
     "clip": 36,
-    "mags": 6,
-    "reserve": 216,
+    "mags": 10,
+    "reserve": 384,
     "reload_s": 1.7,
     "reload_ms": 1700,
     "dmg": 9,
@@ -173,7 +173,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 10
       }
     ],
-    "ammo_total": 252,
+    "ammo_total": 420,
     "bars": {
       "power": 47,
       "rof": 100,
@@ -188,8 +188,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "energy",
     "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
     "clip": 40,
-    "mags": 2,
-    "reserve": 80,
+    "mags": 4,
+    "reserve": 160,
     "reload_s": 2.5,
     "reload_ms": 2500,
     "dmg": 61,
@@ -235,11 +235,11 @@ export const WEAPONS: WeaponView[] = [
         "mag": 70
       }
     ],
-    "ammo_total": 120,
+    "ammo_total": 200,
     "bars": {
       "power": 91,
       "rof": 27,
-      "ammo": 54,
+      "ammo": 60,
       "ttk": 100
     }
   },
@@ -250,8 +250,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Rounds heavy enough to end a fight your rifle already started, not many of them and slow between pulls. Miss twice and you are reloading in front of someone.",
     "clip": 7,
-    "mags": 6,
-    "reserve": 48,
+    "mags": 13,
+    "reserve": 96,
     "reload_s": 2.2,
     "reload_ms": 2200,
     "dmg": 23,
@@ -290,7 +290,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 26
       }
     ],
-    "ammo_total": 55,
+    "ammo_total": 103,
     "bars": {
       "power": 64,
       "rof": 40,
@@ -471,8 +471,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Three pulls and it is over, if you were close enough to mean it. Shell by shell, and the fastest recovery on the board.",
     "clip": 6,
-    "mags": 4,
-    "reserve": 24,
+    "mags": 8,
+    "reserve": 48,
     "reload_s": 0.4,
     "reload_ms": 400,
     "dmg": 35,
@@ -509,11 +509,11 @@ export const WEAPONS: WeaponView[] = [
         "mag": 20
       }
     ],
-    "ammo_total": 30,
+    "ammo_total": 54,
     "bars": {
       "power": 73,
       "rof": 47,
-      "ammo": 31,
+      "ammo": 37,
       "ttk": 87
     }
   },
@@ -524,8 +524,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "A close-combat hose. The barrel hits for 7 and the headset adds 2, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
     "clip": 54,
-    "mags": 4,
-    "reserve": 216,
+    "mags": 7,
+    "reserve": 384,
     "reload_s": 2.5,
     "reload_ms": 2500,
     "dmg": 8,
@@ -568,7 +568,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 7
       }
     ],
-    "ammo_total": 270,
+    "ammo_total": 438,
     "bars": {
       "power": 38,
       "rof": 93,
@@ -627,7 +627,7 @@ export const WEAPONS: WeaponView[] = [
     "bars": {
       "power": 20,
       "rof": 80,
-      "ammo": 37,
+      "ammo": 26,
       "ttk": 20
     }
   },
@@ -638,8 +638,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
     "clip": 4,
-    "mags": 6,
-    "reserve": 24,
+    "mags": 12,
+    "reserve": 48,
     "reload_s": 1.7,
     "reload_ms": 1700,
     "dmg": 52,
@@ -678,11 +678,11 @@ export const WEAPONS: WeaponView[] = [
         "mag": 60
       }
     ],
-    "ammo_total": 28,
+    "ammo_total": 52,
     "bars": {
       "power": 82,
       "rof": 20,
-      "ammo": 26,
+      "ammo": 31,
       "ttk": 67
     }
   },
@@ -737,7 +737,7 @@ export const WEAPONS: WeaponView[] = [
     "bars": {
       "power": 20,
       "rof": 80,
-      "ammo": 66,
+      "ammo": 54,
       "ttk": 80
     }
   },
@@ -802,8 +802,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "Hits lightly and keeps hitting. The damage arrives after you have stopped shooting, which is the whole point.",
     "clip": 30,
-    "mags": 6,
-    "reserve": 180,
+    "mags": 12,
+    "reserve": 360,
     "reload_s": 1.6,
     "reload_ms": 1600,
     "dmg": 7,
@@ -840,7 +840,7 @@ export const WEAPONS: WeaponView[] = [
         "mag": 8
       }
     ],
-    "ammo_total": 210,
+    "ammo_total": 390,
     "bars": {
       "power": 29,
       "rof": 87,
@@ -855,8 +855,8 @@ export const WEAPONS: WeaponView[] = [
     "weapon_class": "ballistic",
     "desc": "A steady sidearm. It will not win a fight you started badly, but it will finish one you nearly had.",
     "clip": 12,
-    "mags": 10,
-    "reserve": 120,
+    "mags": 20,
+    "reserve": 240,
     "reload_s": 2.2,
     "reload_ms": 2200,
     "dmg": 10,
@@ -895,11 +895,11 @@ export const WEAPONS: WeaponView[] = [
         "mag": 12
       }
     ],
-    "ammo_total": 132,
+    "ammo_total": 252,
     "bars": {
       "power": 56,
       "rof": 60,
-      "ammo": 60,
+      "ammo": 66,
       "ttk": 33
     }
   }

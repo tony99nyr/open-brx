@@ -1,5 +1,5 @@
 import type { GameConfig, PerkEffectsResolved, PerkView, Player, ValuePair, WeaponView } from '../api/types';
-import { WEAPON_MOCK_FIELDS } from '../api/contract.gen';
+import { RESERVE_PROVEN_MAX, WEAPON_MOCK_FIELDS } from '../api/contract.gen';
 
 /** Python round(): nearest integer, with an exact midpoint going to the even integer. */
 export function roundHalfEven(value: number): number {
@@ -33,6 +33,8 @@ export function perkEffectsResolved(config: GameConfig, player: Player, weapons:
   const reloadBase = rawPrimary.reload_ms;
   const mag = Math.max(1, ammoRound(magBase * ammoMult));
   let reserve = ammoRound(reserveBase * ammoMult);
+  // The reserve ceiling, as compile.py `_ammo` applies it: never past max(RESERVE_PROVEN_MAX, the row's own reserve).
+  reserve = Math.min(reserve, Math.max(RESERVE_PROVEN_MAX, rawPrimary.reserve));
   // Captured frames mirror the reserve in tok40, which makes odd counts round down.
   if (rawPrimary.capture_frame) reserve = Math.floor(reserve / 2) * 2;
   const reload = Math.max(0, round(reloadBase * (effects.reload_mult || 1)));

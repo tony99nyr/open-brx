@@ -1703,8 +1703,8 @@ test('Reconcile bugs 1+2 r1 S3: a stun that expires inside the window defers its
 
 test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a slot never counted this life falls back to spawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$ALCD,32,100,0,192,0,*');                          // the life's first slot-0 report seeds the account
-  for (let m = 31; m >= 3; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.frame('$ALCD,32,100,0,384,0,*');                          // the life's first slot-0 report seeds the account
+  for (let m = 31; m >= 3; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,384,0,*`); }
   h.adv(120); h.frame('$ALCD,3,100,0,40,0,*');                // a low magazine AND a spent reserve
   h.adv(2000); h.eng.tick();
   h.eng.onBleDropped(); h.eng.onBleConnected();
@@ -1714,8 +1714,8 @@ test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a 
   h.adv(3000); h.eng.tick();
   const rearm = h.writes.slice(before).filter(f => f.startsWith('$AMMO,'));
   assert.ok(rearm.includes('$AMMO,0,3,40,1,*'), `slot 0 re-arms at its live 3/40: ${JSON.stringify(rearm)}`);
-  assert.ok(!rearm.includes('$AMMO,0,32,192,1,*'), 'never the spawn magazine plus the spawn reserve');
-  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), `slot 1 was never counted this life, so it takes the spawn row: ${JSON.stringify(rearm)}`);
+  assert.ok(!rearm.includes('$AMMO,0,32,384,1,*'), 'never the spawn magazine plus the spawn reserve');
+  assert.ok(rearm.includes('$AMMO,1,6,48,1,*'), `slot 1 was never counted this life, so it takes the spawn row: ${JSON.stringify(rearm)}`);
   // The node's account agrees with the re-arm, so the gun's echo of it is bookkeeping, not a shot or a refill.
   h.frame('$ALCD,3,100,0,40,0,*');
   assert.equal(h.eng.state().ammo, 3, 'the HUD shows the re-armed magazine');
@@ -1727,8 +1727,8 @@ test('F164: a reconcile re-arms the LIVE counts, never a free spawn magazine; a 
 
 test('F164: an app restart mid-match keeps the live counts, so the reconnect re-arms them, not a spawn magazine; a new life clears them', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
-  h.frame('$ALCD,32,100,0,192,0,*');
-  for (let m = 31; m >= 4; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,192,0,*`); }
+  h.frame('$ALCD,32,100,0,384,0,*');
+  for (let m = 31; m >= 4; m--) { h.adv(120); h.frame(`$ALCD,${m},100,0,384,0,*`); }
   h.adv(120); h.frame('$ALCD,4,100,0,64,0,*');
   h.adv(2000); h.eng.tick();
   // The app process dies and relaunches: a fresh engine on the same storage, then the gun relinks.
@@ -1741,7 +1741,7 @@ test('F164: an app restart mid-match keeps the live counts, so the reconnect re-
   clock += 3000; eng2.tick();
   const rearm = w2.slice(before).filter(f => f.startsWith('$AMMO,'));
   assert.ok(rearm.includes('$AMMO,0,4,64,1,*'), `slot 0 re-arms at the saved 4/64: ${JSON.stringify(rearm)}`);
-  assert.ok(rearm.includes('$AMMO,1,6,24,1,*'), 'slot 1 was never counted, so it keeps the spawn row');
+  assert.ok(rearm.includes('$AMMO,1,6,48,1,*'), 'slot 1 was never counted, so it keeps the spawn row');
   // A new life starts from the spawn frames: the saved counts must not carry across it.
   eng2.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng2.feedFrame('$HP,0,0,0,*');
   assert.equal(eng2.alive, false, 'setup: down');
@@ -6570,7 +6570,7 @@ const ammoWrites = h => h.writes.filter(f => f.startsWith('$AMMO'));
 
 test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on a second word, and restores the LIVE counts on expiry', () => {
   const h = stunHarness();
-  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: live 20/150, not the frame's 32/192
+  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: live 20/150, not the frame's 32/384
   h.writes.length = 0;
   h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP word: proto 8, no $HP follows (fn 24 is a status row)
   assert.deepEqual(ammoWrites(h), ['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'both live slots disarmed (the F15 chain)');
@@ -6596,7 +6596,7 @@ test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on 
   // expiry: ONE restore, with the LIVE counts (slot 0) and the frame's counts for a slot that never fired (slot 1)
   h.adv(3600); h.eng.tick();
   assert.equal(h.eng.stunned, null);
-  assert.deepEqual(ammoWrites(h), ['$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*'], 'restore = live counts, never the frame\'s for a slot that fired');
+  assert.deepEqual(ammoWrites(h), ['$AMMO,0,20,150,1,*', '$AMMO,1,6,48,1,*'], 'restore = live counts, never the frame\'s for a slot that fired');
   assert.equal(h.eng.moment.kind, 'stun_over');
   h.writes.length = 0; h.adv(1000); h.eng.tick();
   assert.equal(ammoWrites(h).length, 0, 'restored once');
@@ -8073,6 +8073,32 @@ test('F537 review r3: while our scan is closed (paused entries) the hill neither
   assert.ok(h.eng.hold['11'][1] >= held + 1500 && h.eng.hold['11'][1] <= held + 2250, `the clock resumes from the next fresh advert, with no lump (${h.eng.hold['11'][1] - held} ms)`);
 });
 
+// F277 (field 2026-10-17, report §3.2 cause 4): a reload that never took was read only by the debug panel. The ammo block
+// now says so for RELOAD_FAILED_SHOW_MS, so a player on a slot the gun is not on finds out (a shot then shows GUN WAS ON).
+test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a few seconds; a landed one does not', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(6000); h.eng.tick();
+  let s = h.eng.state();
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false, 'setup: the reload timed out');
+  assert.equal(s.reloadFailed, true, 'the ammo block says the reload did not take');
+  h.adv(4000); h.eng.tick();
+  assert.equal(h.eng.state().reloadFailed, false, 'and lets it go');
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500); h.frame('$ALCD,32,100,0,168,0,*');
+  assert.equal(h.eng.state().reloadFailed, false, 'a reload that landed says nothing');
+});
+test('F277 review: a shot after the failed reload retires the prompt; a failed reload on another slot does not show it', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(6000); h.eng.tick();
+  assert.equal(h.eng.state().reloadFailed, true, 'setup');
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,9,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().reloadFailed, false, 'the shot retires it');
+  h.eng.am.reloadOutcome = { ok: false, why: 'timeout', slot: 1, at: h.eng.now() };
+  assert.equal(h.eng.state().reloadFailed, false, 'a slot-1 failure is not shown over slot 0');
+});
 // BOLT cue (Tony 2026-10-17 via brx2): a bolt-action weapon (catalogue `reload_type: "bolt"`, magazine 1) needs a lever pull
 // per shot. The pull opens the same reconciled reload, but with no RELOADING takeover: a small BOLT cue, so the scope stays.
 function boltHarness() {

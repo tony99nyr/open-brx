@@ -737,6 +737,12 @@ ADVERT_VALUE_MAX = 255
 TIME_LIMIT_MAX_S = 7200              # time_limit_s 1..this
 RESPAWN_DELAY_MAX_S = 600            # respawn.delay_s 0..this
 HOLD_TARGET_MAX_S = 7200             # mode_params.hold_target_s 1..this
+# F559 (field 2026-10-17): a hill's capture time and net cap, settable per game (`GameConfig.hill`) instead of only by
+# the +/- buttons on each hill phone. brx5's station half takes them from `station_config`.
+HILL_CAPTURE_S_MIN = 3               # hill.capture_s this..HILL_CAPTURE_S_MAX
+HILL_CAPTURE_S_MAX = 60
+HILL_NET_CAP_MIN = 1                 # hill.net_cap this..HILL_NET_CAP_MAX
+HILL_NET_CAP_MAX = 6
 # S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
 # Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte.
 POWERUP_CHARGES_MIN = 1
@@ -863,6 +869,13 @@ class Recoil(TypedDict):
     settle_ms: NotRequired[int]
 
 
+class HillSettings(TypedDict, total=False):
+    """F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
+    value (its +/- buttons); a key MC sends wins on that arming (no edit ages: a hill keeps no edit record)."""
+    capture_s: int     # HILL_CAPTURE_S_MIN..MAX seconds
+    net_cap: int       # HILL_NET_CAP_MIN..MAX
+
+
 class GameConfigBase(TypedDict):
     config_id: str
     mode: str
@@ -931,6 +944,9 @@ class GameConfigBase(TypedDict):
     #                                              (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
     #                                              the key. `--bench-volume` overrides this value and try-outs; without
     #                                              it, a try-out plays at VOL_TRYOUT (69), never this value.
+    hill: NotRequired[HillSettings | None]       # F559: capture time and net cap for every control station. A set key
+    #                                              wins on every arming; absent = the station keeps its own. A PUT of
+    #                                              null clears it; a mode change carries it, like `volume`.
 
 
 class GameConfig(GameConfigBase):
@@ -1557,6 +1573,8 @@ class StationConfig(TypedDict):
     tx_power_age_ms: NotRequired[int]
     item: NotRequired[StationItem]    # A56: a powerup station's item (an older Stick ignores it)
     lock_s: int                       # A58: the tamper lock, applied by the phone station and the Stick alike
+    capture_s: NotRequired[int]       # F559: a control station's capture time, seconds (absent = the station's own)
+    net_cap: NotRequired[int]         # F559: a control station's net cap (absent = the station's own)
     ends_in_ms: NotRequired[int]      # A68: match end from receipt (0 = the match is over)
     starts_in_ms: NotRequired[int]    # A68: go-live from receipt (negative once live)
     duration_ms: NotRequired[int]     # A68: a timed match's length

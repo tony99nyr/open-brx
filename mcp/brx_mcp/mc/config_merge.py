@@ -9,14 +9,14 @@ from . import compile as _compile
 from . import configcheck as _check
 from . import policy as _policy
 from . import presentation as _pres
-from .types import (MAX_PLAYERS, OBJECTIVE_MODES, RESPAWN_DELAY_MAX_S, STATION_SOURCES,
+from .types import (HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, HillSettings, MAX_PLAYERS, OBJECTIVE_MODES, RESPAWN_DELAY_MAX_S, STATION_SOURCES,
                     TIME_LIMIT_MAX_S, GameConfig, Respawn, Stun, parse_win_by)
 
 
 CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
                "station_source", "mode_params", "vip_player_id", "stun", "coverage", "recoil",
-               "volume"}
+               "volume", "hill"}
 
 Defaults = Callable[[str], GameConfig]
 Handler = Callable[[GameConfig, Any, str, Defaults], None]
@@ -48,6 +48,38 @@ def _volume(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
         cfg.pop("volume", None)
     else:
         cfg["volume"] = value
+
+
+def _hill(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
+    """F559: `{capture_s?, net_cap?}` merged onto the stored one; a key set to null clears it (the stations keep their own),
+    and `hill: null` clears both."""
+    if value is None:
+        cfg.pop("hill", None)
+        return
+    if not isinstance(value, dict):
+        raise ValueError("hill must be {capture_s?, net_cap?} or null")
+    bounds = {"capture_s": (HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), "net_cap": (HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)}
+    old = cfg.get("hill") or {}
+    vals: dict[str, int | None] = {"capture_s": old.get("capture_s"), "net_cap": old.get("net_cap")}
+    for k, v in value.items():
+        if k not in bounds:
+            raise ValueError(f"hill.{k} is not a hill setting (capture_s, net_cap)")
+        if v is None:
+            vals[k] = None
+            continue
+        lo, hi = bounds[k]
+        if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+            raise ValueError(f"hill.{k} must be a whole number {lo}-{hi}")
+        vals[k] = v
+    merged: HillSettings = {}
+    if (cs := vals["capture_s"]) is not None:
+        merged["capture_s"] = cs
+    if (nc := vals["net_cap"]) is not None:
+        merged["net_cap"] = nc
+    if merged:
+        cfg["hill"] = merged
+    else:
+        cfg.pop("hill", None)
 
 
 def _coverage(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
@@ -237,7 +269,7 @@ def _mode(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
 
 _HANDLERS: dict[str, Handler] = {
     "time_limit_s": _time_limit, "environment": _environment, "night": _night,
-    "recoil": _recoil, "volume": _volume, "coverage": _coverage,
+    "recoil": _recoil, "volume": _volume, "coverage": _coverage, "hill": _hill,
     "respawn": _respawn, "scoring": _scoring, "health": _health, "teams": _teams,
     "led": _led, "station_source": _station_source, "mode_params": _mode_params,
     "vip_player_id": _vip_player_id, "stun": _stun, "player_num_base": _player_num_base,
