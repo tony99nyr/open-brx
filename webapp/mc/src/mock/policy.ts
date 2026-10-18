@@ -31,12 +31,6 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: W
   if (p.perk.choice === 'off') out.perk = null;
   else if (p.perk.choice === 'fixed') out.perk = pl.perks.includes(p.perk.fixed_id ?? '') ? p.perk.fixed_id! : null;
   else if (out.perk && !pl.perks.includes(out.perk)) out.perk = null;
-  if (out.perk) {
-    // F551, as policy.py apply(): the weapons just resolved may be ones this perk cannot ride with
-    const k = perks.find(x => x.perk_id === out.perk);
-    const w0 = out.weapons[0]?.weapon_id, w1 = out.weapons[1]?.weapon_id;
-    if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1)))) out.perk = null;
-  }
   // MC's apply() order (policy.py): the chain-reload primary FIRST, where Easy Reload gives way (a primary is mandatory)
   // and the secondary stays; only then a second weapon beside Easy Reload drops the second weapon (Opus r1)
   if (out.overrides?.easy_reload && chainConflict({ ...out, weapons: [out.weapons[0]] }, weapons)) {
@@ -44,6 +38,12 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: W
     out.overrides = rest;
   }
   if (conflict(out)) out.weapons = [out.weapons[0]];
+  if (out.perk) {
+    // F551, as policy.py apply(): the FINAL weapons (after Easy Reload) may be ones this perk cannot ride with
+    const k = perks.find(x => x.perk_id === out.perk);
+    const w0 = out.weapons[0]?.weapon_id, w1 = out.weapons[1]?.weapon_id;
+    if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1)))) out.perk = null;
+  }
   if (!out.perk) delete out.perk;
   return out;
 }

@@ -1835,6 +1835,68 @@
           }
         ]
       }
+    },
+    {
+      "name": "F551 (review): Easy Reload drops the blocking secondary first, so the perk stays",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          },
+          {
+            "weapon_id": "shotgun"
+          }
+        ],
+        "perk": "stealth",
+        "overrides": {
+          "easy_reload": true
+        }
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ],
+        "perk": "stealth",
+        "overrides": {
+          "easy_reload": true
+        }
+      }
     }
   ]
 }
