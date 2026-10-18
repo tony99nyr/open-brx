@@ -65,7 +65,7 @@ function stationRevive(h) { h.die(); h.adv(9000); h.eng.setStations([stationEntr
 /** Down, then back by the 8 s auto respawn. Returns the write index just before the revive. */
 function revived(h) { h.die(); h.adv(7990); const n = h.mark(); h.adv(10); assert.equal(h.eng.alive, true, 'setup: revived'); return n; }
 
-test('fixture: the golden profile is the defaults (timed 0 s / 0.5 s, station 2 s) and keeps the legacy lists', () => {
+test('fixture: the golden profile is the defaults (timed 0 s / 1.5 s, station 2 s) and keeps the legacy lists', () => {
   assert.equal(RP.protect_ms, 0); assert.equal(RP.trigger_ms, 1500); assert.equal(RP.station_protect_ms, 2000);
   assert.deepEqual(tmps(RP.spawn), [], 'the default timed spawn carries no $TMP');
   assert.deepEqual(tmps(RP.revive), [], 'the default timed revive carries no $TMP');

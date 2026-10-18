@@ -156,6 +156,9 @@ def test_timed_protection_1s_ends_on_the_clock_not_on_a_shot_and_the_trigger_wai
         st, mgr, clock = _mk({"protect_s": 1})
         rp = st.bundle["respawn_profile"]
         assert (rp["protect_ms"], rp["trigger_ms"]) == (1000, 1500)
+        # A74: 1500 is now the default too, so this pair no longer proves the protect floor; 2 s does (2000 + 500)
+        rp2 = _mk({"protect_s": 2})[0].bundle["respawn_profile"]
+        assert (rp2["protect_ms"], rp2["trigger_ms"]) == (2000, 2500)
         await _live(st)
         n = await _revive(st, clock)
         assert _tmp(tx(mgr)[n:]) == [ON] and HELD in tx(mgr)[n:]

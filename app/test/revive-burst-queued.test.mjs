@@ -328,6 +328,8 @@ async function scream(h, kind) {
 /** REDEPLOYED is open (null) before `live` (the trigger went live, or a station burst landed), then ends at `end`
  *  exactly: up before it, gone from it. Review r1: open through the weapon delay too, never ended on the plan. */
 function endsAt(seen, t0, live, end) {
+  // A74 review: the observation window must reach past the end, or a too-short window passes in silence
+  assert.ok(seen.length && seen[seen.length - 1][0] >= end, `the window ends at ${seen.length ? seen[seen.length - 1][0] - t0 : 0} ms, before ${end - t0} ms`);
   for (const [t, , tk] of seen) {
     if (t < live) assert.ok(tk && tk.kind === 'redeploy' && tk.until == null, `open until the trigger is live, at ${t - t0} ms: ${JSON.stringify(tk)}`);
     else if (t < end) assert.ok(tk && tk.kind === 'redeploy' && tk.until === end, `ends at ${end - t0} ms, read at ${t - t0} ms: ${JSON.stringify(tk)}`);
