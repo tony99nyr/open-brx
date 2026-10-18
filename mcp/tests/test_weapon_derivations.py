@@ -45,6 +45,19 @@ def _tok(weapon_id: str, key: str) -> str:
 # ---------------------------------------------------------------- 1. weapons.json
 
 
+def test_heat_model_matches_shipped_overheat_switch():
+    """A heat model exists exactly when the compiled weapon enables overheat at t38."""
+    bad = []
+    for row in ROWS:
+        wid = row["weapon_id"]
+        frame = CAT.resolve(wid, 0).split(",")
+        enabled = bool(frame[38 + 1].strip())
+        modelled = bool(row.get("heat"))
+        if modelled != enabled:
+            bad.append(f"{wid}: heat block {modelled}, shipped t38 {frame[38 + 1]!r}")
+    assert not bad, "\n  ".join(bad)
+
+
 def test_shipped_stats_are_derived_from_the_shipped_frame():
     """`dmg`/`rof`/`rng`/`htk`/`ttk_ms` are documentation of the frame. Recompute all five."""
     bad = []

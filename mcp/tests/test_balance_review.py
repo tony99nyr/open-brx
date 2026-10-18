@@ -59,7 +59,7 @@ def _shipped_specs():
 # --------------------------------------------------------------------------- the matrix
 
 def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
-    """Today's kits (every visible lethal primary but the DoT Toxin Rifle, plus the two combos) and the versioned
+    """Today's kits (every visible lethal primary, plus the two combos) and the versioned
     columns. Two runs with the cache cleared give identical cells. Break it once (seed a cell from
     `random.Random()`) and watch the equality fail."""
     runs = []
@@ -69,9 +69,10 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
         runs.append(R.dominance_matrix(w, specs, REPS_SCALE, 1, anchor_world=w))
     a, b = runs
     assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
-                         "Energy Rifle", "Charge Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
+                         "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
-    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "long contact", "peek mid", "field", "ambush", "shields")
+    assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "1v1 real aim", "long contact",
+                         "peek mid", "field", "ambush", "shields")
     assert a["columns"] == b["columns"] and a["duels"] == b["duels"]
 
 
@@ -300,6 +301,140 @@ def test_pull_gap_is_one_draw_of_the_shared_pull_model():
     mu = math.log(300.0) - PULL_SIGMA * PULL_SIGMA / 2
     assert R.pull_gap(random.Random(3), 300.0) == random.Random(3).lognormvariate(mu, PULL_SIGMA)
     assert R.pull_gap(random.Random(3), 0.0) == 0.0
+
+
+def test_charge_heat_locks_only_after_the_crossing_round():
+    row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
+    row["heat"] = {"per_tap": 14, "per_charge": 56, "lock_at": 103,
+                   "lockout_ms": 4800, "cool_per_s": 30, "vent": "self"}
+    cat = WeaponCatalog([row])
+    kit = R.make_kit(R.World(cat, PerkCatalog()), "charge", "charge_rifle")
+    f = R.Fighter(kit, 115, 1.0, 0, random.Random(3), pull_ms=0)
+    for i in range(4):
+        assert f.act(0) is not None
+    assert f.gs[0].heat == 98 and f.gs[0].locked_until == 0
+    assert f.act(0) is not None
+    assert f.gs[0].heat >= 103 and f.gs[0].locked_until > 0
+    assert f.act(1) is None
+    paced = R.Fighter(kit, 115, 1.0, 0, random.Random(3), pull_ms=0)
+    for i in range(6):
+        assert paced.act(i * 285) is not None
+    assert paced.gs[0].locked_until == 0  # passive cooling changes the five-tap outcome at real cadence
+
+
+def test_armour_piercing_uses_health_only_and_refuses_an_ineligible_primary():
+    w = R.shipped_world()
+    ap = R.make_kit(w, "AP AR", "assault_rifle", perk="armor_piercing")
+    plain = R.make_kit(w, "AR", "assault_rifle")
+    assert ap.guns[0].gun_dmg == w.cat._row("assault_rifle")["ap_dmg"]
+    assert ap.guns[0].fire_ms == w.cat._row("assault_rifle")["ap_fire_ms"]
+    assert ap.guns[0].head_dmg == 0
+    victim = R.Fighter(plain, (45, 70, 0), 0, 1, random.Random(2))
+    n = math.ceil(45 / ap.guns[0].gun_dmg)
+    for _ in range(n - 1):
+        victim.receive(ap.guns[0].gun_dmg, bypass=True)
+        assert victim.alive
+    victim.receive(ap.guns[0].gun_dmg, bypass=True)
+    assert not victim.alive and victim.armour == 70
+    plain_victim = R.Fighter(plain, (45, 70, 0), 0, 1, random.Random(2))
+    for _ in range(n):
+        plain_victim.receive(ap.guns[0].gun_dmg)
+    assert plain_victim.alive
+    _raises(lambda: R.make_kit(w, "AMR AP", "amr", perk="armor_piercing"), "Armour Piercing")
+
+
+def test_toxin_refreshes_and_ticks_after_the_last_shot():
+    w = R.shipped_world()
+    toxin = R.make_kit(w, "toxin", "toxin_rifle")
+    assert "toxin_rifle" in R.roster_ids(w)[0]
+    one = R.replace(toxin.guns[0], mag=1, reserve=0)
+    toxin = R.replace(toxin, guns=(one,))
+    victim = R.Fighter(R.make_kit(w, "victim", "assault_rifle"), (20, 0, 0), 0, 1, random.Random(2))
+    shooter = R.Fighter(toxin, 115, 1, 1, random.Random(2))
+    victim.next_t = math.inf
+    R.fight(random.Random(1), [shooter], [victim], cap_ms=6000)
+    assert not victim.alive and shooter.kill_times == [3000.0], shooter.kill_times
+    refreshed = R.Fighter(R.make_kit(w, "fresh", "assault_rifle"), (40, 0, 0), 0, 1, random.Random(2))
+    refreshed.receive(one.gun_dmg, src=shooter, t=0, gun=one)
+    refreshed.tick(1000)
+    refreshed.receive(one.gun_dmg, src=shooter, t=1500, gun=one)
+    assert refreshed.dot_next == 2500 and refreshed.dot_left == one.dot_ticks
+    before = refreshed.health
+    refreshed.tick(2000)
+    assert refreshed.health == before
+    refreshed.tick(2500)
+    assert refreshed.health == before - one.dot_per_tick
+
+
+def test_a_dry_primary_draws_a_lethal_secondary_and_pays_both_swaps():
+    w = R.shipped_world()
+    kit = R.make_kit(w, "AR + Deagle", "assault_rifle", "deagle")
+    primary = R.replace(kit.guns[0], mag=1, reserve=2)
+    secondary = R.replace(kit.guns[1], mag=1, reserve=0)
+    kit = R.replace(kit, guns=(primary, secondary))
+    f = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    f.targets = [R.Fighter(kit, 115, 0, 0, random.Random(3))]
+    assert f.act(0) is not None
+    assert f.act(f.next_t) is None and f.active == 1
+    out_t = f.next_t
+    assert out_t >= primary.fire_ms + kit.swap_ms
+    assert f.act(out_t) is not None
+    back_start = f.next_t
+    assert f.act(back_start) is None and f.active == 0
+    assert f.next_t >= back_start + kit.swap_ms
+    solo = R.Fighter(R.replace(kit, guns=(primary,), swap_ms=0), 115, 1, 0, random.Random(2), pull_ms=0)
+    solo.targets = f.targets
+    solo.act(0)
+    shots = solo.shots
+    assert solo.act(solo.next_t) is None
+    assert solo.active == 0 and solo.shots == shots and len(solo.gs) == 1
+
+
+def test_haze_blinds_then_swaps_and_zero_blind_cannot_improve_the_kit():
+    w = R.shipped_world()
+    haze = R.make_kit(w, "AR Haze", "assault_rifle", "smoke_gun", plan="haze")
+    plain = R.make_kit(w, "AR", "assault_rifle")
+    a = R.Fighter(haze, 115, 1, 0, random.Random(2), pull_ms=0)
+    b = R.Fighter(plain, 115, 1, 0, random.Random(2), pull_ms=0)
+    a.targets, b.targets = [b], [a]
+    shot = a.act(0)
+    assert shot is not None
+    b.receive(shot[0], src=a, t=0, gun=a.last_effect)
+    assert b.blind_until == R.HAZE_BLIND_MS
+    assert b.act(100)[1] == 0
+    assert a.active == 0 and a.next_t >= haze.swap_ms
+    assert R.duel_rate(haze, plain, "close", reps=40, haze_blind_ms=0) <= R.duel_rate(plain, plain, "close", reps=40)
+
+
+def test_melee_finishes_at_close_only():
+    w = R.shipped_world()
+    kit = R.make_kit(w, "AR", "assault_rifle")
+    assert kit.melee_dmg == w.cat.damage("melee") and kit.melee_ms == w.cat.fire_ms("melee")
+    a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    b = R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))
+    b.next_t = math.inf
+    R.fight(random.Random(1), [a], [b], cap_ms=500)
+    assert not b.alive
+    c = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0)
+    d = R.Fighter(kit, (30, 0, 0), 0, 1, random.Random(2))
+    c.targets = [d]
+    assert c.act(0) is not None and d.alive
+
+
+def test_real_aim_column_uses_the_field_aim_factor():
+    w = R.shipped_world()
+    ar = R.make_kit(w, "AR", "assault_rifle")
+    assert R.REAL_AIM == 0.4
+    assert 0.33 <= R.REAL_AIM * B.BAND_FIT[ar.guns[0].band][R.DIST["mid"]] <= 0.43
+    assert "1v1 real aim" in R.COLUMNS
+    assert "1v1 real aim" in R.NEAR_TOP_MARGIN
+
+
+def test_haze_flag_adds_a_separate_close_and_mid_report():
+    assert R.build_parser().parse_args(["--candidate", "x.json", "--haze"]).haze
+    section = R.haze_report(R.shipped_world(), 8)
+    assert {r["range"] for r in section} == {"close", "mid"}
+    assert all("plain" in r and "haze" in r for r in section)
 
 
 def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():
