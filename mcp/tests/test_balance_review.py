@@ -112,9 +112,9 @@ def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
 
 
 def test_only_a_new_mechanic_can_carry_value_addition():
-    """A weak 1-round-magazine Sniper is near the top nowhere; the bolt alone carries value_addition. Break it once
+    """A weak bolt Sniper (20 a hit) is near the top nowhere; the bolt alone carries value_addition. Break it once
     (drop the bolt feature from trigger_mechanics) and watch it fail."""
-    v = R.review({"weapon_id": "sniper_rifle", "changes": {"mag": 1, "wire.dmg": 20}}, reps_scale=REPS_SCALE)
+    v = R.review({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": 20}}, reps_scale=REPS_SCALE)
     t = v["tests"]["value_addition"]
     assert t["numbers"]["near_top_in"] == [], t
     assert t["numbers"]["new_mechanics"] == ["bolt action (1-round magazine)"] and t["status"] == "pass", t
@@ -257,14 +257,14 @@ def test_candidate_files_round_trip_and_every_path_must_move_something():
             p.write_text(json.dumps(obj))
             return str(p)
 
-        diff = R.load_candidate(write({"weapon_id": "sniper_rifle", "changes": {"mag": 1, "wire.dmg": 57, "reload_type": "bolt"},
-                                       "with": [{"weapon_id": "charge_rifle", "changes": {"wire.tap_dmg": 14}}]}))
+        diff = R.load_candidate(write({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": 57, "reload_ms": 1700},
+                                       "with": [{"weapon_id": "charge_rifle", "changes": {"wire.tap_dmg": 12}}]}))
         base, cand = R.build_worlds(diff)
-        assert base.cat.damage("sniper_rifle") == 60 and cand.cat.damage("sniper_rifle") == 57
-        assert base.cat.tap_damage("charge_rifle") == cand.cat.tap_damage("charge_rifle") == 14
+        assert base.cat.damage("sniper_rifle") == 75 and cand.cat.damage("sniper_rifle") == 57
+        assert base.cat.tap_damage("charge_rifle") == cand.cat.tap_damage("charge_rifle") == 12
         assert R.make_kit(cand, "x", "sniper_rifle", perk="quick_hands").guns[0].reload_ms == 1700
         assert R.make_kit(cand, "x", "sniper_rifle", perk="extended_mags").guns[0].mag == 1
-        assert R.make_kit(base, "x", "sniper_rifle", perk="quick_hands").guns[0].reload_ms == 850
+        assert R.make_kit(base, "x", "assault_rifle", perk="quick_hands").guns[0].reload_ms == 700
 
         row = R.load_candidate(write(_copy("assault_rifle", "test_ar_new", "Test AR new", dmg=10)))
         base, cand = R.build_worlds(row)
@@ -275,7 +275,7 @@ def test_candidate_files_round_trip_and_every_path_must_move_something():
         assert base.fx("quick_hands")["reload_mult"] == 0.5 and cand.fx("quick_hands")["reload_mult"] == 0.4
 
         for bad, text in ((({"tap_dmg": 14}), "tap_dmg"), ({"mag": 2, "wire.dmgg": 61}, "wire.dmgg"),
-                          ({"mag": 2, "wire.dmg": 60}, "wire.dmg"), ({"wire.range_outdoor_pct": 90}, "range_outdoor")):
+                          ({"mag": 2, "wire.dmg": 75}, "wire.dmg"), ({"wire.range_outdoor_pct": 90}, "range_outdoor")):
             c = R.load_candidate(write({"weapon_id": "sniper_rifle", "changes": bad}))
             _raises(lambda: R.build_worlds(c), text)
         _raises(lambda: R.build_worlds(R.load_candidate(write({"perk_id": "quick_hands", "changes": {"reload_mult": 0.5}}))),

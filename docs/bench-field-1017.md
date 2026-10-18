@@ -121,8 +121,8 @@ at least 500 ms apart. Ask Tony how the Shotgun's pump feels. **Control:** the A
 
 **P2.5. The bolt-action Sniper on a real gun (10 min).** *Impact: the Sniper fires one round, then needs the lever,
 as the sim assumes.* Push a kit with the Sniper Rifle from MC on main after the Sniper land (mag 1, reserve 48,
-`reload_ms` 1500). Fire: `$ALCD` reads 1 then 0. Pull the lever: the reload sound plays, and `$ALCD` goes 0 to 1
-after about 1.5 s with the reserve one lower. A trigger press before the bolt closes fires nothing. Repeat three
+`reload_ms` 2200). Fire: `$ALCD` reads 1 then 0. Pull the lever: the reload sound plays, and `$ALCD` goes 0 to 1
+after about 2.2 s with the reserve one lower. A trigger press before the bolt closes fires nothing. Repeat three
 times. **Pass:** each shot needs one lever pull; one dry pull gives no RELOAD nag; the HUD shows the short BOLT
 cue (once brx4's cue lands), not RELOADING. **Control:** the AMR fires its magazine with no lever between shots.
 Row: Balance rules row 17.

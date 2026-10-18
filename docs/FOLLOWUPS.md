@@ -26,8 +26,8 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F545**
 
-**MVP DECISION (5),** awaiting Tony:
-- 🟠 **F391** · **F572** · **F573**
+**MVP DECISION (4),** awaiting Tony:
+- 🟠 **F391** · **F572**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
@@ -320,8 +320,6 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 Tony's call. Each row says what the answer unblocks.
 
 - **F572 🟠 THE TWO-HILL HOLD TARGET: THE SUM ACROSS HILLS, OR PER HILL?** brx3 asked brx1 on 2026-10-18 (F556's console half, `b7715848f`). In a two-hill KOTH match, does the hold target count (a) the time held summed across both hills (today's code; brx1's and brx3's recommendation) or (b) the time held on any one hill? The answer unblocks the hold-target copy on LIVE, RECAP and SPECTATE and the scorer's win check. Owner brx3 (MC). `decision`.
-
-- **F573 🟠 THE SNIPER RIFLE'S DAMAGE, AND WHAT "STRONG" MEANS FOR A BOLT ACTION.** brx2, 2026-10-18. The bolt-action Sniper (one round, a lever pull per shot, a 1500 ms bolt, swap 500, perks off the bolt) is prepared at 57 (branch `brx2/sniper-bolt`, three hits on 115) and 75 (`brx2/sniper-bolt-75`, two hits); 65 is a third option (two hits on 115, three on 140). `mcp/tools/balance_review.py` (3001f64ad) fails every one on `marksman_rush_counter`, on opposite sides: at 57 a rush from 20 m wins 0.58 (the counter works) but the Sniper is not near the top at 1v1 long; at 65 and 75 the Sniper is strong but a rush wins only 0.15. With the Charge Rifle trimmed to range band mid, the AMR owns 1v1 long (99-100%). Tony's two calls: the damage (57, 65 or 75), and whether the strong side reads the PEEK column (where the Sniper is top at 87-88%) instead of 1v1 long (`MARKSMAN_STRONG_COLUMN`). With the peek column, Sniper 57 plus the Charge Rifle at 55/14 and range band mid passes all six tests. The answer unblocks the Sniper batch and its record in [`balance-decisions.md`](balance-decisions.md). Owner brx2. `decision`.
 
 - **F391 🟠 AN OFFLINE STICK RESTART LOSES THE A58 TAMPER LOCK.** A Stick taken offline mid-match (powerup game 40) kept its station assignment across a restart but came back with `lock_s=0`, unlocked. Decide whether the lock is meant to survive an offline boot while a match is loaded or live (as F332 proved it survives an ordinary restart), and if so save `lock_s` (or its deadline) to NVS alongside the range edits. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`), default design for Tony to confirm:** the lock survives an ordinary restart, restored for at most 120 s and only for the saved game; the A+B 7 s restart or MC `lock_s` 0 clears it. **→ 2026-10-03:** for Tony: keep the lock across an ordinary restart for at most 120 s, for the same game only? Confirm or change this default. Then bench the restart (`bench-stick-2026-09-29.md` step 12). Owner brx4. `decision` + `bench`.
 

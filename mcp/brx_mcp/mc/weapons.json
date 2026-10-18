@@ -332,7 +332,7 @@
    "class": "ballistic",
    "mag": 1,
    "reserve": 48,
-   "reload_ms": 1500,
+   "reload_ms": 2200,
    "reload_type": "bolt",
    "dmg": 65,
    "rof": 5,
@@ -340,7 +340,7 @@
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
    "htk": 2,
-   "ttk_ms": 2005,
+   "ttk_ms": 2705,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -369,7 +369,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "A bolt action since 2026-10-17 (Tony): one round in the magazine, then a lever pull and a 1.5 s bolt before the next. 75 a hit, two hits to a kill on 115, 140 and 150, with 48 behind it. It peeks, takes cover while the bolt runs, and peeks again; its counter is the rush, because it must hit every shot. Perks leave the bolt and the magazine alone. Until 2026-10-17 it was 60 a hit on a 1.5 s cycle, four in the mag."
+   "notes": "A bolt action since 2026-10-17 (Tony): one round in the magazine, then a lever pull and a 2.2 s bolt before the next (1.5 s until Tony's 2026-10-18 call, F573). 75 a hit, two hits to a kill on 115, 140 and 150, with 48 behind it. It peeks, takes cover while the bolt runs, and peeks again; its counter is the rush, because it must hit every shot. Perks leave the bolt and the magazine alone. Until 2026-10-17 it was 60 a hit on a 1.5 s cycle, four in the mag."
   },
   {
    "weapon_id": "plasma_sniper",

@@ -68,7 +68,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 64,
       "rof": 53,
       "ammo": 49,
-      "ttk": 47
+      "ttk": 53
     }
   },
   {
@@ -178,7 +178,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 40
+      "ttk": 47
     }
   },
   {
@@ -640,8 +640,8 @@ export const WEAPONS: WeaponView[] = [
     "clip": 1,
     "mags": 48,
     "reserve": 48,
-    "reload_s": 1.5,
-    "reload_ms": 1500,
+    "reload_s": 2.2,
+    "reload_ms": 2200,
     "dmg": 65,
     "rpm": 5,
     "rng": 75,
@@ -660,7 +660,7 @@ export const WEAPONS: WeaponView[] = [
       "long"
     ],
     "htk": 2,
-    "ttk_ms": 2005,
+    "ttk_ms": 2705,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -683,7 +683,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 91,
       "rof": 20,
       "ammo": 31,
-      "ttk": 53
+      "ttk": 40
     }
   },
   {

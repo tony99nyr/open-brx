@@ -1768,12 +1768,13 @@ class WeaponCatalog:
     def paced_cycle_ms(self, weapon_id: str, pull_ms: float = SEMI_PULL_MS) -> float:
         """Mean ms between rounds a PLAYER sustains: `cycle_ms()`, except on a single-shot weapon, where the
         next round waits for the first trigger press at or after t14 (see `SEMI_PULL_MS`). `pull_ms` 0 gives
-        `cycle_ms()`. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
+        `cycle_ms()`, except on a bolt action, whose bolt (`reload_ms`) runs between rounds at any pull. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
         that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
         `cycle_ms()`, the fastest interval the gun allows."""
-        if pull_ms > 0 and self._row(weapon_id).get("reload_type") == "bolt":
+        if self._row(weapon_id).get("reload_type") == "bolt":
             # A bolt action (Tony, 2026-10-17): after each shot the player pulls the lever (one pull gap), the bolt
-            # runs (reload_ms), then the next round waits for the first press after it (the pull overshoot).
+            # runs (reload_ms), then the next round waits for the first press after it (the pull overshoot). At
+            # `pull_ms` 0 the bolt still runs, so the cycle is max(t14, reload_ms), never t14 alone.
             overshoot = pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2
             return max(self.fire_ms(weapon_id) + overshoot, pull_ms + int(self._row(weapon_id)["reload_ms"]) + overshoot)
         if pull_ms > 0 and self._frame_int(weapon_id, "mode") == self._SEMI_MODE:

@@ -300,8 +300,8 @@ class Kit:
 
 
 def _ammo_mods(world: World, wid: str, fx: dict) -> dict | None:
-    # A bolt (`reload_type: "bolt"`) ignores the ammo and reload perks, as compile.py `_ammo` does once the
-    # Sniper batch (branch brx2/sniper-bolt) lands: the compiled frame is mag 1 / 48 / 1500 under every perk.
+    # A bolt (`reload_type: "bolt"`) ignores the ammo and reload perks, as compile.py `_ammo` does (F573): the
+    # compiled frame keeps the row's mag, reserve and reload_ms under every perk.
     if world.cat._row(wid).get("reload_type") == "bolt":
         return None
     return {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult") if k in fx} or None
