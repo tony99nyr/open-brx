@@ -135,8 +135,9 @@ behind the flag until the design catches up (open for Tony, S58).
 ## Contract (A56, additive)
 
 - **`StationAssignment.item?`** for kind `powerup`:
-  `{kind: "weapon" | "overshield", weapon_id?, charges?, amount?, spawn_every_s, first_at_s, name, color}`.
-  A weapon item grants `charges` rounds (the magazine) of `weapon_id`; an overshield grants `amount` shield.
+  `{kind: "weapon" | "overshield" | "ammo", weapon_id?, charges?, amount?, refill?, spawn_every_s, first_at_s, name, color}`.
+  A weapon item grants `charges` rounds (the magazine) of `weapon_id`; an overshield grants `amount` shield; an
+  ammo item carries `refill` (see "The AMMO item").
   `spawn_every_s` and `first_at_s` set the schedule on the match clock (below, `first_at_s` always equal to
   `spawn_every_s`); `name` is at most 12 characters (a Stick may marquee it); `color` is `#rrggbb`, the item's own
   colour, not a team. The same object rides in the player's `config.stations[]` entry (`{id, kind, item?}`), so a
@@ -150,7 +151,10 @@ behind the flag until the design catches up (open for Tony, S58).
   a 400. `powerups.py` `apply_overrides()`.
 - **`GameConfig.powerups?`**: `[{weapon_id, slot}]`, the pickup WEAPONS MC armed and where (compile's output; at
   most two, slots 2 and 3). An overshield needs no slot.
-- **New fact `pickup`** from the player phone: `{match_id, station_id, item_kind, weapon_id?, t}`.
+- **New fact `pickup`** from the player phone: `{match_id, station_id, item_kind, weapon_id?, refilled?, t}`.
+  `item_kind` is `"weapon"`, `"overshield"` or `"ammo"`. An ammo fact has no `weapon_id`. It may carry
+  `refilled: {"0": n0, "1": n1}`, the rounds added to slots 0 and 1. MC stores the fact and does not score it.
+  The feed shows the usual TOOK row with the item name (`<WHO> TOOK AMMO · STATION #5`).
 - **`station_update {id, available, next_spawn_in_ms?}`** from MC to the station, on a pickup, at each spawn time and
   on an operator reset, always with `next_spawn_in_ms` (the next spawn instant, even while available): the time REMAINING, since a Stick has no synced clock (agreed with brx4 for H8, 2026-09-24). The station
   advertises state 1 (available) or 0 (taken) and, while taken, the seconds to the next spawn in `value` (capped
@@ -268,6 +272,25 @@ and AVAILABLE, for example OVERSHIELD AVAILABLE, in the item's colour. It fires 
 schedule and the match clock, so it needs neither MC nor the station. It is skipped when the phone knows the item is
 still sitting there untaken since the last spawn (the station's advert said available). Presentation only.
 
+## The AMMO item (Tony, field 2026-10-17: "i ran out of ammo in several games")
+
+A player who runs dry has no way back in. The AMMO item tops the ammunition up.
+
+- **Effect:** the taker's held slots 0 and 1 rise to each slot's spawn reserve. A slot already above that value is
+  not lowered. The magazine does not change. Slots 2 and 3 (pickup weapons) do not change.
+- **Item:** `{kind: "ammo", refill: "spawn", name: "AMMO", color: "#9be22d", spawn_every_s: 60, first_at_s: 60}`.
+  The colour is a lime, clear of the team colours and of the other presets. `refill` is `"spawn"` in every item MC
+  sends. The phone also reads `"reserve"` or an integer N, but MC does not set them.
+- **Timing:** every 60 s, first at 60 s (`AMMO_SPAWN_EVERY_S`, on the 30 s override grid). RESPAWN is overridable like the other items. CHARGES
+  and AMOUNT do not apply: MC refuses both on an ammo item with a 400.
+- **One take per spawn,** as for every item.
+- **No claim when full.** A phone does not claim when every held slot is already at its spawn reserve. A partial
+  top-up is fine: the phone claims if at least one slot is below its reserve.
+- **Timing of the grant.** The phone defers the grant through a reload or a stun. It makes no claim while the player
+  is down.
+- **No slot, no head.** The item is not a weapon: `weapon_slots()` skips it and nothing enters the compiled head.
+- **Fact:** `pickup {item_kind: "ammo", refilled?: {"0": n0, "1": n1}}` (see the Contract section).
+
 ## The pickup: about 1 ft, 1 s, first come at the station (Tony, 2026-09-24)
 
 "You need to be close to the pickup, within 1ft bluetooth range. Hold for 1s to get the powerup and then its taken
@@ -342,8 +365,8 @@ still there (no stacking). MC logs OPERATOR RESET · STATION #<id> and records i
 ## Items and defaults (Tony, 2026-09-24)
 
 Decided:
-- **Items:** Rockets (rocket_launcher), Rail Gun (rail_gun), and Overshield.
-- **Schedule:** Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
+- **Items:** Rockets (rocket_launcher), Rail Gun (rail_gun), Overshield, and Ammo (added 2026-10-17).
+- **Schedule:** Ammo and Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
   2:00), on the match clock.
 - **Overshield:** +75 shield on top of whatever the player has, taking hits first, no regeneration, gone at death
   (the grant burst in "Overshield mechanics" above; a raw `$LIFE` past the preset's max clamps back, bench 3.3). In the Shields preset the regenerating shield only

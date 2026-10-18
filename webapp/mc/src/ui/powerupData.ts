@@ -29,4 +29,4 @@ export function usePowerups(): PowerupsState {
 
 /** "every 2:00, first at 2:00": the item's spawn schedule on the match clock. */
 export const schedule = (it: StationItem) => `EVERY ${fmtDuration(it.spawn_every_s)}, FIRST AT ${fmtDuration(it.first_at_s)}`;
-export const itemDetail = (it: StationItem) => it.kind === 'overshield' ? `+${it.amount ?? '?'} SHIELD` : `${it.charges ?? '?'} CHARGE${it.charges === 1 ? '' : 'S'}`;
+export const itemDetail = (it: StationItem) => it.kind === 'ammo' ? 'TOPS UP RESERVE' : it.kind === 'overshield' ? `+${it.amount ?? '?'} SHIELD` : `${it.charges ?? '?'} CHARGE${it.charges === 1 ? '' : 'S'}`;
