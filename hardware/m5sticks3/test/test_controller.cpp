@@ -466,8 +466,15 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   want.control_has_hold = true;
   want.control_hold_ms[1] = 4000;
   want.control_game = 3;       // F555: the game byte the hill counts under
+  want.control_has_inputs = true;   // F558: nobody is counted here, so net 0, no counts, no lead
+  want.control_net = 0;
+  want.control_lead = -1;
   CHECK(build_status_body(armed) == build_status_body(want));
-  CHECK(build_status_body(armed).find("\"contested\":false,\"game\":3,\"hold_ms\"") != std::string::npos);
+  CHECK(build_status_body(armed).find("\"net\":0,\"counts\":{},\"lead\":null") != std::string::npos);
+  StatusFields two = want;   // F558: two RED and one BLUE counted, RED leads at net 1
+  two.control_net = 1; two.control_lead = 0; two.control_counts[0] = 2; two.control_counts[1] = 1;
+  CHECK(build_status_body(two).find("\"net\":1,\"counts\":{\"0\":2,\"1\":1},\"lead\":0") != std::string::npos);
+  CHECK(build_status_body(armed).find("\"contested\":false,\"game\":3,\"net\"") != std::string::npos);
   link.set_mode(AssocMode::MUSTER);
   CHECK(fill_status(link, 2000, true, 7, 0).assoc == "muster");
 }

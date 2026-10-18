@@ -270,6 +270,8 @@ function utilityStatusBody() {
     // F555: `game` is the byte this hill counts under, so MC never seeds a new game's tally from a beat sent before the
     // phone applied that game's config
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested, game: settings.game,
+      // F558: the point's own inputs (who it counted, which team leads, the clamped net), so a log can explain its rate
+      net: point.net, counts: { ...point.counts }, lead: point.lead,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
 const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, setCurrent: t => { transport = t; },
@@ -622,6 +624,7 @@ function controlTick(now) {
 function resetPoint(why) {
   point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
   point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
+  point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');
 }

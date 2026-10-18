@@ -162,7 +162,8 @@ def test_the_esp32_control_kind_status_carries_owner_and_progress():
     assert status_body["kind"] == "control" and status_body["station_id"] == 9
     s.net.simulate_status(node_id, status_body, s.now_ms() + 1)
     report = s._station_view(node_id)["report"]
-    assert report["control"] == {"owner": 1, "progress": 50, "contested": False}, report
+    assert report["control"] == {"owner": 1, "progress": 50, "contested": False,
+                                 "net": 1, "counts": {"1": 2}, "lead": 1}, report   # F558: the Stick's real bytes, decoded
 
 
 def test_a_re_hello_with_a_held_node_key_is_still_a_wire_valid_hello():
