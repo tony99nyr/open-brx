@@ -195,7 +195,9 @@ export class ControlPoint {
     if (contested !== this.contested) { this.contested = contested; events.push({ type: contested ? 'contested' : 'uncontested', counts: { ...counts } }); }
 
     // ---- possession time, for the station's own recap (it is self-authoritative, §5c) ----
-    if (this.owner !== STATION_TEAM_ANY && !this.contested && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
+    // F554 (field 2026-10-17, Tony: "hills should ignore dead players"): an owned point banks only while its owner has a
+    // LIVING player counted on it. `counts`, not `capCounts`: a fading owner at the edge still holds what it owns.
+    if (this.owner !== STATION_TEAM_ANY && !this.contested && (counts[this.owner] || 0) > 0 && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
