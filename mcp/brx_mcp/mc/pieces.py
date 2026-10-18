@@ -195,8 +195,9 @@ def _expand_type_tokens(only_ids: object, kind: str = "secondary") -> object:
             for w in weapons:
                 wid = w["weapon_id"]
                 types = w.get("types") or []
-                # PRIMARY never offers a sidearm (`close` is on the usp and deagle too), so its expansion skips them
-                if kind == "primary" and "sidearm" in types:
+                # On PRIMARY a pistol counts only under the `sidearm` token (field 2026-10-17: a pistols-only round). An
+                # old CLOSE piece keeps meaning the smg and shotgun, though `close` is on the usp and deagle too.
+                if kind == "primary" and "sidearm" in types and i != "sidearm":
                     continue
                 if i in types and not w.get("pickup_only") and wid not in seen:
                     seen.add(wid)
