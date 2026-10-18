@@ -110,9 +110,9 @@ describe('KIT · perk slot (A14)', () => {
     const { m } = await kitFor('p1');
     await m.click('PERK');
     const t = m.text();
-    // extended_mags: ×2 AMMO gain, SWAPS 1.3× SLOWER cost; armor_piercing: IGNORES ARMOR & SHIELDS gain,
+    // extended_mags: ×2 MAG gain (the reserve grows only up to 384, 2026-10-17), SWAPS 1.3× SLOWER cost; armor_piercing: IGNORES ARMOR & SHIELDS gain,
     // FIXED DAMAGE, SLOWER CYCLE cost (the rate-of-fire term the phone's old line never carried)
-    for (const line of ['×2 AMMO', 'SWAPS 1.3× SLOWER', 'IGNORES ARMOR & SHIELDS', 'FIXED DAMAGE, SLOWER CYCLE']) {
+    for (const line of ['×2 MAG', 'SWAPS 1.3× SLOWER', 'IGNORES ARMOR & SHIELDS', 'FIXED DAMAGE, SLOWER CYCLE']) {
       expect(t, `picker is missing "${line}"`).toContain(line);
     }
     m.unmount();

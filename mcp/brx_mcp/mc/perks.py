@@ -77,7 +77,9 @@ def gain_cost_lines(perk_id: str, effects: PerkEffects) -> tuple[list[str], list
         (gain if n > 0 else cost).append(f"{n:+d} ARMOR")
     if "ammo_mult" in effects:
         m = effects["ammo_mult"]
-        (gain if m > 1 else cost).append(f"×{m:g} AMMO")
+        # 2026-10-17: a gain doubles the MAGAZINE; the reserve only grows up to compile.RESERVE_PROVEN_MAX, so five
+        # rifles gain no reserve at all. A cut (Quick Hands) still cuts both, so it keeps the AMMO word.
+        (gain if m > 1 else cost).append(f"×{m:g} MAG" if m > 1 else f"×{m:g} AMMO")
     if "ammo_mult_pistol" in effects:
         # D5 (2026-09-25): a per-class override, not a second player-facing line -- the catalogue's
         # "×N AMMO" line above already names the general case, and the true resolved number for a

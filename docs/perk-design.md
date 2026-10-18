@@ -51,7 +51,7 @@ ladder, and every pick has a named enemy.
 | **Body Armor** | +25 armour, about 20% more pool | reloads take 25% longer | Armour Piercing, and anything that ticks |
 | **Armour Piercing** | your primary ignores armour and shields, straight to health | heavier rounds: less damage AND a slower cycle, set per weapon (§7.7) | a bare-pool opponent, who takes the damage cut for free |
 | **Quick Hands** | reload in half the time | magazine and reserve cut by 20% | Extended Mags, in a long fight |
-| **Extended Mags** | double magazine and reserve (+50% on a pistol primary, below) | weapon swap 30% slower | Quick Switch, at close range |
+| **Extended Mags** | double magazine, and reserve up to 384 (+50% on a pistol primary, below) | weapon swap 30% slower | Quick Switch, at close range |
 | **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
 | **Motion Tracker** | nearby enemies appear on your HUD as a list, with no bearing and no range | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
 | **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
@@ -85,7 +85,7 @@ max(`RESERVE_PROVEN_MAX` = 384, the row's own reserve), because 384 is the large
 echoed back. So until a bench lifts the ceiling, Extended Mags adds **little or nothing to the reserve** of
 the Assault Rifle, Burst Rifle, SMG (all 384), Suppressor (384) and Energy Rifle (600), and almost
 nothing to the Toxin Rifle's (360 to 384); its magazine
-doubling still applies. It still doubles the reserve below the ceiling: the Charge Rifle 160 to 320, the AMR
+doubling still applies. Tony kept the perk as it is with the cap in view (2026-10-17: "ok yeah i mean thats still a good perk then"): the magazine doubling carries it. It still doubles the reserve below the ceiling: the Charge Rifle 160 to 320, the AMR
 112 to 224; on a pistol the USP 240 to 360. The bench that lifts it is `bench-field-1017.md` P1.0.
 
 **Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the

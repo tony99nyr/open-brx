@@ -1038,6 +1038,7 @@ class Weapon(TypedDict):
     crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
     min_app: NotRequired[str]       # victim-side runtime floor, declared beside the mechanic that needs it
     dual_emitter: NotRequired[bool] # one trigger emits separate gun and headset words
+    reload_type: NotRequired[Literal["chain", "bolt"]]   # weapons.json: chain = shell by shell, bolt = a lever pull per shot
 
 
 class WeaponBars(TypedDict):
@@ -1066,7 +1067,7 @@ class WeaponView(TypedDict):
     dual_emitter: NotRequired[bool]  # one trigger can emit separate gun and headset words
     # policy.chain_reload: a HELD per-shell reload (the Shotgun) conflicts with Easy Reload. The producer always fills it
     # (mc.md #4, 2026-10-10), so the console asks this row instead of a hand list of chain weapons.
-    reload_type: NotRequired[Literal["chain", "magazine"]]
+    reload_type: NotRequired[Literal["chain", "magazine", "bolt"]]   # bolt: one round, a lever pull per shot (2026-10-17)
     pool: NotRequired[int]   # older MC rows predate host-pool ranking; the current producer always fills it
     verified: bool
     tags: list[str]

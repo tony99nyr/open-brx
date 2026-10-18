@@ -992,6 +992,16 @@ def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
     assert p[T["fire"] + 2] == "850", "the unidentified constant at tok15 is never written"
 
 
+def test_no_catalogue_row_ships_a_reserve_above_the_proven_ceiling():
+    """2026-10-17 (reserves x2, brx5's milestone review): the ceiling limits perk scaling, so a row itself must stay at
+    or below RESERVE_PROVEN_MAX too, or a mistyped 3840 would ship. The Energy Rifle's 600 predates the ceiling."""
+    from brx_mcp.mc.compile import RESERVE_PROVEN_MAX
+    allowed = {"energy_rifle": 600}
+    over = {w["weapon_id"]: w["reserve"] for w in WeaponCatalog()._rows
+            if int(w["reserve"]) > allowed.get(w["weapon_id"], RESERVE_PROVEN_MAX)}
+    assert not over, f"rows above the proven reserve ceiling ({RESERVE_PROVEN_MAX}): {over}"
+
+
 def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     """Regression guard for the whole roster, not just the two weapons that used to break.
 

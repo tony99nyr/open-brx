@@ -109,8 +109,8 @@ retries up to 3 times, then heals, still with no death: log the retries. Then on
 the player with the rig, then send FORCE RESPAWN about 100 ms after the death (the ready `curl` in A.10), 5 times.
 **Control:** a timed respawn, before and after. **Pass:** each press logs `operator respawn held <N> ms: the F13
 floor after a death` on the phone, and the revive lands about 2.5 s after the death. MC's `operator_result` arrives
-when the hold fires, not at the press. Then the headset goes dark, 5 of 5, and the trigger fires after the 0.5 s
-weapon delay. Log the stuck count. Row: F530.
+when the hold fires, not at the press. Then the headset goes dark, 5 of 5, and the trigger fires after the 1.5 s
+weapon delay (0.5 s before 2026-10-17, A74). Log the stuck count. Row: F530.
 
 **P1.5. F537, a player phone stands in a hill (15 min).** *Impact: a player phone can drop out of a hill while its
 scan is closed.* A KOTH match with one hill, the black Pixel 5 on the ground, and the green Pixel as the only player

@@ -94,7 +94,7 @@ PerkView {
                                     // `is_shields_preset`), the grant compiles into the SHIELD ceiling
                                     // instead of armour — adding an armour layer to a preset built with
                                     // none would defeat its design.
-    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40), UNLESS the primary is a
+    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY (the reserve capped at max(`RESERVE_PROVEN_MAX`, the row's own reserve) since 2026-10-17) ($AMMO,0 + t16/t39/t17/t40), UNLESS the primary is a
                                     // pistol (see ammo_mult_pistol below); quick_hands: ×0.8 (the cost of a faster reload)
     ammo_mult_pistol?: number,     // D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override, read INSTEAD of ammo_mult when
                                     // the primary is a pistol (role "sidearm" or the "pistol" tag): ×1.5, rounded DOWN, not ×2. USP
