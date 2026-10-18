@@ -159,7 +159,7 @@
       "at": "respawn_ends_swap",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":12,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [{"type":"respawn","match_id":"m1","operator":true},{"type":"operator_result","cmd":"respawn","ok":true,"match_id":"m1","player_id":"p1"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",

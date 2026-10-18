@@ -147,7 +147,7 @@
       "at": "heartbeat_after_heal_drop",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":20,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"gain","data":{"pool":"health","amount":9,"hp":20,"armor":0,"shield":0}}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":108,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:1"},{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":34,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$PLAY,,4,6,N101,,,,*",
         "$GLED,9,9,9,0,10,,*",

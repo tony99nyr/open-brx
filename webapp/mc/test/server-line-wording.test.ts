@@ -43,7 +43,7 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
 
   // ---- the roster, the game, the notices ----
   ['ONLY ONE SIDE HAS PLAYERS (NO HIT CAN REGISTER): MOVE PLAYERS BETWEEN TEAMS', 'blocker', 'lobby-roster-fault-banner', 'red'],
-  ['WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID (Op1, Op2): TELL PLAYERS TO RETURN AFTER THE WHISTLE', 'neutral', 'frame-mc-verify', 'neutral'],
+  ['WIN IS CONFIRMED AT MC, 2 PHONES WITH NO ROUTE BACK (Op1, Op2): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE', 'neutral', 'frame-mc-verify', 'neutral'],
   [
     "SETUP: A CONTROL STATION IS ASSIGNED BUT THIS GAME'S OBJECTIVE IS THE GRENADE (EVERY PHONE IGNORES THE STATION'S HILL): SET OBJECTIVE SOURCE TO PHONE, OR CLEAR THE CONTROL STATION IN ITEMS",
     'amber', 'frame-setup-conflict-control-vs-grenade', 'red',

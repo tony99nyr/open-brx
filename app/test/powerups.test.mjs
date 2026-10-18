@@ -70,7 +70,7 @@ function harness({ stations = [], powerups = undefined, maxShield = 0, weapons =
     if (frames.respawn_profile) frames.respawn_profile = { ...frames.respawn_profile, spawn: withEmpty(frames.respawn_profile.spawn), revive: withEmpty(frames.respawn_profile.revive), revive_station: withEmpty(frames.respawn_profile.revive_station) };
   }
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const h = {
     eng, writes, facts, batches, logs, echoQ, get clock() { return clock; },

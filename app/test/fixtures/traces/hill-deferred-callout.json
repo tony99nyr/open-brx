@@ -2,7 +2,7 @@
   "name": "hill-deferred-callout",
   "why": "A control point recapture inside the three second callout floor waits for the tick, while a superseded recapture is silenced.",
   "source": "app/test/engine.test.mjs 'control point: a transition inside the floor waits, and a newer owner replaces the pending truth'",
-  "runners": ["engine", "stage"],
+  "runners": ["engine","stage"],
   "setup": {
     "config": {"mode":"koth","station_source":"phone"},
     "fields": ["hill","possession","hillCallout","hillLane"]
@@ -121,7 +121,7 @@
       "at": "recapture_said_later",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"possession":{"by_site":{"11":{"1":2750}},"observed_ms":{"11":2750},"source":"station"},"hillCallout":{"kind":"hill_captured","at":6010},"hillLane":{"kind":"hill_captured","src":"BLE","id":2,"at":6010}},
       "facts": [{"type":"possession","match_id":"m1","site":"11","hold_ms":{"1":250},"observed_ms":250,"source":"station"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$PLAY,,4,6,VB0N,,,,*"
       ]

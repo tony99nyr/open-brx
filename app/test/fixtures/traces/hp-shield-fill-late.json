@@ -92,7 +92,7 @@
       "at": "fill_echo_at_window_end",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":0,"shield":108,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":null},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$QUERY,*",
         "$HLED,9,0,,,10,,*",

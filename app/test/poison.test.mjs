@@ -50,7 +50,7 @@ function harness({ dot = DOT, stun, sir } = {}) {
   const frames = { ...golden, player_id: 'p1', ...(dot ? { dot } : {}) };
   if (sir) { frames.head = sir(golden.head); frames.sir_pool = (golden.sir_pool || []).map(t => sir(t)); }
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: [] } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
   const flush = () => { while (pending.length) eng.feedFrame(pending.shift()); };
   const h = {

@@ -110,7 +110,7 @@
       "at": "revived",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"redeploy","data":null}},
       "facts": [{"type":"respawn","match_id":"m1"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$IRTX,100,15,7,0,26,0,0,100,1,,0,*",
         "$HLOOP,1,2500,*",

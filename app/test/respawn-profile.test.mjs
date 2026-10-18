@@ -43,7 +43,7 @@ function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0 }
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   eng.onMcMessage({ kind: 'assign', body: { player, team: teams[0], roster: [] } });
   eng.onMcMessage({ kind: 'config', body: { config, frames: { ...bundle, player_id: 'p1' }, roster: [] } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); eng.feedFrame('$ALCD,32,100,0,192,0,*');
   let match = 0;
   const h = {
     eng, writes, facts, timed, now: () => clock,

@@ -80,17 +80,19 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    gun sits configured-but-unspawned until M-START's T-0. The head write is silent on the gun (bench
    2026-08-25, protocol §7r);
 3. **captures the gun's echo**: a configured gun answers the head with `$LCD,…`/`$ALCD,…` lines (protocol §7e).
-   The node waits ~1.5 s for them. **What the echo proves:** the gun *answered* and holds the config. It does
-   **not** report state — after `$CLEAR` the head echo is `$LCD,0,0,0,0,0,0` on a healthy gun, not HP. **Silence
-   = the gun did not answer**: with the headset OFF the head write echoes nothing and the gun drops the link
-   (`$DISCONNECT`; bench 2026-08-25 §7r), so link + echo IS the headset proof and an empty echo is **red after
-   the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
+   The node waits ~1.5 s for them. **What the echo proves:** the gun *answered*. It does **not** report state:
+   `$START` answers `$LCD,0,0,0,0,0,0` (no config loaded yet), then the slot-0 `$WEAP` load answers its `$ALCD`.
+   Only that slot-0 `$ALCD` (or a non-zero `$LCD`) proves the config loaded (F549, field 2026-10-17: a broken
+   slot-0 frame answered only the zeroed `$LCD`). **Silence = the gun did not answer**: with the headset OFF the
+   head write echoes nothing and the gun drops the link (`$DISCONNECT`; bench 2026-08-25 §7r), so an empty echo
+   is **red after the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
 4. after a successful echo window, sends `$QUERY,*` and waits up to 2.6 s after that write settles for its status
    body. A well-formed reply contributes tokens 1–5 as `gun_config{player_id, team, hp, armor, shield}`; a missing,
    late or malformed body simply omits this optional proof;
 5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
    the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
-   `ok:false, err:"no_echo"`; a BLE write failure → `ok:false` + the error.
+   `ok:false, err:"no_echo"`; only a zeroed `$LCD,0,0,0,0,0,0` (no config loaded) and no well-formed slot-0 `$ALCD` →
+   `ok:false, err:"no_config"` (F549, field 2026-10-17); a BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
@@ -408,8 +410,8 @@ node re-applies `frames.head` (`_beginResync` for those phases) and the schedule
 Config survives a BLE drop but is wiped by a power-cycle (§7r), so the head re-write is what restores a
 power-cycled gun. The old trigger-first evidence protocol (A6.6) survives ONLY here.
 
-**Why the reconcile never blind-writes `spawn`:** (1) the head's echo is `$LCD,0,0,0,0,0,0` on a healthy gun
-(bench 2026-08-25) — it cannot reveal a death; (2) `$SPAWN` is a full heal + refill. Persistence removed the
+**Why the reconcile never blind-writes `spawn`:** (1) the head's first echo is `$LCD,0,0,0,0,0,0` on a healthy gun
+(bench 2026-08-25), before its slot-0 `$ALCD` — it cannot reveal a death; (2) `$SPAWN` is a full heal + refill. Persistence removed the
 NEED to probe, so the evidence protocol was retired for the live path — it mis-concluded "dead" on reconnect
 and let auto-respawn heal.
 
@@ -764,8 +766,8 @@ inspectable on the field:
   SSID (`ssid_ok`), MC reachable + last `welcome` age (`mc_reachable`), field SSID saved with auto-join
   (`auto_join_ok`), mobile data state where readable (`cellular_off`, a diagnostic only: the player is never told to change it), Do-Not-Disturb (`dnd_on`), clock-sync
   age and sample count (`synced`), phone battery % + charging (`phone_batt`), `screen_on` / `foreground`
-  flags, gun link (`gun_linked`), headset (`headset_ok` = the last config/spawn echo arrived — amber until
-  then), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
+  flags, gun link (`gun_linked`), headset (`headset_ok` = the link is up and the `$VERSION` probe read the headset joined; it is not the
+  config echo, F550), firmware from the probe set (`fw`), outbox queue depth, `match_id`, `player_num`, `config_id`.
   Each row green/amber/red; the HUD chip is the rollup.
 - **BLE link:** deviceId (opaque handle §8), connection state, retry count, last disconnect **HCI
   reason code** with plain-English gloss (`0x16` local, `0x13` gun/headset gate, `0x08` out-of-range,

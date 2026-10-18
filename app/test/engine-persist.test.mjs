@@ -946,3 +946,16 @@ test('F532 down review: a drop during a down check leaves no zero pools for a la
   assert.equal(h.eng.deaths, deaths, 'the alive reboot check heals, with no death');
   assert.equal(h.eng.alive, true);
 });
+
+// F566 (field 2026-10-17): app.js's logger reads `engine.matchId`, and `_load` runs inside the Engine constructor, so a log
+// line written during construction threw, and a normal expiry reported as "persisted context unreadable".
+test('F566: an expired persisted context logs "expired" after construction, never "unreadable"', async () => {
+  const store = new Map([['brx.engine', JSON.stringify({ v: 1, savedAt: 0, rawSavedAt: 0, matchId: 'm1' })]]);
+  const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) };
+  const logs = []; let engine;
+  const log = m => { void engine.matchId; logs.push(String(m)); };   // app.js's logger shape: it reads the engine
+  engine = new Engine({ writer: () => true, emit: () => {}, report: () => {}, now: () => 1e12, synced: () => true, storage, log });
+  await new Promise(r => queueMicrotask(r));
+  assert.ok(logs.some(m => m === 'persisted context expired'), JSON.stringify(logs));
+  assert.ok(!logs.some(m => /unreadable/.test(m)), JSON.stringify(logs));
+});
