@@ -1089,17 +1089,17 @@ respawn, the separate mean seek delay is 7 s. A player who waits for a defeated 
 that opponent first, while an old seek cannot replace a live engagement. These are the density refit values;
 the toxin preset retains its historic 2 s contact and 3 s gap unless its options override them.
 
-In a semi-auto fight, each round fires at `t14` plus a lognormal overshoot. The fitted mean is
+In a semi-auto fight, each round fires at `t14` plus a lognormal overshoot. The fitted median is
 `FIGHT_OVERSHOOT_MS` 36.67 ms, from the USP, AMR and Desert Eagle field medians. The bolt lever and the
 press after it use the ordinary pull model. `compile.py`'s published `ttk_ms` still uses the 300 ms pull
 for semi weapons, so those TTK values differ from the fight sim. Reloads and lever vents progress only
-while the weapon is in hand. Swapping away cancels them without crediting ammunition; they restart when
-the weapon returns. Passive heat cooling continues while holstered.
+while the weapon is in hand. A swap credits a finished reload. It cancels an unfinished reload or vent.
+When cooling is on, heat cools while holstered.
 
 Heat cooling while firing is unproven pending bench check F575. The default is on, matching the catalogue
-cooling rate. With `HEAT_COOL_WHILE_FIRING` off, cooling starts after lockout. A close-range melee swing
-uses `MELEE_HIT_P` 0.9 at aim 1, scaled by aim, blindness and `RUSH_MOVE_ACC`; the published TTK remains
-gun-only.
+cooling rate. With `HEAT_COOL_WHILE_FIRING` off, heat does not cool; a lockout resets heat to zero.
+A close-range melee swing uses `MELEE_HIT_P` 0.9 at aim 1, scaled by aim and blindness.
+The published TTK remains gun-only.
 
 - **Range** (`--no-range`, `--venue`). Each fight draws close, mid or long from the venue. A table
   (`BAND_FIT`) scales the hit chance by the weapon's `range_band` and that distance. Each band has

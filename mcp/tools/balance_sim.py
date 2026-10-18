@@ -84,8 +84,9 @@ INVENTED ASSUMPTIONS (the numbers that move the answer most)
    not bias the ratio.
 8. A reload or vent progresses only while its gun stays in hand. Swapping away cancels it.
    This one-slot engine has no swap event. Ammo is credited when the reload completes.
-9. Heat cools while firing by default. ``--heat-cool-while-firing off`` permits cooling only
-   after a lockout. The bench has not established which rule the tagger uses.
+9. Heat cools while firing by default. ``--heat-cool-while-firing off`` disables
+   cooling entirely; a lockout resets heat to zero. The bench has not established
+   which cooling rule the tagger uses.
 
 SIMPLIFICATIONS (things the model leaves out)
 ---------------------------------------------
@@ -153,10 +154,11 @@ INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
 DEFAULT_N = tuple(range(2, 11))
 DEFAULT_HIT_PROBS = (0.35,)
-# The bolt lever uses the catalogue's mean pull gap. Fight presses add a fitted overshoot.
+# The bolt lever uses the catalogue's mean pull gap. Fight presses add an overshoot
+# whose lognormal median fits the USP, AMR and Deagle field median residuals.
 # Both clocks use the same lognormal spread. A zero overshoot restores a press at t14.
 DEFAULT_PULL_MS = float(SEMI_PULL_MS)
-FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3  # field median residual fit
+FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3  # least-squares fit to field median residuals
 HEAT_COOL_WHILE_FIRING = True
 DEFAULT_RESPAWN_SEEK_MEAN_S = 7.0
 TOXIN_PRESET_GAP_MEAN_S = 3.0   # the published §7.5b run predates the field density refit
@@ -178,10 +180,10 @@ def semi_interval(rng: random.Random, fire_ms: float, pull_ms: float) -> float:
 
 
 def fight_semi_interval(rng: random.Random, fire_ms: float, overshoot_ms: float = FIGHT_OVERSHOOT_MS) -> float:
-    """A fight's semi cycle is t14 plus a lognormal overshoot fitted to USP, AMR and Deagle."""
+    """A fight's semi cycle is t14 plus a lognormal overshoot with the fitted median."""
     if overshoot_ms <= 0:
         return fire_ms
-    mu = math.log(overshoot_ms) - PULL_SIGMA * PULL_SIGMA / 2
+    mu = math.log(overshoot_ms)
     return fire_ms + rng.lognormvariate(mu, PULL_SIGMA)
 
 
@@ -615,6 +617,7 @@ class Match:
         p.ammo, p.reserve = p.w.mag, p.w.reserve
         p.reload_until = -1.0
         p.reload_amount = 0
+        p.next_ready = t
         p.poison_gen += 1
         p.poison_left = 0
         p.heat = 0.0

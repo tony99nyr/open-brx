@@ -77,14 +77,14 @@ Scenario version 3 uses these models:
 - The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
   rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
   verdict that touches a heat weapon runs with `HEAT_COOL_WHILE_FIRING` on and off. In the off case,
-  cooling starts after lockout. The Energy Rifle vents through its reload lever.
+  heat does not cool; a lockout resets heat to zero. The Energy Rifle vents through its reload lever.
 - A lethal secondary can cover an empty or heat-locked primary. The kit also draws it when its expected finish
   time, including the swap, is shorter. Estimate the real shot sequence, including bolt and charge cycles,
-  magazine and reserve limits, and count the first shot at draw time. Reject a secondary that cannot finish
-  the remaining pool with its held ammunition. Swapping back pays the same catalogue swap delay. Combo kits
-  keep their opener and finisher plan. A support secondary does not enter the ordinary finish choice. Reloads and lever
-  vents progress only while that weapon is in hand. Swapping away cancels the reload or vent without crediting
-  ammunition; it starts again when the weapon returns. Passive heat cooling continues while holstered.
+  magazine and reserve reloads, and count the first shot at draw time. Reject a secondary that cannot finish
+  the remaining pool with its magazine and reserve reloads. Swapping back pays the same catalogue swap delay.
+  Combo kits keep their opener and finisher plan. A support secondary does not enter the ordinary finish choice.
+  Reloads and lever vents progress only while that weapon is in hand. A swap credits a finished reload.
+  A swap cancels an unfinished reload or vent. When cooling is on, heat cools while holstered.
 - Armour Piercing uses the primary row's `ap_dmg` and `ap_fire_ms`. Its hit drains health directly, past shield
   and armour. It removes the headset word. A primary without both values cannot carry the perk.
 - Toxin Rifle damage over time refreshes on a new hit and does not stack. Each tick drains shield, then armour,
@@ -100,14 +100,17 @@ Scenario version 3 uses these models:
   who waits for a defeated target's respawn seeks that target first. A stale seek cannot replace a live
   engagement.
 - Semi-automatic fight shots use `FIGHT_OVERSHOOT_MS`, an additive lognormal overshoot after the row's `t14`.
-  Its fitted mean is 36.67 ms, from the USP, AMR and Desert Eagle field medians. The bolt lever and the press after it retain
-  the ordinary pull model. The published `compile.py` `ttk_ms` still uses its 300 ms pull for semi weapons, so
+  Its fitted median is 36.67 ms, from the USP, AMR and Desert Eagle field medians.
+  The bolt lever and the press after it retain the ordinary pull model.
+  The published `compile.py` `ttk_ms` still uses its 300 ms pull for semi weapons, so
   its semi-weapon TTK differs from the fight sim.
 - A close-range kit can finish a weak target with the catalogue melee row's damage and cooldown. The swing uses
-  `MELEE_SWING_MS` 150 ms. `MELEE_HIT_P` 0.9 is the hit chance at aim 1; aim, blindness and `RUSH_MOVE_ACC`
+  `MELEE_SWING_MS` 150 ms. `MELEE_HIT_P` 0.9 is the hit chance at aim 1; aim and blindness
   scale it. The rush model limits it to `MELEE_REACH_M` 6 metres. Melee is excluded from the published TTK.
 - Heat cooling while firing is an unproven assumption pending bench check F575. The default is on, matching
-  the catalogue cooling rate; `--heat-cool-while-firing off` disables it until lockout ends.
+  the catalogue cooling rate; `--heat-cool-while-firing off` disables cooling entirely.
+  A lockout resets heat to zero.
+  Heated sidearm R10 pairs use the kit engine. The CI rule engine has no heat state.
 
 Read `assumptions()` in each verdict for the exact values used by that run. Treat `--haze-blind-ms` as a
 scenario parameter, and report its value with the Haze comparison.

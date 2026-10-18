@@ -53,7 +53,10 @@ def test_respawn_seek_has_its_own_delay():
     cfg = _cfg(respawn_seek_mean_s=7.0)
     match = B.Match(players, random.Random(SEED), cfg, 0.35, 1)
     players[0].alive = False
+    players[0].reload_amount = 3
+    players[0].next_ready = 9999
     match._respawn(players[0], 1000.0)
+    assert players[0].reload_amount == 0 and players[0].next_ready == 1000.0
     seek = [t for t, _, kind, pid, _ in match.heap if kind == match.SEEK and pid == 0]
     assert len(seek) == 1 and seek[0] > 1000.0
     assert seek[0] < 1000.0 + 70_000.0

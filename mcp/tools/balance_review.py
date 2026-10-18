@@ -158,13 +158,14 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "scenario_version": SCENARIO_VERSION, "seed": SEED, "reps": dict(REPS),
         "aim": AIM, "real_aim": REAL_AIM, "pull_ms_mean": PULL_MS, "pull_sigma": PULL_SIGMA,
         "fight_overshoot_ms": B.FIGHT_OVERSHOOT_MS,
+        "fight_overshoot_fit": "lognormal median fitted to the USP, AMR and Deagle field median residuals",
         "compile_semi_ttk": "published ttk_ms still uses the 300 ms pull; the fight sim uses additive overshoot",
-        "reload_swap": "a reload or lever vent progresses only in hand; a swap cancels it without credit",
+        "reload_swap": "a reload or lever vent progresses only in hand; a swap credits a finished reload and cancels an unfinished one",
         "revenge_seek": "a stale seek cannot replace an active engagement after respawn",
         "heat_cool_while_firing": heat_cool_while_firing,
         "haze_blind_ms": haze_blind_ms,
         "melee": {"swing_ms": MELEE_SWING_MS, "hit_p_at_aim_1": MELEE_HIT_P,
-                   "aim_scaling": "swing chance scales with aim, blindness and rush movement accuracy",
+                   "aim_scaling": "swing chance scales with aim and blindness",
                    "reach_m": MELEE_REACH_M},
         "bolt": "a 1-round single-shot magazine: lever = one pull gap, then reload_ms, then one pull gap",
         "reaction_ms": [REACTION_MEAN_MS, REACTION_SD_MS], "retarget_ms": RETARGET_MS,
@@ -396,6 +397,67 @@ class _GunState:
         self.reload_amount, self.venting = 0, False
 
 
+def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
+                    t, pull_ms, overshoot_ms, charged, count, dist):
+    """Expected finish time for either kit engine, including reserve reloads and the first draw."""
+    if not g.lethal or chance <= 0:
+        return math.inf
+    is_gun = isinstance(g, Gun)
+    mode = g.mode if is_gun else ("bolt" if g.bolt else "charge" if g.charge_and_tap else
+                                  "semi" if g.semi else "burst" if g.burst_gap_ms else "auto")
+    rpc = g.rpc if is_gun else g.rounds_per_charge
+    mag, reload_ms = g.mag, g.reload_ms
+    chain = g.chain if is_gun else g.chain_reload
+    fire_ms = g.fire_ms
+    burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
+    tap = g.tap if is_gun else g.tap_dmg
+    damage = (g.gun_dmg + (g.head_dmg if dist == 0 and not g.ap else 0)) if is_gun else g.pull_dmg
+    if mode == "charge" and charged and ammo + reload_amount >= rpc:
+        ready_at = max(ready_at, t + fire_ms) if charged == "draw" else ready_at
+    elapsed = max(0.0, ready_at - t)
+    if locked_until > t:
+        elapsed = max(elapsed, locked_until - t if math.isfinite(locked_until) else pull_ms + reload_ms)
+    ammo += reload_amount
+    reserve -= reload_amount
+    while ammo > 0 or reserve > 0:
+        cost = rpc if mode == "charge" and charged else 1
+        if ammo < cost:
+            if ammo and mode == "charge":
+                charged = False
+                continue
+            got = min(mag - ammo, reserve)
+            if got <= 0:
+                return math.inf
+            ammo += got
+            reserve -= got
+            elapsed += reload_ms * got if chain else reload_ms
+            continue
+        dmg = damage if mode != "charge" or charged else tap
+        if dmg <= 0:
+            return math.inf
+        ammo -= cost
+        pool -= dmg * chance
+        if pool <= 0:
+            return elapsed
+        if mode == "bolt":
+            if reserve <= 0:
+                return math.inf
+            ammo += 1
+            reserve -= 1
+            elapsed += max(fire_ms + overshoot_ms, 2 * pull_ms + reload_ms)
+        elif mode == "charge":
+            charged = False
+            elapsed += CHARGE_TAP_CADENCE_MS
+        elif mode == "semi":
+            elapsed += fire_ms + overshoot_ms
+        elif mode == "burst":
+            count += 1
+            elapsed += burst_gap if count % 3 == 0 else fire_ms
+        else:
+            elapsed += fire_ms
+    return math.inf
+
+
 class Fighter:
     """One player with a kit. Hit chance per round = recoil accuracy/100 x aim x BAND_FIT[band][distance],
     capped at 1. Damage = the gun word, plus the headset word at close. Shield, armour and health drain
@@ -478,6 +540,7 @@ class Fighter:
 
     def _swap(self, idx, t):
         old = self.gs[self.active]
+        self._credit_reload(old, t)
         if old.reload_amount or old.venting:
             old.reload_amount, old.venting = 0, False
             old.vent_until = 0.0
@@ -490,61 +553,30 @@ class Fighter:
             chosen.ready_at = max(chosen.ready_at, draw + self.kit.guns[idx].fire_ms)
         self.next_t = max(draw, chosen.ready_at)
 
+    def _credit_reload(self, state, t):
+        if state.reload_amount and t >= state.ready_at:
+            state.ammo += state.reload_amount
+            state.reserve -= state.reload_amount
+            state.reload_amount = 0
+            state.ready_at = t
+        if state.venting and t >= state.vent_until:
+            state.heat, state.locked_until = 0.0, 0.0
+            state.venting, state.vent_until = False, 0.0
+
+    def _hit_chance(self, idx):
+        g, s = self.kit.guns[idx], self.gs[idx]
+        acc = B._accuracy_pct(g.profile, s.state) / 100.0 if g.profile and g.mode == "auto" else 1.0
+        return min(1.0, acc * self.aim * (B.BAND_FIT[g.band][self.dist] if self.fit else 1.0))
+
     def _finish_ms(self, idx, target, t):
         g, s = self.kit.guns[idx], self.gs[idx]
-        if not g.lethal:
-            return math.inf
         remaining = target.health if g.ap else target.pool
-        acc = B._accuracy_pct(g.profile, s.state) / 100.0 if g.profile and g.mode == "auto" else 1.0
-        chance = min(1.0, acc * self.aim * (B.BAND_FIT[g.band][self.dist] if self.fit else 1.0))
-        if chance <= 0:
-            return math.inf
-        ammo, reserve = s.ammo + s.reload_amount, s.reserve - s.reload_amount
-        wait = max(0.0, s.ready_at - t)
-        if s.locked_until == math.inf:
-            wait = max(wait, self.pull_ms + g.reload_ms)
-        elif s.locked_until > t:
-            wait = max(wait, s.locked_until - t)
-        charged, count = s.charged, s.count
-        elapsed = wait
-        while ammo > 0 or reserve > 0:
-            cost = g.rpc if g.mode == "charge" and charged else 1
-            if ammo < cost:
-                if ammo and g.mode == "charge":
-                    charged = False
-                    continue
-                got = min(g.mag - ammo, reserve)
-                if got <= 0:
-                    return math.inf
-                ammo += got
-                reserve -= got
-                elapsed += g.reload_ms * got if g.chain else g.reload_ms
-                continue
-            damage = (g.gun_dmg + (g.head_dmg if self.dist == 0 and not g.ap else 0)
-                      if charged or g.mode != "charge" else g.tap)
-            if damage <= 0:
-                return math.inf
-            ammo -= cost
-            remaining -= damage * chance
-            if remaining <= 0:
-                return elapsed
-            if g.mode == "bolt":
-                if reserve <= 0:
-                    return math.inf
-                ammo += 1
-                reserve -= 1
-                elapsed += max(g.fire_ms + B.FIGHT_OVERSHOOT_MS, 2 * self.pull_ms + g.reload_ms)
-            elif g.mode == "charge":
-                charged = False
-                elapsed += CHARGE_TAP_CADENCE_MS
-            elif g.mode == "semi":
-                elapsed += g.fire_ms + B.FIGHT_OVERSHOOT_MS
-            elif g.mode == "burst":
-                count += 1
-                elapsed += g.burst_gap if count % 3 == 0 else g.fire_ms
-            else:
-                elapsed += g.fire_ms
-        return math.inf
+        charged = "draw" if g.mode == "charge" and idx != self.active and not s.charged else s.charged
+        return finish_estimate(g, pool=remaining, chance=self._hit_chance(idx), ammo=s.ammo,
+                               reserve=s.reserve, reload_amount=s.reload_amount, ready_at=s.ready_at,
+                               locked_until=s.locked_until, t=t, pull_ms=self.pull_ms,
+                               overshoot_ms=B.FIGHT_OVERSHOOT_MS if self.pull_ms > 0 else 0.0,
+                               charged=charged, count=s.count, dist=self.dist)
 
     def _maybe_swap(self, t):
         if self.kit.plan != "single" or len(self.gs) < 2 or not self.kit.guns[1].lethal:
@@ -770,7 +802,8 @@ def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, a
     PEEK_WINDOW_MS; a lone peeker opens at t=0 and the other side reacts from that shot."""
     pa = PEEK_WINDOW_MS if (peek and kit_a.marksman) else None
     pb = PEEK_WINDOW_MS if (peek and kit_b.marksman) else None
-    rng = B.cell_rng(SEED, "kduel", kit_a.name, kit_b.name, dist, preset, aim, cap_ms, pa, pb, haze_blind_ms)
+    rng = B.cell_rng(SEED, "kduel", kit_a.name, kit_b.name, dist, preset, aim, cap_ms, pa, pb,
+                     haze_blind_ms, heat_cool_while_firing)
     d = DIST[dist]
     wins = 0.0
     for _ in range(reps):
@@ -792,7 +825,8 @@ def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, a
     return wins / reps
 
 
-def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS) -> list[dict]:
+def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS,
+                heat_cool_while_firing=True) -> list[dict]:
     """The hidden Haze trial stays outside the shipped dominance matrix."""
     plain = make_kit(world, "AR plain", ANCHOR, SECONDARY)
     haze = make_kit(world, "AR + Haze", ANCHOR, "smoke_gun", plan="haze")
@@ -802,14 +836,16 @@ def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS) -> lis
         enemy = make_kit(world, f"{wid}|{perk}", wid, SECONDARY, perk=perk)
         for dist in ("close", "mid"):
             out.append({"opponent": enemy.name, "range": dist,
-                        "plain": duel_rate(plain, enemy, dist, reps=reps),
-                        "haze": duel_rate(haze, enemy, dist, reps=reps, haze_blind_ms=blind_ms)})
+                        "plain": duel_rate(plain, enemy, dist, reps=reps,
+                                           heat_cool_while_firing=heat_cool_while_firing),
+                        "haze": duel_rate(haze, enemy, dist, reps=reps, haze_blind_ms=blind_ms,
+                                          heat_cool_while_firing=heat_cool_while_firing)})
     return out
 
 
 def ambush(kit: Kit, enemy: Kit, dist: str, reps=3000, heat_cool_while_firing=True) -> tuple[float, float]:
     """1 shooter v 2 enemies idle until AMBUSH_REACT_MS after the first landed hit. (P kill both, P kill one+)."""
-    rng = B.cell_rng(SEED, "ambush", kit.name, enemy.name, dist, AMBUSH_REACT_MS)
+    rng = B.cell_rng(SEED, "ambush", kit.name, enemy.name, dist, AMBUSH_REACT_MS, heat_cool_while_firing)
     d = DIST[dist]
     both = one = 0
     for _ in range(reps):
@@ -892,14 +928,13 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
         return start_m if t_rush is None or t <= t_rush else max(0.0, start_m - RUSH_SPEED_MS * (t - t_rush) / 1000.0)
 
     while True:
-        cands = [f for f in (m, v) if f.alive and f.next_t <= RUSH_CAP_MS]
+        cands = [f for f in (m, v) if f.alive and f.next_t <= RUSH_CAP_MS and f.target() is not None]
         ticks = [f for f in (m, v) if f.alive and f.dot_next <= RUSH_CAP_MS]
         if not cands and not ticks:
             break
         if ticks and min(f.dot_next for f in ticks) <= min((f.next_t for f in cands), default=math.inf):
             target = min(ticks, key=lambda x: x.dot_next)
-            if target.tick(target.dot_next):
-                break
+            target.tick(target.dot_next)
             continue
         f = min(cands, key=lambda x: x.next_t)
         t = f.next_t
@@ -926,41 +961,50 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
             v.next_t = t_rush
         f.after(t, alpha, killed)
         if killed:
-            break
+            continue
     return (m.alive and not v.alive), (v.alive and not m.alive)
 
 
-def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int) -> dict:
+def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_firing=True) -> dict:
     """Tony 2026-10-17: "sniper should feel strong until players recognize the strat to rush the sniper".
     peek_kill: the peek-kill rate at long range against a player who does not rush. rush_success: the rate
     a rusher from RUSH_START_M kills the same peeking marksman."""
-    rng = B.cell_rng(SEED, "peek", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS, PEEK_P_ESCAPE)
+    rng = B.cell_rng(SEED, "peek", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS,
+                     PEEK_P_ESCAPE, heat_cool_while_firing)
     k = dd = e = 0
     for _ in range(reps):
-        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng)
-        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng)
+        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
         a, b, c = peek_encounter(rng, m, v)
         k += a; dd += b; e += c  # noqa: E702
-    rng = B.cell_rng(SEED, "rush", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS, RUSH_START_M)
+    rng = B.cell_rng(SEED, "rush", kit_m.name, kit_v.name, PEEK_WINDOW_MS, PEEK_REACT_MS,
+                     RUSH_START_M, heat_cool_while_firing)
     mk = rs = 0
     for _ in range(reps):
-        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng)
-        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng)
+        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
+                    heat_cool_while_firing=heat_cool_while_firing)
         a, b = rush_encounter(rng, m, v, RUSH_START_M)
         mk += a; rs += b  # noqa: E702
     return {"peek_kill": k / reps, "peek_death": dd / reps, "escape": e / reps,
             "rush_success": rs / reps, "marksman_beats_rusher": mk / reps}
 
 
-def time_to_kill(kit: Kit, pool: int, aim: float, reps: int, fit=False, reaction=False, dist="mid"):
+def time_to_kill(kit: Kit, pool: int, aim: float, reps: int, fit=False, reaction=False, dist="mid",
+                 heat_cool_while_firing=True):
     """Undefended target, one fighter, from its first round (or a reaction delay) to the kill.
     (median ms, mean rounds fired). inf when it runs dry inside FIGHT_CAP_MS."""
-    rng = B.cell_rng(SEED, "ttk", kit.name, pool, aim, fit, reaction, dist)
+    rng = B.cell_rng(SEED, "ttk", kit.name, pool, aim, fit, reaction, dist, heat_cool_while_firing)
     d = DIST[dist]
     times, rounds = [], []
     for _ in range(reps):
-        a = Fighter(kit, 1, aim, d, rng, fit=fit, allow_melee=False)
-        target = Fighter(kit, pool, 0, d, rng, fit=fit)
+        a = Fighter(kit, 1, aim, d, rng, fit=fit, allow_melee=False,
+                    heat_cool_while_firing=heat_cool_while_firing)
+        target = Fighter(kit, pool, 0, d, rng, fit=fit,
+                         heat_cool_while_firing=heat_cool_while_firing)
         target.next_t = math.inf
         a.next_t = _reaction(rng) if reaction else 0.0
         fight(rng, [a], [target], FIGHT_CAP_MS)
@@ -1048,6 +1092,7 @@ class KitMatch(B.Match):
 
     def _swap_to(self, p, idx, t_end):
         # A lever or reload stops when its gun leaves the hand. Keep heat and shot clocks per slot.
+        self._finish_reload(p, t_end - p.kit.swap_ms)
         if dict(p.w.heat).get("vent") == "lever" and p.heat_lock_until > t_end - p.kit.swap_ms:
             p.heat_lock_until = math.inf
         p.reload_until, p.reload_amount = -1.0, 0
@@ -1065,65 +1110,23 @@ class KitMatch(B.Match):
 
     def _finish_ms(self, p, idx, t, pool):
         w = p.models[idx]
-        if not w.lethal or w.pull_dmg <= 0:
-            return math.inf
         if p.ap and idx == 0:
             pool = self.players[p.target].health
         ammo, reserve, reload_until, _heat, _heat_t, lock_until, next_ready, last_pull, burst_i, reload_amount = (
             (p.ammo, p.reserve, p.reload_until, p.heat, p.last_heat_ms, p.heat_lock_until,
              p.next_ready, p.last_pull, p.burst_i, p.reload_amount)
              if idx == p.active else p.stash[idx])
-        if ammo + reload_amount <= 0 and reserve <= 0:
-            return math.inf
         chance = min(1.0, self.base_p * B.hit_multiplier(w, p.dist, self.cfg))
-        if chance <= 0:
-            return math.inf
-        delay = max(0.0, reload_until - t, next_ready - t)
-        ammo += reload_amount
-        reserve -= reload_amount
-        if w.heat and lock_until > t:
-            delay = max(delay, lock_until - t if math.isfinite(lock_until) else w.reload_ms + self.cfg.pull_ms)
-        if idx != p.active and w.charge_and_tap:
-            delay = max(delay, p.kit.swap_ms + w.fire_ms)
-            last_pull = t + delay - w.fire_ms
-        elapsed = delay
-        while ammo > 0 or reserve > 0:
-            charge = w.charge_and_tap and ammo >= w.rounds_per_charge and t + elapsed - last_pull >= w.fire_ms
-            cost = w.rounds_per_charge if charge else 1
-            if ammo < cost:
-                got = min(w.mag - ammo, reserve)
-                if got <= 0:
-                    return math.inf
-                ammo += got
-                reserve -= got
-                elapsed += w.reload_ms * got if w.chain_reload else w.reload_ms
-                continue
-            dmg = w.pull_dmg if charge or not w.charge_and_tap else w.tap_dmg
-            if dmg <= 0:
-                return math.inf
-            ammo -= cost
-            pool -= dmg * chance
-            if pool <= 0:
-                return elapsed
-            if w.bolt:
-                if reserve <= 0:
-                    return math.inf
-                ammo += 1
-                reserve -= 1
-                elapsed += max(w.fire_ms + B.FIGHT_OVERSHOOT_MS, 2 * self.cfg.pull_ms + w.reload_ms)
-            elif w.charge_and_tap:
-                last_pull = t + elapsed
-                elapsed += CHARGE_TAP_CADENCE_MS
-            elif w.semi:
-                elapsed += w.fire_ms + self.cfg.fight_overshoot_ms
-            elif w.burst_gap_ms:
-                burst_i += 1
-                elapsed += w.burst_gap_ms if burst_i % 3 == 0 else w.fire_ms
-            else:
-                elapsed += w.fire_ms
-        return math.inf
+        charged = ("draw" if idx != p.active else last_pull + w.fire_ms <= t) if w.charge_and_tap else False
+        return finish_estimate(w, pool=pool, chance=chance, ammo=ammo, reserve=reserve,
+                               reload_amount=reload_amount, ready_at=max(reload_until, next_ready),
+                               locked_until=lock_until if w.heat else -1.0, t=t,
+                               pull_ms=self.cfg.pull_ms,
+                               overshoot_ms=self.cfg.fight_overshoot_ms if self.cfg.pull_ms > 0 else 0.0,
+                               charged=charged, count=burst_i, dist=p.dist)
 
     def _choose_slot(self, p, t):
+        self._finish_reload(p, t)
         if p.combo or len(p.models) < 2 or p.target is None:
             return p.active
         target = self.players[p.target]
@@ -1163,13 +1166,13 @@ class KitMatch(B.Match):
         if t < p.next_ready:
             self.push(p.next_ready, self.SHOT, p.pid, gen)
             return
+        if t < p.swap_until:
+            self.push(p.swap_until, self.SHOT, p.pid, gen)
+            return
         if p.heat_lock_until == math.inf and dict(p.w.heat).get("vent") == "lever":
             lever = t + pull_gap(self.rng, self.cfg.pull_ms)
             self._start_reload(p, lever)
             p.heat_lock_until = max(lever + p.w.reload_ms, p.reload_until)
-        if t < p.swap_until:
-            self.push(p.swap_until, self.SHOT, p.pid, gen)
-            return
         idx = self._choose_slot(p, t)
         if idx != p.active:
             self._swap_to(p, idx, t + p.kit.swap_ms)
@@ -1219,6 +1222,8 @@ class KitMatch(B.Match):
             p.swap_until = 0.0
         p.ammo, p.reserve = p.w.mag, p.w.reserve
         p.reload_until = -1.0
+        p.reload_amount = 0
+        p.next_ready = t
         p.heat, p.last_heat_ms, p.heat_lock_until = 0.0, t, -1.0
         p.poison_gen += 1
         p.poison_left = 0
@@ -1238,7 +1243,7 @@ def field_ratio(test: FieldKit, anchor: FieldKit, n: int, reps: int, heat_cool_w
     """Kill-rate ratio (test carriers / anchor carriers), one test carrier a side, team size n."""
     cfg = B.SimConfig(pool=B.default_pool(), venue=FIELD_VENUE,
                       heat_cool_while_firing=heat_cool_while_firing)
-    rng = B.cell_rng(SEED, "kfield", test.name, anchor.name, n)
+    rng = B.cell_rng(SEED, "kfield", test.name, anchor.name, n, heat_cool_while_firing)
     kt = ka = 0
     for r in range(reps):
         hp = cfg.hit_probs[r % len(cfg.hit_probs)]
@@ -1284,8 +1289,8 @@ def _run_cell(job):
     if kind == "rule":
         return _run_rule(*job[1:])
     if kind == "rush":
-        _, km, kv, reps = job
-        return marksman_rush_counter(km, kv, reps)
+        _, km, kv, reps, *heat = job
+        return marksman_rush_counter(km, kv, reps, heat[0] if heat else True)
     raise ValueError(kind)
 
 
@@ -1325,7 +1330,7 @@ def _name(world: World, wid: str) -> str:
 
 
 def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
-                 anchor_world: World | None = None) -> tuple[dict, dict]:
+                 anchor_world: World | None = None, heat_cool_while_firing=True) -> tuple[dict, dict]:
     """Choose each primary's perk on Standard and Shields against the baseline plain AR."""
     options = [None] + modelled_perks(world.perks)
     plain_ar = make_kit(anchor_world or world, "AR (plain)", ANCHOR, SECONDARY)
@@ -1339,7 +1344,8 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
             k = make_kit(world, f"{_name(world, wid)}|{perk}", wid, SECONDARY, perk)
             for preset in OP_GATED_PRESETS:
                 for d in DIST:
-                    jobs.append(("duel", k, plain_ar, d, preset, AIM, FIGHT_CAP_MS, False, reps))
+                    jobs.append(("duel", k, plain_ar, d, preset, AIM, FIGHT_CAP_MS, False, reps,
+                                 heat_cool_while_firing))
                     index.append((wid, preset, perk))
     res = run_cells(jobs, n_jobs)
     scores: dict = {}
@@ -1371,12 +1377,13 @@ class KitSpec:
 
 
 def build_kits(world: World, scale: float, n_jobs: int, extra: list[str] = (),
-               anchor_world: World | None = None) -> tuple[list[KitSpec], dict, list]:
+               anchor_world: World | None = None, heat_cool_while_firing=True) -> tuple[list[KitSpec], dict, list]:
     prim, skipped = roster_ids(world)
     for wid in extra:
         if wid not in prim:
             prim.append(wid)
-    best, scores = choose_perks(world, prim, scale, n_jobs, anchor_world)
+    best, scores = choose_perks(world, prim, scale, n_jobs, anchor_world,
+                               heat_cool_while_firing=heat_cool_while_firing)
     specs, seen = [], set()
     for w in prim:
         name = _name(world, w)
@@ -1497,9 +1504,10 @@ def _rule_bar(rid: str, preset: str) -> float:
     return RULE_BAR_OVERRIDES.get(rid, RULE_BAR_STANDARD)
 
 
-def _run_rule(rid: str, kind: str, preset: str, rows_sig: str, reps: int):
+def _run_rule(rid: str, kind: str, preset: str, rows_sig: str, reps: int,
+              heat_cool_while_firing=True):
     """One rule on one preset. `rows_sig` is the JSON of the rows the rule reads: the cache key, and the
-    catalogue the rule runs on."""
+    catalogue the rule runs on. The rule engine has no heat state."""
     rows = json.loads(rows_sig)
     cat = WeaponCatalog(_complete_rows(rows))
     m = B.RecoilDuelModel.from_catalog(cat, health_preset=preset)
@@ -1531,13 +1539,13 @@ def _complete_rows(rows: dict) -> list:
     return [rows.get(r["weapon_id"], r) for r in _SHIPPED_ROWS]
 
 
-def run_rules(world: World, scale: float, n_jobs: int) -> dict:
+def run_rules(world: World, scale: float, n_jobs: int, heat_cool_while_firing=True) -> dict:
     reps = _reps("rule", scale)
     jobs, keys = [], []
     for rid, ids, kind in rule_list():
         sig = json.dumps({w: world.cat._row(w) for w in ids}, sort_keys=True)
         for preset in (("standard",) if kind == "r10a" else ("standard", "shields")):
-            jobs.append(("rule", rid, kind, preset, sig, reps))
+            jobs.append(("rule", rid, kind, preset, sig, reps, heat_cool_while_firing))
             keys.append((rid, preset))
     out = {}
     for (rid, preset), v in zip(keys, run_cells(jobs, n_jobs)):
@@ -1742,7 +1750,22 @@ def _test(passed, numbers: dict, why: str) -> dict:
     return {"status": status, "pass": passed, "numbers": numbers, "why": why}
 
 
-def ttk_table(world: World, ids: list[str], scale: float) -> list[dict]:
+def heat_rows(matrix: dict, weapon: str) -> dict | None:
+    """Every matrix kit carrying a heated weapon, including secondary and combo slots."""
+    names = [n for n, spec in matrix["specs"].items()
+             if weapon in (spec["primary"], spec["secondary"])]
+    if not names:
+        return None
+    name = names[0]
+    return {
+        "columns": matrix["columns"][name],
+        "duels": {k: v for k, v in matrix["duels"].items() if name in k.split("|")[2:]},
+        "kits": {n: {"columns": matrix["columns"][n],
+                     "duels": {k: v for k, v in matrix["duels"].items() if n in k.split("|")[2:]}}
+                 for n in names}}
+
+
+def ttk_table(world: World, ids: list[str], scale: float, heat_cool_while_firing=True) -> list[dict]:
     """Recoil and crit TTK columns: perfect aim against the recoil model (controlled bursts and full auto),
     and no-crit / expected / all-crit, at the 115 and 150 pools. Undefended target, no range fit."""
     reps = _reps("ttk", scale)
@@ -1757,13 +1780,16 @@ def ttk_table(world: World, ids: list[str], scale: float) -> list[dict]:
             if g.crit:
                 for tag, c in (("no_crit", 0), ("expected_crit", g.crit), ("all_crit", 100)):
                     kk = replace(perfect, name=perfect.name + f":crit{c}", guns=(replace(g, profile=None, crit=c),))
-                    r[f"ttk_{tag}_ms"], r[f"rounds_{tag}"] = time_to_kill(kk, pool, 1.0, reps, dist=dist)
+                    r[f"ttk_{tag}_ms"], r[f"rounds_{tag}"] = time_to_kill(
+                        kk, pool, 1.0, reps, dist=dist, heat_cool_while_firing=heat_cool_while_firing)
             else:
-                r["ttk_perfect_ms"], r["rounds_perfect"] = time_to_kill(perfect, pool, 1.0, reps, dist=dist)
+                r["ttk_perfect_ms"], r["rounds_perfect"] = time_to_kill(
+                    perfect, pool, 1.0, reps, dist=dist, heat_cool_while_firing=heat_cool_while_firing)
             if g.profile is not None and g.mode == "auto":
                 for st in ("burst", "full"):
                     kk = replace(k, name=k.name + ":" + st, style=st)
-                    r[f"ttk_recoil_{st}_ms"], r[f"rounds_recoil_{st}"] = time_to_kill(kk, pool, 1.0, reps, dist=dist)
+                    r[f"ttk_recoil_{st}_ms"], r[f"rounds_recoil_{st}"] = time_to_kill(
+                        kk, pool, 1.0, reps, dist=dist, heat_cool_while_firing=heat_cool_while_firing)
             out.append(r)
     return out
 
@@ -1791,8 +1817,10 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
 
     extra = [wid] if (wid and role == "sidearm") else []
     shipped = shipped_world()
-    specs_b, perks_b, skipped = build_kits(base, reps_scale, n_jobs, anchor_world=base)
-    specs_c, perks_c, _ = build_kits(world, reps_scale, n_jobs, extra, anchor_world=base)
+    specs_b, perks_b, skipped = build_kits(base, reps_scale, n_jobs, anchor_world=base,
+                                          heat_cool_while_firing=heat_cool_while_firing)
+    specs_c, perks_c, _ = build_kits(world, reps_scale, n_jobs, extra, anchor_world=base,
+                                    heat_cool_while_firing=heat_cool_while_firing)
     mb = dominance_matrix(base, specs_b, reps_scale, n_jobs, anchor_world=base,
                           heat_cool_while_firing=heat_cool_while_firing)
     mc = dominance_matrix(world, specs_c, reps_scale, n_jobs, anchor_world=base,
@@ -1802,30 +1830,30 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
               any(w in x.cat._by_id and x.cat._row(w).get("heat") for x in (base, world))]
     heat_comparison = {}
     if heated:
-        other_b = dominance_matrix(base, specs_b, reps_scale, n_jobs, anchor_world=base,
+        other_specs_b, _, _ = build_kits(base, reps_scale, n_jobs, anchor_world=base,
+                                         heat_cool_while_firing=not heat_cool_while_firing)
+        other_specs_c, _, _ = build_kits(world, reps_scale, n_jobs, extra, anchor_world=base,
+                                         heat_cool_while_firing=not heat_cool_while_firing)
+        other_b = dominance_matrix(base, other_specs_b, reps_scale, n_jobs, anchor_world=base,
                                    heat_cool_while_firing=not heat_cool_while_firing)
-        other_c = dominance_matrix(world, specs_c, reps_scale, n_jobs, anchor_world=base,
+        other_c = dominance_matrix(world, other_specs_c, reps_scale, n_jobs, anchor_world=base,
                                    heat_cool_while_firing=not heat_cool_while_firing)
-        def rows(matrix, weapon):
-            name = next((n for n, key in matrix["keys"].items() if key == weapon), None)
-            return None if name is None else {
-                "columns": matrix["columns"][name],
-                "duels": {k: v for k, v in matrix["duels"].items() if name in k.split("|")[2:]}}
         for weapon in heated:
             by_setting = {heat_cool_while_firing: (mb, mc), not heat_cool_while_firing: (other_b, other_c)}
             heat_comparison[weapon] = {
-                "on" if setting else "off": {"baseline": rows(matrices[0], weapon),
-                                                "candidate": rows(matrices[1], weapon)}
+                "on" if setting else "off": {"baseline": heat_rows(matrices[0], weapon),
+                                                "candidate": heat_rows(matrices[1], weapon)}
                 for setting, matrices in by_setting.items()}
-    rules_s = run_rules(shipped, reps_scale, n_jobs)
-    rules_b = run_rules(base, reps_scale, n_jobs)
-    rules_c = run_rules(world, reps_scale, n_jobs)
+    rules_s = run_rules(shipped, reps_scale, n_jobs, heat_cool_while_firing)
+    rules_b = run_rules(base, reps_scale, n_jobs, heat_cool_while_firing)
+    rules_c = run_rules(world, reps_scale, n_jobs, heat_cool_while_firing)
 
     subject_kit = None
     if wid and not pickup:
         subject_kit = next((s.name for s in specs_c if s.primary == wid and not s.combo), None)
     tests = {}
-    side = sidearm_r10(world, wid, reps_scale) if (role == "sidearm" and not pickup) else None
+    side = sidearm_r10(world, wid, reps_scale, heat_cool_while_firing=heat_cool_while_firing) \
+        if (role == "sidearm" and not pickup) else None
 
     # value_addition -------------------------------------------------------------------------------
     if is_perk:
@@ -1843,7 +1871,8 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         have = set().union(*[trigger_mechanics(world.cat, w) for w in others])
         new_mech = sorted(trigger_mechanics(world.cat, wid) - have)
         if role == "sidearm":
-            fin = {w: sidearm_r10(world, w, reps_scale, duels=False)["finish_ms"]
+            fin = {w: sidearm_r10(world, w, reps_scale, duels=False,
+                                 heat_cool_while_firing=heat_cool_while_firing)["finish_ms"]
                    for w in loadout_ids(world.cat) if world.cat._row(w).get("role") == "sidearm" and w != wid}
             fin[wid] = side["finish_ms"]
             best_other = min((v for w, v in fin.items() if w != wid), default=math.inf)
@@ -1885,8 +1914,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     else:
         spec = mc["specs"][subject_kit]
         primary_fk = field_kit(world, f"{subject_kit} primary only", spec["primary"])
-        anchor_fk = field_kit(base, "AR anchor", ANCHOR, SECONDARY)
-        f = B.geo_mean([field_ratio(primary_fk, anchor_fk, n, _reps("field", reps_scale)) for n in FIELD_NS])
+        anchor_fk = field_kit(base, "AR anchor", ANCHOR)
+        f = B.geo_mean([field_ratio(primary_fk, anchor_fk, n, _reps("field", reps_scale),
+                                    heat_cool_while_firing) for n in FIELD_NS])
         kit_f = mc["columns"][subject_kit]["field"]
         beats = [o for o in mc["kits"] if o != subject_kit and
                  any(mc["duels"][f"standard|{d}|{subject_kit}|{o}"] > 0.5 for d in DIST)]
@@ -1910,11 +1940,12 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         mk = make_kit(world, f"{_name(world, wid)} (plain)", wid)
         ar = make_kit(world, "AR (plain)", ANCHOR)
         ar_ba = make_kit(world, "AR+BA", ANCHOR, perk="body_armor") if world.perks.has("body_armor") else ar
-        r, r_ba = run_cells([("rush", mk, ar, rush_reps), ("rush", mk, ar_ba, rush_reps)], n_jobs)
+        r, r_ba = run_cells([("rush", mk, ar, rush_reps, heat_cool_while_firing),
+                             ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing)], n_jobs)
         tests["marksman_rush_counter"] = marksman_verdict(r, r_ba, mc["near_top"].get(subject_kit, []))
     else:
         tests["marksman_rush_counter"] = _test(None, {}, "not a marksman candidate")
-    watch = marksman_watch(base, world, wid, rush_reps, n_jobs)
+    watch = marksman_watch(base, world, wid, rush_reps, n_jobs, heat_cool_while_firing)
 
     ttk_ids = [w for w in roster_ids(world)[0]] + ([wid] if wid and wid not in roster_ids(world)[0] else [])
     verdict = {
@@ -1929,10 +1960,11 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "tests": tests, "pass": all(t["pass"] is not False for t in tests.values()),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
-        "marksman_watch": watch, "ttk": ttk_table(world, ttk_ids, reps_scale),
+        "marksman_watch": watch, "ttk": ttk_table(world, ttk_ids, reps_scale, heat_cool_while_firing),
         "not_modelled": skipped, "assumptions": assumptions(haze_blind_ms, heat_cool_while_firing),
         "heat": heat_comparison,
-        "haze": haze_report(world, _reps("duel", reps_scale), haze_blind_ms) if haze else None,
+        "haze": haze_report(world, _reps("duel", reps_scale), haze_blind_ms,
+                            heat_cool_while_firing) if haze else None,
     }
     return verdict
 
@@ -1991,14 +2023,16 @@ def marksman_verdict(r: dict, r_ba: dict, near_cols: list) -> dict:
         f"strong against non-rushers (peek-kill, and near the top in {MARKSMAN_STRONG_COLUMN!r}), beaten by rushers from 20 m")
 
 
-def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_jobs: int) -> dict:
+def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_jobs: int,
+                   heat_cool_while_firing=True) -> dict:
     """The rush counter for every OTHER marksman row in both worlds (against each world's own AR), so a candidate
     that moves the Sniper's numbers without being a marksman (an AR change, a perk) shows it."""
     ids = [w for w in roster_ids(world)[0] if world.cat._row(w).get("role") == "marksman" and w != subject]
     jobs = []
     for w in ids:
         for wd in (base, world):
-            jobs.append(("rush", make_kit(wd, f"{_name(wd, w)} (plain)", w), make_kit(wd, "AR (plain)", ANCHOR), reps))
+            jobs.append(("rush", make_kit(wd, f"{_name(wd, w)} (plain)", w),
+                         make_kit(wd, "AR (plain)", ANCHOR), reps, heat_cool_while_firing))
     res = run_cells(jobs, n_jobs)
     out = {}
     for i, w in enumerate(ids):
@@ -2007,12 +2041,12 @@ def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_
     return out
 
 
-def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True) -> dict:
-    """R10 for a sidearm on balance_sim's own CI engine: R10a (`finish_time_batch`, median ms to finish 35 HP)
-    and R10b (`r10_duel_batch`: each of `B.R10_PRIMARIES` against it, Standard and Shields). The USP and the
-    Desert Eagle run as their own combatant kinds, so their numbers are the CI numbers; any other sidearm gets a
-    combatant built from its row the way `_usp_combatant` is (single shot paced by the pull model)."""
+def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True,
+                heat_cool_while_firing=True) -> dict:
+    """R10 uses the CI duel engine for unheated pairs and the kit engine when either gun has heat.
+    R10a is the median finish time for 35 HP. R10b tests each primary on Standard and Shields."""
     reps = _reps("rule", scale)
+    sidearm_heated = bool(world.cat._row(wid).get("heat"))
     kind, temp = wid, None
     if wid not in B.R10_SIDEARMS:
         cat, row = world.cat, world.cat._row(wid)
@@ -2027,12 +2061,25 @@ def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True) -> dic
         B.RANGE_COMBATANTS[kind] = temp
     try:
         m = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
-        out = {"finish_ms": B.finish_time_batch(m, kind, reps, SEED).median_ms, "r10b": {}}
+        finish = (time_to_kill(make_kit(world, f"r10:{wid}", wid), 35, AIM, reps,
+                               fit=False, reaction=True, heat_cool_while_firing=heat_cool_while_firing)[0]
+                  if sidearm_heated else B.finish_time_batch(m, kind, reps, SEED).median_ms)
+        out = {"finish_ms": finish, "r10b": {}}
         if duels:
             for preset in ("standard", "shields"):
                 mp = m if preset == "standard" else B.RecoilDuelModel.from_catalog(world.cat, health_preset=preset)
                 for p in B.R10_PRIMARIES:
-                    out["r10b"][f"{preset}|{p}"] = B.r10_duel_batch(mp, p, kind, reps, SEED).win_rate
+                    primary_id = _KIND_IDS[p]
+                    if sidearm_heated or world.cat._row(primary_id).get("heat"):
+                        primary = make_kit(world, f"r10:{p}", primary_id)
+                        if p == "ar_full":
+                            primary = replace(primary, style="full")
+                        sidearm = make_kit(world, f"r10:{wid}", wid)
+                        value = duel_rate(primary, sidearm, "mid", preset, reps,
+                                          heat_cool_while_firing=heat_cool_while_firing)
+                    else:
+                        value = B.r10_duel_batch(mp, p, kind, reps, SEED).win_rate
+                    out["r10b"][f"{preset}|{p}"] = value
         return out
     finally:
         if temp is not None:
@@ -2080,7 +2127,12 @@ def matrix_markdown(m: dict) -> str:
         for c in COLUMNS:
             s = _fmt(c, m["columns"][k][c])
             cells.append(f"**{s}**" if c in m["near_top"][k] else s)
-        lines.append(f"| {k} | {m['specs'][k]['perk'] or '-'} | " + " | ".join(cells) + f" | {len(m['near_top'][k])} |")
+        spec = m["specs"][k]
+        perk = spec["perk"] or "-"
+        shields_perk = spec.get("shields_perk", spec["perk"]) or "-"
+        if shields_perk != perk:
+            perk += f" / {shields_perk}"
+        lines.append(f"| {k} | {perk} | " + " | ".join(cells) + f" | {len(m['near_top'][k])} |")
     return "\n".join(lines)
 
 
@@ -2158,7 +2210,8 @@ def report_markdown(v: dict) -> str:
         out.append("")
     if v.get("sidearm_r10"):
         sr = v["sidearm_r10"]
-        out += ["## Sidearm R10 (balance_sim's CI engine)", "", f"R10a finish: {_num(sr['finish_ms'])} ms "
+        out += ["## Sidearm R10", "", "Heated pairs use the kit engine; other pairs use the CI rule engine.", "",
+                f"R10a finish: {_num(sr['finish_ms'])} ms "
                 f"(bar {B.R10_FINISH_BAR_MS:g}). R10b, each primary's win rate against it: "
                 + ", ".join(f"{k} {v2:.0%}" for k, v2 in sr["r10b"].items()), ""]
     out += ["## Dominance matrix, candidate world", "",
@@ -2176,14 +2229,15 @@ def report_markdown(v: dict) -> str:
         out += ["## Heat: cooling while firing on / off", "",
                 "Cooling while firing is unproven (F575). Each setting reruns the heated weapon's matrix row.", ""]
         for weapon, settings in v["heat"].items():
-            out += [f"### {weapon}", "", "| setting | world | " + " | ".join(COLUMNS) + " |",
-                    "|---|---|" + "---:|" * len(COLUMNS)]
+            out += [f"### {weapon}", "", "| setting | world | kit | " + " | ".join(COLUMNS) + " |",
+                    "|---|---|---|" + "---:|" * len(COLUMNS)]
             for setting in ("on", "off"):
                 for label in ("baseline", "candidate"):
                     row = settings[setting][label]
                     if row is not None:
-                        out.append(f"| {setting} | {label} | " + " | ".join(str(_num(row["columns"][col]))
-                                   for col in COLUMNS) + " |")
+                        for kit_name, kit_row in row.get("kits", {weapon: row}).items():
+                            out.append(f"| {setting} | {label} | {kit_name} | "
+                                       + " | ".join(str(_num(kit_row["columns"][col])) for col in COLUMNS) + " |")
             out.append("")
     rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
     moved = [k for k in rc if abs(rc[k]["value"] - rb[k]["value"]) > 1e-9 or abs(rc[k]["value"] - rs[k]["value"]) > 1e-9]
