@@ -474,7 +474,7 @@ def test_threshold_0_or_absent_means_the_stations_own_platform_default():
 def test_threshold_0_goes_out_explicit_to_a_phone_app_that_clamps_it():
     """F345 review H1: app 0.4.11 and older clamps a `station_config` threshold of 0 to -30 dBm (a few cm), so no
     revive is possible. Such a phone (or one whose version MC cannot parse) gets the explicit old value: -66 for a
-    respawn station (the new phone default), F383's -75 for a control (hill) station, -74 for any other kind.
+    respawn station (the new phone default), F383's -75 made 10% larger, -78, for a control (hill) station, -74 for any other kind.
     0.4.12 and later, and a StickS3, get 0."""
     s = _sess("koth", station_source="phone")
     for nid, ver, kind, team, sid, want in (("util-old", "0.4.11+f366156e", "respawn", "blue", 3, -70),
@@ -1226,7 +1226,7 @@ def test_an_old_phone_powerup_station_gets_the_1ft_claim_default_not_the_3m_one(
 
 
 def test_a_control_stations_threshold_defaults_to_75_on_an_old_phone_and_0_elsewhere():
-    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (exit band PRESENCE_EXIT_BAND_DB, on every path) until the outdoor
+    """F383, Tony 2026-09-27: the hill's own default is -75 dBm (-78 since the hill grew 10%, 2026-10-17) (exit band PRESENCE_EXIT_BAND_DB, on every path) until the outdoor
     walk measures a real one. A current phone and a StickS3 both read 0 (their own platform default); only a phone
     too old to trust with 0 (F345) gets the explicit value."""
     from brx_mcp.mc.state import Session

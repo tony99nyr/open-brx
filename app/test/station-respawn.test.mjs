@@ -83,7 +83,8 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 
-// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, exit band PRESENCE_EXIT_BAND_DB,
+// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path (-78 since the hill grew 10%,
+// Tony 2026-10-17), exit band PRESENCE_EXIT_BAND_DB,
 // until the outdoor walk measures a real one. It is NOT the generic -74 the other kinds share.
 test('a control station defaults to -78 dBm (F383 -75, Tony 2026-10-17: 10% larger), and the exit band is 3 dB (F440, Tony 2026-10-02)', () => {
   assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -78, sticks3: -78 });

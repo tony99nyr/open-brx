@@ -637,7 +637,8 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 #   same +10%. Any other Stick kind takes the Stick respawn value.
 #   The +10% (field 2026-10-17, report 3.7): F383's flat-phone ladder reads -74 at 5 m and -86 at 7.5 m, so at the circle
 #   edge the path-loss exponent is n = 12 / (10 log10 1.5) = 6.8. A radius 1.1x wider is 10 n log10 1.1 = 2.8 dB weaker,
-#   so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it.
+#   so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. The n is
+#   from the PHONE ladder only (a confounded bench); the Stick hears players over another path, so its 10% is unproven.
 STATION_DEFAULT_THRESHOLD_DBM = {
     "phone": {"respawn": -70, "powerup": -55, "extraction": -74, "bomb": -74, "control": -78},
     "sticks3": {"respawn": -57, "powerup": -45, "extraction": -57, "bomb": -57, "control": -78},
