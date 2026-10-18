@@ -152,7 +152,8 @@ export declare const SPAWN_KILL_WINDOW_MS: 10000;
  *  same +10%. Any other Stick kind takes the Stick respawn value.
  *  The +10% (field 2026-10-17, report 3.7): F383's flat-phone ladder reads -74 at 5 m and -86 at 7.5 m, so at the circle
  *  edge the path-loss exponent is n = 12 / (10 log10 1.5) = 6.8. A radius 1.1x wider is 10 n log10 1.1 = 2.8 dB weaker,
- *  so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. */
+ *  so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. The n is
+ *  from the PHONE ladder only (a confounded bench); the Stick hears players over another path, so its 10% is unproven. */
 export declare const STATION_DEFAULT_THRESHOLD_DBM: { readonly phone: { readonly respawn: -70; readonly powerup: -55; readonly extraction: -74; readonly bomb: -74; readonly control: -78 }; readonly sticks3: { readonly respawn: -57; readonly powerup: -45; readonly extraction: -57; readonly bomb: -57; readonly control: -78 } };
 /** A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
  *  Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at

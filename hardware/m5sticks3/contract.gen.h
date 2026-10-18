@@ -150,7 +150,8 @@ constexpr int32_t SPAWN_KILL_WINDOW_MS = 10000;
 // same +10%. Any other Stick kind takes the Stick respawn value.
 // The +10% (field 2026-10-17, report 3.7): F383's flat-phone ladder reads -74 at 5 m and -86 at 7.5 m, so at the circle
 // edge the path-loss exponent is n = 12 / (10 log10 1.5) = 6.8. A radius 1.1x wider is 10 n log10 1.1 = 2.8 dB weaker,
-// so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it.
+// so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. The n is
+// from the PHONE ladder only (a confounded bench); the Stick hears players over another path, so its 10% is unproven.
 constexpr const char* STATION_DEFAULT_THRESHOLD_DBM_KEYS[] = {"respawn", "powerup", "extraction", "bomb", "control"};
 constexpr size_t STATION_DEFAULT_THRESHOLD_DBM_COUNT = 5;
 constexpr int32_t STATION_DEFAULT_THRESHOLD_DBM_PHONE[] = {-70, -55, -74, -74, -78};
