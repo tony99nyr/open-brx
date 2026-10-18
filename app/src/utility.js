@@ -1106,7 +1106,8 @@ function wireExit() {
 (async () => {
   applyNativeInset(); wire(); render();
   await loadPlugins();
-  try { if (plugins.device) setDeviceModel(await plugins.device.getInfo()); } catch (_) { /* the hello just omits it (F564) */ }
+  // F564: native only (the web shim's model is a user-agent guess), and bounded, so a hung plugin cannot hold the boot
+  try { if (plugins.device && isNative()) setDeviceModel(await Promise.race([plugins.device.getInfo(), new Promise(r => setTimeout(() => r(null), 2000))])); } catch (_) { /* the hello just omits it */ }
   try { if (plugins.keepAwake) await plugins.keepAwake.keepAwake(); } catch (_) { /* ignore */ }
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
   if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };

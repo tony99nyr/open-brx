@@ -506,6 +506,10 @@ def test_the_device_model_reaches_the_node_and_is_never_blanked():
     assert len(s.nodes["node0"]["device"]) == 64, "a long model string is capped"
     net.simulate_status("node0", {"arm_state": "kitted", "synced": True, "device": 7}, clock["t"])
     assert s.nodes["node0"]["device"] == "x" * 64, "a non-string is ignored"
+    # the hello path (`_hydrate`) carries it too
+    tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_hello("node0", f"GUN-A-{tail}", device="Samsung SM-G991B")
+    assert s.nodes["node0"]["device"] == "Samsung SM-G991B"
 
 
 # ---------------------------------------------------------------- A27: the guarded CONTINUE

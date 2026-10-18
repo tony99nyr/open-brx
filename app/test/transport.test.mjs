@@ -691,6 +691,14 @@ test('F564: the hello and every status name the device once Device.getInfo has a
   assert.equal(st.body.device, 'Google Pixel 4');
   E.validate(st, 'node');
   assert.equal(deviceModel(), 'Google Pixel 4');
+  // a hello sent once the model is known carries it, and the user-set device name never leaks
+  setDeviceModel({ name: "Tony's iPhone", manufacturer: 'Apple', model: 'iPhone14,2' });
+  const t2 = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-B', tail: '3D50' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t2.close());
+  t2.connect({ url: 'ws://y/ws' }).catch(() => {}); sockets[sockets.length - 1].open();
+  assert.equal(sockets[sockets.length - 1].sent[0].body.device, 'Apple iPhone14,2');
+  assert.ok(!deviceModel().includes('Tony'), 'the user-set name is never part of it');
   setDeviceModel({ manufacturer: '', model: 'x'.repeat(200) });
   assert.equal(deviceModel().length, 64, 'a model string is capped');
 });

@@ -988,7 +988,7 @@ async function sweepForMc() {
   await lockLandscape(); await keepAwake(true);
   try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
   // F340: the Android API level decides whether Location gates a scan. Read it before the first picker scan.
-  try { if (plugins.device) { const i = await plugins.device.getInfo(); setDeviceModel(i); if (i && typeof i.androidSDKVersion === 'number') androidSdk = i.androidSDKVersion; } } catch (e) { log('device info: ' + (e && e.message || e), 'le'); }
+  try { if (plugins.device) { const i = await plugins.device.getInfo(); if (isNative()) setDeviceModel(i);   // F564: the web shim's model is a user-agent guess if (i && typeof i.androidSDKVersion === 'number') androidSdk = i.androidSDKVersion; } } catch (e) { log('device info: ' + (e && e.message || e), 'le'); }
   try { if (plugins.app) plugins.app.addListener('resume', () => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }); } catch (e) { log('resume listener: ' + (e && e.message || e), 'li'); }
   setInterval(() => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }, LOCATION_POLL_MS);
   // F153c: the radio came back (mobile data restored, Wi-Fi rejoined, the hotspot came up). Whatever the
