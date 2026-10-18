@@ -16,7 +16,7 @@ A **piece** is one named preset for one PLAY picker. There are eight kinds:
 |---|---|---|---|
 | `mode` | `{mode}` | `tdm` TEAM DEATHMATCH, `ffa` FREE-FOR-ALL, `koth` KING OF THE HILL; `infection`, `lms`, `extraction` with `post_mvp: true` | no (403) |
 | `life` | `{max_hp, max_armor, max_shield}` | `standard` 45/70/0, `shields` 45/0/105, `hardcore` 45/0/0 (`compile.HEALTH_PRESETS`) | yes |
-| `spawn` | `Respawn` | `auto` AUTO: `{type: "auto", delay_s: 15, protect_s: 0, weapon_delay_ms: 500}`; `station` STATION: `{type: "scanner", delay_s: 10, station_protect_s: 2, gate: "trigger"}` | yes |
+| `spawn` | `Respawn` | `auto` AUTO: `{type: "auto", delay_s: 15, protect_s: 0, weapon_delay_ms: 1500}`; `station` STATION: `{type: "scanner", delay_s: 10, station_protect_s: 2, gate: "trigger"}` | yes |
 | `primary` | `SlotRule` | `all` ALL (players choose any weapon) | yes |
 | `secondary` | `SlotRule` | `all` ALL | yes |
 | `perks` | `SlotRule` | `all` ALL | yes |

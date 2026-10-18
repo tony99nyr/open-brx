@@ -65,8 +65,8 @@ function stationRevive(h) { h.die(); h.adv(9000); h.eng.setStations([stationEntr
 /** Down, then back by the 8 s auto respawn. Returns the write index just before the revive. */
 function revived(h) { h.die(); h.adv(7990); const n = h.mark(); h.adv(10); assert.equal(h.eng.alive, true, 'setup: revived'); return n; }
 
-test('fixture: the golden profile is the defaults (timed 0 s / 0.5 s, station 2 s) and keeps the legacy lists', () => {
-  assert.equal(RP.protect_ms, 0); assert.equal(RP.trigger_ms, 500); assert.equal(RP.station_protect_ms, 2000);
+test('fixture: the golden profile is the defaults (timed 0 s / 1.5 s, station 2 s) and keeps the legacy lists', () => {
+  assert.equal(RP.protect_ms, 0); assert.equal(RP.trigger_ms, 1500); assert.equal(RP.station_protect_ms, 2000);
   assert.deepEqual(tmps(RP.spawn), [], 'the default timed spawn carries no $TMP');
   assert.deepEqual(tmps(RP.revive), [], 'the default timed revive carries no $TMP');
   assert.deepEqual(bmap0(RP.revive), [HELD], 'the timed revive holds the trigger');
@@ -127,12 +127,12 @@ test('go-live, late start (no T-3): the T-0 spawn write carries the live table i
   assert.equal(gunAt(h.timed, h.now()).hitDamages, true);
 });
 
-test('timed defaults: a revive writes no $TMP, holds the trigger, and maps it at 0.5 s', () => {
+test('timed defaults: a revive writes no $TMP, holds the trigger, and maps it at 1.5 s', () => {
   const h = liveArmed();
   const n = revived(h);
   assert.deepEqual(tmps(h.since(n)), []);
   assert.deepEqual(bmap0(h.since(n)), [HELD]);
-  h.adv(490); assert.deepEqual(bmap0(h.since(n)), [HELD]);
+  h.adv(1490); assert.deepEqual(bmap0(h.since(n)), [HELD]);
   h.adv(10); assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE]);
 });
 
@@ -245,8 +245,8 @@ test('review: a failed trigger_live write retries even if a shot or hit landed i
   const h = liveArmed();
   const n = revived(h);
   const realWriter = h.eng.writer;
-  h.eng.writer = () => Promise.resolve(false);   // the 0.5 s trigger_live write "fails" (GATT false)
-  h.adv(500);
+  h.eng.writer = () => Promise.resolve(false);   // the 1.5 s trigger_live write "fails" (GATT false)
+  h.adv(1500);
   h.eng._actSeq++;                               // a shot or a hit landed in the same window
   h.eng.writer = realWriter;
   await new Promise(r => setImmediate(r));       // let the retry's own write land
@@ -256,7 +256,7 @@ test('review: a failed trigger_live write retries even if a shot or hit landed i
 test('review: a relink reconcile re-sends trigger_live when the weapon delay has already passed', async () => {
   const h = liveArmed();
   const n = revived(h);
-  h.adv(500);   // the weapon delay is over -- trigger_live already sent once
+  h.adv(1500);  // the weapon delay is over -- trigger_live already sent once
   assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE]);
   assert.equal(h.eng._triggerPending, null, 'setup: nothing pending -- the trigger should already be live');
   const m = h.mark();

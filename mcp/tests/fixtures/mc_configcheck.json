@@ -448,12 +448,12 @@
   "respawn_weapon_delay": {
     "patch": {
       "exception": "ValueError",
-      "message": "respawn.weapon_delay_ms must be one of 500, 1000, 3000"
+      "message": "respawn.weapon_delay_ms must be one of 500, 1000, 1500, 3000"
     },
     "validate": {
       "value": {
         "errors": [
-          "respawn.weapon_delay_ms must be one of 500, 1000, 3000"
+          "respawn.weapon_delay_ms must be one of 500, 1000, 1500, 3000"
         ],
         "ok": false,
         "warnings": []

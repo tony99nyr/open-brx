@@ -96,7 +96,7 @@ _LED_READOUT: tuple[str, ...] = ("$GLED,1,0,1,0,10,,*",)
 
 # A revive: the bundle's own (`$HLOOP,0,0,*`, then the revive burst that HOLDS the trigger), then its
 # `trigger_live`. For this bundle the phone writes NO `$SIR` take at revive (its pool holds one take and the
-# table is already live), so there is none here. The phone sends `trigger_live` `trigger_ms` (500 ms) after
+# table is already live), so there is none here. The phone sends `trigger_live` `trigger_ms` (1500 ms by default) after
 # the burst; the soak runner CANNOT express a timed gap inside a group (a group is one write per frame, in
 # order, with only the global `gap_ms`), so `trigger_live` follows back to back. The runner was not rebuilt
 # for it. Cadence: "a revive every 3 minutes" is the plan doc's own traffic definition
