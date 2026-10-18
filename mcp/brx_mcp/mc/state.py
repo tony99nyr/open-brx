@@ -697,6 +697,7 @@ class Session:
         # WITHHELD line twice per hello, and again on every later heartbeat-driven `_bind` while the
         # phone stays on the same build. Cleared on `evict_node` so a genuine re-bind can say it again.
         self._app_blocked_alerted: dict[str, tuple[str, ...]] = {}
+        self._identity_told = False                 # F552: `note_new_identity` already told this process's operator
         # S16 review 2026-09-19: node_id -> the weapon ids last told to the feed by `_alert_plan_withheld`,
         # deduped for the same reason as the line above. Cleared beside it.
         self._plan_blocked_alerted: dict[str, tuple[str, ...]] = {}
@@ -6736,6 +6737,19 @@ class Session:
         `DUAL_RELAY_MS` heuristic to tell a two-word shot from two separate hits."""
         for t, shooter, victim, dmg in new_hits:
             self._relay_hit_feedback(shooter, victim, dmg, t)
+
+    NEW_IDENTITY_LINE = "NEW MC IDENTITY: EVERY PHONE WILL NEED ONE TAP OR THE QR"
+
+    def note_new_identity(self) -> None:
+        """F552 (field 2026-10-17): MC made a new install identity at launch, so no phone's stored trust key matches
+        and each one asks for a tap (or the QR). The proof stays strict; the operator is told once, up front."""
+        # Once per process (Codex and Opus review): matching the saved feed's text would skip a second rotation in a
+        # later run and would read an old run's line as news
+        if self._identity_told:
+            return
+        self._identity_told = True
+        self._on_feed(self._feed_alert("ALERT", self.NEW_IDENTITY_LINE))
+        self._changed()
 
     def _feed_alert(self, tag: str, text: str, *, at_ms: int | None = None,
                     t_match_s: int | None = None) -> FeedEntry:

@@ -30,3 +30,13 @@ test('F400 CONTROL: an ALT swap (no pu flag) keeps its own READY / CONFIRMED BY 
   assert.equal(subText(switched(st, { slot: 1, assumed: true })), 'READY');
   assert.equal(subText(switched(st, { slot: 1, assumed: false })), 'CONFIRMED BY YOUR GUN');
 });
+
+// Field 2026-10-17 (report E10): the gun's slot report moved the trigger; the card says so instead of a silent change.
+test('F542 E10: a correction from the gun (data.gunWas) reads GUN WAS ON over the weapon; a plain swap keeps ACTIVE', () => {
+  const st = { loadout: { primary: { kind: 'weapon', weapon_id: 'usp', name: 'USP' },
+    secondary: { kind: 'weapon', weapon_id: 'deagle', name: 'DESERT EAGLE' } } };
+  const el = switched(st, { slot: 0, gunWas: true });
+  assert.match(el.innerHTML, /<span class="wl">GUN WAS ON<\/span><span class="wn">USP<\/span>/);
+  assert.equal(subText(el), 'CONFIRMED BY YOUR GUN');
+  assert.match(switched(st, { slot: 1, assumed: true }).innerHTML, /<span class="wl">ACTIVE ✓<\/span>/);
+});
