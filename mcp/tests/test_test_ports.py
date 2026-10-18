@@ -150,3 +150,17 @@ def test_no_mc_e2e_script_picks_a_port_from_the_ephemeral_range():
     own = re.compile(r"const freePort\s*=|\.listen\(0\b|\.listen\(\{\s*port:\s*0\b|'--port', '0'")
     offenders = [p.relative_to(REPO).as_posix() for p in sorted(E2E.rglob("*.mjs")) if own.search(p.read_text())]
     assert not offenders, f"take freePort from scripts/lib/ports.mjs instead: {offenders}"
+
+
+def test_the_console_harness_finds_its_own_ports_without_the_pool():
+    """A standalone `ONLY=... node test/e2e/vqa2.mjs` has no MC_PORT, MC_WS_PORT or VITE_PORT, so `ports()` must pick
+    its own. brx3, 2026-10-18: mc-harness.mjs re-exported `freePort` without binding it, so this path threw
+    "ReferenceError: freePort is not defined"; the gate never hit it because the pool sets the three ports."""
+    harness = (E2E / "lib" / "mc-harness.mjs").as_uri()
+    expr = (f"for (const k of ['MC_PORT', 'MC_WS_PORT', 'VITE_PORT']) delete process.env[k];\n"
+            f"const h = await import({json.dumps(harness)});\n"
+            f"const p = await h.ports();\n"
+            f"console.log(JSON.stringify({{p, exported: typeof h.freePort}}));")
+    out = run_node_json(expr, cwd=REPO)
+    assert out["exported"] == "function", out
+    assert all(isinstance(out["p"][k], int) and out["p"][k] > 0 for k in ("mc", "ws", "vite")), out
