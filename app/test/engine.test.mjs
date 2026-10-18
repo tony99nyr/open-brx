@@ -8088,3 +8088,14 @@ test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a
   h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500); h.frame('$ALCD,32,100,0,168,0,*');
   assert.equal(h.eng.state().reloadFailed, false, 'a reload that landed says nothing');
 });
+test('F277 review: a shot after the failed reload retires the prompt; a failed reload on another slot does not show it', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(6000); h.eng.tick();
+  assert.equal(h.eng.state().reloadFailed, true, 'setup');
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,9,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().reloadFailed, false, 'the shot retires it');
+  h.eng.am.reloadOutcome = { ok: false, why: 'timeout', slot: 1, at: h.eng.now() };
+  assert.equal(h.eng.state().reloadFailed, false, 'a slot-1 failure is not shown over slot 0');
+});
