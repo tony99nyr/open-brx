@@ -63,7 +63,15 @@ describe('H2 · the KOTH board headlines possession', () => {
   it('F556: with two hills, the panel says held time adds the hills up, so 12:37 in a 10:00 match is not a fault', async () => {
     const two = { ...POSS, by_team: { blue: 757, purple: 300 }, sites: 2 };
     let r = await board('live', await kothOver(), [row()], { possession: two });
-    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent).toContain('HELD TIME ADDS UP 2 HILLS, SO A TEAM CAN HOLD UP TO 20:00.');
+    const panel = r.m.find('[data-testid="hill-panel"]')[0]?.textContent ?? '';
+    expect(panel).toContain('HELD TIME ADDS UP OVER THE 2 HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO 20:00 IN A 10:00 MATCH.');
+    expect(r.m.find('[data-team-score="blue"]')[0]?.textContent, 'the summed time is on the same screen').toBe('12:37');
+    r.m.unmount();
+    r = await board('spectate', await kothOver(), [row()], { possession: two });
+    expect(r.m.find('[data-spectate="hill"]')[0]?.textContent, 'the room screen says it too').toContain('ADDS UP OVER THE 2 HILLS THAT REPORTED');
+    r.m.unmount();
+    r = await board('live', await kothOver(), [row()], { possession: { ...two, of_s: null } });
+    expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'an untimed match: no maximum').toContain('THE 2 HILLS THAT REPORTED.');
     r.m.unmount();
     r = await board('live', await kothOver(), [row()], { possession: POSS });
     expect(r.m.find('[data-testid="hill-panel"]')[0]?.textContent, 'one hill: no note').not.toContain('ADDS UP');

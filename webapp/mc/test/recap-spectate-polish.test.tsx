@@ -45,7 +45,8 @@ describe('1 · a KOTH RECAP headlines held time', () => {
   it('F556: two hills get a note that held time adds them up; one hill gets none', async () => {
     let m = await recap({}, { possession: { ...HELD, by_team: { blue: 95, yellow: 457 }, sites: 2 } });
     expect(strip(m.find('[data-alert="recap-possession-sites"]')[0]?.textContent ?? ''))
-      .toContain('HELD TIME ADDS UP 2 HILLS, SO A TEAM CAN HOLD UP TO 10:00 IN A 5:00 MATCH.');
+      .toContain('HELD TIME ADDS UP OVER THE 2 HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO 10:00 IN A 5:00 MATCH.');
+    expect(strip(m.find('[data-testid="recap-headline"]')[0]?.textContent ?? ''), 'the summed time is on the same screen').toContain('7:37');
     m.unmount();
     m = await recap({}, { possession: HELD });
     expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('ADDS UP');

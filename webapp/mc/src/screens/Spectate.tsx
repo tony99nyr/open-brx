@@ -42,7 +42,7 @@ import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { ClockSub, Num, ScrollX, useTick } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { heldSeconds, hillOwner } from './objective';
+import { heldSeconds, hillOwner, sitesNote } from './objective';
 import { objectiveWord } from '../rules/scoring';
 import { MC_OFFLINE, alertWords, colourOf, glyphed } from '../alerts';
 
@@ -168,6 +168,7 @@ export function Spectate() {
             : <span data-alert="spectate-hill-owner-none" data-sev="neutral">OWNER NOT REPORTED LIVE</span>}
           {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}`
             : <span data-alert="spectate-no-possession-yet" data-sev="neutral">NO POSSESSION REPORTED YET</span>}
+          {sitesNote(lv.possession) && <span data-spectate-sites="1">{' · '}{sitesNote(lv.possession)}</span>}
         </div>
       )}
       <div style={{ display: 'flex', gap: 22, alignItems: 'stretch', flexWrap: 'wrap',

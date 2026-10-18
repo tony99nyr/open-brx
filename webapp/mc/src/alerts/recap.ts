@@ -33,8 +33,8 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
     text: 'BEST COVERAGE {dur} OF {dur2}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, '
       + 'NOT A FULL ACCOUNT.' },
   // F556: why a two-hill match can read more held time than its length. A fact about the sum, not a fault.
-  'recap-possession-sites': { sev: 'neutral', why: 'explains a sum, not a fault',
-    text: 'HELD TIME ADDS UP {n} HILLS, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH.' },
+  'recap-possession-sites': { sev: 'neutral',
+    text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH.' },
   'recap-provisional-banner': { sev: 'amber',
     text: '{n} NODE(S) HAVE NOT FLUSHED ({names}): BRING THEM INTO RANGE TO FINALIZE '
       + '(KILLS LIVE IN THEIR REPORTS UNTIL THEN).' },

@@ -1078,6 +1078,9 @@ class Scorer:
         being silently dropped or credited to a colour. `observed_s` is the BEST single observer's
         coverage: possession from a grenade is only ever a lower bound, because the beacon is IR and
         only a gun in range hears it (F92), so a match nobody watched reads as 0 rather than as a lie.
+        `possession_observed` is kept per node, not per (node, site): with two hills, `observed_s` is the best node's
+        coverage of whichever hill it saw longest, never a sum over hills (brx5, F556 review). `sites` counts the hills
+        that reported, and `by_team` adds them up, so with two it can pass `of_s` (the console says so: F556).
         """
         if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:
             return None

@@ -8,6 +8,7 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
+import { sitesNote } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -634,12 +635,12 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
             NEUTRAL {fmtDuration(p.neutral_s)}: NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
           </Alert>
         )}
-        {/* F556: `by_team` adds the sites up, so with two hills a team can pass the match length; `of_s` stays the match length */}
-        {p.sites > 1 && p.of_s ? (
+        {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
+        {sitesNote(p) && (
           <Alert id="recap-possession-sites" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-            HELD TIME ADDS UP {p.sites} HILLS, SO A TEAM CAN HOLD UP TO {fmtDuration(p.of_s * p.sites)} IN A {fmtDuration(p.of_s)} MATCH.
+            {sitesNote(p)}
           </Alert>
-        ) : null}
+        )}
         {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
             `thin` says, though it used to render amber under 75%. */}
         <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>

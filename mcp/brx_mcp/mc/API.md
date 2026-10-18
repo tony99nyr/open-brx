@@ -334,7 +334,7 @@ RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
                                        // `rows[0]` is a sort artefact and used to be published as the winner, which
                                        // is how a phone was shown LOSE on a 1-1 board
             possession?: { by_team: { [team_id]: number /* SECONDS held, added up over every site, so with two hills it can pass of_s (F556) */ }, neutral_s: number, sites: number,
-                           reports: number /* nodes that reported */, observed_s: number /* best single observer */,
+                           reports: number /* nodes that reported */, observed_s: number /* best single observer, at one hill: never summed over hills */,
                            of_s: number|null /* the match length it is measured against */,
                            station_sites?: number /* F555: sites scored on a control station's own tally */,
                            phones_by_team?: { [team_id]: number } /* F555: the phones' merge, the cross-check */ },
