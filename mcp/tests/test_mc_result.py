@@ -281,10 +281,23 @@ def test_mc_verify_is_present_only_when_mc_decides_the_end_off_grid():
     s, _net, _ps = _armed({"scoring": {"frag_limit": 7, "win_by": "kills"}})
     assert s.game_brief()["mc_verify"] == C.MC_VERIFY_PLAYER
     notice = s.snapshot()["notices"]["mc_verify"]
-    assert notice.startswith("WIN IS CONFIRMED AT MC, 2 PHONES OFF-GRID")
-    assert "OP0" in notice and "OP1" in notice, f"the host's copy names the phones: {notice}"
+    # every rostered phone is off-grid (Wi-Fi only), so the line names nobody and counts nothing
+    assert notice == ("WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, "
+                      "TELL PLAYERS TO RETURN AFTER THE WHISTLE")
     # and it rides the kit-out push the phone actually reads
     assert s._assign_body(list(s.players.values())[0])["game"]["mc_verify"] == C.MC_VERIFY_PLAYER
+
+
+def test_mc_verify_host_line_names_only_the_phones_with_no_route_back():
+    """Only some phones are off-grid: the host line counts and names them."""
+    s, _net, _ps = _armed({"scoring": {"frag_limit": 7, "win_by": "kills"}}, backhaul=True)
+    first = next(iter(s.nodes.values()))
+    list(s.nodes.values())[1]["transport"] = "wifi"
+    assert first["transport"] == "cellular"
+    notice = s.snapshot()["notices"]["mc_verify"]
+    assert notice == ("WIN IS CONFIRMED AT MC, 1 PHONE WITH NO ROUTE BACK (OP1): "
+                      "TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE"), notice
+    assert s.game_brief()["mc_verify"] == C.MC_VERIFY_PLAYER
 
 
 def test_mc_verify_is_absent_under_full_coverage_or_with_backhaul_or_on_a_timed_match():

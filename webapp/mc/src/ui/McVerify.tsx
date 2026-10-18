@@ -13,16 +13,25 @@
  *  this is the one place to change.
  */
 
-/** The server's raw line reads like `"WIN IS CONFIRMED AT MC · N PHONE(S) OFF-GRID (names) · TELL
+/** The server's raw line has two current shapes: `WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY
+ *  FROM THE WI-FI, ...` (every phone) and `WIN IS CONFIRMED AT MC, N PHONE(S) WITH NO ROUTE BACK
+ *  (names): ...` (some). The older shape read like `"WIN IS CONFIRMED AT MC · N PHONE(S) OFF-GRID (names) · TELL
  *  PLAYERS TO RETURN AFTER THE WHISTLE"` (or with the names trailing instead — both shapes are seen
  *  in the wild today, `state.py` vs the `?mock` mirror). Pull the count and the names out of whatever
  *  shape it is in and say it as one short, sentence-case, plain fact plus one short instruction —
  *  never inventing a count or a name that was not in the raw line. */
 export function friendlyMcVerifyLine(raw: string): string {
+  if (/NO PHONE CAN REACH MC/i.test(raw)) {
+    return 'Wins are confirmed at MC, and no phone can reach MC away from the Wi-Fi: tell players to come back after the whistle.';
+  }
   const count = raw.match(/(\d+)\s*PHONES?/i);
   const names = raw.match(/\(([^)]+)\)/);
   if (count && names) {
     const n = Number(count[1]);
+    if (/NO ROUTE BACK/i.test(raw)) {
+      return `${n} phone${n === 1 ? ' has' : 's have'} no route back to MC (${names[1]}). `
+        + 'Wins are confirmed at MC, so tell those players to come back after the whistle.';
+    }
     return `${n} phone${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} off-grid (${names[1]}). `
       + 'Wins are confirmed at MC, so tell players to come back after the whistle.';
   }
