@@ -159,7 +159,8 @@ def _console_source_tables() -> list[tuple[str, Any, str]]:
     catalogue = C.WeaponCatalog(weapons)
     fields = [
         {"weapon_id": row["weapon_id"], "mag": row["mag"], "reserve": row["reserve"],
-         "reload_ms": row["reload_ms"], "capture_frame": (row.get("capture") or {}).get("frame"),
+         "reload_ms": row["reload_ms"], "reload_type": row.get("reload_type"),
+         "capture_frame": (row.get("capture") or {}).get("frame"),
          "resolved_frame": catalogue.resolve(row["weapon_id"], 0),
          "swap_ms": (row.get("wire") or {}).get("swap_ms"), "sir_fn": row.get("sir_fn"),
          "lethal": row.get("lethal", True), "dmg": row.get("dmg", 0),
@@ -225,7 +226,8 @@ def _render_console_source_tables() -> list[str]:
         literal = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         if name == "WEAPON_MOCK_FIELDS":
             typ = ("readonly { readonly weapon_id: string; readonly mag: number; readonly reserve: number; "
-                   "readonly reload_ms: number; readonly capture_frame: string | null; readonly resolved_frame: string; "
+                   "readonly reload_ms: number; readonly reload_type: string | null; "
+                   "readonly capture_frame: string | null; readonly resolved_frame: string; "
                    "readonly swap_ms: number | null; "
                    "readonly sir_fn: number | null; readonly lethal: boolean; readonly dmg: number; "
                    "readonly rounds_per_charge: number; readonly role: string; readonly tags: readonly string[] }[]")

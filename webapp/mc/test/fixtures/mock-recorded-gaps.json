@@ -138,6 +138,12 @@
       "path": "$.stations[*]",
       "count": 1242,
       "sha1": "0c55bf9115639b88"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.config_warnings[*]",
+      "count": 293,
+      "sha1": "fdb2e75cc6cc6800"
     }
   ]
 }

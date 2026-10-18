@@ -30,8 +30,8 @@ def test_shotgun_deduplicates_equal_gun_and_headset_words():
 
 
 def test_charge_rifle_publishes_the_charge_and_the_tap_magnitude():
-    # charge_rifle: t5 (charge, 70, wire.dmg) and t37 (tap, 16, wire.tap_dmg), no headset word.
-    assert CAT.hir_magnitudes("charge_rifle") == [16, 70]
+    # charge_rifle: t5 (charge, 55, wire.dmg) and t37 (tap, 14, wire.tap_dmg), no headset word (Tony, 2026-10-17).
+    assert CAT.hir_magnitudes("charge_rifle") == [14, 55]
 
 
 def test_hir_from_weap_agrees_with_hir_magnitudes_on_a_resolved_frame():
