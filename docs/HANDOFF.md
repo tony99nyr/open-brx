@@ -21,7 +21,7 @@ Tony's balance calls of the push are in [`weapon-design.md`](weapon-design.md) a
 [`balance-decisions.md`](balance-decisions.md) through `.claude/skills/balance-review`.
 **Next:** the bench sheet [`bench-field-1017.md`](bench-field-1017.md), P1 first (the large-reserve ceiling, the SMG
 frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
-**Blocked on Tony:** F572 (the two-hill hold target) and F573 (the Sniper damage and its peek-column check).
+**Blocked on Tony:** F575 (the Charge Rifle numbers inside the heat budget: keep 70/16 or 73/14). F572 (summed across hills) and F573 (Sniper 75, 2.2 s bolt) are decided and on main.
 
 ## Lane: brx1, orchestration
 **State:** 2026-10-18: ran the field push. The plan, the lanes' FIXED lines and the bench rows are in
