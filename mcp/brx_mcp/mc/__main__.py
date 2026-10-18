@@ -396,6 +396,9 @@ def build(args):
     resumed = session.resume_match()
     if resumed:
         print(f"  match resumed: {resumed.upper()} (the snapshot named a match in play)", flush=True)
+    if getattr(getattr(net, "trust", None), "identity_created", False):
+        session.note_new_identity()      # F552: after the restore, so the line is not replaced by the saved feed
+        print(f"  {Session.NEW_IDENTITY_LINE}", flush=True)
 
     # F411 BUILD pieces: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy
     # so demo NEW ▸ never lands in (or wipes) the host's real pieces.json
