@@ -1971,3 +1971,19 @@ def test_f559_a_hill_setting_out_of_range_is_refused_and_a_respawn_station_never
     s.net.simulate_utility_hello("util-resp")
     s.set_station("util-resp", {"kind": "respawn", "team": "any", "id": 5})
     assert "capture_s" not in _pushed(s, "station_config", "util-resp")[-1]
+
+
+def test_f559_hill_null_clears_a_mode_switch_keeps_it_and_a_bad_restored_value_is_not_sent():
+    """Review 2026-10-18 (Opus, Codex): a switch into KOTH from another mode kept volume but dropped `hill`, and a restored
+    session.json is taken verbatim, so a bool or out-of-range number went straight to the hill."""
+    s = _sess("tdm", station_source="phone")
+    assert s.set_config({"hill": {"capture_s": 12}})["ok"]
+    assert s.set_config({"mode": "koth"})["ok"]
+    assert s.config.get("hill") == {"capture_s": 12}, s.config.get("hill")
+    s.set_config({"hill": None})
+    assert "hill" not in s.config, s.config.get("hill")
+    k = _koth_hill()
+    k.config["hill"] = {"capture_s": True, "net_cap": 99}     # what a hand-edited or older session.json can hold
+    k.station_registry.arm_stations()
+    body = _pushed(k, "station_config", "util-hill")[-1]
+    assert "capture_s" not in body and "net_cap" not in body, body

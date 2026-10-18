@@ -269,6 +269,14 @@ export const TIME_LIMIT_MAX_S = 7200;
 export const RESPAWN_DELAY_MAX_S = 600;
 /** mode_params.hold_target_s 1..this */
 export const HOLD_TARGET_MAX_S = 7200;
+/** F559 (field 2026-10-17): a hill's capture time and net cap, settable per game (`GameConfig.hill`) instead of only by
+ *  the +/- buttons on each hill phone. brx5's station half takes them from `station_config`.
+ *  hill.capture_s this..HILL_CAPTURE_S_MAX */
+export const HILL_CAPTURE_S_MIN = 3;
+export const HILL_CAPTURE_S_MAX = 60;
+/** hill.net_cap this..HILL_NET_CAP_MAX */
+export const HILL_NET_CAP_MIN = 1;
+export const HILL_NET_CAP_MAX = 6;
 /** S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
  *  Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte. */
 export const POWERUP_CHARGES_MIN = 1;
@@ -996,14 +1004,16 @@ export interface GameConfigBase {
    *  `config.recoil !== false`. Seam for stance/flinch (also S42, not built
    *  here): a future switch for either can sit right beside this one. */
   recoil?: boolean;
-  /** K8: the host's match-head $VOL, an integer 60..100 */
-  volume?: number | null;
-  /** F559: capture time and net cap for every control station; absent = theirs
+  /** K8: the host's match-head $VOL, an integer 60..100
    *  (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
    *  (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
    *  the key. `--bench-volume` overrides this value and try-outs; without
    *  it, a try-out plays at VOL_TRYOUT (69), never this value. */
-  hill?: HillSettings;
+  volume?: number | null;
+  /** F559: capture time and net cap for every control station. A set key
+   *  wins on every arming; absent = the station keeps its own. A PUT of
+   *  null clears it; a mode change carries it, like `volume`. */
+  hill?: HillSettings | null;
 }
 
 /** A complete config type whose policy may be omitted for server defaulting. */
@@ -1034,7 +1044,7 @@ export interface GameConfig {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
-  hill?: HillSettings;
+  hill?: HillSettings | null;
   loadout_policy?: LoadoutPolicy;
 }
 
@@ -1069,7 +1079,7 @@ export interface ConfigView {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
-  hill?: HillSettings;
+  hill?: HillSettings | null;
   loadout_policy: LoadoutPolicy;
 }
 

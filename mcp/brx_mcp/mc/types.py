@@ -739,8 +739,10 @@ RESPAWN_DELAY_MAX_S = 600            # respawn.delay_s 0..this
 HOLD_TARGET_MAX_S = 7200             # mode_params.hold_target_s 1..this
 # F559 (field 2026-10-17): a hill's capture time and net cap, settable per game (`GameConfig.hill`) instead of only by
 # the +/- buttons on each hill phone. brx5's station half takes them from `station_config`.
-HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX = 3, 60
-HILL_NET_CAP_MIN, HILL_NET_CAP_MAX = 1, 6
+HILL_CAPTURE_S_MIN = 3               # hill.capture_s this..HILL_CAPTURE_S_MAX
+HILL_CAPTURE_S_MAX = 60
+HILL_NET_CAP_MIN = 1                 # hill.net_cap this..HILL_NET_CAP_MAX
+HILL_NET_CAP_MAX = 6
 # S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
 # Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte.
 POWERUP_CHARGES_MIN = 1
@@ -938,11 +940,13 @@ class GameConfigBase(TypedDict):
     #                                              `config.recoil !== false`. Seam for stance/flinch (also S42, not built
     #                                              here): a future switch for either can sit right beside this one.
     volume: NotRequired[int | None]              # K8: the host's match-head $VOL, an integer 60..100
-    hill: NotRequired[HillSettings]              # F559: capture time and net cap for every control station; absent = theirs
     #                                              (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
     #                                              (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
     #                                              the key. `--bench-volume` overrides this value and try-outs; without
     #                                              it, a try-out plays at VOL_TRYOUT (69), never this value.
+    hill: NotRequired[HillSettings | None]       # F559: capture time and net cap for every control station. A set key
+    #                                              wins on every arming; absent = the station keeps its own. A PUT of
+    #                                              null clears it; a mode change carries it, like `volume`.
 
 
 class GameConfig(GameConfigBase):
