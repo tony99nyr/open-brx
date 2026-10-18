@@ -561,8 +561,8 @@ export declare const T_MIN_MS: 1500000000000;
 export declare const T_MAX_MS: 4000000000000;
 export declare const PANIC_SEQUENCE: readonly ['$CLEAR,*', '$SP,99,*'];
 /** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
- *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
-export declare const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: string; readonly weapon_id?: string; readonly name: string; readonly color: string; readonly spawn_every_s: number; readonly first_at_s: number; readonly amount?: number }[];
+ *  `weapon_id`; an overshield row holds `amount`; an ammo row holds `refill`. `charges` is not here: MC fills it from the catalogue. */
+export declare const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: string; readonly weapon_id?: string; readonly name: string; readonly color: string; readonly spawn_every_s: number; readonly first_at_s: number; readonly amount?: number; readonly refill?: string }[];
 /** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
 export declare const HEALTH_PRESETS: { readonly standard: { readonly max_hp: 45; readonly max_armor: 70; readonly max_shield: 0 }; readonly shields: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 105 }; readonly hardcore: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 0 } };
 /** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
@@ -623,7 +623,7 @@ export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'contr
 export type TxPower = 'ultra_low' | 'low' | 'medium' | 'high';
 export type RangeSrc = 'station' | 'mc';
 export type RangeField = 'threshold' | 'tx_power';
-export type StationItemKind = 'weapon' | 'overshield';
+export type StationItemKind = 'weapon' | 'overshield' | 'ammo';
 export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
 /** F413: the four native $TID teams (0-3) */
 export type TeamColour = 'red' | 'blue' | 'yellow' | 'purple';
@@ -968,7 +968,8 @@ export interface PerkEffectsResolved {
 
 /** A56 (S58, docs/spec/powerups.md): what a `powerup` station grants, and when it spawns on the match clock.
  *  A weapon item grants `charges` rounds of `weapon_id` (armed at start in a spare slot, `GameConfig.powerups`);
- *  an overshield grants `amount` shield on top, hit first, no regen, gone at death. `spawn_every_s`/`first_at_s`
+ *  an overshield grants `amount` shield on top, hit first, no regen, gone at death; an ammo item tops the taker's held
+ *  slots 0 and 1 up to each slot's spawn reserve (`refill` "spawn"), never lowered, magazine kept. `spawn_every_s`/`first_at_s`
  *  are a positive integer (ARMORY's own per-station override caps `spawn_every_s` 30-240, `powerups.py`
  *  `SPAWN_EVERY_MIN`/`MAX`; the schedule mechanism itself tolerates any positive value); a spawn further off
  *  than the advert's value byte (255 s) just clamps the claim-proximity advert's remaining-seconds
@@ -979,6 +980,8 @@ export interface StationItem {
   weapon_id?: string;
   charges?: number;
   amount?: number;
+  /** ammo only: "spawn" = top slots 0 and 1 up to each slot's spawn reserve (MC ships only "spawn") */
+  refill?: string;
   spawn_every_s: number;
   first_at_s: number;
   name: string;
@@ -1624,6 +1627,8 @@ export interface Event {
   /** pickup (A56, S58): the player took a powerup station's item. Presentation and station state only; never scored. */
   station_id?: number;
   item_kind?: StationItemKind;
+  /** ammo pickup only: rounds added per slot, e.g. {"0": 12, "1": 3}; may be absent */
+  refilled?: Record<string, number>;
   /** F473: the station's advertised seconds to its NEXT spawn when the phone was granted; names the spawn the fact is about (absent from an older phone) */
   next_spawn_in_s?: number;
   /** team_change */
