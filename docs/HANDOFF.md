@@ -13,42 +13,22 @@ published. **0.4.22** (`/home/tony/apk-0.4.22`, from main `221d4fe1`, release co
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
-## Lane: field, the 2026-10-17 session (MacBook)
-**Where it is:** branch [`field-2026-10-17`](https://github.com/tony99nyr/open-brx/tree/field-2026-10-17) (`94725ca7`),
-**not landed on main**. Report: [`field-2026-10-17.md`](field-2026-10-17.md), 1256 lines, self-contained. Evidence
-bundle: **on Tony's NAS** (not attached to the issue) -- `brx-handoff-20261017.tar.gz`, 7.8 MB compressed / 63 MB
-expanded, sha256 `bd219fd42eca74253a2a43756a21df57d14517ff859ab9950a9baea89584b2f3`; also on the MacBook at
-`/Users/meg/`. **Ask Tony for the NAS path.** It is unscrubbed (callsigns, one gun id, RFC1918 addresses, a dead
-quick-tunnel host), which is why it is not on the public issue. The report
-quotes its evidence inline, so most of it is actionable without the bundle.
-**State:** Tony ran four matches outdoors and reported thirteen issues; all are root-caused or carry a named open
-question. Filed **F548-F567**.
-**Worst:** F548 -- the SMG's `$WEAP` frame is the only one in the arsenal with no `,*` terminator, and every
-diagnostic blamed the headset because `preflight.headset_ok` IS the head-echo flag (F550).
-**Confirmed on the wire:** F542 (184 assumed slot swaps vs 6 confirmed) -- **asks to be re-ranked 🔴 P0**.
-**Regressed:** F157 (the log-offer loop), which also disabled the operator's LOGS button, so there is no device log
-after 17:53 and the station nodes were never readable.
-**Reproduced in the field:** F226 (charge rifle). **Extend, do not re-file:** F157, F226, F238, F128 (move out of
-post-mvp), F445, F383, F440, F464, F537, F386.
-**Next:** the bench sheet in the report §5 (9 tests; #1 the SMG terminator and #2 the ALT swallow matrix are the two
-that matter). Then the desk fixes, upstream first: F548, F157, F566, F552.
-**Blocked:** landing needs `test:all`, which **deadlocks on macOS** (F565, `pool.mjs:29` falls back to `os.freemem()`
-and read 206 MB while ~1.5 GB was reclaimable) -- land from a Linux checkout or fix F565 first.
-**Blocked on Tony:** whether `weapon_delay_ms` 1500 becomes the default or only an option (the default re-times every
-config that omits the key -- a 1500 change was implemented, reviewed, found red across six fixtures and a dead MC
-picker, and reverted; the full recipe is in the report §3.8). Also the hill fix's shape (F554) and the recap layout
-(F561).
+## Lane: field, the 2026-10-17 session (owned by brx1 since the evening of 2026-10-17)
+**State:** the report [`field-2026-10-17.md`](field-2026-10-17.md) is on main, and every desk fix it asked for has
+landed (the field push, 2026-10-17/18: about 60 lands across brx2-brx5, Claude + Codex reviewed, a milestone review
+after). The evidence bundle is unscrubbed and stays off the repo and off public issues; ask Tony for it.
+Tony's balance calls of the push are in [`weapon-design.md`](weapon-design.md) and, from now on, in
+[`balance-decisions.md`](balance-decisions.md) through `.claude/skills/balance-review`.
+**Next:** the bench sheet [`bench-field-1017.md`](bench-field-1017.md), P1 first (the large-reserve ceiling, the SMG
+frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
+**Blocked on Tony:** F572 (the two-hill hold target) and F573 (the Sniper damage and its peek-column check).
 
 ## Lane: brx1, orchestration
-**State:** 2026-10-16: the 0.4.22 re-bench ran in part (Sittings A and C, then 0.4.23 re-checks); results are in the
-log's 2026-10-16 bench entry and on each step of `bench-rebench-0422.md`. 17 rows closed, F538 to F547 filed, other lanes
-filed F529 to F537. Tony decided: stun jams both slots, melee and swap stay allowed; heavy 45 kept for the AR; callouts
-stay immediate; hill default stays -75; a hill capture needs a close player, a fading player still contests; an
-enemy-captured hill card; Toxin pips become a bar; a rebooted gun means no death and last-known pools.
-**Next (re-bench on the next APK):** F530 (hold `0b85ad1a`), F532 (`04022a0a`), F537, F533 with a real lost write, the
-swap change (F542); then C.34, C.35, C.25, C.26, the rest of Sitting C, A.9 parts 1 and 2, A.16 to A.21; Sitting B is
-optional. Order: `bench-plan.md`. Brief the recorder with the sheet's result lines.
+**State:** 2026-10-18: ran the field push. The plan, the lanes' FIXED lines and the bench rows are in
+`/home/tony/reviews-2026-10-17/` (outside the repo); the milestone review is in the same folder.
+**Next:** the next APK cut on Tony's go, then the field bench sheet with Tony.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go.
+
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State:** 2026-10-18: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
 flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
