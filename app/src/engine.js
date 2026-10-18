@@ -521,6 +521,7 @@ function powerupHost(e) {
     weaponRow: id => e.weaponRow(id), slotCount: () => e._slotCount(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS,
     // the node's magazine account (F259/F164)
     liveAmmo: () => e.am.liveAmmo(), acctLive: slot => e.am.acctLive(slot), prevReserve: slot => e.am.prevReserve[slot],
+    spawnAmmo: () => e.am.spawnAmmo(), showSlot: slot => e.am.showSlot(slot), get reloading() { return !!e.am.reloading; },   // AMMO pickup
     recentPull: (slot, now) => { const p = e._pull; return !!(p && p.slot === slot && now - p.at < TRIGGER_NO_FIRE_MS); },
     // the engine state the module reads (never writes)
     get config() { return e.config; }, get player() { return e.player; }, get weaponName() { return e.weaponName; },
