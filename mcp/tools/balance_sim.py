@@ -509,7 +509,7 @@ class Match:
                 return
             if heat.get("vent") == "self":
                 p.heat = 0.0
-            p.last_heat_ms = t
+            p.last_heat_ms = p.heat_lock_until
             p.heat_lock_until = -1.0
             p.heat_has_locked = True
         if heat and cools_between_shots(self.cfg.effective_heat_cooling, p.heat_has_locked):
@@ -874,7 +874,7 @@ def geo_mean(xs) -> float:
 
 def rank_weapons(models: list[WeaponModel], teams: dict, duels: dict, ns,
                  anchors: dict | None = None) -> list[dict]:
-    """One line per weapon, furthest from parity first. `duel_field` is the mean 150 s kill-count win rate against the
+    """One line per weapon, furthest from parity first. `duel_field` is the mean match-length kill-count win rate against the
     weapons that share its anchor (its own slot kind), NaN when no duel ran. A pick-up-only weapon gets
     no flag."""
     anchors = anchors or {}
@@ -926,7 +926,7 @@ def summary_text(ranked: list[dict], cfg: SimConfig, anchor: str, ns, skipped: l
                      f"{num(r['team_gm'], '.2f'):>8}{num(r['team_n2'], '.2f'):>7}{num(r['team_nmax'], '.2f'):>7}"
                      f"{num(r['duel_field'], '.0%'):>11}  {note}")
     lines += ["", "DOMINATES / DOMINATED: the 95% interval of the team ratio sits above / below 1.00 at every N.",
-              "A pick-up-only weapon gets no flag. kills/1v1: mean 150 s kill-count win rate against "
+              f"A pick-up-only weapon gets no flag. kills/1v1: mean {cfg.match_ms / 1000:g} s kill-count win rate against "
               "weapons with the same anchor; '-' when that did not run.",
               "band ending in '?': no range_band on the row, counted as mid."]
     if skipped:
@@ -1608,22 +1608,30 @@ def _deagle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Rando
                      m.deagle_reload_ms, None, m.aim_factor, rng=rng, pull_ms=m.pull_ms)
 
 
-def _heated_auto_shots(shots, heat: dict, cooling: str, reload_ms: float,
-                       pull_ms: float, rng: random.Random):
-    """Apply catalogue heat to a rule combatant's already scheduled auto rounds."""
-    delay = 0.0
-    ready_at = 0.0
+def _heated_auto_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int,
+                       reload_ms: float, profile: RecoilProfile | None, aim_factor: float,
+                       heat: dict, cooling: str, pull_ms: float, rng: random.Random):
+    """Fire held-auto rounds with catalogue heat, cell reloads, and recoil releases."""
+    t = first_time
+    ammo, res = mag, reserve
+    state, burst = "crisp", 0
     heat_value = 0.0
-    last_heat_ms = None
+    last_heat_ms = first_time
     has_locked = False
-    for raw_t, hit_p, dmg in shots:
-        scheduled = raw_t + delay
-        t = max(scheduled, ready_at)
-        delay += t - scheduled
-        if last_heat_ms is not None and cools_between_shots(cooling, has_locked):
+    while True:
+        if ammo <= 0:
+            if res <= 0:
+                return
+            got = min(mag, res)
+            t += reload_ms
+            ammo, res = got, res - got
+            state, burst = "crisp", 0
+        if cools_between_shots(cooling, has_locked):
             heat_value = max(0.0, heat_value - (t - last_heat_ms) * float(heat.get("cool_per_s", 0)) / 1000.0)
         last_heat_ms = t
-        yield (t, hit_p, dmg)
+        yield (t, (_accuracy_pct(profile, state) / 100.0) * aim_factor, dmg)
+        ammo -= 1
+        state, burst = _recoil_step(profile, state, burst)
         heat_value += float(heat.get("per_shot", 0))
         if heat_value >= float(heat["lock_at"]):
             vent_ms = 0.0
@@ -1635,15 +1643,21 @@ def _heated_auto_shots(shots, heat: dict, cooling: str, reload_ms: float,
             else:
                 vent_ms = float(heat["lockout_ms"])
                 heat_value = 0.0
-            ready_at = t + vent_ms
-            last_heat_ms = ready_at
+            t += vent_ms
+            if heat.get("vent") == "lever" and res > 0:
+                got = min(mag - ammo, res)
+                ammo += got
+                res -= got
+            state, burst = "crisp", 0
+            last_heat_ms = t
             has_locked = True
+        else:
+            t += fire_ms
 
 
 def _energy_rifle_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
-    shots = _ar_shots(t, m.er_dmg, m.er_fire_ms, m.er_mag, m.er_reserve, m.er_reload_ms, m.er_profile,
-                      m.aim_factor)
-    return _heated_auto_shots(shots, dict(m.er_heat), m.heat_cooling, m.er_reload_ms, m.pull_ms, rng)
+    return _heated_auto_shots(t, m.er_dmg, m.er_fire_ms, m.er_mag, m.er_reserve, m.er_reload_ms,
+                              m.er_profile, m.aim_factor, dict(m.er_heat), m.heat_cooling, m.pull_ms, rng)
 
 
 def _suppressor_combatant(t: float, m: RecoilDuelModel, band: str, rng: random.Random):
@@ -2093,7 +2107,8 @@ def main(argv=None) -> int:
                  f"pool {pool.health}/{pool.armour}/{pool.shield}, respawn {pool.respawn_ms / 1000:g} s, venue "
                  f"{cfg.venue}, range {'on' if cfg.range_model else 'off'}, tactical reload "
                  f"{'on' if cfg.tactical_reload else 'off'}, N {ns[0]}..{ns[-1]}", "",
-                 f"{'params':<50}{'team gm':>8}{'N=' + str(ns[0]):>7}{'N=' + str(ns[-1]):>7}{'150s 1v1':>9}{'dot kills':>10}"]
+                 f"{'params':<50}{'team gm':>8}{'N=' + str(ns[0]):>7}{'N=' + str(ns[-1]):>7}"
+                 f"{f'{cfg.match_ms / 1000:g}s 1v1':>9}{'dot kills':>10}"]
         for _dist, params, gm, d in results[:25]:
             t = d["team"]
             kt = sum(r.kills_test for r in t)
