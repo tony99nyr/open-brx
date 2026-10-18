@@ -462,6 +462,7 @@ pickTeams={pickTeams} />
                     const kothLegal = cfg.mode !== 'koth' || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
                     if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
                     if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
+                    if (lm.hill && (!items || items.includes('hill'))) patch.hill = lm.hill;   // F559
                     const r = await run(() => api.pick({ match: patch }));
                     if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallback(r.fallbacks)); }
                     else if (r) setNotice(r.errors.join(' · '), true);

@@ -1,3 +1,4 @@
+import { HillReadout } from '../ui/HillReadout';
 import { useEffect, useRef, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
 import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_ID, blocksPush, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, splitBlocker } from '../api/derive';
@@ -308,6 +309,7 @@ export function Lobby() {
           ))}
         </div>
       )}
+      <HillReadout config={state.config} style={{ marginBottom: 12 }} />
       {rosterFault && (
         <Alert id="lobby-roster-fault-tag" testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>{alertWords(rosterFault)}</span>

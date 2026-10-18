@@ -1,0 +1,170 @@
+// F559 console: CAPTURE TIME and NET CAP on the PLAY strip (KOTH only), and the one-line readout on LOBBY and ITEMS.
+import { act } from 'react';
+import { afterEach, describe, expect, it } from 'vitest';
+import type { Api } from '../src/api/types';
+import { HILL_CAPTURE_S, HILL_NET_CAP } from '../src/api/contract.gen';
+import { MockBackend } from '../src/mock/backend';
+import { clearNotice, useNotice } from '../src/notice';
+import { resetBaseline } from '../src/playBaseline';
+import { Games } from '../src/screens/Games';
+import { HillControl } from '../src/screens/games/controls';
+import { Items } from '../src/screens/Items';
+import { Lobby } from '../src/screens/Lobby';
+import { StoreCtx } from '../src/store';
+import { fixtureApi, makeStore, mount, mountScreen } from './harness';
+
+afterEach(() => { clearNotice(); resetBaseline(); });
+
+const txt = (m: { find(s: string): HTMLElement[] }, id: string) => m.find(`[data-testid="${id}"]`)[0]?.textContent;
+const btn = (m: { find(s: string): HTMLElement[] }, label: string) => m.find(`button[aria-label="${label}"]`)[0] as HTMLButtonElement;
+
+describe('HillControl', () => {
+  it('starts at STATION DEFAULT, steps from the station default, and CLEAR returns to it', async () => {
+    const calls: unknown[] = [];
+    let hill: { capture_s?: number; net_cap?: number } | undefined;
+    const view = () => <HillControl hill={hill} onChange={p => { calls.push(p); hill = { ...hill, ...p } as typeof hill; }} />;
+    const m = await mount(view());
+    expect(txt(m, 'match-hill-capture-value')).toBe('STATION DEFAULT');
+    expect(txt(m, 'match-hill-net-value')).toBe('STATION DEFAULT');
+    expect(btn(m, 'hill capture time clear').disabled, 'nothing to clear yet').toBe(true);
+    await act(async () => { btn(m, 'hill capture time plus').click(); });
+    await act(async () => { btn(m, 'hill net cap plus').click(); });
+    expect(calls).toEqual([{ capture_s: HILL_CAPTURE_S + 1 }, { net_cap: HILL_NET_CAP + 1 }]);
+    await m.update(view());
+    expect(txt(m, 'match-hill-capture-value')).toBe('11 S');
+    expect(txt(m, 'match-hill-net-value')).toBe('4');
+    await act(async () => { btn(m, 'hill capture time minus').click(); });
+    expect(calls[2]).toEqual({ capture_s: HILL_CAPTURE_S });
+    await act(async () => { btn(m, 'hill net cap clear').click(); });
+    expect(calls[3]).toEqual({ net_cap: null });
+    await m.update(view());
+    expect(txt(m, 'match-hill-net-value')).toBe('STATION DEFAULT');
+    m.unmount();
+  });
+
+  it('a minus from STATION DEFAULT starts one below the default, and the bounds disable the steppers', async () => {
+    const calls: unknown[] = [];
+    const m = await mount(<HillControl hill={undefined} onChange={p => calls.push(p)} />);
+    await act(async () => { btn(m, 'hill capture time minus').click(); });
+    expect(calls).toEqual([{ capture_s: HILL_CAPTURE_S - 1 }]);
+    await m.update(<HillControl hill={{ capture_s: 60, net_cap: 1 }} onChange={() => {}} />);
+    expect(btn(m, 'hill capture time plus').disabled).toBe(true);
+    expect(btn(m, 'hill net cap minus').disabled).toBe(true);
+    m.unmount();
+  });
+});
+
+async function renderPlay(api: MockBackend) {
+  const state = await api.getState();
+  const weapons = await api.getWeapons(), perks = await api.getPerks(), modes = await api.getModes();
+  const store = makeStore({ state, weapons, perks, view: 'build' }, { api, modes });
+  function Probe() { const n = useNotice(); return <span data-testid="notice-probe">{n?.text ?? ''}</span>; }
+  return mount(<StoreCtx.Provider value={store}><Games /><Probe /></StoreCtx.Provider>);
+}
+
+describe('PLAY — the HILL strip item', () => {
+  it('is absent on TDM and present on KOTH', async () => {
+    const tdm = await renderPlay(new MockBackend());
+    expect(tdm.find('[data-testid="match-hill-item"]').length).toBe(0);
+    tdm.unmount();
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const m = await renderPlay(api);
+    expect(txt(m, 'match-hill-capture-value')).toBe('STATION DEFAULT');
+    m.unmount();
+  });
+
+  it('+ reaches the server as hill.capture_s 11, and CLEAR on the last key sends the hill away', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const m = await renderPlay(api);
+    await act(async () => { btn(m, 'hill capture time plus').click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.hill).toEqual({ capture_s: 11 });
+    m.unmount();
+    const m2 = await renderPlay(api);
+    expect(txt(m2, 'match-hill-capture-value')).toBe('11 S');
+    await act(async () => { btn(m2, 'hill capture time clear').click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.hill).toBeUndefined();
+    m2.unmount();
+  });
+
+  it('a refused pick (ok: false) surfaces its words in the notice bar, never a silent catch', async () => {
+    const real = new MockBackend();
+    await real.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const state = await real.getState();
+    const weapons = await real.getWeapons(), perks = await real.getPerks(), modes = await real.getModes();
+    const api = fixtureApi({
+      pick: async () => ({ ok: false, errors: ['CAPTURE TIME REFUSED BY THE TEST'], config: state.config, pick: state.game_pick!, fallbacks: [] }),
+    }, real as unknown as Api);
+    const store = makeStore({ state, weapons, perks, view: 'build' }, { api, modes });
+    function Probe() { const n = useNotice(); return <span data-testid="notice-probe">{n?.text ?? ''}</span>; }
+    const m = await mount(<StoreCtx.Provider value={store}><Games /><Probe /></StoreCtx.Provider>);
+    await act(async () => { btn(m, 'hill capture time plus').click(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(txt(m, 'notice-probe')).toContain('CAPTURE TIME REFUSED');
+    m.unmount();
+  });
+
+  it('the mock clears one key with a null and keeps the other, and a null hill clears both', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hill: { capture_s: 15, net_cap: 4 } } });
+    expect((await api.getState()).config.hill).toEqual({ capture_s: 15, net_cap: 4 });
+    await api.pick({ match: { hill: { capture_s: null } as never } });
+    expect((await api.getState()).config.hill).toEqual({ net_cap: 4 });
+    await api.pick({ match: { hill: null as never } });
+    expect((await api.getState()).config.hill).toBeUndefined();
+  });
+
+  it('the mock refuses what the server refuses, with the server words', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    for (const bad of [{ capture_s: 2 }, { capture_s: 61 }, { net_cap: 0 }, { net_cap: 7 }, { capture_s: 1.5 }]) {
+      await expect(api.pick({ match: { hill: bad } })).rejects.toThrow(/MUST BE A WHOLE NUMBER/);
+    }
+    await expect(api.pick({ match: { hill: { x: 1 } as never } })).rejects.toThrow(/NOT A HILL SETTING/);
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' }, match: { hill: { capture_s: 30 } } });
+    expect((await api.getState()).config.hill, 'a mode without the item never takes one').toBeUndefined();
+  });
+});
+
+describe('LOBBY and ITEMS — the hill values in force', () => {
+  async function kothState(hill?: { capture_s?: number; net_cap?: number }, mode = 'koth') {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: `builtin:mode:${mode}` } });
+    if (hill) await api.pick({ match: { hill } });
+    const s = await api.getState();
+    return { api, state: hill ? s : { ...s, config: { ...s.config, hill: undefined } } };
+  }
+
+  it('LOBBY reads the set values and STATION DEFAULT for an absent key', async () => {
+    const { api, state } = await kothState({ capture_s: 15 });
+    const m = await mountScreen(<Lobby />, { state, view: 'lobby', api: fixtureApi({}, api as unknown as Api) });
+    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE 15 S · NET CAP STATION DEFAULT');
+    m.unmount();
+  });
+
+  it('LOBBY renders against an older server with no config.hill, and shows nothing outside KOTH', async () => {
+    const { state } = await kothState();
+    const m = await mountScreen(<Lobby />, { state, view: 'lobby' });
+    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE STATION DEFAULT · NET CAP STATION DEFAULT');
+    m.unmount();
+    const t = await kothState(undefined, 'tdm');
+    const m2 = await mountScreen(<Lobby />, { state: t.state, view: 'lobby' });
+    expect(m2.find('[data-testid="hill-readout"]').length).toBe(0);
+    m2.unmount();
+  });
+
+  it('ITEMS shows the same line for KOTH and nothing for TDM', async () => {
+    const { state } = await kothState({ capture_s: 15, net_cap: 4 });
+    const m = await mountScreen(<Items />, { state, view: 'muster' });
+    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE 15 S · NET CAP 4');
+    m.unmount();
+    const t = await kothState(undefined, 'tdm');
+    const m2 = await mountScreen(<Items />, { state: t.state, view: 'muster' });
+    expect(m2.find('[data-testid="items-panel"]').length, 'the panel itself renders').toBe(1);
+    expect(m2.find('[data-testid="hill-readout"]').length).toBe(0);
+    m2.unmount();
+  });
+});

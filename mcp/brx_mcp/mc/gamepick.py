@@ -12,7 +12,7 @@ from typing import Any, Container, Mapping, cast
 from ..modes.registry import default_params as _default_params
 from . import presentation as _pres
 from .pieces import BUILTIN_IDS, PieceError, PieceStore
-from .types import OBJECTIVE_MODES, GamePick, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS, Team, TeamColour
+from .types import HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, OBJECTIVE_MODES, GamePick, HillSettings, GamePiece, MatchSettings, PieceKind, PIECE_KINDS, TEAM_COUNT_MAX, TEAM_COUNT_MIN, TEAM_KEYS, Team, TeamColour
 
 # F413 (2026-09-27): the closed vocabulary `match.teams` picks from -- "ffa" is a pseudo-team (the
 # no-teams sentinel `state.TEAM_DEFS` also carries), never a real choice on the strip, so it is
@@ -78,7 +78,25 @@ def match_from_config(config: Mapping[str, Any]) -> MatchSettings:
     hold = (config.get("scoring") or {}).get("hold_target_s")
     if hold is not None:
         out["hold_target_s"] = hold
+    hill = _hill_clean(config.get("hill"))
+    if hill:
+        out["hill"] = hill
     return out
+
+
+_HILL_BOUNDS = {"capture_s": (HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), "net_cap": (HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)}
+
+
+def hill_valid(v: object) -> bool:
+    """F559: `{capture_s?, net_cap?}`, only those keys, each a whole number (never a bool) in its bound."""
+    return (isinstance(v, dict) and all(
+        k in _HILL_BOUNDS and isinstance(x, int) and not isinstance(x, bool) and _HILL_BOUNDS[k][0] <= x <= _HILL_BOUNDS[k][1]
+        for k, x in v.items()))
+
+
+def _hill_clean(v: object) -> HillSettings:
+    """The set keys of a stored hill, or {} for nothing usable."""
+    return cast(HillSettings, dict(v)) if hill_valid(v) else {}
 
 
 def looks_like_pick(gp: object) -> bool:
@@ -99,6 +117,9 @@ def looks_like_pick(gp: object) -> bool:
             return False
     # F413: absent is fine (FFA/LMS carry no teams at all), but present must be 2-4 unique native colours.
     if "teams" in match and not _valid_teams_list(match["teams"]):
+        return False
+    # F559: absent is fine, present must be a valid hill.
+    if "hill" in match and not hill_valid(match["hill"]):
         return False
     return True
 
@@ -271,6 +292,31 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
             out.pop("hold_target_s", None)
         else:
             out["hold_target_s"] = hts
+    # F559: KOTH's hill tuning. null clears all; a key set to null clears that key; each key is a whole number in
+    # range. Shape and range are checked here (the same bounds `config_merge._hill` enforces on the composed patch).
+    if "hill" in patch:
+        v = patch["hill"]
+        if v is None:
+            out.pop("hill", None)
+        else:
+            if not isinstance(v, Mapping):
+                raise PieceError(400, "HILL SETTINGS MUST BE AN OBJECT OR EMPTY: CHECK THE REQUEST")
+            hill = dict(out.get("hill") or {})
+            for k, x in v.items():
+                if k not in _HILL_BOUNDS:
+                    raise PieceError(400, f"{str(k).upper()} IS NOT A HILL SETTING: USE CAPTURE_S OR NET_CAP")
+                if x is None:
+                    hill.pop(k, None)
+                    continue
+                lo, hi = _HILL_BOUNDS[k]
+                if isinstance(x, bool) or not isinstance(x, int) or not lo <= x <= hi:
+                    label = "CAPTURE TIME" if k == "capture_s" else "NET CAP"
+                    raise PieceError(400, f"{label} MUST BE A WHOLE NUMBER {lo}-{hi}: CHECK THE VALUE")
+                hill[k] = x
+            if hill:
+                out["hill"] = hill
+            else:
+                out.pop("hill", None)
     return cast(MatchSettings, out)
 
 
@@ -324,6 +370,13 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     hold = match.get("hold_target_s")
     if "hold" in (mode_row.get("match_items") or []):
         patch["scoring"]["hold_target_s"] = hold
+    # F559: the same rule for the hill tuning. Written (None included) whenever the mode offers it, so PLAY with no hill
+    # clears `config.hill`; a mode without it never gets one (`_hill` would carry it across a mode change otherwise).
+    if "hill" in (mode_row.get("match_items") or []):
+        # Every key is named (None for an unset one): `config_merge._hill` keeps a key a patch leaves out, so a key the
+        # strip cleared must go across as an explicit null.
+        hill = match.get("hill") or {}
+        patch["hill"] = {"capture_s": hill.get("capture_s"), "net_cap": hill.get("net_cap")} if hill else None
     patch["night"] = bool(match.get("night"))
     patch["presentation"] = (_pres.profile_from_preset("silenced") if match.get("silenced")
                              else _pres.profile_from_preset(mode_row.get("preset") or "standard"))

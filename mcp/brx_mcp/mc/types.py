@@ -1162,7 +1162,7 @@ TEAM_INK_HEX = ("#1a0404", "#04121e", "#1a1400", "#140a1c")
 # A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag).
 ROLE_LABELS = {"assault": "ASSAULT", "cqb": "CLOSE RANGE", "marksman": "SNIPER", "support": "SUPPORT",
                "power": "HEAVY", "melee": "MELEE", "sidearm": "SIDEARM"}
-MatchItemKey = Literal["time", "kills", "countdown", "daynight", "silenced", "teams", "hold"]
+MatchItemKey = Literal["time", "kills", "countdown", "daynight", "silenced", "teams", "hold", "hill"]
 
 
 class MatchSettings(TypedDict):
@@ -1175,6 +1175,7 @@ class MatchSettings(TypedDict):
     # for a mode without teams (FFA). The count is the list's length.
     teams: NotRequired[list[TeamColour]]
     hold_target_s: NotRequired[int | None]   # F415: KOTH's hold target (see Scoring.hold_target_s)
+    hill: NotRequired[HillSettings]          # F559: KOTH only. A set key goes to every control station; absent = the station default
 
 
 class LastMatch(MatchSettings):

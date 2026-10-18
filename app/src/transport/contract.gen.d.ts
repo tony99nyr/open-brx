@@ -627,7 +627,7 @@ export type StationItemKind = 'weapon' | 'overshield';
 export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
 /** F413: the four native $TID teams (0-3) */
 export type TeamColour = 'red' | 'blue' | 'yellow' | 'purple';
-export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold';
+export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold' | 'hill';
 export type StationDepartureReason = 'back_to_hud' | 'released';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
@@ -1458,6 +1458,8 @@ export interface MatchSettings {
   teams?: TeamColour[];
   /** F415: KOTH's hold target (see Scoring.hold_target_s) */
   hold_target_s?: number | null;
+  /** F559: KOTH only. A set key goes to every control station; absent = the station default */
+  hill?: HillSettings;
 }
 
 /** F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart. */
@@ -1468,6 +1470,7 @@ export interface LastMatch {
   silenced: boolean;
   teams?: TeamColour[];
   hold_target_s?: number | null;
+  hill?: HillSettings;
   countdown_s: number;
 }
 

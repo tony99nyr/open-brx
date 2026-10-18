@@ -1222,3 +1222,99 @@ def test_a_pistols_only_primary_players_pick_is_accepted_picked_and_compiles():
         assert sorted(s.loadout_pool()["primary"]) == ["deagle", "usp"], s.loadout_pool()["primary"]
         assert all(p["loadout"]["weapons"][0]["weapon_id"] in ("usp", "deagle") for p in s.players.values())
         s.push_config(force=True)
+
+
+# ---------------------------------------------------------------- F559 console (hill capture time and net cap)
+def test_f559_compose_writes_hill_only_for_a_mode_that_offers_one_and_none_clears():
+    st, _ = _store()
+    patch = G.compose(_resolved(st), _match(hill={"capture_s": 15, "net_cap": 4}), _mode_row("koth"), TEAM_DEFS)
+    assert patch["hill"] == {"capture_s": 15, "net_cap": 4}, patch.get("hill")
+    patch = G.compose(_resolved(st), _match(hill={"net_cap": 4}), _mode_row("koth"), TEAM_DEFS)
+    assert patch["hill"] == {"capture_s": None, "net_cap": 4}, patch.get("hill")   # the unset key crosses as a null
+    patch = G.compose(_resolved(st), _match(), _mode_row("koth"), TEAM_DEFS)
+    assert "hill" in patch and patch["hill"] is None, patch      # written as None so PLAY clears config.hill
+    patch = G.compose(_resolved(st), _match(hill={"capture_s": 15}), _mode_row("tdm"), TEAM_DEFS)
+    assert "hill" not in patch, patch                             # a stale hill never reaches a mode without one
+
+
+def test_f559_merge_match_validates_hill():
+    base = _match()
+    m = G.merge_match(base, {"hill": {"capture_s": 20}})
+    assert m["hill"] == {"capture_s": 20}
+    m = G.merge_match(m, {"hill": {"net_cap": 4}})
+    assert m["hill"] == {"capture_s": 20, "net_cap": 4}
+    m = G.merge_match(m, {"hill": {"capture_s": None}})
+    assert m["hill"] == {"net_cap": 4}
+    m = G.merge_match(m, {"hill": {"net_cap": None}})
+    assert "hill" not in m
+    m = G.merge_match(G.merge_match(base, {"hill": {"capture_s": 20}}), {"hill": None})
+    assert "hill" not in m
+    for bad in ({"capture_s": 2}, {"capture_s": 61}, {"net_cap": 0}, {"net_cap": 7}, {"capture_s": 5.5}, {"capture_s": True},
+                {"capture_s": "9"}, {"wobble": 3}, "fast", 5):
+        try:
+            G.merge_match(base, {"hill": bad})
+            raise AssertionError(f"F559: hill {bad!r} was accepted")
+        except PieceError as e:
+            assert e.status == 400, e
+
+
+def test_f559_looks_like_pick_accepts_an_absent_or_valid_hill_and_rejects_a_bad_one():
+    st, _ = _store()
+    pick = {"pieces": dict(BUILTIN_IDS), "match": _match()}
+    assert G.looks_like_pick(pick)
+    pick["match"]["hill"] = {"capture_s": 15, "net_cap": 4}
+    assert G.looks_like_pick(pick)
+    for bad in ({"capture_s": True}, {"net_cap": 9}, {"x": 1}, "no", [1]):
+        pick["match"]["hill"] = bad
+        assert not G.looks_like_pick(pick), bad
+
+
+def test_f559_match_from_config_carries_the_hill_and_omits_an_absent_one():
+    cfg = default_config("koth")
+    assert "hill" not in G.match_from_config(cfg)
+    cfg["hill"] = {"net_cap": 5}
+    assert G.match_from_config(cfg)["hill"] == {"net_cap": 5}
+
+
+def test_f559_koth_offers_the_hill_item_and_no_other_mode_does():
+    assert [m["mode"] for m in MODES if "hill" in (m.get("match_items") or [])] == ["koth"]
+
+
+def test_f559_a_play_pick_with_hill_reaches_the_config_and_the_control_station_and_null_clears():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hill": {"capture_s": 15, "net_cap": 4}}})
+    assert r.status_code == 200 and r.json()["ok"], r.json()
+    assert s.config["hill"] == {"capture_s": 15, "net_cap": 4} and s.game_pick["match"]["hill"] == {"capture_s": 15, "net_cap": 4}
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    s.station_registry.arm_stations()
+    body = [b for n, k, b in net.pushed if k == "station_config" and n == "util-hill"][-1]
+    assert body["capture_s"] == 15 and body["net_cap"] == 4, body
+    # one key cleared: the other stays
+    r = c.post("/api/play/pick", json={"match": {"hill": {"capture_s": None}}})
+    assert r.json()["ok"] and s.config["hill"] == {"net_cap": 4}, s.config.get("hill")
+    # null clears all
+    r = c.post("/api/play/pick", json={"match": {"hill": None}})
+    assert r.json()["ok"] and "hill" not in s.config and "hill" not in s.game_pick["match"], s.config.get("hill")
+    # a later pick that never names it keeps it cleared
+    r = c.post("/api/play/pick", json={"match": {"frag_limit": 10}})
+    assert "hill" not in s.config
+
+
+def test_f559_a_bad_hill_pick_is_refused_400_and_a_non_koth_pick_never_writes_one():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hill": {"net_cap": 2}}})
+    for bad in ({"capture_s": 99}, {"net_cap": True}, {"capture_s": 2.5}):
+        r = c.post("/api/play/pick", json={"match": {"hill": bad}})
+        assert r.status_code == 400, (bad, r.status_code)
+    assert s.config["hill"] == {"net_cap": 2}                      # a refused pick changes nothing
+    # switching to TDM drops the pick's hill, so TDM carries none in its pick
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:tdm"}})
+    assert r.json()["ok"]
+    assert "hill" not in s.game_pick["match"], s.game_pick["match"]
+    # naming one on a TDM pick is accepted as a pick value but compose never writes it
+    r = c.post("/api/play/pick", json={"match": {"hill": {"capture_s": 30}}})
+    assert r.json()["ok"], r.json()
+    assert s.config.get("hill") != {"capture_s": 30}, s.config.get("hill")

@@ -6,6 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
+import { HillReadout } from '../ui/HillReadout';
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
 import { STATION_KINDS } from '../api/types';
@@ -107,6 +108,7 @@ export function Items() {
       )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+      <HillReadout config={state.config} style={{ marginBottom: 10 }} />
       {awayBlock}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
         {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is

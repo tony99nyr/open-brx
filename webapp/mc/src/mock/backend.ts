@@ -1,7 +1,7 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
   Api, ConfigView, PowerupPreset, PowerupsView, Coverage, FeedEntry, Favourite, GameConfig, GamePick, GamePiece, LanPublic, LastMatch, LiveRow, LiveView, Loadout, LoadoutPolicy, LogView,
-  MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
+  HillSettings, MatchHistoryRow, MatchSettings, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, PieceKind, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationDeparture, StationItem, StationKind,
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
@@ -1787,6 +1787,23 @@ export class MockBackend implements Api {
     if (!Number.isInteger(v)) throw Object.assign(new Error('HOLD TARGET MUST BE A WHOLE NUMBER OR EMPTY: CHECK THE VALUE'), { status: 400 });
     return v as number;
   }
+  /** gamepick.merge_match's `hill` branch: null clears all, a null key clears that key, each set key a whole number in range. */
+  private mergeHillPatch(prev: HillSettings | undefined, v: unknown): HillSettings | undefined {
+    if (v === null) return undefined;
+    if (typeof v !== 'object' || Array.isArray(v)) throw Object.assign(new Error('HILL SETTINGS MUST BE AN OBJECT OR EMPTY: CHECK THE REQUEST'), { status: 400 });
+    const bounds: Record<string, [number, number]> = { capture_s: [HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX], net_cap: [HILL_NET_CAP_MIN, HILL_NET_CAP_MAX] };
+    const hill: Record<string, number> = { ...(prev ?? {}) };
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (!(k in bounds)) throw Object.assign(new Error(`${k.toUpperCase()} IS NOT A HILL SETTING: USE CAPTURE_S OR NET_CAP`), { status: 400 });
+      if (x == null) { delete hill[k]; continue; }
+      const [lo, hi] = bounds[k];
+      if (typeof x !== 'number' || !Number.isInteger(x) || x < lo || x > hi) {
+        throw Object.assign(new Error(`${k === 'capture_s' ? 'CAPTURE TIME' : 'NET CAP'} MUST BE A WHOLE NUMBER ${lo}-${hi}: CHECK THE VALUE`), { status: 400 });
+      }
+      hill[k] = x;
+    }
+    return Object.keys(hill).length ? hill as HillSettings : undefined;
+  }
   private composePartial(pieceIds: Record<string, string>, match: MatchSettings, resetModeParams = true): Partial<GameConfig> {
     const valueOf = <T,>(kind: PieceKind) => this.pieces.find(x => x.piece_id === pieceIds[kind])!.value as T;
     const modeV = valueOf<{ mode: string }>('mode');
@@ -1821,6 +1838,9 @@ export class MockBackend implements Api {
       scoring: { win_by: modeInfo.defaults.scoring.win_by, frag_limit: match.frag_limit,
         ...(modeInfo.match_items?.includes('hold') ? { hold_target_s: match.hold_target_s ?? null } : {}) },
       night: match.night,
+      // gamepick.compose, F559: written whenever the mode offers it (null clears), every key named so a cleared one crosses as null.
+      ...(modeInfo.match_items?.includes('hill')
+        ? { hill: match.hill ? { capture_s: match.hill.capture_s ?? null, net_cap: match.hill.net_cap ?? null } as unknown as HillSettings : null } : {}),
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: { preset: match.silenced ? 'silenced' : String(modeInfo.defaults.presentation?.preset ?? 'standard') },
       environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
@@ -1870,6 +1890,7 @@ export class MockBackend implements Api {
             ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
         : undefined;
       delete match.hold_target_s;
+      delete match.hill;   // F559: the same reset (picks.py)
     }
     const pm = p.match ?? {};
     if ('time_limit_s' in pm) {
@@ -1890,6 +1911,11 @@ export class MockBackend implements Api {
       const hold = this.checkHoldTargetShape(pm.hold_target_s);
       if (hold == null) delete match.hold_target_s;
       else match.hold_target_s = hold;
+    }
+
+    if ('hill' in pm) {
+      const hill = this.mergeHillPatch(match.hill, pm.hill);
+      if (hill) match.hill = hill; else delete match.hill;
     }
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
@@ -2215,6 +2241,7 @@ export class MockBackend implements Api {
       ...(this.config.teams.some(t => t.team_id !== 'ffa')
         ? { teams: this.config.teams.map(t => t.team_id as TeamColour) } : {}),
       ...(this.config.scoring.hold_target_s != null ? { hold_target_s: this.config.scoring.hold_target_s } : {}),
+      ...(this.config.hill && Object.keys(this.config.hill).length ? { hill: { ...this.config.hill } } : {}),   // gamepick.match_from_config, F559
     };
     if (this.config.mode) this.gamePick.pieces.mode = `builtin:mode:${this.config.mode}`;
     this.cfgErrors = errors;

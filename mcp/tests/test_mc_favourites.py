@@ -324,3 +324,26 @@ def test_medium5_messages_are_all_caps_what_colon_do():
         assert False
     except FavouriteError as e:
         assert str(e) == "FAVOURITE NOT FOUND: IT MAY HAVE BEEN DELETED"
+
+
+def test_f559_a_favourite_saves_and_reloads_hill_and_refuses_a_bad_one():
+    needs(HAVE, "starlette + httpx")
+    st, _ = _store()
+    row = st.create("Fast Hill", 30, _pick(hill={"capture_s": 15, "net_cap": 4}))
+    assert row["pick"]["match"]["hill"] == {"capture_s": 15, "net_cap": 4}
+    assert "hill" not in st.create("No Hill", 30, _pick())["pick"]["match"]
+    for bad in ({"capture_s": True}, {"net_cap": 99}, {"x": 1}, "fast"):
+        try:
+            st.create("Bad Hill", 30, _pick(hill=bad)); assert False, bad
+        except FavouriteError as e:
+            assert e.status == 400 and "HILL" in str(e), (bad, e)
+    # round trip through the routes: save with a hill, clear it, LOAD brings it back
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hill": {"capture_s": 15}}})
+    assert r.json()["ok"], r.json()
+    fav = c.post("/api/favourites", json={"name": "Fast Hill", "countdown_s": 20}).json()
+    assert fav["pick"]["match"]["hill"] == {"capture_s": 15}
+    c.post("/api/play/pick", json={"match": {"hill": None}})
+    assert "hill" not in s.config
+    r2 = c.post(f"/api/favourites/{fav['favourite_id']}/load")
+    assert r2.json()["ok"] and s.config["hill"] == {"capture_s": 15}, r2.json()
