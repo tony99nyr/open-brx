@@ -26,8 +26,8 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F545**
 
-**MVP DECISION (4),** awaiting Tony:
-- 🟠 **F391** · **F572**
+**MVP DECISION (5),** awaiting Tony:
+- 🟠 **F391** · **F572** · **F575**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
@@ -35,7 +35,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F575 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F576 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -318,6 +318,8 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 ## MVP DECISION: awaiting Tony
 
 Tony's call. Each row says what the answer unblocks.
+
+- **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim models heat, so every Charge Rifle verdict so far missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call.
 
 - **F572 🟠 THE TWO-HILL HOLD TARGET: THE SUM ACROSS HILLS, OR PER HILL?** brx3 asked brx1 on 2026-10-18 (F556's console half, `b7715848f`). In a two-hill KOTH match, does the hold target count (a) the time held summed across both hills (today's code; brx1's and brx3's recommendation) or (b) the time held on any one hill? The answer unblocks the hold-target copy on LIVE, RECAP and SPECTATE and the scorer's win check. Owner brx3 (MC). `decision`.
 

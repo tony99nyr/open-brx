@@ -582,8 +582,7 @@ def test_weapon_views_follow_the_hosts_health_config():
     # F291 (2026-09-23): tap damage 20 -> 16 (wire.tap_dmg, t37) moves this table at the higher pools --
     # 150 and 200 no longer divide evenly by 20, so they cost one more tap each (5->6, 8->10); 100 and
     # 115 are unchanged (30 and 45 still close in 2 and 3 taps of 16, same as they did of 20).
-    # 2026-10-17 (Tony): charge 70 -> 55 and tap 16 -> 14: one charge plus ceil((pool - 55) / 14) taps.
-    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [5, 6, 8, 12]
+    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [3, 4, 6, 10]
     # and TTK moves with it, or the ARSENAL's TIME TO KILL column is decoration
     assert at[200]["assault_rifle"]["ttk_ms"] > at[115]["assault_rifle"]["ttk_ms"]
 

@@ -124,7 +124,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 93,
       "ammo": 77,
-      "ttk": 100
+      "ttk": 93
     }
   },
   {
@@ -186,16 +186,16 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold it, and it holds. A full charge and five taps ends anyone, which is why it belongs to whoever saw the other person first.",
+    "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
     "clip": 40,
     "mags": 4,
     "reserve": 160,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 48,
+    "dmg": 61,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 55,
+    "dmg_per_hit": 70,
     "dual_emitter": false,
     "reload_type": "magazine",
     "pool": 115,
@@ -209,8 +209,8 @@ export const WEAPONS: WeaponView[] = [
       "rifle",
       "long"
     ],
-    "htk": 6,
-    "ttk_ms": 1425,
+    "htk": 4,
+    "ttk_ms": 855,
     "rounds_per_charge": 10,
     "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
@@ -220,19 +220,19 @@ export const WEAPONS: WeaponView[] = [
       "recover_ms": 0
     },
     "hir": [
-      14,
-      55
+      16,
+      70
     ],
     "cells": [
       {
         "proto": 8,
         "subtype": 0,
-        "mag": 14
+        "mag": 16
       },
       {
         "proto": 8,
         "subtype": 0,
-        "mag": 55
+        "mag": 70
       }
     ],
     "ammo_total": 200,
@@ -240,7 +240,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 82,
       "rof": 27,
       "ammo": 60,
-      "ttk": 80
+      "ttk": 100
     }
   },
   {
@@ -402,7 +402,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 100
+      "ttk": 93
     }
   },
   {
@@ -514,7 +514,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 73,
       "rof": 47,
       "ammo": 37,
-      "ttk": 93
+      "ttk": 87
     }
   },
   {
@@ -573,7 +573,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 38,
       "rof": 93,
       "ammo": 89,
-      "ttk": 100
+      "ttk": 93
     }
   },
   {
@@ -738,7 +738,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 20,
       "rof": 80,
       "ammo": 54,
-      "ttk": 87
+      "ttk": 80
     }
   },
   {

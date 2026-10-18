@@ -41,6 +41,10 @@ not as a field result.
   and CR+Sniper+BA lose their last near-top cell. The Charge Rifle keeps its long range: t2 sets the carrier
   frequency, so a range-band trim cannot ship. On Shields, the bolt Sniper wins only 35% of open mid-range
   fights, by design: it must peek.
+- The verdict ran with the Charge Rifle at 55/14 in "with". That half was withdrawn before it shipped, for the
+  heat budget: a full charge costs +56 heat, a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool
+  needs 126 heat and the gun locks out after 111 damage. Neither sim models heat. The Charge Rifle stays at 70/16
+  until Tony picks its numbers (F575: 73/14 or 70/16).
 
 | test | result | numbers |
 |---|---|---|
