@@ -74,9 +74,9 @@ export const WEAPON_TYPES: { id: string; label: string }[] = [
   { id: 'support', label: 'SUPPORT' },
 ];
 
-/** Which of the five types actually have a weapon in THIS catalogue, in `WEAPON_TYPES` order. PRIMARY's
- *  catalogue never carries a sidearm-only row (the sidearm role is excluded from it upstream), so its
- *  row simply never shows a SIDEARM toggle — nothing here has to know that rule specially. */
+/** Which of the five types actually have a weapon in THIS catalogue, in `WEAPON_TYPES` order. Since field 2026-10-17
+ *  PRIMARY's catalogue carries the pistols too (a pistols-only round), so its row shows a SIDEARM toggle; a support
+ *  weapon is still kept out upstream, so SUPPORT never shows there. Nothing here has to know either rule. */
 export function typesOf(items: ClassableItem[]): string[] {
   const present = new Set(items.flatMap(i => i.types ?? []));
   return WEAPON_TYPES.map(t => t.id).filter(id => present.has(id));

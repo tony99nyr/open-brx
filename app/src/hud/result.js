@@ -15,6 +15,8 @@ export const recapLegend = (keys, night) => keys.length ? `<div class="mleg" rol
   return `<span class="mlg" role="listitem" data-medal="${esc(k)}">${recapIcon(k, RECAP_ICON_PX, night, l)}<em>${esc(l)}</em></span>`; }).join('')}</div>` : '';
 /** Review of medal-icons (M1): the stat tiles repeat my own board row, so PLAYERS hides them only when that row is
  *  there (MC may send no rows, or none for me). AWARDS always hides them. */
+/** F561 review: the honours strip shows this many holders, then +N MORE (16-character names: three fit at 667 px). */
+export const HONOR_HOLDERS_SHOWN = 3;
 export const recapTilesHidden = (tab, rows, myId) => tab === 'awards' || (tab === 'player' && !!myId && rows.some(r => r && r.player_id === myId));
 /** SHOTS is the one tile no board column carries; with the tiles hidden it goes on the meta line. When the tiles
  *  showed YOUR TEAM HELD instead (a mode with a point), HELD has its own strip and SHOTS was not shown either. */
@@ -153,7 +155,7 @@ export function _result(st) {
     } else {
       const cell = (r, k) => num(r[k]) == null ? '—' : r[k];
       body = `<div class="rlb"><div class="lbh"><span class="c r">#</span><span class="c n">PLAYER · MOST KILLS FIRST</span><span class="c">K</span><span class="c">D</span><span class="c">A</span><span class="c">KD</span><span class="c">ACC</span><span class="c">BEST</span><span class="c m">MEDALS</span></div>
-        <div class="lbrows">${rows.length ? rows.map((r, i) => {
+        <div class="lbrows" onscroll="const c=this.querySelector('.lbmore'); if (c) c.hidden = this.scrollTop + this.clientHeight >= this.scrollHeight - 1">${rows.length ? rows.map((r, i) => {
           const k = String(r.team_id == null ? '' : r.team_id).toLowerCase();
           const meds = Array.isArray(r.medals) ? r.medals : [];
           return `<div class="lbr ${myId && r.player_id === myId ? 'me' : ''}"><span class="c r tab">${i + 1}</span>
@@ -165,7 +167,10 @@ export function _result(st) {
             <span class="c m">${meds.map(m => { const c = medalChip(m, RECAP_ROWS);
               return c.key ? `<span class="mc" data-medal="${esc(c.key)}" title="${esc(c.label)}${c.n > 1 ? ' ×' + c.n : ''}">${recapIcon(c.key, RECAP_ICON_PX, !!st.night, `${c.label}${c.n > 1 ? ' ×' + c.n : ''}`)}${c.n > 1 ? `<b class="tab">×${c.n}</b>` : ''}</span>`
                 : `<span class="mt">${esc(String(m).toUpperCase().replace(/_/g, ' '))}</span>`; }).join('')}</span></div>`;
-        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}</div>${recapLegend([...new Set(rows.flatMap(r => (Array.isArray(r.medals) ? r.medals : []).map(m => medalChip(m, RECAP_ROWS).key)).filter(Boolean))], !!st.night)}</div>`;
+        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}${recapLegend([...new Set(rows.flatMap(r => (Array.isArray(r.medals) ? r.medals : []).map(m => medalChip(m, RECAP_ROWS).key)).filter(Boolean))], !!st.night)}<span class="awmore lbmore" hidden>MORE ↓</span></div></div>`;
+      // F561: the legend scrolls with the rows, below them, so wrapped medal rows get the height first (it took 68 px of 390).
+      // Review: scrollbars are hidden on a phone, so a list longer than the body says MORE ↓, as the AWARDS list does.
+      setTimeout(() => { const l = document.querySelector('.result .lbrows'), c = document.querySelector('.result .lbmore'); if (l && c) c.hidden = !(l.scrollHeight > l.clientHeight + 1 && l.scrollTop + l.clientHeight < l.scrollHeight - 1); }, 0);
     }
 
     // --- strips: possession (player view), the honors roll, and the unofficial post-whistle tally ---
@@ -178,8 +183,23 @@ export function _result(st) {
     // ELIMINATIONS", "AT 01:12". The old guard was `num(h.stat) != null`, which is false for every string MC
     // has ever sent, so the stat never reached a real phone; only the demo (which sent integers) ever showed
     // one, and the stage shot of it was fiction. Anything non-empty is printed as MC wrote it.
-    const honorStrip = honors.length && tab !== 'awards' ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${honors.map(h =>
-      `<span class="ch">${esc(MEDAL_LABEL[h.medal] || String(h.medal).toUpperCase().replace(/_/g, ' '))} <b>${esc(String(h.display || h.player_id || '').toUpperCase())}</b>${h.stat != null && h.stat !== '' ? ` <b class="tab">${esc(String(h.stat))}</b>` : ''}</span>`).join('')}</span></div>` : '';
+    // F561 (field 2026-10-17): nine honours in one row truncated every name to 7-9 characters, on the two tabs the screen
+    // lands on. The strip is now one chip per HOLDER (name ×count, most first); the AWARDS tab shows each honour in full
+    // with MC's stat string, so the strip names it instead of repeating it.
+    // Review: one chip per PLAYER (`player_id`, the name resolved from the rows as AWARDS does), never per name, so two
+    // players called ALEX stay two. At most HONOR_HOLDERS_SHOWN chips, then +N MORE: MC sends one honour per tied
+    // holder, and a strip of shrinking chips truncated every name again past four holders.
+    const holders = [];
+    for (const h of (awards.length ? awards : honors)) {
+      const row = rows.find(x => x.player_id === h.player_id);
+      const name = String(h.display || (row && row.display) || h.player_id || '').toUpperCase(); if (!name) continue;
+      const id = h.player_id || 'name:' + name;
+      const e = holders.find(x => x.id === id); if (e) e.n++; else holders.push({ id, name, n: 1 });
+    }
+    holders.sort((a, b) => b.n - a.n);   // stable: equal counts keep MC's order
+    const more = holders.length - HONOR_HOLDERS_SHOWN;
+    const honorStrip = holders.length && tab !== 'awards' ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${holders.slice(0, HONOR_HOLDERS_SHOWN).map(x =>
+      `<span class="ch"><b>${esc(x.name)}</b> <b class="tab">×${x.n}</b></span>`).join('')}${more > 0 ? `<span class="ch more">+${more} MORE</span>` : ''}</span>${awards.length ? '<span class="go">FULL LIST: AWARDS TAB</span>' : ''}</div>` : '';
     const ae = this._afterEnd(R, rows);
     // A6.1: facts after the whistle are RECORDED, not scored. Shown so a player who kept shooting can see where
     // those hits went — and shown as visibly not part of the score above, never mixed into it.

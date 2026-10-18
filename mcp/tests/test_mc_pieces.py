@@ -1157,9 +1157,15 @@ def test_type_token_migration_keeps_sidearms_out_of_primary_and_leaves_perks_alo
 
 
 def test_round2_a_token_that_expands_to_nothing_is_kept_not_widened():
-    """A PRIMARY piece holding only ["sidearm"] must not migrate to an empty (unrestricted) list."""
+    """A token that expands to nothing for its slot must not migrate to an empty (unrestricted) list. Since field
+    2026-10-17 a PRIMARY ["sidearm"] means the pistols (a pistols-only round), so the empty case is a type no visible
+    weapon carries."""
     from brx_mcp.mc.pieces import _migrate_type_tokens
-    assert _migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"] == ["sidearm"]
+    pistols = sorted(w["weapon_id"] for w in WeaponCatalog().all()
+                     if "sidearm" in (w.get("types") or []) and not w.get("pickup_only"))
+    assert pistols, "the catalogue has no visible pistol: this test proves nothing"
+    assert sorted(_migrate_type_tokens("primary", {"only_ids": ["sidearm"]})["only_ids"]) == pistols
+    assert _migrate_type_tokens("primary", {"only_ids": ["nosuchtype_xyz"]})["only_ids"] == ["nosuchtype_xyz"]
 
 
 def test_clearing_the_hold_target_on_pick_clears_it_in_the_config():
@@ -1200,3 +1206,19 @@ def test_a_match_only_pick_keeps_a_kit_edit_of_the_mode_params():
     r = c.post("/api/play/pick", json={"match": {"time_limit_s": 900}})
     assert r.json()["ok"]
     assert s.config.get("mode_params", {}).get("score_target") == 100, s.config.get("mode_params")
+
+
+def test_a_pistols_only_primary_players_pick_is_accepted_picked_and_compiles():
+    """Field 2026-10-17 (Tony): a pistols-only first match, where players pick their own pistol. BUILD now offers the
+    pistols for PRIMARY; the server already accepts the piece, fits every player to a pistol, and arms the push."""
+    from brx_mcp.mc.compile import Compiler
+    s, _net, _clock, _players = mk_loadout_session(2, compiler=Compiler())
+    with tempfile.TemporaryDirectory() as folder:
+        s.attach_pieces(PieceStore(pathlib.Path(folder) / "pieces.json"))
+        piece = s.pieces.create("primary", "PISTOLS ONLY", "", {"choice": "player", "kinds": ["weapon"], "exclude_tags": [],
+                                                               "exclude_ids": [], "only_ids": ["usp", "deagle"], "fixed_id": None})
+        result = GamePick(s).pick({"primary": piece["piece_id"]}, {})
+        assert result["ok"], result.get("errors")
+        assert sorted(s.loadout_pool()["primary"]) == ["deagle", "usp"], s.loadout_pool()["primary"]
+        assert all(p["loadout"]["weapons"][0]["weapon_id"] in ("usp", "deagle") for p in s.players.values())
+        s.push_config(force=True)

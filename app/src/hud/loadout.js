@@ -90,7 +90,17 @@ export function _slotPlate(st, slot, mode, ammoLine) {
 export function _loRows(st, tab) {
     const cat = st.catalog || { weapons: [], perks: [] }; const rule = st.policy ? st.policy[tab] : null;
     if (tab === 'primary') { const ok = new Set((rule && rule.allowed_ids) || []); return (cat.weapons || []).filter(w => ok.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })); }
-    if (tab === 'perk') { const okP = new Set((rule && rule.allowed_perk_ids) || []); return (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p })); }   // A14: its own tab
+    if (tab === 'perk') {   // A14: its own tab
+      // F551 (field 2026-10-17): MC names the weapons a perk cannot ride with; such a perk is not offered beside them (MC
+      // drops it from a stored loadout too). An absent field hides nothing.
+      const okP = new Set((rule && rule.allowed_perk_ids) || []), lo = st.loadout || {};
+      // Review: a weapon pick still waiting for MC's ack counts, so a blocked perk cannot be tapped in that gap
+      const pend = s => st.pendingPick && st.pendingPick.slot === s && st.pendingPick.kind === 'weapon' ? st.pendingPick.id : null;
+      const pri = pend('primary') || (lo.primary && lo.primary.weapon_id), sec = pend('secondary') || (lo.secondary && lo.secondary.weapon_id);
+      const blocked = p => (Array.isArray(p.blocked_primary) && pri != null && p.blocked_primary.includes(pri))
+        || (Array.isArray(p.blocked_secondary) && sec != null && p.blocked_secondary.includes(sec));
+      return (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden && !blocked(p)).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p }));
+    }
     const okW = new Set((rule && rule.allowed_weapon_ids) || []);
     const kinds = (rule && rule.kinds) || ['weapon'];
     return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
