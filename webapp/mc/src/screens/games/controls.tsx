@@ -52,9 +52,14 @@ export function HoldControl({ seconds, onChange }: { seconds: number | null; onC
  *  its own +/- value) or a number MC sends to every control station. The first + or - from STATION DEFAULT steps from the
  *  station default (HILL_CAPTURE_S 10, HILL_NET_CAP 3), so one tap shows a real number; CLEAR returns to STATION DEFAULT.
  *  `onChange` gets a whole-patch value for `pickMatch({ hill })`: the changed key, a null for a cleared one. */
+// Fixed, not min: the value reads "11 S" or "STATION DEFAULT", and a box that grows with its text shoves the − / + pair
+// sideways under the finger (bench 2026-09-28, the QuickPick note below). Wide enough for STATION DEFAULT at this font.
+const HILL_VALUE_W = 172;
+
 export function HillControl({ hill, onChange }: { hill: HillSettings | null | undefined; onChange: (patch: { capture_s?: number | null; net_cap?: number | null }) => void }) {
   return (
-    <span data-testid="match-hill-item" style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
+    // one grid for both rows, so the labels, values, steppers and CLEARs line up in columns
+    <span data-testid="match-hill-item" style={{ display: 'inline-grid', gridTemplateColumns: 'auto auto auto auto', alignItems: 'center', columnGap: 8, rowGap: 6 }}>
       <HillRow label="CAPTURE TIME" slug="capture" value={hill?.capture_s} unit=" S" def={HILL_CAPTURE_S} min={HILL_CAPTURE_S_MIN} max={HILL_CAPTURE_S_MAX}
         onChange={v => onChange({ capture_s: v })} />
       <HillRow label="NET CAP" slug="net" value={hill?.net_cap} unit="" def={HILL_NET_CAP} min={HILL_NET_CAP_MIN} max={HILL_NET_CAP_MAX}
@@ -71,10 +76,10 @@ function HillRow({ label, slug, value, unit, def, min, max, onChange }:
   const step = (dir: 1 | -1) => onChange(Math.max(min, Math.min(max, (value ?? def) + dir)));
   const name = label.toLowerCase();
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro, minWidth: 96 }}>{label}</span>
+    <>
+      <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>{label}</span>
       <span ref={ref} data-testid={`match-hill-${slug}-value`}
-        style={{ font: F.chk(700, 14), minWidth: 136, minHeight: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        style={{ font: F.chk(700, 14), width: HILL_VALUE_W, boxSizing: 'border-box', minHeight: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                  fontVariantNumeric: 'tabular-nums', color: value == null ? T.dim : T.acc, border: `1px solid ${T.line2}`, padding: '0 12px' }}>
         {text}
       </span>
@@ -87,7 +92,7 @@ function HillRow({ label, slug, value, unit, def, min, max, onChange }:
           cursor: value == null ? 'not-allowed' : 'pointer', background: T.panelDeep, border: `1px solid ${T.line}`, color: value == null ? T.micro : T.body }}>
         CLEAR
       </button>
-    </span>
+    </>
   );
 }
 

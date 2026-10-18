@@ -520,6 +520,11 @@ step('stepper-width', async ({ browser, base }) => {
   await until(() => pg2.getByTestId('match-hold-value').count().then(n => n > 0), 4000, 'the HOLD item (KOTH)');
   const holdMoved = await walk(pg2, 'hold target minus', 'hold target plus', seq(8, 20));
   expect(holdMoved.length === 0, `HOLD − / + never move, NO TARGET through double digits (saw ${JSON.stringify(holdMoved)})`);
+  // F559: HILL on the same KOTH page: STATION DEFAULT -> 9 S -> floor 3 S (one digit) -> 20 S, and NET CAP across its range.
+  const captureMoved = await walk(pg2, 'hill capture time minus', 'hill capture time plus', seq(7, 17));
+  expect(captureMoved.length === 0, `HILL CAPTURE TIME − / + never move, STATION DEFAULT through double digits (saw ${JSON.stringify(captureMoved)})`);
+  const netMoved = await walk(pg2, 'hill net cap minus', 'hill net cap plus', seq(2, 5));
+  expect(netMoved.length === 0, `HILL NET CAP − / + never move, STATION DEFAULT, 1 through 6 (saw ${JSON.stringify(netMoved)})`);
 
   ok(`every stepper's − / + stay put across its control's range   ${await shot(pg, 'stepper-width')}`);
   await pg.context().close();
