@@ -3639,7 +3639,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
     await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: heat past the lockout shows the prompt and the full-frame overlay, vitals stay visible, no taps blocked`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
       const r = await heatState(pg);
       must(r.barPresent && r.barHot, `heat 108 must show the heat bar, hot: ${JSON.stringify(r)}`);
       must(r.overlay && r.word === 'OVERHEAT', `heat 108 must show the full-frame OVERHEAT overlay: ${JSON.stringify(r)}`);
@@ -3661,12 +3661,26 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     });
   }
 }
-await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+// F238 reopened (field 2026-10-17, F226): a charge from a cell below one full charge spikes the heat and fires nothing, and
+// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the word and the prompt.
+await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY, never OVERHEAT', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  const r = await heatState(pg);
+  const note = await pg.evaluate(() => document.querySelectorAll('.ammo .enote').length);
+  must(r.overlay && r.word === 'NOT ENOUGH ENERGY', `the full-frame word must be NOT ENOUGH ENERGY: ${JSON.stringify(r)}`);
+  must(r.prompt === 'NOT ENOUGH ENERGY', `the prompt must be NOT ENOUGH ENERGY, not OVERHEAT: ${JSON.stringify(r)}`);
+  must(note === 0, `no second NOT ENOUGH ENERGY note under the digits: ${note}`);
+  const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+  await pg.screenshot({ path: `${OUT}/se-starved-overheat.png` });
+  await pg.close();
+});
+await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 0);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
   r = await heatState(pg);
   must(!r.overlay, `heat back to 0 must clear the full-frame overlay: ${JSON.stringify(r)}`);
   must(r.prompt !== 'OVERHEAT', `heat back to 0 must clear the OVERHEAT prompt: ${JSON.stringify(r)}`);
@@ -3682,7 +3696,7 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
 // drive this directly since the demo engine cannot set the new field itself). ----------
 await step('heat bar se: st.overheatShown, once set, overrides the stale st.overheating field', async () => {
   const pg = await open(VIEWS[1], 'live');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   let r = await heatState(pg);
   must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
   // a stale-but-true st.overheating with overheatShown explicitly false must hide the takeover
@@ -3701,7 +3715,7 @@ await step('heat bar se: st.overheatShown, once set, overrides the stale st.over
 // text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
 await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
   const pg = await open(VIEWS[1], 'live', '&night');
-  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
   const r = await pg.evaluate(() => { const el = document.querySelector('.reload.hot'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
   must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OVERHEAT: ${JSON.stringify(r)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OVERHEAT, not the bright day block: ${JSON.stringify(r)}`);
@@ -3979,21 +3993,27 @@ for (const view of VIEWS) {
 }
 
 // ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
+// F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
+    for (const [cell, word] of [[12, 'OVERHEAT'], [3, 'NOT ENOUGH ENERGY']]) {
+    await step(`${tag} ${word} ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, cell, 108);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
-        return { word: rect(document.querySelector('.heatword')), pill: rect(pill) };
+        const w = document.querySelector('.heatword');
+        return { word: rect(w), text: w ? w.textContent : null, pill: rect(pill), vw: innerWidth };
       });
-      await pg.screenshot({ path: `${OUT}/${tag}-overheat-weapons-hot-${night ? 'night' : 'day'}.png` });
+      await pg.screenshot({ path: `${OUT}/${tag}-${cell < 10 ? 'starved' : 'overheat'}-weapons-hot-${night ? 'night' : 'day'}.png` });
       await pg.close();
       must(r.word && r.pill, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
-      must(apart(r.word, r.pill), `OVERHEAT and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
+      must(r.text === word, `a cell of ${cell} must read ${word}: ${JSON.stringify(r)}`);
+      must(r.word.l >= 0 && r.word.r <= r.vw, `${word} must fit the screen width: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.pill), `${word} and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
     });
+    }
   }
 }
 
@@ -4094,7 +4114,7 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
       const pg = await open(view, 'live', night ? '&night' : '');
       await pg.evaluate(() => window.brxDemo.smoke());
       await settled(pg);
-      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 12, 108);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const word = document.querySelector('.heatword'), aim = document.querySelector('.aimfx');
