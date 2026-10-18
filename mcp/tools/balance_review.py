@@ -25,11 +25,13 @@ runs the same versioned scenario list in both, and prints a verdict with six nam
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
                          players who do (Tony, 2026-10-17).
 
-Scenario version 6 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
+Scenario version 7 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
 finishers after a dry primary. The hidden Haze runs in a separate optional report.
+Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo stress score because
+the down time rule measures bolt exposure instead of ammunition.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
 so the published semi TTK and the fight sim disagree (F576). Heat cooling while firing is unproven (F575).
 
@@ -91,7 +93,7 @@ from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 6
+SCENARIO_VERSION = 7
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -207,9 +209,10 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
                         "downtime_attacker_reaction_ms": [REACTION_MEAN_MS, REACTION_SD_MS],
                         "fight_cap_ms": AMMO_STRESS_FIGHT_CAP_MS,
                         "secondary_plan": "reload or vent the primary under fire; draw the secondary after the primary has no rounds",
-                        "enemy_response": "the holder wins the exchange while able to fire; incoming AR rounds land only during reload, bolt cycle, vent, heat lock, swap or dry down time",
+                        "enemy_response": "the holder wins the exchange while able to fire; incoming AR rounds land only during reload, vent, heat lock, swap or dry down time",
                         "pickup": "once, top each held slot's reserve up to its compiled spawn reserve after a pending reload ends; leave magazines alone",
-                        "chain_reload": "credit each shell at its own interval; a loaded shell can interrupt the reload"},
+                        "chain_reload": "ammo stress only: credit each shell at its own interval; a loaded shell can interrupt the reload. Firing between shells is unproven on a gun",
+                        "bolt_na": "a bolt's whole cycle is down time, so this column measures exposure instead of ammunition; bolt kits, including combos, are n/a"},
         "pistol_finisher": {"pool_hp": B.R10_FINISH_POOL_HP, "aim": AIM,
                             "range": PISTOL_FINISH_RANGE,
                             "first_shot": "after reaction and draw or reload completion"},
@@ -612,6 +615,9 @@ class Fighter:
             old.reload_amount, old.venting = 0, False
             old.vent_until = 0.0
             old.ready_at = min(old.ready_at, t)
+            if old.pending_pickup:
+                old.reserve = max(old.reserve, old.pending_pickup)
+                old.pending_pickup = 0
         self.active = idx
         chosen = self.gs[idx]
         draw = t + self.kit.swap_ms
@@ -624,9 +630,9 @@ class Fighter:
     def _credit_reload(self, state, t):
         if state.reload_amount:
             gun = self.kit.guns[self.gs.index(state)]
-            if gun.chain:
+            if gun.chain and self.persistent_reload:
                 first = state.ready_at - (state.reload_amount - 1) * gun.reload_ms
-                count = min(state.reload_amount, max(0, int((t - first) // gun.reload_ms) + 1))
+                count = min(state.reload_amount, max(0, math.floor((t - first) / gun.reload_ms + 1e-9) + 1))
             else:
                 count = state.reload_amount if t >= state.ready_at else 0
             if count:
@@ -712,7 +718,7 @@ class Fighter:
             return None
         g, s = self.kit.guns[self.active], self.gs[self.active]
         heat = dict(g.heat)
-        if g.chain and s.reload_amount and s.ammo:
+        if self.persistent_reload and g.chain and s.reload_amount and s.ammo:
             s.reload_amount = 0
             s.ready_at = t
             if s.pending_pickup:
@@ -759,7 +765,7 @@ class Fighter:
             s.reload_amount = got
             s.count, s.state, s.blen = 0, "crisp", 0
             s.ready_at = t + (g.reload_ms * got if g.chain else g.reload_ms)
-            self.next_t = t + g.reload_ms if g.chain else s.ready_at
+            self.next_t = t + g.reload_ms if g.chain and self.persistent_reload else s.ready_at
             return None
         acc = 1.0
         if g.profile is not None and g.mode == "auto":
@@ -831,6 +837,9 @@ class Fighter:
                 s.count = 0
             s.blen = 0
             self.next_t = max(self.next_t, t + RETARGET_MS)
+            if self.persistent_reload and self.kit.plan == "combo":
+                self.phase, self.active = "open", 0
+                self.gs[0].charged = True
         if self.kit.plan == "combo" and self.phase == "open" and self.active == 0 and alpha and not killed \
                 and len(self.kit.guns) > 1:
             alt = t + pull_gap(self.rng, self.pull_ms)    # the ALT press
@@ -1116,7 +1125,9 @@ def rush_table(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
         if not (spec.combo or world.cat._row(spec.primary).get("role") == "marksman"):
             continue
         kit_name = spec.name if spec.combo else f"{spec.name} (plain)"
-        marksman = make_kit(world, kit_name, spec.primary, spec.secondary, spec.perk,
+        marksman = make_kit(world, kit_name, spec.primary,
+                            spec.secondary if spec.combo else None,
+                            spec.perk if spec.combo else None,
                             "combo" if spec.combo else "single")
         for rusher_id in (ANCHOR, "smg", "shotgun"):
             rusher_name = "AR (plain)" if rusher_id == ANCHOR else f"{rusher_id} (plain)"
@@ -1804,6 +1815,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     fr, ar, ammo_reps = _reps("field", scale), _reps("ambush", scale), _reps("ammo", scale)
     ammo_anchor = make_kit(aw, "AR ammo anchor", ANCHOR, SECONDARY)
     cells.append((("ammo_anchor",), ("ammo", ammo_anchor, enemy, ammo_reps, heat_cool_while_firing)))
+    bolt_names = {n for n in names if any(g.mode == "bolt" for g in kits[n].guns)}
     for n in names:
         for N in FIELD_NS:
             cells.append((("field", N, n), ("field", fks[n], anchor_fk, N, fr, heat_cool_while_firing)))
@@ -1812,7 +1824,8 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
         for ref, attacker in hill_refs.items():
             cells.append((("hill", ref, n), ("hill_hold", kits[n], attacker, dr,
                                            heat_cool_while_firing)))
-        cells.append((("ammo", n), ("ammo", kits[n], enemy, ammo_reps, heat_cool_while_firing)))
+        if n not in bolt_names:
+            cells.append((("ammo", n), ("ammo", kits[n], enemy, ammo_reps, heat_cool_while_firing)))
     res = run_cells([j for _, j in cells], n_jobs)
     duel, field, amb, hill, ammo, ammo_caps, ammo_reasons = {}, {}, {}, {}, {}, {}, {}
     ammo_anchor_kills = 0.0
@@ -1833,6 +1846,8 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
             mode, d, a, b = key
             duel[f"{mode}|{d}|{a}|{b}"] = r
             duel[f"{mode}|{d}|{b}|{a}"] = 1.0 - r
+    for n in bolt_names:
+        ammo[n], ammo_caps[n], ammo_reasons[n] = float("nan"), 0, {}
 
     def mean1(mode, d, n):
         v = [duel[f"{mode}|{d}|{n}|{o}"] for o in names if o != n]
@@ -2276,8 +2291,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                             "near the top in at least one scenario, or a trigger mechanic the arsenal lacks")
 
     # no_domination ---------------------------------------------------------------------------------
-    everywhere = [k for k in mc["kits"] if len(mc["near_top"][k]) == len(COLUMNS)]
-    before = [k for k in mb["kits"] if len(mb["near_top"][k]) == len(COLUMNS)]
+    def near_everywhere(matrix, name):
+        applicable = [column for column in COLUMNS
+                      if not math.isnan(matrix["columns"][name][column])]
+        return bool(applicable) and all(column in matrix["near_top"][name] for column in applicable)
+
+    everywhere = [k for k in mc["kits"] if near_everywhere(mc, k)]
+    before = [k for k in mb["kits"] if near_everywhere(mb, k)]
     tests["no_domination"] = _test(not everywhere, {"near_top_everywhere": everywhere, "baseline_near_top_everywhere": before,
                                                     "margin": NEAR_TOP_MARGIN},
                                    "no kit near the top (within the margin) in every scenario")
@@ -2517,7 +2537,7 @@ def tree_dirty() -> bool:
 
 def _fmt(col: str, v: float) -> str:
     if v is None or (isinstance(v, float) and math.isnan(v)):
-        return "-"
+        return "n/a" if col == "ammo stress" else "-"
     return f"{v:.2f}" if col in ("field", "ambush", "ammo stress") else f"{v:.0%}"
 
 
@@ -2539,6 +2559,8 @@ def matrix_markdown(m: dict) -> str:
 
 def _num(v):
     if isinstance(v, float):
+        if math.isnan(v):
+            return "n/a"
         return "inf" if math.isinf(v) else (round(v, 3) if abs(v) < 10 else round(v))
     return v
 
@@ -2650,13 +2672,18 @@ def report_markdown(v: dict) -> str:
                 f"Mean kills in one life at mid range. The holder has {REAL_AIM:g} aim and heals between fights. "
                 f"Plain AR attackers have {AMMO_STRESS_ATTACKER_AIM:g} aim. Their rounds land only while the holder reloads, "
                 "vents, is heat-locked, swaps or has no rounds. "
-                f"One AMMO pickup tops held reserves after {AMMO_PICKUP_AFTER_KILLS} kills.", "",
+                f"One AMMO pickup tops held reserves after {AMMO_PICKUP_AFTER_KILLS} kills. "
+                "The chain reload can be interrupted only in ammo stress; firing between shells is unproven. "
+                "Bolt kits are n/a because their whole cycle is down time, so this column measures exposure instead of ammunition.", "",
                 f"Plain AR anchor: {matrix['ammo_stress_anchor_kills']:.2f} kills; "
                 f"attacker cap hit in {matrix['ammo_stress_anchor_cap_hits']} reps. "
                 f"End reasons: {matrix['ammo_stress_anchor_end_reasons']}.", "",
                 "| kit | kills | ratio to AR | dry | died reloading | died heat-locked or venting | died swapping | cap |",
                 "|---|---:|---:|---:|---:|---:|---:|---:|"]
         for name in matrix["kits"]:
+            if math.isnan(matrix["columns"][name]["ammo stress"]):
+                out.append(f"| {name} | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
+                continue
             reasons = matrix["ammo_stress_end_reasons"][name]
             out.append(f"| {name} | {matrix['ammo_stress_kills'][name]:.2f} | "
                        f"{matrix['columns'][name]['ammo stress']:.2f} | "
@@ -2672,7 +2699,8 @@ def report_markdown(v: dict) -> str:
     out += ["## Dominance matrix, candidate world", "",
             "Bold = near the top (within the margin of the column's best). 1v1 columns are mean win rates against "
             "every other kit; field is the kill-rate ratio against AR carriers; ambush is P(kill both) + P(kill one or more). "
-            "Hill hold is P(kill both sequential attackers); ammo stress is kills divided by the plain AR anchor.",
+            "Hill hold is P(kill both sequential attackers); ammo stress is kills divided by the plain AR anchor. "
+            "Bolt kits have no ammo stress score.",
             "", matrix_markdown(v["matrix"]["candidate"]), "", "## Dominance matrix, baseline", "",
             matrix_markdown(v["matrix"]["baseline"]), ""]
     if v.get("haze"):

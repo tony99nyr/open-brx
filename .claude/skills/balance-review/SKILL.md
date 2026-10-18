@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 6. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 7. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -72,7 +72,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 6 uses these models:
+Scenario version 7 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
   rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
@@ -115,6 +115,8 @@ Scenario version 6 uses these models:
   `marksman_rush_counter` still gates the plain AR rush from 20 m. The report shows 30 m beside it.
 - `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
   The second attacker arrives 3,500 ms after the first. The holder fights the first attacker alone until then.
+  The holder is alert and can fire when the second attacker arrives, with no reaction delay.
+  The second attacker waits a reaction delay after arrival before firing.
   Each reference attacker carries the baseline world's Deagle. The holder cannot leave the circle.
   The report also shows long-range overwatch by marksmen, combo kits and the AR without escape.
   Close contests start with both kits alert.
@@ -123,8 +125,11 @@ Scenario version 6 uses these models:
   the invented 0.2 aim. Range-band fit is off, so the column compares ammunition rather than band reach.
   The holder's pool heals after each kill. Ammunition, reloads and heat persist.
   The holder wins the exchange while able to fire. Incoming rounds land only during reload, vent,
-  bolt cycling, heat lock, swap or dry down time (`AMMO_STRESS_DOWNTIME_ONLY`). A chain reload credits
-  each shell separately, and the holder can fire between shells. The next attacker arrives 1,500 ms
+  heat lock, swap or dry down time (`AMMO_STRESS_DOWNTIME_ONLY`). Bolt kits, including combos with a bolt
+  slot, score n/a. Their whole bolt cycle is down time, so this rule measures exposure instead of ammunition.
+  Only ammo stress credits each chain-reload shell separately and lets the holder fire between shells.
+  This Shotgun behaviour is unproven on a gun. Other scenarios credit the full reload at completion.
+  The next attacker arrives 1,500 ms
   after the last fight. An attacker arriving during down time starts after a normal reaction delay.
   Otherwise, it reacts 1,000 ms after the holder's first landed hit.
   After four kills, one AMMO pickup tops each held slot's reserve to its compiled spawn reserve.
