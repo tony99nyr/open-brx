@@ -266,14 +266,29 @@ def test_priority_column_dominance_fails_without_a_field_ceiling_breach():
 
 
 def test_real_aim_is_one_value_cell_and_requires_all_distances_for_domination():
-    near = [c for c in R.COLUMNS if c not in ("real aim mid", "real aim long")]
+    near = [c for c in R.COLUMNS if c != "real aim long"]
     row = {c: 0.5 for c in R.COLUMNS}
-    row["real aim mid"] = row["real aim long"] = float("nan")
     matrix = {"kits": ["candidate"], "columns": {"candidate": row},
               "near_top": {"candidate": near}}
     result = R.domination_verdict(matrix, matrix)
     assert result["numbers"]["near_top_everywhere"] == []
-    assert R._value_near_top_cells(near) == [c for c in near if c != "real aim close"] + ["real aim"]
+    assert R._value_near_top_cells(near) == [c for c in near if not c.startswith("real aim")] + ["real aim"]
+    matrix["columns"]["candidate"]["real aim long"] = float("nan")
+    assert R.domination_verdict(matrix, matrix)["numbers"]["near_top_everywhere"] == ["candidate"]
+
+
+def test_branch_domination_compares_new_kits_even_when_baseline_already_fails():
+    before = {"near_top_everywhere": ["Old"], "field_ceiling_exceeded": [],
+              "priority_near_top": []}
+    for key in before:
+        after = {**before, key: [*before[key], "New"]}
+        assert R._new_dominance_kits(before, after) == ["New"]
+
+
+def test_heat_sensitivity_excludes_primary_branch_failures():
+    flips = {"throughout": ["shields|R1"], "after_lockout": ["shields|R1", "no_domination"],
+             "none": ["shields|R1"]}
+    assert R._heat_sensitive_flips(flips, "throughout") == {"after_lockout": ["no_domination"]}
 
 
 def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
@@ -430,6 +445,8 @@ def test_last_cell_noise_uses_mean_precision_and_non_binomial_errors():
     candidate["near_top"]["Other"] = []
     candidate["columns"]["Other"]["field"] = 0.8
     assert R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+
+
     # The same ratio from two kills has much less precision than one from thousands of kills.
     candidate["field_counts"] = {"Top": [(2, 2)] * len(R.FIELD_NS),
                                   "Other": [(2, 2)] * len(R.FIELD_NS)}
@@ -445,6 +462,18 @@ def test_last_cell_noise_uses_mean_precision_and_non_binomial_errors():
     candidate = copy.deepcopy(baseline)
     candidate["columns"]["Other"]["ambush"] = 1.19
     assert not R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+
+
+def test_zero_field_kills_do_not_hide_a_last_near_top_loss():
+    baseline = _m({"Top": ("top", ["field"]), "Other": ("other", ["field"])})
+    baseline.update(columns={"Top": {"field": 1.0}, "Other": {"field": 0.99}},
+                    top={"field": 1.0}, reps={"field": 600})
+    candidate = copy.deepcopy(baseline)
+    candidate["near_top"]["Other"] = []
+    candidate["columns"]["Other"]["field"] = 0.0
+    candidate["field_counts"] = {"Top": [(10000, 10000)] * len(R.FIELD_NS),
+                                  "Other": [(0, 10000)] + [(10000, 10000)] * (len(R.FIELD_NS) - 1)}
+    assert R.balance_kept({}, {}, {}, baseline, candidate, None)["numbers"]["kits_losing_last_near_top"] == ["other"]
 
 
 def test_a_real_rule_flip_is_caught():
@@ -600,6 +629,28 @@ def test_haze_gate_does_not_fail_when_shipped_blind_lengthens():
         result = R.haze_gate(shipped, candidate, 4)
     assert not result["fail"]
     assert result["standing_shipped_failures"]
+
+
+def test_haze_gate_reuses_the_shipped_sweep():
+    shipped = R.shipped_world()
+    R.clear_cache()
+    with mock.patch.object(R, "haze_blind_sweep", return_value=[
+            {"blind_ms": 3000, "win_vs_ar_body_armor": 0.7}]) as sweep:
+        R.haze_gate(shipped, shipped, 4)
+        R.haze_gate(shipped, shipped, 4)
+    assert sweep.call_count == 5
+
+
+def test_review_uses_gate_rows_for_the_haze_sweep():
+    rows = [{"weapon_id": "smoke_gun", "blind_ms": 3000, "baseline": 0.5,
+             "candidate": 0.6, "bar": R.HAZE_WIN_BAR}]
+    gate = {"rows": rows, "flips": [], "fail": False, "standing_shipped_failures": []}
+    with mock.patch.object(R, "haze_gate", return_value=gate), \
+         mock.patch.object(R, "haze_blind_sweep", side_effect=AssertionError("duplicate sweep")):
+        v = R.review({"weapon_id": "smoke_gun", "changes": {"wire.dmg": 0}},
+                     reps_scale=0.001, haze=True)
+    assert v["haze_gate"] == gate
+    assert "## Haze blind-duration sensitivity" in R.report_markdown(v)
 
 
 def test_rush_table_covers_every_marksman_and_both_starts():
@@ -1575,11 +1626,62 @@ def test_heat_candidate_reports_all_cooling_assumptions():
 
 
 def test_unheated_candidate_has_no_heat_section_or_alternate_rule_runs():
-    with mock.patch.object(R, "run_rules", wraps=R.run_rules) as rules:
+    with mock.patch.object(R, "run_rules", wraps=R.run_rules) as rules, \
+         mock.patch.object(R, "run_heated_rules", wraps=R.run_heated_rules) as heated_rules, \
+         mock.patch.object(R, "dominance_matrix", wraps=R.dominance_matrix) as matrices:
         v = R.review({"weapon_id": "shotgun", "changes": {"wire.dmg": 30}}, reps_scale=0.001)
     assert "heat_sensitivity" not in v["tests"]
     assert not v["heat"]
     assert rules.call_count == 3
+    assert heated_rules.call_count == 0
+    assert matrices.call_count == 2
+
+
+def test_pickup_only_heated_candidate_gets_heat_branches():
+    row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
+    row.update(pickup_only=True, hidden=True)
+    v = R.review({"row": row}, reps_scale=0.001)
+    assert "heat_sensitivity" in v["tests"]
+
+
+def test_a_rule_flip_only_after_lockout_names_that_branch():
+    real = R.run_heated_rules
+
+    def altered(world, scale, n_jobs, branch, ids):
+        result = real(world, scale, n_jobs, branch, ids)
+        changed = world.cat._row("charge_rifle").get("heat", {}).get("cool_per_s") == 29
+        if branch == "after_lockout":
+            result["standard|R1"] = {"value": 0.5 if changed else 0.9, "bar": 0.65,
+                                      "pass": not changed}
+        return result
+
+    with mock.patch.object(R, "run_heated_rules", side_effect=altered):
+        v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
+                     reps_scale=0.001)
+    assert "standard|R1" in v["failed_heat_branches"]["after_lockout"]
+    assert "standard|R1" not in v["failed_heat_branches"].get("throughout", [])
+
+
+def test_reference_heat_keeps_field_ambush_hill_and_ammo_on_selected_branch():
+    shipped = R.shipped_world()
+    heated = []
+    for row in shipped.cat._rows:
+        copy_row = copy.deepcopy(row)
+        if row["weapon_id"] in {R.ANCHOR, R.HILL_REFERENCES[0]}:
+            copy_row["heat"] = {"per_round": 1, "lock_at": 100, "cool_per_s": 30}
+        heated.append(copy_row)
+    baseline = R.World(WeaponCatalog(heated), shipped.perks)
+    specs = [R.KitSpec("Shotgun", "shotgun", R.SECONDARY, None, False)]
+    R.clear_cache()
+    with mock.patch.object(R, "run_cells", wraps=R.run_cells) as cells:
+        R.dominance_matrix(shipped, specs, 0.001, 1, anchor_world=baseline,
+                           heat_cool_while_firing="none")
+    jobs = cells.call_args.args[0]
+    affected = [job for job in jobs if job[0] in {"field", "ambush", "hill_hold", "ammo"}
+                and any(gun.heat for participant in job[1:-1]
+                        for gun in getattr(participant, "guns", getattr(participant, "models", ())))]
+    assert {job[0] for job in affected} == {"field", "ambush", "hill_hold", "ammo"}
+    assert all(job[-1] == "none" for job in affected)
 
 
 def test_unheated_matrix_cells_share_cache_across_heat_branches():

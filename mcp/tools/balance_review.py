@@ -187,7 +187,7 @@ MARKSMAN_STRONG_BAR = 0.50    # peek-kill rate against a player who does not rus
 MARKSMAN_STRONG_COLUMN = "1v1 long"
 MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from the 20 m start
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
-PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.59; leave about 0.59 kills of room
+PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.62; leave about 0.62 kills of room
 PICKUP_TTK_BAR_MS = 2500.0     # practical median against an undefended Standard target
 PICKUP_STOCK_CAP_MS = 120_000.0
 FIELD_RATIO_CEILING = 1.60      # Shipped max field ratio at full reps: 1.31946; no kit exceeded the ceiling.
@@ -1119,7 +1119,7 @@ def haze_gate(baseline: World, candidate: World, reps: int,
                 flips.append(row)
     shipped = shipped_world()
     standing = [{"weapon_id": wid, **point} for wid in sorted(selectable(shipped))
-                for point in haze_blind_sweep(shipped, reps, heat_cool_while_firing, weapon_id=wid)
+                for point in _shipped_haze_sweep(wid, reps, heat_cool_while_firing)
                 if point["win_vs_ar_body_armor"] > HAZE_WIN_BAR]
     return {"rows": rows, "flips": flips, "fail": bool(flips),
             "standing_shipped_failures": standing}
@@ -1888,6 +1888,15 @@ def field_ratio(test: FieldKit, anchor: FieldKit, n: int, reps: int, heat_cool_w
 # --------------------------------------------------------------------------- #
 
 _CACHE: dict = {}
+_SHIPPED_HAZE_CACHE: dict = {}
+
+
+def _shipped_haze_sweep(wid: str, reps: int, heat_cool_while_firing=True) -> list[dict]:
+    key = (wid, reps, heat_cool_while_firing, haze_blind_sweep)
+    if key not in _SHIPPED_HAZE_CACHE:
+        _SHIPPED_HAZE_CACHE[key] = haze_blind_sweep(
+            shipped_world(), reps, heat_cool_while_firing, weapon_id=wid)
+    return _SHIPPED_HAZE_CACHE[key]
 
 
 def clear_cache() -> None:
@@ -2087,14 +2096,13 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                                            heat_cool_while_firing)))
         if n not in bolt_names:
             cells.append((("ammo", n), ("ammo", kits[n], enemy, ammo_reps, heat_cool_while_firing)))
-    heated_names = {s.name for s in specs if any(world.cat._row(w).get("heat")
-                    for w in (s.primary, s.secondary) if w)}
+    # Inspect both sides of each cell, including the anchor and reference kits.
+    def carries_heat(job):
+        return any(gun.heat for participant in job[1:-1]
+                   for gun in getattr(participant, "guns", getattr(participant, "models", ())))
+
     # Unheated jobs keep the throughout seed and cache entry in every cooling branch.
-    cells = [(key, job if ((key[0] in ("standard", "shields", "real", "long", "peek")
-                            and (key[2] in heated_names or key[3] in heated_names))
-                           or (key[0] not in ("standard", "shields", "real", "long", "peek", "ammo_anchor")
-                               and key[-1] in heated_names))
-             else (*job[:-1], "throughout")) for key, job in cells]
+    cells = [(key, job if carries_heat(job) else (*job[:-1], "throughout")) for key, job in cells]
     res = run_cells([j for _, j in cells], n_jobs)
     duel, field, field_counts, amb, hill, ammo, ammo_caps, ammo_reasons = {}, {}, {}, {}, {}, {}, {}, {}
     ammo_anchor_kills = 0.0
@@ -2502,7 +2510,7 @@ def domination_verdict(baseline: dict, candidate: dict) -> dict:
                       if not math.isnan(matrix["columns"][name][column])]
         near = set(matrix["near_top"][name])
         return (bool(applicable) and all(column in near for column in applicable if column not in real_aim)
-                and (not real_aim.intersection(applicable) or real_aim.issubset(near)))
+                and (not real_aim.intersection(applicable) or (real_aim & set(applicable)) <= near))
 
     everywhere = [k for k in candidate["kits"] if near_everywhere(candidate, k)]
     before = [k for k in baseline["kits"] if near_everywhere(baseline, k)]
@@ -2516,6 +2524,19 @@ def domination_verdict(baseline: dict, candidate: dict) -> dict:
                   "priority_near_top": priority_near, "priority_columns": DOMINATION_PRIORITY,
                   "margin": NEAR_TOP_MARGIN},
                  "no kit exceeds the field ceiling or nears the top in all priority columns or every scenario")
+
+
+def _new_dominance_kits(before: dict, after: dict) -> list[str]:
+    """Return kits that newly trigger any dominance gate in this branch."""
+    keys = ("near_top_everywhere", "field_ceiling_exceeded", "priority_near_top")
+    return sorted({kit for key in keys for kit in set(after[key]) - set(before[key])})
+
+
+def _heat_sensitive_flips(flips: dict[str, list[str]], primary: str) -> dict[str, list[str]]:
+    """Keep only failures introduced by another cooling branch."""
+    primary_flips = set(flips.get(primary, []))
+    return {branch: different for branch, branch_flips in flips.items() if branch != primary
+            if (different := [flip for flip in branch_flips if flip not in primary_flips])}
 
 
 def heat_rows(matrix: dict, weapon: str) -> dict | None:
@@ -2601,10 +2622,15 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         for w in (s.primary, s.secondary) if w in x.cat._by_id)]
     heat_involved = any(s.primary in touched or s.secondary in touched or
                         s.perk in changed_perks or s.shield_perk in changed_perks
-                        for s in heated_specs)
+                        for s in heated_specs) or any(
+                            w in x.cat._by_id and x.cat._row(w).get("heat")
+                            for w in touched for x in (base, world))
     heated = [w for w in dict.fromkeys(w for s in heated_specs for w in (s.primary, s.secondary) if w)
-              if any(w in x.cat._by_id and x.cat._row(w).get("heat") for x in (base, world))] if heat_involved else []
-    heat_comparison = {}
+              if any(w in x.cat._by_id and x.cat._row(w).get("heat") for x in (base, world))]
+    heated += [w for w in touched if w not in heated and any(
+        w in x.cat._by_id and x.cat._row(w).get("heat") for x in (base, world))]
+    if not heat_involved:
+        heated = []
     rules_s = run_rules(shipped, reps_scale, n_jobs, heat_cool_while_firing)
     rules_b = run_rules(base, reps_scale, n_jobs, heat_cool_while_firing)
     rules_c = run_rules(world, reps_scale, n_jobs, heat_cool_while_firing)
@@ -2691,8 +2717,6 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     haze_section = haze or haze_touched or haze_newly_selectable(base, world)
     haze_check = (haze_gate(base, world, _reps("haze_sweep", reps_scale), heat_cool_while_firing)
                   if haze_section else None)
-    haze_sweep = (haze_blind_sweep(world, _reps("haze_sweep", reps_scale), heat_cool_while_firing)
-                  if haze_section else None)
     haze_failure = bool(haze_check and haze_check["fail"])
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
                                          haze_failure=haze_failure)
@@ -2749,10 +2773,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "pistol_finishers": pistol_finisher_report(world, reps_scale),
         "ttk": ttk_table(world, ttk_ids, reps_scale, heat_cool_while_firing),
         "not_modelled": skipped, "assumptions": assumptions(haze_blind_ms, heat_cool_while_firing),
-        "heat": heat_comparison,
+        "heat": {},
         "haze": haze_report(world, _reps("duel", reps_scale), haze_blind_ms,
                             heat_cool_while_firing) if haze else None,
-        "haze_blind_sweep": haze_sweep,
         "haze_gate": haze_check,
     }
     if heated:
@@ -2791,9 +2814,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             flips = [key for key, values in verdict["heat_rules"].items()
                      if (values[branch]["shipped"]["pass"] or values[branch]["baseline"]["pass"])
                      and not values[branch]["candidate"]["pass"]]
-            before_dom = domination_verdict(branch_mb, branch_mb)["pass"]
-            after_dom = domination_verdict(branch_mb, branch_mc)["pass"]
-            if before_dom and not after_dom:
+            before_dom = domination_verdict(branch_mb, branch_mb)["numbers"]
+            after_dom = domination_verdict(branch_mb, branch_mc)["numbers"]
+            if _new_dominance_kits(before_dom, after_dom):
                 flips.append("no_domination")
             kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid)
             if not kept["pass"] and not flips:
@@ -2818,12 +2841,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                     if any(abs(value - values[0]) > 1e-12 for value in values[1:]
                            if math.isfinite(value) and math.isfinite(values[0])):
                         differing_matrix.append(f"{kit_name}|{column}")
-        verdict["failed_heat_branches"] = failed
-        verdict["tests"]["heat_sensitivity"] = _test(not failed,
-            {"failed_branches": failed, "differing_rule_cells": differences,
+        sensitive = _heat_sensitive_flips(failed, heat_cool_while_firing)
+        verdict["failed_heat_branches"] = sensitive
+        verdict["tests"]["heat_sensitivity"] = _test(not sensitive,
+            {"failed_branches": sensitive, "differing_rule_cells": differences,
              "differing_matrix_cells": sorted(set(differing_matrix))},
             "a heated cell fails only when it passes shipped or baseline and fails in the candidate under the same branch")
-        verdict["pass"] = verdict["pass"] and not failed
+        verdict["pass"] = verdict["pass"] and not sensitive
     return verdict
 
 
@@ -2834,9 +2858,8 @@ def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -
             # The geometric mean combines kill-rate ratios; Poisson count error adds on log scale.
             counts = matrix.get("field_counts", {}).get(name)
             if counts:
-                if any(test <= 0 or anchor <= 0 for test, anchor in counts):
-                    return math.inf
-                return score * math.sqrt(sum(1 / test + 1 / anchor for test, anchor in counts)) / len(counts)
+                return score * math.sqrt(sum(1 / max(test, 0.5) + 1 / max(anchor, 0.5)
+                                             for test, anchor in counts)) / len(counts)
             return math.sqrt((score + score * score) / (reps * len(FIELD_NS)))
         if column == "ammo stress":
             kills = matrix.get("ammo_stress_kills", {}).get(name)
