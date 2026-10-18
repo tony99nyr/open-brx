@@ -74,7 +74,7 @@ work: whether the Suppressor really suppresses its flash and sound, the Energy R
 power. The perk rules and the next wave of perks are in [`perk-design.md`](perk-design.md); the balance rules
 are in [`weapon-design.md`](weapon-design.md).
 
-Ids: S50, S51, S42, S43, S13, S47, S28, F281, F5, K1, K2, K6, F128, F229, F315, F282, S48, F63, F66, F67, F39,
+Ids: S50, S51, S42, S43, S13, S47, S28, F281, F5, K1, K2, K6, F229, F315, F282, S48, F63, F66, F67, F39,
 F336, U11, D1.
 
 ## iOS
