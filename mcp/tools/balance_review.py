@@ -30,11 +30,11 @@ runs the same versioned scenario list in both, and prints a verdict with seven n
 
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
 
-Scenario version 10 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
+Scenario version 11 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
-finishers after a dry primary. The hidden Haze runs in a separate optional report.
+finishers after a dry primary. Haze runs in a separate optional report.
 Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo stress score because
 the down time rule measures bolt exposure instead of ammunition.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
@@ -102,11 +102,12 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 10
+SCENARIO_VERSION = 11
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
 REPS = {"duel": 3000, "perk": 2000, "field": 600, "ambush": 3000, "peek": 3000, "rush": 3000,
+        "rush_sweep": 1200, "aim_sweep": 120, "haze_sweep": 300,
         "ammo": 600,
         "ttk": 2000, "finish": 3000, "rule": 10000}
 MIN_REPS = 4
@@ -114,6 +115,9 @@ MIN_REPS = 4
 AIM = 0.9                     # aim factor: hit chance = recoil accuracy x AIM x BAND_FIT, capped at 1
 REAL_AIM = 0.4                # field fight hits per round: about 0.38 for a mid rifle at mid range
 HAZE_BLIND_MS = 3000.0       # observed Haze blackout window
+HAZE_BLIND_SWEEP_MS = (1000, 1500, 2000, 3000)
+HAZE_WIN_BAR = 0.65           # about 0.65 against AR with Body Armor, from the critique
+AIM_SWEEP = (0.33, 0.40, 0.48)  # observed in-fight aim interval
 MELEE_SWING_MS = 150.0       # assumed time from the decision to the landed swing
 MELEE_HIT_P = 0.9            # assumed close-range swing hit chance at aim 1
 MELEE_REACH_M = 6.0          # assumed limit within the close band during a rush
@@ -133,6 +137,7 @@ AMBUSH_REACT_MS = 1000.0      # 1v2 ambush: both enemies start firing 1 s after 
 CLOSE_EDGE_M = 10.0           # range bands for the rush model: close under 10 m, mid under 30 m
 MID_EDGE_M = 30.0
 RUSH_SPEED_MS = 5.0           # a rusher closes at 5 m/s ...
+RUSH_SPEED_SWEEP = (2.5, 5.0, 8.0)
 RUSH_MOVE_ACC = 0.5           # ... hits at half its normal chance while moving, full chance once close
 RUSH_STARTS_M = (20.0, 30.0)  # the two reported rush starts; the verdict still gates at 20 m
 RUSH_CAP_MS = 15_000.0
@@ -217,6 +222,9 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "shield_regen": {"quiet_ms": SHIELD_REGEN_DELAY_MS, "grants": SHIELD_REGEN_GRANTS,
                          "step_ms": SHIELD_REGEN_STEP_MS, "preset": "Shields only"},
         "haze_blind_ms": haze_blind_ms,
+        "haze_blind_sweep_ms": list(HAZE_BLIND_SWEEP_MS), "haze_win_bar": HAZE_WIN_BAR,
+        "aim_sweep": list(AIM_SWEEP), "rush_speed_sweep_m_s": list(RUSH_SPEED_SWEEP),
+        "sweep_near_top_reference": "candidate matrix top at the standard 0.9 aim; only the subject kit is rerun",
         "melee": {"swing_ms": MELEE_SWING_MS, "hit_p_at_aim_1": MELEE_HIT_P,
                    "aim_scaling": "swing chance scales with aim and blindness",
                    "reach_m": MELEE_REACH_M},
@@ -1044,7 +1052,7 @@ def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, a
 
 def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS,
                 heat_cool_while_firing=True) -> list[dict]:
-    """The hidden Haze trial stays outside the shipped dominance matrix."""
+    """The non-lethal Haze trial stays outside the primary dominance matrix."""
     plain = make_kit(world, "AR plain", ANCHOR, SECONDARY)
     haze = make_kit(world, "AR + Haze", ANCHOR, "smoke_gun", plan="haze")
     refs = ((ANCHOR, None), (ANCHOR, "body_armor"), ("shotgun", None), ("smg", None))
@@ -1058,6 +1066,33 @@ def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS,
                         "haze": duel_rate(haze, enemy, dist, reps=reps, haze_blind_ms=blind_ms,
                                           heat_cool_while_firing=heat_cool_while_firing)})
     return out
+
+
+def haze_blind_sweep(world: World, reps: int, heat_cool_while_firing=True) -> list[dict]:
+    """AR plus Haze against AR plus Body Armor at mid range across blind windows."""
+    haze = make_kit(world, "AR + Haze", ANCHOR, "smoke_gun", plan="haze")
+    armoured = make_kit(world, "AR + Body Armor", ANCHOR, SECONDARY, perk="body_armor")
+    return [{"blind_ms": ms,
+             "win_vs_ar_body_armor": duel_rate(haze, armoured, "mid", reps=reps,
+                                                haze_blind_ms=ms,
+                                                heat_cool_while_firing=heat_cool_while_firing)}
+            for ms in HAZE_BLIND_SWEEP_MS]
+
+
+def haze_newly_selectable(baseline: World, candidate: World) -> bool:
+    for row in candidate.cat._rows:
+        if int(row.get("sir_fn") or 0) != 23 or row.get("hidden"):
+            continue
+        before = baseline.cat._by_id.get(row["weapon_id"])
+        if before is None or before.get("hidden"):
+            return True
+    return False
+
+
+def haze_unhide_failure(baseline: World, candidate: World, sweep: list[dict]) -> bool:
+    """A newly selectable fn-23 Haze must stay under the win bar at every blind window."""
+    return haze_newly_selectable(baseline, candidate) and any(
+        point["win_vs_ar_body_armor"] > HAZE_WIN_BAR for point in sweep)
 
 
 def ambush(kit: Kit, enemy: Kit, dist: str, reps=3000, heat_cool_while_firing=True) -> tuple[float, float]:
@@ -1132,9 +1167,9 @@ def _band_of(dist_m: float) -> int:
     return 0 if dist_m < CLOSE_EDGE_M else (1 if dist_m < MID_EDGE_M else 2)
 
 
-def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
+def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float, speed_m_s=RUSH_SPEED_MS):
     """The peeking marksman `m` opens at t=0 from `start_m`. Its first shot (hit or miss) alerts `v`, which
-    rushes PEEK_REACT_MS later at RUSH_SPEED_MS, firing on the move at RUSH_MOVE_ACC. At close range cover
+    rushes PEEK_REACT_MS later at speed_m_s, firing on the move at RUSH_MOVE_ACC. At close range cover
     no longer protects m. (marksman_kill, rush_success)."""
     m.peek_w = PEEK_WINDOW_MS
     m.targets, v.targets = [v], [m]
@@ -1142,7 +1177,7 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
     t_rush = None
 
     def dist_at(t):
-        return start_m if t_rush is None or t <= t_rush else max(0.0, start_m - RUSH_SPEED_MS * (t - t_rush) / 1000.0)
+        return start_m if t_rush is None or t <= t_rush else max(0.0, start_m - speed_m_s * (t - t_rush) / 1000.0)
 
     while True:
         cands = [f for f in (m, v) if f.alive and f.next_t <= RUSH_CAP_MS and f.target() is not None]
@@ -1183,7 +1218,7 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float):
 
 
 def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_firing=True,
-                          start_m=RUSH_STARTS_M[0], peek_result=None) -> dict:
+                          start_m=RUSH_STARTS_M[0], peek_result=None, speed_m_s=RUSH_SPEED_MS) -> dict:
     """Tony 2026-10-17: "sniper should feel strong until players recognize the strat to rush the sniper".
     peek_kill: the peek-kill rate at long range against a player who does not rush. rush_success: the rate
     a rusher from start_m kills the same peeking marksman."""
@@ -1207,10 +1242,27 @@ def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_fir
                     heat_cool_while_firing=heat_cool_while_firing)
         v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
                     heat_cool_while_firing=heat_cool_while_firing)
-        a, b = rush_encounter(rng, m, v, start_m)
+        a, b = rush_encounter(rng, m, v, start_m, speed_m_s)
         mk += a; rs += b  # noqa: E702
     return {"peek_kill": peek_result[0], "peek_death": peek_result[1], "escape": peek_result[2],
             "rush_success": rs / reps, "marksman_beats_rusher": mk / reps}
+
+
+def rush_speed_sweep(marksman: Kit, plain: Kit, armoured: Kit, reps: int,
+                     heat_cool_while_firing=True) -> list[dict]:
+    """Only the subject marksman fights both declared rush opponents at 20 m."""
+    return [{"speed_m_s": speed,
+             "plain": marksman_rush_counter(marksman, plain, reps, heat_cool_while_firing,
+                                              speed_m_s=speed),
+             "body_armor": marksman_rush_counter(marksman, armoured, reps, heat_cool_while_firing,
+                                                   speed_m_s=speed)}
+            for speed in RUSH_SPEED_SWEEP]
+
+
+def rush_sweep_flips(rows: list[dict], *, strong_ok: bool, verdict_pass: bool) -> bool:
+    return any((strong_ok and row["plain"]["rush_success"] >= MARKSMAN_RUSH_BAR
+                and row["body_armor"]["rush_success"] >= MARKSMAN_RUSH_BAR) != verdict_pass
+               for row in rows)
 
 
 def rush_table(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
@@ -2046,6 +2098,42 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
             "ammo_stress_end_reasons": ammo_reasons, "ammo_stress_anchor_end_reasons": ammo_anchor_reasons}
 
 
+def aim_sweep_status(rows: list[dict], reference_top: dict) -> dict:
+    """Compare the subject's sweep to the saved matrix top, without rerunning other kits."""
+    marked = []
+    for row in rows:
+        marked.append({**row, "near_top": {dist: _near_top(f"1v1 {dist}", row[dist],
+                                                           reference_top[f"1v1 {dist}"])
+                                           for dist in ("mid", "long")}})
+    changed = [dist for dist in ("mid", "long")
+               if len({row["near_top"][dist] for row in marked}) > 1]
+    return {"rows": marked, "reference_top": {dist: reference_top[f"1v1 {dist}"]
+                                               for dist in ("mid", "long")},
+            "near_top_changes": changed}
+
+
+def subject_aim_sweep(world: World, matrix: dict, subject: str, reps: int,
+                      heat_cool_while_firing=True) -> dict:
+    """Mean 1v1 win rates for the subject kit only, against the candidate matrix opponents."""
+    def kit(name):
+        spec = matrix["specs"][name]
+        return make_kit(world, name, spec["primary"], spec["secondary"], spec["perk"],
+                        "combo" if spec["combo"] else "single")
+
+    subject_kit = kit(subject)
+    opponents = [kit(name) for name in matrix["kits"] if name != subject]
+    rows = []
+    for aim in AIM_SWEEP:
+        row = {"aim": aim}
+        for dist in ("mid", "long"):
+            rates = [duel_rate(subject_kit, other, dist, reps=reps, aim=aim,
+                               heat_cool_while_firing=heat_cool_while_firing)
+                     for other in opponents]
+            row[dist] = sum(rates) / len(rates) if rates else float("nan")
+        rows.append(row)
+    return aim_sweep_status(rows, matrix["top"])
+
+
 # --------------------------------------------------------------------------- #
 # The Balance rules (R1-R12, R10a), per preset, from balance_sim's engines
 # --------------------------------------------------------------------------- #
@@ -2513,7 +2601,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                if pickup else _test(None, {}, "not a pickup-only candidate"))
 
     # balance_kept ----------------------------------------------------------------------------------
-    tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side)
+    haze_touched = any(int(world.cat._row(w).get("sir_fn") or 0) == 23
+                       for w in touched if w in world.cat._by_id)
+    haze_sweep = (haze_blind_sweep(world, _reps("haze_sweep", reps_scale), heat_cool_while_firing)
+                  if haze_touched or haze_newly_selectable(base, world) else None)
+    haze_failure = haze_unhide_failure(base, world, haze_sweep or [])
+    tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
+                                         haze_failure=haze_failure)
 
     # op_rule -------------------------------------------------------------------------------------------
     perk_in_play = is_perk or any(e["kind"].startswith("perk") for e in cand["with"])
@@ -2534,8 +2628,14 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[1])], n_jobs)
         tests["marksman_rush_counter"] = marksman_verdict(
             r, r_ba, mc["near_top"].get(subject_kit, []), r30, r_ba30)
+        rush_sweep = rush_speed_sweep(mk, ar, ar_ba, _reps("rush_sweep", reps_scale),
+                                      heat_cool_while_firing)
+        rush_flip = rush_sweep_flips(rush_sweep,
+                                     strong_ok=tests["marksman_rush_counter"]["numbers"]["strong_ok"],
+                                     verdict_pass=tests["marksman_rush_counter"]["pass"])
     else:
         tests["marksman_rush_counter"] = _test(None, {}, "not a marksman candidate")
+        rush_sweep, rush_flip = None, False
     watch = marksman_watch(base, world, wid, rush_reps, n_jobs, heat_cool_while_firing)
 
     ttk_ids = [w for w in roster_ids(world)[0]] + ([wid] if wid and wid not in roster_ids(world)[0] else [])
@@ -2552,6 +2652,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
         "marksman_watch": watch,
+        "rush_speed_sweep": {"rows": rush_sweep, "verdict_flips": rush_flip} if rush_sweep else None,
+        "aim_sweep": subject_aim_sweep(world, mc, subject_kit, _reps("aim_sweep", reps_scale),
+                                        heat_cool_while_firing) if subject_kit else None,
         "rush_table": rush_table(world, specs_c, rush_reps, n_jobs, heat_cool_while_firing),
         "hill": hill_report(world, specs_c, _reps("duel", reps_scale), n_jobs, heat_cool_while_firing,
                             anchor_world=base),
@@ -2561,6 +2664,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "heat": heat_comparison,
         "haze": haze_report(world, _reps("duel", reps_scale), haze_blind_ms,
                             heat_cool_while_firing) if haze else None,
+        "haze_blind_sweep": haze_sweep,
     }
     if not _single_branch:
         branch_verdicts = {heat_cool_while_firing: verdict}
@@ -2632,7 +2736,7 @@ def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -
 
 
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
-                 side: dict | None = None) -> dict:
+                 side: dict | None = None, *, haze_failure: bool = False) -> dict:
     """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
     entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
     (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
@@ -2649,8 +2753,9 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
                                "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
-            "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z}
-    ok = not flips and not lost
+            "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
+            "haze_unhide_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
+    ok = not flips and not lost and not haze_failure
     if side is not None:
         low = {k: v for k, v in side["r10b"].items()
                if v < (R10_PRIMARY_BAR if k.startswith("standard") else B.SHIELDS_BAR)}
@@ -2658,7 +2763,8 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
         nums["r10b_under_bar"] = low
         ok = ok and not low
     return _test(ok, nums, "no Balance rule cell flips to fail (against the shipped catalogue too), "
-                           "and no other kit loses its last near-top cell")
+                           "no other kit loses its last near-top cell, and a newly selectable Haze "
+                           "does not exceed the Haze win bar against AR with Body Armor at mid range")
 
 
 def op_rule(shipped: World, base: World, world: World, scope: list[str], changed: list[str]) -> dict:
@@ -2891,6 +2997,17 @@ def report_markdown(v: dict) -> str:
             out += [f"From {RUSH_STARTS_M[1]:g} m: plain AR rush success "
                     f"{mr['vs_plain_ar_30m']['rush_success']:.2f}; AR with Body Armor "
                     f"{mr['vs_ar_body_armor_30m']['rush_success']:.2f}. The verdict bar remains at {RUSH_STARTS_M[0]:g} m.", ""]
+    if v.get("rush_speed_sweep"):
+        sweep = v["rush_speed_sweep"]
+        out += ["## Rush speed sensitivity", "",
+                f"Subject marksman against both AR rushers from {RUSH_STARTS_M[0]:g} m. "
+                f"The rush success bar is {MARKSMAN_RUSH_BAR:.2f}. Verdict flips inside sweep: {sweep['verdict_flips']}.", "",
+                "| speed (m/s) | plain AR rush success | AR with Body Armor rush success |",
+                "|---:|---:|---:|"]
+        for row in sweep["rows"]:
+            out.append(f"| {row['speed_m_s']:g} | {row['plain']['rush_success']:.2f} | "
+                       f"{row['body_armor']['rush_success']:.2f} |")
+        out.append("")
     moved_m = {w: r for w, r in (v.get("marksman_watch") or {}).items() if r["moved"]}
     if v.get("rush_table"):
         out += ["## Marksman rushes", "", f"The verdict bar uses both plain AR and AR with Body Armor at {RUSH_STARTS_M[0]:g} m. Both starts are reported below.", "",
@@ -2974,11 +3091,33 @@ def report_markdown(v: dict) -> str:
             "Bolt kits have no ammo stress score.",
             "", matrix_markdown(v["matrix"]["candidate"]), "", "## Dominance matrix, baseline", "",
             matrix_markdown(v["matrix"]["baseline"]), ""]
+    if v.get("aim_sweep"):
+        sweep = v["aim_sweep"]
+        out += ["## In-fight aim sensitivity", "",
+                f"Only the subject kit is rerun against the candidate roster. Near-top uses the saved "
+                f"{AIM:g}-aim matrix top as a fixed reference; other kits are not swept. "
+                f"Near-top status changes inside sweep: {', '.join(sweep['near_top_changes']) or 'none'}.", "",
+                "| aim | 1v1 mid win | near top | 1v1 long win | near top |",
+                "|---:|---:|---|---:|---|"]
+        for row in sweep["rows"]:
+            out.append(f"| {row['aim']:.2f} | {row['mid']:.2f} | {row['near_top']['mid']} | "
+                       f"{row['long']:.2f} | {row['near_top']['long']} |")
+        out.append("")
     if v.get("haze"):
-        out += ["## Haze trial (hidden weapon)", "", "| opponent | range | plain AR | AR + Haze |",
+        out += ["## Haze trial", "", "| opponent | range | plain AR | AR + Haze |",
                 "|---|---|---:|---:|"]
         for row in v["haze"]:
             out.append(f"| {row['opponent']} | {row['range']} | {row['plain']:.2f} | {row['haze']:.2f} |")
+        out.append("")
+    if v.get("haze_blind_sweep"):
+        out += ["## Haze blind-duration sensitivity", "",
+                f"AR + Haze against AR with Body Armor at mid range. "
+                f"A candidate that makes the fn-23 Haze selectable fails balance_kept above {HAZE_WIN_BAR:.2f} "
+                "at any blind duration.", "",
+                "| blind (ms) | AR + Haze win | over bar |", "|---:|---:|---|"]
+        for row in v["haze_blind_sweep"]:
+            rate = row["win_vs_ar_body_armor"]
+            out.append(f"| {row['blind_ms']:g} | {rate:.2f} | {rate > HAZE_WIN_BAR} |")
         out.append("")
     if v.get("heat"):
         out += ["## Heat: cooling throughout / after lockout / none", "",

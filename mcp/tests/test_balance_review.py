@@ -204,6 +204,14 @@ def test_report_scenario_copy_uses_the_current_assumptions():
                "candidate": {}, "facts": {}, "matrix": {"baseline": matrix, "candidate": matrix},
                "rules": {"shipped": {}, "baseline": {}, "candidate": {}}, "ttk": [],
                "assumptions": {}, "not_modelled": [],
+               "rush_speed_sweep": {"rows": [{"speed_m_s": speed,
+                   "plain": {"rush_success": 0.4}, "body_armor": {"rush_success": 0.5}}
+                   for speed in R.RUSH_SPEED_SWEEP], "verdict_flips": True},
+               "aim_sweep": R.aim_sweep_status(
+                   [{"aim": aim, "mid": 0.4, "long": 0.5} for aim in R.AIM_SWEEP],
+                   {"1v1 mid": 0.5, "1v1 long": 0.5}),
+               "haze_blind_sweep": [{"blind_ms": ms, "win_vs_ar_body_armor": 0.7}
+                                    for ms in R.HAZE_BLIND_SWEEP_MS],
                "hill": {"hold": [], "overwatch": [], "contest": []},
                "pistol_finishers": [{"primary": "AR", "pistol": "USP", "finish_ms": 1,
                                      "reload_finish_ms": 2, "bar_ms": 3, "beats_staying": True}]}
@@ -220,6 +228,9 @@ def test_report_scenario_copy_uses_the_current_assumptions():
     assert "Bolt kits are n/a" in report
     assert "chain reload can be interrupted only in ammo stress" in report
     assert "| Sniper | n/a | n/a |" in report
+    assert "## Rush speed sensitivity" in report
+    assert "## In-fight aim sensitivity" in report
+    assert "## Haze blind-duration sensitivity" in report
 
 
 # --------------------------------------------------------------------------- the named tests, end to end
@@ -439,6 +450,50 @@ def test_marksman_rush_counter_catches_both_sides():
     assert R.MARKSMAN_STRONG_COLUMN in R.COLUMNS
 
 
+def test_rush_speed_sweep_reports_three_speeds_and_a_constructed_verdict_flip():
+    assert R.RUSH_SPEED_SWEEP == (2.5, 5.0, 8.0)
+    rows = [{"speed_m_s": speed, "plain": {"rush_success": plain},
+             "body_armor": {"rush_success": armoured}}
+            for speed, plain, armoured in ((2.5, 0.2, 0.3), (5.0, 0.4, 0.45), (8.0, 0.6, 0.7))]
+    assert R.rush_sweep_flips(rows, strong_ok=True, verdict_pass=False)
+    assert not R.rush_sweep_flips(rows, strong_ok=False, verdict_pass=False)
+
+
+def test_aim_sweep_flags_a_near_top_change():
+    assert R.AIM_SWEEP == (0.33, 0.40, 0.48)
+    rows = [{"aim": aim, "mid": mid, "long": long}
+            for aim, mid, long in ((0.33, 0.30, 0.65), (0.40, 0.40, 0.66), (0.48, 0.51, 0.67))]
+    assert R.aim_sweep_status(rows, {"1v1 mid": 0.55, "1v1 long": 0.70})["near_top_changes"] == ["mid"]
+
+
+def test_unhiding_haze_fails_only_when_it_crosses_the_blind_sweep_bar():
+    shipped = R.shipped_world()
+    hidden = copy.deepcopy(shipped.cat._row("smoke_gun"))
+    hidden["hidden"] = True
+    visible = copy.deepcopy(hidden)
+    visible["hidden"] = False
+    baseline = R.World(WeaponCatalog([hidden if row["weapon_id"] == "smoke_gun" else row
+                                      for row in shipped.cat._rows]), shipped.perks)
+    candidate = R.World(WeaponCatalog([visible if row["weapon_id"] == "smoke_gun" else row
+                                       for row in shipped.cat._rows]), shipped.perks)
+    assert R.HAZE_BLIND_SWEEP_MS == (1000, 1500, 2000, 3000)
+    sweep = R.haze_blind_sweep(candidate, 300)
+    assert [row["blind_ms"] for row in sweep] == list(R.HAZE_BLIND_SWEEP_MS)
+    assert sweep[-1]["win_vs_ar_body_armor"] > R.HAZE_WIN_BAR
+    assert R.haze_unhide_failure(baseline, candidate, sweep)
+    assert not R.haze_unhide_failure(baseline, baseline, sweep)
+    assert not R.haze_unhide_failure(shipped, shipped, sweep)
+    with mock.patch.object(R, "haze_blind_sweep", return_value=sweep):
+        verdict = R.review({"row": visible, "with": [{"row": hidden}]}, reps_scale=0.001)
+    assert verdict["tests"]["balance_kept"]["status"] == "fail"
+    assert verdict["tests"]["balance_kept"]["numbers"]["haze_unhide_over_bar"]
+    assert "## Haze blind-duration sensitivity" in R.report_markdown(verdict)
+    result = R.balance_kept({}, {}, {}, {"keys": {}, "near_top": {}},
+                            {"keys": {}, "near_top": {}}, "smoke_gun",
+                            haze_failure=R.haze_unhide_failure(baseline, candidate, sweep))
+    assert result["status"] == "fail" and "Haze" in result["why"]
+
+
 def test_rush_table_covers_every_marksman_and_both_starts():
     world, specs = _shipped_specs()
     rows = R.rush_table(world, specs, 80, 1)
@@ -609,7 +664,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 10
+    assert R.SCENARIO_VERSION == 11
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True

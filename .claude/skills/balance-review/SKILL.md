@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 10. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 11. Add `--haze` for the AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -47,8 +47,9 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
      plus field), and no kit exceeds the field-ratio ceiling of 1.60.
    - `viable`: the plain primary's field ratio clears the floor, and its full kit beats another kit in a 1v1
      band. A sidearm instead finishes 35 HP inside the R10a bar.
-   - `balance_kept`: no Balance rule cell (R1-R12, R10a, Standard and Shields) flips to fail, and no other kit
-     loses its last near-top cell by more than two standard errors beyond the near-top margin.
+   - `balance_kept`: no Balance rule cell (R1-R12, R10a, Standard and Shields) flips to fail, no other kit
+     loses its last near-top cell by more than two standard errors beyond the near-top margin, and a newly
+     selectable fn-23 Haze stays at or below `HAZE_WIN_BAR` against AR with Body Armor at mid range.
    - `op_rule`: no loadout weapon's pull, or crit pull, one-shots the lowest pool a player can field on Standard
      or Shields, with any visible perk (rule 7).
    - `marksman_rush_counter`: marksman rows only. Strong against players who do not rush (peek-kill, and near
@@ -75,7 +76,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 10 uses these models:
+Scenario version 11 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. `--heat-cooling` selects
   `throughout`, `after_lockout`, or `none`. The first branch cools between all shots at the catalogue rate.
@@ -96,8 +97,8 @@ Scenario version 10 uses these models:
   then health. A tick can kill after the shooter stops.
 - `--haze` reports AR + Haze against reference kits at close and mid range. A landed Haze opener blinds the
   target for `HAZE_BLIND_MS` (3,000 ms by default), keyed by the row's `sir_fn` 23. A non-lethal Haze hit
-  deals no damage. The shooter then pays a swap to its primary. Haze remains outside the shipped kit matrix
-  while it is hidden.
+  deals no damage. The shooter then pays a swap to its primary. Haze remains outside the primary kit matrix
+  because it is non-lethal. The blind-duration sweep runs when the candidate touches its fn-23 row.
 - The matrix reports `real aim close`, `real aim mid` and `real aim long` separately at `REAL_AIM` 0.4.
   Each range can contribute a near-top cell to the verdict gates. The existing 0.9 aim columns remain.
 - The field sim uses hit probability 0.35, mean contact 3 seconds and mean ordinary gap 70 seconds. A respawn
@@ -122,6 +123,13 @@ Scenario version 10 uses these models:
 - The rush table checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from
   20 m and 30 m. `marksman_rush_counter` separately gates plain AR and AR + Body Armor at 20 m.
   The marksman verdict also reports both opponents at 30 m.
+- A marksman candidate also reports rush success against both 20 m AR opponents at 2.5, 5 and 8 m/s.
+  The sensitivity report flags any verdict change. It does not change the main rush bar.
+- The subject kit reports mid and long 1v1 win rates at 0.33, 0.40 and 0.48 in-fight aim.
+  Near-top sensitivity uses the saved 0.9-aim matrix top as a fixed reference. Only the subject row reruns.
+- The Haze sensitivity report tests 1, 1.5, 2 and 3-second blind windows against AR with Body Armor at mid range.
+  A candidate that unhides the fn-23 Haze fails `balance_kept` above 0.65 at any window.
+  Candidates that leave the Haze hidden do not receive this gate.
 - `hill hold` is the mean chance to kill two close attackers of each reference kit (AR, SMG and Shotgun).
   The second attacker arrives 3,500 ms after the first. The holder fights the first attacker alone until then.
   The holder is alert and can fire when the second attacker arrives, with no reaction delay.
