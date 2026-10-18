@@ -2,7 +2,7 @@
   "name": "ammo-alt-spawn-and-old-round",
   "why": "F542 field 2026-10-17: after the spawn the gun ignores ALT until the first trigger pull, so the node opens no swap and assumes none (F436 bench rule). After a pull, a round from the old slot 250 ms or more into the window closes the swap with no swap, and the window never assumes it over that round (cause 2).",
   "source": "app/src/ammo.js altPressed and onAmmo (F542 cause 2, F445)",
-  "runners": ["engine"],
+  "runners": ["engine", "stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4}],"perks":[]},
     "fields": ["switching","reloading","mag","shots","reload","swap","heat","shotCooldown","moment"]
@@ -26,9 +26,6 @@
     {"check":"settled_on_old_slot"},
     {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
     {"check":"next_alt_targets_new_slot"}
-  ],
-  "stage_ignores": [
-    {"what":"trace","why":"DIVERGENCE: the stage twin of F542 cause 2 and the post-spawn ALT rule is brx5's; it adds \"stage\" to runners when it lands."}
   ],
   "expect": [
     {
@@ -119,7 +116,7 @@
       "at": "alt_after_pull_switches",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":1,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":null},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": []
     },
     {

@@ -1575,6 +1575,7 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st._alt_ptr = 1
         st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
+        st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
         st._on_rx("$BUT,1,1,*")
         assert st.switching["from"] == 1 and st.switching["to"] == 0
         st._prev_ammo[1] = 10
@@ -1631,6 +1632,7 @@ def test_bug3a_the_spawn_rows_echo_leaves_the_trigger_and_the_alt_pointer_on_slo
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         await flush_fake_ammo(st, mgr)
         assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
         st._on_rx("$BUT,1,1,*")
         assert st.switching and st.switching["to"] == 1, st.switching
     asyncio.run(go())
@@ -2170,6 +2172,8 @@ def test_every_hill_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
+    "headsetOk",
     # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)
     "am.gunWasOn",
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore

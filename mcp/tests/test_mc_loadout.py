@@ -907,6 +907,10 @@ def test_weapon_view_htk_ttk_caution():
     # 2026-09-17 (F229) because it overheats after about 30 rounds and only a HELD reload lever clears
     # the lockout, which reads as a broken gun to a player who does not know it.
     assert "overheat" in views["energy_rifle"]["caution"].lower(), views["energy_rifle"]
+    # The Charge Rifle earned one too (field 2026-10-17): below one charge's worth of rounds it will
+    # not fire or reload, which reads as a dead gun. The number is the catalogue's, never typed twice.
+    rpc = views["charge_rifle"]["rounds_per_charge"]
+    assert f"{rpc} rounds" in views["charge_rifle"]["caution"], views["charge_rifle"]
     # A48 (merge 2026-09-17): `rounds_per_charge` must reach the node, because the phone HUD's
     # NOT ENOUGH ENERGY line reads the real cost of one full charge instead of a hard-coded 10.
     # It rides both shapes -- `Weapon` (contracts §3, what `assign.catalog` carries) and `WeaponView`.
@@ -930,7 +934,7 @@ def test_weapon_view_htk_ttk_caution():
     # The Haze joined on 2026-09-18: it takes no health and drops the target's accuracy to 0 for about
     # three seconds, which reads as a broken tagger until the HUD says otherwise (S53). That is exactly
     # what a `caution` is for, so the pin grows rather than the field being dropped from the push.
-    assert set(cautioned) == {"energy_rifle", "smoke_gun"}, cautioned
+    assert set(cautioned) == {"charge_rifle", "energy_rifle", "smoke_gun"}, cautioned
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)

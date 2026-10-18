@@ -212,6 +212,7 @@ export const WEAPONS: WeaponView[] = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -933,7 +934,9 @@ export const PERKS: PerkView[] = [
       "RELOADS 1.2× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "extended_mags",
@@ -956,7 +959,9 @@ export const PERKS: PerkView[] = [
       "SWAPS 1.3× SLOWER"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_hands",
@@ -978,7 +983,9 @@ export const PERKS: PerkView[] = [
       "×0.8 AMMO"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "quick_switch",
@@ -1000,7 +1007,9 @@ export const PERKS: PerkView[] = [
       "-20 ARMOR"
     ],
     "verified": true,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [],
+    "blocked_secondary": []
   },
   {
     "perk_id": "armor_piercing",
@@ -1021,7 +1030,21 @@ export const PERKS: PerkView[] = [
       "FIXED DAMAGE, SLOWER CYCLE"
     ],
     "verified": false,
-    "hidden": false
+    "hidden": false,
+    "blocked_primary": [
+      "burst_rifle",
+      "sniper_rifle",
+      "amr",
+      "charge_rifle",
+      "usp",
+      "deagle",
+      "rocket_launcher",
+      "rail_gun",
+      "stripper",
+      "smoke_gun",
+      "toxin_rifle"
+    ],
+    "blocked_secondary": []
   }
 ];
 // GENERATED-END perks
@@ -1111,7 +1134,7 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "name": "KING OF THE HILL",
     "abbr": "KOTH",
     "desc": "Hold the hill; possession scores",
-    "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
+    "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it with a living player on it banks possession. Most possession time when the clock runs out takes the match.",
     "teams_text": "2 TEAMS",
     "win_text": "POSSESSION TIME",
     "respawn_text": "ON · TIMED",

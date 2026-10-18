@@ -539,11 +539,14 @@ export function Kit() {
                     const allowed = pool.perks.includes(k.perk_id);
                     const on = k.perk_id === perk?.perk_id;
                     const fixed = perkRule?.choice === 'fixed';
-                    const dis = locked || !allowed || (fixed && !on);
+                    // F551: a perk the push would refuse with this kit's weapons (`PerkView.blocked_*`) is not offered
+                    const clash = primary && (k.blocked_primary ?? []).includes(primary.weapon_id) ? primary
+                      : secondaryW && (k.blocked_secondary ?? []).includes(secondaryW.weapon_id) ? secondaryW : null;
+                    const dis = locked || !allowed || (fixed && !on) || (!!clash && !on);
                     const ask = confirmFor(`perk:${k.perk_id}`);
                     return (
                       <div key={k.perk_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${k.name} perk${locked ? ', locked while the match is in play' : dis ? ', not allowed by the rules' : ''}`} title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
+                        aria-label={`${k.name} perk${locked ? ', locked while the match is in play' : clash && !on ? `, does not work with the ${clash.name}` : dis ? ', not allowed by the rules' : ''}`} title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : clash ? `Does not work with the ${clash.name}` : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
                         onClick={() => { if (!dis) pickPerk(k); }} onKeyDown={onKey(() => { if (!dis) pickPerk(k); })}
                         style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${ask ? T.warn : on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1, flexWrap: 'wrap' }}>
                         {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}
