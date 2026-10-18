@@ -26,6 +26,12 @@ under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `sess
 made sure Node, Python and the console are in place; `pnpm mc` skips straight to starting when they
 already are.)
 
+**Keep the Mac awake while MC runs.** In a second Terminal tab, run `caffeinate -dimsu` and leave it open until the
+last match ends, then press Ctrl-C. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
+the lid open: closing it still sleeps the Mac unless an external display is connected. On
+2026-10-17 the Mac slept during play: the clock stepped 8 times, the phone sockets were taken over 19 times and 31
+keepalives timed out (`docs/field-2026-10-17.md` §2 item 5).
+
 After a run, create a scrubbed evidence pack with `./start.sh --report` (or pass a launch id). The launcher keeps
 authentication enabled and never copies the private armory file.
 
@@ -139,6 +145,10 @@ cd mcp && ../.venv/bin/python run_tests.py
   run no longer blocks the next one, but its demo MC can stay alive and hold memory. Find and stop it by process:
   `pkill -f "[b]rx_mcp.mc .*--no-auth"` (the brackets stop the pattern matching the shell that runs it; it also stops
   an MC you started by hand with `--no-auth`). `pnpm run test:all` kills its jobs' process groups on a timeout or Ctrl-C.
+- **`pnpm run test:all` reads the Mac's memory from `vm_stat`** (free, inactive and speculative pages). When the
+  reading leaves too little after the 3000 MB reserve, a job that runs alone may use the reserve. If the reading is
+  lower than the job itself, the first job starts after 60 s, and then one job runs at a time while the reading stays low (F565). For
+  more parallel jobs on a small Mac, lower the reserve, for example `BRX_TEST_POOL_RESERVE_MB=1000`.
 - **The e2e refuses a stale bundle** (*"FATAL: STALE BUNDLE"*). `cd app && npm run build` first.
 
 ## 4. Reading a session store — the thing that settles arguments
