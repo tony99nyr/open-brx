@@ -1767,6 +1767,8 @@ export interface StationControl {
   progress?: number;
   contested?: boolean;
   hold_ms?: Record<string, number>;
+  /** F555: the game byte the hill counts under (absent from an older station) */
+  game?: number;
 }
 
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
@@ -2033,6 +2035,10 @@ export interface PossessionView {
   reports: number;
   observed_s: number;
   of_s: number | null;
+  /** F555: present once a control station reported its own tally. `by_team` then scores those sites on the station's
+   *  reading (utility.md §5d.6); `phones_by_team` is the phones' own merge, the cross-check. */
+  station_sites?: number;
+  phones_by_team?: Record<string, number>;
 }
 
 export interface AfterEndPlayer {

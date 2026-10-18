@@ -465,7 +465,9 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   want.control_progress = 50;  // utility.js rounds half up
   want.control_has_hold = true;
   want.control_hold_ms[1] = 4000;
+  want.control_game = 3;       // F555: the game byte the hill counts under
   CHECK(build_status_body(armed) == build_status_body(want));
+  CHECK(build_status_body(armed).find("\"contested\":false,\"game\":3,\"hold_ms\"") != std::string::npos);
   link.set_mode(AssocMode::MUSTER);
   CHECK(fill_status(link, 2000, true, 7, 0).assoc == "muster");
 }

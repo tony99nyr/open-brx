@@ -1587,6 +1587,7 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
+    game: NotRequired[int]       # F555: the game byte the hill counts under (absent from an older station)
 
 
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).
@@ -1849,6 +1850,10 @@ class PossessionView(TypedDict):
     reports: int
     observed_s: float
     of_s: int | None
+    # F555: present once a control station reported its own tally. `by_team` then scores those sites on the station's
+    # reading (utility.md §5d.6); `phones_by_team` is the phones' own merge, the cross-check.
+    station_sites: NotRequired[int]
+    phones_by_team: NotRequired[dict[str, float]]
 
 
 class AfterEndPlayer(TypedDict):
