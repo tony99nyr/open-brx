@@ -702,6 +702,15 @@ test('control point F382: the possession tick stops while contested and resumes 
   assert.equal(nWrites(h, HILL_TICK_F) - beforeLosing, 6, 'a draining hill ticks every 1.5 s');
 });
 
+test('F556 review: a point last heard before go-live banks nothing from before go-live', () => {
+  const h = koth();
+  const goLive = h.eng.goLiveT;
+  assert.ok(Number.isFinite(goLive), 'setup: a live match with a go-live time');
+  const slot = { _holdAt: 0 };
+  h.eng.hl.accrue({ owner: 1, contested: false, at: goLive - 900, site: 99, source: 'station' }, goLive + 100, slot);
+  assert.equal(h.eng.hold['99'][1], 100, 'only the 100 ms since go-live');
+});
+
 test('F556 (field 2026-10-17): with two points in range, the phone accrues BOTH, not only the one it latched', () => {
   // Each phone used to keep one hill, so with two points it tallied whichever it latched (56 flips in one match), and the
   // per-site tally was a 45-60 % lower bound. The HUD still reads one point; the clock counts every fresh one.
@@ -717,7 +726,13 @@ test('F556 (field 2026-10-17): with two points in range, the phone accrues BOTH,
   for (let i = 0; i < 40; i++) { h.adv(250); h.eng.setStations([both(1, 0)[0]]); h.eng.tick(); }
   const b2 = (h.eng.hold['12'] || {})[0] || 0;
   assert.ok(b2 - b <= 1000, `a silent point stopped (${b2 - b} ms more)`);
-  assert.ok(h.eng.hold['11'][1] >= a + 9000, 'the heard one kept counting');
+  assert.ok(h.eng.hold['11'][1] >= a + 9000 && h.eng.hold['11'][1] <= a + 10_250, `the heard one kept counting, once (${h.eng.hold['11'][1] - a} ms)`);
+  // the field case: the point stays LISTED but its advert ages past CONTROL_STALE_MS (4 s), and its tally stops there
+  const b3 = (h.eng.hold['12'] || {})[0] || 0;
+  for (let i = 0; i < 40; i++) { h.adv(250); h.eng.setStations([both(1, 0)[0], { ...both(1, 0)[1], ageMs: 250 * (i + 1) }]); h.eng.tick(); }
+  const b4 = (h.eng.hold['12'] || {})[0] || 0;
+  assert.ok(b4 - b3 <= 4_250, `an aged point stops at the stale window (${b4 - b3} ms more)`);
+  assert.ok(b4 - b3 >= 3_500, `and it counted until then (${b4 - b3} ms)`);
   // CONTROL: contested on one site pauses only that site
   for (let i = 0; i < 24; i++) { h.adv(250); h.eng.setStations([controlEntry({ id: 11, team: 1, state: HELD | CONTESTED, value: 100 }),
     controlEntry({ id: 12, team: 0, state: HELD, value: 100, present: false })]); h.eng.tick(); }

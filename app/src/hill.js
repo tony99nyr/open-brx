@@ -262,7 +262,8 @@ export class HillListener {
    *
    *  ⚠ ONE point. A station advert does name its own id, so unlike F88's grenades several points ARE
    *  distinguishable on this wire -- but `this.hill` models a single point, so the nearest/occupied one wins
-   *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). */
+   *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). That is the HUD and the
+   *  audio only: since F556 the possession clock accrues every point heard (`accrueStations`). */
   onAdvert(now) {
     const e = this.host._controlStation();
     if (!e) return;
@@ -464,6 +465,8 @@ export class HillListener {
     // but a full second on a throttled phone, which made possession depend on tick rate, the exact thing
     // this accumulator exists to avoid.
     if (!slot._holdAt) slot._holdAt = (h.at != null && h.at <= now) ? h.at : now;
+    const goLive = this.host.goLiveT;   // F556 review: a point last heard before go-live banks nothing from before it
+    if (Number.isFinite(goLive) && slot._holdAt < goLive) slot._holdAt = Math.min(goLive, now);
     const dt = Math.max(0, Math.min(HOLD_STEP_MAX_MS, now - slot._holdAt));
     slot._holdAt = now;
     if (!dt) return;
@@ -541,7 +544,7 @@ export class HillListener {
     if (!h) { this._holdAt = 0; this._siteHold = {}; return; }   // nothing to hear: the next accrual must not count the gap
     // F535 (Codex review): a hill still in memory from a KOTH game is dropped in a mode with no hill: no tick, no hold.
     if (!this.modeHasHill()) {
-      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0; this._siteHold = {}; this._hillPendingCallout = null; this._controlSig = ''; this._hillWasContested = false;
       this.host.log(`hill dropped: ${this.host.config.mode} has no hill`, 'li'); this.host._changed();
       return;
     }

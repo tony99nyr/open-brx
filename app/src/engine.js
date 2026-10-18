@@ -499,6 +499,7 @@ function hillHost(e) {
     show: (name, value) => e.show(name, value), _laneObj: (name, value) => e._laneObj(name, value),
     _laneAge: (at, now) => e._laneAge(at, now), _alertsMissed: () => e._alertsMissed(),
     emitFact: fact => e.emitFact(fact), _controlStation: () => e._controlStation(), _controlStations: () => e._controlStations(),
+    get goLiveT() { return e.goLiveT; },   // F556 review: no anchor before go-live
     get _lanes() { return e._lanes; },
     _ann: { push: item => e._ann.push(item), dead: () => e._ann.dead(),
       get queue() { return e._ann.queue; }, audioBusy: now => e._ann.audioBusy(now) },
@@ -5730,14 +5731,14 @@ export class Engine {
     const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === STATION_TEAM_ANY || e.team === tid) && this._stationAllowed(e));
     return mine.find(e => e.present) || mine[0] || null;
   }
-  /** The control point this player reads: one we are standing on first, else the strongest in range.
-   *  Unlike a respawn station a control point is NOT team-filtered -- an enemy-held point is exactly the
-   *  one you need to hear about. A stale advert is ignored (see CONTROL_STALE_MS). */
   /** Every control point heard right now (F556: the possession clock counts each one, not only the one the HUD reads). */
   _controlStations() {
     return this.stations.filter(e => e && e.kind === 'control' && this._stationAllowed(e)
       && !(Number.isFinite(e.ageMs) && e.ageMs > CONTROL_STALE_MS));
   }
+  /** The control point this player reads: one we are standing on first, else the strongest in range.
+   *  Unlike a respawn station a control point is NOT team-filtered -- an enemy-held point is exactly the
+   *  one you need to hear about. A stale advert is ignored (see CONTROL_STALE_MS). */
   _controlStation() {
     // ⚠ `ageMs`, never `this.now() - e.seenAt`. `Presence` stamps `seenAt` (and now `ageMs`) with the RAW
     // `Date.now()`; a node's `now()` is that plus the MC clock offset, so subtracting one from the other
