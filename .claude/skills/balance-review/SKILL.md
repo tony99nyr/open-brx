@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 7. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 8. Add `--haze` for the hidden AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -72,7 +72,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
 ## Rules
 
-Scenario version 7 uses these models:
+Scenario version 8 uses these models:
 
 - The two catalogue `heat` blocks control lockout. The crossing round fires. The Charge Rifle cools between
   rounds by default, then clears after its timed lockout. Cooling while firing is unproven (F575); each
@@ -142,7 +142,8 @@ Scenario version 7 uses these models:
   fight raises an error instead of ending the life.
 - The pistol finisher report pairs every visible sidearm with every shipped primary.
   It starts when the primary runs dry with 35 HP left at close range. It compares swapping and finishing with reloading
-  the primary, and reports the R10a 1,200 ms bar. Both paths include `REACTION_MEAN_MS`.
+  the primary, and reports the R10a 1,200 ms bar. The pistol path uses R10a's sampled median, including misses and
+  reaction, plus the kit swap. The primary reload path uses the expected finish time and mean reaction.
   The sidearm `viable` test keeps its existing rule.
 - `hill hold` uses a 0.05 absolute near-top margin. `ammo stress` uses a 0.10 relative margin.
   Both enter `value_addition`,

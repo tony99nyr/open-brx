@@ -138,6 +138,42 @@ def test_bolt_kits_have_no_ammo_stress_cell_or_last_cell_loss():
     assert kept["status"] == "pass"
     assert kept["numbers"]["kits_losing_last_near_top"] == []
 
+    baseline, candidate = copy.deepcopy(matrix), copy.deepcopy(matrix)
+    baseline["near_top"]["Sniper"] = ["peek mid"]
+    # Ammo stress would be the candidate's only near-top cell, but a bolt has no score there.
+    candidate["near_top"]["Sniper"] = [column for column in ("ammo stress",)
+                                          if math.isfinite(candidate["columns"]["Sniper"][column])]
+    assert candidate["near_top"]["Sniper"] == []
+    lost = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert lost["status"] == "fail"
+    assert lost["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"]
+
+
+def test_one_round_non_bolt_has_an_ammo_stress_score():
+    world = R.shipped_world()
+    row = _copy("sniper_rifle", "one_round_mag", "One round magazine")
+    row.update(mag=1, reserve=20, reload_type="magazine")
+    candidate = R.World(WeaponCatalog(world.cat._rows + [row]), world.perks)
+    specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
+             R.KitSpec("One round", "one_round_mag", R.SECONDARY, None, False)]
+    matrix = R.dominance_matrix(candidate, specs, 0.001, 1, anchor_world=world)
+    assert math.isfinite(matrix["columns"]["One round"]["ammo stress"])
+
+
+def test_bolt_verdict_json_is_strict_and_null_reads_as_na():
+    with tempfile.TemporaryDirectory() as d:
+        src, out = pathlib.Path(d) / "candidate.json", pathlib.Path(d) / "verdict.json"
+        src.write_text(json.dumps({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": 56}}))
+        with contextlib.redirect_stdout(io.StringIO()):
+            R.main(["--candidate", str(src), "--out", str(out), "--jobs", "1", "--reps-scale", "0.001"])
+        verdict = json.loads(out.read_text(), parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+        assert verdict["matrix"]["candidate"]["columns"]["Sniper Rifle"]["ammo stress"] is None
+        assert "| Sniper Rifle | n/a | n/a |" in R.report_markdown(verdict)
+        assert R._short({"ammo stress": None}) == '{"ammo stress": "n/a"}'
+        with mock.patch.object(R, "record_guard"), mock.patch.object(R, "record") as record:
+            R.main(["--record-from", str(out), "--call", "Tony: retain"])
+        assert record.call_args.args[0]["matrix"]["candidate"]["columns"]["Sniper Rifle"]["ammo stress"] is None
+
 
 def test_report_scenario_copy_uses_the_current_assumptions():
     reasons = {"dry": 1, "died_reloading": 0, "died_heat_locked_or_venting": 0,
@@ -401,6 +437,10 @@ def test_hill_hold_scores_both_kits_and_overwatch_has_no_escape():
     shotgun_hold = R.hill_hold(shotgun, ar, 1000)
     ar_hold = R.hill_hold(kits["Assault Rifle"], ar, 1000)
     assert 0 < shotgun_hold < 1 and 0 < ar_hold < 1, (shotgun_hold, ar_hold)
+    first_only = R.hill_hold(shotgun, ar, 1000, second_attacker=False)
+    with mock.patch.object(R, "HILL_SECOND_ATTACKER_MS", 0):
+        both_at_once = R.hill_hold(shotgun, ar, 1000)
+    assert first_only > shotgun_hold > both_at_once, (first_only, shotgun_hold, both_at_once)
     assert R.hill_overwatch(sniper, ar, 160) + 0.05 >= R.marksman_rush_counter(sniper, ar, 160)["peek_kill"]
 
 
@@ -511,7 +551,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 7
+    assert R.SCENARIO_VERSION == 8
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -766,6 +806,24 @@ def test_pistol_finisher_includes_r10a_reaction_delay():
     gun = R.make_gun(R.shipped_world().cat, "deagle")
     instant = R.replace(gun, gun_dmg=1000, head_dmg=0, mag=1)
     assert R.pistol_finish_ms(instant, 0) == R.REACTION_MEAN_MS
+
+
+def test_pistol_finisher_bar_uses_sampled_r10a_median():
+    world = R.shipped_world()
+    model = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
+    reps = R._reps("finish", 0.001)
+    sampled = B.finish_time_batch(model, "usp", reps, R.SEED).median_ms
+    kit = R.make_kit(world, "AR+USP", R.ANCHOR, "usp")
+    expected = R.pistol_finish_ms(kit.guns[1], kit.swap_ms)
+    sampled += kit.swap_ms
+    assert sampled != expected, (sampled, expected)
+    bar = (sampled + expected) / 2
+    with mock.patch.object(B, "R10_FINISH_BAR_MS", bar):
+        row = next(r for r in R.pistol_finisher_report(world, scale=0.001)
+                   if r["primary"] == R.ANCHOR and r["pistol"] == "usp")
+    assert row["finish_ms"] == sampled
+    assert row["under_bar"] == (sampled < bar)
+    assert row["under_bar"] != (expected < bar)
 
 
 # --------------------------------------------------------------------------- candidates, pools, the record

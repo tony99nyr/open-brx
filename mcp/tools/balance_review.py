@@ -25,7 +25,7 @@ runs the same versioned scenario list in both, and prints a verdict with six nam
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
                          players who do (Tony, 2026-10-17).
 
-Scenario version 7 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
+Scenario version 8 models catalogue heat, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
@@ -93,7 +93,7 @@ from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 7
+SCENARIO_VERSION = 8
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -215,7 +215,8 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
                         "bolt_na": "a bolt's whole cycle is down time, so this column measures exposure instead of ammunition; bolt kits, including combos, are n/a"},
         "pistol_finisher": {"pool_hp": B.R10_FINISH_POOL_HP, "aim": AIM,
                             "range": PISTOL_FINISH_RANGE,
-                            "first_shot": "after reaction and draw or reload completion"},
+                            "pistol_time": "sampled R10a median, including misses and reaction, plus the kit swap",
+                            "reload_time": "expected primary finish after reload and mean reaction"},
         "field": {"team_sizes": list(FIELD_NS), "venue": FIELD_VENUE, "anchor": ANCHOR,
                   "hit_probs": list(B.DEFAULT_HIT_PROBS), "contact_mean_s": B.SimConfig(pool=B.default_pool()).contact_mean_s,
                   "gap_mean_s": B.SimConfig(pool=B.default_pool()).gap_mean_s,
@@ -1144,7 +1145,8 @@ def rush_table(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
             for start, value in zip(RUSH_STARTS_M, (near_v, far_v))]
 
 
-def hill_hold(holder: Kit, attacker: Kit, reps: int, heat_cool_while_firing=True) -> float:
+def hill_hold(holder: Kit, attacker: Kit, reps: int, heat_cool_while_firing=True,
+              second_attacker=True) -> float:
     """Chance that an alert, stationary holder kills two close attackers before dying."""
     rng = B.cell_rng(SEED, "hill_hold", holder.name, attacker.name, HILL_SECOND_ATTACKER_MS,
                      heat_cool_while_firing)
@@ -1157,6 +1159,10 @@ def hill_hold(holder: Kit, attacker: Kit, reps: int, heat_cool_while_firing=True
         e2 = Fighter(attacker, attacker.pool_parts("standard"), AIM, DIST["close"], rng,
                      heat_cool_while_firing=heat_cool_while_firing)
         h.next_t, e1.next_t = _reaction(rng), _reaction(rng)
+        if not second_attacker:
+            fight(rng, [h], [e1])
+            both += h.alive and not e1.alive
+            continue
         e2.next_t = HILL_SECOND_ATTACKER_MS + _reaction(rng)
         fight(rng, [h], [e1], cap_ms=HILL_SECOND_ATTACKER_MS)
         h.next_t = max(h.next_t, HILL_SECOND_ATTACKER_MS)
@@ -1335,15 +1341,43 @@ def pistol_finish_ms(gun: Gun, swap_ms: float, *, dry=False) -> float:
         dist=DIST[PISTOL_FINISH_RANGE], heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
 
 
-def pistol_finisher_report(world: World) -> list[dict]:
+def pistol_finisher_report(world: World, scale: float = 1.0) -> list[dict]:
     """Every visible pistol as the secondary of every shipped primary at the R10a finish pool."""
     pistols = [r["weapon_id"] for r in world.cat._rows if r.get("role") == "sidearm"
                and not r.get("hidden") and r.get("lethal") is not False]
+    model = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
+    reps = _reps("finish", scale)
+    sampled = {}
+    for pistol in pistols:
+        row = world.cat._row(pistol)
+        if row.get("heat"):
+            sampled[pistol] = time_to_kill(make_kit(world, f"r10:{pistol}", pistol),
+                                           B.R10_FINISH_POOL_HP, AIM, reps, fit=False, reaction=True)[0]
+            continue
+        if pistol in B.R10_SIDEARMS:
+            sampled[pistol] = B.finish_time_batch(model, pistol, reps, SEED).median_ms
+            continue
+        mag, reserve, reload_ms = world.cat._ammo(pistol, None)
+        dmg = world.cat.damage_per_pull(pistol)
+        fire_ms = float(world.cat.fire_ms(pistol))
+        profile = B.recoil_profile(row)
+        crit = int(row.get("crit_pct") or 0)
+        semi = world.cat._frame_int(pistol, "mode") == B.SEMI_MODE
+
+        def combatant(t, m, band, rng):
+            return B._ar_shots(t, dmg, fire_ms, mag, reserve, float(reload_ms), profile,
+                               m.aim_factor, rng=rng, crit_pct=crit, pull_ms=m.pull_ms if semi else 0.0)
+
+        B.RANGE_COMBATANTS[pistol] = combatant
+        try:
+            sampled[pistol] = B.finish_time_batch(model, pistol, reps, SEED).median_ms
+        finally:
+            del B.RANGE_COMBATANTS[pistol]
     out = []
     for primary in roster_ids(world)[0]:
         for pistol in pistols:
             kit = make_kit(world, f"{primary}+{pistol}", primary, pistol)
-            finish_ms = pistol_finish_ms(kit.guns[1], kit.swap_ms)
+            finish_ms = sampled[pistol] + kit.swap_ms
             reload_ms = pistol_finish_ms(kit.guns[0], 0.0, dry=True)
             out.append({"primary": primary, "pistol": pistol, "finish_ms": finish_ms,
                         "reload_finish_ms": reload_ms, "bar_ms": B.R10_FINISH_BAR_MS,
@@ -1815,7 +1849,8 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     fr, ar, ammo_reps = _reps("field", scale), _reps("ambush", scale), _reps("ammo", scale)
     ammo_anchor = make_kit(aw, "AR ammo anchor", ANCHOR, SECONDARY)
     cells.append((("ammo_anchor",), ("ammo", ammo_anchor, enemy, ammo_reps, heat_cool_while_firing)))
-    bolt_names = {n for n in names if any(g.mode == "bolt" for g in kits[n].guns)}
+    bolt_names = {n for n in names if any(world.cat._row(g.wid).get("reload_type") == "bolt"
+                                          for g in kits[n].guns)}
     for n in names:
         for N in FIELD_NS:
             cells.append((("field", N, n), ("field", fks[n], anchor_fk, N, fr, heat_cool_while_firing)))
@@ -2376,7 +2411,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "rush_table": rush_table(world, specs_c, rush_reps, n_jobs, heat_cool_while_firing),
         "hill": hill_report(world, specs_c, _reps("duel", reps_scale), n_jobs, heat_cool_while_firing,
                             anchor_world=base),
-        "pistol_finishers": pistol_finisher_report(world),
+        "pistol_finishers": pistol_finisher_report(world, reps_scale),
         "ttk": ttk_table(world, ttk_ids, reps_scale, heat_cool_while_firing),
         "not_modelled": skipped, "assumptions": assumptions(haze_blind_ms, heat_cool_while_firing),
         "heat": heat_comparison,
@@ -2558,10 +2593,23 @@ def matrix_markdown(m: dict) -> str:
 
 
 def _num(v):
+    if v is None:
+        return "n/a"
     if isinstance(v, float):
         if math.isnan(v):
             return "n/a"
         return "inf" if math.isinf(v) else (round(v, 3) if abs(v) < 10 else round(v))
+    return v
+
+
+def _json_finite(v):
+    """Keep n/a cells as null when a verdict crosses the JSON output boundary."""
+    if isinstance(v, float) and not math.isfinite(v):
+        return None
+    if isinstance(v, dict):
+        return {key: _json_finite(value) for key, value in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_finite(value) for value in v]
     return v
 
 
@@ -2681,7 +2729,7 @@ def report_markdown(v: dict) -> str:
                 "| kit | kills | ratio to AR | dry | died reloading | died heat-locked or venting | died swapping | cap |",
                 "|---|---:|---:|---:|---:|---:|---:|---:|"]
         for name in matrix["kits"]:
-            if math.isnan(matrix["columns"][name]["ammo stress"]):
+            if matrix["columns"][name]["ammo stress"] is None or math.isnan(matrix["columns"][name]["ammo stress"]):
                 out.append(f"| {name} | n/a | n/a | n/a | n/a | n/a | n/a | n/a |")
                 continue
             reasons = matrix["ammo_stress_end_reasons"][name]
@@ -2841,7 +2889,7 @@ def main(argv=None) -> int:
     md = report_markdown(v)
     sys.stdout.write(md)
     if args.out:
-        Path(args.out).write_text(json.dumps(v, indent=1, default=str))
+        Path(args.out).write_text(json.dumps(_json_finite(v), indent=1, default=str, allow_nan=False))
     if args.report:
         Path(args.report).write_text(md)
     if args.record:
