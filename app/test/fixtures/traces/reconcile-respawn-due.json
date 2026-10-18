@@ -111,7 +111,7 @@
       "at": "due_inside_window",
       "state": {"phase":"live","alive":false,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"reconciling":true},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$IRTX,100,15,7,0,26,0,0,100,1,,0,*",
         "$HLOOP,1,2500,*",

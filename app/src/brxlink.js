@@ -731,8 +731,10 @@ export class BrxLink {
     const wait = held < this.flapWindowMs ? flapDelay(streak, this.flapBackoffMs, this.quietMs) : 0;
     if (wait) {
       this._setFlap(streak, this.now() + wait);
-      if (streak >= QUIET_AFTER) this._log(`gun keeps dropping (${streak} in a row). Quiet period: no reconnect for ${wait} ms. Power-cycle the headset`, 'le');
-      else this._log(`gun keeps dropping seconds after connecting (${streak} in a row). Is the headset on? Backing off ${wait} ms`, 'li');
+      // F550 (field 2026-10-17): a joined headset is not the cause, so the advice must not send the player to it
+      const hint = this._hs === 'joined' ? 'The headset is joined: tell the host' : streak >= QUIET_AFTER ? 'Power-cycle the headset' : 'Is the headset on?';
+      if (streak >= QUIET_AFTER) this._log(`gun keeps dropping (${streak} in a row). Quiet period: no reconnect for ${wait} ms. ${hint}`, 'le');
+      else this._log(`gun keeps dropping seconds after connecting (${streak} in a row). ${hint}. Backing off ${wait} ms`, 'li');
     } else this._setFlap(streak);
     this._reconnect();   // the one retry loop waits out the flap wait itself
   }
