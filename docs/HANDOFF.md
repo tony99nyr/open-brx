@@ -56,10 +56,9 @@ balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/ba
 bookkeeping from the report and the lanes' FIXED lines.
 **Next:** the Sniper batch when Tony answers F573 (branches `brx2/sniper-bolt` and `brx2/sniper-bolt-75`, local only;
 the 57 one carries the Charge Rifle at 55/14 and the bolt's `reload_type`); record his call with `balance_review.py
---record-from`. F512 again on or after 2026-10-19 15:17 UTC, after F574.
+--record-from`. F512 again on or after 2026-10-19 15:17 UTC (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F573 on Tony.
-
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
