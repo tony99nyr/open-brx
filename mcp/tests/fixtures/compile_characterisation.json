@@ -978,7 +978,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -2075,7 +2075,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -3087,7 +3087,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -4100,7 +4100,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -5160,7 +5160,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -6172,7 +6172,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -7238,7 +7238,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -8261,7 +8261,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -9273,7 +9273,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -10283,7 +10283,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -11293,7 +11293,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -12303,7 +12303,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -13313,7 +13313,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -14323,7 +14323,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -15333,7 +15333,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -16346,7 +16346,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -17359,7 +17359,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -18372,7 +18372,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -19385,7 +19385,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -20397,7 +20397,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -21407,7 +21407,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -22419,7 +22419,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -23431,7 +23431,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -24586,7 +24586,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -25597,7 +25597,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -26608,7 +26608,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -27619,7 +27619,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -28631,7 +28631,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -29641,7 +29641,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -30076,7 +30076,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -31104,7 +31104,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -32170,7 +32170,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -33250,7 +33250,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -34263,7 +34263,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -35324,7 +35324,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -36331,7 +36331,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -37378,7 +37378,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -38390,7 +38390,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -39400,7 +39400,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -40466,7 +40466,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -41486,7 +41486,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -42500,7 +42500,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -43564,7 +43564,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -44582,7 +44582,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",
@@ -45641,7 +45641,7 @@
         },
         "respawn_profile": {
           "protect_ms": 0,
-          "trigger_ms": 500,
+          "trigger_ms": 1500,
           "station_protect_ms": 2000,
           "spawn": [
             "$PLAYX,0,*",

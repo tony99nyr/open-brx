@@ -372,10 +372,10 @@ class RosterEntry(TypedDict):
 # Respawn profiles (Tony, 2026-09-19). A TIMED respawn (in place, `type` "auto") and a
 # STATION respawn (a revive at a respawn station) protect and arm differently. docs/spec/contracts.md §3.
 TimedProtectS = Literal[0, 1, 2]           # timed: seconds of `$TMP` t8 = -100 after `$SPAWN`; 0 = no `$TMP` at all
-WeaponDelayMs = Literal[500, 1000, 3000]   # timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN`
+WeaponDelayMs = Literal[500, 1000, 1500, 3000]   # timed: the trigger stays held (`$BMAP,0,98`) this long after `$SPAWN`
 StationProtectS = Literal[0, 2, 3]         # station: seconds of t8 = -100; the trigger is live at once
 TIMED_PROTECT_S_DEFAULT = 0
-WEAPON_DELAY_MS_DEFAULT = 500
+WEAPON_DELAY_MS_DEFAULT = 1500
 STATION_PROTECT_S_DEFAULT = 2
 # A58: the station tamper lock (`station_config.lock_s`). The LOAD value covers a lobby wait of up to
 # STATION_LOCK_LOBBY_S plus the match, because a muster station hears nothing after the lobby push.
