@@ -1113,8 +1113,18 @@ step('stale-server', async ({ browser, base }) => {
   });
   await go(pg, 'build');
   expect(stripped > 0, 'REST bodies were actually stripped (the interception is live)');
-  await until(() => pg.locator('[data-alert="frame-catalogue-unavailable"]').count().then(n => n > 0), 8000, 'the catalogue retry alert');
-  await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 8000, 'the pieces retry alert');
+  // mc-koth went red twice in a week on the PIECES wait under a full parallel gate and passed alone. The pieces alert
+  // shows only while the console's WebSocket (here through the stale-server proxy) is connected (`Games.tsx`:
+  // `piecesRes.error && connected`); the catalogue alert has no such guard. Both stay condition waits: 30 s only bounds
+  // a stuck run. A timeout now says whether MC read as offline or token-locked, so the next red explains itself.
+  await until(() => pg.locator('[data-alert="frame-catalogue-unavailable"]').count().then(n => n > 0), 30000, 'the catalogue retry alert');
+  try {
+    await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 30000, 'the pieces retry alert');
+  } catch (e) {
+    const offline = await pg.locator('[data-alert="frame-mc-offline"]').count();
+    const token = await pg.locator('[data-alert="frame-token-required-app"]').count();
+    throw new Error(`${e.message} (frame-mc-offline on screen: ${offline}, frame-token-required-app: ${token})`);
+  }
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when there is nothing to pick');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'PLAY survives a missing station_source and game_pick (no undefined.something)');
   for (const v of ['muster', 'kit', 'lobby', 'live', 'recap', 'catalog', 'debug', 'designer']) {
