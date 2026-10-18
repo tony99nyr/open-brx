@@ -260,11 +260,14 @@ class Scorer:
             return False
         return self.end_t is None or self.now_ms() <= self.end_t
 
-    def set_end(self, end_t: int) -> None:
-        """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1)."""
+    def set_end(self, end_t: int, *, rebound: bool = True) -> None:
+        """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1). `rebound` False: the whistle is MC's
+        own now (an operator END), so every station reading MC holds was received before it, even when the clock stepped
+        back (F451); only a fact's time moving the whistle earlier re-bounds the stations."""
         if self.end_t is None or end_t < self.end_t:
             self.end_t = end_t
-            self._rebound_stations(end_t)
+            if rebound:
+                self._rebound_stations(end_t)
 
     def _rebound_stations(self, end: int) -> None:
         """Milestone round 4 (Codex): the whistle moved earlier, so a station reading received after the new end holds

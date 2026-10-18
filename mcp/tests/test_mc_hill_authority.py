@@ -625,3 +625,18 @@ def test_r4_a_pre_upgrade_tally_after_the_whistle_keeps_its_hill_verified():
     sc.station_possession(str(sid), {str(blue["tid"]): 80_000}, seen_ms=clock["t"] + 10_000)
     assert str(sid) not in sc.station_unverified, sc.station_unverified
     assert sc.station_possession_ms[str(sid)][blue["tid"]] == 80_000, sc.station_possession_ms   # 30 s within 500 s
+
+
+def test_r4_an_operator_end_after_a_clock_step_back_keeps_the_hill():
+    """An operator END is NOW: every reading MC already holds was received before it, even when the WSL clock stepped back
+    (F451) and the END's time is earlier than the last tally's receipt. Only a fact's time moving the whistle earlier
+    (a kill cap, a hold target, a rescore freeze) re-bounds a station."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    red = s.config["teams"][0]
+    clock["t"] = info["go_live_t"] + 120_000
+    _beat(net, clock, sid, {str(red["tid"]): 90_000})
+    clock["t"] -= 5_000                                             # the clock steps back
+    s.control("end")
+    r = s.last_recap
+    assert r["possession"]["by_team"][red["team_id"]] == 90, r["possession"]
+    assert not next(x for x in r["stations"] if x["id"] == sid).get("unverified"), r["stations"]

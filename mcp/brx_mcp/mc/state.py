@@ -6998,7 +6998,7 @@ class Session:
         if cmd == "end":
             sc = self._m().scorer
             if sc is not None:                  # an END with no scorer already returned above
-                sc.set_end(self.now_ms())       # A6.1 end freeze
+                sc.set_end(self.now_ms(), rebound=False)   # A6.1 end freeze; MC's now, so no station re-bound
             self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)

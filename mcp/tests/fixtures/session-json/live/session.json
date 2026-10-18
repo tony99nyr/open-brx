@@ -661,6 +661,7 @@
       }
     },
     "seq": 1,
+    "station_history": {},
     "station_possession": {},
     "station_pre_end": {},
     "station_seen": {},
