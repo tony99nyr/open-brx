@@ -655,6 +655,38 @@ def test_shared_finish_estimator_matches_bolt_charge_and_zero_overshoot():
     assert charge_f._finish_ms(1, charge_tgt, 0) >= combo.guns[1].fire_ms
 
 
+def test_shared_finish_estimator_counts_charge_heat_lockout_in_both_engines():
+    row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
+    row["heat"]["per_charge"] = 55
+    row["heat"]["per_tap"] = 14
+    world = R.World(WeaponCatalog([row]), PerkCatalog())
+    kit = R.make_kit(world, "charge", "charge_rifle")
+    field = R.field_kit(world, "charge", "charge_rifle")
+    for cooling, expected in ((False, 4 * 285 + 4800), (True, 5 * 285)):
+        fighter = R.Fighter(kit, 115, 1, 1, random.Random(2), fit=False, pull_ms=0,
+                            heat_cool_while_firing=cooling)
+        victim = R.Fighter(kit, 150, 0, 1, random.Random(3))
+        cfg = B.SimConfig(pool=B.default_pool(), pull_ms=0, fight_overshoot_ms=0,
+                          heat_cool_while_firing=cooling, range_model=False)
+        p, q = R._kit_player(0, 0, field), R._kit_player(1, 1, field)
+        match = R.KitMatch([p, q], random.Random(2), cfg, 1, 1)
+        p.target = 1
+        assert fighter._finish_ms(0, victim, 0) == expected
+        assert match._finish_ms(p, 0, 0, 150) == expected
+
+
+def test_fighter_fires_a_completed_reload_without_drawing_the_secondary():
+    world = R.shipped_world()
+    kit = R.make_kit(world, "AR Glock", "assault_rifle", "glock")
+    fighter = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0)
+    fighter.targets = [R.Fighter(kit, 24, 0, 1, random.Random(3))]
+    state = fighter.gs[0]
+    state.ammo, state.reserve, state.reload_amount, state.ready_at = 0, 10, 3, 100
+    shot = fighter.act(100)
+    assert shot is not None and fighter.active == 0
+    assert (state.ammo, state.reserve, state.reload_amount) == (2, 7, 0)
+
+
 def test_lever_vent_waits_for_swap_and_rush_drains_dot_after_kill():
     w = R.shipped_world()
     fk = R.field_kit(w, "energy", "energy_rifle", "glock")

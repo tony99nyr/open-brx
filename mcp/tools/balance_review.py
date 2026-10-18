@@ -398,8 +398,9 @@ class _GunState:
 
 
 def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
-                    t, pull_ms, overshoot_ms, charged, count, dist):
-    """Expected finish time for either kit engine, including reserve reloads and the first draw."""
+                    t, pull_ms, overshoot_ms, charged, count, dist, heat, heat_t,
+                    heat_cool_while_firing):
+    """Expected finish time for either kit engine, including reloads, heat and the first draw."""
     if not g.lethal or chance <= 0:
         return math.inf
     is_gun = isinstance(g, Gun)
@@ -412,13 +413,21 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if dist == 0 and not g.ap else 0)) if is_gun else g.pull_dmg
+    heat_rule = dict(g.heat)
     if mode == "charge" and charged and ammo + reload_amount >= rpc:
         ready_at = max(ready_at, t + fire_ms) if charged == "draw" else ready_at
     elapsed = max(0.0, ready_at - t)
+    needs_lever_vent = locked_until == math.inf and heat_rule.get("vent") == "lever"
     if locked_until > t:
         elapsed = max(elapsed, locked_until - t if math.isfinite(locked_until) else pull_ms + reload_ms)
+        heat = 0.0
+        heat_t = t + elapsed
     ammo += reload_amount
     reserve -= reload_amount
+    if needs_lever_vent:
+        got = min(mag - ammo, reserve)
+        ammo += got
+        reserve -= got
     while ammo > 0 or reserve > 0:
         cost = rpc if mode == "charge" and charged else 1
         if ammo < cost:
@@ -435,6 +444,11 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         dmg = damage if mode != "charge" or charged else tap
         if dmg <= 0:
             return math.inf
+        if heat_rule and heat_cool_while_firing:
+            heat = max(0.0, heat - max(0.0, t + elapsed - heat_t) *
+                       float(heat_rule.get("cool_per_s", 0)) / 1000.0)
+        fired_at = elapsed
+        was_charged = mode == "charge" and charged
         ammo -= cost
         pool -= dmg * chance
         if pool <= 0:
@@ -455,6 +469,19 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
             elapsed += burst_gap if count % 3 == 0 else fire_ms
         else:
             elapsed += fire_ms
+        if heat_rule:
+            heat += float(heat_rule.get("per_charge" if was_charged else "per_tap",
+                                        heat_rule.get("per_shot", 0)))
+            heat_t = t + fired_at
+            if heat >= float(heat_rule["lock_at"]):
+                if heat_rule["vent"] == "self":
+                    elapsed = max(elapsed, fired_at + float(heat_rule["lockout_ms"]))
+                else:
+                    elapsed = max(elapsed, fired_at + pull_ms + reload_ms)
+                    got = min(mag - ammo, reserve)
+                    ammo += got
+                    reserve -= got
+                heat, heat_t = 0.0, t + elapsed
     return math.inf
 
 
@@ -576,7 +603,8 @@ class Fighter:
                                reserve=s.reserve, reload_amount=s.reload_amount, ready_at=s.ready_at,
                                locked_until=s.locked_until, t=t, pull_ms=self.pull_ms,
                                overshoot_ms=B.FIGHT_OVERSHOOT_MS if self.pull_ms > 0 else 0.0,
-                               charged=charged, count=s.count, dist=self.dist)
+                               charged=charged, count=s.count, dist=self.dist, heat=s.heat,
+                               heat_t=s.heat_t, heat_cool_while_firing=self.heat_cool_while_firing)
 
     def _maybe_swap(self, t):
         if self.kit.plan != "single" or len(self.gs) < 2 or not self.kit.guns[1].lethal:
@@ -604,6 +632,7 @@ class Fighter:
 
     def _act(self, t):
         tgt = self.target()
+        self._credit_reload(self.gs[self.active], t)
         if self.allow_melee and tgt and tgt.pool <= self.kit.melee_dmg and self.dist == 0 and \
                 (self.dist_m is None or self.dist_m <= MELEE_REACH_M) and t >= self.melee_ready:
             if not self.melee_winding:
@@ -1123,7 +1152,8 @@ class KitMatch(B.Match):
                                locked_until=lock_until if w.heat else -1.0, t=t,
                                pull_ms=self.cfg.pull_ms,
                                overshoot_ms=self.cfg.fight_overshoot_ms if self.cfg.pull_ms > 0 else 0.0,
-                               charged=charged, count=burst_i, dist=p.dist)
+                               charged=charged, count=burst_i, dist=p.dist, heat=_heat,
+                               heat_t=_heat_t, heat_cool_while_firing=self.cfg.heat_cool_while_firing)
 
     def _choose_slot(self, p, t):
         self._finish_reload(p, t)

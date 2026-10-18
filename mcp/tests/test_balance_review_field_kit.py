@@ -34,6 +34,7 @@ def test_field_kit_draws_a_lethal_secondary_when_primary_runs_dry():
 def test_field_kit_draws_secondary_after_a_heat_locking_round():
     world = R.shipped_world()
     match, p, _q = _match(R.field_kit(world, "hot", "energy_rifle", "glock"))
+    p.stash[1] = (1, 0, *p.stash[1][2:])
     heat = dict(p.w.heat)
     p.heat = float(heat["lock_at"] - heat["per_shot"])
     match._shot(p, 0.0, p.engage_id)
