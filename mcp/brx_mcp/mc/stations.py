@@ -1228,6 +1228,16 @@ class StationRegistry:
             if isinstance(hold_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
                                                 for k, v in hold_ms.items()):
                 decoded_control["hold_ms"] = hold_ms
+            # F558: the point's own inputs, carried through to the view only when well formed
+            net = control.get("net")
+            if isinstance(net, int) and not isinstance(net, bool) and net >= 0:
+                decoded_control["net"] = net
+            counts = control.get("counts")
+            if isinstance(counts, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0
+                                                for k, v in counts.items()):
+                decoded_control["counts"] = counts
+            if "lead" in control and (control["lead"] is None or (isinstance(control["lead"], int) and not isinstance(control["lead"], bool))):
+                decoded_control["lead"] = control["lead"]
             report["control"] = decoded_control
         # 2026-09-19 (field, twice in one day): a station's `online` used to ask `OFFLINE_AFTER_MS`
         # (10 min) -- the "has this record left the field entirely" line, not "can I reach it right

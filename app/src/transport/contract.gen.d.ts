@@ -1915,6 +1915,11 @@ export interface StationControl {
   hold_ms?: Record<string, number>;
   /** F555: the game byte the hill counts under (absent from an older station) */
   game?: number;
+  /** F558: the point's own inputs: the clamped net its leader converts at, living players counted per tid, and the
+   *  leading tid (null with nobody counted). Absent from an older station. */
+  net?: number;
+  counts?: Record<string, number>;
+  lead?: number | null;
 }
 
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
