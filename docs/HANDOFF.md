@@ -50,13 +50,16 @@ swap change (F542); then C.34, C.35, C.25, C.26, the rest of Sitting C, A.9 part
 optional. Order: `bench-plan.md`. Brief the recorder with the sheet's result lines.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State:** 2026-10-13: the post-push tooling work is landed with green CI: F523 (each e2e job claims its own port
-block, `scripts/lib/ports.mjs`), the admission scheduler (`scripts/lib/scheduler.mjs`), the `test-all.mjs` split and
-`land.mjs` split stages 1-4. The docs DRY pass of 2026-10-13 gives each rule one owner (both: log 2026-10-13).
-**Next:** F512 on or after 2026-10-18: make `mc-play` blocking only if it was green on every main run for 7 days. The
-rest of the `land.mjs` split (the candidate builder) is parked with a design note in the push's tooling review.
+**State:** 2026-10-18: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
+flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
+balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/balance-review/SKILL.md`); FOLLOWUPS
+bookkeeping from the report and the lanes' FIXED lines.
+**Next:** the Sniper batch when Tony answers F573 (branches `brx2/sniper-bolt` and `brx2/sniper-bolt-75`, local only;
+the 57 one carries the Charge Rifle at 55/14 and the bolt's `reload_type`); record his call with `balance_review.py
+--record-from`. F512 again on or after 2026-10-19 15:17 UTC, after F574.
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** nothing.
+**Blocked:** F573 on Tony.
+
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
