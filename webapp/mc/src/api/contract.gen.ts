@@ -405,7 +405,7 @@ export const PRESENTATION_SOUND_WORDS: Readonly<Record<string, string>> = {"A01"
 /** Mode parameter schemas from the server's registry. */
 export const MODE_PARAM_SCHEMAS: Readonly<Record<string, readonly ModeParamSpec[]>> = {"tdm":[],"ffa":[],"infection":[],"lms":[{"name":"lives","type":"int","default":3,"desc":"lives per player; the last one standing wins","min":1,"max":20}],"extraction":[{"name":"channel_s","type":"float","default":45.0,"desc":"seconds a player must hold the extraction point","min":5,"max":600},{"name":"win_target","type":"int","default":0,"desc":"banked loot that wins the raid outright; 0 = the clock decides","min":0,"max":100000},{"name":"loot_per_kill","type":"int","default":10,"desc":"loot a killer picks up per kill","min":0,"max":1000},{"name":"drop_policy","type":"str","default":"ground","desc":"where a downed player's loot goes","choices":["ground","killer","pool"]},{"name":"extract_removes_player","type":"bool","default":true,"desc":"an extracted player is out of the raid (off: they respawn clean)"}],"koth":[{"name":"score_target","type":"int","default":0,"desc":"point-seconds a team needs to win; 0 = most possession when the clock runs out","min":0,"max":36000},{"name":"points_per_s","type":"float","default":1.0,"desc":"points a held point earns its owner every second","min":0.1,"max":60}]};
 /** PLAY match controls from state.py MODES. */
-export const MODE_MATCH_ITEMS: Readonly<Record<string, readonly string[]>> = {"tdm":["time","kills","countdown","daynight","silenced","teams"],"ffa":["time","kills","countdown","daynight","silenced"],"infection":[],"lms":[],"extraction":[],"koth":["time","hold","countdown","daynight","silenced","teams"]};
+export const MODE_MATCH_ITEMS: Readonly<Record<string, readonly string[]>> = {"tdm":["time","kills","countdown","daynight","silenced","teams"],"ffa":["time","kills","countdown","daynight","silenced"],"infection":[],"lms":[],"extraction":[],"koth":["time","hold","hill","countdown","daynight","silenced","teams"]};
 /** Station source descriptions from types.py. */
 export const STATION_SOURCE_DESCRIPTIONS: Readonly<Record<string, unknown>> = {"grenade":"a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)","ir_station":"a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)","phone":"a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)"};
 /** Modes needing an objective source (compile.py). */
@@ -483,7 +483,7 @@ export type StationItemKind = 'weapon' | 'overshield' | 'ammo';
 export type PieceKind = 'mode' | 'life' | 'spawn' | 'primary' | 'secondary' | 'perks' | 'misc_loadouts' | 'gameplay';
 /** F413: the four native $TID teams (0-3) */
 export type TeamColour = 'red' | 'blue' | 'yellow' | 'purple';
-export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold';
+export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenced' | 'teams' | 'hold' | 'hill';
 export type StationDepartureReason = 'back_to_hud' | 'released';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
@@ -1317,6 +1317,8 @@ export interface MatchSettings {
   teams?: TeamColour[];
   /** F415: KOTH's hold target (see Scoring.hold_target_s) */
   hold_target_s?: number | null;
+  /** F559: KOTH only. A set key goes to every control station; absent = the station default */
+  hill?: HillSettings;
 }
 
 /** F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart. */
@@ -1327,6 +1329,7 @@ export interface LastMatch {
   silenced: boolean;
   teams?: TeamColour[];
   hold_target_s?: number | null;
+  hill?: HillSettings;
   countdown_s: number;
 }
 

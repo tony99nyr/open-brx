@@ -1,7 +1,8 @@
 // PLAY's quick-pick steppers: time limit, kill limit, countdown and hold target. Split out of Games.tsx
 // (round-2 candidate 11).
 import { useRef, useState } from 'react';
-import { HOLD_TARGET_MAX_S, TIME_LIMIT_MAX_S } from '../../api/contract.gen';
+import { HILL_CAPTURE_S, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, HOLD_TARGET_MAX_S, TIME_LIMIT_MAX_S } from '../../api/contract.gen';
+import type { HillSettings } from '../../api/types';
 import { F, T } from '../../tokens';
 import { BTN_RESET, StepBtn, useFlashOnChange } from '../../ui';
 import { RUNWAYS, getRunway } from '../../runway';
@@ -44,6 +45,54 @@ export function HoldControl({ seconds, onChange }: { seconds: number | null; onC
           <StepBtn label="hold target plus" disabled={(seconds ?? 0) >= HOLD_MAX_S} onClick={() => step(1)}>+</StepBtn>
         </span>
       )} />
+  );
+}
+
+/** F559: KOTH's hill pace. Each of CAPTURE TIME and NET CAP is either STATION DEFAULT (the key is absent: every hill phone keeps
+ *  its own +/- value) or a number MC sends to every control station. The first + or - from STATION DEFAULT steps from the
+ *  station default (HILL_CAPTURE_S 10, HILL_NET_CAP 3), so one tap shows a real number; CLEAR returns to STATION DEFAULT.
+ *  `onChange` gets a whole-patch value for `pickMatch({ hill })`: the changed key, a null for a cleared one. */
+// Fixed, not min: the value reads "11 S" or "STATION DEFAULT", and a box that grows with its text shoves the − / + pair
+// sideways under the finger (bench 2026-09-28, the QuickPick note below). Wide enough for STATION DEFAULT at this font.
+const HILL_VALUE_W = 172;
+
+export function HillControl({ hill, onChange }: { hill: HillSettings | null | undefined; onChange: (patch: { capture_s?: number | null; net_cap?: number | null }) => void }) {
+  return (
+    // one grid for both rows, so the labels, values, steppers and CLEARs line up in columns
+    <span data-testid="match-hill-item" style={{ display: 'inline-grid', gridTemplateColumns: 'auto auto auto auto', alignItems: 'center', columnGap: 8, rowGap: 6 }}>
+      <HillRow label="CAPTURE TIME" slug="capture" value={hill?.capture_s} unit=" S" def={HILL_CAPTURE_S} min={HILL_CAPTURE_S_MIN} max={HILL_CAPTURE_S_MAX}
+        onChange={v => onChange({ capture_s: v })} />
+      <HillRow label="NET CAP" slug="net" value={hill?.net_cap} unit="" def={HILL_NET_CAP} min={HILL_NET_CAP_MIN} max={HILL_NET_CAP_MAX}
+        onChange={v => onChange({ net_cap: v })} />
+    </span>
+  );
+}
+
+function HillRow({ label, slug, value, unit, def, min, max, onChange }:
+  { label: string; slug: string; value: number | undefined; unit: string; def: number; min: number; max: number; onChange: (v: number | null) => void }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const text = value == null ? 'STATION DEFAULT' : `${value}${unit}`;
+  useFlashOnChange(ref, text);
+  const step = (dir: 1 | -1) => onChange(Math.max(min, Math.min(max, (value ?? def) + dir)));
+  const name = label.toLowerCase();
+  return (
+    <>
+      <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>{label}</span>
+      <span ref={ref} data-testid={`match-hill-${slug}-value`}
+        style={{ font: F.chk(700, 14), width: HILL_VALUE_W, boxSizing: 'border-box', minHeight: 36, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                 fontVariantNumeric: 'tabular-nums', color: value == null ? T.dim : T.acc, border: `1px solid ${T.line2}`, padding: '0 12px' }}>
+        {text}
+      </span>
+      <span style={{ display: 'inline-flex', gap: 4 }}>
+        <StepBtn label={`hill ${name} minus`} disabled={value != null && value <= min} onClick={() => step(-1)}>−</StepBtn>
+        <StepBtn label={`hill ${name} plus`} disabled={value != null && value >= max} onClick={() => step(1)}>+</StepBtn>
+      </span>
+      <button type="button" aria-label={`hill ${name} clear`} data-testid={`match-hill-${slug}-clear`} disabled={value == null} onClick={() => onChange(null)}
+        className="hit44" style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.12em', minHeight: 36, minWidth: 56, padding: '0 10px',
+          cursor: value == null ? 'not-allowed' : 'pointer', background: T.panelDeep, border: `1px solid ${T.line}`, color: value == null ? T.micro : T.body }}>
+        CLEAR
+      </button>
+    </>
   );
 }
 

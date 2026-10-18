@@ -153,7 +153,7 @@ describe('F413/F415: GET /api/modes rows carry their own match_items', () => {
     const modes = await b.getModes();
     expect(modes.find(m => m.mode === 'tdm')?.match_items).toEqual(['time', 'kills', 'countdown', 'daynight', 'silenced', 'teams']);
     expect(modes.find(m => m.mode === 'ffa')?.match_items).toEqual(['time', 'kills', 'countdown', 'daynight', 'silenced']);
-    expect(modes.find(m => m.mode === 'koth')?.match_items).toEqual(['time', 'hold', 'countdown', 'daynight', 'silenced', 'teams']);
+    expect(modes.find(m => m.mode === 'koth')?.match_items).toEqual(['time', 'hold', 'hill', 'countdown', 'daynight', 'silenced', 'teams']);
   });
 });
 

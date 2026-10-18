@@ -1,7 +1,7 @@
 // PLAY's match settings: one match item row, the TEAMS control and its colour chooser, the mode mark. Split
 // out of Games.tsx (round-2 candidate 11).
 import { useState } from 'react';
-import type { GamePick, MatchSettings, TeamColour } from '../../api/types';
+import type { GamePick, HillSettings, MatchSettings, TeamColour } from '../../api/types';
 import { F, T, TEAM } from '../../tokens';
 import { Seg, SEG_PAD_44, Toggle } from '../../ui';
 import { VenueModeManualLink } from '../../ui/VenueModeReminder';
@@ -11,7 +11,7 @@ import { legalColours } from '../../teamColours';
 import { setRunway } from '../../runway';
 import { type MatchItemKey } from '../matchItems';
 import { TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../../api/contract.gen';
-import { TimeControl, KillsControl, CountdownControl, HoldControl } from './controls';
+import { TimeControl, KillsControl, CountdownControl, HoldControl, HillControl } from './controls';
 
 /** GAME MODE's own mark (Tony, 2026-09-26), beside its name in a FIXED box so the row never jumps.
  *  `object-fit: contain` -- the whole mark shows, never a crop. A mode with no `<mode>.jpg` yet, or
@@ -82,6 +82,19 @@ export function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, c
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>HOLD</span>
           {guarded(<HoldControl seconds={pick.match.hold_target_s ?? null} onChange={s => pickMatch({ hold_target_s: s })} />)}
+        </span>
+      );
+    case 'hill':
+      // F559: a set key goes to every control station; a cleared one is a null, which the server turns back into STATION DEFAULT.
+      return (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>HILL</span>
+          {guarded(<HillControl hill={pick.match.hill} onChange={patch => {
+            // The wire patch may carry a null key (clears it) or be null (clears both); the stored type has neither.
+            const left = { ...(pick.match.hill ?? {}), ...patch };
+            const any = Object.values(left).some(v => v != null);
+            pickMatch({ hill: (any ? patch : null) as unknown as HillSettings });
+          }} />)}
         </span>
       );
   }
