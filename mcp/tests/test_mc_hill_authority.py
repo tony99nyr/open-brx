@@ -347,3 +347,20 @@ def test_a_stood_down_or_re_armed_hill_is_not_this_points_authority():
         assert s._station_hold("util-hill") is None
     finally:
         s.station_registry.stood_down = real   # type: ignore[method-assign]
+
+
+
+def test_lobby_time_never_seeds_the_hill_tally():
+    """Opus review: a phone hill counts in the lobby under this match's game byte; only played time may seed the tally."""
+    s, net, clock, ps = mk_session(2)
+    s.set_config({"mode": "koth", "time_limit_s": 600})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    s.push_config(force=True)
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    red = s.config["teams"][0]
+    clock["t"] += 5_000
+    _beat(net, clock, sid, {str(red["tid"]): 40_000})
+    assert not (s.station_registry.stations["util-hill"].get("tally") or {}).get("hold_ms"), "a lobby beat seeded the tally"

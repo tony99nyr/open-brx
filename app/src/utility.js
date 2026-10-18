@@ -212,7 +212,7 @@ async function applyStationConfig(body) {
   // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
-  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; }   // F344 review M2: a death seen last game is not one this game
+  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
@@ -241,7 +241,11 @@ function applyHillClock(cfg, now) {
     if (cfg.starts_in_ms > 0 && counting && counted) resetPoint('MC START: the lobby and the countdown score nothing');
     settings.hillStartsAt = now + cfg.starts_in_ms;
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
-  settings.hillEndsAt = cfg.ends_in_ms > 0 ? now + cfg.ends_in_ms : cfg.ends_in_ms === 0 ? now : (cfg.starts_in_ms != null ? settings.hillEndsAt : null);
+  // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
+  // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.
+  if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
+  else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
+  else settings.hillEndsAt = null;
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
@@ -565,6 +569,8 @@ function powerupTick(now) {
 // ---------- kind 5: the control point ----------
 /** One step of the point (control.js does the arithmetic), then its log lines, its save and its advert.
  *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
+let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0;
+const HOLD_SAVE_MS = 2000;
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   // F386 phone twin: before go-live the point waits with no clock running (`at` cleared, so the first live step banks
@@ -572,6 +578,8 @@ function controlTick(now) {
   // Only the step is skipped: the advert below still republishes (a START that reset the point must say so on air).
   const waiting = settings.hillStartsAt != null && now < settings.hillStartsAt;
   if (waiting) point.at = null;
+  else if (_hillWaited && settings.hillStartsAt != null) point.at = settings.hillStartsAt;   // the first live step counts from go-live, as on the Stick
+  _hillWaited = waiting;
   let at = now, step = !waiting;
   if (step && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
     if (point.at != null && point.at >= settings.hillEndsAt) step = false;
@@ -589,7 +597,10 @@ function controlTick(now) {
   // to a second of conversion behind the screen, so a reload visibly went backwards (tools/screens.mjs #56
   // caught 38% coming back as 33%). A small JSON four times a second on a propped-up station is not a cost
   // worth that.
-  if (changed || events.length) saveControl();
+  // F557 (Codex review of F555): the hold grows on every held tick without `changed` flipping, and MC now scores on it.
+  // Save it at most every HOLD_SAVE_MS as it grows, so a reload loses seconds, not minutes.
+  const held = Object.values(point.holdMs).reduce((a, b) => a + b, 0);
+  if (changed || events.length || (held !== _holdSaved && now - _holdSavedAt >= HOLD_SAVE_MS)) { saveControl(); _holdSaved = held; _holdSavedAt = now; }
   // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
   // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
   // four times a second.

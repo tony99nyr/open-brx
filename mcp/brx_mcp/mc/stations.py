@@ -1127,7 +1127,10 @@ class StationRegistry:
         # game's count. A station that sends no game (older) cannot be told apart, and seeds as before.
         cg = control.get("game") if isinstance(control, dict) else None
         old_game = isinstance(cg, int) and not isinstance(cg, bool) and cg != game
-        if isinstance(hold, dict) and not old_game and rep.get("station_id") in (None, armed.get("id")):
+        # F555 (Opus review): MC scores a hill on this tally, so only time the match PLAYED seeds it. A phone hill counts
+        # in the lobby under this same game byte (it resets at START, but a max merge would keep the lobby count).
+        unplayed = armed.get("kind") == "control" and self.play.phase not in ("live", "recap")
+        if isinstance(hold, dict) and not old_game and not unplayed and rep.get("station_id") in (None, armed.get("id")):
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
                     tally["hold_ms"][tid] = ms

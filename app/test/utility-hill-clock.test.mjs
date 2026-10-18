@@ -72,7 +72,8 @@ test('the countdown wipes what the lobby counted, and the point waits for go-liv
   api.controlTick(now + 1_000); api.controlTick(now + 4_000);
   assert.equal(api.point.progress, 0, 'the point built in the countdown');
   api.controlTick(now + 5_500); api.controlTick(now + 6_500);
-  assert.ok(Math.abs(api.point.progress - 10) < 1e-6, `one second live builds 10%: ${api.point.progress}`);
+  // the first live step counts from go-live (now + 5 s), as the Stick anchors it: 1.5 s builds 15%
+  assert.ok(Math.abs(api.point.progress - 15) < 1e-6, `1.5 s live builds 15%: ${api.point.progress}`);
 });
 
 test('a LIVE re-send keeps the count, and the deadline freezes it at the whistle', async () => {
@@ -104,4 +105,41 @@ test('an END (ends_in_ms 0) freezes the point now; a config with no timing count
   const t1 = Date.now();
   for (let t = 0; t <= 12_000; t += 250) api.controlTick(t1 + t);
   assert.ok(api.point.holdMs[RED] > 0, 'a hill with no clock stopped counting');
+});
+
+
+test('a late END never moves a whistle that has passed, and a START with no deadline clears the old one', async () => {
+  // `applyStationConfig` reads Date.now(), so the arming times are driven by a fake clock here
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+  try {
+    const t0 = clock;
+    await armFresh({ starts_in_ms: -1_000, ends_in_ms: 20_000 });
+    for (let t = 0; t <= 25_000; t += 250) api.controlTick(t0 + t);   // RED takes it at 10 s; the whistle at 20 s
+    const atWhistle = api.point.holdMs[RED];
+    clock = t0 + 25_000;
+    await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });     // MC's END, 5 s after the whistle
+    for (let t = 25_250; t <= 32_000; t += 250) api.controlTick(t0 + t);
+    assert.equal(api.point.holdMs[RED], atWhistle, 'the END moved the whistle on');
+    // the next game's START with no deadline (an untimed KOTH), on a phone that missed the lobby config
+    clock = t0 + 40_000;
+    await api.applyStationConfig({ ...hill, game: ++game, starts_in_ms: -1_000 });
+    redOnThePoint();
+    assert.equal(api.settings.hillEndsAt, null);
+    for (let t = 40_000; t <= 52_000; t += 250) api.controlTick(t0 + t);
+    assert.ok(api.point.holdMs[RED] > 0, 'an untimed match froze on a stale deadline');
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('F557: a steady hold is saved as it grows, not only when the advert changes', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
+  const now = Date.now();
+  for (let t = 0; t <= 30_000; t += 250) api.controlTick(now + t);
+  const saved = JSON.parse(localStorage.getItem('brx.station.control'));
+  const held = api.point.holdMs[RED];
+  assert.ok(held > 15_000, `setup: ${held}`);
+  assert.ok(held - (saved.holdMs?.[RED] ?? 0) <= 2_250, `the saved hold lags by more than the throttle: ${JSON.stringify(saved.holdMs)} vs ${held}`);
 });
