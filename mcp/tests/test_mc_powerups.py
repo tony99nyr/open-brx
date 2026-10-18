@@ -1033,7 +1033,7 @@ def test_the_ammo_preset_is_a_refill_item_with_its_own_schedule():
     item = PU.expand("ammo", WeaponCatalog())
     assert item == {"kind": "ammo", "name": "AMMO", "color": "#9be22d", "refill": "spawn",
                     "spawn_every_s": PU.AMMO_SPAWN_EVERY_S, "first_at_s": PU.AMMO_SPAWN_EVERY_S}
-    assert PU.AMMO_SPAWN_EVERY_S == 45
+    assert PU.AMMO_SPAWN_EVERY_S == 60
     assert PU.invalid_reason(item) is None
     assert PU.preset_of(item) == "ammo"
     # CONTROL: the other presets still map to themselves
@@ -1092,7 +1092,7 @@ def test_an_ammo_pickup_fact_is_stored_takes_the_item_and_is_never_scored():
     s._log = lambda nid, kind, body, t, seq=None, parked=False: (logged.append((kind, body)),
                                                                  real_log(nid, kind, body, t, seq, parked))
     go = powerup_live(s, clock)
-    clock.t = go + 46_000; s.tick()
+    clock.t = go + 61_000; s.tick()   # the first spawn is at go + 60 s
     before = {pid: {k: getattr(st, k, None) for k in type(st).__slots__} for pid, st in scorer_of(s).stats.items()}
     p = s.players[s.node_player["phone-1"]]
     ev = {"type": "pickup", "t": clock.t, "match_id": head_of(s)["match_id"], "node_id": "phone-1",
@@ -1104,3 +1104,13 @@ def test_an_ammo_pickup_fact_is_stored_takes_the_item_and_is_never_scored():
     assert any(t.endswith(" TOOK AMMO · STATION #5") for t in powerup_feed(s)), powerup_feed(s)
     after = {pid: {k: getattr(st, k, None) for k in type(st).__slots__} for pid, st in scorer_of(s).stats.items()}
     assert after == before
+
+
+def test_every_preset_default_is_a_legal_override():
+    """Codex review of the AMMO item: ITEMS sends a preset's own `spawn_every_s` back as an override, and RESTORE does
+    too, so a default off the 30 s override grid (AMMO's first 45 s) made assigning that item a 400."""
+    from brx_mcp.mc import powerups as pu
+    for preset in pu.PRESET_IDS:
+        item = pu.expand(preset)
+        out = pu.apply_overrides(item, {"spawn_every_s": item["spawn_every_s"]})
+        assert out["spawn_every_s"] == item["spawn_every_s"], preset

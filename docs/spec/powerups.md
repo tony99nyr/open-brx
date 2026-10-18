@@ -278,10 +278,10 @@ A player who runs dry has no way back in. The AMMO item tops the ammunition up.
 
 - **Effect:** the taker's held slots 0 and 1 rise to each slot's spawn reserve. A slot already above that value is
   not lowered. The magazine does not change. Slots 2 and 3 (pickup weapons) do not change.
-- **Item:** `{kind: "ammo", refill: "spawn", name: "AMMO", color: "#9be22d", spawn_every_s: 45, first_at_s: 45}`.
+- **Item:** `{kind: "ammo", refill: "spawn", name: "AMMO", color: "#9be22d", spawn_every_s: 60, first_at_s: 60}`.
   The colour is a lime, clear of the team colours and of the other presets. `refill` is `"spawn"` in every item MC
   sends. The phone also reads `"reserve"` or an integer N, but MC does not set them.
-- **Timing:** every 45 s, first at 45 s (`AMMO_SPAWN_EVERY_S`). RESPAWN is overridable like the other items. CHARGES
+- **Timing:** every 60 s, first at 60 s (`AMMO_SPAWN_EVERY_S`, on the 30 s override grid). RESPAWN is overridable like the other items. CHARGES
   and AMOUNT do not apply: MC refuses both on an ammo item with a 400.
 - **One take per spawn,** as for every item.
 - **No claim when full.** A phone does not claim when every held slot is already at its spawn reserve. A partial
@@ -366,7 +366,7 @@ still there (no stacking). MC logs OPERATOR RESET · STATION #<id> and records i
 
 Decided:
 - **Items:** Rockets (rocket_launcher), Rail Gun (rail_gun), Overshield, and Ammo (added 2026-10-17).
-- **Schedule:** Ammo every 45 s, Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
+- **Schedule:** Ammo and Overshield every 60 s, the heavies every 120 s, each first spawning after one interval (1:00 and
   2:00), on the match clock.
 - **Overshield:** +75 shield on top of whatever the player has, taking hits first, no regeneration, gone at death
   (the grant burst in "Overshield mechanics" above; a raw `$LIFE` past the preset's max clamps back, bench 3.3). In the Shields preset the regenerating shield only

@@ -20,7 +20,7 @@ from .types import (POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP,
 # The schedule (Tony, 2026-09-24: "like Halo"): first spawn after one interval, then every interval.
 HEAVY_SPAWN_EVERY_S = 120
 OVERSHIELD_SPAWN_EVERY_S = 60
-AMMO_SPAWN_EVERY_S = 45           # Tony, field 2026-10-17: "i ran out of ammo in several games"
+AMMO_SPAWN_EVERY_S = 60           # Tony, field 2026-10-17: "i ran out of ammo in several games". On the override grid (30 s steps)
 OVERSHIELD_AMOUNT = 75            # shield on top of whatever the player has; hit first, gone at death
 OVERSHIELD_DECAY_PER_S = 0        # it does not bleed away over time
 OVERSHIELD_REGEN = False          # nothing refills it

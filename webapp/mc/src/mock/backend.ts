@@ -44,7 +44,7 @@ import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_
 
 const now = () => Date.now();
 // A56 (S58, docs/spec/powerups.md): MC's item presets, expanded from its default constants (Tony 2026-09-24:
-// heavies every 120 s, Overshield +75 every 60 s, Ammo every 45 s, each first spawning after one interval; a weapon item's
+// heavies every 120 s, Overshield +75 every 60 s, Ammo every 60 s, each first spawning after one interval; a weapon item's
 // charges are its magazine, weapons.json `mag`). The real list comes from `GET /api/powerups`; this mirrors it
 // so `?mock` and the tests work without the server. `?mock&powerups=off` demos MC started with
 // `--no-powerups`; `?mock&powerups=old` demos an MC that predates the route (404).
