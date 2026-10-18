@@ -389,6 +389,17 @@
       ] }
     },
     {
+      "name": "an AMMO item (A76) follows the same schedule and dedupe (AMMO, 60 s)",
+      "only": ["mc"],
+      "setup": {"id": 4, "spawn_every_s": 60},
+      "mc": { "item_spawn_every_s": 60, "item_preset": "ammo", "steps": [
+        {"t": 59999, "do": "tick", "expect": {"available": false}},
+        {"t": 60000, "do": "tick", "expect": {"available": true, "updates": [{"id": 4, "available": true, "next_spawn_in_ms": 60000}]}},
+        {"t": 60100, "do": "pickup", "player": 0, "expect": {"available": false, "taken_by": 0, "feed_took": 1, "feed_has": ["TOOK AMMO \u00b7 STATION #4"], "updates": [{"id": 4, "available": false, "next_spawn_in_ms": 59900}]}},
+        {"t": 60200, "do": "taken", "player": 1, "expect": {"taken_by": 1, "feed_took": 1, "feed_has": ["P1 TOOK AMMO"], "updates": []}}
+      ] }
+    },
+    {
       "name": "a station's aged report for the PREVIOUS spawn corrects that spawn's taker and never takes the current one",
       "only": ["mc"],
       "setup": {"id": 4, "spawn_every_s": 60},
