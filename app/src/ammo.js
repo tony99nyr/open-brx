@@ -634,6 +634,8 @@ export class Ammo {
     // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
     // life. That bench measured phone equips; ALT before the first pull is the field report's bench #2 row (brx1's call to
     // ship it, 2026-10-17). Field 2026-10-17 (F542, F445): every assumed swap after a bare spawn preceded a failed reload.
+    // After an app restart neither counter is restored, so both read undefined and ALT is allowed: the phone cannot know
+    // whether this life has had a pull, and blocking ALT for a whole life is the worse error (brx5 stage twin review).
     const pulled = this.host.pulledLife === this.host.lifeSeq || !!(this.lastShot && this.lastShot.life === this.host.lifeSeq);   // a round is a pull too (a lost `$BUT`)
     if (!pulled) { this.host.log('ALT ignored by the gun: no trigger pull since the spawn', 'li'); return; }
     if (r) this.endReload('swapped');
