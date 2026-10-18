@@ -11,22 +11,26 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'ammo-grant-cases.json'), 'utf8'));
 const rows = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [+k, v]));
 
-function host(c, writes) {
+function host(c, rec) {
   return {
-    show() {}, log() {}, now: () => 1000, lifeSeq: 1, alive: true, activeSlot: 0,
+    show() {}, log() {}, now: () => 1000, lifeSeq: 1, alive: true, activeSlot: c.active ?? 0,
     spawnAmmo: () => rows(c.spawn), liveAmmo: () => rows(c.live),
-    acctWrote() {}, setPrev() {}, showSlot() {},
-    writeMust: frames => { writes.push(...frames); },
+    acctWrote: (slot, mag, res) => rec.acct.push([slot, mag, res]), setPrev: (slot, mag, res) => rec.prev.push([slot, mag, res]),
+    showSlot: slot => rec.shown.push(slot),
+    writeMust: frames => { rec.writes.push(...frames); },
   };
 }
 
 for (const c of FIXTURE.cases) {
   test(`AMMO grant cases: ${c.name}`, () => {
-    const writes = [];
-    const pu = new PlayerPowerups(host(c, writes));
+    const rec = { writes: [], acct: [], prev: [], shown: [] };
+    const pu = new PlayerPowerups(host(c, rec));
     const short = pu._ammoShort(c.item);
     assert.deepEqual(short == null ? null : Object.fromEntries(Object.entries(short).map(([k, v]) => [String(k), v])), c.short);
     pu.grantAmmo(9, { name: 'AMMO', ...c.item }, 1000);
-    assert.deepEqual(writes, c.frames);
+    assert.deepEqual(rec.writes, c.frames);
+    assert.deepEqual(rec.acct, c.acct, 'the account takes the grant first (its echo is bookkeeping)');
+    assert.deepEqual(rec.prev, c.acct, 'and so do the previous counts');
+    assert.deepEqual(rec.shown, c.shown == null ? [] : [c.shown]);
   });
 }

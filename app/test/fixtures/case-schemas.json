@@ -3051,7 +3051,9 @@
               "spawn",
               "live",
               "short",
-              "frames"
+              "frames",
+              "acct",
+              "shown"
             ],
             "properties": {
               "name": {
@@ -3111,6 +3113,27 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "active": {
+                "type": "integer"
+              },
+              "acct": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "shown": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
               }
             },
             "additionalProperties": false
