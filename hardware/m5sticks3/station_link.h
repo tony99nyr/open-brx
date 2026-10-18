@@ -235,6 +235,11 @@ struct StatusFields {
   // possession tally MC's recap reads (`report.control.hold_ms`, state.py _merge_station_recap_report),
   // keyed by tid as a string; a team that never held the point is left out, as control.js holdMs does.
   bool control_has_hold = false;
+  // F558 (additive; left out unless set): the hill's own inputs, so a log can say who it counted and how fast it moved
+  bool control_has_inputs = false;
+  int control_net = 0;
+  int control_counts[4] = {0, 0, 0, 0};
+  int control_lead = -1;   // -1 = nobody counted (null on the wire)
   int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
                            // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
@@ -287,6 +292,17 @@ inline std::string build_status_body(const StatusFields& f) {
          ",\"progress\":" + std::to_string(f.control_progress) +
          ",\"contested\":" + std::string(f.control_contested ? "true" : "false");
     if (f.control_game >= 0) j += ",\"game\":" + std::to_string(f.control_game);
+    if (f.control_has_inputs) {
+      j += ",\"net\":" + std::to_string(f.control_net) + ",\"counts\":{";
+      bool first_c = true;
+      for (int t = 0; t < 4; t++) {
+        if (!f.control_counts[t]) continue;
+        if (!first_c) j += ",";
+        first_c = false;
+        j += "\"" + std::to_string(t) + "\":" + std::to_string(f.control_counts[t]);
+      }
+      j += "},\"lead\":" + (f.control_lead >= 0 ? std::to_string(f.control_lead) : std::string("null"));
+    }
     if (f.control_has_hold) {
       j += ",\"hold_ms\":{";
       bool first = true;
@@ -1917,6 +1933,10 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_progress = (int)BleControlPoint::js_round(h.progress);
     f.control_contested = h.contested;
     f.control_game = a.game;
+    f.control_has_inputs = true;   // F558
+    f.control_net = h.net;
+    for (int t = 0; t < 4; t++) f.control_counts[t] = h.counts[t];
+    f.control_lead = h.lead;
     f.control_has_hold = true;
     for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
   }

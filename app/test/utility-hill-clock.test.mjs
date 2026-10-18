@@ -66,7 +66,7 @@ test('the countdown wipes what the lobby counted, and the point waits for go-liv
   for (let t = 0; t <= 15_000; t += 250) api.controlTick(t0 + t);   // RED stands on it in the lobby and takes it
   assert.ok(api.point.owner === RED && api.point.holdMs[RED] > 0, 'setup: the lobby counted');
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 65_000 });   // START
-  const now = Date.now();
+  const now = api.settings.hillStartsAt - 5_000;   // the arming's own clock, not a later read (no real-clock drift)
   assert.deepEqual(api.point.holdMs, {}, 'the lobby hold survived START');
   assert.equal(api.point.progress, 0);
   api.controlTick(now + 1_000); api.controlTick(now + 4_000);
@@ -152,7 +152,24 @@ test('a START with no tick before go-live still counts from go-live', async () =
   await api.applyStationConfig({ ...hill, game: ++game });
   redOnThePoint();
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 600_000 });
-  const now = Date.now();
+  const now = api.settings.hillStartsAt - 5_000;
   api.controlTick(now + 5_100);                                      // the first tick lands 0.1 s after go-live
   assert.ok(Math.abs(api.point.progress - 1) < 1e-6, `0.1 s from go-live builds 1%: ${api.point.progress}`);
+});
+
+
+test('F558: status.control carries the inputs: net, counts and lead', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
+  const now = Date.now();
+  for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
+  const c = api.statusBody().control;
+  assert.equal(c.net, 1);
+  assert.deepEqual(c.counts, { [RED]: 1 });
+  assert.equal(c.lead, RED);
+  api.presence.players = () => [];
+  api.controlTick(now + 2_250);
+  const empty = api.statusBody().control;
+  assert.equal(empty.net, 0);
+  assert.deepEqual(empty.counts, {});
+  assert.equal(empty.lead, null, 'nobody counted: no lead');
 });
