@@ -296,7 +296,9 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
     s, clock = _sess(600, mode="koth")
     s.set_station("stick-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
-    clock.t += 10_000
+    s.start(runway_s=30, force=True)
+    clock.t += 40_000
+    s.tick()   # F555: a hill's tally seeds only from played time (LIVE or RECAP), never from the lobby
     # F413: TDM's own default roster is red (tid 0) + blue (tid 1) now (was blue(1)/yellow(2)).
     _ctl_beat(s, clock, {"0": 90_000, "1": 20_000}, revives=5)
     clock.t += 2_000
@@ -304,7 +306,6 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
     rep = _report(s)
     assert rep["control"]["hold_ms"] == {"0": 90_000, "1": 25_000}, rep
     assert rep["revives"] == 5, rep
-    s.start(runway_s=30, force=True)
     s.control("end")
     s.push_config(force=True)                                # a NEW game: the station resets, and so does MC
     clock.t += 5_000
@@ -421,10 +422,12 @@ def test_review_the_tally_survives_an_mc_restart_mid_match():
     s.push_config(force=True)
     s.start(runway_s=30, force=True)
     clock.t += 60_000
+    s.tick()   # F555: a hill's tally seeds only from played time (LIVE or RECAP)
     _ctl_beat(s, clock, {"1": 90_000}, revives=5)
     s2 = _restart(s, clock)
     s2.net.simulate_utility_hello("stick-1")
     clock.t += 5_000
+    s2.tick()
     _ctl_beat(s2, clock, {"1": 60_000}, revives=2, uptime_s=1)   # the Stick rebooted too: its count went back
     rep = _report(s2)
     assert rep["control"]["hold_ms"] == {"1": 90_000}, rep
