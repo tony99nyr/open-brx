@@ -30,7 +30,7 @@ from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose 
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
-from .scoring import Scorer
+from .scoring import STATION_HISTORY_MAX, Scorer
 from .match import Match, parse_snapshot
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
@@ -4095,6 +4095,7 @@ class Session:
             new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
             new.station_seen_ms = dict(old.station_seen_ms)
             new.station_pre_end = {site: dict(per) for site, per in old.station_pre_end.items()}
+            new.station_history = {site: [(at, dict(per)) for at, per in rows] for site, rows in old.station_history.items()}
             new.station_unverified = set(old.station_unverified)
         return new
 
@@ -4102,7 +4103,8 @@ class Session:
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
                       derive_cap: bool = False, alerts: dict | None = None,
                       station_ms: dict[str, dict] | None = None, clock_trusted: bool = True,
-                      station_seen: dict | None = None, station_pre_end: dict | None = None) -> Scorer:
+                      station_seen: dict | None = None, station_pre_end: dict | None = None,
+                      station_history: dict | None = None, saved_ms: int | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4130,9 +4132,38 @@ class Session:
         sc.station_seen_ms = {str(k): int(v) for k, v in (station_seen or {}).items() if isinstance(v, int) and not isinstance(v, bool)}
         sc.station_pre_end = {str(k): {tid: ms for tid, ms in sc._hold_readings(v)} for k, v in (station_pre_end or {}).items()
                               if isinstance(v, dict)}
+        sc.station_history = {}
+        for k, rows in (station_history or {}).items():   # Codex r4: only rows with a reading, in receipt order, capped
+            got_rows = sorted([(row[0], per) for row in (rows if isinstance(rows, list) else ())
+                              if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
+                              and not isinstance(row[0], bool) and isinstance(row[1], dict)
+                              and (per := {tid: ms for tid, ms in sc._hold_readings(row[1])})], key=lambda r: r[0])
+            if len(got_rows) > STATION_HISTORY_MAX:
+                got_rows = got_rows[:1] + got_rows[-(STATION_HISTORY_MAX - 1):]
+            if got_rows:
+                sc.station_history[str(k)] = got_rows
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
-                sc.station_possession(got[0], got[1], seen_ms=got[2])
+                site, hold, seen = got
+                if seen is None and site in sc.station_seen_ms:
+                    continue   # Codex r4 round 2: the snapshot already holds this hill's timed reading; an undated tally adds nothing
+                if seen is None:
+                    # milestone round 4: a tally saved before round 3 has no receipt time. MC received it at or before the
+                    # snapshot was written, so it counts as heard then. Saved after the whistle, it may hold post-END time
+                    # and nothing shows MC heard it in play (Codex r4): unverified, the phones decide the site. No history
+                    # row is kept for a guessed time, so a whistle moved earlier falls back to the time-played clamp.
+                    seen = saved_ms if saved_ms is not None else self.now_ms()
+                    if sc.end_t is not None and seen > sc.end_t:
+                        for table in (sc.station_possession_ms, sc.station_seen_ms, sc.station_pre_end, sc.station_history):
+                            table.pop(site, None)
+                        sc.station_unverified.add(site)
+                        continue
+                    had_history = site in sc.station_history
+                    sc.station_possession(site, hold, seen_ms=seen)
+                    if not had_history:
+                        sc.station_history.pop(site, None)
+                else:
+                    sc.station_possession(site, hold, seen_ms=seen)
         self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
@@ -4236,7 +4267,9 @@ class Session:
                                     alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None,
                                     station_ms=station_ms, clock_trusted=not m.get("adopted"),
                                     station_seen=m.get("station_seen") if isinstance(m.get("station_seen"), dict) else None,
-                                    station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None)
+                                    station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None,
+                                    station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
+                                    saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)
@@ -6978,7 +7011,7 @@ class Session:
         if cmd == "end":
             sc = self._m().scorer
             if sc is not None:                  # an END with no scorer already returned above
-                sc.set_end(self.now_ms())       # A6.1 end freeze
+                sc.set_end(self.now_ms(), rebound=False)   # A6.1 end freeze; MC's now, so no station re-bound
             self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)

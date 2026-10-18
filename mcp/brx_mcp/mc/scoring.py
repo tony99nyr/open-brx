@@ -122,6 +122,8 @@ def _rank_key(r):
 
 
 STATION_FRESH_MS = 60_000   # milestone review: a station reading older than this at the whistle is stale
+STATION_HISTORY_MAX = 512   # milestone round 4: in-play readings kept per site; past it, older rows are halved
+STATION_HISTORY_DENSE = 64  # the newest rows, never thinned, so the last reading before a moved whistle stays close to it
 
 
 class Scorer:
@@ -197,6 +199,9 @@ class Scorer:
         # unverified: it does not score, the phones decide it, and its recap row says so.
         self.station_pre_end: dict[str, dict[int, int]] = {}
         self.station_unverified: set[str] = set()
+        # Milestone round 4: each site's in-play readings as (receipt time, merged hold), oldest first, so a whistle that
+        # moves EARLIER (a kill cap heard late) can re-bound the site from the last reading at or before it.
+        self.station_history: dict[str, list[tuple[int, dict[int, int]]]] = {}
         # Milestone review: False for an ADOPTED match, whose time limit is the draft's guess and whose go-live may be the
         # adoption instant; then no hill reading is capped by either.
         self.clock_trusted = True
@@ -256,10 +261,64 @@ class Scorer:
             return False
         return self.end_t is None or self.now_ms() <= self.end_t
 
-    def set_end(self, end_t: int) -> None:
-        """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1)."""
+    def set_end(self, end_t: int, *, rebound: bool = True) -> None:
+        """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1). `rebound` False: the whistle is MC's
+        own now (an operator END), so every station reading MC holds was received before it, even when the clock stepped
+        back (F451); only a fact's time moving the whistle earlier re-bounds the stations."""
         if self.end_t is None or end_t < self.end_t:
             self.end_t = end_t
+            if rebound:
+                self._rebound_stations(end_t)
+
+    def _rebound_stations(self, end: int) -> None:
+        """Milestone round 4 (Codex): the whistle moved earlier, so a station reading received after the new end holds
+        post-END time. Re-bound each such site as a late reading against the last in-play reading at or before the
+        new end. A site with no reading that early was never heard in play (unverified); a site whose history predates
+        this rule (an old snapshot) keeps only the time-played clamp."""
+        for site, seen in list(self.station_seen_ms.items()):
+            if seen <= end:
+                # Opus review r4: a late reading bounded against the old end leaves the receipt time at the in-play
+                # reading, so bound what it added again against the new end
+                pre, latest = self.station_pre_end.get(site), self.station_possession_ms.get(site, {})
+                if pre is not None and latest != pre:
+                    bound = self._late_bound(pre, seen, list(latest.items()), end)
+                    if self.clock_trusted:
+                        played = max(0, end - self.go_live_t)
+                        bound = [(tid, min(ms, played)) for tid, ms in bound]
+                    self.station_possession_ms[site] = {**pre, **dict(bound)}
+                continue
+            hist = self.station_history.get(site)
+            latest = self.station_possession_ms.get(site, {})
+            if not hist:
+                if self.clock_trusted:
+                    played = max(0, end - self.go_live_t)
+                    self.station_possession_ms[site] = {tid: min(ms, played) for tid, ms in latest.items()}
+                continue
+            keep = [h for h in hist if h[0] <= end]
+            if not keep:
+                for table in (self.station_possession_ms, self.station_seen_ms, self.station_pre_end, self.station_history):
+                    table.pop(site, None)
+                self.station_unverified.add(site)
+                continue
+            pre_at, pre = keep[-1]
+            bound = self._late_bound(pre, pre_at, list(latest.items()), end)
+            if self.clock_trusted:
+                played = max(0, end - self.go_live_t)
+                bound = [(tid, min(ms, played)) for tid, ms in bound]
+            self.station_possession_ms[site] = {**pre, **dict(bound)}
+            self.station_pre_end[site] = dict(pre)
+            self.station_seen_ms[site] = pre_at
+            self.station_history[site] = keep
+
+    @staticmethod
+    def _late_bound(pre: dict[int, int], pre_at: int, readings: list[tuple[int, int]], end: int) -> list[tuple[int, int]]:
+        """A reading received after `end` may raise its site over the pre-END reading `pre` (received at `pre_at`) only by
+        the time from `pre_at` to `end`, shared between the teams (one team banks at a time)."""
+        window = max(0, end - pre_at)
+        incs = {tid: max(0, ms - pre.get(tid, 0)) for tid, ms in readings}
+        total = sum(incs.values())
+        scale = 1.0 if total <= window else window / total
+        return [(tid, pre.get(tid, 0) + int(incs[tid] * scale)) for tid, _ms in readings]
 
     # ---- A24/M2: what happened AFTER the whistle, and whether the cap was a dead heat ----
     def _kill_pair(self, node_id: str, ev: Event) -> tuple[str | None, str | None]:
@@ -1054,6 +1113,8 @@ class Scorer:
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         site = str(site)
+        if seen_ms is None and site in self.station_unverified:
+            return "ignored"   # milestone r4: a reading with no receipt time cannot verify a site the scorer could not
         end = self.end_t
         late = end is not None and seen_ms is not None and seen_ms > end
         if late and end is not None:
@@ -1064,11 +1125,7 @@ class Scorer:
             if pre is None or pre_at is None:
                 self.station_unverified.add(site)
                 return "ignored"
-            window = max(0, end - pre_at)
-            incs = {tid: max(0, ms - pre.get(tid, 0)) for tid, ms in readings}
-            total = sum(incs.values())
-            scale = 1.0 if total <= window else window / total
-            readings = [(tid, pre.get(tid, 0) + int(incs[tid] * scale)) for tid, _ms in readings]
+            readings = self._late_bound(pre, pre_at, readings, end)
         # brx3 review: no point is held longer than the match has been PLAYED -- the time so far while live, the whistle
         # once it has blown (an early END moves `end_t`). A station that missed the end and counted on cannot add it.
         now = self.now_ms()
@@ -1079,10 +1136,23 @@ class Scorer:
         if not late:
             if seen_ms is not None:
                 self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
+                self._remember_reading(site, self.station_seen_ms[site], per_tid)
             self.station_pre_end[site] = dict(per_tid)
         if t is not None:
             self._check_hold_target(t)
         return "scored"
+
+    def _remember_reading(self, site: str, at: int, per_tid: dict[int, int]) -> None:
+        """Milestone round 4: one history row per receipt time. The hold is merged by max, so a reading that arrives out of
+        order folds into the newest row (it can only be credited later, never earlier). Past STATION_HISTORY_MAX every
+        other row older than the newest STATION_HISTORY_DENSE goes, the first kept: any earlier row keeps the bound sound, only looser."""
+        hist = self.station_history.setdefault(site, [])
+        if hist and hist[-1][0] >= at:
+            hist[-1] = (hist[-1][0], dict(per_tid))
+        else:
+            hist.append((at, dict(per_tid)))
+        if len(hist) > STATION_HISTORY_MAX:
+            self.station_history[site] = hist[:-STATION_HISTORY_DENSE:2] + hist[-STATION_HISTORY_DENSE:]
 
     def _possession_ms(self, phones_only: bool = False) -> tuple[dict[str, int], int]:
         """The raw (unrounded) merge `possession()` reports in seconds, and `_check_hold_target` compares

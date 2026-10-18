@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 
 import asyncio
+import contextvars
 import math
 import pathlib
 import random
@@ -92,6 +93,10 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     STUN_DEFAULT_S,
     STUN_PLAY,
     TEAM_REPAINT_MS)
+
+# Milestone round 4 (Codex): the groups the CURRENT write has sent. A context variable, so two writes on the link at once
+# (each in its own task) never count each other's groups: a write that failed unsent while another sent still restores.
+_WRITE_SENDS: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar("stage_write_sends", default=None)
 
 
 class Advert(TypedDict):
@@ -1621,7 +1626,8 @@ class GunStage:
         rows = [f for f in frames if f and (f.startswith("$AMMO,") or f.startswith("$WEAP,"))]
         gens = self._echo_gens(rows) if rows else None
         before = {sl: self._shot_acct[sl]["echo_until"] for sl in (gens or {}) if sl in self._shot_acct}
-        sends0 = getattr(self, "_sends", 0)
+        sent = [0]   # milestone round 4: THIS write's groups that went out (`_send` counts into it), never another write's
+        token = _WRITE_SENDS.set(sent)
         if rows:
             self._hold_echoes(rows, gens)
         result: bool | None = False
@@ -1630,7 +1636,8 @@ class GunStage:
                                               should_send=should_send)
             return result
         finally:
-            if rows and result is False and getattr(self, "_sends", 0) == sends0:
+            _WRITE_SENDS.reset(token)
+            if rows and result is False and not sent[0]:
                 # bug 3 r2 M1: a write that never left (the link was down) lands nothing, so it holds no window: put back what
                 # the hold changed. (Round 3: a write that sent a group and then failed restarts them, as the phone does on
                 # any settle, since those rows may still echo.)
@@ -1850,7 +1857,8 @@ class GunStage:
         self._last_play_at = self._last_play_sent_at
 
     async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
-        self._sends = getattr(self, "_sends", 0) + 1   # milestone round 3: a group started, so its rows may echo
+        if (sent := _WRITE_SENDS.get()) is not None:
+            sent[0] += 1   # milestone round 3: a group of this write started, so its rows may echo
         if hasattr(self.mgr, "send_batch"):
             await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms, on_start=on_start)
         else:                                       # the fake manager: one send per frame

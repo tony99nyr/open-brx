@@ -70,11 +70,39 @@ def test_r3_a_write_that_sent_a_group_then_failed_restarts_the_windows():
         closes = st._shot_acct[0]["echo_until"]
 
         async def partial(frames, why, *a, **kw):
-            st._sends = getattr(st, "_sends", 0) + 1   # the first group went out
+            await st._send(["$VOL,30,*"], 60)          # the first group went out
             clock.t += 2.0
             return False                               # a later group could not be delivered
         st._write_frames = partial   # type: ignore[method-assign]
         await st.write(["$AMMO,0,10,20,1,*"], "test")
         assert st._shot_acct[0]["echo_until"] > closes, "the sent row's window was put back"
         assert st._shot_acct[0]["echo_until"] == clock.t + st.ACC_ECHO_S
+    asyncio.run(go())
+
+
+def test_r4_another_writes_send_does_not_count_as_this_writes():
+    """Codex round 3: the send count was global, so a write that failed unsent while another write sent restarted its
+    windows instead of putting them back. Each write counts only its own groups."""
+    async def go():
+        clock = StageClock()
+        st, _mgr = mk_stage(now=clock)
+        await st.connect(GUN)
+        st._acct_wrote(0, 10, 20)
+        closes = st._shot_acct[0]["echo_until"]
+        dead = asyncio.Event()
+
+        async def frames_path(frames, why, *a, **kw):
+            if any(f.startswith("$AMMO,") for f in frames):
+                await dead.wait()                      # this write waits on a dead link, then fails unsent
+                return False
+            await st._send(frames, 60)                 # the other write goes out meanwhile
+            return None
+        st._write_frames = frames_path   # type: ignore[method-assign]
+        a = asyncio.ensure_future(st.write(["$AMMO,0,10,20,1,*"], "dead"))
+        await asyncio.sleep(0)
+        await st.write(["$VOL,30,*"], "other")
+        clock.t += 0.1
+        dead.set()
+        await a
+        assert st._shot_acct[0]["echo_until"] == closes, "a write that never left restarted its window"
     asyncio.run(go())
