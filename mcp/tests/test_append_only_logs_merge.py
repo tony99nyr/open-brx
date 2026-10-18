@@ -23,6 +23,10 @@ def _merge_two_appends(attributes: str) -> tuple[int, dict[str, str]]:
         _git(root, "init", "-q", "-b", "main")
         _git(root, "config", "user.email", "t@example.invalid")
         _git(root, "config", "user.name", "t")
+        # F571: no background `git gc --auto` / `git maintenance run --auto`. A detached one kept writing into
+        # .git/objects while TemporaryDirectory removed it ("Directory not empty: 'objects'", land 2026-10-18).
+        _git(root, "config", "gc.auto", "0")
+        _git(root, "config", "maintenance.auto", "false")
         (root / ".gitattributes").write_text(attributes, encoding="utf-8")
         for rel in LOGS:
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
