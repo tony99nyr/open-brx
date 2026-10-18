@@ -5,7 +5,7 @@ import type {
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, ReportResult, Respawn, ScanRow, ScoreRow, SlotRule, StartView, State, StationAssignment, StationDeparture, StationItem, StationKind,
   StationView, TeamColour, TunnelProvider, TunnelStatus, TxPower, WeaponView,
 } from '../api/types';
-import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
+import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
@@ -2092,6 +2092,8 @@ export class MockBackend implements Api {
       if (partial.coverage === undefined && this.config.coverage !== undefined) base.coverage = this.config.coverage;
       // K8 / mc.md #1: the host's volume is a venue fact too (state.py `_candidate_config`); a PICK never writes it
       if (!('volume' in partial) && this.config.volume != null) base.volume = this.config.volume;
+      // F559: the hill tuning carries across a mode change too (`_candidate_config`)
+      if (!('hill' in partial) && this.config.hill != null) base.hill = this.config.hill;
     }
     // config_merge.py rejects these before Session.set_config changes config or the roster.
     // PICK turns the same precheck refusal into ok:false, while a direct PUT throws.
@@ -2122,6 +2124,21 @@ export class MockBackend implements Api {
       candidate.presentation = mergePresentation(base.presentation, partial.presentation, candidate.mode);
     }
     if (candidate.scoring.hold_target_s == null) delete candidate.scoring.hold_target_s;
+    if (partial.hill !== undefined) {
+      // F559: config_merge.py `_hill`, in its words: merged key by key onto the stored one, a null key or `hill: null` clears
+      const h = partial.hill as Record<string, unknown> | null;
+      if (h !== null && (typeof h !== 'object' || Array.isArray(h))) throw new ConfigMergeError('hill must be {capture_s?, net_cap?} or null');
+      const bounds: Record<string, [number, number]> = { capture_s: [HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX], net_cap: [HILL_NET_CAP_MIN, HILL_NET_CAP_MAX] };
+      const merged: Record<string, number> = h === null ? {} : { ...(base.hill ?? {}) };
+      for (const [k, v] of Object.entries(h ?? {})) {
+        if (!(k in bounds)) throw new ConfigMergeError(`hill.${k} is not a hill setting (capture_s, net_cap)`);
+        if (v === null) { delete merged[k]; continue; }
+        const [lo, hi] = bounds[k];
+        if (typeof v !== 'number' || !Number.isInteger(v) || v < lo || v > hi) throw new ConfigMergeError(`hill.${k} must be a whole number ${lo}-${hi}`);
+        merged[k] = v;
+      }
+      if (Object.keys(merged).length) candidate.hill = merged; else delete candidate.hill;
+    }
     if (candidate.volume == null) delete candidate.volume;   // K8: null = the venue default, stored as absence
     if (candidate.coverage == null) delete candidate.coverage;   // config_merge.py: a null coverage removes the key
     if (partial.loadout_policy) {

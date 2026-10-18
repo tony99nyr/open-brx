@@ -2378,6 +2378,9 @@ class Session:
                 cfg["volume"] = vol
             if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
                 cfg["coverage"] = cov
+            # F559: the hill tuning belongs to the field's hill phones, so a switch into KOTH keeps it.
+            if "hill" not in patch and (hill := self.config.get("hill")) is not None:
+                cfg["hill"] = hill
         cfg = self._merge_config(cfg, patch, mode)
         # F146 round 2: `_merge_config` normalises a policy the PATCH names, and nothing else. A config
         # already holding a broken rule (a fixture, a restored file from another build) survived a PUT

@@ -290,6 +290,14 @@ constexpr int32_t TIME_LIMIT_MAX_S = 7200;
 constexpr int32_t RESPAWN_DELAY_MAX_S = 600;
 // mode_params.hold_target_s 1..this
 constexpr int32_t HOLD_TARGET_MAX_S = 7200;
+// F559 (field 2026-10-17): a hill's capture time and net cap, settable per game (`GameConfig.hill`) instead of only by
+// the +/- buttons on each hill phone. brx5's station half takes them from `station_config`.
+// hill.capture_s this..HILL_CAPTURE_S_MAX
+constexpr int32_t HILL_CAPTURE_S_MIN = 3;
+constexpr int32_t HILL_CAPTURE_S_MAX = 60;
+// hill.net_cap this..HILL_NET_CAP_MAX
+constexpr int32_t HILL_NET_CAP_MIN = 1;
+constexpr int32_t HILL_NET_CAP_MAX = 6;
 // S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
 // Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte.
 constexpr int32_t POWERUP_CHARGES_MIN = 1;
