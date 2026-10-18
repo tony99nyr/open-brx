@@ -2636,6 +2636,25 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved2.stored().find("threshold_default") == std::string::npos);  // additive: absent unless defaulted
 }
 
+static void test_milestone_an_adopted_resend_keeps_the_hill_deadline() {
+  // F568: an adopted LIVE match's re-send carries a past start and no `ends_in_ms`; the deadline from the original START
+  // must survive it, or the hill counts past the whistle until the operator's END.
+  auto run = [](bool countdown_resend) {
+    StationLink link;
+    StationAssignment a = control_config(7);
+    a.starts_known = true; a.starts_in_ms = -1000; a.ends_in_ms = 20000;
+    link.apply_station_config(a, 1000);
+    StationAssignment again = control_config(7);
+    again.starts_known = true; again.starts_in_ms = countdown_resend ? 5000 : -360000;   // no ends_in_ms: -1
+    link.apply_station_config(again, 5000);
+    PlayerPresence p = blue_on_the_point(0);
+    for (uint32_t t = 10000; t <= 30000; t += 1000) link.tick_players(p, t);
+    return link.hill_ended();
+  };
+  CHECK(run(false));    // the adoption re-send keeps the whistle: frozen past 21 s
+  CHECK(!run(true));    // CONTROL: a countdown START with no deadline clears it
+}
+
 static void test_f559_mc_sets_the_hill_pace_and_a_restart_keeps_it() {
   StationLink hill;
   bool ok = false;
@@ -3151,6 +3170,7 @@ int main(int argc, char** argv) {
   test_presence_threshold_is_the_phone_default_when_mc_sends_none();
   test_hill_default_threshold_separates_measurement_from_phone_advert();
   test_f559_mc_sets_the_hill_pace_and_a_restart_keeps_it();
+  test_milestone_an_adopted_resend_keeps_the_hill_deadline();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
   test_saved_hill_flushes_final_tally_once_at_whistle();

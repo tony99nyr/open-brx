@@ -1562,8 +1562,13 @@ class StationLink {
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
         (a.duration_ms > 0 && !duration_anchor_known_)) {
-      deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
-      if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
+      // Milestone review (utility.js `applyHillClock`): a same-game re-send whose start is already past and which names no
+      // deadline (F568's adopted LIVE match) keeps the deadline the original START gave.
+      const bool live_resend = a.starts_known && a.starts_in_ms <= 0 && a.ends_in_ms < 0 && !kind_or_id_changed && !game_changed;
+      if (!(live_resend && deadline_known_)) {
+        deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
+        if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
+      }
     }
     if (hill_restore_guard_ && a.starts_known) {
       hill_restore_guard_ = false;

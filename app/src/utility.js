@@ -247,9 +247,12 @@ function applyHillClock(cfg, now) {
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
   // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
   // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.
+  // Milestone review: a re-send whose start is already past and which names no deadline (F568's adopted LIVE match: MC
+  // trusts no time limit) keeps the deadline the original START gave, or the hill counts past its whistle until END.
+  const liveResend = cfg.starts_in_ms != null && cfg.starts_in_ms <= 0;
   if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
   else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
-  else settings.hillEndsAt = null;
+  else if (!liveResend) settings.hillEndsAt = null;
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
