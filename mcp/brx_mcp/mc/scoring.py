@@ -1054,8 +1054,9 @@ class Scorer:
         if not readings:
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         site = str(site)
-        late = self.end_t is not None and seen_ms is not None and seen_ms > self.end_t
-        if late:
+        end = self.end_t
+        late = end is not None and seen_ms is not None and seen_ms > end
+        if late and end is not None:
             # Milestone round 3: a reading received after the whistle may raise the site only by the time between the last
             # reading MC heard at or before it and the whistle, shared between the teams (one team banks at a time), so
             # hold banked after an early END the station never heard cannot reach the score.
@@ -1063,7 +1064,7 @@ class Scorer:
             if pre is None or pre_at is None:
                 self.station_unverified.add(site)
                 return "ignored"
-            window = max(0, self.end_t - pre_at)
+            window = max(0, end - pre_at)
             incs = {tid: max(0, ms - pre.get(tid, 0)) for tid, ms in readings}
             total = sum(incs.values())
             scale = 1.0 if total <= window else window / total
