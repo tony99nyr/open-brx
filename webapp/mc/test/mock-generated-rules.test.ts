@@ -82,6 +82,24 @@ describe('generated server rule inputs', () => {
     expect(reserveWith('charge_rifle')).toBe(320);          // below the ceiling it still doubles
   });
 
+  it('leaves a bolt Sniper alone under the ammo and reload perks, as compile.py does (F573 review)', async () => {
+    const backend = new MockBackend();
+    const state = await backend.getState();
+    const weapons = await backend.getWeapons(), perks = await backend.getPerks();
+    const resolved = (weaponId: string, perk: string) => {
+      const player = structuredClone(state.players[0]);
+      player.loadout = { weapons: [{ weapon_id: weaponId }], perk };
+      return perkEffectsResolved(state.config, player, weapons, perks);
+    };
+    for (const perk of ['extended_mags', 'quick_hands']) {
+      const r = resolved('sniper_rifle', perk);
+      expect(r?.mag, perk).toBeUndefined();
+      expect(r?.reserve, perk).toBeUndefined();
+      expect(r?.reload_ms, perk).toBeUndefined();
+    }
+    expect(resolved('assault_rifle', 'quick_hands')?.reload_ms).toBeDefined();   // control: a magazine weapon moves
+  });
+
   it('keeps a hidden primary from throwing during a state snapshot', async () => {
     const backend = new MockBackend();
     const state = await backend.getState();

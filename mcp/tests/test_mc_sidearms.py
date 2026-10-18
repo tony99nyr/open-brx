@@ -79,6 +79,7 @@ def test_pistol_identities_keep_tonys_ordering():
     # accepted the USP's 12 damage ("ok to finish a player on standard life if you hit 10/12 shots").
     # Their own gates are R10a (a 35 HP finish within 1.2 s) and R10b (every rifle beats them).
     rifles = [w["weapon_id"] for w in CAT.all() if w.get("role") in ("assault", "marksman")
+              and CAT._row(w["weapon_id"]).get("reload_type") != "bolt"   # a bolt action is paced by its lever
               and CAT.hits_to_kill(w["weapon_id"], DEFAULT_POOL) > 1
               and not (CAT.rounds_per_charge(w["weapon_id"]) > 1 and CAT.tap_damage(w["weapon_id"]) > 0)]
     slowest_rifle = max(CAT.time_to_kill(r, DEFAULT_POOL) for r in rifles)

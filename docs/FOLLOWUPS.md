@@ -27,7 +27,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟢 **F545**
 
 **MVP DECISION (5),** awaiting Tony:
-- 🟠 **F391** · **F572** · **F573**
+- 🟠 **F391** · **F572** · **F575**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
@@ -35,7 +35,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F575 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F576 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -319,9 +319,9 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 
 Tony's call. Each row says what the answer unblocks.
 
-- **F572 🟠 THE TWO-HILL HOLD TARGET: THE SUM ACROSS HILLS, OR PER HILL?** brx3 asked brx1 on 2026-10-18 (F556's console half, `b7715848f`). In a two-hill KOTH match, does the hold target count (a) the time held summed across both hills (today's code; brx1's and brx3's recommendation) or (b) the time held on any one hill? The answer unblocks the hold-target copy on LIVE, RECAP and SPECTATE and the scorer's win check. Owner brx3 (MC). `decision`.
+- **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim models heat, so every Charge Rifle verdict so far missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call.
 
-- **F573 🟠 THE SNIPER RIFLE'S DAMAGE, AND WHAT "STRONG" MEANS FOR A BOLT ACTION.** brx2, 2026-10-18. The bolt-action Sniper (one round, a lever pull per shot, a 1500 ms bolt, swap 500, perks off the bolt) is prepared at 57 (branch `brx2/sniper-bolt`, three hits on 115) and 75 (`brx2/sniper-bolt-75`, two hits); 65 is a third option (two hits on 115, three on 140). `mcp/tools/balance_review.py` (3001f64ad) fails every one on `marksman_rush_counter`, on opposite sides: at 57 a rush from 20 m wins 0.58 (the counter works) but the Sniper is not near the top at 1v1 long; at 65 and 75 the Sniper is strong but a rush wins only 0.15. With the Charge Rifle trimmed to range band mid, the AMR owns 1v1 long (99-100%). Tony's two calls: the damage (57, 65 or 75), and whether the strong side reads the PEEK column (where the Sniper is top at 87-88%) instead of 1v1 long (`MARKSMAN_STRONG_COLUMN`). With the peek column, Sniper 57 plus the Charge Rifle at 55/14 and range band mid passes all six tests. The answer unblocks the Sniper batch and its record in [`balance-decisions.md`](balance-decisions.md). Owner brx2. `decision`.
+- **F572 🟠 THE TWO-HILL HOLD TARGET: THE SUM ACROSS HILLS, OR PER HILL?** brx3 asked brx1 on 2026-10-18 (F556's console half, `b7715848f`). In a two-hill KOTH match, does the hold target count (a) the time held summed across both hills (today's code; brx1's and brx3's recommendation) or (b) the time held on any one hill? The answer unblocks the hold-target copy on LIVE, RECAP and SPECTATE and the scorer's win check. Owner brx3 (MC). `decision`.
 
 - **F391 🟠 AN OFFLINE STICK RESTART LOSES THE A58 TAMPER LOCK.** A Stick taken offline mid-match (powerup game 40) kept its station assignment across a restart but came back with `lock_s=0`, unlocked. Decide whether the lock is meant to survive an offline boot while a match is loaded or live (as F332 proved it survives an ordinary restart), and if so save `lock_s` (or its deadline) to NVS alongside the range edits. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`), default design for Tony to confirm:** the lock survives an ordinary restart, restored for at most 120 s and only for the saved game; the A+B 7 s restart or MC `lock_s` 0 clears it. **→ 2026-10-03:** for Tony: keep the lock across an ordinary restart for at most 120 s, for the same game only? Confirm or change this default. Then bench the restart (`bench-stick-2026-09-29.md` step 12). Owner brx4. `decision` + `bench`.
 

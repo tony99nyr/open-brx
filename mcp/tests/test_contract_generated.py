@@ -566,7 +566,8 @@ def test_console_mock_tables_match_the_server_sources():
     catalogue = C.WeaponCatalog()
     expected_weapons = [
         {"weapon_id": row["weapon_id"], "mag": row["mag"], "reserve": row["reserve"],
-         "reload_ms": row["reload_ms"], "capture_frame": (row.get("capture") or {}).get("frame"),
+         "reload_ms": row["reload_ms"], "reload_type": row.get("reload_type"),
+         "capture_frame": (row.get("capture") or {}).get("frame"),
          "resolved_frame": catalogue.resolve(row["weapon_id"], 0),
          "swap_ms": (row.get("wire") or {}).get("swap_ms"), "sir_fn": row.get("sir_fn"),
          "lethal": row.get("lethal", True), "dmg": row.get("dmg", 0),

@@ -55,7 +55,7 @@ export const DEMO_WEAPONS = [
       "power": 64,
       "rof": 53,
       "ammo": 49,
-      "ttk": 47
+      "ttk": 53
     }
   },
   {
@@ -165,7 +165,7 @@ export const DEMO_WEAPONS = [
       "power": 47,
       "rof": 100,
       "ammo": 83,
-      "ttk": 40
+      "ttk": 47
     }
   },
   {
@@ -224,7 +224,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 200,
     "bars": {
-      "power": 91,
+      "power": 82,
       "rof": 27,
       "ammo": 60,
       "ttk": 100
@@ -336,7 +336,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 60
+      "ttk": 67
     }
   },
   {
@@ -623,18 +623,18 @@ export const DEMO_WEAPONS = [
     "name": "Sniper Rifle",
     "cls": "2",
     "weapon_class": "ballistic",
-    "desc": "Two hits from anywhere on the field, with a long moment in between to think about the first one.",
-    "clip": 4,
-    "mags": 12,
+    "desc": "One round, then the bolt. Two hits drop anyone from anywhere on the field, and you work the lever between them.",
+    "clip": 1,
+    "mags": 48,
     "reserve": 48,
-    "reload_s": 1.7,
-    "reload_ms": 1700,
-    "dmg": 52,
+    "reload_s": 2.2,
+    "reload_ms": 2200,
+    "dmg": 65,
     "rpm": 5,
     "rng": 75,
-    "dmg_per_hit": 60,
+    "dmg_per_hit": 75,
     "dual_emitter": false,
-    "reload_type": "magazine",
+    "reload_type": "bolt",
     "pool": 115,
     "verified": false,
     "tags": [
@@ -647,7 +647,7 @@ export const DEMO_WEAPONS = [
       "long"
     ],
     "htk": 2,
-    "ttk_ms": 1705,
+    "ttk_ms": 2705,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -656,21 +656,21 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
-      60
+      75
     ],
     "cells": [
       {
         "proto": 0,
         "subtype": 1,
-        "mag": 60
+        "mag": 75
       }
     ],
-    "ammo_total": 52,
+    "ammo_total": 49,
     "bars": {
-      "power": 82,
+      "power": 91,
       "rof": 20,
       "ammo": 31,
-      "ttk": 67
+      "ttk": 40
     }
   },
   {
@@ -779,7 +779,7 @@ export const DEMO_WEAPONS = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 53
+      "ttk": 60
     }
   },
   {

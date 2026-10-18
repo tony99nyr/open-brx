@@ -11,7 +11,7 @@ import {
 } from '../api/contract.gen';
 
 export interface CompilerResult { errors: string[]; warnings: string[] }
-type WeaponFields = { weapon_id: string; mag: number; resolved_frame: string; dmg: number; rounds_per_charge?: number; sir_fn?: number | null; lethal?: boolean; tags?: readonly string[]; role?: string };
+type WeaponFields = { weapon_id: string; mag: number; resolved_frame: string; dmg: number; rounds_per_charge?: number; sir_fn?: number | null; lethal?: boolean; tags?: readonly string[]; role?: string; reload_type?: string | null };
 const rows = new Map((WEAPON_MOCK_FIELDS as readonly WeaponFields[]).map(w => [w.weapon_id, w]));
 const split = (frame: string) => frame.replace(/\*$/, '').split(',');
 const tok = (frame: string, n: number) => Number(split(frame)[n] || 0);
@@ -212,6 +212,7 @@ export function compilerValidation(config: ConfigView, players: Player[], weapon
       if (!w) return;
       const sidearm = (views.get(w.weapon_id)?.tags ?? w.tags ?? []).includes('sidearm');
       if (slot > 0 && !sidearm) return;
+      if ((views.get(w.weapon_id)?.reload_type ?? w.reload_type) === 'bolt') return;   // one round by design: compile.py's validator skips it too
       const kind = slot > 0 ? 'backup' : kit.length === 1 ? 'only' : 'primary';
       const key = `${w.weapon_id}|${pool}|${w.mag}|${kind}`;
       if (seenMag.has(key)) return;

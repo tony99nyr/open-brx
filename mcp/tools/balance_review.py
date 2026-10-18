@@ -54,8 +54,8 @@ NOT MODELLED (named, not silently dropped)
 - Overheat, stance, flinch, the Armour Piercing perk, the node-local perks.
 - Shield regeneration (no fight here gives the 6.5 s quiet it needs).
 - Perk exemption is read from the row: `reload_type: "bolt"` ignores the ammo and reload perks, as
-  compile.py `_ammo` does after the Sniper bolt batch (brx2/sniper-bolt). On a main without that batch
-  the compiled bolt still scales with the perks.
+  compile.py `_ammo` does. The sim-only flag (`_bolt_exempt_sim_only`) fires only for a candidate bolt row
+  on a tree whose compiler lacks that exemption; there the compiled bolt would still scale with the perks.
 """
 from __future__ import annotations
 
@@ -300,8 +300,8 @@ class Kit:
 
 
 def _ammo_mods(world: World, wid: str, fx: dict) -> dict | None:
-    # A bolt (`reload_type: "bolt"`) ignores the ammo and reload perks, as compile.py `_ammo` does once the
-    # Sniper batch (branch brx2/sniper-bolt) lands: the compiled frame is mag 1 / 48 / 1500 under every perk.
+    # A bolt (`reload_type: "bolt"`) ignores the ammo and reload perks, as compile.py `_ammo` does (F573): the
+    # compiled frame keeps the row's mag, reserve and reload_ms under every perk.
     if world.cat._row(wid).get("reload_type") == "bolt":
         return None
     return {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult") if k in fx} or None
@@ -1659,7 +1659,7 @@ def report_markdown(v: dict) -> str:
     bolts = [w for w in ((v.get("facts") or {}).get("candidate") or {},) if w.get("reload_type") == "bolt"]
     if bolts:
         out += ["A bolt (`reload_type: \"bolt\"`): the ammo and reload perks do not act on it, as compile.py `_ammo` "
-                "does after the Sniper bolt batch (brx2/sniper-bolt).", ""]
+                "does for a bolt row.", ""]
     op = t["op_rule"]["numbers"].get("checked") or {}
     if op:
         out += ["## One-shot check (op_rule)", "", "The gate uses the larger of the pull and the crit pull.", "",
@@ -1719,7 +1719,7 @@ def report_markdown(v: dict) -> str:
     sim_only = (v.get("sim_only_flags") or {}).get("bolt_perk_exempt") or []
     if sim_only:
         out += ["", f"**Sim only:** {', '.join(sim_only)} is exempted from the ammo and reload perks here, but the compiler on "
-                    "this tree still scales it. Shipping this verdict needs the bolt compile change too."]
+                    "this tree still scales it (its `_ammo` lacks the bolt exemption). Shipping this verdict needs that compile change too."]
     out += ["", "## Invented assumptions", "", "```json", json.dumps(v["assumptions"], indent=1), "```"]
     if v["not_modelled"]:
         out += ["", "Not modelled: " + "; ".join(v["not_modelled"]) + "."]
@@ -1757,11 +1757,16 @@ def record(v: dict, call: str, path: Path = DECISIONS, command: str = "") -> str
              f"- Tony's call: {call}"]
     if command:
         lines.append(f"- Command: `{command}`")
+    if not v["pass"]:
+        lines.append(f"- Fails: {', '.join(n for n, r in v['tests'].items() if r['status'] == 'fail')}.")
     lines += ["", "| test | result | numbers |", "|---|---|---|"]
     for name, r in v["tests"].items():
         lines.append(f"| {name} | {r['status']} | {_short(r['numbers'])} |")
     lines += ["", "Candidate:", "", "```json", json.dumps(v["candidate"], indent=1), "```", ""]
     text = "\n".join(lines) + "\n"
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    if old and not old.endswith("\n\n"):
+        text = ("\n" if old.endswith("\n") else "\n\n") + text
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(text)
     return text

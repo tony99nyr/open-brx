@@ -230,6 +230,7 @@ class WeaponModel:
     reserve: int
     reload_ms: float
     chain_reload: bool
+    bolt: bool              # reload_type bolt: a lever pull, the bolt (reload_ms), then a press after it
     crit_pct: int
     dot_per_tick: int
     dot_tick_ms: float
@@ -274,6 +275,7 @@ def weapon_model(cat: WeaponCatalog, weapon_id: str) -> WeaponModel:
         semi=cat._frame_int(weapon_id, "mode") == SEMI_MODE,
         mag=mag, reserve=reserve, reload_ms=float(reload_ms),
         chain_reload=row.get("reload_type") == "chain",
+        bolt=row.get("reload_type") == "bolt",
         crit_pct=int(row.get("crit_pct") or 0),
         dot_per_tick=int(dot.get("per_tick") or 0) if dot else 0,
         dot_tick_ms=tick_ms,
@@ -458,7 +460,12 @@ class Match:
         if not p.alive or p.target is None or p.engage_id != gen:
             return
         nxt = t + interval
-        if p.ammo <= 0 and p.reserve > 0:
+        if p.ammo <= 0 and p.reserve > 0 and w.bolt:
+            # F573: one pull gap to the lever, the bolt, then the first press after it (`paced_cycle_ms`'s bolt branch)
+            lever = t + (semi_interval(self.rng, 1e-9, self.cfg.pull_ms) if self.cfg.pull_ms > 0 else 0.0)
+            self._start_reload(p, lever)
+            nxt = max(nxt, lever + semi_interval(self.rng, w.reload_ms, self.cfg.pull_ms))
+        elif p.ammo <= 0 and p.reserve > 0:
             self._start_reload(p, t)
             nxt = max(nxt, p.reload_until)
         elif p.ammo <= 0:

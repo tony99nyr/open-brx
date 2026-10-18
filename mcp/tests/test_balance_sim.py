@@ -185,7 +185,9 @@ def test_sampled_single_shot_pulls_match_the_paced_cycle():
     (`semi_interval`); `WeaponCatalog.paced_cycle_ms()` is the closed form the published ttk uses. They must agree,
     at every pull rate Tony asked about, or the arsenal shows a TTK the sim does not play."""
     rng = random.Random(SEED)
-    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+    # Not the Sniper Rifle: since 2026-10-17 it is a bolt action, paced by its lever (`paced_cycle_ms`'s bolt branch);
+    # the bolt is modelled in mcp/tools/balance_review.py, not in this sampler.
+    for weapon_id in ("amr", "deagle", "usp", "shotgun"):
         fire = CAT.fire_ms(weapon_id)
         for pull in (250, 300, 350):
             n = 20_000
@@ -205,7 +207,7 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
     cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
                       match_ms=20_000.0)
     pool_pts = cfg.pool.health + cfg.pool.armour
-    for weapon_id in ("sniper_rifle", "shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance
+    for weapon_id in ("shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance (not the bolt Sniper)
         m = B.weapon_model(CAT, weapon_id)
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
         kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
@@ -220,13 +222,26 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         assert min(gaps) > CAT.fire_ms(name) and len(set(gaps)) > 1, (name, gaps)   # sampled, never inside t14
 
 
+def test_the_bolt_sniper_kills_at_the_paced_bolt_cycle():
+    """F573 review (Codex): after a bolt round the player pulls the lever (one pull gap), the bolt runs, and the next
+    round waits for the first press after it, so `Match._shot()` must land a two-hit kill one `paced_cycle_ms` after
+    the first hit, not one bare `reload_ms`. Delete the bolt branch in `_shot()` and it lands at 2200 and fails."""
+    cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
+                      match_ms=20_000.0)
+    m = B.weapon_model(CAT, "sniper_rifle")
+    assert m.bolt and CAT.hits_to_kill("sniper_rifle", cfg.pool.health + cfg.pool.armour) == 2
+    kills = [k for k in (_kill_trace(m, cfg, seed)[1] for seed in range(300)) if k is not None]
+    mean, want = sum(kills) / len(kills), CAT.paced_cycle_ms("sniper_rifle")
+    assert abs(mean - want) / want < 0.03, (round(mean), round(want))
+
+
 def test_only_single_shot_weapons_are_player_paced():
     """The model touches t20 = 7 alone: an automatic, burst or charge weapon keeps its gun-limited cycle, and the
     sim marks exactly the single-shot rows as `semi`."""
     for weapon_id in ("assault_rifle", "smg", "burst_rifle", "charge_rifle", "rail_gun"):
         assert CAT.paced_cycle_ms(weapon_id) == CAT.cycle_ms(weapon_id), weapon_id
         assert not B.weapon_model(CAT, weapon_id).semi, weapon_id
-    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):
+    for weapon_id in ("amr", "deagle", "usp", "shotgun", "sniper_rifle"):   # the Sniper through the bolt branch
         assert CAT.paced_cycle_ms(weapon_id) > CAT.cycle_ms(weapon_id), weapon_id
         assert B.weapon_model(CAT, weapon_id).semi, weapon_id
 
