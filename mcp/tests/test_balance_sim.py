@@ -198,6 +198,28 @@ def test_sampled_single_shot_pulls_match_the_paced_cycle():
         assert min(B.semi_interval(rng, fire, 300) for _ in range(2000)) >= fire   # never inside t14
 
 
+def test_the_engines_fire_single_shots_at_the_paced_cycle():
+    """The wiring, not the sampler: `Match._shot()` and the duel generators must use the sampled pulls for a
+    single-shot weapon (Codex and Opus review). Deleting `elif w.semi` in `_shot()`, or the `pull_ms` hand-off
+    to `_ar_shots`/`_pump_shots`, puts them back on a press every t14 and fails here."""
+    cfg = B.SimConfig(pool=B.default_pool(), range_model=False, tactical_reload=False, hit_probs=(1.0,),
+                      match_ms=20_000.0)
+    pool_pts = cfg.pool.health + cfg.pool.armour
+    for weapon_id in ("sniper_rifle", "shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance
+        m = B.weapon_model(CAT, weapon_id)
+        htk = CAT.hits_to_kill(weapon_id, pool_pts)
+        kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
+        mean = sum(k for k in kills if k is not None) / len([k for k in kills if k is not None])
+        want = (htk - 1) * CAT.paced_cycle_ms(weapon_id)
+        assert abs(mean - want) / want < 0.05, (weapon_id, round(mean), round(want))
+    m = _recoil_model()
+    rng = random.Random(SEED)
+    for name, gen in (("amr", B._amr_combatant(0.0, m, "mid", rng)), ("shotgun", B._shotgun_combatant(0.0, m, "close", rng))):
+        times = [next(gen)[0] for _ in range(4)]
+        gaps = [b - a for a, b in zip(times, times[1:])]
+        assert min(gaps) > CAT.fire_ms(name) and len(set(gaps)) > 1, (name, gaps)   # sampled, never inside t14
+
+
 def test_only_single_shot_weapons_are_player_paced():
     """The model touches t20 = 7 alone: an automatic, burst or charge weapon keeps its gun-limited cycle, and the
     sim marks exactly the single-shot rows as `semi`."""
@@ -598,7 +620,8 @@ def test_r10_sidearms_finish_a_kill_within_the_bar():
     35 HP target within `R10_FINISH_BAR_MS` median, reaction delay included. The bar moved 1.0 -> 1.2 s
     on 2026-10-17 (Tony: "1.2s on the pistol time to finish seems fine"), when the single-shot cycle
     became player-paced: at 300 ms pulls the USP (12 at 190 ms) reads about 1066 ms and the unchanged
-    Desert Eagle about 1173 ms, and both stay under 1.2 s at 250 and 350 ms pulls."""
+    Desert Eagle about 1173 ms. At 350 ms pulls the Desert Eagle sits ON the bar (1192-1206 ms across
+    seeds, Opus review); Tony kept it unchanged, so only the 300 ms model is gated."""
     m = _recoil_model()
     reps = 10_000
     for kind in B.R10_SIDEARMS:

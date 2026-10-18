@@ -44,6 +44,8 @@ MECHANICS MODELLED
   moment a contact opens, then taps (``tap_damage()``, 1 round) at ``CHARGE_TAP_CADENCE_MS``.
 - Charge without a tap (Rail Gun, Laser Cannon): every shot, the first included, waits t14.
 - ``reload_type: chain`` (Shotgun): ``reload_ms`` is per shell.
+- Single shot (t20 = 7): the next round fires on the first sampled trigger press at or after t14
+  (``semi_interval``, ``--pull-ms``; field 2026-10-17).
 - The DoT block: ``per_tick`` every ``tick_ms`` for ``duration_ms``, refreshed on each hit, never
   stacked. A tick takes damage from the outermost non-empty layer only, with no spill
   (spec/node.md §3.17). A stacking DoT (``stack: true``) or a non-refreshing one (``refresh: false``)
@@ -155,6 +157,7 @@ def semi_interval(rng: random.Random, fire_ms: float, pull_ms: float) -> float:
     `fire_ms` (t14). `pull_ms` <= 0 gives `fire_ms` exactly (a perfect trigger finger)."""
     if pull_ms <= 0:
         return fire_ms
+    assert rng is not None, "a sampled pull needs the caller's rng"
     mu = math.log(pull_ms) - PULL_SIGMA * PULL_SIGMA / 2
     t = 0.0
     while t < fire_ms:
@@ -1032,7 +1035,8 @@ def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charg
 def _pump_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: int, reload_ms: float,
                 aim_factor: float, *, rng: random.Random | None = None, pull_ms: float = 0.0):
     """Yields `(t, hit_p, dmg)` for a single-word-per-pull, no-recoil, chain-reload combatant (the
-    Shotgun): a fixed `fire_ms` between pulls (t14, the gun-enforced PUMP gap, not a recoil model --
+    Shotgun): `fire_ms` between pulls, or with `pull_ms` the first sampled press at or after it
+    (`semi_interval`) (t14, the gun-enforced PUMP gap, not a recoil model --
     weapon-design.md's Balance rules table row 6/R8), reload PER SHELL (`reload_type: chain`) once the
     tube runs dry, same convention as `Match._start_reload()`'s chain branch."""
     ammo, res = mag, reserve
@@ -1593,8 +1597,8 @@ def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel)
 #
 # Two halves, both gated at reps=10,000 in CI:
 #   (a) each live sidearm (USP, Desert Eagle -- the Glock is `hidden`, out of scope) finishes an
-#       undefended 35-HP target (health only, no armour: a closing shot, not an opener) in under
-#       1.0s median, reaction delay included ("the sim's aim and reaction model").
+#       undefended 35-HP target (health only, no armour: a closing shot, not an opener) within
+#       `R10_FINISH_BAR_MS` median (1.2 s since 2026-10-17, Tony), reaction delay included.
 #   (b) every primary this engine can model beats each live sidearm from FULL Standard health (115)
 #       at least 65% of the time -- reusing `run_range_duel`/`RANGE_COMBATANTS` exactly as R4-R9 do.
 

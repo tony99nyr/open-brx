@@ -1756,7 +1756,8 @@ class WeaponCatalog:
         that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
         `cycle_ms()`, the fastest interval the gun allows."""
         if pull_ms > 0 and self._frame_int(weapon_id, "mode") == self._SEMI_MODE:
-            return self.fire_ms(weapon_id) + pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2
+            # max(): the renewal limit runs short for a t14 well under the pull; at t14 0 the cycle is one pull (brx3)
+            return max(pull_ms, self.fire_ms(weapon_id) + pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2)
         return self.cycle_ms(weapon_id)
 
     def rate_of_fire(self, weapon_id: str) -> int:
