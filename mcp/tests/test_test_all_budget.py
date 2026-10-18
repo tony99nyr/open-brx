@@ -184,9 +184,8 @@ def test_pss_sampler_counts_detached_descendant_processes():
     import signal
     import time
 
-    if not Path("/proc/self/smaps_rollup").exists():
-        import pytest
-        pytest.skip("Linux /proc PSS is required")
+    # needs(), not pytest.skip: run_tests.py has no pytest, so the old skip crashed this test on macOS (F565).
+    needs(Path("/proc/self/smaps_rollup").exists(), "Linux /proc PSS")
     needs(NODE, "node")
     launcher = subprocess.Popen(
         [NODE, "--input-type=module", "-e", """
