@@ -4817,7 +4817,7 @@ class Session:
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
-                self._archive("match_ended", sc.match_id, self.last_recap)
+                self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
             self._push_result()          # A24: the field is re-told whenever the recap moves
         except Exception:
             import logging
@@ -7022,7 +7022,10 @@ class Session:
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and match.head and self.last_recap:
-            self._archive("match_ended", match.head["match_id"], self.last_recap)
+            end_t = match.scorer.end_t if match.scorer else None
+            if end_t is None and self.end_reason == "time" and (tl := self.config.get("time_limit_s")):
+                end_t = match.head["go_live_t"] + int(tl) * 1000   # a timed end freezes nothing: the clock every phone ran
+            self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)   # F560: never "now"
         match.head = None            # no re-hydrating a finished match's `start`
         if match.scorer:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
@@ -7206,7 +7209,7 @@ class Session:
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
             if self.store:
-                self._archive("match_ended", mid, recap)
+                self._archive("match_ended", mid, recap, sc.end_t)   # F560
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact re-store for a retired match failed (play continues)")
