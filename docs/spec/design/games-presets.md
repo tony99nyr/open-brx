@@ -231,7 +231,9 @@ kill-scored mode.
   it wins at once. If no team reaches it, the team with the most possession at the clock wins, as before.
 - With two or more hills, a team's possession is its time held summed across the hills (F572, Tony 2026-10-18:
   "It should add both hills"). For example, 70 s on hill A plus 50 s on hill B meets a 2:00 target. LIVE, RECAP
-  and SPECTATE say `THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.` when more than one hill reported.
+  and SPECTATE say `THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.` when more than one hill reported. With two or
+  more CONTROL stations assigned, the phone brief and the operator note read `FIRST TO HOLD 2:00 SUMMED ACROSS
+  HILLS WINS`. The setup warning fires only at or past the time limit times the number of assigned hills.
 - Compose writes it to `config.scoring.hold_target_s`. MC's scorer enforces it, as it does the frag limit.
 - `match.hill` (KOTH only, F559): `{capture_s?: 3..60, net_cap?: 1..6}`, `null` = MC sends nothing (SET ON THE HILL), so each hill keeps the pace it last had, MC's last value included, until it is changed on the hill. Compose writes it to `config.hill`, which every control station's `station_config` carries. A favourite stores it. A mode change keeps it; a pick naming it for a mode without the item has it dropped.
 - The phone shows it through the existing `game_brief()` text (for example `FIRST TO HOLD 5:00 WINS`), with

@@ -36,6 +36,12 @@ describe('operatorNote', () => {
     expect(operatorNote({ ...base, mode: 'koth', scoring: { frag_limit: null, hold_target_s: 300 } }))
       .toEqual(['PLACE THE HILL BEFORE START', 'FIRST TO HOLD 5:00 WINS']);
   });
+  // F572 (Tony 2026-10-18, "It should add both hills"): with two hills assigned, the target says it is summed.
+  it('KOTH with a hold target and two hills says the time is summed across hills; one hill does not', () => {
+    const cfg = { ...base, mode: 'koth', scoring: { frag_limit: null, hold_target_s: 300 } };
+    expect(operatorNote(cfg, 2)).toEqual(['PLACE THE HILLS BEFORE START', 'FIRST TO HOLD 5:00 SUMMED ACROSS HILLS WINS']);
+    expect(operatorNote(cfg, 1)).toEqual(['PLACE THE HILL BEFORE START', 'FIRST TO HOLD 5:00 WINS']);
+  });
   it('KOTH with a hold target under a minute pads the seconds', () => {
     expect(operatorNote({ ...base, mode: 'koth', scoring: { frag_limit: null, hold_target_s: 65 } }))
       .toEqual(['PLACE THE HILL BEFORE START', 'FIRST TO HOLD 1:05 WINS']);

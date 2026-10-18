@@ -23,7 +23,7 @@ import { LoadError } from '../ui/LoadError';
 import { useResource } from '../ui/useResource';
 import { alertWords, serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
-import { operatorNote } from './operatorNote';
+import { hillCount, operatorNote } from './operatorNote';
 import { kindLabel } from './presets/kinds';
 import { pickFallbackNote } from './pieceFallbackNote';
 import { getRunway, setRunway, useRunway } from '../runway';
@@ -205,7 +205,7 @@ export function Games() {
   };
 
   // ---- the operator note (games-redesign.md §9), derived off the composed config -----------------
-  const note = operatorNote(cfg);
+  const note = operatorNote(cfg, hillCount(state.stations));
 
   // ---- the read-only PICKUPS line (§7): what ARMORY has armed, never edited here -----------------
   const pickupsLine = (state.stations ?? [])

@@ -1360,7 +1360,9 @@ class Session:
         elif scoring.get("win_by") == "objective" and (hold := scoring.get("hold_target_s")):
             # F415: the KOTH hold target, the same text shape as the kills-mode cap above -- the phone's
             # existing BRIEFING WIN row (`app/src/hud/hud.js`) renders `win_text` verbatim, no app change.
-            win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d} WINS"
+            # F572 (Tony 2026-10-18): with two or more hills assigned, the target counts the time summed across them
+            hills = sum(1 for _nid, a in self.station_registry.assignments() if a.get("kind") == "control")
+            win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d}{' SUMMED ACROSS HILLS' if hills > 1 else ''} WINS"
         else:
             win_text = mode.get("win_text")
         return {
@@ -2602,13 +2604,17 @@ class Session:
         # would be a promise the config cannot keep. A config error would refuse the pick outright; this
         # is playable (the clock still ends it, exactly as a mode with no target does), so it is a
         # warning, not a 400.
+        # F572 (Tony 2026-10-18, "It should add both hills"): the target counts the time summed across hills, so n
+        # assigned hills can bank n times the time limit, and only a target at or past that can never fire.
         scoring = self.config.get("scoring") or {}
         hts, tl = scoring.get("hold_target_s"), self.config.get("time_limit_s")
-        if isinstance(hts, int) and not isinstance(hts, bool) and isinstance(tl, int) and not isinstance(tl, bool) and hts >= tl:
+        hills = max(1, sum(1 for _nid, a in self.station_registry.assignments() if a.get("kind") == "control"))
+        if isinstance(hts, int) and not isinstance(hts, bool) and isinstance(tl, int) and not isinstance(tl, bool) and hts >= tl * hills:
             def _mmss(s: int) -> str:
                 return f"{s // 60}:{s % 60:02d}"
+            limit = f"THE TIME LIMIT ({_mmss(tl)})" if hills == 1 else f"THE TIME LIMIT ({_mmss(tl)}) TIMES {hills} HILLS"
             self.config_warnings.append(
-                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST THE TIME LIMIT ({_mmss(tl)}): THE MATCH WILL "
+                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST {limit}: THE MATCH WILL "
                 "ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT")
         return res
 

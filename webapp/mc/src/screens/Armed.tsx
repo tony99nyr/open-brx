@@ -11,7 +11,7 @@ import { SetupSteps } from '../ui/SetupSteps';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
 import { InfoIcon } from '../ui';
-import { operatorNote } from './operatorNote';
+import { hillCount, operatorNote } from './operatorNote';
 
 
 export function Armed() {
@@ -31,7 +31,7 @@ export function Armed() {
   if (!state) return null;
   // QA-04 (visual QA round 1, 2026-09-26): the same operator note LOBBY and PLAY show -- "the last
   // reminder before players scatter" (games-redesign.md §9), and ARMED is the screen they scatter FROM.
-  const note = operatorNote(state.config);
+  const note = operatorNote(state.config, hillCount(state.stations));
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   const cLine = shortCoverageLine(state.coverage);
   // Field feedback 2026-09-19 (Tony): partial coverage is not a fault, so it is neutral, never amber.
