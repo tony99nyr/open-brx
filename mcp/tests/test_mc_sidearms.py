@@ -73,16 +73,20 @@ def test_pistol_identities_keep_tonys_ordering():
     # Tony's ask over an unrealistic cut), which reorders this axis -- the USP no longer carries the
     # deepest magazine of the three, only the Glock (hidden, untouched by R10) does now.
     assert mags["deagle"] < mags["usp"] < mags["glock"]
-    # every pistol lands in the 1.5-3.5 s band the arsenal is balanced to, and (D2) strictly slower
-    # than every rifle (force/assault/burst/bolt span 1650-1800 ms). The Glock and USP still ship at
-    # the shared 1920 ms ideal TTK D2 set; the Deagle moved off it (R10, F308, 2026-09-23): its
-    # cadence slowed 480 -> 700ms (a real-world lever, .50 AE recoil) so it finishes a kill rather
-    # than competing with a rifle, which also moved its ideal TTK 1920 -> 2800ms.
+    # Every pistol kills strictly slower than every rifle (D2). 2026-10-17: a single-shot weapon's cycle is
+    # player-paced (`paced_cycle_ms`, field 2026-10-17), which put all three sidearms near 3.6 s at the
+    # default pool, above the 3.5 s band the rifles keep; Tony wants them weak against the rifles, and
+    # accepted the USP's 12 damage ("ok to finish a player on standard life if you hit 10/12 shots").
+    # Their own gates are R10a (a 35 HP finish within 1.2 s) and R10b (every rifle beats them).
+    rifles = [w["weapon_id"] for w in CAT.all() if w.get("role") in ("assault", "marksman")
+              and CAT.hits_to_kill(w["weapon_id"], DEFAULT_POOL) > 1
+              and not (CAT.rounds_per_charge(w["weapon_id"]) > 1 and CAT.tap_damage(w["weapon_id"]) > 0)]
+    slowest_rifle = max(CAT.time_to_kill(r, DEFAULT_POOL) for r in rifles)
+    want = {"usp": 3557, "glock": 3562, "deagle": 3621}
     for w in ALL_PISTOLS:
         ttk = CAT.time_to_kill(w, DEFAULT_POOL)
-        assert 1500 <= ttk <= 3500, w
-        assert ttk > 1800, f"{w} must kill strictly slower than the slowest rifle (1800 ms)"
-        assert ttk == (2800 if w == "deagle" else 1920), w
+        assert ttk > slowest_rifle, f"{w} must kill strictly slower than the slowest rifle ({slowest_rifle} ms)"
+        assert ttk == want[w], (w, ttk)
 
 
 def test_pistol_sounds_are_unique_on_gun_ids():

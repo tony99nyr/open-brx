@@ -25,8 +25,8 @@ GOLDEN_CLI_ARM_OUTDOOR = [
     '$GSET,0,0,1,0,1,0,0,1,*',
     '$PSET,1,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*',
     '$WEAP,0,,70,0,3,10,40,,,,,,,,75,850,36,216,1700,0,9,100,100,540,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*',
-    '$WEAP,1,2,30,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*',
-    '$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*',
+    '$WEAP,1,2,30,0,0,20,0,,,,,,20,100,400,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*',
+    '$WEAP,4,1,60,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*',
     '$SIR,0,0,,1,0,0,1,,*',
     '$SIR,0,1,,36,0,0,1,,*',
     '$SIR,0,3,,37,0,0,1,,*',
@@ -60,7 +60,7 @@ GOLDEN_CLI_ARM_INDOOR = [
     '$GSET,0,0,1,0,1,0,0,1,*',
     '$PSET,1,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*',
     '$WEAP,0,,100,0,3,10,40,,,,,,,,75,850,36,216,1700,0,9,100,100,540,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*',
-    '$WEAP,1,2,100,0,0,20,0,,,,,,20,100,700,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*',
+    '$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,100,*',
     '$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*',
     '$SIR,0,0,,1,0,0,1,,*',
     '$SIR,0,1,,36,0,0,1,,*',
@@ -125,7 +125,8 @@ def test_cli_default_arm_is_the_outdoor_head_golden():
 def test_cli_indoor_arm_is_golden_and_differs_only_in_the_range_tokens():
     assert cli.arm_frames(volume=65, venue="indoor") == GOLDEN_CLI_ARM_INDOOR
     diff = [i for i, (a, b) in enumerate(zip(GOLDEN_CLI_ARM_OUTDOOR, GOLDEN_CLI_ARM_INDOOR)) if a != b]
-    assert [GOLDEN_CLI_ARM_OUTDOOR[i][:8] for i in diff] == ["$WEAP,0,", "$WEAP,1,"]
+    # melee (slot 4) joined the outdoor range table on 2026-10-17 (t2 90 -> 60 outdoors, indoor unchanged)
+    assert [GOLDEN_CLI_ARM_OUTDOOR[i][:8] for i in diff] == ["$WEAP,0,", "$WEAP,1,", "$WEAP,4,"]
     assert GOLDEN_CLI_ARM_INDOOR[diff[0]].split(",")[3] == "100"
     assert GOLDEN_CLI_ARM_OUTDOOR[diff[0]].split(",")[3] == "70"
 

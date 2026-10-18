@@ -42,6 +42,7 @@ them; the comment beside each read is the detail.
 |---|---|
 | `?mock&faults=1` | **A36/A37/F271 — five config-proof states, one gun each.** GUN-A has a stale ack, GUN-B a weapon echo mismatch, GUN-C a pool fault, GUN-G a `$QUERY` read-back mismatch, and GUN-E the neutral **NOT ECHOED** state. The four reds survive the initial push and clear on the first RE-PUSH; NOT ECHOED remains. The query mismatch is force-proof, so LOBBY shows the re-push cure and no HOST OVERRIDE. DRIFT's phone has never arrived, providing the separate `waiting` row. |
 | `?mock&faults=readback` | only GUN-G's `$QUERY` read-back mismatch from the set above (`faults=stale` and `faults=on` are the same as `faults=1`) |
+| `?mock&faults=noconfig` | F549: GUN-A acks `no_config` (the gun answered a zeroed `$LCD`, so it loaded nothing): its row blocks with GUN DID NOT TAKE THE CONFIG, and the headset keeps its proof; clears on the first RE-PUSH |
 | `?mock&laststale=1` | a node that WAS reached over the internet tunnel and has since gone dark (F155) |
 | `?mock&nossid=1` | MC could not read the phone's Wi-Fi name — the REACH block must print `LAN · ip:port` |
 | `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |

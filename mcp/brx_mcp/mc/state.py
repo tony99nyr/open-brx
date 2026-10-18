@@ -39,7 +39,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
 from .types import ROSTER_PHASES
-from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
+from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event, FeedEntry,
@@ -5656,7 +5656,11 @@ class Session:
                            ) -> tuple[Literal["proven", "unknown", "absent"], Literal["echo", "link"] | None]:
         """Decide whether an echo or a held link proves the headset."""
         ack = self.acks.get(p["player_id"])
-        if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
+        no_config = self.lobby_pushed and ack is not None and ack.get("err") == "no_config"
+        if no_config:
+            # F549: the gun DID answer (a zeroed `$LCD`), so the headset keeps what the link proved; the kit blocks
+            blockers.append(GUN_DID_NOT_TAKE_CONFIG)
+        if not no_config and self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
             blockers.append(GUN_DID_NOT_ANSWER)
             headset, headset_proof = "absent", None
         elif nv.get("headset") == "proven":
