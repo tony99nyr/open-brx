@@ -66,15 +66,14 @@ test('the countdown wipes what the lobby counted, and the point waits for go-liv
   for (let t = 0; t <= 15_000; t += 250) api.controlTick(t0 + t);   // RED stands on it in the lobby and takes it
   assert.ok(api.point.owner === RED && api.point.holdMs[RED] > 0, 'setup: the lobby counted');
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 65_000 });   // START
-  const now = Date.now();
+  const now = api.settings.hillStartsAt - 5_000;   // the arming's own clock, not a later read (no real-clock drift)
   assert.deepEqual(api.point.holdMs, {}, 'the lobby hold survived START');
   assert.equal(api.point.progress, 0);
   api.controlTick(now + 1_000); api.controlTick(now + 4_000);
   assert.equal(api.point.progress, 0, 'the point built in the countdown');
   api.controlTick(now + 5_500); api.controlTick(now + 6_500);
   // the first live step counts from go-live (now + 5 s), as the Stick anchors it: 1.5 s builds 15%
-  assert.ok(Math.abs(api.point.progress - 15) < 0.05,   // a ms of real clock between the arming and `now`
-    `1.5 s live builds 15%: ${api.point.progress}`);
+  assert.ok(Math.abs(api.point.progress - 15) < 1e-6, `1.5 s live builds 15%: ${api.point.progress}`);
 });
 
 test('a LIVE re-send keeps the count, and the deadline freezes it at the whistle', async () => {
@@ -153,9 +152,9 @@ test('a START with no tick before go-live still counts from go-live', async () =
   await api.applyStationConfig({ ...hill, game: ++game });
   redOnThePoint();
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 600_000 });
-  const now = Date.now();
+  const now = api.settings.hillStartsAt - 5_000;
   api.controlTick(now + 5_100);                                      // the first tick lands 0.1 s after go-live
-  assert.ok(Math.abs(api.point.progress - 1) < 0.05, `0.1 s from go-live builds 1%: ${api.point.progress}`);
+  assert.ok(Math.abs(api.point.progress - 1) < 1e-6, `0.1 s from go-live builds 1%: ${api.point.progress}`);
 });
 
 

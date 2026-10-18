@@ -379,3 +379,7 @@ def test_f558_the_station_view_carries_the_hills_inputs():
     net.simulate_status("util-hill", body, clock["t"] + 2_000)
     c = s.station_registry.station_view("util-hill")["report"]["control"]
     assert "net" not in c and "counts" not in c and c["lead"] is None, c
+    body["control"] = {"owner": 255, "net": 9, "counts": {"7": 1}, "lead": 9}   # nothing a station can send
+    net.simulate_status("util-hill", body, clock["t"] + 4_000)
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert "net" not in c and "counts" not in c and "lead" not in c, c

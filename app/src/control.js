@@ -108,7 +108,7 @@ export class ControlPoint {
     this.log = Array.isArray(s.log) ? s.log.slice(-64) : [];
     this.contested = !!s.contested;
     this.dir = [1, 0, -1].includes(s.dir) ? s.dir : 0;
-    this.net = Math.max(0, Math.min(this.netCap, +s.net || 0));
+    this.net = 0;                 // F558: no counts or lead are restored, so no net either (the Stick's restore does the same)
     // A restored point is never mid-flip: owner holds it in (0,100], neutral-with-nobody sits at 0.
     if (this.owner !== STATION_TEAM_ANY) this.capturing = null;
     else if (this.capturing == null) this.progress = 0;
