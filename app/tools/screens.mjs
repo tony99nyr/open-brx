@@ -1704,9 +1704,9 @@ for (const view of VIEWS) {
     });
     const dayPg = await open(view, 'briefing-pu'); const day = await read(dayPg); await dayPg.close();
     must(day.present, 'no PICKUPS line on the pickups briefing');
-    must(day.items.map(i => i.name).join(' · ') === 'ROCKETS · RAIL GUN · OVERSHIELD', 'item names/order: ' + JSON.stringify(day.items));
+    must(day.items.map(i => i.name).join(' · ') === 'ROCKETS · RAIL GUN · OVERSHIELD · AMMO', 'item names/order: ' + JSON.stringify(day.items));   // A76: AMMO
     must(!day.clipped && !day.wrapped && !day.overlapsFoot, 'the PICKUPS line does not fit cleanly: ' + JSON.stringify(day));
-    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(255, 79, 216)',
+    must(day.items[0].color === 'rgb(255, 122, 26)' && day.items[1].color === 'rgb(34, 211, 238)' && day.items[2].color === 'rgb(255, 79, 216)' && day.items[3].color === 'rgb(155, 226, 45)',
       'each item is not painted in its own day colour: ' + JSON.stringify(day.items));
 
     const nightPg = await open(view, 'briefing-pu', '&night'); const night = await read(nightPg); await nightPg.close();
