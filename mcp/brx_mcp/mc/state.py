@@ -3314,7 +3314,7 @@ class Session:
         # on the right Wi-Fi of being on the wrong one.
         if nv.get("reach"):
             nv["last_reach"] = nv["reach"]
-        self._note_version(nid, n.get("app_ver"), n.get("platform"))   # A29
+        self._note_version(nid, n.get("app_ver"), n.get("platform"), n.get("device"))   # A29, F564
         nv["last_seen_ms"] = self.now_ms()
         self._release_stale_gun_claim(nid, nv.get("gun_name"), nv.get("gun_tail"))
         if n.get("node_type") == "utility":
@@ -3390,7 +3390,7 @@ class Session:
         # place the WHOLE hello body reaches the session -- capture both here, before any early return,
         # so a utility phone and an unbound player node are covered too.
         if hello.get("node_id"):
-            self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"))
+            self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"), hello.get("device"))
         if hello.get("node_type") == "utility":
             return None                        # A13.5: a station is never a player, whatever it remembers
         gun = hello.get("gun") or {}
@@ -3638,7 +3638,7 @@ class Session:
             # red, and still read HEADSET · CONNECTED beside it. The echo proves the head answered THEN;
             # the link is the only thing that proves it is still on (round-2 review 2026-09-12).
             nv.pop("headset", None)
-        self._note_version(nid, body.get("app_ver"), body.get("platform"))   # A29: the heartbeat carries it too
+        self._note_version(nid, body.get("app_ver"), body.get("platform"), body.get("device"))   # A29: the heartbeat carries it too
         if (parsed := self._parse_log_status(body.get("log"))) is not None:  # A25: the node's own log state
             self._set_log(nid, parsed[0], reason=parsed[1])
         # A8 + polish review 2026-09-11: a STATUS body never changes what a BOUND node IS. A player HUD that
@@ -5450,14 +5450,16 @@ class Session:
             return (s, None)
         return None
 
-    def _note_version(self, nid: str, app_ver: Any, platform: Any) -> None:
+    def _note_version(self, nid: str, app_ver: Any, platform: Any, device: Any = None) -> None:
         """A29: keep the node's REAL build. Never blank a known value with an absent one -- a status
-        body that omits the field is a heartbeat, not a downgrade."""
+        body that omits the field is a heartbeat, not a downgrade. F564: the same for the phone's make and model."""
         nv = self._node_view(nid)
         if isinstance(app_ver, str) and app_ver:
             nv["app_ver"] = app_ver
         if isinstance(platform, str) and platform:
             nv["platform"] = platform
+        if isinstance(device, str) and device.strip():
+            nv["device"] = device.strip()[:64]
 
     def _in_the_field(self, nv: dict, now: int) -> bool:
         """Is this node part of THE FIELD for A29's version comparisons?

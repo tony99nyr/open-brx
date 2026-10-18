@@ -8,7 +8,7 @@ import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
 import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff, priorUtilityReconnectUrl, debounceBound, BOUND_DEBOUNCE_POLLS, PRIOR_UTILITY_HANDOFF_MAX_AGE_MS } from '../src/transport/transport.js';
-import { APP_VER } from '../src/build.js';
+import { APP_VER, setDeviceModel, deviceModel } from '../src/build.js';
 import { flush, useClock } from './_helpers.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -672,4 +672,25 @@ test('transport: the heartbeat retries a held flush once the store recovers (M4 
   t.status({ arm_state: 'live' });                      // the heartbeat path
   assert.deepEqual(sentSeqs(), [11]);
   void advance;
+});
+
+
+test('F564: the hello and every status name the device once Device.getInfo has answered, and omit it before', async ctx => {
+  useClock(ctx);
+  const sockets = [];
+  setDeviceModel(null);
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => { t.close(); setDeviceModel(null); });
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  assert.equal('device' in sockets[0].sent[0].body, false, 'no model known yet: no key, never a guess');
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 })); await p;
+  setDeviceModel({ manufacturer: 'Google', model: 'Pixel 4' });
+  assert.equal(t.status({ arm_state: 'kitted' }), true);
+  const st = sockets[0].sent.filter(e => e.kind === 'status').pop();
+  assert.equal(st.body.device, 'Google Pixel 4');
+  E.validate(st, 'node');
+  assert.equal(deviceModel(), 'Google Pixel 4');
+  setDeviceModel({ manufacturer: '', model: 'x'.repeat(200) });
+  assert.equal(deviceModel().length, 64, 'a model string is capped');
 });

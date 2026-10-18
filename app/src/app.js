@@ -19,7 +19,7 @@ import { directAdvert, settleAdvert, advertFailLog, advertSnapshotNeeded, newAdv
 import { BeaconWatch } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
-import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
+import { APP_VER, platformName, setDeviceModel } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, appendEntry, HISTORY_KEY } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
 import { installTapHoldDoor } from './tapgate.js';                   // T2-B: taps AND a hold on the last, for the hidden utility-mode door
@@ -988,7 +988,7 @@ async function sweepForMc() {
   await lockLandscape(); await keepAwake(true);
   try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
   // F340: the Android API level decides whether Location gates a scan. Read it before the first picker scan.
-  try { if (plugins.device) { const i = await plugins.device.getInfo(); if (i && typeof i.androidSDKVersion === 'number') androidSdk = i.androidSDKVersion; } } catch (e) { log('device info: ' + (e && e.message || e), 'le'); }
+  try { if (plugins.device) { const i = await plugins.device.getInfo(); setDeviceModel(i); if (i && typeof i.androidSDKVersion === 'number') androidSdk = i.androidSDKVersion; } } catch (e) { log('device info: ' + (e && e.message || e), 'le'); }
   try { if (plugins.app) plugins.app.addListener('resume', () => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }); } catch (e) { log('resume listener: ' + (e && e.message || e), 'li'); }
   setInterval(() => { locationTick().catch(e => log('location re-check: ' + (e && e.message || e), 'le')); }, LOCATION_POLL_MS);
   // F153c: the radio came back (mobile data restored, Wi-Fi rejoined, the hotspot came up). Whatever the

@@ -1523,6 +1523,8 @@ export interface NodeView {
   claims_dropped?: number;
   app_ver?: string | null;
   platform?: string | null;
+  /** F564: the phone's make and model (`Device.getInfo()`), e.g. "Google Pixel 4" */
+  device?: string | null;
   log?: LogView | null;
   /** F309: the phone's own last `status.transport` claim; absent = never reported (older app). */
   transport?: 'wifi' | 'cellular' | 'none' | 'unknown';
