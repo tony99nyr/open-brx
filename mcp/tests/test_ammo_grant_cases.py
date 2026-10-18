@@ -124,3 +124,24 @@ def test_a_real_account_after_a_shot_keeps_the_magazine_it_reports():
         assert sent == [f"$AMMO,0,{live[0]},{res0},1,*"], (sent, live, spawn)
         assert live[0] == mag0 - 1, live
     asyncio.run(go())
+
+
+def test_milestone_a_grant_waits_while_the_gun_is_stunned_reloading_or_swapping():
+    """powerup-player.js `_claimTick`: no grant over a stun's $AMMO 0,0, a running reload or an ALT swap."""
+    async def go():
+        for state in ("stunned", "reloading", "switching"):
+            st, _mgr = mk_stage()
+            st._spawn_ammo = lambda: {0: [30, 120]}     # type: ignore[method-assign]
+            st._live_ammo = lambda: {0: [12, 40]}       # type: ignore[method-assign]
+            sent: list[str] = []
+
+            async def write(frames, why, *a, **kw):
+                sent.extend(frames)
+                return True
+            st.write = write   # type: ignore[method-assign]
+            st.spawned = st.alive = True
+            setattr(st, state, {"at": 0.0, "until": 99.0, "slot": 0, "from": 0, "to": 1})
+            assert await st.grant_ammo({"name": "AMMO", "refill": "reserve"}) is None and sent == [], state
+            setattr(st, state, None)
+            assert await st.grant_ammo({"name": "AMMO", "refill": "reserve"}) is not None, f"CONTROL {state}"
+    asyncio.run(go())

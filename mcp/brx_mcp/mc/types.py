@@ -1610,7 +1610,11 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
-    game: NotRequired[int]       # F555: the game byte the hill counts under (absent from an older station)
+    game: NotRequired[int]       # F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not)
+    # Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
+    # station's own), so ITEMS can show what each hill is really doing.
+    capture_s: NotRequired[int]
+    net_cap: NotRequired[int]
     # F558: the point's own inputs: the clamped net its leader converts at, living players counted per tid, and the
     # leading tid (null with nobody counted). Absent from an older station.
     net: NotRequired[int]

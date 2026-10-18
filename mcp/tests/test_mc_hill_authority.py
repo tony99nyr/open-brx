@@ -420,3 +420,18 @@ def test_milestone_an_adopted_session_marks_its_scorer_untrusted():
     assert s._scorer_like(s._m().scorer).clock_trusted is True
     s._m().scorer.clock_trusted = False
     assert s._scorer_like(s._m().scorer).clock_trusted is False, "a rescore of an adopted match trusted its clock again"
+
+
+def test_milestone_the_station_view_shows_the_pace_each_hill_runs():
+    """Opus (seam 2): the phone reports capture_s/net_cap in status.control; MC dropped them, so ITEMS could not show the
+    pace a hill really runs after a CLEAR (A77: absent keeps the station's own)."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    body = {"role": "utility", "kind": "control", "station_id": sid,
+            "control": {"owner": 0, "progress": 100, "contested": False, "capture_s": 20, "net_cap": 2}}
+    net.simulate_status("util-hill", body, clock["t"])
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert (c["capture_s"], c["net_cap"]) == (20, 2), c
+    body["control"] = {"owner": 0, "capture_s": 120, "net_cap": 12}   # outside A77's bounds: dropped
+    net.simulate_status("util-hill", body, clock["t"] + 2_000)
+    c = s.station_registry.station_view("util-hill")["report"]["control"]
+    assert "capture_s" not in c and "net_cap" not in c, c

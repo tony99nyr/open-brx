@@ -14,7 +14,8 @@ import { makeEnvelope, encode } from './transport/envelope.js';   // stage harne
 import { APP_VER, setDeviceModel } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
-import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
+import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP,
+  HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -1047,10 +1048,10 @@ function wire() {
   let sliderFrom = null;
   $('thrRange').oninput = e => { if (sliderFrom == null) sliderFrom = settings.threshold; settings.threshold = +e.target.value; save(); render(); };
   $('thrRange').onchange = e => { const to = +e.target.value; if (sliderFrom != null) settings.threshold = sliderFrom; sliderFrom = null; stationEdit('threshold', to); };
-  $('capMinus').onclick = () => { settings.captureS = Math.max(2, settings.captureS - 1); point.captureS = settings.captureS; save(); render(); };
-  $('capPlus').onclick = () => { settings.captureS = Math.min(120, settings.captureS + 1); point.captureS = settings.captureS; save(); render(); };
-  $('capMinus2').onclick = () => { settings.netCap = Math.max(1, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
-  $('capPlus2').onclick = () => { settings.netCap = Math.min(12, settings.netCap + 1); point.netCap = settings.netCap; save(); render(); };
+  $('capMinus').onclick = () => { settings.captureS = Math.max(HILL_CAPTURE_S_MIN, settings.captureS - 1); /* A77's bounds, as MC and the Stick read them */ point.captureS = settings.captureS; save(); render(); };
+  $('capPlus').onclick = () => { settings.captureS = Math.min(HILL_CAPTURE_S_MAX, settings.captureS + 1); point.captureS = settings.captureS; save(); render(); };
+  $('capMinus2').onclick = () => { settings.netCap = Math.max(HILL_NET_CAP_MIN, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
+  $('capPlus2').onclick = () => { settings.netCap = Math.min(HILL_NET_CAP_MAX, settings.netCap + 1); point.netCap = settings.netCap; save(); render(); };
   // Between games: hand the point back to nobody without wiping the operator's radius calibration.
   $('btnPointReset').onclick = () => { resetPoint('operator'); restartIfLive(); };
   $('dwellMinus').onclick = () => { settings.dwell = Math.max(0, settings.dwell - 500); presence.dwellMs = settings.dwell; save(); render(); };

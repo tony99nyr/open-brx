@@ -5749,6 +5749,12 @@ class GunStage:
         if not (self.spawned and self.alive):   # the phone grants only after an alive claim (Opus review)
             self._log(f"powerup: {name} grant refused: the player is not alive", "info")
             return None
+        # milestone review (powerup-player.js `_claimTick`): the phone holds a claim while the gun is stunned (its $AMMO 0,0
+        # would be undone), reloading (the write would undo the gun's refill) or mid ALT swap; so does the stage
+        held = "stunned" if self.stunned else "reloading" if self.reloading else "swapping" if self.switching else None
+        if held:
+            self._log(f"powerup: {name} grant held: the gun is {held}", "info")
+            return None
         short = self._ammo_short(item)
         if not short:
             self._log(f"powerup: {name} grant, but every slot is full", "info")

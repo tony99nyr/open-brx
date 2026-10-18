@@ -1950,8 +1950,12 @@ export interface StationControl {
   progress?: number;
   contested?: boolean;
   hold_ms?: Record<string, number>;
-  /** F555: the game byte the hill counts under (absent from an older station) */
+  /** F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not) */
   game?: number;
+  /** Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
+   *  station's own), so ITEMS can show what each hill is really doing. */
+  capture_s?: number;
+  net_cap?: number;
   /** F558: the point's own inputs: the clamped net its leader converts at, living players counted per tid, and the
    *  leading tid (null with nobody counted). Absent from an older station. */
   net?: number;

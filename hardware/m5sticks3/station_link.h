@@ -468,9 +468,9 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
   {  // F559 (stationconfig.js): integers in range, else absent
     const json::Value& cs = body.get("capture_s");
-    if (json_is_int(cs) && cs.num >= 3 && cs.num <= 60) a.capture_s = (int)cs.num;
+    if (json_is_int(cs) && cs.num >= contract::HILL_CAPTURE_S_MIN && cs.num <= contract::HILL_CAPTURE_S_MAX) a.capture_s = (int)cs.num;
     const json::Value& nc = body.get("net_cap");
-    if (json_is_int(nc) && nc.num >= 1 && nc.num <= 6) a.net_cap = (int)nc.num;
+    if (json_is_int(nc) && nc.num >= contract::HILL_NET_CAP_MIN && nc.num <= contract::HILL_NET_CAP_MAX) a.net_cap = (int)nc.num;
   }
   if (body.has("ends_in_ms")) {
     const json::Value& end = body.get("ends_in_ms");
