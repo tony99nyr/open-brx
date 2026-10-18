@@ -677,6 +677,7 @@ inline int presence_threshold_dbm(const StationAssignment& a) {
 // with the possession tally as it stood then. Tagged with the game byte, the station id AND
 // the MC session the config came in, because a new MC session numbers its games from 1 again and must
 // not revive an old match's owner. `held` is `owner != contract::STATION_TEAM_ANY` (control.js: held <=> owner).
+constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 class SavedHill {
  public:
   // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
@@ -698,12 +699,21 @@ class SavedHill {
 
   // After every hill tick of a control assignment, with the session the assignment came in (the saved
   // config's, which a restored MUSTER Stick still knows with no WELCOME). Write on owner change or
-  // once on freeze, so a reboot after the whistle restores the final recap tally.
-  bool note_owner(const StationAssignment& a, const std::string& session_id, const BleControlPoint& hill) {
+  // once on freeze, so a reboot after the whistle restores the final recap tally. F557 (field 2026-10-17: a
+  // restart lost 290 s of a 640 s hold): also when the tally has grown and HILL_CLOCK_SAVE_MS has passed since the
+  // last write, so a long uncontested hold is saved as it grows (the hill clock's own budget). `now_ms` < 0 = no
+  // clock given, so only the owner and freeze edges write.
+  bool note_owner(const StationAssignment& a, const std::string& session_id, const BleControlPoint& hill,
+                  int64_t now_ms = -1) {
     const int owner = hill.owner;
     if (!has_ && owner == contract::STATION_TEAM_ANY) return false;  // nothing held, nothing saved: nothing to say
     // Unchanged = same owner under the same tag (HillSaveTag::same_as, not matches).
-    if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) return false;
+    if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) {
+      bool grown = false;
+      for (int t = 0; t < 4; t++) grown = grown || hill.hold_ms[t] != hold_[t];
+      if (!grown || now_ms < 0 || (uint32_t)((uint32_t)now_ms - written_at_) < HILL_CLOCK_SAVE_MS) return false;
+    }
+    if (now_ms >= 0) written_at_ = (uint32_t)now_ms;
     has_ = true;
     owner_ = owner;
     tag_.set(a, session_id);
@@ -751,6 +761,7 @@ class SavedHill {
   HillSaveTag tag_;
   uint32_t hold_[4] = {0, 0, 0, 0};
   bool final_saved_ = false;
+  uint32_t written_at_ = 0;   // F557: the tick of the last write, for the growing-tally throttle
 };
 
 // ---- the saved hill clock (A68 review 2026-09-25: an offline restart must not move the whistle) ------
@@ -760,7 +771,6 @@ class SavedHill {
 // per HILL_CLOCK_SAVE_MS (at most 241 writes in a 7200 s match), and once as 0 at the whistle. A restart
 // resumes from the last save, so the whistle is late by at most HILL_CLOCK_SAVE_MS plus the time the Stick
 // was off. Tagged like SavedHill: game, station id and MC session.
-constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 class SavedHillClock {
  public:
   void loaded(bool has, int game, int id, const std::string& session_id, int32_t remaining_ms) {
