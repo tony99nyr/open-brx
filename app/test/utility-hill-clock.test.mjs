@@ -173,3 +173,17 @@ test('F558: status.control carries the inputs: net, counts and lead', async () =
   assert.deepEqual(empty.counts, {});
   assert.equal(empty.lead, null, 'nobody counted: no lead');
 });
+
+test('F559: MC sets the hill pace when the arming carries it, and an arming without it keeps the station own', async () => {
+  await armFresh({ capture_s: 5, net_cap: 2 });
+  assert.equal(api.settings.captureS, 5);
+  assert.equal(api.settings.netCap, 2);
+  await api.applyStationConfig({ ...hill, game, lock_s: 30 });   // a re-send with no pace
+  assert.equal(api.settings.captureS, 5, 'an arming without a pace changed it');
+  const now = Date.now();
+  for (let t = 0; t <= 5_250; t += 250) api.controlTick(now + t);   // RED alone: 5 s at net 1 takes it
+  assert.equal(api.point.owner, RED, 'the pushed pace did not reach the point');
+  await api.applyStationConfig({ ...hill, game, capture_s: 2, net_cap: 9 });   // out of range: ignored
+  assert.equal(api.settings.captureS, 5);
+  assert.equal(api.settings.netCap, 2);
+});

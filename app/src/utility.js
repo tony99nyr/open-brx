@@ -218,6 +218,9 @@ async function applyStationConfig(body) {
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   if (cfg.kind === 'control') applyHillClock(cfg, Date.now());
+  // F559: MC's hill pace wins on every arming that carries it; absent keeps the station's own (a +/- edit holds until then)
+  if (cfg.kind === 'control' && cfg.capture_s != null) settings.captureS = cfg.capture_s;
+  if (cfg.kind === 'control' && cfg.net_cap != null) settings.netCap = cfg.net_cap;
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: cfg.valid_ids };
   save();
   if (wasArmed && armKey() === before) {

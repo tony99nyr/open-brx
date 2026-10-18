@@ -14,7 +14,8 @@ const isInt = v => typeof v === 'number' && Number.isSafeInteger(v);   // the St
  * @param {unknown} body
  * @returns {{ok: false, refused: string} | {ok: true, kind: string, team: number, id: number, game: number,
  *   valid_ids: number[]|null, lock_s: number, item: object|null, threshold: unknown, threshold_age_ms: unknown,
- *   tx_power: unknown, tx_power_age_ms: unknown, starts_in_ms: number|null, ends_in_ms: number}}
+ *   tx_power: unknown, tx_power_age_ms: unknown, starts_in_ms: number|null, ends_in_ms: number, capture_s: number|null,
+ *   net_cap: number|null}}
  */
 export function parseStationConfig(body) {
   const no = refused => ({ ok: /** @type {false} */ (false), refused });
@@ -38,5 +39,8 @@ export function parseStationConfig(body) {
     // sent (it may be negative after go-live); `ends_in_ms` -1 = unknown, 0 = the match is over.
     starts_in_ms: typeof b.starts_in_ms === 'number' && Number.isFinite(b.starts_in_ms) ? Math.trunc(b.starts_in_ms) : null,
     ends_in_ms: typeof b.ends_in_ms === 'number' && Number.isFinite(b.ends_in_ms) && b.ends_in_ms >= 0 ? Math.trunc(b.ends_in_ms) : -1,
+    // F559: a hill's pace from MC, integers in 3-60 s and 1-6; anything else is null and the station keeps its own
+    capture_s: isInt(b.capture_s) && b.capture_s >= 3 && b.capture_s <= 60 ? b.capture_s : null,
+    net_cap: isInt(b.net_cap) && b.net_cap >= 1 && b.net_cap <= 6 ? b.net_cap : null,
   };
 }
