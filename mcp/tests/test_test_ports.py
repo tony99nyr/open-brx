@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 
 from _node import run_node_json
+from _skip import needs
 
 REPO = Path(__file__).resolve().parents[2]
 PORTS = (REPO / "scripts" / "lib" / "ports.mjs").as_uri()
@@ -156,6 +157,8 @@ def test_the_console_harness_finds_its_own_ports_without_the_pool():
     """A standalone `ONLY=... node test/e2e/vqa2.mjs` has no MC_PORT, MC_WS_PORT or VITE_PORT, so `ports()` must pick
     its own. brx3, 2026-10-18: mc-harness.mjs re-exported `freePort` without binding it, so this path threw
     "ReferenceError: freePort is not defined"; the gate never hit it because the pool sets the three ports."""
+    # CI's Python job never runs `npm ci` in webapp/mc, and the harness imports playwright: skip there (review).
+    needs((REPO / "webapp" / "mc" / "node_modules" / "playwright").is_dir(), "webapp/mc node_modules (playwright)")
     harness = (E2E / "lib" / "mc-harness.mjs").as_uri()
     expr = (f"for (const k of ['MC_PORT', 'MC_WS_PORT', 'VITE_PORT']) delete process.env[k];\n"
             f"const h = await import({json.dumps(harness)});\n"
