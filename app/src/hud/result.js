@@ -165,7 +165,8 @@ export function _result(st) {
             <span class="c m">${meds.map(m => { const c = medalChip(m, RECAP_ROWS);
               return c.key ? `<span class="mc" data-medal="${esc(c.key)}" title="${esc(c.label)}${c.n > 1 ? ' ×' + c.n : ''}">${recapIcon(c.key, RECAP_ICON_PX, !!st.night, `${c.label}${c.n > 1 ? ' ×' + c.n : ''}`)}${c.n > 1 ? `<b class="tab">×${c.n}</b>` : ''}</span>`
                 : `<span class="mt">${esc(String(m).toUpperCase().replace(/_/g, ' '))}</span>`; }).join('')}</span></div>`;
-        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}</div>${recapLegend([...new Set(rows.flatMap(r => (Array.isArray(r.medals) ? r.medals : []).map(m => medalChip(m, RECAP_ROWS).key)).filter(Boolean))], !!st.night)}</div>`;
+        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}${recapLegend([...new Set(rows.flatMap(r => (Array.isArray(r.medals) ? r.medals : []).map(m => medalChip(m, RECAP_ROWS).key)).filter(Boolean))], !!st.night)}</div></div>`;
+      // F561: the legend scrolls with the rows, below them, so wrapped medal rows get the height first (it took 68 px of 390)
     }
 
     // --- strips: possession (player view), the honors roll, and the unofficial post-whistle tally ---
@@ -178,8 +179,17 @@ export function _result(st) {
     // ELIMINATIONS", "AT 01:12". The old guard was `num(h.stat) != null`, which is false for every string MC
     // has ever sent, so the stat never reached a real phone; only the demo (which sent integers) ever showed
     // one, and the stage shot of it was fiction. Anything non-empty is printed as MC wrote it.
-    const honorStrip = honors.length && tab !== 'awards' ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${honors.map(h =>
-      `<span class="ch">${esc(MEDAL_LABEL[h.medal] || String(h.medal).toUpperCase().replace(/_/g, ' '))} <b>${esc(String(h.display || h.player_id || '').toUpperCase())}</b>${h.stat != null && h.stat !== '' ? ` <b class="tab">${esc(String(h.stat))}</b>` : ''}</span>`).join('')}</span></div>` : '';
+    // F561 (field 2026-10-17): nine honours in one row truncated every name to 7-9 characters, on the two tabs the screen
+    // lands on. The strip is now one chip per HOLDER (name ×count, most first); the AWARDS tab shows each honour in full
+    // with MC's stat string, so the strip names it instead of repeating it.
+    const holders = [];
+    for (const h of honors) {
+      const name = String(h.display || h.player_id || '').toUpperCase(); if (!name) continue;
+      const e = holders.find(x => x.name === name); if (e) e.n++; else holders.push({ name, n: 1 });
+    }
+    holders.sort((a, b) => b.n - a.n);   // stable: equal counts keep MC's order
+    const honorStrip = holders.length && tab !== 'awards' ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${holders.map(x =>
+      `<span class="ch"><b>${esc(x.name)}</b> <b class="tab">×${x.n}</b></span>`).join('')}</span>${awards.length ? '<span class="go">DETAILS ON AWARDS</span>' : ''}</div>` : '';
     const ae = this._afterEnd(R, rows);
     // A6.1: facts after the whistle are RECORDED, not scored. Shown so a player who kept shooting can see where
     // those hits went — and shown as visibly not part of the score above, never mixed into it.

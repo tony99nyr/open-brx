@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2055,7 +2055,9 @@ for (const view of VIEWS) {
     // grows by a few px silently eats the last leaderboard row, and the scrollbars are hidden (touch UI) so the
     // player sees a half row and no way to know there is more.
     const pg = await open(view, 'result-players');
-    const lb = await pg.evaluate(() => { const r = document.querySelector('.result .lbrows'); return { c: r.clientHeight, s: r.scrollHeight, rows: r.children.length }; });
+    // F561: the medal legend now scrolls below the rows inside .lbrows, so the rows (not the whole list) must fit
+    const lb = await pg.evaluate(() => { const r = document.querySelector('.result .lbrows'), rows = r.querySelectorAll('.lbr'), last = rows[rows.length - 1];
+      return { c: r.clientHeight, s: last ? Math.ceil(last.getBoundingClientRect().bottom - r.getBoundingClientRect().top) : 0, rows: rows.length }; });
     await pg.click('.result .rseg .sg[data-arg="team"]'); await settled(pg);
     const tm = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .tpl')).map(r => ({ c: r.clientHeight, s: r.scrollHeight })));
     await pg.close();
@@ -2099,14 +2101,42 @@ for (const view of VIEWS) {
     // The stat is MC's own sentence ("11 K · 2.8 K/D · ×5 STREAK"), NOT a number: this step asserts the text
     // MC actually sends, because the numeric demo payload it used to assert is what hid a guard that dropped
     // every real one (`num(h.stat) != null` is false for a string).
+    // F561 (field 2026-10-17): the strip is now one chip per HOLDER (name ×count); the medal names and MC's stat strings
+    // live on the AWARDS tab, which `result-awards` steps assert.
     const pg = await open(view, 'result-win-team');
     const h = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .rstrip.hon .ch')).map(c => c.textContent.replace(/\s+/g, ' ').trim()));
     await pg.close();
-    must(h.length === 3, 'honors chips: ' + JSON.stringify(h));
-    must(h.some(x => /^MVP REAPER 11 K · 2\.8 K\/D · ×5 STREAK$/.test(x)), 'the honor does not name the player and print MC\'s stat string: ' + JSON.stringify(h));
-    must(h.some(x => /^FIRST BLOOD VIPER AT 01:12$/.test(x)), 'honors: ' + JSON.stringify(h));
-    must(h.some(x => /^SHARPSHOOTER VIPER 41% ACCURACY$/.test(x)), 'honors: ' + JSON.stringify(h));
+    must(JSON.stringify(h) === JSON.stringify(['VIPER ×2', 'REAPER ×1']), 'honors: one chip per holder, most first: ' + JSON.stringify(h));
   });
+  // F561 (field 2026-10-17, report §3.10): nine medals on one row showed six; nine honours each truncated to 7-9 characters.
+  for (const [stage, what] of [['result-nine-medals', 'PLAYERS'], ['result-nine-teams', 'TEAMS']]) {
+    await step(`${view.name} F561 result ${what}: nine medals and nine honours, nothing cut or clipped`, async () => {
+      const pg = await open(view, stage);
+      const r = await pg.evaluate(() => {
+        const fr = document.getElementById('frame').getBoundingClientRect();
+        const inside = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+        const cell = document.querySelector('.result .lbr.me .c.m');   // REAPER, this phone's own row
+        const chips = cell ? Array.from(cell.querySelectorAll('.mc')) : [];
+        const cb = cell && cell.getBoundingClientRect();
+        const lb = document.querySelector('.result .lbrows'), lbr = lb && lb.getBoundingClientRect();
+        const cut = chips.filter(c => !inside(c.getBoundingClientRect(), cb) || !inside(c.getBoundingClientRect(), fr) || (lbr && !inside(c.getBoundingClientRect(), lbr))).length;
+        const rowsSeen = lb ? Array.from(lb.querySelectorAll('.lbr')).every(x => inside(x.getBoundingClientRect(), lbr)) : true;
+        const hon = Array.from(document.querySelectorAll('.result .rstrip.hon .ch'));
+        const strip = document.querySelector('.result .rstrip.hon');
+        return { chips: chips.length, cut, rowsSeen, honors: hon.map(c => c.textContent.replace(/\s+/g, ' ').trim()),
+          truncated: hon.filter(c => c.scrollWidth > c.clientWidth + 1).length,
+          stripText: strip ? strip.textContent.replace(/\s+/g, ' ').trim() : '', stripIn: strip ? inside(strip.getBoundingClientRect(), fr) : false };
+      });
+      await pg.screenshot({ path: `${OUT}/${view.name}-f561-${stage}.png` });
+      const bad = await invariants(pg); await pg.close();
+      if (stage === 'result-nine-medals') must(r.chips === 9 && r.cut === 0, `all nine medals must show inside the cell, the visible list and the frame: ${JSON.stringify(r)}`);
+      if (stage === 'result-nine-medals') must(r.rowsSeen, `every player row must be on screen without scrolling (the legend scrolls below them): ${JSON.stringify(r)}`);
+      must(JSON.stringify(r.honors) === JSON.stringify(['REAPER ×7', 'VIPER ×2']), 'one honours chip per holder: ' + JSON.stringify(r));
+      must(r.truncated === 0, 'an honours chip is truncated: ' + JSON.stringify(r));
+      must(/AWARDS/.test(r.stripText) && r.stripIn, 'the strip points to the AWARDS tab and fits the frame: ' + JSON.stringify(r));
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
   await step(`${view.name} A24 result: every meaning-bearing label is at least 11px (the 9.5px cell label was the report)`, async () => {
     const pg = await open(view, 'result-win-team');
     const small = await pg.evaluate(() => Array.from(document.querySelectorAll('.result *')).filter(e => {

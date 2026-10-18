@@ -1126,7 +1126,10 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* Tony 2026-09-25: the recap is icon-first (app/src/hud/medalicons.js). The name is the icon's title and accessible
    label, and the legend (.mleg) under the list teaches the icons. The in-game lanes never draw these icons. */
 .result .mi{display:block;flex:none}
-.result .lbr .c.m{display:flex;align-items:center;gap:3px;text-overflow:clip}
+/* F561 (field 2026-10-17): medals WRAP. One flex row held six chips in this cell, so a seventh was cut and an eighth and
+   ninth drew outside the frame. Never shrink the chip (the 24 px-on-screen icon floor) and never cap the record: the
+   row grows a line and .lbrows scrolls. */
+.result .lbr .c.m{display:flex;flex-wrap:wrap;align-items:center;gap:3px;text-overflow:clip;white-space:normal}
 .result .lbr .c.m .mc{position:relative;display:inline-flex;align-items:flex-end;flex:none}
 .result .lbr .c.m .mc b,.result .awi b{font-size:11px;font-weight:700;letter-spacing:0;color:var(--num);margin-left:1px}
 .result .mleg{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:center;padding:3px 6px 1px;grid-column:1/-1}
@@ -1142,6 +1145,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rstrip .ch{border:1px solid var(--edge);padding:0 7px;white-space:nowrap;color:var(--num);overflow:hidden;text-overflow:ellipsis;line-height:18px}
 .result .rstrip .ch b{font-family:var(--fd);font-size:12px}
 .result .rstrip.hon .ch{color:var(--warn);border-color:var(--warn)}
+/* F561: the strip is one chip per HOLDER (name ×count); the medal names and stats are on the AWARDS tab, which .go names */
+.result .rstrip.hon .go{color:var(--mut);white-space:nowrap}
 .result .rstrip.after .k{color:var(--warn)}
 .result .rstrip.after .ch{border-style:dashed;color:var(--mut)}
 /* --- this player's own line, as a LIST of tiles (never five fixed cells) --- */
