@@ -11,7 +11,7 @@ import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset 
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
-import { parseMcJoin, MC_URL_KEY, kickGapMs } from './mcurl.js';
+import { parseMcJoin, MC_URL_KEY, kickHeld } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
@@ -142,7 +142,7 @@ const engine = new Engine({
   // ?demo runs on a clean slate: no restore of a real session's match (the constructor loads storage, so this is the
   // only place that can stop it — a later clearPersisted() is too late; correctness review 2026-09-03), and nothing saved.
   storage: (() => { try { return new URLSearchParams(location.search).has('demo') ? null : localStorage; } catch (_) { return null; } })(),
-  log, onChange: () => scheduleRender(),
+  log, onChange: () => { scheduleRender(); matchPhaseWake(); },
 });
 engine.onRelink = () => (link.deviceId ? link.relink() : Promise.reject(new Error('no gun picked')));   // A47: MC's operator RELINK GUN, the HUD's own RELINK path
 engine.onGunStale = () => link.noteStale();   // B4: the engine's silence watchdog forces BrxLink to actually cycle the radio
@@ -714,6 +714,7 @@ Object.assign(hud.h, {
         // these frames do NOT go through the retry ring — so an unchecked send is a log that
         // silently never arrives while the HUD says it did (review 2026-09-01).
         let sent = transport.report('log_offer', { bytes, lines: snap.lines, from: 0, reason: 'manual' }) !== false;
+        logsync.noteOffer();   // F157 review: MC's `offer` reply to this manual offer is its echo too
         for (let i = 0; i < chunks.length; i++) {
           if (transport.report('log_data', { seq: i, chunk: chunks[i], last: i === chunks.length - 1 }) === false) sent = false;
         }
@@ -801,23 +802,30 @@ setInterval(() => { try {
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 
+// F563 review: a reconnect loop that rested in the lobby starts again the moment a match arms, so a gun switched on
+// during the match relinks with no tap.
+let lastPhase = null;
+function matchPhaseWake() {
+  const ph = engine && engine.phase, was = lastPhase; lastPhase = ph;
+  if ((ph === 'armed' || ph === 'live') && was !== 'armed' && was !== 'live') link.resumeReconnect(`match ${ph}`);
+}
+
 // ---------- app lifecycle (§3.11) ----------
 function onForeground(fg) {
   preflight.foreground = fg; preflight.screen_on = fg;
   if (transport) { transport.setPreflight(preflight); if (!fg) transport.status(engine.statusBody(preflight)); }   // one immediate status on background (§3.11)
-  if (fg) { engine.resume(); keepAwake(true); }
+  if (fg) { engine.resume(); keepAwake(true); link.resumeReconnect('app resumed'); }   // F563: a resting loop starts again
 }
 document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
 /** F153c: the network came back. Android fires the Capacitor `networkStatusChange` AND the webview's
  *  `online` for the same transition, and two kicks abort each other's dial and reset the backoff twice —
  *  a flapping radio would then never back off at all. One entry point, coalesced to 1 s (review pass 1). */
-let lastKickAt = 0;
+let lastKick = null;   // F563: the last kick that dialled, {at, why}
 function kickDial(why) {
   const now = Date.now();
-  if (now - lastKickAt < kickGapMs(why)) return false;   // the same transition reaching us twice; F563: cellular waits 30 s
-  lastKickAt = now;
-  if (transport) { if (transport.dialNow()) log(`network back (${why}) — dialling Mission Control now`, 'li'); return true; }
-  if (settings.mcUrl) { log(`network back (${why}) — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); return true; }
+  if (kickHeld(why, now, lastKick)) return false;   // the same transition reaching us twice; F563: cellular waits 30 s
+  if (transport) { if (transport.dialNow()) { lastKick = { at: now, why }; log(`network back (${why}) — dialling Mission Control now`, 'li'); } return true; }
+  if (settings.mcUrl) { lastKick = { at: now, why }; log(`network back (${why}) — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); return true; }
   return false;
 }
 window.addEventListener('online', () => kickDial('online'));
@@ -1021,7 +1029,8 @@ async function sweepForMc() {
       // own forever-reconnect loop. Opening the picker on top of it steals the radio, and `scanning`
       // then stays true after the loop reconnects (nothing here clears it), which keeps the beacon
       // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
-      if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); }
+      // F563: the loop now rests after about 14 min outside a match, so Bluetooth coming back starts it again.
+      if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); else link.resumeReconnect('bluetooth back on'); }
       else if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
       // F537 review r3: the adapter is off, so nothing listens; close BeaconWatch so Presence pauses instead of expiring
       // every station. Its tick reopens the scan when Bluetooth is back.

@@ -872,8 +872,8 @@ export class Transport {
     // A60: FIRST, before any timer, key, secret, join target, hydrate, bind or delivery: on a verify
     // dial the welcome must prove it came from the MC install whose trust key we hold.
     if (this.verify) {
-      if (typeof body.mc_proof !== 'string' || !body.mc_proof) { this._failVerify('no_proof'); return; }
       if (!this.hasTrustKey()) { this._failVerify('no_key'); return; }   // F553: nothing to check against is not a bad proof
+      if (typeof body.mc_proof !== 'string' || !body.mc_proof) { this._failVerify('no_proof'); return; }
       const proven = this._challenge ? matchingKey(this.trustKeys(), body.mc_proof, this._challenge, body.session_id) : null;
       if (!proven) { this._failVerify('bad_proof'); return; }
       this._onVerified(); this._markProven(proven);

@@ -119,6 +119,8 @@ export class LogSync {
     this._try();
   }
 
+  /** F157 review: the manual SHARE LOG route sent its own `log_offer`; MC's `offer` reply to it is that offer's echo. */
+  noteOffer() { this._offerAt = this.now(); }
   /** The manual SHARE LOG route uploaded everything up to `through` — don't re-send it in the background. */
   markUploaded(through) {
     if (Number.isFinite(through) && through > this.uploadedThrough) this.uploadedThrough = through;

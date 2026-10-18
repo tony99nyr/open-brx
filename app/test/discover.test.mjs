@@ -247,7 +247,7 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
   // two kicks abort each other's dial and reset the backoff twice, so a flapping radio never backs off.
   assert.equal((src.match(/transport\.dialNow\(\)/g) || []).length, 1, 'exactly one caller');
   assert.match(src, /function kickDial\(/);
-  assert.match(src, /now - lastKickAt < kickGapMs\(why\)/, 'coalesced (F563: kickGapMs, 1 s, or 30 s on cellular)');
+  assert.match(src, /if \(kickHeld\(why, now, lastKick\)\) return false;/, 'coalesced (F563: mcurl.js kickHeld)');
   assert.match(src, /addListener\('networkStatusChange', st => \{[\s\S]*?kickDial\(/);
   assert.match(src, /window\.addEventListener\('online', \(\) => kickDial\('online'\)\)/);
 });

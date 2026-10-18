@@ -202,7 +202,7 @@ test('flap back-off: a 2nd flap waits FLAP_BACKOFF_MS, a 3rd starts the 30 s qui
   assert.deepEqual([1, 2, 3, 4, 5, 6, 9].map(n => flapDelay(n)), [0, 5000, 30000, 60000, 120000, 240000, 300000]);
 });
 test('F563: the reconnect cap stays 10 s for 12 tries, then climbs; in a match it stops at 30 s', () => {
-  assert.deepEqual([1, 12, 13, 20, 21, 30, 31].map(n => reconnectCapMs(n, false)), [10000, 10000, 30000, 30000, 60000, 60000, 120000]);
+  assert.deepEqual([1, 12, 13, 20, 21, 30].map(n => reconnectCapMs(n, false)), [10000, 10000, 30000, 30000, 60000, 60000]);
   assert.deepEqual([1, 13, 31].map(n => reconnectCapMs(n, true)), [10000, 30000, 30000]);
 });
 test('F563: a gun that stays off outside a match stops the reconnect loop after RECONNECT_GIVE_UP tries; a tap restarts it', async ctx => {
@@ -219,6 +219,29 @@ test('F563: a gun that stays off outside a match stops the reconnect loop after 
   r.up.A = true; r.link.retryNow(); await step(3000);
   assert.ok(r.attempts.A > tries, 'TAP TO RECONNECT starts it again');
 });
+test('F563 review: a resting loop starts again on resumeReconnect (a match arming, an app resume); a running one is left alone', async ctx => {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  const step = async ms => { for (let t = 0; t < ms; t += 1000) { ctx.mock.timers.tick(1000); for (let k = 0; k < 6; k++) await new Promise(r => setImmediate(r)); } };
+  const r = cleanRig(ctx);
+  await r.link.connect('A', 'GUN-A-1111');
+  r.up.A = false; r.cb.A();
+  assert.equal(r.link.resumeReconnect('test'), false, 'a running loop is left alone');
+  await step(40 * 60 * 1000);
+  const tries = r.attempts.A;
+  r.up.A = true;
+  assert.equal(r.link.resumeReconnect('match armed'), true);
+  await step(3000);
+  assert.ok(r.attempts.A > tries && r.link.connected, 'the gun relinks with no tap');
+});
+for (const inMatch of [true, false]) {
+  test(`F563 review: the 7th flap in a row waits ${inMatch ? 'QUIET_MS in a match' : 'the doubled quiet period outside one'}`, () => {
+    const link = new BrxLink({ ble: {}, log: () => {}, unbounded: () => inMatch, quietMs: 400 });
+    link.deviceId = 'A'; link._upAt = link.now(); link._flapStreak = 6;
+    let wait = null; link._setFlap = (s, until) => { if (until != null) wait = until - link.now(); }; link._reconnect = () => {};
+    link._dropped();
+    assert.equal(wait, inMatch ? 400 : 4000);
+  });
+}
 
 /** One quick drop on the mocked clock: the link is up, the gun drops it at once. */
 async function flapOnce(r, settle) { r.cb.A(); await settle(1); }

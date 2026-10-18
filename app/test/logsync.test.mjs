@@ -345,3 +345,10 @@ test('F157 control: a reconnect offer is answered by a real pull, which uploads'
   assert.equal(offers, 1, 'and its own offer is not answered with another upload');
   assert.ok(t.chunks().length >= 1, 'an offer-pull that is not an echo of our own upload is served');
 });
+
+test('F157 review: a manual SHARE LOG offer (noteOffer) makes MC\'s offer reply an echo too', () => {
+  const { t, ls } = build();
+  ls.noteOffer();
+  ls.request('offer');
+  assert.deepEqual(t.kinds(), [], 'no background upload behind the manual one');
+});
