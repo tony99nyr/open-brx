@@ -8072,3 +8072,19 @@ test('F537 review r3: while our scan is closed (paused entries) the hill neither
   runControl(h, 2000, { team: 1, state: HELD, value: 100 });
   assert.ok(h.eng.hold['11'][1] >= held + 1500 && h.eng.hold['11'][1] <= held + 2250, `the clock resumes from the next fresh advert, with no lump (${h.eng.hold['11'][1] - held} ms)`);
 });
+
+// F277 (field 2026-10-17, report §3.2 cause 4): a reload that never took was read only by the debug panel. The ammo block
+// now says so for RELOAD_FAILED_SHOW_MS, so a player on a slot the gun is not on finds out (a shot then shows GUN WAS ON).
+test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a few seconds; a landed one does not', () => {
+  const h = liveSwapHarness();
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(6000); h.eng.tick();
+  let s = h.eng.state();
+  assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false, 'setup: the reload timed out');
+  assert.equal(s.reloadFailed, true, 'the ammo block says the reload did not take');
+  h.adv(4000); h.eng.tick();
+  assert.equal(h.eng.state().reloadFailed, false, 'and lets it go');
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500); h.frame('$ALCD,32,100,0,168,0,*');
+  assert.equal(h.eng.state().reloadFailed, false, 'a reload that landed says nothing');
+});
