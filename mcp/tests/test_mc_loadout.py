@@ -296,7 +296,7 @@ def test_compile_perk_effects():
     lever its opposite buys -- this pins both halves reach the compiled frame."""
     base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), TEAMS)
     w0 = [f for f in base["head"] if f.startswith("$WEAP,0")][0]
-    # extended_mags: ×2 mag + reserve on $AMMO,0 AND the frame, PLUS its S50 cost -- ×1.3 swap delay
+    # extended_mags: ×2 mag on $AMMO,0 AND the frame (the AR's reserve stays 384, the 2026-10-17 ceiling), PLUS its S50 cost -- ×1.3 swap delay
     # (t15) on EVERY slot (the gun takes the larger of slots 0/1).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]

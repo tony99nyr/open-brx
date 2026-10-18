@@ -1,12 +1,12 @@
 # Bench sheet: the tests from the 2026-10-17 field session
 
-Updated: 2026-10-17. This sheet holds the nine bench tests from the field session of 2026-10-17
+Updated: 2026-10-17. This sheet holds the nine bench tests from the field session of 2026-10-17, plus P1.0 and P2.4 added since
 ([`field-2026-10-17.md`](field-2026-10-17.md) §5), in order of gameplay impact. Each test settles a question that
 the desk cannot. Each has a control, a pass rule or a read, and its FOLLOWUPS row; the row holds the history and the
 fix. How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md). The
 index is [`bench-plan.md`](bench-plan.md).
 
-1. **P1, about 60 min**: the SMG frame, the ALT swallow matrix, the lever on a full magazine, the charge rifle.
+1. **P1, about 70 min**: a large reserve, the SMG frame, the ALT swallow matrix, the lever on a full magazine, the charge rifle.
 2. **P2, about 30 min**: the hill off the ground, the shotgun hold, the Desert Eagle reload time.
 3. **P3, about 25 min**: the melee range ladder and the single-shot fire rate.
 
@@ -27,15 +27,19 @@ The lanes add their own bench rows for the field fixes to P2 as the fixes land.
 - The black Pixel 5 as the KOTH hill, and the green Pixel 5 as the player phone, for the hill test (P2.1).
 - A tape measure (12 m), a stopwatch, a box or stand 20-30 cm high, and a USB cable for the player phone (F544).
 
-## P1: the bugs that broke real matches (about 60 min)
+## P1: the bugs that broke real matches (about 70 min)
 
-**P1.0. A large reserve counts down normally (5 min).** *Impact: reserves are capped at 384 (Energy Rifle 600)
-until this passes, so Extended Mags adds nothing to the reserve of five rifles.* One gun, `$VOL,65`. Arm the
-Energy Rifle from the recipe, then send `$AMMO,0,300,1200,1,*` and read the `$ALCD` echo. Fire a magazine, reload
-twice, and read each `$ALCD`: the reserve must fall by the rounds loaded. Then repeat with 2400. **Pass:** the echo
-reads 1200 (then 2400) and counts down normally. **Control:** `$AMMO,0,300,384,1,*` (proven 2026-09) echoes 384.
-End re-armed. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value. Row: reserves x2 (Tony,
-2026-10-17); see `perk-design.md`.
+**P1.0. A large reserve counts down normally (10 min).** *Impact: reserves are capped at 384 (Energy Rifle 600)
+until this passes, so Extended Mags adds nothing to the reserve of five rifles.* One gun, `$VOL,65`. Take the
+Energy Rifle's frame from `compile.resolve()` and set its reserve tokens by hand: t17 = 1200 and t40 = 600 (the
+compiler writes the reserve into `$WEAP` as well as `$AMMO`, and `$SPAWN` refills from t17). Push that `$WEAP`,
+then `$SPAWN,,*`, and read the `$LCD`/`$ALCD` reserve; then send `$AMMO,0,300,1200,1,*` and read the echo. Fire a
+magazine and reload twice, reading each `$ALCD`: the reserve must fall by the rounds loaded. Then repeat with t17 =
+2400, t40 = 1200 and `$AMMO,0,300,2400,1,*`. **Pass:** each echo reads the reserve sent and counts down normally.
+A 600 echo after `$AMMO` alone would mean `$AMMO` clamps to t17, which is why the frame goes first. **Control:**
+the shipped frame (t17 600) with `$AMMO,0,300,384,1,*` echoes 384 (proven 2026-09). End re-armed from the shipped
+frame. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value. Row: reserves x2 (Tony, 2026-10-17);
+see `perk-design.md`.
 
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* One gun, no IR rig. Arm normally (`$VOL,65`, `$CLEAR,*`, `$START,*`, a `$PSET`). Then send the field's

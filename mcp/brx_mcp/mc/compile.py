@@ -1419,7 +1419,7 @@ class WeaponCatalog:
         if not frame:                                  # legacy template path
             base = w.get("base", "ar")
             p = f"$WEAP,{slot}{_LEGACY_SYNTHETIC_TEMPLATES[base]}".split(",")
-            _mag, _res, _rel = self._mods(mods, int(w["mag"]), int(w["reserve"]), int(w["reload_ms"]))
+            _mag, _res, _rel = self._ammo(weapon_id, mods)   # the one reserve answer, ceiling included
             p[_W_MAG] = str(_mag); p[_W_CLIPSTART] = str(_mag)
             p[_W_RESERVE] = str(_res); p[_W_RELOAD] = str(_rel)
             return ",".join(p)

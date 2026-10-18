@@ -83,7 +83,8 @@ case: `perks.json`'s extended_mags row carries `ammo_mult_pistol` beside `ammo_m
 same balance but increase reserves across the whole armory?"). A compiled reserve never exceeds
 max(`RESERVE_PROVEN_MAX` = 384, the row's own reserve), because 384 is the largest ordinary reserve a gun has
 echoed back. So until a bench lifts the ceiling, Extended Mags adds **little or nothing to the reserve** of
-the Assault Rifle, Burst Rifle, SMG (all 384), Suppressor (384) and Energy Rifle (600); its magazine
+the Assault Rifle, Burst Rifle, SMG (all 384), Suppressor (384) and Energy Rifle (600), and almost
+nothing to the Toxin Rifle's (360 to 384); its magazine
 doubling still applies. It still doubles the reserve below the ceiling: the Charge Rifle 160 to 320, the AMR
 112 to 224; on a pistol the USP 240 to 360. The bench that lifts it is `bench-field-1017.md` P1.0.
 

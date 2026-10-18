@@ -406,6 +406,8 @@ export const STATION_GATED_MODES: readonly string[] = ["bomb","cs","ctf","domina
 export const TIMED_PROTECT_S_OPTIONS: readonly number[] = [0,1,2];
 /** Allowed respawn weapon delays (types.py). */
 export const WEAPON_DELAY_MS_OPTIONS: readonly number[] = [500,1000,1500,3000];
+/** The largest reserve a gun has echoed: the reserve ceiling (compile.py). */
+export const RESERVE_PROVEN_MAX: number = 384;
 /** Allowed station respawn protection seconds (types.py). */
 export const STATION_PROTECT_S_OPTIONS: readonly number[] = [0,2,3];
 /** Catalogue order and raw weapon fields read by the mock (weapons.json). */
