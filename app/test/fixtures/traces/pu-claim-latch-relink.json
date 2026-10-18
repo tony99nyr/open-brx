@@ -107,7 +107,7 @@
       "at": "claim_ready",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"held":null,"claim":{"station":4,"ready":true},"switching":false,"powerup":{"hint":{"kind":"claiming","name":"ROCKETS","color":"#ff7a1a","station":4,"progress":1,"ready":true},"overshield":null,"grant":null,"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"reconciling":false},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$LIFE,0,0,0,*",
         "$LIFE,0,0,0,*",

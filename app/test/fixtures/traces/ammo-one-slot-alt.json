@@ -114,7 +114,7 @@
       "at": "timed_out",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":20,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":12,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":20,"to":20,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": []
     },
     {

@@ -117,7 +117,7 @@
       "at": "once_per_life",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":12,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":0,"moment":{"kind":"hit","data":{"dmg":3,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":12,"armor":0,"shield":0,"weapon":null}}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":3,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2"}],
-      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$LCD,0,0,0,0,0,0,*"}}],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,96,0,*"}}],
       "writes": [
         "$GLED,9,9,2,0,10,,*"
       ]
