@@ -921,7 +921,7 @@ export const DEMO_PERKS = [
   {
     "perk_id": "extended_mags",
     "name": "Extended Mags",
-    "desc": "Double the magazine and double the reserve on your primary; +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
+    "desc": "Double the magazine on your primary, and the reserve up to 384 rounds (2026-10-17: the largest reserve a gun has proven, so the Assault Rifle, Burst Rifle, SMG, Suppressor and Energy Rifle gain no reserve); +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
     "tags": [
       "passive",
       "ammo"
@@ -933,7 +933,7 @@ export const DEMO_PERKS = [
       "switch_mult": 1.3
     },
     "gain": [
-      "×2 AMMO"
+      "×2 MAG"
     ],
     "cost": [
       "SWAPS 1.3× SLOWER"

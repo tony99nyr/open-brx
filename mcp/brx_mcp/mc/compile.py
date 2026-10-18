@@ -1227,6 +1227,8 @@ class WeaponCatalog:
         row["rounds_per_charge"] = self.rounds_per_charge(w["weapon_id"])
         if w.get("caution"):    # A10: known live problem, human copy
             row["caution"] = w["caution"]
+        if w.get("reload_type"):   # chain (shell by shell) or bolt (a lever pull per shot, 2026-10-17)
+            row["reload_type"] = w["reload_type"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
             row["pickup_only"] = True
         if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`

@@ -123,7 +123,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             # real, human-facing numbers (the bars above are only for ranking)
             "dmg_per_hit": dmg_hit,
             "dual_emitter": bool(w.get("dual_emitter")),
-            "reload_type": "chain" if chain_reload(w) else "magazine",
+            "reload_type": "bolt" if w.get("reload_type") == "bolt" else "chain" if chain_reload(w) else "magazine",
             "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),

@@ -903,3 +903,16 @@ def test_a_two_word_weapon_never_also_carries_a_crit_chance():
     assert not critting, ("the crit flag rides on both words but the multiplier applies only to the "
                           "barrel word, and the combination has never been measured:\n  "
                           + "\n  ".join(critting))
+
+
+def test_a_bolt_row_reaches_the_phone_as_reload_type_bolt():
+    """brx4's BOLT cue keys on the served catalogue's reload_type (2026-10-17). A row that declares
+    `reload_type: "bolt"` must reach `weapon_views()` as "bolt", not as "magazine"; a chain row stays "chain"."""
+    import copy as _copy
+    rows = _copy.deepcopy(CAT._rows)
+    next(r for r in rows if r["weapon_id"] == "sniper_rifle")["reload_type"] = "bolt"
+    views = {v["weapon_id"]: v for v in weapon_views(WeaponCatalog(rows).all())}
+    assert views["sniper_rifle"]["reload_type"] == "bolt"
+    assert views["shotgun"]["reload_type"] == "chain"
+    assert views["assault_rifle"]["reload_type"] == "magazine"
+
