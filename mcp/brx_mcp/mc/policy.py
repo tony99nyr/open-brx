@@ -584,6 +584,13 @@ def apply(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, weapons: Seq
             out["overrides"] = ov
         else:
             out.pop("overrides", None)
+    if perk:
+        # F551 (Codex review via brx4): the FINAL weapons (a fixed primary, a secondary the policy or Easy Reload dropped)
+        # can be ones this perk cannot ride with (`PerkView.blocked_*`, the compile guards' rule). Keeping it would refuse
+        # the push. Checked after Easy Reload, so a secondary that step drops can never cost the perk (review).
+        prow = _perk_row(perks, perk) or {}
+        if prim in (prow.get("blocked_primary") or []) or (sec_w and sec_w in (prow.get("blocked_secondary") or [])):
+            perk = None
     new_weapons: list[WeaponSel] = [{"weapon_id": prim}]
     if sec_w:
         new_weapons.append({"weapon_id": sec_w})

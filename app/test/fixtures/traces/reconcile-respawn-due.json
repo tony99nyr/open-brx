@@ -20,7 +20,7 @@
     {"check":"due_inside_window"},
     {"advance_ms":1750},
     {"check":"revived_after_window"},
-    {"advance_ms":1000},
+    {"advance_ms":2000},
     {"check":"settled"}
   ],
   "stage_ignores": [
@@ -144,9 +144,10 @@
       "facts": [],
       "reports": [],
       "writes": [
-        "$BMAP,0,0,,,,,*",
         "$HLOOP,0,0,*",
-        "$HLED,6,2,120,120,10,2,*"
+        "$HLED,6,2,120,120,10,2,*",
+        "$BMAP,0,0,,,,,*",
+        "$HLED,9,0,,,10,,*"
       ]
     }
   ]

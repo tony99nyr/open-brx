@@ -245,6 +245,7 @@ def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
         await _settle_all(st)
         assert st.active_slot == 0
 
+        st._inject_rx("$BUT,0,1,*"); st._inject_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull
         st._inject_rx("$BUT,1,1,*")                  # ALT pressed: a swap starts
         await _settle_all(st)
         assert st.switching is not None, "the swap is in flight"
@@ -259,6 +260,7 @@ def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
         await _settle_all(st)
         assert st.alive and st.active_slot == 0, "a fresh life starts back on slot 0"
 
+        st._inject_rx("$BUT,0,1,*"); st._inject_rx("$BUT,0,0,*")   # a pull in the new life
         st._inject_rx("$BUT,1,1,*")
         st.alcd(mag=5, reserve=50, slot=1)           # the gun's own report of the new slot confirms the swap
         await _settle_all(st)

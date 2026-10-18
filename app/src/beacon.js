@@ -308,7 +308,7 @@ export class Presence {
 export const RESPAWN_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.respawn, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.respawn });
 /** Every other kind on a phone station keeps the 2026-09-04 bench value (about 10 ft at high TX). */
 export const STATION_THRESHOLD_DBM = STATION_DEFAULT_THRESHOLD_DBM.phone.extraction;
-/** F383: the hill's own default is -75 dBm, with the exit band PRESENCE_EXIT_BAND_DB, on every path, until the outdoor walk measures a
+/** F383: the hill's own default (-75 dBm, then 10% larger, -78, Tony 2026-10-17: types.py says how), with the exit band PRESENCE_EXIT_BAND_DB, on every path, until the outdoor walk measures a
  *  real one (Tony, 2026-09-27). */
 export const CONTROL_RSSI_DBM = Object.freeze({ phone: STATION_DEFAULT_THRESHOLD_DBM.phone.control, sticks3: STATION_DEFAULT_THRESHOLD_DBM.sticks3.control });
 export function phoneStationThreshold(kind) { const t = STATION_DEFAULT_THRESHOLD_DBM.phone; return Object.hasOwn(t, kind) ? t[kind] : STATION_THRESHOLD_DBM; }

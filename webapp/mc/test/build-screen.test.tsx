@@ -216,3 +216,29 @@ describe('BUILD — review: an invalid piece shows greyed with its reason, still
     m.unmount();
   });
 });
+
+// Field 2026-10-17 (Tony): "I wanted to do a first match which was pistols only. In the build I could not select pistols. I
+// had to just set host and pick pistols." BUILD's PRIMARY list left every sidearm out, though MC arms a pistol primary
+// (loadout.md: a pistol round) and its pool and piece checks accept one. Pistols are offered; a support weapon still is not.
+describe('BUILD — a pistols-only round, players pick (field 2026-10-17)', () => {
+  it('a PRIMARY piece offers the pistols, and never a lethal:false support weapon', async () => {
+    const d = await demo();
+    await d.api.createPiece({ kind: 'primary', name: 'PISTOL ROUND',
+      value: { choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null } });
+    const state = await d.api.getState();
+    const store = makeStore({ state, weapons: d.weapons, perks: d.perks, view: 'designer' }, { api: d.api });
+    const m = await mount(<StoreCtx.Provider value={store}><Build /></StoreCtx.Provider>);
+    await vi.waitFor(() => expect(m.text()).not.toContain('LOADING…'));
+    await m.click('PRIMARY');
+    await m.click('PISTOL ROUND');
+    const pistols = d.weapons.filter(w => w.role === 'sidearm' && !w.pickup_only);
+    expect(pistols.length, 'setup: the demo catalogue has pistols').toBeGreaterThan(0);
+    const only = m.find('[data-testid="slot-only-row"]')[0]?.textContent ?? '';
+    for (const w of pistols) expect(only, `${w.name} is offered as a primary`).toContain(w.name.toUpperCase());
+    for (const w of d.weapons.filter(x => x.lethal === false)) expect(only).not.toContain(w.name.toUpperCase());
+    const types = m.find('[data-testid="slot-type-row"]')[0]?.textContent ?? '';
+    expect(types).toContain('SIDEARM');
+    expect(types, 'a support weapon is never a primary, so no SUPPORT chip').not.toContain('SUPPORT');
+    m.unmount();
+  });
+});

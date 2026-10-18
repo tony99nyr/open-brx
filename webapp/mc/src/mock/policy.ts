@@ -1,6 +1,6 @@
 // Demo-only mirror of mcp/brx_mcp/mc/policy.py (docs/spec/loadout.md §3). The real server computes
 // `State.loadout_pool`; this exists so `?mock` behaves the same way without a backend. Keep in step.
-import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, WeaponView } from '../api/types';
+import type { Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, WeaponView } from '../api/types';
 
 import { TEMPLATE_RULES, UNPLAYABLE_IDS, chainConflict, easyReloadConflict } from '../rules/loadoutPolicy';
 
@@ -14,7 +14,7 @@ export const pool = computePool;
 export const conflict = easyReloadConflict;
 
 /** Bring one loadout into compliance (server `apply_policy`). Easy Reload keeps its override and drops a second weapon. */
-export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: WeaponView[] = []): Loadout {
+export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: WeaponView[] = [], perks: PerkView[] = []): Loadout {
   const out: Loadout = { weapons: [...lo.weapons.map(w => ({ ...w }))],
     ...(lo.perk ? { perk: lo.perk } : {}), ...(lo.overrides ? { overrides: lo.overrides } : {}) };
   // policy.py apply(): an unplayable pick is dropped first; then out of the pool -> the assault rifle when allowed, else the
@@ -38,6 +38,12 @@ export function apply(p: LoadoutPolicy, lo: Loadout, pl: LoadoutPool, weapons: W
     out.overrides = rest;
   }
   if (conflict(out)) out.weapons = [out.weapons[0]];
+  if (out.perk) {
+    // F551, as policy.py apply(): the FINAL weapons (after Easy Reload) may be ones this perk cannot ride with
+    const k = perks.find(x => x.perk_id === out.perk);
+    const w0 = out.weapons[0]?.weapon_id, w1 = out.weapons[1]?.weapon_id;
+    if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1)))) out.perk = null;
+  }
   if (!out.perk) delete out.perk;
   return out;
 }

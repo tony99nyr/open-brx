@@ -29,7 +29,7 @@ describe('server policy shared cases', () => {
     };
     for (const testCase of (cases as unknown as { apply: { name: string; policy: LoadoutPolicy; loadout: Loadout; expect: unknown }[] }).apply) {
       const pool = computePool(testCase.policy, weapons, perks);
-      expect(shape(mockApply(testCase.policy, testCase.loadout, pool, weapons)), testCase.name).toEqual(testCase.expect);
+      expect(shape(mockApply(testCase.policy, testCase.loadout, pool, weapons, perks)), testCase.name).toEqual(testCase.expect);
     }
   });
 
