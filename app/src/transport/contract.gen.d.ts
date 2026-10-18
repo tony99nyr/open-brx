@@ -269,6 +269,14 @@ export declare const TIME_LIMIT_MAX_S: 7200;
 export declare const RESPAWN_DELAY_MAX_S: 600;
 /** mode_params.hold_target_s 1..this */
 export declare const HOLD_TARGET_MAX_S: 7200;
+/** F559 (field 2026-10-17): a hill's capture time and net cap, settable per game (`GameConfig.hill`) instead of only by
+ *  the +/- buttons on each hill phone. brx5's station half takes them from `station_config`.
+ *  hill.capture_s this..HILL_CAPTURE_S_MAX */
+export declare const HILL_CAPTURE_S_MIN: 3;
+export declare const HILL_CAPTURE_S_MAX: 60;
+/** hill.net_cap this..HILL_NET_CAP_MAX */
+export declare const HILL_NET_CAP_MIN: 1;
+export declare const HILL_NET_CAP_MAX: 6;
 /** S-powerup-overrides (2026-09-28, Tony): ARMORY's per-station powerup override ranges (powerups.py checks them).
  *  Tony's own picks, not a protocol limit. 240, not 300: the StickS3 carries spawn_every_s in one byte. */
 export declare const POWERUP_CHARGES_MIN: 1;
@@ -1055,6 +1063,15 @@ export interface Recoil {
   settle_ms?: number;
 }
 
+/** F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
+ *  value (its +/- buttons); a key MC sends wins on that arming (no edit ages: a hill keeps no edit record). */
+export interface HillSettings {
+  /** HILL_CAPTURE_S_MIN..MAX seconds */
+  capture_s?: number;
+  /** HILL_NET_CAP_MIN..MAX */
+  net_cap?: number;
+}
+
 export interface GameConfigBase {
   config_id: string;
   mode: string;
@@ -1139,6 +1156,10 @@ export interface GameConfigBase {
    *  the key. `--bench-volume` overrides this value and try-outs; without
    *  it, a try-out plays at VOL_TRYOUT (69), never this value. */
   volume?: number | null;
+  /** F559: capture time and net cap for every control station. A set key
+   *  wins on every arming; absent = the station keeps its own. A PUT of
+   *  null clears it; a mode change carries it, like `volume`. */
+  hill?: HillSettings | null;
 }
 
 /** A complete config type whose policy may be omitted for server defaulting. */
@@ -1169,6 +1190,7 @@ export interface GameConfig {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
+  hill?: HillSettings | null;
   loadout_policy?: LoadoutPolicy;
 }
 
@@ -1203,6 +1225,7 @@ export interface ConfigView {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
+  hill?: HillSettings | null;
   loadout_policy: LoadoutPolicy;
 }
 
@@ -1879,6 +1902,10 @@ export interface StationConfig {
   item?: StationItem;
   /** A58: the tamper lock, applied by the phone station and the Stick alike */
   lock_s: number;
+  /** F559: a control station's capture time, seconds (absent = the station's own) */
+  capture_s?: number;
+  /** F559: a control station's net cap (absent = the station's own) */
+  net_cap?: number;
   /** A68: match end from receipt (0 = the match is over) */
   ends_in_ms?: number;
   /** A68: go-live from receipt (negative once live) */
