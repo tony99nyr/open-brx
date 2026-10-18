@@ -380,7 +380,7 @@ inline StationItem parse_item(const json::Value& v) {
 // dBm" (which would always be true and defeat the point of a threshold). An MC value other than 0
 // overrides it. This is a placeholder pending a bench measurement (README).
 // -57 dBm, the StickS3's platform default for a respawn (Tony, 2026-09-24, walked at 3-5 m: "the stick actually
-// works better"; a phone station defaults to -70). The hill (-75) and the powerup (-45) have their own per-kind
+// works better"; a phone station defaults to -70). The hill (-78) and the powerup (-45) have their own per-kind
 // defaults, resolved once in parse_station_config (D5), so the stored, reported and applied values agree.
 // Byte 14 is the exception: a defaulted hill advertises -57 (threshold_advertised_dbm).
 // contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN (-57, Tony 2026-09-24) lives in station_range.h, beside the range edit.
@@ -643,7 +643,7 @@ inline uint8_t station_kind_byte(const std::string& kind) {
 
 // ---- the presence threshold (hill + respawn) -------------------------------------------------------
 // The threshold a Bluetooth station measures PLAYERS against. MC's value when it sent one; when it sent
-// 0/absent, the StickS3's own default for that kind (-75 dBm for control, -45 for a powerup, -57 otherwise). A defaulted
+// 0/absent, the StickS3's own default for that kind (-78 dBm for control, -45 for a powerup, -57 otherwise). A defaulted
 // control advert keeps byte 14 at -57 for phone-side presence because the radio paths are asymmetric.
 // The pickup claim has no RSSI floor at all (ClaimGate): the phone's own
 // claim_ready already proves the player stood at the station.

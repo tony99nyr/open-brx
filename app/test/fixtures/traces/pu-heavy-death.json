@@ -167,8 +167,7 @@
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",
         "$HLED,9,0,,,10,,*",
-        "$LIFE,0,0,0,*",
-        "$BMAP,0,0,,,,,*"
+        "$LIFE,0,0,0,*"
       ]
     },
     {
@@ -177,6 +176,7 @@
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":115,"ir_proto":0,"ir_subtype":3,"sensor":4,"shot_group":"epoch:2"},{"type":"death","match_id":"m1","shooter_num":19,"shooter_team":2},{"type":"respawn","match_id":"m1"}],
       "reports": [],
       "writes": [
+        "$BMAP,0,0,,,,,*",
         "$LIFE,0,0,0,*",
         "$GLED,,,,5,,,*",
         "$IRTX,100,15,19,0,22,0,0,100,1,,0,*",
@@ -195,8 +195,7 @@
         "$GLED,1,1,1,0,1,,*",
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",
-        "$HLED,9,0,,,10,,*",
-        "$BMAP,0,0,,,,,*"
+        "$HLED,9,0,,,10,,*"
       ]
     }
   ]

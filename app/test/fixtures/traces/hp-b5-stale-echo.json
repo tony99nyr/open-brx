@@ -130,9 +130,7 @@
       "state": {"phase":"live","alive":true,"spawned":true,"hp":0,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":192,"deaths":1,"moment":{"kind":"redeploy","data":null}},
       "facts": [],
       "reports": [],
-      "writes": [
-        "$BMAP,0,0,,,,,*"
-      ]
+      "writes": []
     },
     {
       "at": "real_kill_counts",

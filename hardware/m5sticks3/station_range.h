@@ -34,7 +34,7 @@ namespace brx {
 // Stick measures players at the hill default below.
 // UNPROVEN hill default. Sitting B, 2026-09-25, Stick-side PLAYERS STREAM medians: touching -43,
 // arm's length -64, about 5 m indoors -77/-81 (two phones), down the hall -78 to -87 still present
-// at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target); clean 3 m and 7 m readings
+// at -80. Tony set -75 for MVP (2026-09-25, a 5-7 m target), then -78 for a hill 10% larger (2026-10-17); clean 3 m and 7 m readings
 // settle it at the bench.
 // F434, Tony 2026-09-28: a powerup's claim range is about 30 cm, not the respawn's 3 m. At -57 a Pixel 5 left
 // about 3 m away claimed on every item respawn (it read -50 to -55 there, about -40 at 30 cm). -45 sits between

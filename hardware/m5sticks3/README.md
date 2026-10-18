@@ -334,7 +334,7 @@ state. `LINK OFF` only drops the current socket and association.
 A `powerup` uses -45 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_POWERUP`, F434, Tony 2026-09-28): at -57 a Pixel 5 about
 3 m away claimed on every item respawn (it read -50 to -55 there; about -40 at 30 cm); bench 4.11 tunes it.
 Every kind except `control` and `powerup` uses -57 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN`). A `control` hill uses
--75 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL`, Tony 2026-09-25, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
+-78 dBm (`contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL`, Tony 2026-09-25 -75, then 10% larger 2026-10-17, UNPROVEN): sitting B, 2026-09-25, Stick-side PLAYERS STREAM
 medians were -43 touching, -64 at arm's length, -77/-81 at about 5 m (two phones), and -78 to -87 down the
 hall, still present at -80. -80 reached past 7 m, so Tony set -75 for a 5-7 m target. Take clean 3 m
 and 7 m readings. MC's nonzero value overrides the Stick default. A defaulted control hill still advertises
@@ -580,7 +580,7 @@ to edit it. if within wifi range sync with MC on the change." Two decisions of h
   republishes at once, and a new power restarts the advert at it.
 - **Distances are rough**, and the screen says so: `station_range.h RANGE_DISTANCE_TABLE`, anchored on
   Tony's measurement (-57 dBm is about 3 m from a Stick), 6 dB per doubling of distance from there. The
-  control hill uses its separate, unproven label table: -75 dBm is about 5-7 m.
+  control hill uses its separate, unproven label table: -78 dBm (the default) is still about 5-7 m.
 - **Sync (A67).** Every status beat carries `threshold` (applied now), `threshold_src` ("station" |
   "mc") and, only while "station", `threshold_edit_age_ms`; the same three for `tx_power`; and
   `range_edits`, the last 8 edits (seq, field, from, to, locked, age_ms), restated every beat (MC

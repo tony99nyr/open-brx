@@ -194,13 +194,13 @@ countdown with shots and deaths at 0, and at T-0 the gun respawns at full pools.
 **Result 2026-10-16 (brx1): Control FAILED on 0.4.22 (F529) and PASSED on 0.4.23. Part 3 CONFIRMED. Parts 1 and 2 are INCONCLUSIVE (held for the abort fix); run them on 0.4.23 or later.**
 
 **A.10. F493, an operator respawn about 100 ms after a death, the one-gun half (15 min; Min: `c7f08cf0`, and
-`0e28ddbd` for the flash and LED timing).** A timed respawn with the normal 0.5 s weapon delay.
+`0e28ddbd` for the flash and LED timing).** A timed respawn with the normal weapon delay (0.5 s when this sheet ran; the default moved to 1.5 s on 2026-10-17).
 1. **Control (A).** Kill the player and wait out the respawn timer. **Pass:** after the weapon delay, the trigger
    fires.
 2. **The bug (B), 5 times.** Kill the player, then send FORCE RESPAWN within about 100 ms of the death (a click is too slow: have the call
 ready, `curl -X POST -H "Authorization: Bearer <token>" -H 'content-type: application/json' -d '{"cmd":"respawn","match_id":"<id>"}' http://127.0.0.1:8765/api/players/<pid>/operator`,
 with the `match_id` and `player_id` from `GET /api/state`), while
-   the death scream still plays. **Pass:** a trigger pull FIRES after the respawn line and the 0.5 s weapon delay,
+   the death scream still plays. **Pass:** a trigger pull FIRES after the respawn line and the weapon delay (0.5 s when this sheet ran; 1.5 s since 2026-10-17),
    5 of 5. The phone log shows the trigger-live `$BMAP,0,0` written AFTER the revive burst's `$SPAWN`. The white
    headset flash shows about 1 s after the respawn sound, not during the scream; the gun strip settles to its rest
    colour about 2.5 s after the respawn and stops breathing. The REDEPLOYED card reads ACTIVATING WEAPON SYSTEMS

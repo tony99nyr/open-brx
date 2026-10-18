@@ -491,8 +491,8 @@ def test_trigger_live_waits_the_bundles_trigger_ms_after_the_revive():
         asyncio.run(cli._respawn(send, plan))
     finally:
         cli.asyncio.sleep = real
-    assert plan.trigger_ms == 500
-    assert order == [("send", plan.revive), ("sleep", 0.5), ("send", [plan.trigger_live])], order
+    assert plan.trigger_ms == 1500
+    assert order == [("send", plan.revive), ("sleep", 1.5), ("send", [plan.trigger_live])], order
 
 
 def test_a_cancel_during_the_hold_still_releases_the_trigger():

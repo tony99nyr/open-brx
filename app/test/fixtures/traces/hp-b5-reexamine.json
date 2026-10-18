@@ -137,9 +137,9 @@
       "facts": [{"type":"death","match_id":"m1","shooter_num":0,"shooter_team":2}],
       "reports": [],
       "writes": [
-        "$BMAP,0,0,,,,,*",
         "$HLOOP,0,0,*",
         "$HLED,6,2,120,120,10,2,*",
+        "$BMAP,0,0,,,,,*",
         "$HLED,9,0,,,10,,*",
         "$GLED,,,,5,,,*",
         "$IRTX,100,15,7,0,26,0,0,100,1,,0,*"
