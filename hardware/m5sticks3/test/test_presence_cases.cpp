@@ -35,7 +35,7 @@ static void shape(const std::string& what) {
   failures++;
 }
 
-struct Heard { long t; int id; int rssi; };
+struct Heard { long t; int id; int rssi; const Value* state; };  // state: the sighting's own (F554), else null
 
 static uint8_t player_state(const Value& names) {
   uint8_t s = 0;
@@ -62,13 +62,14 @@ static uint8_t hill_state(const Value& names) {
 
 static std::vector<Heard> expand(const Value& c) {
   std::vector<Heard> out;
-  for (const Value& s : c.get("sightings").arr) out.push_back({s.get("t").as_int64(), (int)s.get("id").as_int(), (int)s.get("rssi").as_int()});
+  for (const Value& s : c.get("sightings").arr)
+    out.push_back({s.get("t").as_int64(), (int)s.get("id").as_int(), (int)s.get("rssi").as_int(), s.has("state") ? &s.get("state") : nullptr});
   for (const Value& s : c.get("series").arr) {
     const std::vector<Value>& r = s.get("rssi").arr;
     long every = s.get("every_ms").as_int();
     long k = 0;
     for (long t = s.get("from_ms").as_int64(); t <= s.get("to_ms").as_int64(); k++, t = s.get("from_ms").as_int64() + k * every)
-      out.push_back({t, (int)s.get("id").as_int(), (int)r[k % r.size()].as_int()});
+      out.push_back({t, (int)s.get("id").as_int(), (int)r[k % r.size()].as_int(), s.has("state") ? &s.get("state") : nullptr});
   }
   std::stable_sort(out.begin(), out.end(), [](const Heard& a, const Heard& b) { return a.t < b.t; });
   return out;
@@ -138,7 +139,7 @@ static void run_case(const Value& c) {
       a.role = contract::ADVERT_ROLE_PLAYER;
       a.id = (uint16_t)h.id;
       a.team = (uint8_t)p.get("team").as_int();
-      a.state = player_state(p.get("state"));
+      a.state = player_state(h.state ? *h.state : p.get("state"));
       pr.observe(a, h.rssi, (uint32_t)h.t);
     }
     pr.tick((uint32_t)t);
@@ -172,6 +173,11 @@ static void run_case(const Value& c) {
       for (const auto& kv : ex.get("fading").obj) {  // C.7: present, but under the exit band (builds nothing, still contests)
         const PlayerEntry* e = pr.get((uint16_t)std::stoi(kv.first));
         if ((e && e->fading) != kv.second.as_bool()) fail(t, at + " player " + kv.first + " fading, expected " + (kv.second.as_bool() ? "true" : "false"));
+      }
+      for (const auto& kv : ex.get("hold_ms").obj) {  // F554: the possession tally per tid
+        const int tid = std::stoi(kv.first);
+        const long got = tid >= 0 && tid < 4 ? (long)cp.hold_ms[tid] : -1;
+        if (got != kv.second.as_int64()) fail(t, at + " hold_ms of team " + kv.first + " " + std::to_string(got) + ", expected " + std::to_string(kv.second.as_int64()));
       }
       if (ex.has("hill")) {
         const Value& h = ex.get("hill");

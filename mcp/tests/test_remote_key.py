@@ -30,7 +30,8 @@ def test_equivalent_network_remotes_have_one_key():
 
 def test_local_path_and_file_url_resolve_to_one_key():
     with tempfile.TemporaryDirectory() as directory:
-        root = Path(directory)
+        # resolve(): macOS puts the temp dir under /var, a link to /private/var, and the key is the real path (F565).
+        root = Path(directory).resolve()
         actual = root / "remote.git"
         actual.mkdir()
         alias = root / "alias.git"
