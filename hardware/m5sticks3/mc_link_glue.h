@@ -209,7 +209,8 @@ static void mcEraseSavedConfig() {
 }
 
 // ---- restart survival: the Bluetooth hill's owner ("hill_owner"/"hill_game"/"hill_id"/"hill_sid"/"hill_hold")
-// SavedHill (station_link.h, host-tested) decides WHEN: only on an owner change, never a progress tick.
+// SavedHill (station_link.h, host-tested) decides WHEN: an owner change, the whistle, or at most once per HILL_CLOCK_SAVE_MS
+// while the tally grows (F557).
 SavedHill& savedHill = station.hill;
 
 static void mcLoadSavedHill() {
