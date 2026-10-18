@@ -298,6 +298,7 @@ test('F416 weapon review r2: an ALT swap still in its window defers the verdict 
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 1, mag: 6, reserve: 24 }), true) }).live();
   h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };   // two weapons: ALT is a swap
   await h.adv(4000 + 50);
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT before the check's query: the gun is on slot 1, the node still waits
   await h.adv(3000);
   assert.equal(h.spawns(), 1, `no second $SPAWN over the player's ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
@@ -309,6 +310,7 @@ test('F542 hardware: after an assumed ALT, an $LCD still on the last shot\'s slo
   const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
   h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };
   await h.adv(4000 + 50);
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
   h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT with no shot: the gun's $LCD keeps slot 0 (bench 2026-10-17)
   await h.adv(3000);
   assert.equal(h.spawns(), 1, `no second $SPAWN over an assumed ALT: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);

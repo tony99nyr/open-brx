@@ -1,6 +1,6 @@
 {
   "name": "ammo-alt-old-slot-assumed",
-  "why": "F379: a delayed round from the slot ALT is leaving does not settle the swap. The gun's slot query confirms the target, so the next ALT returns to the old slot.",
+  "why": "F379: a delayed round from the slot ALT is leaving does not settle the swap. Its pull came before the press, so it can be in flight; the window assumes the target, so the next ALT returns to the old slot.",
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
   "runners": ["engine","stage"],
   "setup": {

@@ -2172,6 +2172,8 @@ def test_every_hill_pair_is_real():
 KNOWN_UNMIRRORED = {
     # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
     "headsetOk",
+    # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)
+    "am.gunWasOn",
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore
     "_headBack",
     # F535: the stage inlines the mode check in `_hill_source_allowed`; it has no KOTH hill left over to drop (`tick`)
