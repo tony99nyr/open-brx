@@ -235,6 +235,8 @@ struct StatusFields {
   // possession tally MC's recap reads (`report.control.hold_ms`, state.py _merge_station_recap_report),
   // keyed by tid as a string; a team that never held the point is left out, as control.js holdMs does.
   bool control_has_hold = false;
+  int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
+                           // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
   // Additive, respawn only: the revives counted here (utility.js `revives`; StationReport.revives).
   bool has_revives = false;
@@ -284,6 +286,7 @@ inline std::string build_status_body(const StatusFields& f) {
     j += ",\"control\":{\"owner\":" + std::to_string(f.control_owner) +
          ",\"progress\":" + std::to_string(f.control_progress) +
          ",\"contested\":" + std::string(f.control_contested ? "true" : "false");
+    if (f.control_game >= 0) j += ",\"game\":" + std::to_string(f.control_game);
     if (f.control_has_hold) {
       j += ",\"hold_ms\":{";
       bool first = true;
@@ -1913,6 +1916,7 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_owner = h.owner;
     f.control_progress = (int)BleControlPoint::js_round(h.progress);
     f.control_contested = h.contested;
+    f.control_game = a.game;
     f.control_has_hold = true;
     for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
   }

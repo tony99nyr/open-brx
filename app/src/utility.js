@@ -217,6 +217,7 @@ async function applyStationConfig(body) {
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
+  if (cfg.kind === 'control') applyHillClock(cfg, Date.now());
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: cfg.valid_ids };
   save();
   if (wasArmed && armKey() === before) {
@@ -228,6 +229,19 @@ async function applyStationConfig(body) {
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAME_BY_TID[settings.team] || settings.team} · station ${settings.id} · threshold ${thr()} dBm · game ${settings.game}`, 'lk');
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
+}
+/** F386 phone twin (A68, the Stick's `station_link.h`): a hill counts only between MC's go-live and its deadline. A START
+ *  in the countdown (`starts_in_ms > 0`) wipes whatever a lobby counted and makes the point wait; a LIVE re-send (start
+ *  already past) leaves it alone. `ends_in_ms` sets the whistle, 0 = now; a config with no timing (a lobby or an abort
+ *  re-send) clears both, so the point counts as before. F555: MC scores the hill on this tally. */
+function applyHillClock(cfg, now) {
+  if (cfg.starts_in_ms != null) {
+    const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
+    const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
+    if (cfg.starts_in_ms > 0 && counting && counted) resetPoint('MC START: the lobby and the countdown score nothing');
+    settings.hillStartsAt = now + cfg.starts_in_ms;
+  } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
+  settings.hillEndsAt = cfg.ends_in_ms > 0 ? now + cfg.ends_in_ms : cfg.ends_in_ms === 0 ? now : (cfg.starts_in_ms != null ? settings.hillEndsAt : null);
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
@@ -248,7 +262,9 @@ function utilityStatusBody() {
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
     // have watched any of it (F92).
-    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
+    // F555: `game` is the byte this hill counts under, so MC never seeds a new game's tally from a beat sent before the
+    // phone applied that game's config
+    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested, game: settings.game,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
 const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, setCurrent: t => { transport = t; },
@@ -551,7 +567,17 @@ function powerupTick(now) {
  *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
-  const { changed, events } = point.update(presence.players(), now);
+  // F386 phone twin: before go-live the point waits with no clock running (`at` cleared, so the first live step banks
+  // nothing), and at the whistle it takes one last step to the deadline, then holds.
+  // Only the step is skipped: the advert below still republishes (a START that reset the point must say so on air).
+  const waiting = settings.hillStartsAt != null && now < settings.hillStartsAt;
+  if (waiting) point.at = null;
+  let at = now, step = !waiting;
+  if (step && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
+    if (point.at != null && point.at >= settings.hillEndsAt) step = false;
+    else at = settings.hillEndsAt;
+  }
+  const { changed, events } = step ? point.update(presence.players(), at) : { changed: false, events: [] };
   for (const e of events) {
     if (e.type === 'captured') { log(`${TEAM_NAME_BY_TID[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAME_BY_TID[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEY_BY_TID[e.team]); }   // the big word already names the team
     else if (e.type === 'neutralised') { log(`${TEAM_NAME_BY_TID[e.team]} LOST the point — ${TEAM_NAME_BY_TID[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
@@ -1138,7 +1164,7 @@ function wireExit() {
     connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
-    applyNativeInset };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    applyNativeInset, controlTick };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 

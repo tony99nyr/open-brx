@@ -1575,6 +1575,7 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
+    game: NotRequired[int]       # F555: the game byte the hill counts under (absent from an older station)
 
 
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).

@@ -228,11 +228,16 @@ def test_an_empty_station_tally_does_not_silence_the_phones():
 def test_a_beat_after_the_whistle_is_not_a_live_reading():
     s, net, clock, ps, info, sid = _live_koth_with_station()
     red = s.config["teams"][0]
+    sc = s._m().scorer
     s.control("end")
     assert s.phase == "recap"
+    s.station_registry.stations["util-hill"]["tally"] = {"key": [s._game_byte(), "control", sid],
+                                                         "hold_ms": {str(red["tid"]): 60_000}, "revives": None}
     clock["t"] += 3_000
     s._station_possession("util-hill", clock["t"])    # a live-style call in RECAP is refused
-    assert s._m().scorer is None or s._m().scorer.station_possession_ms == {}
+    assert sc.station_possession_ms == {}, sc.station_possession_ms
+    s._station_possession("util-hill", None)          # CONTROL: the whistle's final-word path (t None) does take it
+    assert sc.station_possession_ms == {str(sid): {red["tid"]: 60_000}}
 
 
 def test_the_hill_tally_survives_an_mc_restart():
@@ -306,3 +311,39 @@ def test_a_hill_released_in_play_keeps_its_count_across_an_mc_restart():
     s2, _net2 = restart_no_repersist(s, clock)
     assert s2.resume_match() == "live"
     assert s2.recap()["winner"] == {"team_id": blue["team_id"]}, s2.recap()["winner"]
+
+
+
+def test_a_beat_naming_another_game_never_seeds_this_games_tally():
+    """brx3 review: a beat sent before the station applied this arming carries the last game's count. The station names
+    the game it counts under (`control.game`), and `_keep_tally` refuses another game's."""
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    red = s.config["teams"][0]
+    old = s._game_byte() - 1 or 255
+    clock["t"] += 3_000
+    body = {"role": "utility", "kind": "control", "station_id": sid,
+            "control": {"owner": red["tid"], "game": old, "hold_ms": {str(red["tid"]): 90_000}}}
+    net.simulate_status("util-hill", body, clock["t"])
+    assert s._m().scorer.station_possession_ms == {}, "the last game's count seeded this one"
+    clock["t"] += 3_000
+    body["control"] = {"owner": red["tid"], "game": s._game_byte(), "hold_ms": {str(red["tid"]): 4_000}}
+    net.simulate_status("util-hill", body, clock["t"])
+    assert s._m().scorer.station_possession_ms == {str(sid): {red["tid"]: 4_000}}, "CONTROL"
+
+
+def test_a_stood_down_or_re_armed_hill_is_not_this_points_authority():
+    s, net, clock, ps, info, sid = _live_koth_with_station()
+    red = s.config["teams"][0]
+    st = s.station_registry.stations["util-hill"]
+    st["tally"] = {"key": [s._game_byte(), "control", sid], "hold_ms": {str(red["tid"]): 30_000}, "revives": None}
+    assert s._station_hold("util-hill") == (str(sid), {str(red["tid"]): 30_000}), "CONTROL"
+    armed = dict(st["armed"])
+    st["armed"] = {**armed, "game": (s._game_byte() % 255) + 1}   # a newer arming that has not reseeded the tally
+    assert s._station_hold("util-hill") is None
+    st["armed"] = armed
+    real = s.station_registry.stood_down
+    s.station_registry.stood_down = lambda a: True   # type: ignore[method-assign]
+    try:
+        assert s._station_hold("util-hill") is None
+    finally:
+        s.station_registry.stood_down = real   # type: ignore[method-assign]
