@@ -307,6 +307,17 @@ def _ammo_mods(world: World, wid: str, fx: dict) -> dict | None:
     return {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult") if k in fx} or None
 
 
+def _bolt_exempt_sim_only(world: World) -> list[str]:
+    """The bolt rows this review exempts from the ammo and reload perks although the compiler on this tree does
+    not: on such a tree a pass describes a gun that only the bolt compile change ships (round-2 review)."""
+    out = []
+    for wid in sorted(world.cat._by_id):
+        if world.cat._row(wid).get("reload_type") == "bolt" and \
+                world.cat._ammo(wid, {"reload_mult": 0.5}) != world.cat._ammo(wid, None):
+            out.append(wid)
+    return out
+
+
 def make_kit(world: World, name: str, primary: str, secondary: str | None = None, perk: str | None = None,
              plan: str = "single") -> Kit:
     cat, fx = world.cat, world.fx(perk)
@@ -1451,7 +1462,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1) -> dict:
                                                                       "kit": subject_kit, "role": role},
         "facts": ({"baseline": _facts(base.cat, wid) if wid in base.cat._by_id else None,
                    "candidate": _facts(world.cat, wid)} if wid else None),
-        "sim_only_flags": {"styles": world.styles},
+        "sim_only_flags": {"styles": world.styles, "bolt_perk_exempt": _bolt_exempt_sim_only(world)},
         "tests": tests, "pass": all(t["pass"] is not False for t in tests.values()),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
@@ -1564,10 +1575,12 @@ def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True) -> dic
 
 
 def fingerprint() -> str:
-    """A hash of everything a verdict depends on beside the seed: the assumptions and the four source files."""
+    """A hash of everything a verdict depends on beside the seed: the assumptions, both sims, the compiler, the perk
+    code and the two catalogue files."""
     h = hashlib.sha256(json.dumps(assumptions(), sort_keys=True, default=str).encode())
     data = Path(_compile_mod.__file__).resolve().parent     # the catalogue files the review actually read
-    for f in (Path(B.__file__), Path(__file__), data / "weapons.json", data / "perks.json"):
+    for f in (Path(B.__file__), Path(__file__), Path(_compile_mod.__file__), data / "perks.py",
+              data / "weapons.json", data / "perks.json"):
         h.update(f.read_bytes())
     return h.hexdigest()[:16]
 
@@ -1703,6 +1716,10 @@ def report_markdown(v: dict) -> str:
             return _num(r[k]) if k in r else "-"
         out.append(f"| {r['weapon']} | {r['pool']} | {r['htk']} | {g('ttk_perfect_ms')} | {g('ttk_no_crit_ms')} | "
                    f"{g('ttk_expected_crit_ms')} | {g('ttk_all_crit_ms')} | {g('ttk_recoil_burst_ms')} | {g('ttk_recoil_full_ms')} |")
+    sim_only = (v.get("sim_only_flags") or {}).get("bolt_perk_exempt") or []
+    if sim_only:
+        out += ["", f"**Sim only:** {', '.join(sim_only)} is exempted from the ammo and reload perks here, but the compiler on "
+                    "this tree still scales it. Shipping this verdict needs the bolt compile change too."]
     out += ["", "## Invented assumptions", "", "```json", json.dumps(v["assumptions"], indent=1), "```"]
     if v["not_modelled"]:
         out += ["", "Not modelled: " + "; ".join(v["not_modelled"]) + "."]
@@ -1763,8 +1780,8 @@ def build_parser() -> argparse.ArgumentParser:
     src.add_argument("--record-from", metavar="VERDICT", help="record an earlier --out verdict without re-running it")
     ap.add_argument("--out", help="write the verdict JSON here")
     ap.add_argument("--report", help="also write the markdown report here (it always goes to stdout)")
-    ap.add_argument("--record", nargs="?", const=str(DECISIONS), default=None, metavar="PATH",
-                    help=f"append a decision section to the log (default {DECISIONS.relative_to(REPO)})")
+    ap.add_argument("--record", action="store_true",
+                    help=f"append a decision section to {DECISIONS.relative_to(REPO)} (the only file it writes)")
     ap.add_argument("--call", default="", help="Tony's call, in his words; required by --record and --record-from")
     ap.add_argument("--jobs", type=int, default=min(4, os.cpu_count() or 1), help="worker processes (no effect on numbers)")
     ap.add_argument("--reps-scale", type=float, default=1.0, help=argparse.SUPPRESS)   # tests only
@@ -1776,7 +1793,7 @@ def main(argv=None) -> int:
     if args.record_from:
         v = json.loads(Path(args.record_from).read_text())
         record_guard(v, args.call)
-        record(v, args.call, Path(args.record or DECISIONS), command=f"--record-from {Path(args.record_from).name}")
+        record(v, args.call, DECISIONS, command=f"--record-from {Path(args.record_from).name}")
         return 0
     if args.record:
         # fail before a 90 s run, not after it
@@ -1791,7 +1808,7 @@ def main(argv=None) -> int:
         Path(args.report).write_text(md)
     if args.record:
         record_guard(v, args.call)
-        record(v, args.call, Path(args.record), command="python3 mcp/tools/balance_review.py --candidate " + args.candidate)
+        record(v, args.call, DECISIONS, command="python3 mcp/tools/balance_review.py --candidate " + args.candidate)
     return 0 if v["pass"] else 1
 
 

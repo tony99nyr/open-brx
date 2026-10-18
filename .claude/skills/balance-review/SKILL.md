@@ -28,7 +28,8 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
    against the shipped catalogue, and a `with` entry that breaks one fails `balance_kept` or `op_rule`.
    `"sim": {"style": "full"}` makes an automatic hold the trigger instead of bursting. A bolt is
    `"reload_type": "bolt"` in `changes`: the ammo and reload perks then skip it, as compile.py does after the
-   Sniper bolt batch. Balance numbers live in `wire`: use `wire.dmg`, `wire.tap_dmg`, `wire.fire_ms`,
+   Sniper bolt batch. On a tree without that compile change, the report marks the bolt **Sim only**: shipping
+   that verdict needs the compile change too. Balance numbers live in `wire`: use `wire.dmg`, `wire.tap_dmg`, `wire.fire_ms`,
    `wire.swap_ms`, `wire.headset_dmg`. The tool refuses every requested field that the catalogue does not read
    or that does not change.
 3. **Run it** from the repo root, in the background (about 90 s with 4 workers):

@@ -328,4 +328,6 @@ def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():
         assert "Tony's call: Tony: ship it" in text and f"fingerprint `{fp}`" in text
         verdict = pathlib.Path(d) / "v.json"
         verdict.write_text(json.dumps(v))
-        _raises(lambda: R.main(["--record-from", str(verdict), "--record", str(p)]), "call")
+        _raises(lambda: R.main(["--record-from", str(verdict)]), "call")
+        # --record takes no path: the decision log is the only file it can write (round-2 review)
+        _raises(lambda: R.main(["--record-from", str(verdict), "--record", str(p), "--call", "Tony: x"]), "")
