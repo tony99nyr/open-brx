@@ -33,10 +33,10 @@ frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
 **State:** 2026-10-18: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
 flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
 balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/balance-review/SKILL.md`); FOLLOWUPS
-bookkeeping from the report and the lanes' FIXED lines.
-**Next:** the Sniper batch when Tony answers F573 (branches `brx2/sniper-bolt` and `brx2/sniper-bolt-75`, local only;
-the 57 one carries the Charge Rifle at 55/14 and the bolt's `reload_type`); record his call with `balance_review.py
---record-from`. F512 again on or after 2026-10-19 15:17 UTC (F574 may fix the cause first).
+bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damage bolt action with a 2.2 s bolt
+(Tony's call, `docs/balance-decisions.md`); he judges it in the next real match.
+**Next:** the 2.2 s bolt bench row (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+(F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F573 on Tony.
 ## Lane: brx3, releases and Mission Control
