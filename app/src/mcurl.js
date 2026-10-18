@@ -68,6 +68,7 @@ export function parseMcQr(text) {
  *  last kick that DIALLED ({at, why}) or null. Any kick within 1 s of it is the same transition reaching us twice; and
  *  within CELLULAR_KICK_GAP_MS of a cellular kick, every kick but Wi-Fi's waits (the webview's `online` included). */
 export const CELLULAR_KICK_GAP_MS = 30000;
+/** @param {string} why @param {number} now @param {{at:number, why:string}|null} last @returns {boolean} */
 export function kickHeld(why, now, last) {
   if (!last) return false;
   if (now - last.at < 1000) return true;
