@@ -992,6 +992,13 @@ class StationRegistry:
             body["tx_power_age_ms"] = _age("tx_power")
         if item := self._active_item(a):
             body["item"] = item                    # A56: an older Stick ignores it
+        if a["kind"] == "control":
+            # F559: the game's hill tuning, when it names any; an absent key keeps the station's own value
+            hill = self.roster.config.get("hill") or {}
+            if isinstance(cs := hill.get("capture_s"), int):
+                body["capture_s"] = cs
+            if isinstance(nc := hill.get("net_cap"), int):
+                body["net_cap"] = nc
         # RECALL/PANIC leave the session in KIT with the same game byte. A connected hill
         # must stop then, and a later hello must not restart its tally by omitting this field.
         # An aborted countdown clears _game_no_started, so its same-game re-start stays possible.

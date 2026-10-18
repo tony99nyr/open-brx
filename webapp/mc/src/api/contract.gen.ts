@@ -909,6 +909,15 @@ export interface Recoil {
   settle_ms?: number;
 }
 
+/** F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
+ *  value (its +/- buttons); a key MC sends wins on that arming (no edit ages: a hill keeps no edit record). */
+export interface HillSettings {
+  /** HILL_CAPTURE_S_MIN..MAX seconds */
+  capture_s?: number;
+  /** HILL_NET_CAP_MIN..MAX */
+  net_cap?: number;
+}
+
 export interface GameConfigBase {
   config_id: string;
   mode: string;
@@ -987,12 +996,14 @@ export interface GameConfigBase {
    *  `config.recoil !== false`. Seam for stance/flinch (also S42, not built
    *  here): a future switch for either can sit right beside this one. */
   recoil?: boolean;
-  /** K8: the host's match-head $VOL, an integer 60..100
+  /** K8: the host's match-head $VOL, an integer 60..100 */
+  volume?: number | null;
+  /** F559: capture time and net cap for every control station; absent = theirs
    *  (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
    *  (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
    *  the key. `--bench-volume` overrides this value and try-outs; without
    *  it, a try-out plays at VOL_TRYOUT (69), never this value. */
-  volume?: number | null;
+  hill?: HillSettings;
 }
 
 /** A complete config type whose policy may be omitted for server defaulting. */
@@ -1023,6 +1034,7 @@ export interface GameConfig {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
+  hill?: HillSettings;
   loadout_policy?: LoadoutPolicy;
 }
 
@@ -1057,6 +1069,7 @@ export interface ConfigView {
   vip_player_id?: string | null;
   recoil?: boolean;
   volume?: number | null;
+  hill?: HillSettings;
   loadout_policy: LoadoutPolicy;
 }
 
@@ -1731,6 +1744,10 @@ export interface StationConfig {
   item?: StationItem;
   /** A58: the tamper lock, applied by the phone station and the Stick alike */
   lock_s: number;
+  /** F559: a control station's capture time, seconds (absent = the station's own) */
+  capture_s?: number;
+  /** F559: a control station's net cap (absent = the station's own) */
+  net_cap?: number;
   /** A68: match end from receipt (0 = the match is over) */
   ends_in_ms?: number;
   /** A68: go-live from receipt (negative once live) */

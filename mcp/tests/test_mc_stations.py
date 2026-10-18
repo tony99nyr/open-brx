@@ -1932,3 +1932,42 @@ def test_f535_an_older_session_file_seeds_the_hill_bytes_from_its_control_statio
     s3._persist_path = s2._persist_path
     s3.restore_snapshot()
     assert hill_byte in s3.station_registry._hill_bytes, s3.station_registry._hill_bytes
+
+
+# --------------------------------------------------------------------------- F559: hill capture time and net cap from MC
+def _koth_hill():
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control", "team": "any", "id": 2})
+    return s
+
+
+def test_f559_the_game_hill_settings_reach_a_control_station_and_absent_sends_nothing():
+    """Field 2026-10-17: capture time and net cap were only +/- buttons on each hill phone. A game's `hill` now reaches every
+    control station it arms; absent keys are not sent, so the station keeps its own (brx5's station half)."""
+    s = _koth_hill()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert "capture_s" not in body and "net_cap" not in body, body
+    r = s.set_config({"hill": {"capture_s": 15, "net_cap": 4}})
+    assert r["ok"], r
+    s.station_registry.arm_stations()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert body["capture_s"] == 15 and body["net_cap"] == 4, body
+    s.set_config({"hill": {"net_cap": None}})                 # a null clears one key, so the station keeps its own again
+    s.station_registry.arm_stations()
+    body = _pushed(s, "station_config", "util-hill")[-1]
+    assert body["capture_s"] == 15 and "net_cap" not in body, body
+
+
+def test_f559_a_hill_setting_out_of_range_is_refused_and_a_respawn_station_never_gets_one():
+    s = _koth_hill()
+    for bad in ({"capture_s": 2}, {"capture_s": 61}, {"net_cap": 0}, {"net_cap": 7}, {"capture_s": 5.5}, {"capture_s": True}, {"wobble": 3}):
+        try:
+            s.set_config({"hill": bad})
+            raise AssertionError(f"accepted hill {bad}")
+        except ValueError as e:
+            assert "hill" in str(e), (bad, e)
+    s.set_config({"hill": {"capture_s": 20}})
+    s.net.simulate_utility_hello("util-resp")
+    s.set_station("util-resp", {"kind": "respawn", "team": "any", "id": 5})
+    assert "capture_s" not in _pushed(s, "station_config", "util-resp")[-1]
