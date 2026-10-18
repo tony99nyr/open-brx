@@ -11,7 +11,7 @@ import { PowerupStation } from './powerup.js';   // kind 2: the powerup station 
 import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
-import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
+import { APP_VER, setDeviceModel } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
 import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
 import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP } from './transport/contract.gen.js';
@@ -1150,6 +1150,8 @@ function wireExit() {
 (async () => {
   applyNativeInset(); wire(); render();
   await loadPlugins();
+  // F564: native only (the web shim's model is a user-agent guess), and bounded, so a hung plugin cannot hold the boot
+  try { if (plugins.device && isNative()) setDeviceModel(await Promise.race([plugins.device.getInfo(), new Promise(r => setTimeout(() => r(null), 2000))])); } catch (_) { /* the hello just omits it */ }
   try { if (plugins.keepAwake) await plugins.keepAwake.keepAwake(); } catch (_) { /* ignore */ }
   try { if (plugins.beacon) support = await plugins.beacon.isSupported(); } catch (e) { log('isSupported: ' + (e && e.message || e)); }
   if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };

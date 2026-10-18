@@ -75,11 +75,11 @@ export function _live(st) {
           : overheating ? `<span class="reload hot solid"><span class="unskew">${starved ? 'NOT ENOUGH ENERGY' : 'OVERHEAT'}</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
           : energyLow ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
-          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
+          : lowMag && !st.bolt ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums">${gunStale ? staleTag : ''}<span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         ${belowCharge && st.ammo > 0 && !starved ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
-        <div class="pips" id="pips">${this._pips(st)}</div>
+        ${st.bolt && st.alive ? `<div class="bolt" role="status"><span class="bk">BOLT</span><span class="bt"><i style="animation-duration:${Math.max(1, st.reloadTotalMs || 0)}ms;animation-delay:-${Math.max(0, st.reloadMs || 0)}ms"></i></span></div>` : ''}<div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
         <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
@@ -95,7 +95,7 @@ export function _puHint(st) {
     // the card says the same thing, louder. The Overshield never gets a card (decision 5), so its own `granted`
     // hint (PICKED UP) is never hidden; the held chip beside the ammo is untouched either way. The card is the engine's
     // takeover (ARCH-2, `_puCardUp`), read off `st`, so it never lags the card's own opening render as a DOM read did.
-    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield')) && this._puCardUp(st)) return '';
+    if ((h.kind === 'switched_back' || (h.kind === 'granted' && h.itemKind !== 'overshield' && h.itemKind !== 'ammo')) && this._puCardUp(st)) return '';
     const name = esc(h.name || ''), c = itemColor(h.color);
     const ring = p => `<span class="puring" style="--p:${Math.max(0, Math.min(1, p)).toFixed(3)}" aria-hidden="true"><i></i></span>`;
     const line = (act, lab, extra = '', ready = false) => `<span class="pu" data-kind="${esc(h.kind)}"${ready ? ' data-ready="1"' : ''} style="--item:${c}">${extra}<span class="put"><span class="pua">${act}</span>${lab ? `<span class="pul">${lab}</span>` : ''}</span></span>`;
@@ -105,6 +105,7 @@ export function _puHint(st) {
       // Tony 2026-09-24, "straight to trigger": a weapon item is already on the trigger, so the hint says so and how many
       // shots it holds (the callout card already said any swap); the overshield just is
       case 'granted': return h.itemKind === 'overshield' ? line(name, 'PICKED UP')
+        : h.itemKind === 'ammo' ? line(name, h.added != null ? `+${h.added} RESERVE` : 'PICKED UP')   // AMMO: no switch card, the reserve rose
         : line(`${name} ON TRIGGER`, h.charges != null ? `${h.charges} SHOT${h.charges === 1 ? '' : 'S'}` : '');
       case 'approach': return line('GET CLOSER', name);
       case 'switched_back': return line(`${name} EMPTY`, `BACK TO ${esc(h.to || '')}`);   // the phone put the saved weapon back on the trigger

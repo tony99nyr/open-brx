@@ -95,6 +95,7 @@ State {
                                               // "cellular" (and are not stale), an independent path. level is "full" iff every bound node is
                                               // on_cellular. reach alone names only the URL a phone joined through (F256)
   nodes: NodeView[],                          // every node that ever said hello this session
+                                              // F564 (A75): a node's `device` is its make and model, e.g. "Google Pixel 4" (absent before Device.getInfo)
   stations: StationView[], game_byte: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_byte = the advert `game` byte (1..255) stations are armed with THIS match (bumps on the first push after a match started)
   station_departures?: StationDeparture[],   // bench 2026-10-02: assigned stations that left ITEMS (see "Station departures" below); absent on an older MC
   readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),

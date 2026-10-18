@@ -33,6 +33,10 @@ real session: a 4-digit grenade PIN equal to three `envelopes.id` values stopped
 
 The scrub works on a COPY taken with the sqlite backup API, so it is safe while MC is running and it
 includes rows still in the write-ahead log. The original evidence is never modified.
+
+Kept on purpose: a node's `device` (F564, A75), its make and model such as "Google Pixel 4". It is a hardware
+class, not an identity, and it is what ties a battery or radio report to hardware. The phone never sends the
+user-set device name (`Device.getInfo().name`).
 """
 from __future__ import annotations
 
