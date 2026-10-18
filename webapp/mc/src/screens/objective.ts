@@ -3,11 +3,20 @@
 // win_by "objective"), so the board headlines the same tally. Nothing here changes a rule: these are
 // reads of what the snapshot already carries.
 import type { LiveView, State, StationView } from '../api/types';
+import { fmtDuration } from '../tokens';
 // isObjectiveScored and objectiveWord live in ../rules/scoring (the mock reads them too).
 
 /** Seconds held for one team, or null when no node has reported possession yet (the field is absent). */
 export const heldSeconds = (lv: Pick<LiveView, 'possession'>, teamId: string): number | null =>
   lv.possession ? (lv.possession.by_team[teamId] ?? 0) : null;
+
+/** F556: `by_team` adds every hill that reported, so with two a team can pass the match length; `of_s` stays the match
+ *  length. The note LIVE, RECAP and SPECTATE show then, or null for one hill. `sites` counts the hills that reported. */
+export function sitesNote(p: { sites: number; of_s: number | null } | null | undefined): string | null {
+  if (!p || p.sites < 2) return null;
+  const most = p.of_s ? `, SO A TEAM CAN HOLD UP TO ${fmtDuration(p.of_s * p.sites)} IN A ${fmtDuration(p.of_s)} MATCH` : '';
+  return `HELD TIME ADDS UP OVER THE ${p.sites} HILLS THAT REPORTED${most}.`;
+}
 
 /** A hill broadcasts tid 2 while nobody owns it (bench 2026-09-10); 255 is a station's "any / nobody". */
 const NEUTRAL_TID = 2;

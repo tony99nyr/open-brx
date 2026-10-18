@@ -206,11 +206,16 @@ static void test_status_body_matches_utility_js_shape() {
   f.has_control = true;
   f.control_owner = 1;
   f.control_progress = 50;
+  f.control_has_inputs = true;   // F558: two BLUE counted, BLUE leads at net 1
+  f.control_net = 1;
+  f.control_counts[1] = 2;
+  f.control_lead = 1;
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"stick-7f3a\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"control\",\"team\":255,\"station_id\":9,"
                        "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.2+abc1234\","
-                       "\"platform\":\"esp32\",\"control\":{\"owner\":1,\"progress\":50,\"contested\":false}}"));
+                       "\"platform\":\"esp32\",\"control\":{\"owner\":1,\"progress\":50,\"contested\":false,"
+                       "\"net\":1,\"counts\":{\"1\":2},\"lead\":1}}"));
 }
 
 static void test_envelope_wraps_the_body_with_v_kind_id_t() {
@@ -2936,6 +2941,10 @@ int main(int argc, char** argv) {
     ctrl.has_control = true;
     ctrl.control_owner = 1;
     ctrl.control_progress = 50;
+    ctrl.control_has_inputs = true;   // F558: two BLUE counted, BLUE leads at net 1
+    ctrl.control_net = 1;
+    ctrl.control_counts[1] = 2;
+    ctrl.control_lead = 1;
     write("status_control.json",
           make_envelope("status", build_status_body(ctrl), "status000002", 1700000030000LL));
     std::printf("wrote goldens to %s\n", dir.c_str());
