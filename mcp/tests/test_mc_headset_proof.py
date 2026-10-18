@@ -8,7 +8,7 @@ the gun send `$DISCONNECT,*` and drop the same way. So a link that SURVIVES `HEA
 headset, and the board no longer has to wait for the config push to say so.
 """
 from brx_mcp.mc.fakes import demo_armory
-from brx_mcp.mc.state import GUN_DID_NOT_ANSWER, GUN_LINK_LOST
+from brx_mcp.mc.state import GUN_DID_NOT_ANSWER, GUN_DID_NOT_TAKE_CONFIG, GUN_LINK_LOST
 from brx_mcp.mc.types import HEADSET_LINK_PROOF_MS
 from _session import mk_session
 
@@ -116,6 +116,22 @@ def test_a_head_that_echoed_nothing_is_absent_and_red_unchanged():
     r = headset_row(s)
     assert r["headset"] == "absent" and r["headset_proof"] is None, "a silent head beats any link evidence"
     assert GUN_DID_NOT_ANSWER in r["blockers"]
+    assert r["status"] == "red"
+
+
+def test_a_gun_that_answered_with_no_config_blames_the_kit_not_the_headset():
+    """F549 (brx4, 0.4.x): the phone acks `ok:false, err:"no_config"` when the gun answered `$LCD,0,0,0,0,0,0` (no
+    config loaded, F548's unterminated SMG head). The gun DID answer, so the headset is fine and the kit is at fault:
+    its own blocker, and the headset keeps whatever the link proved."""
+    s, net, clock, ps = mk_session(1)
+    hello(net, clock, ps[0]); beat(net, clock, ps[0])
+    clock["t"] += HEADSET_LINK_PROOF_MS; beat(net, clock, ps[0])
+    s.push_config(force=True)
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": False,
+                                                      "err": "no_config"}, clock["t"])
+    r = headset_row(s)
+    assert GUN_DID_NOT_TAKE_CONFIG in r["blockers"] and GUN_DID_NOT_ANSWER not in r["blockers"], r["blockers"]
+    assert r["headset"] == "proven" and r["headset_proof"] == "link", r
     assert r["status"] == "red"
 
 

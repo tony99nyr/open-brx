@@ -1150,6 +1150,17 @@ def _load_weapons() -> list[dict]:
 # slower. 285 ms remains the only hardware-measured figure this constant has ever had.
 CHARGE_TAP_CADENCE_MS = 285
 
+# A single-shot weapon (`$WEAP` t20 = 7) fires on the first trigger press at or after t14: the gun swallows a press
+# inside t14 (field 2026-10-17: taps about 150 ms apart on the AMR, t14 400, landed about 600 ms apart). So its
+# sustained cycle is set by the player, not by t14 alone. The field's 126 press-to-press gaps under 1 s from four
+# players were lognormal: median 271 ms, mean 325 ms, log-sigma 0.56. SEMI_PULL_MS is the modelled mean (300 ms,
+# Tony 2026-10-17: the players' average, not one player's). The expected wait from a shot to the first press at or
+# after t14 is t14 plus the mean overshoot of the pull process, pull * exp(sigma^2) / 2 (about 205 ms at 300 ms),
+# which `mcp/tools/balance_sim.py`'s sampled pulls reproduce within 3% (exact for a long t14). None of this
+# reaches the gun.
+SEMI_PULL_MS = 300
+PULL_SIGMA = 0.56
+
 
 # Tails for SYNTHETIC catalogue rows that carry no `capture` block (tests only). Not a shipped weapon:
 # the 2026-08-23 scaffold rows, unverified, with an effectively infinite reserve. They used to live in
@@ -1189,7 +1200,9 @@ class WeaponCatalog:
                       # would disagree with the server's (2026-09-18: a Shotgun view derived htk 6
                       # from a t5-only dmg_hit of 20, against the server's own htk 3 off 40).
                       "dmg_hit": self.damage_per_pull(w["weapon_id"]),
-                      "cycle_ms": self.cycle_ms(w["weapon_id"]),
+                      # the PLAYER-paced cycle (`paced_cycle_ms`), so the views' ttk at a host pool agrees
+                      # with `time_to_kill()`; only the views read it, never the wire (field 2026-10-17)
+                      "cycle_ms": self.paced_cycle_ms(w["weapon_id"]),
                       "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES,
                       # 2026-09-17 (F225/F226/S43): a CELL weapon (rounds_per_charge > 1) with a tap
                       # magnitude counts trigger ACTIONS, not equal-sized hits -- `views.weapon_view()`
@@ -1710,6 +1723,7 @@ class WeaponCatalog:
     # Field 2026-08-30 found the AR shipping `rof: 53` against a derived 54 for exactly that reason.
     _BURST_MODE = 9                          # $WEAP t20 fireMode: 3-round burst (t23 = the gap after it)
     _CHARGE_MODES = frozenset({2, 3, 14})    # 2 auto-fires when charged, 3 must be held, 14 charge+heat
+    _SEMI_MODE = 7                           # single shot: one round a trigger press (`paced_cycle_ms`)
 
     def _frame_int(self, weapon_id: str, key: str, default: int = 0) -> int:
         """One named doc token of the shipped frame as an int (wire overrides already applied)."""
@@ -1734,6 +1748,17 @@ class WeaponCatalog:
             if gap:
                 return (2 * fire + gap) / 3
         return float(fire)
+
+    def paced_cycle_ms(self, weapon_id: str, pull_ms: float = SEMI_PULL_MS) -> float:
+        """Mean ms between rounds a PLAYER sustains: `cycle_ms()`, except on a single-shot weapon, where the
+        next round waits for the first trigger press at or after t14 (see `SEMI_PULL_MS`). `pull_ms` 0 gives
+        `cycle_ms()`. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
+        that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
+        `cycle_ms()`, the fastest interval the gun allows."""
+        if pull_ms > 0 and self._frame_int(weapon_id, "mode") == self._SEMI_MODE:
+            # max(): the renewal limit runs short for a t14 well under the pull; at t14 0 the cycle is one pull (brx3)
+            return max(pull_ms, self.fire_ms(weapon_id) + pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2)
+        return self.cycle_ms(weapon_id)
 
     def rate_of_fire(self, weapon_id: str) -> int:
         """weapons.json `stats.rof` — the 0-100 UI bar, `round(7500 / t14)` (weapons.json `_note`).
@@ -1772,7 +1797,7 @@ class WeaponCatalog:
             return rpc + taps
         return self.hits_to_kill(weapon_id, pool)
 
-    def time_to_kill(self, weapon_id: str, pool: int) -> int:
+    def time_to_kill(self, weapon_id: str, pool: int, pull_ms: float = SEMI_PULL_MS) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
         one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
         on an fn 36/37 weapon lands sooner than this.
@@ -1784,7 +1809,10 @@ class WeaponCatalog:
 
         A CELL weapon with a tap (the Charge Rifle) is neither: it is RELEASE-to-kill, not
         charge-to-kill (see `CHARGE_TAP_CADENCE_MS`) -- the pre-built charge lands at zero delay and
-        only the taps that follow cost time."""
+        only the taps that follow cost time.
+
+        A single-shot weapon's cycle is player-paced (`paced_cycle_ms`, field 2026-10-17); `pull_ms` 0 gives
+        the old gun-limited number, a press every t14."""
         htk = self.hits_to_kill(weapon_id, pool)
         if not htk:
             return 0
@@ -1793,7 +1821,7 @@ class WeaponCatalog:
             taps = htk - 1
             return taps * self.CHARGE_TAP_CADENCE_MS
         charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
-        return int(round(self.cycle_ms(weapon_id) * (htk if charged else htk - 1)))
+        return int(round(self.paced_cycle_ms(weapon_id, pull_ms) * (htk if charged else htk - 1)))
 
     def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
         """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""

@@ -2174,6 +2174,8 @@ def test_every_hill_pair_is_real():
 KNOWN_UNMIRRORED = {
     # F570: holds a write's echo windows while the link sends it; the stage's writes land at once, so nothing is ever held
     "am.holdEchoes",
+    # AMMO pickup (2026-10-18): brx5 builds the stage twin after MC ships the `ammo` preset (it needs the station kind first)
+    "pu._ammoShort", "pu.grantAmmo", "pu._inRangeOf",
     # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
     "headsetOk",
     # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)

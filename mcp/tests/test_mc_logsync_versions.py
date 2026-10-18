@@ -492,6 +492,26 @@ def test_platform_and_app_ver_reach_nodes_and_stations():
     assert st["app_ver"] == f"{APP_MAJOR}.{APP_MINOR}.3" and st["platform"] == "android"
 
 
+def test_the_device_model_reaches_the_node_and_is_never_blanked():
+    """F564 (field 2026-10-17): status carried only `platform` and `app_ver`, so "this Pixel 4 drains fast" could not be
+    tied to a node. The phone names its model in the hello and every heartbeat; MC keeps the last one it heard."""
+    s, net, clock, ps = mk_session(1)
+    online(s, net, clock, ps[0], 0)
+    assert "device" not in s.nodes["node0"] or s.nodes["node0"]["device"] is None
+    net.simulate_status("node0", {"arm_state": "kitted", "synced": True, "device": "Google Pixel 4"}, clock["t"])
+    assert s.nodes["node0"]["device"] == "Google Pixel 4"
+    net.simulate_status("node0", {"arm_state": "kitted", "synced": True}, clock["t"])
+    assert s.nodes["node0"]["device"] == "Google Pixel 4", "a beat without the field is not a change"
+    net.simulate_status("node0", {"arm_state": "kitted", "synced": True, "device": "x" * 300}, clock["t"])
+    assert len(s.nodes["node0"]["device"]) == 64, "a long model string is capped"
+    net.simulate_status("node0", {"arm_state": "kitted", "synced": True, "device": 7}, clock["t"])
+    assert s.nodes["node0"]["device"] == "x" * 64, "a non-string is ignored"
+    # the hello path (`_hydrate`) carries it too
+    tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_hello("node0", f"GUN-A-{tail}", device="Samsung SM-G991B")
+    assert s.nodes["node0"]["device"] == "Samsung SM-G991B"
+
+
 # ---------------------------------------------------------------- A27: the guarded CONTINUE
 
 def test_set_phase_refuses_kit_to_lobby_until_ready():

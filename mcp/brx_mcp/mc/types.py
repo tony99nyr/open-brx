@@ -246,6 +246,9 @@ STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
 ECHO_FAULT = "GUN ECHO ≠ CONFIG"
 POOL_FAULT = "GUN POOL ≠ CONFIG"
 GUN_CONFIG_FAULT = "GUN CONFIG ≠ PUSHED HEAD"
+# F549 (brx4): the phone acked `err: "no_config"`: the gun answered a zeroed `$LCD`, so it loaded nothing (F548's broken
+# SMG head). The gun answered, so the headset is fine and the kit is the fault. A push cures it once the kit is fixed.
+GUN_DID_NOT_TAKE_CONFIG = "GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH"
 # Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
 GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON"
 GUN_LINK_LOST = "GUN LINK LOST: CHECK THE GUN IS ON AND RECONNECT IT"
@@ -1240,6 +1243,7 @@ class NodeView(TypedDict):
     claims_dropped: NotRequired[int]
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
+    device: NotRequired[str | None]   # F564: the phone's make and model (`Device.getInfo()`), e.g. "Google Pixel 4"
     log: NotRequired[LogView | None]
     # F309: the phone's own last `status.transport` claim; absent = never reported (older app).
     transport: NotRequired[Literal["wifi", "cellular", "none", "unknown"]]
@@ -1584,6 +1588,7 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
+    game: NotRequired[int]       # F555: the game byte the hill counts under (absent from an older station)
 
 
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).
@@ -1846,6 +1851,10 @@ class PossessionView(TypedDict):
     reports: int
     observed_s: float
     of_s: int | None
+    # F555: present once a control station reported its own tally. `by_team` then scores those sites on the station's
+    # reading (utility.md §5d.6); `phones_by_team` is the phones' own merge, the cross-check.
+    station_sites: NotRequired[int]
+    phones_by_team: NotRequired[dict[str, float]]
 
 
 class AfterEndPlayer(TypedDict):
