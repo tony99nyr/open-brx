@@ -5389,7 +5389,9 @@ class GunStage:
         prev = seen
         # F209 (ammo.js `onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
         if prev is not None and mag < prev and self.spawned and slot in (0, 1):
-            self._last_shot_life = self._life_queued   # ammo.js `lastShot.life`: a round is a pull too (a lost `$BUT`)
+            # ammo.js `lastShot.life`: a round is a pull too (a lost `$BUT`). `spawned` is the phone's `phase === 'live'`; the
+            # phone also counts a held pickup's slot, which the stage never has (`pu.*` is KNOWN_UNMIRRORED).
+            self._last_shot_life = self._life_queued
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
             self._arm_life("first shot")   # 2026-09-19: a profile life never ends on a shot
         # F123 (ammo.js `onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
@@ -5481,7 +5483,8 @@ class GunStage:
                 self._reload_pulled()
             elif bid == 0:
                 # engine.js `_onButton` (F542 review): a pull while this life's burst is still queued is before its `$SPAWN`,
-                # so the gun still wants a pull after it (F436): it does not arm ALT for the life.
+                # so the gun still wants a pull after it (F436): it does not arm ALT for the life. The engine asks the narrower
+                # `_lifeBurst.life === _lifeSeq` here; the stage's record is always this life's, so the answers agree.
                 if not self._life_burst_queued():
                     self._pulled_life = self._life_queued
                 self._await_shot()                 # F208 (engine.js `_onButton`)

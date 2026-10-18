@@ -415,3 +415,48 @@ def test_an_old_slot_round_soon_after_alt_proves_nothing():
         await _tick(st, clock, st._switch_window_s())
         assert st.active_slot == 1, "the swap is assumed as before"
     asyncio.run(go())
+
+
+def test_a_pull_or_a_round_from_the_last_life_does_not_arm_alt_in_the_next():
+    """Opus review: the gate is per life, not a flag."""
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st)
+        st._on_rx("$ALCD,31,100,0,182,0,*"); st._on_rx("$ALCD,30,100,0,182,0,*")
+        life = st._life_queued
+        await st.spawn(); await settle(st)
+        for _ in range(3):
+            clock.t += 0.5; st.mgr.pump(); st.poll(); await settle(st)
+        assert st._life_queued == life + 1, "setup: a new life"
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "a pull or a round from the last life armed ALT"
+    asyncio.run(go())
+
+
+def test_a_pull_before_the_burst_reaches_the_gun_still_leaves_alt_unarmed():
+    """engine.js `_onButton`: the pull is before the life's `$SPAWN`, so the gun still waits for one after it."""
+    async def go():
+        st, _gun, clock = await _live()
+        task = asyncio.ensure_future(st.spawn())
+        await asyncio.sleep(0)                      # the spawn has queued its burst and waits on the write
+        assert st._life_burst_queued(), "setup: the burst is in flight"
+        _pull(st)
+        await task; await settle(st)
+        assert not st._life_burst_queued()
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "the pull before the burst armed ALT"
+        _pull(st)
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is not None, "CONTROL: a pull after it does"
+    asyncio.run(go())
+
+
+def test_an_old_slot_round_at_exactly_250_ms_closes_the_swap():
+    async def go():
+        st, _gun, clock = await _live()
+        st._on_rx("$ALCD,31,100,0,182,0,*")
+        _alt(st)
+        clock.t += 0.25
+        st._on_rx("$ALCD,30,100,0,182,0,*")
+        assert st.switching is None
+    asyncio.run(go())
