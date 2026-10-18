@@ -990,6 +990,8 @@ class GunStage:
         self._operator_resync_pending: dict | None = None   # F287: `$LIFE` sent; burst waits for its `$HP`
         self._life = 0                             # the LIVE life: set by `_after_spawn`, read by the once-per-life cure bound
         self._life_queued = 0                      # engine.js `_lifeSeq`: bumped when a spawn/revive burst is QUEUED (`_life` follows once it is out)
+        self._pulled_life: int | None = None       # engine.js `_pulledLife`: the life of the last trigger pull (F445: ALT needs one)
+        self._last_shot_life: int | None = None    # ammo.js `lastShot.life`: the life of the last round from slot 0 or 1
         self._burst_reached: dict | None = None    # engine.js `_burstReached`: {life, at} when this life's burst reached the gun
         self._cure: dict | None = None
         self._cure_life: int | None = None
@@ -5386,6 +5388,8 @@ class GunStage:
             return
         prev = seen
         # F209 (ammo.js `onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
+        if prev is not None and mag < prev and self.spawned and slot in (0, 1):
+            self._last_shot_life = self._life_queued   # ammo.js `lastShot.life`: a round is a pull too (a lost `$BUT`)
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
             self._arm_life("first shot")   # 2026-09-19: a profile life never ends on a shot
         # F123 (ammo.js `onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
@@ -5439,6 +5443,15 @@ class GunStage:
             self._alt_ptr = slot; self._alt_evidence_pending = None   # F379: the confirmed swap puts the gun's ALT pointer here
             self._recoil_arm("swap (confirmed)")   # S42: the new slot's weapon gets its own profile, at its crisp value
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
+        elif (moves and self.switching and slot == self.switching["from"] and prev is not None and mag < prev
+              and self.now() - self.switching["at"] >= self.ALT_LATE_ROUND_S):
+            # ammo.js `onAmmo` (field 2026-10-17, F542 cause 2): a round from the OLD slot this long after ALT proves the gun
+            # did not take the press. Close the swap with none, or `_switch_tick` assumes it over the proof. Sooner, the
+            # round can be in flight from before the press (F379). (The GUN WAS ON card is HUD only: `am.gunWasOn`.)
+            self._log(f"ALT not taken by the gun: a round left slot {slot} inside the swap", "info")
+            self.switching = None
+            if slot < 2:
+                self._alt_ptr = slot; self._alt_evidence_pending = None
         self._prev_ammo[slot] = mag
         if moves and slot < 2 and slot != self.active_slot and self.active_slot < 2 and not self.switching and self._alt_evidence_pending is None:
             self._alt_ptr = slot   # ALT r4 (ammo.js `onAmmo`): a swap the node missed; the pointer follows the gun
@@ -5467,6 +5480,10 @@ class GunStage:
             elif bid == 2:
                 self._reload_pulled()
             elif bid == 0:
+                # engine.js `_onButton` (F542 review): a pull while this life's burst is still queued is before its `$SPAWN`,
+                # so the gun still wants a pull after it (F436): it does not arm ALT for the life.
+                if not self._life_burst_queued():
+                    self._pulled_life = self._life_queued
                 self._await_shot()                 # F208 (engine.js `_onButton`)
             return
         if state != 0:
@@ -5525,6 +5542,11 @@ class GunStage:
         r = self.reloading
         if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
+            return
+        # ammo.js `altPressed` (F445, bench 2026-10-03): after `$SPAWN` the gun ignores a slot change until the first trigger
+        # pull of the life; a round this life counts as a pull (a lost `$BUT`).
+        if self._pulled_life != self._life_queued and self._last_shot_life != self._life_queued:
+            self._log("ALT ignored by the gun: no trigger pull since the spawn", "info")
             return
         if r:
             self._end_reload("swapped")
@@ -6308,6 +6330,7 @@ class GunStage:
     # F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs ~1.22-1.29x the catalog reload_ms (AR 1701 vs
     # 1400, burst 2160 vs 1700, charge 3220 vs 2500), so the ceiling is flat-OR-proportional, whichever is larger.
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
+    ALT_LATE_ROUND_S = 0.25  # ammo.js ALT_LATE_ROUND_MS (F542 cause 2): an old-slot round this long after ALT was not in flight
     RELOAD_GRACE_S = 0.6
     RELOAD_OVERRUN = 0.5
     ENERGY_REFILL_MAX_S = 3.9   # engine.js ENERGY_REFILL_MAX_MS (pl4: a held recharge landed 3.5-3.9 s after the pull)

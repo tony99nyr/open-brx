@@ -1575,6 +1575,7 @@ def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st._alt_ptr = 1
         st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
+        st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
         st._on_rx("$BUT,1,1,*")
         assert st.switching["from"] == 1 and st.switching["to"] == 0
         st._prev_ammo[1] = 10
@@ -1631,6 +1632,7 @@ def test_bug3a_the_spawn_rows_echo_leaves_the_trigger_and_the_alt_pointer_on_slo
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         await flush_fake_ammo(st, mgr)
         assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
         st._on_rx("$BUT,1,1,*")
         assert st.switching and st.switching["to"] == 1, st.switching
     asyncio.run(go())
