@@ -1314,10 +1314,26 @@ def test_f559_a_bad_hill_pick_is_refused_400_and_a_non_koth_pick_never_writes_on
     r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:tdm"}})
     assert r.json()["ok"]
     assert s.config.get("hill") == {"net_cap": 2}, s.config.get("hill")
-    # ...naming one on a TDM pick is accepted as a pick value, but compose never writes it...
+    # ...and the pick holds exactly what the config holds...
+    assert s.game_pick["match"].get("hill") == {"net_cap": 2}, s.game_pick["match"]
+    # ...naming one on a TDM pick is dropped silently (no warning): the pick still equals the config's.
     r = c.post("/api/play/pick", json={"match": {"hill": {"capture_s": 30}}})
     assert r.json()["ok"], r.json()
     assert s.config.get("hill") == {"net_cap": 2}, s.config.get("hill")
-    # ...and back on KOTH the pick's own hill goes on top of the kept one (the strip is the operator's)
+    assert s.game_pick["match"].get("hill") == {"net_cap": 2}, s.game_pick["match"]
+    # ...and back on KOTH the kept hill is still there
     r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}})
-    assert r.json()["ok"] and s.config.get("hill") == {"capture_s": 30, "net_cap": 2}, s.config.get("hill")
+    assert r.json()["ok"] and s.config.get("hill") == {"net_cap": 2}, s.config.get("hill")
+
+
+def test_f559_other_pick_edits_leave_the_hill_alone():
+    needs(HAVE, "starlette + httpx")
+    c, s, net, clock, ps = _pclient()
+    r = c.post("/api/play/pick", json={"pieces": {"mode": "builtin:mode:koth"}, "match": {"hill": {"capture_s": 15, "net_cap": 4}}})
+    assert r.json()["ok"], r.json()
+    want = {"capture_s": 15, "net_cap": 4}
+    for patch in ({"frag_limit": 10}, {"teams": ["red", "purple"]}, {"time_limit_s": 900}):
+        r = c.post("/api/play/pick", json={"match": patch})
+        assert r.json()["ok"], (patch, r.json())
+        assert s.config.get("hill") == want, (patch, s.config.get("hill"))
+        assert s.game_pick["match"].get("hill") == want, (patch, s.game_pick["match"])

@@ -7,7 +7,7 @@ argument from the caller (`routes/config_game.py`'s `/api/play/pick` route), whi
 """
 from __future__ import annotations
 
-from typing import Any, Container, Mapping, cast
+from typing import Any, Container, Mapping, TypeGuard, cast
 
 from ..modes.registry import default_params as _default_params
 from . import presentation as _pres
@@ -78,8 +78,7 @@ def match_from_config(config: Mapping[str, Any]) -> MatchSettings:
     hold = (config.get("scoring") or {}).get("hold_target_s")
     if hold is not None:
         out["hold_target_s"] = hold
-    hill = _hill_clean(config.get("hill"))
-    if hill:
+    if hill := hill_from(config.get("hill")):
         out["hill"] = hill
     return out
 
@@ -87,16 +86,25 @@ def match_from_config(config: Mapping[str, Any]) -> MatchSettings:
 _HILL_BOUNDS = {"capture_s": (HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), "net_cap": (HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)}
 
 
-def hill_valid(v: object) -> bool:
-    """F559: `{capture_s?, net_cap?}`, only those keys, each a whole number (never a bool) in its bound."""
-    return (isinstance(v, dict) and all(
-        k in _HILL_BOUNDS and isinstance(x, int) and not isinstance(x, bool) and _HILL_BOUNDS[k][0] <= x <= _HILL_BOUNDS[k][1]
-        for k, x in v.items()))
+def _whole(x: object, lo: int, hi: int) -> TypeGuard[int]:
+    return isinstance(x, int) and not isinstance(x, bool) and lo <= x <= hi
 
 
-def _hill_clean(v: object) -> HillSettings:
-    """The set keys of a stored hill, or {} for nothing usable."""
-    return cast(HillSettings, dict(v)) if hill_valid(v) else {}
+def hill_from(v: object) -> HillSettings | None:
+    """F559: a stored `{capture_s?, net_cap?}` as a typed dict, or None when it is not one: only those keys, each a whole
+    number (never a bool) in its bound."""
+    if not isinstance(v, dict) or not v.keys() <= _HILL_BOUNDS.keys():
+        return None
+    out: HillSettings = {}
+    if "capture_s" in v:
+        if not _whole(cs := v["capture_s"], *_HILL_BOUNDS["capture_s"]):
+            return None
+        out["capture_s"] = cs
+    if "net_cap" in v:
+        if not _whole(nc := v["net_cap"], *_HILL_BOUNDS["net_cap"]):
+            return None
+        out["net_cap"] = nc
+    return out
 
 
 def looks_like_pick(gp: object) -> bool:
@@ -119,7 +127,7 @@ def looks_like_pick(gp: object) -> bool:
     if "teams" in match and not _valid_teams_list(match["teams"]):
         return False
     # F559: absent is fine, present must be a valid hill.
-    if "hill" in match and not hill_valid(match["hill"]):
+    if "hill" in match and hill_from(match["hill"]) is None:
         return False
     return True
 
@@ -301,18 +309,25 @@ def merge_match(prev: MatchSettings, patch: Mapping[str, Any]) -> MatchSettings:
         else:
             if not isinstance(v, Mapping):
                 raise PieceError(400, "HILL SETTINGS MUST BE AN OBJECT OR EMPTY: CHECK THE REQUEST")
-            hill = dict(out.get("hill") or {})
+            hill: HillSettings = hill_from(out.get("hill")) or {}
             for k, x in v.items():
-                if k not in _HILL_BOUNDS:
+                if k == "capture_s":
+                    if x is None:
+                        hill.pop("capture_s", None)
+                    elif _whole(x, *_HILL_BOUNDS["capture_s"]):
+                        hill["capture_s"] = x
+                    else:
+                        raise PieceError(400, "CAPTURE TIME MUST BE A WHOLE NUMBER "
+                                              f"{HILL_CAPTURE_S_MIN}-{HILL_CAPTURE_S_MAX}: CHECK THE VALUE")
+                elif k == "net_cap":
+                    if x is None:
+                        hill.pop("net_cap", None)
+                    elif _whole(x, *_HILL_BOUNDS["net_cap"]):
+                        hill["net_cap"] = x
+                    else:
+                        raise PieceError(400, f"NET CAP MUST BE A WHOLE NUMBER {HILL_NET_CAP_MIN}-{HILL_NET_CAP_MAX}: CHECK THE VALUE")
+                else:
                     raise PieceError(400, f"{str(k).upper()} IS NOT A HILL SETTING: USE CAPTURE_S OR NET_CAP")
-                if x is None:
-                    hill.pop(k, None)
-                    continue
-                lo, hi = _HILL_BOUNDS[k]
-                if isinstance(x, bool) or not isinstance(x, int) or not lo <= x <= hi:
-                    label = "CAPTURE TIME" if k == "capture_s" else "NET CAP"
-                    raise PieceError(400, f"{label} MUST BE A WHOLE NUMBER {lo}-{hi}: CHECK THE VALUE")
-                hill[k] = x
             if hill:
                 out["hill"] = hill
             else:

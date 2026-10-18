@@ -230,7 +230,7 @@ kill-scored mode.
 - `match.hold_target_s` (KOTH only): `null` = no target. Otherwise the first team whose possession reaches
   it wins at once. If no team reaches it, the team with the most possession at the clock wins, as before.
 - Compose writes it to `config.scoring.hold_target_s`. MC's scorer enforces it, as it does the frag limit.
-- `match.hill` (KOTH only, F559): `{capture_s?: 3..60, net_cap?: 1..6}`, `null` = every hill phone keeps its own value (STATION DEFAULT). Compose writes it to `config.hill`, which every control station's `station_config` carries. A favourite stores it.
+- `match.hill` (KOTH only, F559): `{capture_s?: 3..60, net_cap?: 1..6}`, `null` = every hill phone keeps its own value (STATION DEFAULT). Compose writes it to `config.hill`, which every control station's `station_config` carries. A favourite stores it. A mode change keeps it; a pick naming it for a mode without the item has it dropped.
 - The phone shows it through the existing `game_brief()` text (for example `FIRST TO HOLD 5:00 WINS`), with
   no app change.
 - The console item offers NO TARGET and 3, 5 and 10 MIN as quick-picks, plus steppers in 1-minute steps.

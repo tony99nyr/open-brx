@@ -1917,6 +1917,11 @@ export class MockBackend implements Api {
       const hill = this.mergeHillPatch(match.hill, pm.hill);
       if (hill) match.hill = hill; else delete match.hill;
     }
+    // picks.py: a mode without the hill item drops a hill the pick names, and the pick then holds what the config holds.
+    if (!modeInfo.match_items?.includes('hill')) {
+      delete match.hill;
+      if (this.config.hill && Object.keys(this.config.hill).length) match.hill = { ...this.config.hill };
+    }
 
     const partial = this.composePartial(resolvedIds, match, modeChanged || 'mode' in (p.pieces ?? {}) || 'gameplay' in (p.pieces ?? {}));
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
@@ -1956,6 +1961,13 @@ export class MockBackend implements Api {
       throw new Error(`countdown_s must be an integer ${RUNWAY_MIN_S}..${RUNWAY_MAX_S}`);
     }
     const pick = p.pick ?? this.gamePick;   // default: the current pick (games-presets.md §6)
+    if (pick?.match && 'hill' in pick.match) {   // favourites._check_match
+      const h = pick.match.hill as unknown;
+      const okHill = typeof h === 'object' && h !== null && !Array.isArray(h) && Object.entries(h).every(([k, v]) =>
+        (k === 'capture_s' && Number.isInteger(v) && (v as number) >= HILL_CAPTURE_S_MIN && (v as number) <= HILL_CAPTURE_S_MAX)
+        || (k === 'net_cap' && Number.isInteger(v) && (v as number) >= HILL_NET_CAP_MIN && (v as number) <= HILL_NET_CAP_MAX));
+      if (!okHill) throw Object.assign(new Error(`HILL SETTINGS MUST BE CAPTURE_S ${HILL_CAPTURE_S_MIN}-${HILL_CAPTURE_S_MAX} AND/OR NET_CAP ${HILL_NET_CAP_MIN}-${HILL_NET_CAP_MAX}, WHOLE NUMBERS: CHECK THE VALUES`), { status: 400 });
+    }
     if (!pick?.pieces || PICKER_KINDS.some(k => typeof pick.pieces[k] !== 'string' || !pick.pieces[k])) {
       throw new Error(`pick.pieces must carry a piece id for every kind (${PICKER_KINDS.join(', ')})`);
     }

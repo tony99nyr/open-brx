@@ -114,6 +114,14 @@ class GamePick:
                 match["teams"] = (_gamepick.carry_teams(prev_teams, new_teams, mode)
                                   if "teams" in (row.get("match_items") or []) else new_teams)
         match = _gamepick.merge_match(match, match_patch or {})
+        # F559: a mode without the "hill" item (house rule: auto-fix, no warning) drops a hill the pick names; the pick then
+        # holds what the config holds (compose writes no hill for it, so the config keeps its carried value) and never a value
+        # the config lacks.
+        if "hill" not in (self._mode_row(mode).get("match_items") or []):
+            match.pop("hill", None)
+            carried = _gamepick.match_from_config(s.config).get("hill")
+            if carried:
+                match["hill"] = carried
         # From `resolved`, not the raw merged `ids` (M1, polish round 1): a kind that fell back to its
         # builtin must PERSIST that builtin's id, or the stale one just resolved past would sit right
         # back in `game_pick` for the next request to trip over again.

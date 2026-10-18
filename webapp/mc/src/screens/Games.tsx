@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
-import type { Favourite, GamePick, GamePiece, MatchSettings, PieceKind, TeamColour } from '../api/types';
+import type { Favourite, GamePick, GamePiece, HillSettings, MatchSettings, PieceKind, TeamColour } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
@@ -462,7 +462,11 @@ pickTeams={pickTeams} />
                     const kothLegal = cfg.mode !== 'koth' || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
                     if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
                     if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
-                    if (lm.hill && (!items || items.includes('hill'))) patch.hill = lm.hill;   // F559
+                    // F559: a mode that offers the hill item gets the last match's hill EXPLICITLY, so a last match played at STATION
+                    // DEFAULT clears the hill now in force (a null key clears that key; null clears both).
+                    if (items?.includes('hill')) {
+                      patch.hill = (lm.hill ? { capture_s: lm.hill.capture_s ?? null, net_cap: lm.hill.net_cap ?? null } : null) as unknown as HillSettings;
+                    }
                     const r = await run(() => api.pick({ match: patch }));
                     if (r?.ok) { setRunway(lm.countdown_s); setFallbackNote(pickFallback(r.fallbacks)); }
                     else if (r) setNotice(r.errors.join(' · '), true);

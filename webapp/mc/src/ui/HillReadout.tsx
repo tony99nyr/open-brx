@@ -8,6 +8,7 @@ export function hillReadoutText(config: Pick<ConfigView, 'mode' | 'hill'> | unde
   if (config?.mode !== 'koth') return null;
   const capture = config.hill?.capture_s;
   const net = config.hill?.net_cap;
+  if (capture == null && net == null) return 'HILL: STATION DEFAULT';
   return `HILL: CAPTURE ${capture == null ? 'STATION DEFAULT' : `${capture} S`} · NET CAP ${net == null ? 'STATION DEFAULT' : net}`;
 }
 

@@ -838,6 +838,30 @@ step('real-hill', async ({ browser }) => {
     await until(async () => (await state()).config.hill?.net_cap === 5, 6000, 'net_cap 5 on the real server');
     ok(`HILL: two net cap taps read 5 and the real config.hill.net_cap is 5   ${await shot(pg, 'real-hill-values')}`);
 
+    // Another strip control must leave the hill alone: a time limit tap re-sends the whole pick.
+    const timeBefore = (await state()).config.time_limit_s;
+    await pg.getByRole('button', { name: 'time limit plus' }).click();
+    await until(async () => (await state()).config.time_limit_s !== timeBefore, 6000, 'the time limit to change on the real server');
+    expect((await capV.innerText()) === '11 S' && (await netV.innerText()) === '5', `a time limit tap leaves the hill on screen at 11 S / 5 (saw ${JSON.stringify(await capV.innerText())} / ${JSON.stringify(await netV.innerText())})`);
+    const afterTime = (await state()).config.hill;
+    expect(afterTime?.capture_s === 11 && afterTime?.net_cap === 5, `and on the server (saw ${JSON.stringify(afterTime)})`);
+    ok('HILL: a time limit tap leaves capture 11 S and net cap 5 as they were');
+
+    // 768 px: the HILL rows must not be cut off (CLEAR, the steppers).
+    await pg.setViewportSize({ width: 768, height: 900 });
+    await pg.waitForTimeout(300);   // the layout settles after the resize
+    const narrow = await pg.evaluate(() => {
+      const item = document.querySelector('[data-testid="match-hill-item"]');
+      const clears = [...document.querySelectorAll('[data-testid^="match-hill-"][data-testid$="-clear"]')];
+      const r = item?.getBoundingClientRect();
+      return { itemRight: r ? r.right : null, clearsRight: clears.map(c => c.getBoundingClientRect().right), width: window.innerWidth, scroll: document.documentElement.scrollWidth };
+    });
+    expect(narrow.clearsRight.length === 2 && narrow.clearsRight.every(x => x <= narrow.width), `768 px: both CLEAR buttons sit inside the viewport (saw ${JSON.stringify(narrow)})`);
+    expect(narrow.scroll <= narrow.width, `768 px: the page does not scroll sideways (scrollWidth ${narrow.scroll})`);
+    ok(`HILL: at 768 px the hill rows fit   ${await shot(pg, 'real-hill-768')}`);
+    await pg.setViewportSize({ width: 1280, height: 900 });
+    await pg.waitForTimeout(300);
+
     await pg.evaluate(() => { location.hash = '#lobby'; });
     const readout = pg.getByTestId('hill-readout');
     await until(() => readout.count().then(n => n > 0), 8000, 'the LOBBY hill readout');
@@ -889,14 +913,15 @@ step('real-hill', async ({ browser }) => {
     await old.goto(`${vite.base}/#build`, { waitUntil: 'domcontentloaded' });
     await until(() => old.locator('text=PICK GAME').count().then(n => n > 0), 15000, 'PLAY on the stale server');
     await until(() => old.getByRole('button', { name: 'KING OF THE HILL' }).getAttribute('aria-pressed').then(v => v === 'true'), 8000, 'KOTH shown picked');
-    await old.waitForTimeout(300);
+    await until(() => old.getByTestId('match-time-value').count().then(n => n > 0), 8000, 'the TIME item (the strip has rendered)');
     expect(await old.getByTestId('match-hill-item').count() === 0, 'PLAY renders with no HILL item against a server whose koth lacks it');
     await old.evaluate(() => { location.hash = '#lobby'; });
     const oldLine = old.getByTestId('hill-readout');
     await until(() => oldLine.count().then(n => n > 0), 8000, 'the LOBBY readout on the stale server');
     const stale = await oldLine.innerText();
-    expect(stale === 'HILL: CAPTURE STATION DEFAULT · NET CAP STATION DEFAULT', `LOBBY reads STATION DEFAULT twice (saw ${JSON.stringify(stale)})`);
-    ok('HILL: a stale server renders PLAY without the item and LOBBY with STATION DEFAULT twice');
+    expect(stale === 'HILL: STATION DEFAULT', `LOBBY reads one STATION DEFAULT (saw ${JSON.stringify(stale)})`);
+    ok('HILL: a stale server renders PLAY without the item and LOBBY with one STATION DEFAULT');
+    await old.unrouteAll({ behavior: 'ignoreErrors' });   // a route.fetch still in flight must not outlive the context
     await ctx.close();
   } finally { await vite.stop(); await mc.stop(); }
 });

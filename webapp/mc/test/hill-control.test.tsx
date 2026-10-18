@@ -7,6 +7,7 @@ import { MockBackend } from '../src/mock/backend';
 import { clearNotice, useNotice } from '../src/notice';
 import { resetBaseline } from '../src/playBaseline';
 import { Games } from '../src/screens/Games';
+import { hillReadoutText } from '../src/ui/HillReadout';
 import { HillControl } from '../src/screens/games/controls';
 import { Items } from '../src/screens/Items';
 import { Lobby } from '../src/screens/Lobby';
@@ -145,10 +146,10 @@ describe('LOBBY and ITEMS — the hill values in force', () => {
     m.unmount();
   });
 
-  it('LOBBY renders against an older server with no config.hill, and shows nothing outside KOTH', async () => {
+  it('LOBBY reads one HILL: STATION DEFAULT with no config.hill (an older server), and shows nothing outside KOTH', async () => {
     const { state } = await kothState();
     const m = await mountScreen(<Lobby />, { state, view: 'lobby' });
-    expect(txt(m, 'hill-readout')).toBe('HILL: CAPTURE STATION DEFAULT · NET CAP STATION DEFAULT');
+    expect(txt(m, 'hill-readout')).toBe('HILL: STATION DEFAULT');
     m.unmount();
     const t = await kothState(undefined, 'tdm');
     const m2 = await mountScreen(<Lobby />, { state: t.state, view: 'lobby' });
@@ -166,5 +167,69 @@ describe('LOBBY and ITEMS — the hill values in force', () => {
     expect(m2.find('[data-testid="items-panel"]').length, 'the panel itself renders').toBe(1);
     expect(m2.find('[data-testid="hill-readout"]').length).toBe(0);
     m2.unmount();
+  });
+});
+
+describe('F559 review fixes', () => {
+  it('LAST MATCH recorded at STATION DEFAULT clears the hill now in force', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();                                          // the last match ran with no hill
+    await api.pick({ match: { hill: { capture_s: 30, net_cap: 5 } } });
+    expect((await api.getState()).config.hill).toEqual({ capture_s: 30, net_cap: 5 });
+    const m = await renderPlay(api);
+    await m.click('LAST MATCH');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.hill, 'the default hill replaced the 30 / 5').toBeUndefined();
+    m.unmount();
+  });
+
+  it('LAST MATCH with one key set clears the other key', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hill: { capture_s: 20 } } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    await api.pick({ match: { hill: { capture_s: 30, net_cap: 5 } } });
+    const m = await renderPlay(api);
+    await m.click('LAST MATCH');
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect((await api.getState()).config.hill).toEqual({ capture_s: 20 });
+    m.unmount();
+  });
+
+  it('a pick naming hill on a mode without the item drops it, so the pick never holds what the config lacks', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });
+    await api.pick({ match: { hill: { capture_s: 30 } } });
+    let s = await api.getState();
+    expect(s.game_pick?.match.hill).toBeUndefined();
+    expect(s.config.hill).toBeUndefined();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' }, match: { hill: { capture_s: 12 } } });
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });
+    s = await api.getState();
+    expect(s.config.hill, 'a mode change keeps the config hill').toEqual({ capture_s: 12 });
+    expect(s.game_pick?.match.hill, 'and the pick holds exactly that').toEqual({ capture_s: 12 });
+  });
+
+  it('the mock refuses a favourite with a bad hill in the server words', async () => {
+    const api = new MockBackend();
+    const pick = (await api.getState()).game_pick!;
+    await expect(api.createFavourite({ name: 'Bad', countdown_s: 30, pick: { ...pick, match: { ...pick.match, hill: { capture_s: 99 } } } }))
+      .rejects.toThrow(/HILL SETTINGS MUST BE CAPTURE_S 3-60/);
+    await api.createFavourite({ name: 'Good', countdown_s: 30, pick: { ...pick, match: { ...pick.match, hill: { capture_s: 20 } } } });
+  });
+
+  it('the readout reads one STATION DEFAULT when neither key is set, the long form when one is', () => {
+    expect(hillReadoutText({ mode: 'koth' })).toBe('HILL: STATION DEFAULT');
+    expect(hillReadoutText({ mode: 'koth', hill: {} })).toBe('HILL: STATION DEFAULT');
+    expect(hillReadoutText({ mode: 'koth', hill: { net_cap: 4 } })).toBe('HILL: CAPTURE STATION DEFAULT · NET CAP 4');
+    expect(hillReadoutText({ mode: 'tdm', hill: { net_cap: 4 } })).toBeNull();
   });
 });
