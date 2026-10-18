@@ -295,7 +295,8 @@ const BODY_CUES = ['hurt', 'pain_short', 'pain_long', 'pain_melee', 'shield_up',
 // way ends the chain: the heartbeat behind it would then play. As a row sound it is waited out and the chain goes on.
 const KILL_CARD_MS = 1800;      // hud/lanes.js kill card hold: MC's kill card owns the announcer slot at least this long
 const LANE_FEED_MAX = 6;           // docs/announcer.md "The three lanes": the FEED rows kept (the HUD draws the newest three)
-const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
+const ECHO_WINDOW_MS = 1500;
+const RELOAD_FAILED_SHOW_MS = 3000;   // F277: how long the ammo block says RELOAD DID NOT TAKE     // how long after the last head frame is written the node waits for the gun's echo
 /** C.4b: how long after a spawn or revive write its own `$LCD` echo is read as that spawn's (a burst can wait ~1 s behind the scream). */
 const SPAWN_ECHO_MS = 4000;
 /** F532 HIGH: how long after a heal's head is ON THE WIRE its own all-zero `$LCD` echo may still arrive. */
@@ -7561,6 +7562,10 @@ export class Engine {
                    reloadOverrun: !!(ms != null && ms > this.am.reloading.ms),
                    reloadGained: ms != null ? Math.max(0, this.am.reloading.mag - this.am.reloading.from) : null }))(this.am.reloadingMs()),
       reloadOutcome: this.am.reloadOutcome,
+      // F277 (field 2026-10-17): a reload that timed out with no gain is said on the ammo block for RELOAD_FAILED_SHOW_MS
+      // review: only on the slot it was about, and a shot since retires it (the player has moved on)
+      reloadFailed: (o => !!(o && !o.ok && o.why === 'timeout' && this.alive && !this.am.reloading && now - o.at < RELOAD_FAILED_SHOW_MS
+        && o.slot === this.activeSlot && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.reloadOutcome),
       held: this.heldMs(), lastButton: this.lastButton,
       hits: this.score ? this.score.hits : null,
       board: (() => { const s = this.config && this.config.scoring; const b = this.score ? this.score.board : null; const killScored = !!(s && (s.win_by == null || s.win_by === '' || s.win_by === 'kills')); return !killScored && b && typeof b === 'object' ? { ...b, cap: null } : b; })(),

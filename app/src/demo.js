@@ -735,6 +735,7 @@ export function startDemo({ engine, log }) {
       // An MC older than S56: its roster carries no weapons, it pushes no score and relays no hit. The phone can name
       // the killer from the roster but no weapon, and has nothing dealt: the screen must say so, not invent it.
       'down-old-mc':       [[0, () => { for (const r of roster) delete r.weapons; }], ...live, [2000, () => { ev.fire(3); ev.hitFrom(19, 9, 20); }], [2350, () => ev.dieFrom(19, 9)]],                                   // the board is old now: shown with its age
+      'live-reload-failed': [...live, [2300, () => ev.fire(12)], [2600, () => { engine.feedFrame('$BUT,2,1,*'); engine.feedFrame('$BUT,2,0,*'); }]],   // F277: a lever the gun never answers
       'live-bolt':         [...live, [2300, () => ev.fire(12)], [2600, 'boltPull']],   // BOLT cue
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
       'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
