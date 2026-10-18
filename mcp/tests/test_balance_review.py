@@ -103,6 +103,19 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
     assert max(row["field"] for row in a["columns"].values()) < R.FIELD_RATIO_CEILING
 
 
+def test_field_score_is_zero_when_one_team_size_gets_no_kills():
+    shipped = R.shipped_world()
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=3)
+    world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
+    specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
+             R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
+    matrix = R.dominance_matrix(world, specs, 0.001, 1, anchor_world=shipped)
+    counts = matrix["field_counts"]["Weak AR"]
+    assert any(kills == 0 and anchor > 0 for kills, anchor in counts), counts
+    assert any(kills > 0 for kills, _ in counts), counts
+    assert matrix["columns"]["Weak AR"]["field"] == 0.0
+
+
 def test_four_workers_give_the_numbers_one_worker_gives():
     """--jobs changes nothing. Break it once (key a cell's rng on the worker's pid) and watch it differ."""
     w, specs = _shipped_specs()
@@ -337,6 +350,13 @@ def test_shipped_pickups_clear_the_pickup_utility_bars():
         if row.get("pickup_only") and row.get("lethal") is not False:
             result = R.pickup_utility(world, row["weapon_id"], REPS_SCALE)
             assert result["status"] == "pass", (row["weapon_id"], result)
+
+
+def test_pickup_assumptions_match_the_shipped_minimum():
+    assert R.assumptions()["pickup_utility"]["shipped_margin"] == \
+        "about 0.62 kills per stock and 900 ms at full repetitions"
+    skill = pathlib.Path(__file__).resolve().parents[2] / ".claude/skills/balance-review/SKILL.md"
+    assert "laser_cannon has the shipped minimum: 1.62 kills per stock against 45 + 70" in skill.read_text()
 
 
 def test_pickup_utility_handles_every_band_and_resets_each_fight_cap():
@@ -1625,6 +1645,25 @@ def test_heat_candidate_reports_all_cooling_assumptions():
     assert not v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
 
 
+def test_heated_pickup_utility_checks_every_cooling_branch():
+    row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
+    row.update(pickup_only=True, hidden=True)
+    row["wire"]["tap_dmg"] = 45
+    v = R.review({"row": row}, reps_scale=0.001)
+    utility = v["heat_pickup_utility"]
+    assert set(utility) == set(B.HEAT_COOLING_BRANCHES)
+    assert {branch: (result["numbers"]["kills_per_stock"], result["numbers"]["median_ttk_ms"])
+            for branch, result in utility.items()} == {
+                "throughout": (30.5, 855.0), "after_lockout": (31.0, 570.0), "none": (31.0, 5940.0)}
+    assert utility["throughout"]["pass"]
+    assert utility["throughout"]["numbers"]["median_ttk_ms"] <= R.PICKUP_TTK_BAR_MS
+    assert not utility["none"]["pass"]
+    assert utility["none"]["numbers"]["median_ttk_ms"] > R.PICKUP_TTK_BAR_MS
+    assert "pickup_utility" in v["failed_heat_branches"]["none"]
+    assert not v["tests"]["heat_sensitivity"]["pass"]
+    assert "| none |" in R.report_markdown(v).split("## Heated pickup utility", 1)[1]
+
+
 def test_unheated_candidate_has_no_heat_section_or_alternate_rule_runs():
     with mock.patch.object(R, "run_rules", wraps=R.run_rules) as rules, \
          mock.patch.object(R, "run_heated_rules", wraps=R.run_heated_rules) as heated_rules, \
@@ -1660,6 +1699,43 @@ def test_a_rule_flip_only_after_lockout_names_that_branch():
                      reps_scale=0.001)
     assert "standard|R1" in v["failed_heat_branches"]["after_lockout"]
     assert "standard|R1" not in v["failed_heat_branches"].get("throughout", [])
+
+
+def test_branch_last_cell_loss_is_recorded_beside_a_rule_flip():
+    real_matrix = R.dominance_matrix
+    real_rules = R.run_heated_rules
+
+    def matrix(world, specs, scale, n_jobs, *, anchor_world, heat_cool_while_firing):
+        result = real_matrix(world, specs, scale, n_jobs, anchor_world=anchor_world,
+                             heat_cool_while_firing=heat_cool_while_firing)
+        if heat_cool_while_firing == "none":
+            result = copy.deepcopy(result)
+            if world.cat._row("charge_rifle")["heat"]["cool_per_s"] == 29:
+                result["near_top"]["Shotgun"] = []
+                result["columns"]["Shotgun"]["1v1 close"] = 0.0
+                result["top"]["1v1 close"] = 0.9
+            else:
+                result["near_top"]["Shotgun"] = ["1v1 close"]
+            result["reps"]["duel"] = 1_000_000
+        return result
+
+    def rules(world, scale, n_jobs, branch, ids):
+        result = real_rules(world, scale, n_jobs, branch, ids)
+        if branch == "none":
+            changed = world.cat._row("charge_rifle")["heat"]["cool_per_s"] == 29
+            result["standard|R1"] = {"value": 0.5 if changed else 0.9, "bar": 0.65,
+                                      "pass": not changed}
+        return result
+
+    with mock.patch.object(R, "dominance_matrix", side_effect=matrix), \
+         mock.patch.object(R, "run_heated_rules", side_effect=rules):
+        v = R.review({"weapon_id": "charge_rifle", "changes": {"heat.cool_per_s": 29}},
+                     reps_scale=0.001)
+    assert "standard|R1" in v["failed_heat_branches"]["none"]
+    assert "balance_kept:shotgun" in v["failed_heat_branches"]["none"]
+    assert "balance_kept:shotgun" not in v["failed_heat_branches"].get("throughout", [])
+    assert v["heat_last_cell_losses"]["none"] == ["shotgun"]
+    assert "shotgun" not in v["heat_last_cell_losses"]["throughout"]
 
 
 def test_reference_heat_keeps_field_ambush_hill_and_ammo_on_selected_branch():

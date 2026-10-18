@@ -177,7 +177,8 @@ Scenario version 12 uses these models:
   The measured shipped maximum field ratio is about 1.32, so the ceiling leaves about 0.28 margin.
 - A pickup-only candidate must pass the `pickup_utility` gate: at least 1.00 expected kills per magazine plus reserve
   at `REAL_AIM` against the Standard pool, and median first-kill time at most 2,500 ms. At full repetitions,
-  the shipped minimum is about 1.59 kills per stock, and the longest median first kill is 1,600 ms.
+  laser_cannon has the shipped minimum: 1.62 kills per stock against 45 + 70.
+  The longest median first kill is 1,600 ms.
 - Overall PASS requires at least one substantive passing value test. A verdict with only n/a value tests cannot pass.
 - `balance_kept` treats a last near-top cell as lost only when its margin shortfall exceeds two standard errors.
   Binary cells use binomial errors. Field and ammo ratios use a count-scale approximation.

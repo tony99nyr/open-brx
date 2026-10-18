@@ -27,8 +27,8 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
                          plain AR and AR with Body Armor rushes at 20 m (Tony, 2026-10-17).
   pickup_utility         pickup-only candidates: enough Standard kills per full stock and a prompt
                          undefended Standard first kill at REAL_AIM.
-  heat_sensitivity       when heat is involved, no heated matrix or rule cell flips from pass to fail
-                         in any cooling branch; only branch differences appear in this test.
+  heat_sensitivity       when heat is involved, no rule, last-cell, domination or pickup utility
+                         failure appears in another cooling branch; only branch differences appear here.
 
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
 
@@ -240,7 +240,7 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "pickup_utility": {"stock_kill_floor": PICKUP_STOCK_KILL_FLOOR,
                             "median_ttk_bar_ms": PICKUP_TTK_BAR_MS, "stock_cap_ms": PICKUP_STOCK_CAP_MS,
                             "aim": REAL_AIM, "pool": "Standard", "range": "catalogue preferred band, mid by default",
-                            "shipped_margin": "about 0.59 kills per stock and 900 ms at full repetitions"},
+                            "shipped_margin": "about 0.62 kills per stock and 900 ms at full repetitions"},
         "domination": {"field_ratio_ceiling": FIELD_RATIO_CEILING,
                        "shipped_field_max_approx": 1.32, "shipped_margin_approx": 0.28,
                        "priority_columns": list(DOMINATION_PRIORITY),
@@ -2050,6 +2050,12 @@ def _near_top(column: str, value: float, top: float) -> bool:
     return value >= top - NEAR_TOP_MARGIN[column]
 
 
+def _field_geo_mean(ratios) -> float:
+    """A zero kill-rate ratio at any team size makes the field score zero."""
+    ratios = list(ratios)
+    return 0.0 if 0.0 in ratios else B.geo_mean(ratios)
+
+
 def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: int,
                      anchor_world: World | None = None, heat_cool_while_firing=True) -> dict:
     """The kit matrix. The field anchor and the ambush enemies are `anchor_world`'s plain AR (the baseline), so
@@ -2138,7 +2144,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
                    "1v1 long": mean1("standard", "long", n),
                    **{f"real aim {d}": mean1("real", d, n) for d in DIST},
                    "long contact": mean1("long", "mid", n),
-                   "peek mid": mean1("peek", "mid", n), "field": B.geo_mean(field[n]),
+                   "peek mid": mean1("peek", "mid", n), "field": _field_geo_mean(field[n]),
                    "ambush": sum(amb[n]) / len(amb[n]),
                    "shields": sum(mean1("shields", d, n) for d in DIST) / 3,
                    "hill hold": sum(hill[n]) / len(hill[n]),
@@ -2698,8 +2704,8 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         spec = mc["specs"][subject_kit]
         primary_fk = field_kit(world, f"{subject_kit} primary only", spec["primary"])
         anchor_fk = field_kit(base, "AR anchor", ANCHOR)
-        f = B.geo_mean([field_ratio(primary_fk, anchor_fk, n, _reps("field", reps_scale),
-                                    heat_cool_while_firing) for n in FIELD_NS])
+        f = _field_geo_mean([field_ratio(primary_fk, anchor_fk, n, _reps("field", reps_scale),
+                                         heat_cool_while_firing) for n in FIELD_NS])
         kit_f = mc["columns"][subject_kit]["field"]
         beats = [o for o in mc["kits"] if o != subject_kit and
                  any(mc["duels"][f"standard|{d}|{subject_kit}|{o}"] > 0.5 for d in DIST)]
@@ -2780,6 +2786,11 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     }
     if heated:
         matrices = {heat_cool_while_firing: (mb, mc)}
+        if pickup:
+            verdict["heat_pickup_utility"] = {
+                branch: (tests["pickup_utility"] if branch == heat_cool_while_firing else
+                         pickup_utility(world, wid, reps_scale, branch))
+                for branch in B.HEAT_COOLING_BRANCHES}
         heat_rule_ids = {rid for rid, ids, _ in rule_list() if any(
             w in x.cat._by_id and x.cat._row(w).get("heat")
             for w in ids for x in (shipped, base, world))}
@@ -2808,6 +2819,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                  for key in rules_c if key.split("|", 1)[1] in heat_rule_ids}
         failed = {}
         differences = []
+        last_cell_losses = {}
         for branch in B.HEAT_COOLING_BRANCHES:
             branch_mb, branch_mc = matrices[branch]
             branch_rules = rule_branches[branch]
@@ -2819,10 +2831,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             if _new_dominance_kits(before_dom, after_dom):
                 flips.append("no_domination")
             kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid)
-            if not kept["pass"] and not flips:
-                flips.append("balance_kept")
+            last_cell_losses[branch] = kept["numbers"]["kits_losing_last_near_top"]
+            flips.extend(f"balance_kept:{kit}" for kit in last_cell_losses[branch])
+            if pickup and not verdict["heat_pickup_utility"][branch]["pass"]:
+                flips.append("pickup_utility")
             if flips:
                 failed[branch] = flips
+        verdict["heat_last_cell_losses"] = last_cell_losses
         verdict["standing_heat_failures"] = {branch: [key for key, values in verdict["heat_rules"].items()
             if not values[branch]["shipped"]["pass"]] for branch in B.HEAT_COOLING_BRANCHES}
         for key, values in verdict["heat_rules"].items():
@@ -2846,7 +2861,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         verdict["tests"]["heat_sensitivity"] = _test(not sensitive,
             {"failed_branches": sensitive, "differing_rule_cells": differences,
              "differing_matrix_cells": sorted(set(differing_matrix))},
-            "a heated cell fails only when it passes shipped or baseline and fails in the candidate under the same branch")
+            "no new rule, last-cell, domination or pickup utility failure in another cooling branch")
         verdict["pass"] = verdict["pass"] and not sensitive
     return verdict
 
@@ -3325,6 +3340,16 @@ def report_markdown(v: dict) -> str:
             if keys:
                 out.append(f"Standing shipped failures under {branch}: {', '.join(keys)}. "
                            "They do not fail the candidate without a flip.")
+        out.append("")
+    if v.get("heat_pickup_utility"):
+        out += ["## Heated pickup utility", "",
+                "| branch | kills per stock | median first kill (ms) | pass |",
+                "|---|---:|---:|---|"]
+        for branch in B.HEAT_COOLING_BRANCHES:
+            result = v["heat_pickup_utility"][branch]
+            numbers = result["numbers"]
+            out.append(f"| {branch} | {_num(numbers['kills_per_stock'])} | "
+                       f"{_num(numbers['median_ttk_ms'])} | {result['pass']} |")
         out.append("")
     rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
     moved = [k for k in rc if abs(rc[k]["value"] - rb[k]["value"]) > 1e-9 or abs(rc[k]["value"] - rs[k]["value"]) > 1e-9]
