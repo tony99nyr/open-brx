@@ -1147,6 +1147,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rstrip.hon .ch{color:var(--warn);border-color:var(--warn)}
 /* F561: the strip is one chip per HOLDER (name ×count); the medal names and stats are on the AWARDS tab, which .go names */
 .result .rstrip.hon .go{color:var(--mut);white-space:nowrap}
+.result .rstrip.hon .ch{flex:none}.result .rstrip.hon .ch.more{color:var(--mut);border-color:var(--edge)}
+/* F561 review: MORE ↓ sticks to the bottom of the scrolling rows. Sticky inside .lbrows, never a positioned .rlb, which
+   painted over the tab buttons' hit areas (QA-11). */
+.result .lbrows .awmore.lbmore{position:sticky;bottom:0;right:auto;display:block;width:max-content;margin-left:auto}
+.result .lbrows .awmore.lbmore[hidden]{display:none}
 .result .rstrip.after .k{color:var(--warn)}
 .result .rstrip.after .ch{border-style:dashed;color:var(--mut)}
 /* --- this player's own line, as a LIST of tiles (never five fixed cells) --- */

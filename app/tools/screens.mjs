@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2109,9 +2109,9 @@ for (const view of VIEWS) {
     must(JSON.stringify(h) === JSON.stringify(['VIPER ×2', 'REAPER ×1']), 'honors: one chip per holder, most first: ' + JSON.stringify(h));
   });
   // F561 (field 2026-10-17, report §3.10): nine medals on one row showed six; nine honours each truncated to 7-9 characters.
-  for (const [stage, what] of [['result-nine-medals', 'PLAYERS'], ['result-nine-teams', 'TEAMS']]) {
-    await step(`${view.name} F561 result ${what}: nine medals and nine honours, nothing cut or clipped`, async () => {
-      const pg = await open(view, stage);
+  for (const [stage, what, night] of [['result-nine-medals', 'PLAYERS', false], ['result-nine-medals', 'PLAYERS', true], ['result-nine-teams', 'TEAMS', false]]) {
+    await step(`${view.name} F561 result ${what}${night ? ' night' : ''}: nine medals and nine honours, nothing cut or clipped`, async () => {
+      const pg = await open(view, stage, night ? '&night' : '');
       const r = await pg.evaluate(() => {
         const fr = document.getElementById('frame').getBoundingClientRect();
         const inside = (a, b) => a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
@@ -2125,9 +2125,10 @@ for (const view of VIEWS) {
         const strip = document.querySelector('.result .rstrip.hon');
         return { chips: chips.length, cut, rowsSeen, honors: hon.map(c => c.textContent.replace(/\s+/g, ' ').trim()),
           truncated: hon.filter(c => c.scrollWidth > c.clientWidth + 1).length,
-          stripText: strip ? strip.textContent.replace(/\s+/g, ' ').trim() : '', stripIn: strip ? inside(strip.getBoundingClientRect(), fr) : false };
+          stripText: strip ? strip.textContent.replace(/\s+/g, ' ').trim() : '',
+          stripIn: (() => { const g = document.querySelector('.result .rstrip.hon .go'); return !!g && inside(g.getBoundingClientRect(), fr) && inside(g.getBoundingClientRect(), strip.getBoundingClientRect()); })() };
       });
-      await pg.screenshot({ path: `${OUT}/${view.name}-f561-${stage}.png` });
+      await pg.screenshot({ path: `${OUT}/${view.name}-f561-${stage}${night ? '-night' : ''}.png` });
       const bad = await invariants(pg); await pg.close();
       if (stage === 'result-nine-medals') must(r.chips === 9 && r.cut === 0, `all nine medals must show inside the cell, the visible list and the frame: ${JSON.stringify(r)}`);
       if (stage === 'result-nine-medals') must(r.rowsSeen, `every player row must be on screen without scrolling (the legend scrolls below them): ${JSON.stringify(r)}`);
@@ -2137,6 +2138,32 @@ for (const view of VIEWS) {
       must(bad.length === 0, bad.join(' ; '));
     });
   }
+  // F561 review: a tied field sends one honour per holder; eight holders (two both called ACE) must not truncate, and must not merge
+  await step(`${view.name} F561 result: eight tied holders show three chips and +N MORE, none truncated, same names kept apart`, async () => {
+    const pg = await open(view, 'result-many-holders');
+    const r = await pg.evaluate(() => { const hon = Array.from(document.querySelectorAll('.result .rstrip.hon .ch')), v = document.querySelector('.result .rstrip.hon .v').getBoundingClientRect();
+      return { chips: hon.map(c => c.textContent.replace(/\s+/g, ' ').trim()), truncated: hon.filter(c => c.scrollWidth > c.clientWidth + 1).length,
+        outside: hon.filter(c => c.getBoundingClientRect().right > v.right + 1).length }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-f561-many-holders.png` });
+    await pg.close();
+    must(JSON.stringify(r.chips) === JSON.stringify(['REAPER ×1', 'VIPER ×1', 'HAVOC ×1', '+5 MORE']), 'three holders then +N MORE: ' + JSON.stringify(r));
+    must(r.truncated === 0 && r.outside === 0, 'a chip is truncated or outside the strip: ' + JSON.stringify(r));
+  });
+  // F561 review: the legend scrolls below the rows and scrollbars are hidden, so a list longer than the body says MORE ↓
+  await step(`${view.name} F561 result: a leaderboard longer than the body shows MORE ↓, and scrolling reaches the legend`, async () => {
+    const pg = await open(view, 'result-nine-medals');
+    await settled(pg);
+    const before = await pg.evaluate(() => { const l = document.querySelector('.result .lbrows'), c = document.querySelector('.result .lbmore');
+      return { over: l.scrollHeight > l.clientHeight + 1, cue: !!c && !c.hidden && getComputedStyle(c).display !== 'none' }; });
+    const after = await pg.evaluate(async () => { const l = document.querySelector('.result .lbrows'); l.scrollTop = l.scrollHeight; l.dispatchEvent(new Event('scroll'));
+      await new Promise(r => setTimeout(r, 50)); const c = document.querySelector('.result .lbmore'), g = l.querySelector('.mleg');
+      const lb = l.getBoundingClientRect(), gb = g && g.getBoundingClientRect();
+      return { cue: !!c && !c.hidden, legendSeen: !!gb && gb.top >= lb.top - 1 && gb.bottom <= lb.bottom + 1 }; });
+    await pg.close();
+    must(before.over, 'setup: the nine-medal board must be longer than the body: ' + JSON.stringify(before));
+    must(before.cue, 'MORE ↓ must show while the legend is below the fold: ' + JSON.stringify(before));
+    must(!after.cue && after.legendSeen, 'scrolled to the end, the legend is on screen and MORE ↓ is gone: ' + JSON.stringify(after));
+  });
   await step(`${view.name} A24 result: every meaning-bearing label is at least 11px (the 9.5px cell label was the report)`, async () => {
     const pg = await open(view, 'result-win-team');
     const small = await pg.evaluate(() => Array.from(document.querySelectorAll('.result *')).filter(e => {
