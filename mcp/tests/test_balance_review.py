@@ -94,7 +94,7 @@ def test_the_column_top_ignores_nan():
 # --------------------------------------------------------------------------- the named tests, end to end
 
 def test_a_dominant_candidate_fails_no_domination():
-    """An Assault Rifle copy at five times the damage is near the top everywhere (at three times, 27, the 75-damage
+    """An Assault Rifle copy at about four and a half times the damage (40) is near the top everywhere (at three times, 27, the 75-damage
     bolt Sniper still out-peeks it at range: F573). Break it once (every margin -1) and watch it pass."""
     code, v = _review_cli({"title": "dominant", "row": _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=40)})
     t = v["tests"]["no_domination"]

@@ -38,7 +38,7 @@ bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damag
 **Next:** the 2.2 s bolt bench row (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F573 on Tony.
+**Blocked:** F575 on Tony (the Charge Rifle's numbers under the heat budget).
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the

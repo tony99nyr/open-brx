@@ -3865,10 +3865,10 @@ const shotTrace = (pg, weaponId, ms, waitMs) => pg.evaluate(async ({ weaponId, m
 }, { weaponId, ms, waitMs });
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    await step(`${tag} shot cue ${night ? 'night' : 'day'}: a sniper (1500 ms a round) dims after the shot and shines once when the round is due, never early`, async () => {
+    await step(`${tag} shot cue ${night ? 'night' : 'day'}: a slow single-shot weapon (1500 ms a round) dims after the shot and shines once when the round is due, never early`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       await setWeap(pg, 0, 1500);
-      const shoot = shotTrace(pg, 'sniper_rifle', 1500, 2100);
+      const shoot = shotTrace(pg, 'amr', 1500, 2100);   // not the Sniper: a bolt gets the BOLT cue, not this one (F573)
       await pg.waitForTimeout(300 + 700); /* fixed on purpose: inside the 1500 ms cue the trace above is timing */ await pg.screenshot({ path: `${OUT}/${tag}-shotcue-dim-${night ? 'night' : 'day'}.png` });
       await pg.waitForTimeout(540); /* fixed on purpose: the screenshot after the 1500 ms cue */ await pg.screenshot({ path: `${OUT}/${tag}-shotcue-ready-${night ? 'night' : 'day'}.png` });
       const r = await shoot; await pg.close();
@@ -3887,7 +3887,7 @@ await step('se shot cue reduced motion: a brightness step, no moving shine', asy
   const pg = await b.newPage({ viewport: { width: VIEWS[1].width, height: VIEWS[1].height }, reducedMotion: 'reduce' });
   await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live`); await stageSettled(pg); await settled(pg);
   await setWeap(pg, 0, 600);
-  const r = await shotTrace(pg, 'sniper_rifle', 600, 1100); await pg.close();
+  const r = await shotTrace(pg, 'amr', 600, 1100); await pg.close();
   must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
   must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.filter), `reduced motion must swap the shine for a brightness step: ${JSON.stringify(r.shine)}`);
 });
