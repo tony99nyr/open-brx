@@ -2744,6 +2744,47 @@ static void test_saved_hill_writes_only_on_an_owner_change() {
   CHECK_EQ(drained.owner, (int)contract::STATION_TEAM_ANY);
 }
 
+static void test_f557_a_long_hold_is_saved_as_it_grows() {
+  // Field 2026-10-17: the tally saved only on an owner change, so a restart lost 290 s of a 640 s hold.
+  StationLink link;
+  StationAssignment a = control_config(7);
+  a.starts_known = true;
+  link.apply_station_config(a, 0);
+  SavedHill saved;
+  int writes = 0;
+  std::vector<uint32_t> at;
+  for (uint32_t t = 0; t <= 75000; t += 250) {   // red captures at about 10 s, then holds for over a minute
+    PlayerPresence pr = red_on_the_point(t);
+    link.tick_players(pr, t);
+    if (saved.note_owner(a, "s1", link.hill(), t)) { writes++; at.push_back(t); }
+  }
+  CHECK_EQ(writes, 3);   // the capture, then once per HILL_CLOCK_SAVE_MS of growth after it
+  // Opus review: the capture's write resets the throttle, so the next two come 30 s and 60 s after the capture
+  CHECK(at.size() == 3 && at[1] - at[0] >= HILL_CLOCK_SAVE_MS && at[1] - at[0] <= HILL_CLOCK_SAVE_MS + 250);
+  CHECK(at.size() == 3 && at[2] - at[1] >= HILL_CLOCK_SAVE_MS && at[2] - at[1] <= HILL_CLOCK_SAVE_MS + 250);
+  // a flat tally (contested, or frozen) never writes on the clock alone
+  SavedHill still;
+  BleControlPoint flat = held_by(1);
+  flat.hold_ms[1] = 7000;
+  CHECK(still.note_owner(a, "s1", flat, 1000));
+  CHECK(!still.note_owner(a, "s1", flat, 1000 + 3 * HILL_CLOCK_SAVE_MS));
+  // millis() wraps: the throttle measures modulo 2^32
+  SavedHill wrap;
+  BleControlPoint w = held_by(1);
+  CHECK(wrap.note_owner(a, "s1", w, 0xFFFFF000u));
+  w.hold_ms[1] = 5000;
+  CHECK(!wrap.note_owner(a, "s1", w, 0x00000100u));          // about 4.4 s later, across the wrap: throttled
+  CHECK(wrap.note_owner(a, "s1", w, 0x00000100u + HILL_CLOCK_SAVE_MS));
+  CHECK(saved.hold_ms()[0] + HILL_CLOCK_SAVE_MS >= link.hill().hold_ms[0]);   // a restart loses at most the throttle
+  CHECK(saved.hold_ms()[0] >= 50000u);
+  // CONTROL: with no clock given, only the edges write (the old behaviour)
+  SavedHill edges;
+  CHECK(edges.note_owner(a, "s1", link.hill()));
+  BleControlPoint grown = link.hill();
+  grown.hold_ms[0] += 60000;
+  CHECK(!edges.note_owner(a, "s1", grown));
+}
+
 static void test_saved_hill_flushes_final_tally_once_at_whistle() {
   StationAssignment a = control_config(7);
   SavedHill saved;
@@ -3080,6 +3121,7 @@ int main(int argc, char** argv) {
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
   test_saved_hill_flushes_final_tally_once_at_whistle();
+  test_f557_a_long_hold_is_saved_as_it_grows();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();
   test_saved_hill_and_clock_share_the_save_tag_rules();
   test_reset_hill_neutralises_only_an_assigned_control_point();
