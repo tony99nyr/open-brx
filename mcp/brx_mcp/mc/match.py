@@ -197,6 +197,9 @@ class Match:
                 "station_seen": dict(getattr(self.scorer, "station_seen_ms", {})),
                 "station_pre_end": {site: {str(tid): ms for tid, ms in per.items()}
                                     for site, per in getattr(self.scorer, "station_pre_end", {}).items()},
+                # milestone round 4: the in-play readings, so a whistle moved earlier after a restart can re-bound a site
+                "station_history": {site: [[at, {str(tid): ms for tid, ms in per.items()}] for at, per in rows]
+                                    for site, rows in getattr(self.scorer, "station_history", {}).items()},
                 "alerts": self.scorer.match_state_alerts(),
                 "departed_stations": [dict(row) for row in sorted(
                     self.departed_stations.values(), key=lambda row: row["node_id"])],

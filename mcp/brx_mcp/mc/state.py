@@ -4095,6 +4095,7 @@ class Session:
             new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
             new.station_seen_ms = dict(old.station_seen_ms)
             new.station_pre_end = {site: dict(per) for site, per in old.station_pre_end.items()}
+            new.station_history = {site: [(at, dict(per)) for at, per in rows] for site, rows in old.station_history.items()}
             new.station_unverified = set(old.station_unverified)
         return new
 
@@ -4102,7 +4103,8 @@ class Session:
                       joined_t: dict[str, int] | None = None, *, cap_recv: int | None = None,
                       derive_cap: bool = False, alerts: dict | None = None,
                       station_ms: dict[str, dict] | None = None, clock_trusted: bool = True,
-                      station_seen: dict | None = None, station_pre_end: dict | None = None) -> Scorer:
+                      station_seen: dict | None = None, station_pre_end: dict | None = None,
+                      station_history: dict | None = None, saved_ms: int | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4130,9 +4132,25 @@ class Session:
         sc.station_seen_ms = {str(k): int(v) for k, v in (station_seen or {}).items() if isinstance(v, int) and not isinstance(v, bool)}
         sc.station_pre_end = {str(k): {tid: ms for tid, ms in sc._hold_readings(v)} for k, v in (station_pre_end or {}).items()
                               if isinstance(v, dict)}
+        sc.station_history = {str(k): [(int(row[0]), {tid: ms for tid, ms in sc._hold_readings(row[1])}) for row in rows
+                                       if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
+                                       and not isinstance(row[0], bool) and isinstance(row[1], dict)]
+                              for k, rows in (station_history or {}).items() if isinstance(rows, list)}
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
-                sc.station_possession(got[0], got[1], seen_ms=got[2])
+                site, hold, seen = got
+                if seen is None:
+                    # milestone round 4: a tally saved before round 3 has no receipt time. MC received it at or before the
+                    # snapshot was written, so it counts as heard then, never after the whistle (one saved after it is
+                    # taken at the whistle: the old clamp to the time played is all that bounds it). No history row is
+                    # kept for a guessed time, so a whistle moved earlier falls back to that clamp, not to unverified.
+                    seen = min(x for x in (saved_ms, sc.end_t, self.now_ms()) if isinstance(x, int))
+                    had_history = site in sc.station_history
+                    sc.station_possession(site, hold, seen_ms=seen)
+                    if not had_history:
+                        sc.station_history.pop(site, None)
+                else:
+                    sc.station_possession(site, hold, seen_ms=seen)
         self._settle_replayed(sc, alerts=alerts, forget_transient_cap=derive_cap and sc.cap_recv is None)
         return sc
 
@@ -4236,7 +4254,9 @@ class Session:
                                     alerts=m.get("alerts") if isinstance(m.get("alerts"), dict) else None,
                                     station_ms=station_ms, clock_trusted=not m.get("adopted"),
                                     station_seen=m.get("station_seen") if isinstance(m.get("station_seen"), dict) else None,
-                                    station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None)
+                                    station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None,
+                                    station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
+                                    saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
                                  departed_stations=parsed.departed_stations)

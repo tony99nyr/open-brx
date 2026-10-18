@@ -7,6 +7,7 @@ phone cannot see who is alive on the point (F554), so its tally pays an owner th
 
 Run: python3 run_tests.py mc_hill_authority
 """
+import json
 import pathlib
 import tempfile
 
@@ -523,3 +524,104 @@ def test_r3_a_restart_keeps_the_staleness_and_the_end_cap():
     sc2 = s2._m().scorer
     assert sc2.station_seen_ms.get(str(sid)) == sc.station_seen_ms.get(str(sid)), (sc2.station_seen_ms, sc.station_seen_ms)
     assert sc2.station_pre_end.get(str(sid)) == sc.station_pre_end.get(str(sid)), (sc2.station_pre_end, sc.station_pre_end)
+
+
+def test_r4_a_kill_cap_pulling_the_end_earlier_rebounds_the_station_reading():
+    """Codex round 3: a station reading received at 1:50 kept its hold when a late kill fact moved the whistle back to
+    1:30. The site is re-bounded from the last reading at or before the new end, plus at most the time to that end."""
+    s, pid, red, blue, sc, clock = _ended_koth(end_at_s=110)
+    sc.station_possession("9", {str(red["tid"]): 60_000}, seen_ms=1_000_000 + 80_000)
+    sc.station_possession("9", {str(red["tid"]): 90_000}, seen_ms=1_000_000 + 110_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 90
+    sc.set_end(1_000_000 + 90_000)                       # the capping kill, heard late, happened at 1:30
+    assert sc.possession()["by_team"][red["team_id"]] == 70, sc.station_possession_ms   # 60 s + 10 s, not 90 s
+    # a later report from the same station is a late reading against the new end, and cannot compound it
+    sc.station_possession("9", {str(red["tid"]): 120_000}, seen_ms=1_000_000 + 130_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 70
+
+
+def test_r4_a_site_first_heard_after_the_moved_end_is_unverified():
+    s, pid, red, blue, sc, clock = _ended_koth(end_at_s=110)
+    sc.ingest("n1", _poss({str(red["tid"]): 40_000}), 1_050_000)
+    sc.station_possession("9", {str(red["tid"]): 90_000}, seen_ms=1_000_000 + 105_000)
+    sc.set_end(1_000_000 + 90_000)
+    assert sc.possession()["by_team"][red["team_id"]] == 40, sc.station_possession_ms   # the phones decide it
+    assert "9" in sc.station_unverified
+
+
+def test_r4_the_reading_history_survives_an_mc_restart():
+    """After a restart, a kill fact that moves the end earlier still finds the reading at or before it."""
+    s, net, clock, ps = mk_stored_session(2, "koth")
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    blue = s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 80_000
+    _beat(net, clock, sid, {str(blue["tid"]): 60_000})
+    clock["t"] = info["go_live_t"] + 110_000
+    _beat(net, clock, sid, {str(blue["tid"]): 90_000})
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2, _net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    sc2 = s2._m().scorer
+    sc2.set_end(info["go_live_t"] + 90_000)
+    assert sc2.station_possession_ms[str(sid)][blue["tid"]] == 70_000, sc2.station_possession_ms
+
+
+def _legacy_restart(after_s):
+    """A KOTH match with one hill heard at 1:40 whose snapshot predates round 3: the tally has no receipt time and the
+    match carries no station_seen, station_pre_end or station_history. MC comes back `after_s` after go-live."""
+    s, net, clock, ps = mk_stored_session(2, "koth")
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    blue = s.config["teams"][1]
+    clock["t"] = info["go_live_t"] + 100_000
+    _beat(net, clock, sid, {str(blue["tid"]): 50_000})
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(s._persist_path.read_text())
+    snap["station_locks"]["util-hill"]["tally"].pop("at")
+    for key in ("station_seen", "station_pre_end", "station_history"):
+        snap["match"].pop(key)
+    s._persist_path.write_text(json.dumps(snap))
+    clock["t"] = info["go_live_t"] + after_s * 1000
+    s2, net2 = restart_no_repersist(s, clock)
+    return s2, net2, clock, info, sid, blue
+
+
+def test_r4_a_pre_upgrade_tally_is_stamped_with_the_snapshot_time():
+    """Codex round 3: a tally saved before round 3 has no receipt time. It was received at or before the snapshot was
+    written, so it counts as heard then (never after the whistle), and a heard hill is not flagged unverified."""
+    s2, net2, clock, info, sid, blue = _legacy_restart(after_s=300)
+    assert s2.resume_match() == "live"
+    sc = s2._m().scorer
+    assert sc.station_seen_ms.get(str(sid)) == info["go_live_t"] + 100_000, sc.station_seen_ms
+    assert str(sid) not in sc.station_unverified
+
+
+def test_r4_a_pre_upgrade_tally_after_the_whistle_keeps_its_hill_verified():
+    """MC comes back after the time limit. A later report of the hill is bounded by the window before the whistle (the
+    restarted MC has no arming to key a live beat to, so the report reaches the scorer directly), and the hill MC heard in
+    play is not unverified."""
+    s2, net2, clock, info, sid, blue = _legacy_restart(after_s=700)
+    assert s2.resume_match() == "recap"
+    sc = s2._m().scorer
+    sc.station_possession(str(sid), {str(blue["tid"]): 80_000}, seen_ms=clock["t"] + 10_000)
+    assert str(sid) not in sc.station_unverified, sc.station_unverified
+    assert sc.station_possession_ms[str(sid)][blue["tid"]] == 80_000, sc.station_possession_ms   # 30 s within 500 s
