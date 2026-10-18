@@ -1,0 +1,291 @@
+{
+  "about": "AMMO pickup grant (2026-10-18, agreed brx3/brx4): the slots a grant refills and the $AMMO frames it writes, one statement for the phone (app/src/powerup-player.js `_ammoShort`/`grantAmmo`) and the bench stage (mcp/brx_mcp/stage/stage.py `_ammo_short`/`grant_ammo`). Run by app/test/ammo-grant-cases.test.mjs and mcp/tests/test_ammo_grant_cases.py. `spawn` and `live` are [magazine, reserve] per slot (string keys); `short` is {slot: [live magazine, new reserve, added]} or null; `frames` are the writes in slot order.",
+  "cases": [
+    {
+      "name": "a full refill tops a short slot up to its spawn reserve and keeps the magazine",
+      "item": {
+        "refill": "reserve"
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ],
+        "1": [
+          8,
+          32
+        ]
+      },
+      "live": {
+        "0": [
+          12,
+          40
+        ],
+        "1": [
+          8,
+          32
+        ]
+      },
+      "short": {
+        "0": [
+          12,
+          120,
+          80
+        ]
+      },
+      "frames": [
+        "$AMMO,0,12,120,1,*"
+      ]
+    },
+    {
+      "name": "spawn means the same as reserve",
+      "item": {
+        "refill": "spawn"
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ]
+      },
+      "live": {
+        "0": [
+          30,
+          0
+        ]
+      },
+      "short": {
+        "0": [
+          30,
+          120,
+          120
+        ]
+      },
+      "frames": [
+        "$AMMO,0,30,120,1,*"
+      ]
+    },
+    {
+      "name": "an integer refill adds N, capped at the spawn reserve, on every short slot",
+      "item": {
+        "refill": 50
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ],
+        "1": [
+          8,
+          32
+        ]
+      },
+      "live": {
+        "0": [
+          12,
+          40
+        ],
+        "1": [
+          2,
+          10
+        ]
+      },
+      "short": {
+        "0": [
+          12,
+          90,
+          50
+        ],
+        "1": [
+          2,
+          32,
+          22
+        ]
+      },
+      "frames": [
+        "$AMMO,0,12,90,1,*",
+        "$AMMO,1,2,32,1,*"
+      ]
+    },
+    {
+      "name": "every slot full: nothing to grant",
+      "item": {
+        "refill": "reserve"
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ],
+        "1": [
+          8,
+          32
+        ]
+      },
+      "live": {
+        "0": [
+          3,
+          120
+        ],
+        "1": [
+          0,
+          32
+        ]
+      },
+      "short": null,
+      "frames": []
+    },
+    {
+      "name": "a slot the loadout lacks, or with no live count, is skipped",
+      "item": {
+        "refill": "reserve"
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ]
+      },
+      "live": {
+        "0": [
+          5,
+          10
+        ],
+        "1": [
+          2,
+          1
+        ]
+      },
+      "short": {
+        "0": [
+          5,
+          120,
+          110
+        ]
+      },
+      "frames": [
+        "$AMMO,0,5,120,1,*"
+      ]
+    },
+    {
+      "name": "a zero, negative or fractional refill means a full refill",
+      "item": {
+        "refill": 0
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ]
+      },
+      "live": {
+        "0": [
+          5,
+          100
+        ]
+      },
+      "short": {
+        "0": [
+          5,
+          120,
+          20
+        ]
+      },
+      "frames": [
+        "$AMMO,0,5,120,1,*"
+      ]
+    },
+    {
+      "name": "a fractional refill is not an integer: a full refill",
+      "item": {
+        "refill": 2.5
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ]
+      },
+      "live": {
+        "0": [
+          5,
+          100
+        ]
+      },
+      "short": {
+        "0": [
+          5,
+          120,
+          20
+        ]
+      },
+      "frames": [
+        "$AMMO,0,5,120,1,*"
+      ]
+    },
+    {
+      "name": "slot 2 (a pickup weapon) and slot 4 (melee) are never refilled",
+      "item": {
+        "refill": "reserve"
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ],
+        "2": [
+          3,
+          6
+        ],
+        "4": [
+          1,
+          0
+        ]
+      },
+      "live": {
+        "0": [
+          30,
+          120
+        ],
+        "2": [
+          0,
+          0
+        ],
+        "4": [
+          1,
+          0
+        ]
+      },
+      "short": null,
+      "frames": []
+    },
+    {
+      "name": "3.0 in JSON is the integer 3 (JS Number.isInteger), on both sides",
+      "item": {
+        "refill": 3.0
+      },
+      "spawn": {
+        "0": [
+          30,
+          120
+        ]
+      },
+      "live": {
+        "0": [
+          5,
+          100
+        ]
+      },
+      "short": {
+        "0": [
+          5,
+          103,
+          3
+        ]
+      },
+      "frames": [
+        "$AMMO,0,5,103,1,*"
+      ]
+    }
+  ]
+}

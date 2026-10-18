@@ -5674,6 +5674,50 @@ class GunStage:
             d = 0.0
         return d if d > 0 else STUN_DEFAULT_S
 
+    def _ammo_short(self, item: dict) -> dict[int, list] | None:
+        """powerup-player.js `_ammoShort` (AMMO pickup, 2026-10-18): {slot: [live mag, new reserve, added]} for each loadout slot
+        (0 and 1, never melee or a pickup weapon) whose reserve is under its spawn reserve, else None. `refill` "reserve" or
+        "spawn" (or anything that is not a positive integer) fills to the spawn reserve; an integer N adds N, capped there.
+        Pinned with the phone by app/test/fixtures/ammo-grant-cases.json."""
+        spawn, live = self._spawn_ammo(), self._live_ammo()
+        r = item.get("refill")
+        # JS `Number.isInteger`: 3.0 from JSON is an integer there, a boolean never is
+        n = int(r) if isinstance(r, (int, float)) and not isinstance(r, bool) and float(r).is_integer() and r > 0 else None
+        out: dict[int, list] | None = None
+        for slot in (0, 1):
+            if not spawn.get(slot) or not live.get(slot):
+                continue
+            cap, cur = spawn[slot][1], live[slot][1] or 0   # JS: a null reserve compares as 0
+            if not (cap is not None and cap > cur):
+                continue
+            to = min(cap, cur + n) if n is not None else cap
+            (out := out if out is not None else {})[slot] = [live[slot][0], to, to - cur]
+        return out
+
+    async def grant_ammo(self, item: dict) -> dict | None:
+        """powerup-player.js `grantAmmo`, as a hand-driven stage action (the stage has no pickup claim or presence): one
+        `$AMMO,<slot>,<live mag>,<new reserve>,1` per short slot, slot order, so the magazine is kept. The account and the
+        previous counts take the new reserve first, so the gun's echo is bookkeeping (F259/F460). The phone writes through
+        `writeMust` (a retry for the life); the stage's writes land at once, so a plain write is the twin."""
+        short = self._ammo_short(item)
+        name = str(item.get("name") or "AMMO")
+        if not short:
+            self._log(f"powerup: {name} grant, but every slot is full", "info")
+            return None
+        frames: list[str] = []
+        refilled: dict[int, int] = {}
+        for slot in sorted(short):
+            mag, res, add = short[slot]
+            self._acct_wrote(slot, mag, res)
+            self._prev_ammo[slot] = mag
+            self._prev_reserve[slot] = res
+            frames.append(f"$AMMO,{slot},{'null' if mag is None else mag},{res},1,*")
+            refilled[slot] = add
+        await self.write(frames, f"powerup: {name} +{sum(refilled.values())} reserve")
+        if self.active_slot in short:
+            self._show_slot_ammo(self.active_slot)
+        return {"refilled": refilled}
+
     def _spawn_ammo(self) -> dict[int, list[int]]:
         """{slot: [mag, reserve]} straight from the bundle's spawn $AMMO frames -- what a slot that never fired holds."""
         out: dict[int, list[int]] = {}

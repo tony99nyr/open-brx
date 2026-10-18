@@ -2087,6 +2087,11 @@ _HILL_PAIRS = {
     "hl.tick": "_hill_tick", "hl.reset": "_reset_hill",
 }
 
+# AMMO pickup (2026-10-18): the two powerup-player.js methods the stage mirrors, as a hand-driven grant (the rest of
+# `pu.` is pinned below: the stage has no pickup claim, presence or held heavy). Pinned with the phone by
+# app/test/fixtures/ammo-grant-cases.json.
+_PU_PAIRS = {"pu._ammoShort": "_ammo_short", "pu.grantAmmo": "grant_ammo"}
+
 
 def _hill_methods() -> set[str]:
     """`hl.<name>` for every `HillListener` method and accessor in hill.js."""
@@ -2147,7 +2152,7 @@ def _snake(name: str) -> str:
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
     return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage
-            and _AMMO_PAIRS.get(m) not in stage and _HILL_PAIRS.get(m) not in stage}
+            and _AMMO_PAIRS.get(m) not in stage and _HILL_PAIRS.get(m) not in stage and _PU_PAIRS.get(m) not in stage}
 
 
 def test_every_ammo_pair_is_real():
@@ -2169,13 +2174,22 @@ def test_every_hill_pair_is_real():
         assert py in stage, f"_HILL_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
+def test_every_powerup_pair_is_real():
+    """Each `_PU_PAIRS` entry names a PlayerPowerups method the engine scan sees and its GunStage counterpart."""
+    engine, stage = _engine_methods(), _stage_methods()
+    for js, py in sorted(_PU_PAIRS.items()):
+        assert js in engine, f"_PU_PAIRS names `{js}`, which powerup-player.js `PlayerPowerups` does not declare"
+        assert py in stage, f"_PU_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
+
+
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
     # F570: holds a write's echo windows while the link sends it; the stage's writes land at once, so nothing is ever held
     "am.holdEchoes",
-    # AMMO pickup (2026-10-18): brx5 builds the stage twin after MC ships the `ammo` preset (it needs the station kind first)
-    "pu._ammoShort", "pu.grantAmmo", "pu._inRangeOf",
+    # AMMO pickup (2026-10-18): the claim's range test; the stage has no pickup claim or presence (its `_ammo_short` and
+    # `grant_ammo` twins are a hand-driven grant, pinned with the phone by app/test/fixtures/ammo-grant-cases.json)
+    "pu._inRangeOf",
     # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
     "headsetOk",
     # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)
