@@ -550,7 +550,7 @@ export declare const T_MIN_MS: 1500000000000;
 export declare const T_MAX_MS: 4000000000000;
 export declare const PANIC_SEQUENCE: readonly ['$CLEAR,*', '$SP,99,*'];
 /** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
- *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
+ *  `weapon_id`; an overshield row holds `amount`; an ammo row holds `refill`. `charges` is not here: MC fills it from the catalogue. */
 export declare const POWERUP_PRESETS: readonly { readonly id: string; readonly kind: string; readonly weapon_id?: string; readonly name: string; readonly color: string; readonly spawn_every_s: number; readonly first_at_s: number; readonly amount?: number; readonly refill?: string }[];
 /** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
 export declare const HEALTH_PRESETS: { readonly standard: { readonly max_hp: 45; readonly max_armor: 70; readonly max_shield: 0 }; readonly shields: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 105 }; readonly hardcore: { readonly max_hp: 45; readonly max_armor: 0; readonly max_shield: 0 } };

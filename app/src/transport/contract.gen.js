@@ -550,7 +550,7 @@ export const T_MIN_MS = 1500000000000;
 export const T_MAX_MS = 4000000000000;
 export const PANIC_SEQUENCE = Object.freeze(['$CLEAR,*', '$SP,99,*']);
 /** The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds
- *  `weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue. */
+ *  `weapon_id`; an overshield row holds `amount`; an ammo row holds `refill`. `charges` is not here: MC fills it from the catalogue. */
 export const POWERUP_PRESETS = Object.freeze([{"id": "rockets", "kind": "weapon", "weapon_id": "rocket_launcher", "name": "ROCKETS", "color": "#ff7a1a", "spawn_every_s": 120, "first_at_s": 120}, {"id": "rail_gun", "kind": "weapon", "weapon_id": "rail_gun", "name": "RAIL GUN", "color": "#22d3ee", "spawn_every_s": 120, "first_at_s": 120}, {"id": "overshield", "kind": "overshield", "amount": 75, "name": "OVERSHIELD", "color": "#ff4fd8", "spawn_every_s": 60, "first_at_s": 60}, {"id": "ammo", "kind": "ammo", "name": "AMMO", "color": "#9be22d", "refill": "spawn", "spawn_every_s": 60, "first_at_s": 60}].map(r => Object.freeze(r)));
 /** The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order. */
 export const HEALTH_PRESETS = Object.freeze({ standard: Object.freeze({ max_hp: 45, max_armor: 70, max_shield: 0 }), shields: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 105 }), hardcore: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 0 }) });

@@ -123,7 +123,7 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
     return [
         ("POWERUP_PRESETS", [{"id": k, **v} for k, v in PW._PRESETS.items()],
          ["The powerup presets the ITEMS panel offers (powerups.py _PRESETS), in source order. A weapon row holds",
-          "`weapon_id`; an overshield row holds `amount`. `charges` is not here: MC fills it from the catalogue."]),
+          "`weapon_id`; an overshield row holds `amount`; an ammo row holds `refill`. `charges` is not here: MC fills it from the catalogue."]),
         ("HEALTH_PRESETS", {k: dict(zip(("max_hp", "max_armor", "max_shield"), v)) for k, v in C.HEALTH_PRESETS.items()},
          ["The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order."]),
         ("OBJECTIVE_MODES", sorted(T.OBJECTIVE_MODES),

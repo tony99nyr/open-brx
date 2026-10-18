@@ -161,8 +161,9 @@ GameConfig {
                  protect_s?: 0|1|2, weapon_delay_ms?: 500|1000|1500|3000, station_protect_s?: 0|2|3 },  // [A49, A74] defaults 0 / 1500 / 2
   stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control",          // A13.1: the utility items valid in this game
                    item?: StationItem } ],   // [A56] a powerup station's item and schedule, the same object as
-                                      //   `StationAssignment.item`: {kind: "weapon"|"overshield", weapon_id?, charges?, amount?,
-                                      //   spawn_every_s, first_at_s, name, color}. Design and defaults: docs/spec/powerups.md.
+                                      //   `StationAssignment.item`: {kind: "weapon"|"overshield"|"ammo", weapon_id?, charges?, amount?,
+                                      //   refill?, spawn_every_s, first_at_s, name, color} (A75: `refill: "spawn"` on ammo). Design and
+                                      //   defaults: docs/spec/powerups.md.
   powerups?:   [ { weapon_id: string, slot: 2|3 } ],   // [A56] the pickup weapons armed at start (empty magazine, out of
                                       //   the ALT cycle); absent = none, or MC runs with `--no-powerups` (F372: on by default)
   game_byte?:  number,                // [A59] 1..255, the advert `game` byte MC arms its stations with this match
@@ -1007,6 +1008,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 
 | id | date | what | folded into |
 |---|---|---|---|
+| A75 | 2026-10-17 | AN AMMO PICKUP STATION ITEM (Tony, field 2026-10-17: "we need to add ammo pickups, i ran out of ammo in several games"). A powerup station can carry `{kind: "ammo", refill: "spawn", name: "AMMO", color: "#9be22d", spawn_every_s: 60, first_at_s: 60}`: a take tops the taker's held slots 0 and 1 up to their spawn reserve, never lower, and keeps the magazine. A player with every held slot full does not claim; the phone defers the grant through a reload or a stun. The `pickup` fact carries `item_kind: "ammo"`, no `weapon_id`, and optional `refilled: {"0": n0, "1": n1}`. Agreed with the phone owner (brx4). | §3 `StationAssignment.item`, `pickup`; `powerups.py`, docs/spec/powerups.md |
 | A74 | 2026-10-17 | SPAWN WEAPON DELAY 1500 IS LEGAL AND THE DEFAULT (Tony, field 2026-10-17: "players should have to hide for spawn"). `respawn.weapon_delay_ms` is now `500\|1000\|1500\|3000`, default 1500 (`types.WEAPON_DELAY_MS_DEFAULT`, the `builtin:spawn:auto` piece, the console picker). 500 stays legal, so stored pieces and resumed sessions keep their value; a config that omits the key now gets 1500. The HUD's REDEPLOYED runs 1.9 s (`redeployOutMs(1500)`). A favourite that names `builtin:spawn:auto` resolves to 1500 on its next load, and the bench CLI (`deathmatch`, `arena`, `fieldstart`) holds the trigger 1.5 s too (it derives from the compiler). Restart MC between matches: a resumed LIVE session keeps its compiled 500, while a hot join after the resume would compile 1500. | §3 `respawn` (body), A49 row; `types.py`, `pieces.py`, `presets/editors.tsx`, `compile.respawn_settings` |
 | A73 | 2026-10-11 | REFUSED FACTS STAY IN THE PHONE'S RING UNTIL MC CAN APPLY THEM (F513): an ack stops below a refused fact, so the phone resends it. After two refusals or 400 later facts without a resend, MC acks past it, records the loss, and emits one ALERT naming the player. | §5a; `net.py` (`_ack_hi`, `_give_up_hole`); `state.py`; `mcp/tests/test_mc_net.py` |
 | A72 | 2026-10-10 | THE PHONE'S STORED BLOBS CARRY A SCHEMA VERSION (maintainability review M4, brx4, main `57ada0e2`). `brx.engine` and `brx.outbox` (and `brxu.outbox`) save `v`; no `v` loads as version 1, an unknown `v` is dropped with one log line and the owner starts clean. Every phone `localStorage` key is indexed in `app/src/storekeys.js`. | §9 |
