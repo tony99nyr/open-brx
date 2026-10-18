@@ -587,6 +587,7 @@ function ammoHost(e) {
     log: (line, cls) => e.log(line, cls), changed: () => e._changed(), reloadGlance: () => e._gunReadoutReloadGlance(),
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
+    get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
@@ -6236,7 +6237,10 @@ export class Engine {
         // revive's own `$AMMO` rows have just opened the account, so asking `_awaitShot` would book a round the dead gun
         // never fired and hold the account one short.
         const wasAlive = this.alive;
-        this._pull = { at: this.now(), slot: this.activeSlot }; this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
+        // F542 review: a pull while this life's burst still waits in the play queue is before its `$SPAWN`, so the gun
+        // still wants a pull after it (F436): it does not arm ALT or a pickup equip for the life.
+        const queued = !!(this._lifeBurst && this._lifeBurst.life === this._lifeSeq);
+        this._pull = { at: this.now(), slot: this.activeSlot }; if (!queued) this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
       }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this.pu.onSelect();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
