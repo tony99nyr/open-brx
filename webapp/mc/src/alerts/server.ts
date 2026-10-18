@@ -55,7 +55,7 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
 
   // ---- the roster, the game, the notices ----
   'lobby-roster-fault-banner': { sev: 'red', text: ONE_TEAM_REFUSAL },
-  'frame-mc-verify': { sev: 'neutral', text: 'WIN IS CONFIRMED AT MC, {N} PHONES OFF-GRID ({NAMES}): TELL PLAYERS TO RETURN AFTER THE WHISTLE' },
+  'frame-mc-verify': { sev: 'neutral', text: 'WIN IS CONFIRMED AT MC, {N} PHONES WITH NO ROUTE BACK ({NAMES}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE' },
   'games-respawn-rules-warning': { sev: 'amber', text: "APP TOO OLD FOR TODAY'S RESPAWN RULES ({NAMES}): UPDATE THE APP TO {VERSION}" },
   'games-config-errors': { sev: 'red', text: '{CONFIG ERRORS, JOINED}' },
   'frame-setup-conflict-control-vs-grenade': {

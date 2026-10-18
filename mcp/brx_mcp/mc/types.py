@@ -636,13 +636,17 @@ def is_station_kind(value: object) -> TypeGuard[StationKind]:
 # contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
 # Stick (station_range.h) and MC (`stations.wire_threshold`) all read this one copy.
 #   phone respawn -70: Tony 2026-09-24, walked at 3-5 m. phone powerup -55: S58, about 30 cm, a placeholder until
-#   bench 4.11. phone control -75: F383, Tony 2026-09-27, until the outdoor walk. Any other phone kind -74.
-#   sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434, Tony
-#   2026-09-28, about 30 cm. sticks3 control -75: UNPROVEN, Sitting B 2026-09-25, a 5-7 m target. Any other Stick
-#   kind takes the Stick respawn value.
+#   bench 4.11. phone control -78: F383's -75 (Tony 2026-09-27), then the hill 10% larger (Tony 2026-10-17). Any other
+#   phone kind -74. sticks3 respawn -57: Tony 2026-09-24 ("the stick actually works better"). sticks3 powerup -45: F434,
+#   Tony 2026-09-28, about 30 cm. sticks3 control -78: UNPROVEN, Sitting B 2026-09-25 set -75 for a 5-7 m target, then the
+#   same +10%. Any other Stick kind takes the Stick respawn value.
+#   The +10% (field 2026-10-17, report 3.7): F383's flat-phone ladder reads -74 at 5 m and -86 at 7.5 m, so at the circle
+#   edge the path-loss exponent is n = 12 / (10 log10 1.5) = 6.8. A radius 1.1x wider is 10 n log10 1.1 = 2.8 dB weaker,
+#   so -75 becomes -78. The exit band (PRESENCE_EXIT_BAND_DB) is relative, so the contest edge moves with it. The n is
+#   from the PHONE ladder only (a confounded bench); the Stick hears players over another path, so its 10% is unproven.
 STATION_DEFAULT_THRESHOLD_DBM = {
-    "phone": {"respawn": -70, "powerup": -55, "extraction": -74, "bomb": -74, "control": -75},
-    "sticks3": {"respawn": -57, "powerup": -45, "extraction": -57, "bomb": -57, "control": -75},
+    "phone": {"respawn": -70, "powerup": -55, "extraction": -74, "bomb": -74, "control": -78},
+    "sticks3": {"respawn": -57, "powerup": -45, "extraction": -57, "bomb": -57, "control": -78},
 }
 # A defaulted Stick HILL advertises -57 in byte 14 (the value the Stick advertised before the hill had its own default:
 # Tony's Stick respawn walk, 2026-09-24), while the Stick itself measures players at

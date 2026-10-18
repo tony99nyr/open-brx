@@ -2611,10 +2611,10 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   json::Value v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":0})", &ok);
   StationAssignment a = parse_station_config(v);
   CHECK(a.threshold_defaulted);
-  CHECK_EQ(a.threshold, -75);  // D5: stored as the per-kind default it applies (byte 14 keeps -57 elsewhere)
-  CHECK_EQ(presence_threshold_dbm(a), -75);            // hill radius default
+  CHECK_EQ(a.threshold, -78);  // D5: stored as the per-kind default it applies (byte 14 keeps -57 elsewhere)
+  CHECK_EQ(presence_threshold_dbm(a), -78);            // hill radius default (F383 -75, +10% radius: -78)
   v = json::parse(R"({"kind":"control","team":255,"id":9})", &ok);
-  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -75);
+  CHECK_EQ(presence_threshold_dbm(parse_station_config(v)), -78);
   v = json::parse(R"({"kind":"control","team":255,"id":9,"threshold":-66})", &ok);
   StationAssignment m = parse_station_config(v);
   CHECK(!m.threshold_defaulted);
@@ -2624,7 +2624,7 @@ static void test_presence_threshold_is_the_phone_default_when_mc_sends_none() {
   CHECK(saved.note_applied(a, "s1"));
   StationAssignment r = saved.restore();
   CHECK(r.threshold_defaulted);
-  CHECK_EQ(presence_threshold_dbm(r), -75);
+  CHECK_EQ(presence_threshold_dbm(r), -78);
   SavedStationConfig saved2;
   saved2.note_applied(m, "s1");
   CHECK_EQ(presence_threshold_dbm(saved2.restore()), -66);
@@ -2636,11 +2636,12 @@ static void test_hill_default_threshold_separates_measurement_from_phone_advert(
   bool ok = false;
   StationAssignment a = parse_station_config(json::parse(R"({"kind":"control","team":255,"id":9})", &ok));
   hill.apply_station_config(a);
-  // F383, Tony 2026-09-27: -75 dBm on every path, until the outdoor walk measures a real one. F440, Tony 2026-10-02:
+  // F383, Tony 2026-09-27: -75 dBm on every path, until the outdoor walk measures a real one; Tony 2026-10-17: the hill
+  // 10% larger, -78. F440, Tony 2026-10-02:
   // the hysteresis (the exit band) is 3 dB, not 6, so the circle is nearly the same size in and out. It is the one
   // global constant every kind shares (no per-kind override exists), so it is pinned here beside the hill's default.
   CHECK_EQ(hill.threshold_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL);
-  CHECK_EQ(contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL, -75);
+  CHECK_EQ(contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_CONTROL, -78);
   CHECK_EQ(contract::PRESENCE_EXIT_BAND_DB, 3);
   CHECK_EQ(hill.threshold_advertised_dbm(), contract::STATION_DEFAULT_THRESHOLD_DBM_STICKS3_RESPAWN);
   StationLink respawn;

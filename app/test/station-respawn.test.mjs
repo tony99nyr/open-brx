@@ -83,20 +83,21 @@ test('the respawn threshold default is per platform: phone -70, StickS3 -57 (Ton
   assert.equal(STATION_THRESHOLD_DBM, -74, 'the other kinds keep the 2026-09-04 bench value');
 });
 
-// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path, exit band PRESENCE_EXIT_BAND_DB,
+// F383 (Tony, 2026-09-27): the hill (control station) default is its own -75 dBm on every path (-78 since the hill grew 10%,
+// Tony 2026-10-17), exit band PRESENCE_EXIT_BAND_DB,
 // until the outdoor walk measures a real one. It is NOT the generic -74 the other kinds share.
-test('a control station defaults to -75 dBm (F383, Tony 2026-09-27), and the exit band is 3 dB (F440, Tony 2026-10-02)', () => {
-  assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -75, sticks3: -75 });
+test('a control station defaults to -78 dBm (F383 -75, Tony 2026-10-17: 10% larger), and the exit band is 3 dB (F440, Tony 2026-10-02)', () => {
+  assert.deepEqual({ ...CONTROL_RSSI_DBM }, { phone: -78, sticks3: -78 });
   assert.ok(Object.isFrozen(CONTROL_RSSI_DBM));
-  assert.equal(phoneStationThreshold('control'), -75);
-  assert.equal(stationThreshold({ threshold: 0, kind: 'control' }), -75);
+  assert.equal(phoneStationThreshold('control'), -78);
+  assert.equal(stationThreshold({ threshold: 0, kind: 'control' }), -78);
   assert.equal(new Presence().hysteresisDb, 3);
 });
 
 test('review M3: MC\'s threshold 0 means the platform default, never a -30 dBm bubble', () => {
   assert.equal(applyThreshold(0, -70), 0, '0 is "your own default" (0.4.11 and older clamped it to -30)');
   assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'respawn' }), -70);
-  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'control' }), -75);
+  assert.equal(stationThreshold({ threshold: applyThreshold(0, -70), kind: 'control' }), -78);
   assert.equal(applyThreshold(-58, 0), -58, 'an override is kept');
   assert.equal(applyThreshold(-20, 0), -30); assert.equal(applyThreshold(-120, 0), -100);
   assert.equal(applyThreshold(-66.4, 0), -66);

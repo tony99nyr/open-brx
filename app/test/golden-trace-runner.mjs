@@ -181,6 +181,13 @@ export class TraceGun {
   take() { const r = [...this.replies, ...this.alcdReplies]; this.replies = []; this.alcdReplies = []; return r; }
 }
 
+/** F549: the `$ALCD` a gun sends when the head's slot-0 `$WEAP` loads, by `TraceGun`'s F207 rule: the clip, and t40 as the
+ *  reserve (else half of t17). */
+function headEcho(frames) {
+  const t = ((frames.head || []).find(f => f.startsWith('$WEAP,0,')) || '').split(',');
+  const res = /^\d+$/.test(t[41] || '') ? +t[41] : (/^\d+$/.test(t[18] || '') ? Math.floor(+t[18] / 2) : 0);
+  return `$ALCD,${+t[17] || 0},100,0,${res},0,*`;
+}
 /** The head `$PSET` maxima (hp, armour, shield), the way the gun reads them. */
 export function headMaxima(frames) {
   const p = (frames.head || []).find(f => f.startsWith('$PSET,'));
@@ -226,7 +233,9 @@ export async function runEngine(trace) {
   eng.onBleConnected({ ...base.gun_name });
   eng.onMcMessage({ kind: 'assign', body: { player: base.player, team, roster: base.roster, ...(setup.catalog ? { catalog: setup.catalog } : {}) } });
   eng.onMcMessage({ kind: 'config', body: { config, frames, roster: base.roster } });
-  eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  // F549: `$START` answers a zeroed `$LCD`, which is no head echo; the slot-0 `$WEAP` load answers its own `$ALCD` (the F532
+  // re-bench order, and what every healthy gun sent in the field on 2026-10-17)
+  eng.feedFrame('$LCD,0,0,0,0,0,0,*'); if (!gun.o.alcd_echo) eng.feedFrame(headEcho(frames));   // an echoing gun answers itself
   const countdown = setup.countdown_s || 0;
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock + countdown * 1000, config_id: config.config_id, seq: 1, countdown_s: countdown } });
   await settle();

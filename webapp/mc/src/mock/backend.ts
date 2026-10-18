@@ -1027,7 +1027,7 @@ export class MockBackend implements Api {
     // The server retains the same node record after disconnect. Readiness can say "none" while
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
-    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes));
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
     const holdWarning = holdTargetWarning(this.config);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {

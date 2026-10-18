@@ -221,7 +221,7 @@
           "body": {
             "config_id": "golden-tdm",
             "ok": true,
-            "gun_echo": "$LCD,0,0,0,0,0,0,*"
+            "gun_echo": "$ALCD,32,100,0,96,0,*"
           }
         }
       ],
