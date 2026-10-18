@@ -234,8 +234,11 @@ State {
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
                                               // survival mode) AND `config.coverage != "full"` AND at least one
                                               // rostered phone has no backhaul (A28) — and it NAMES those phones:
-                                              // `WIN IS CONFIRMED AT MC, 3 PHONES OFF-GRID (OP0, OP1, OP2): TELL
-                                              // PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
+                                              // `WIN IS CONFIRMED AT MC, 2 PHONES WITH NO ROUTE BACK (OP0, OP1):
+                                              // TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE`, or, when EVERY
+                                              // rostered phone is off-grid (a Wi-Fi-only match), the unnamed
+                                              // `WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE
+                                              // WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
                                               // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
                                               // names. F309: a phone is off-grid unless it joined through the tunnel AND

@@ -273,7 +273,7 @@ MODES: list[ModeRow] = [
     # cap. With NO possession reported at all, the winner stays `undecided` rather than inventing one
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
-     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it banks possession. Most possession time when the clock runs out takes the match.",
+     "brief": "One hill: a Bluetooth control point on the field, a spare phone in the utility role. Stand on the point to take it. An enemy point drains to neutral before it builds up for you, and the side with more living players on it moves it. Every second your side holds it with a living player on it banks possession. Most possession time when the clock runs out takes the match.",
      # F415 (2026-09-27): `app/src/engine.js` now sends a `possession` fact, and `scoring.py` names the
      # winner from it (`Scorer.winner()`) -- the "· HOST CALL" clause this used to carry was honest only
      # until that shipped (operator review 2026-09-10's own finding); dropped now that it has.
@@ -1306,9 +1306,14 @@ class Session:
         out: NoticesView = {}
         off = self._off_grid()
         if self._mc_verify_player_line():
-            shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
-            out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} OFF-GRID "
-                                f"({shown}): TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+            if len(off) >= len(self.players):
+                # Wi-Fi-only match: EVERY phone is off-grid, so naming them would be wallpaper.
+                out["mc_verify"] = ("WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, "
+                                    "TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+            else:
+                shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
+                out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} "
+                                    f"WITH NO ROUTE BACK ({shown}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE")
         return out
 
     def game_brief(self) -> dict:

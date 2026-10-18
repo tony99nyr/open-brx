@@ -562,6 +562,7 @@
    "reserve": 80,
    "reload_ms": 2500,
    "rounds_per_charge": 10,
+   "caution": "A full charge needs 10 rounds in the cell. Below that the gun will not fire or reload until you refill it.",
    "dmg": 61,
    "rof": 6,
    "rng": 75,

@@ -207,14 +207,20 @@ describe('A29 · what build each phone is running', () => {
 });
 
 describe('A31 · the verify-at-MC host line', () => {
-  const notice = 'WIN IS CONFIRMED AT MC · 2 PHONES OFF-GRID · TELL PLAYERS TO RETURN AFTER THE WHISTLE (SABLE, DRIFT)';
+  it('maps the all-phones shape to one plain line', async () => {
+    const { friendlyMcVerifyLine } = await import('../src/ui/McVerify');
+    expect(friendlyMcVerifyLine('WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE'))
+      .toBe('Wins are confirmed at MC, and no phone can reach MC away from the Wi-Fi: tell players to come back after the whistle.');
+  });
+
+  const notice = 'WIN IS CONFIRMED AT MC, 2 PHONES WITH NO ROUTE BACK (SABLE, DRIFT): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE';
 
   it('LOBBY shows it, reworded short and sentence-case, never the server\'s raw shouted copy', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'lobby', notices: { mc_verify: notice } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const line = m.find('[data-testid="mc-verify"]')[0]?.textContent;
-    expect(line).toContain('2 phones are off-grid (SABLE, DRIFT)');
+    expect(line).toContain('2 phones have no route back to MC (SABLE, DRIFT)');
     expect(line).toContain('Wins are confirmed at MC');
     // Field feedback 2026-09-19 (Tony): sentence case, not the server's ALL CAPS.
     expect(line).not.toContain('WIN IS CONFIRMED');

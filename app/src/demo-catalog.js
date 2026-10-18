@@ -199,6 +199,7 @@ export const DEMO_WEAPONS = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
+    "caution": "A full charge needs 10 rounds in the cell. Below that the gun will not fire or reload until you refill it.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
