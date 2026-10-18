@@ -1245,6 +1245,7 @@ class NodeView(TypedDict):
     claims_dropped: NotRequired[int]
     app_ver: NotRequired[str | None]
     platform: NotRequired[str | None]
+    device: NotRequired[str | None]   # F564: the phone's make and model (`Device.getInfo()`), e.g. "Google Pixel 4"
     log: NotRequired[LogView | None]
     # F309: the phone's own last `status.transport` claim; absent = never reported (older app).
     transport: NotRequired[Literal["wifi", "cellular", "none", "unknown"]]
