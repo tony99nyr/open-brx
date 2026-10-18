@@ -19,7 +19,9 @@ export const MC_DIR = path.resolve(E2E_DIR, '../..');
 export const REPO = path.resolve(MC_DIR, '../..');
 
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
-export { freePort } from '../../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
+// F523: a port from this job's own block. Imported, not only re-exported: `ports()` and the bind retry call it here.
+import { freePort } from '../../../../../scripts/lib/ports.mjs';
+export { freePort };
 export const killGroup = proc => new Promise(done => {
   if (!proc || proc.exitCode != null || proc.signalCode != null) { done(); return; }
   let settled = false; const finish = () => { if (!settled) { settled = true; done(); } };

@@ -1809,8 +1809,12 @@ export interface StationControl {
   progress?: number;
   contested?: boolean;
   hold_ms?: Record<string, number>;
-  /** F555: the game byte the hill counts under (absent from an older station) */
+  /** F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not) */
   game?: number;
+  /** Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
+   *  station's own), so ITEMS can show what each hill is really doing. */
+  capture_s?: number;
+  net_cap?: number;
   /** F558: the point's own inputs: the clamped net its leader converts at, living players counted per tid, and the
    *  leading tid (null with nobody counted). Absent from an older station. */
   net?: number;
@@ -1960,6 +1964,9 @@ export interface RecapStationRow {
   revives?: number | null;
   hold_ms?: Record<string, number> | null;
   owner?: number | null;
+  /** Milestone round 3: a control station MC first heard after the whistle. Nothing bounds its tally (no reading at or
+   *  before end_t), so it did not score: the phones' cross-check decided its site. Absent = it scored, or not a hill. */
+  unverified?: boolean;
   /** F401: absent while the match has not ended (sync is not a question yet); once it has, whether MC
    *  has heard this station's node since the whistle. A HELD station (e.g. a StickS3) can end a timed
    *  match on its own clock while out of Wi-Fi range, and MC only gets its result once it is heard

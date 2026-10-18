@@ -711,7 +711,19 @@ A68 also retains `starts_in_ms` and `ends_in_ms` as MC's known clock offsets. A 
 takes one last step to the deadline and holds (`ends_in_ms` 0 = now, never later than a whistle already passed). MC seeds
 its scoring tally only from LIVE and RECAP beats. Known limit: a phone hill that hears LOAD but no START (out of Wi-Fi
 from LOAD until LIVE) still carries its lobby time; MC clamps every reading to the time played, and the phone has no
-muster fallback like the Stick's, because waiting for a START it may never hear would stop an offline hill altogether. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends `starts_in_ms` and never `ends_in_ms` or `duration_ms` (F568).
+muster fallback like the Stick's, because waiting for a START it may never hear would stop an offline hill altogether.
+
+**A late hill reading after an early END (milestone review, 2026-10-18).** A Stick out of Wi-Fi under MUSTER never hears an
+operator's early END, so it counts on to its own deadline, and its report in RECAP can carry hold banked after the whistle.
+Since F555 that tally is the scoring authority, so MC bounds it with no wire change: a reading MC receives after `end_t` may
+raise its site only by the time between the last reading MC received at or before `end_t` and `end_t` itself, shared
+between the teams (one team banks at a time), and two late reports cannot compound that window. A hill MC never heard
+during the match does not score at all: the phones' cross-check decides its site and its recap row carries
+`unverified: true`. The bound, the receipt times and the pre-END readings survive an MC restart (the match snapshot). A
+station's reading also stops outranking the phones once MC has not received a tally from it for 60 s before the whistle
+(a hello does not count), and an adopted match caps no reading by its guessed clock (only by twice the draft's limit).
+Known gap: a Stick restored from flash knows no deadline, so a same-game adopted re-send cannot give it one back; it counts
+until the operator's END. MC sends known values in ARMED/LIVE, including a start for an untimed match. End 0 freezes after match end, RECALL or PANIC; abort omits both clock offsets so the same game can start again. A same-game lobby config keeps the hill waiting. An adopted match sends `starts_in_ms` and never `ends_in_ms` or `duration_ms` (F568).
 
 For a Stick `control` station, threshold 0 or absent selects the separate -78 dBm hill default (Tony, 2026-09-25 -75, UNPROVEN; 10% larger, 2026-10-17)
 (`STICK_HILL_DEFAULT_THRESHOLD_DBM`, UNPROVEN, pending a 3, 5 and 7 m walk test). A Stick `powerup` uses

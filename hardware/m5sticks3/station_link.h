@@ -468,9 +468,9 @@ inline StationAssignment parse_station_config(const json::Value& body) {
   if (kind == "powerup") a.item = parse_item(body.get("item"));   // an item on any other kind is dropped
   {  // F559 (stationconfig.js): integers in range, else absent
     const json::Value& cs = body.get("capture_s");
-    if (json_is_int(cs) && cs.num >= 3 && cs.num <= 60) a.capture_s = (int)cs.num;
+    if (json_is_int(cs) && cs.num >= contract::HILL_CAPTURE_S_MIN && cs.num <= contract::HILL_CAPTURE_S_MAX) a.capture_s = (int)cs.num;
     const json::Value& nc = body.get("net_cap");
-    if (json_is_int(nc) && nc.num >= 1 && nc.num <= 6) a.net_cap = (int)nc.num;
+    if (json_is_int(nc) && nc.num >= contract::HILL_NET_CAP_MIN && nc.num <= contract::HILL_NET_CAP_MAX) a.net_cap = (int)nc.num;
   }
   if (body.has("ends_in_ms")) {
     const json::Value& end = body.get("ends_in_ms");
@@ -1562,8 +1562,13 @@ class StationLink {
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
         (a.duration_ms > 0 && !duration_anchor_known_)) {
-      deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
-      if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
+      // Milestone review (utility.js `applyHillClock`): a same-game re-send whose start is already past and which names no
+      // deadline (F568's adopted LIVE match) keeps the deadline the original START gave.
+      const bool live_resend = a.starts_known && a.starts_in_ms <= 0 && a.ends_in_ms < 0 && !kind_or_id_changed && !game_changed;
+      if (!(live_resend && deadline_known_)) {
+        deadline_known_ = a.starts_known && a.ends_in_ms >= 0;
+        if (deadline_known_) hill_deadline_ms_ = received_at_ms + (uint32_t)a.ends_in_ms;
+      }
     }
     if (hill_restore_guard_ && a.starts_known) {
       hill_restore_guard_ = false;

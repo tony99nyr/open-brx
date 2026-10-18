@@ -193,6 +193,10 @@ class Match:
                 # F555: the stations' validated hill readings are not stored facts, so a replay cannot rebuild them
                 "station_possession": {site: {str(tid): ms for tid, ms in per.items()}
                                        for site, per in self.scorer.station_possession_ms.items()},
+                # milestone round 3: when each reading was received, and the pre-END bound for a late one
+                "station_seen": dict(getattr(self.scorer, "station_seen_ms", {})),
+                "station_pre_end": {site: {str(tid): ms for tid, ms in per.items()}
+                                    for site, per in getattr(self.scorer, "station_pre_end", {}).items()},
                 "alerts": self.scorer.match_state_alerts(),
                 "departed_stations": [dict(row) for row in sorted(
                     self.departed_stations.values(), key=lambda row: row["node_id"])],

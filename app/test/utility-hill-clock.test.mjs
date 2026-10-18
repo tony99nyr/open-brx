@@ -196,3 +196,24 @@ test('F559: a pushed net cap limits a crowd on the point', async () => {
   assert.equal(api.point.net, 1, 'three RED at net_cap 1 convert at net 1');
   assert.ok(Math.abs(api.point.progress - 20) < 1e-6, `2 s at net 1 builds 20%: ${api.point.progress}`);
 });
+
+test('milestone review: an adopted-match re-send (start already past, no deadline) keeps the live hill\'s whistle', async () => {
+  // F568: MC sends an adopted LIVE match `starts_in_ms` with no `ends_in_ms` (it trusts no time limit). The hill's deadline
+  // from the original START must survive it, or the hill counts past the whistle until the operator presses END.
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 20_000 });
+  const whistle = api.settings.hillEndsAt;
+  assert.ok(Number.isFinite(whistle), 'setup: a deadline');
+  await api.applyStationConfig({ ...hill, game, starts_in_ms: -360_000 });   // the adoption re-send
+  assert.equal(api.settings.hillEndsAt, whistle, 'the adoption re-send wiped the deadline');
+  // CONTROL: a countdown START with no deadline (an untimed match) still clears it
+  await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000 });
+  assert.equal(api.settings.hillEndsAt, null);
+});
+
+
+test('milestone round 3: a saved pace outside A77 comes back inside it, and +/- stays inside', async () => {
+  api.settings.captureS = 120; api.settings.netCap = 12;
+  api.clampPace();
+  assert.equal(api.settings.captureS, 60);
+  assert.equal(api.settings.netCap, 6);
+});

@@ -662,6 +662,8 @@
     },
     "seq": 1,
     "station_possession": {},
+    "station_pre_end": {},
+    "station_seen": {},
     "store_path": "session.sqlite",
     "synced_at_lobby": {
       "node0": true,
