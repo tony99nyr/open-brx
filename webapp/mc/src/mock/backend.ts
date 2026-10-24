@@ -1855,7 +1855,7 @@ export class MockBackend implements Api {
         ? { hill: match.hill ? { capture_s: match.hill.capture_s ?? null, net_cap: match.hill.net_cap ?? null } as unknown as HillSettings : null } : {}),
       // §3.6: SILENCED applies the full silenced preset together; off returns the mode's own automatic one.
       presentation: { preset: match.silenced ? 'silenced' : String(modeInfo.defaults.presentation?.preset ?? 'standard') },
-      environment: 'outdoor',   // §3.7 (F410): MVP is outdoors only
+      // §3.7 (F546): no `environment`: a pick keeps the operator's venue, and putConfig carries it across a mode change.
       // A cleared team choice writes the picked mode's defaults. FFA has no team control.
       ...(modeInfo.match_items?.includes('teams') ? { teams: (match.teams ?? modeInfo.defaults.teams.map(t => t.team_id as TeamColour))
         .map(c => TEAMS.find(t => t.team_id === c)!) } : {}),
