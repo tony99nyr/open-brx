@@ -39,7 +39,7 @@ the secondary slot, Armour Piercing, the Toxin Rifle, the Haze, melee and the fi
 The review also gained rush from 20 and 30 m at every marksman, a KOTH hill hold column, an ammo stress column and
 the pistol finisher (scenario version 8).
 The Codex sim critique is folded in too: heat in the rule engines with three cooling branches (fail on a flip),
-Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12).
+Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12; 13 since F579's field-pace duels).
 Phase B (2026-10-24) is done: no one-field set passes; Tony's three calls are F578.
 F576 (2026-10-24): compile publishes the field fight interval for single-shot weapons, from one constant the sims
 import; Tony set the Shotgun's band floor to 0.85 s and tests "pistols weak" on the R10b duel. F579: the duel engine

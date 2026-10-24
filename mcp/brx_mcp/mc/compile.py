@@ -1890,8 +1890,7 @@ def hir_from_weap(frame: str) -> list[int]:
 
     t5/t12/t37, each only when the frame carries it greater than 0; sorted ascending and
     de-duplicated, because a phone matching a `$HIR` magnitude back to a weapon only needs to know
-    which SIZES that weapon can send, not which token sent it (the Shotgun's t5 and t12 are both 20:
-    one entry, not two)."""
+    which SIZES that weapon can send, not which token sent it (equal words give one entry, not two)."""
     p = frame.split(",")
     T = WeaponCatalog._T
     vals: set[int] = set()
