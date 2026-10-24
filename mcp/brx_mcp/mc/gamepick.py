@@ -395,7 +395,8 @@ def compose(resolved: Mapping[PieceKind, GamePiece], match: MatchSettings, mode_
     patch["night"] = bool(match.get("night"))
     patch["presentation"] = (_pres.profile_from_preset("silenced") if match.get("silenced")
                              else _pres.profile_from_preset(mode_row.get("preset") or "standard"))
-    patch["environment"] = "outdoor"   # F410: MVP is outdoors only, whatever the session held before
+    # F546: no `environment` here. The venue is the operator's fact about the site: `set_config` keeps the live one
+    # (`_candidate_config` carries it across a mode change). A new session still starts outdoors (F410, `default_config`).
     # F413: a mode with no real teams (FFA/LMS, `mode_row["teams"] == ["ffa"]`) leaves `teams` UNCLAIMED,
     # the same "set_config decides" treatment `stations`/`powerups`/`vip`/`stun` already get above --
     # writing an `["ffa"]`-derived team list here would be actively wrong (`state.TEAM_DEFS["ffa"]` is a

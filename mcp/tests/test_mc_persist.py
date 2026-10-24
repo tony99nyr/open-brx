@@ -446,6 +446,27 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
         assert s2.config[k] == fresh[k], k                    # identical to the stock mode's defaults
 
 
+def test_a_snapshot_without_a_venue_restores_outdoors_and_keeps_a_saved_one():
+    """F546 review: a pick no longer writes `environment`, so it no longer repairs a restored config that lacks one,
+    and compile reads `config["environment"]`. The restore fills it with outdoors (F410's default); a saved venue stays."""
+    for saved, want in ((None, "outdoor"), ("bogus", "outdoor"), ("indoor", "indoor")):
+        r = mk_session(); s = r[0] if isinstance(r, tuple) else r
+        tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+        s._persist_path = tmp
+        s._persist_last = 0.0
+        s._persist()
+        snap = json.loads(tmp.read_text())
+        if saved is None:
+            snap["config"].pop("environment", None)              # what a hand-edited or partial file holds
+        else:
+            snap["config"]["environment"] = saved
+        tmp.write_text(json.dumps(snap))
+        r2 = mk_session(); s2 = r2[0] if isinstance(r2, tuple) else r2
+        s2._persist_path = tmp
+        assert s2.restore_snapshot() >= 2
+        assert s2.config.get("environment") == want, (saved, s2.config.get("environment"))
+
+
 def test_a_snapshot_from_before_win_by_keeps_its_kill_cap():
     """A legacy TDM cap must not become a hidden early end after restart."""
     r = mk_session(); s = r[0] if isinstance(r, tuple) else r

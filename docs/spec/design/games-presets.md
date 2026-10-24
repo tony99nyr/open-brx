@@ -85,7 +85,9 @@ same phase gating, the same RECAP roll-forward, the same re-announce while LOADE
 6. `time_limit_s`, `scoring.frag_limit` and `night` come from `match`. `silenced: true` sets
    `presentation = presentation.profile_from_preset("silenced")` (F282: announcer, voice, LED and the silent
    weapons together). `silenced: false` sets the mode's automatic presentation.
-7. `environment` is always `"outdoor"` (F410: MVP is outdoors only). `volume` is not set (the venue value, 90).
+7. `environment` and `volume` are not set: a pick keeps the operator's venue (F546), and a mode change carries it.
+   A new session starts outdoors (F410: MVP is outdoors only), so the play volume is 90 unless the operator set
+   another venue through `PUT /api/config`.
 
 **Mode change resets the strip's limits.** When a pick changes `mode`, `match.time_limit_s` and
 `match.frag_limit` take the new mode's defaults, unless the same request sets them. `night` and `silenced` stay.

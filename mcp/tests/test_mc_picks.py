@@ -52,3 +52,23 @@ def test_an_armed_match_refuses_a_pick_before_resolving_anything():
         assert "after the match has started" in str(e), f"refused for the wrong reason: {e}"
         return
     raise AssertionError("an armed match took a pick")
+
+
+def test_a_pick_keeps_the_operators_venue():
+    """F546 (bench C.1, 2026-10-16): `play/pick ffa` after `PUT` venue indoor set the venue back to outdoor. The venue is
+    the operator's fact about the site: a pick (a mode change or not) and a favourite load keep it. A new session still
+    starts outdoors (`default_config`)."""
+    g, s = _pick()
+    assert s.config["environment"] == "outdoor", "a new session must still start outdoors"
+    assert s.set_config({"environment": "indoor"})["ok"]
+    res = g.pick({"mode": "builtin:mode:ffa"}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["mode"] == "ffa" and s.config["environment"] == "indoor", "a mode pick reset the venue"
+    from brx_mcp.mc.compile import head_volume, play_volume
+    assert head_volume(s.config) == play_volume("indoor") != play_volume("outdoor"), "the play volume follows the venue"
+    res = g.pick({}, {"time_limit_s": 600})
+    assert res["ok"], res["errors"]
+    assert s.config["environment"] == "indoor", "a same-mode pick reset the venue"
+    res = g.load(s.game_pick)
+    assert res["ok"], res["errors"]
+    assert s.config["environment"] == "indoor", "a favourite load reset the venue"

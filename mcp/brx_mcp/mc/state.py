@@ -2400,8 +2400,8 @@ class Session:
         mode = patch.get("mode", self.config["mode"])
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
-        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
-            self._policy_notice = None                       # a picked piece applies) must not eat the reset notice
+        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT must not eat the reset notice
+            self._policy_notice = None
 
         cfg = self._candidate_config(patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
@@ -4234,6 +4234,8 @@ class Session:
         mid, go, seq = head["match_id"], head["go_live_t"], head["seq"]
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
+        if self.config.get("environment") not in ("indoor", "outdoor"):
+            self.config["environment"] = "outdoor"         # F546: the same venue repair as restore_snapshot()
         # F469 round 3: the saved match's own config gets the same KOTH hold-target check as the restore, so a malformed
         # one never reaches the scorer
         sc = self.config.get("scoring")
