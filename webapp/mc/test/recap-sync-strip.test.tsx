@@ -210,7 +210,7 @@ describe('F597 · the strip', () => {
     expect(icon('p2').dataset.stuck).toBe('1');
     expect((icon('p2').firstElementChild as HTMLElement).style.opacity).toBe('0.5');
     expect(icon('p2').querySelector('[data-strip-label]')!.textContent).toBe('BRAVO');
-    expect((icon('p2').querySelector('[data-strip-label]') as HTMLElement).style.color).not.toBe('');
+    expect((icon('p2').querySelector('[data-strip-label] span') as HTMLElement).style.color, 'amber name').not.toBe('');
     expect(icon('p3').querySelector('[data-strip-label]')?.textContent ?? '').toBe('');
     m.unmount();
   });

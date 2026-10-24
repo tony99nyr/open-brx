@@ -47,6 +47,24 @@ export const EndAlertCtx = createContext<'recap-end-delivery-retrying' | 'recap-
 
 export const plural = (n: number, one: string, many = `${one}S`) => `${n} ${n === 1 ? one : many}`;
 
+/** ONE display model per row. The strip icon and the SYNC cell both render from it, so they cannot disagree. */
+export interface RowView {
+  state: string;                       // e.g. 'sending', 'sending-stuck', 'linked', 'received'
+  stage: RecapSyncRow['stage'];
+  transport: 'wifi' | 'cellular' | 'backhaul' | null;   // only a known transport, and only where the stage shows one
+  count: number | null;                // the facts left to send, shown for a sending row (a stuck one too, dim)
+  stuck: boolean;
+  motion: boolean;                     // only a live (not stuck) sending row moves
+  lost: number;
+  end: boolean;
+}
+export function rowView(r: RecapSyncRow): RowView {
+  const stuck = r.stuck && r.stage !== 'received';
+  const transport = (r.stage === 'linked' || r.stage === 'sending') && r.transport && r.transport in TRANSPORT_ICON ? r.transport : null;
+  return { state: stuck ? `${r.stage}-stuck` : r.stage, stage: r.stage, transport, count: r.stage === 'sending' && r.pending ? r.pending : null,
+    stuck, motion: r.stage === 'sending' && !stuck, lost: r.lost ?? 0, end: r.end_unconfirmed };
+}
+
 /** The row's words, for the aria-label and the hover title. */
 export function wordOf(r: RecapSyncRow): string {
   const lost = r.lost ? `, incomplete (${r.lost} facts lost)` : '';
@@ -67,9 +85,9 @@ export const stripIconW = (n: number) => (n <= 16 ? 44 : n <= 32 ? 34 : 28);
 
 function PhoneShape({ r, w }: { r: RecapSyncRow; w: number }) {
   const h = Math.round(w * 52 / 44);
-  const sending = r.stage === 'sending';
-  const moving = sending && !r.stuck;   // a stalled phone is not shown as moving
-  const col = r.stage === 'received' ? T.ok : r.stage === 'unlinked' ? T.dim : sending ? colourOf('recap-sync-sending') : T.body;
+  const v = rowView(r);
+  const moving = v.motion;   // a stalled phone is not shown as moving
+  const col = r.stage === 'received' ? T.ok : r.stage === 'unlinked' ? T.dim : v.stuck ? T.warn : r.stage === 'sending' ? colourOf('recap-sync-sending') : T.body;
   const dotCol = colourOf('recap-sync-sending');
   return (
     <svg width={w} height={h} viewBox="0 0 44 52" fill="none" stroke={col} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', opacity: r.stage === 'unlinked' ? 0.45 : 1 }}>
@@ -103,19 +121,26 @@ function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; la
   const badge = (pos: CSSProperties, color: string, kids: ReactNode, key: string, attr: Record<string, string>) =>
     <span key={key} {...attr} style={{ position: 'absolute', width: b + 2, height: b + 2, borderRadius: '50%', background: T.panelDeep, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color, ...pos }}>{kids}</span>;
   const phone = r.kind === 'phone';
-  const label = r.stuck && !crowded ? r.name : r.pending ? String(r.pending) : null;
+  const v = rowView(r);
+  const showName = v.stuck && !crowded;
   const title = wordOf(r);
   return (
-    <div role="listitem" data-strip-icon={r.id} data-kind={r.kind} data-stage={r.stage} data-stuck={r.stuck ? '1' : undefined}
+    <div role="listitem" data-strip-icon={r.id} data-kind={r.kind} data-stage={r.stage} data-state={v.state} data-stuck={v.stuck ? '1' : undefined}
       aria-label={title} title={title} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: w, flex: 'none' }}>
       <div style={{ position: 'relative', opacity: r.stuck ? 0.5 : 1 }}>
         {phone ? <PhoneShape r={r} w={w} /> : <StationShape r={r} w={w} />}
-        {r.stage !== 'received' && r.stage !== 'unlinked' && transportWord(r.transport) && badge({ right: -4, bottom: 0 }, T.body, transportIcon(r.transport, b - 2), 't', { 'data-strip-transport': r.transport as string })}
+        {v.transport && badge({ right: -4, bottom: 0 }, T.body, transportIcon(v.transport, b - 2), 't', { 'data-strip-transport': v.transport })}
         {r.stage === 'unlinked' && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
-        {r.end_unconfirmed && badge({ left: -4, top: 0 }, colourOf(endId), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
-        {!!r.lost && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
+        {v.end && badge({ left: -4, top: 0 }, colourOf(endId), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
+        {!!v.lost && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
       </div>
-      {labelRow && <span data-strip-label style={{ marginTop: 3, minHeight: 14, font: F.mono(700, 11), color: r.stuck ? T.warn : colourOf('recap-sync-sending'), maxWidth: 76, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }} title={r.name}>{label ?? ''}</span>}
+      {labelRow && (
+        <span data-strip-label style={{ marginTop: 3, minHeight: 14, display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: 76, textAlign: 'center' }}>
+          {/* a stuck sending row keeps its count, dim and amber, the same as its SYNC cell */}
+          {v.count != null && <span data-strip-count style={{ font: F.mono(700, 11), color: v.stuck ? T.warn : colourOf('recap-sync-sending'), opacity: v.stuck ? 0.6 : 1 }}>{v.count}</span>}
+          {showName && <span style={{ font: F.mono(700, 11), color: T.warn, maxWidth: 76, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.name}>{r.name}</span>}
+        </span>
+      )}
     </div>
   );
 }
@@ -160,7 +185,7 @@ export function SyncStrip({ rows, phase }: { rows: RecapSyncRow[]; phase: SyncPh
   // Up to 16 icons the stalled one wears its own name. Past that the names would collide, so they go in ONE line.
   const crowded = rows.length > 16;
   const stalled = rows.filter(r => r.stuck);
-  const labelRow = rows.some(r => (r.stuck && !crowded) || r.pending);
+  const labelRow = rows.some(r => (r.stuck && !crowded) || rowView(r).count != null);
   return (
     <div data-testid="sync-strip" data-icon-w={w} data-still={allIn ? '1' : undefined}
       style={{ padding: '8px 12px 6px', background: T.panel, border: `1px solid ${T.line}`, marginBottom: 8 }}>
@@ -181,16 +206,18 @@ export function SyncStrip({ rows, phase }: { rows: RecapSyncRow[]; phase: SyncPh
 /** The SYNC column's cell: the strip's stage icons, small, for one player row. */
 export function SyncCell({ r }: { r: RecapSyncRow }) {
   const endId = useContext(EndAlertCtx);
-  const c = (col: string, kids: ReactNode, key: string) => <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: col }}>{kids}</span>;
-  const send = colourOf('recap-sync-sending');
+  const v = rowView(r);
+  const c = (col: string, kids: ReactNode, key: string, o: number = 1) => <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: col, opacity: o }}>{kids}</span>;
+  const send = v.stuck ? T.warn : colourOf('recap-sync-sending');
+  const dim = v.stuck ? 0.6 : 1;   // the stuck form: dim and amber, no motion (it never had any in the cell)
   return (
-    <span data-sync-cell={r.id} data-stage={r.stage} title={wordOf(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+    <span data-sync-cell={r.id} data-stage={r.stage} data-state={v.state} data-motion={v.motion ? '1' : '0'} title={wordOf(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       {r.stage === 'unlinked' && c(colourOf('recap-sync-outofrange'), Icon.unlinked(16), 'u')}
-      {(r.stage === 'linked' || r.stage === 'sending') && transportWord(r.transport) && c(T.body, transportIcon(r.transport, 16), 't')}
-      {r.stage === 'sending' && c(send, <>{Icon.sending(16)}{!!r.pending && <span data-sync-num style={{ font: F.mono(700, 12) }}>{r.pending}</span>}</>, 's')}
+      {v.transport && c(T.body, <span data-sync-transport={v.transport} style={{ display: 'inline-flex' }}>{transportIcon(v.transport, 16)}</span>, 't', dim)}
+      {r.stage === 'sending' && c(send, <>{Icon.sending(16)}{v.count != null && <span data-sync-num style={{ font: F.mono(700, 12) }}>{v.count}</span>}</>, 's', dim)}
       {r.stage === 'received' && c(T.ok, Icon.check(16), 'c')}
-      {!!r.lost && c(T.warn, <span data-sync-lost>{Icon.warn(16)}</span>, 'w')}
-      {r.end_unconfirmed && c(colourOf(endId), <span data-sync-end>{Icon.endOpen(16)}</span>, 'e')}
+      {!!v.lost && c(T.warn, <span data-sync-lost>{Icon.warn(16)}</span>, 'w')}
+      {v.end && c(colourOf(endId), <span data-sync-end>{Icon.endOpen(16)}</span>, 'e')}
     </span>
   );
 }
