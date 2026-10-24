@@ -219,7 +219,7 @@ test('F563: a gun that stays off outside a match stops the reconnect loop after 
   r.up.A = true; r.link.retryNow(); await step(3000);
   assert.ok(r.attempts.A > tries, 'TAP TO RECONNECT starts it again');
 });
-test('F563 review: a resting loop starts again on resumeReconnect (a match arming, an app resume); a running one is left alone', async ctx => {
+test('F563 review: a resting loop starts again on resumeReconnect (a match arming, an app resume); outside a match a running one is left alone', async ctx => {
   ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
   const step = async ms => { for (let t = 0; t < ms; t += 1000) { ctx.mock.timers.tick(1000); for (let k = 0; k < 6; k++) await new Promise(r => setImmediate(r)); } };
   const r = cleanRig(ctx);
