@@ -259,9 +259,6 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     # `last_seq` taken afterwards would silently put that echo below the floor and never see it.
     last_seq = mgr.sessions[alias].seq if alias in mgr.sessions else 0
 
-    for cmd in p.once:
-        await send(cmd)
-
     next_due = {g.name: t0 + g.offset_s for g in p.repeating}   # offset_s: a group's first fire, after the arm
     next_ping = t0
     last_pong_at = t0
@@ -269,6 +266,9 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     deadline = t0 + minutes * 60
 
     try:
+        # inside the try: a Ctrl-C after the arm's $CLEAR must still reach the teardown, which puts the table back
+        for cmd in p.once:
+            await send(cmd)
         while clock.now() < deadline:
             now = clock.now()
 
@@ -319,7 +319,8 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     finally:
         summary.minutes_run = (clock.now() - t0) / 60
         with contextlib.suppress(Exception):
-            for cmd in end_hittable():
+            # the table the pattern armed (a named pattern arms MC's live pool), or the base table
+            for cmd in end_hittable([f for f in p.once if f.startswith("$SIR,")] or None):
                 await send(cmd)
         with contextlib.suppress(Exception):
             await mgr.disconnect(alias)

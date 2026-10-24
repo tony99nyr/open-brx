@@ -480,8 +480,11 @@ class GameDriver:
         self._bursts.clear()
         for pid in self.players:
             # F539: end hittable, with the gun's own $SIR table after the $CLEAR (F11)
-            rows = [f for f in self.config.setup_frames(self.player_ids[pid], team=int(self.players[pid]))
-                    if f.startswith("$SIR,")]
+            try:
+                rows = [f for f in self.config.setup_frames(self.player_ids[pid], team=int(self.players[pid]))
+                        if f.startswith("$SIR,")] or None
+            except Exception:  # noqa: BLE001 — the end must still go out; the base table is hittable too
+                rows = None
             for f in end_hittable(rows):
                 await self._send(pid, f)
 

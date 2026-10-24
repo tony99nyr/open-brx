@@ -24,5 +24,20 @@ def test_play_teardown_re_sends_each_guns_own_sir_table():
     for pid in ("p1", "p2"):
         gc.assert_sir_follows_clear(sent[pid])
         rows = [f for f in cfg.setup_frames(d.player_ids[pid], team=int(d.players[pid])) if f.startswith("$SIR,")]
-        assert rows, pid
+        assert rows == list(gc._SIR_TABLE), pid             # what `_arm_one` armed
         assert sent[pid] == gc.end_hittable(rows), (pid, sent[pid])
+
+
+def test_play_teardown_still_ends_hittable_if_the_setup_frames_fail():
+    sent = []
+
+    async def sender(pid, frame, reply_window_ms=None):
+        sent.append(frame)
+    cfg = GameConfig()
+    d = GameDriver(cfg, {"p1": 1}, sender, announce=lambda s: None)
+
+    def broken(*a, **kw):
+        raise AssertionError("bad config")
+    cfg.setup_frames = broken
+    run(d.teardown())
+    assert sent == gc.end_hittable(), sent

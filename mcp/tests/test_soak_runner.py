@@ -366,3 +366,22 @@ def test_the_teardown_leaves_the_gun_hittable():
         end = gc.end_hittable()
         tail = [f for f in mgr.sent if not f.startswith("$PING")][-len(end):]
         assert tail == end, (raise_after, tail)
+
+
+def test_a_named_pattern_ends_on_its_own_table_even_after_a_ctrl_c_inside_its_arm():
+    """The match pattern arms MC's live pool (with its capture row), so the end re-sends that table. A Ctrl-C
+    just after the arm's $CLEAR still runs the teardown."""
+    p = PATTERNS["match"]
+    rows = [f for f in p.once if f.startswith("$SIR,")]
+    assert rows and "$CLEAR,*" in p.once
+    clear_at = list(p.once).index("$CLEAR,*") + 1          # send() calls are counted from 1
+    for raise_after in (None, clear_at + 1):
+        clock = FakeClock()
+        mgr = FakeMgr(clock)
+        if raise_after:
+            mgr.raise_after = raise_after
+        run(run_soak(mgr, "AA:BB", p, minutes=5 / 60, clock=clock, status=None))
+        gc.assert_sir_follows_clear(mgr.sent)
+        end = gc.end_hittable(rows)
+        tail = [f for f in mgr.sent if not f.startswith("$PING")][-len(end):]
+        assert tail == end, (raise_after, tail)
