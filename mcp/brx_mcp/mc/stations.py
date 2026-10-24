@@ -937,7 +937,8 @@ class StationRegistry:
 
     def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
         """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits. A line goes
-        once the station reports MC's value again instead of the edit's (F543)."""
+        once the station reports that MC's value applies again (F543). A STRENGTH edit with no MC value stays: MC
+        pushed nothing to return to."""
         a = st.get("assigned") or {}
         rng: dict = {}                         # a StationRange, built key by key
         for f in ("threshold", "tx_power"):
@@ -967,8 +968,11 @@ class StationRegistry:
             if isinstance(e.get("match"), int) and e["match"] >= epoch:
                 last[e["field"]] = e           # this match's edit: shown until the next START
         for f, e in last.items():
-            if rep.get(f) is not None and rep.get(f) != e["to"] and rep.get(f) == a.get(f):
-                continue                       # F543: the station reports MC's value again, so the edit no longer applies
+            # F543: the station applies MC's value again, so the edit no longer does. The station's own source says so
+            # (`a.threshold` can be 0, the default, while the station reports the dBm it resolved); without one, the value.
+            src = rep.get(f + "_src")
+            if src == "mc" or (src is None and rep.get(f) is not None and rep.get(f) != e["to"] and rep.get(f) == a.get(f)):
+                continue
             what = "RANGE" if f == "threshold" else "STRENGTH"
             lines.append(f"{what} EDITED ON STATION {_range_word(e['from'])} → {_range_word(e['to'])}"
                          + (" (LOCKED)" if e["locked"] else ""))

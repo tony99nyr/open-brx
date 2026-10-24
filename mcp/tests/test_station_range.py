@@ -384,3 +384,24 @@ def test_a_range_edit_line_clears_when_the_station_reports_the_value_mc_pushed()
           range_edits=[{**edit, "age_ms": 74_000}, {"seq": 2, "field": "threshold", "from": -57, "to": -45,
                                                     "locked": False, "age_ms": 500}])
     assert _lines(s) == ["RANGE EDITED ON STATION -57 → -45"], _lines(s)
+
+
+def test_a_range_edit_line_clears_on_the_default_range_too():
+    """F543 review: MC's assignment can hold `threshold: 0` (the platform default), while the station reports the dBm it
+    resolved (-57 on a Stick). The station's own `threshold_src: "mc"` says MC's value applies again, so the line goes.
+    A station that sends no source falls back to comparing the reported value with MC's."""
+    s, clock = _sess()
+    _put(s, threshold=0)
+    assert _a(s)["threshold"] == 0
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    clock.t += 10_000
+    edit = {"seq": 1, "field": "threshold", "from": -57, "to": -40, "locked": False, "age_ms": 70_000}
+    _beat(s, clock, threshold=-40, threshold_src="station", threshold_edit_age_ms=70_000, range_edits=[edit])
+    assert _lines(s) == ["RANGE EDITED ON STATION -57 → -40"], _lines(s)       # CONTROL: the edit still applies
+    clock.t += 2_000
+    _beat(s, clock, threshold=-57, threshold_src="mc", range_edits=[{**edit, "age_ms": 72_000}])
+    assert _lines(s) == [], _lines(s)
+    # no source on the beat, and a value that is neither the edit's nor MC's: the line stays
+    _beat(s, clock, threshold=-57, range_edits=[{**edit, "age_ms": 72_000}])
+    assert _lines(s) == ["RANGE EDITED ON STATION -57 → -40"], _lines(s)
