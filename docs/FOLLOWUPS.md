@@ -12,11 +12,12 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 107.** Desk 12 · bench 90 · decision 5.
+**MVP open: 110.** Desk 17 · bench 90 · decision 3.
 
-**MVP DESK (12),** a keyboard is enough:
-- 🟡 **F547** · **F581** · **F587** · **F588** · **F589**
-- 🟢 **F512** · **F544** · **F574** · **F582** · **F590** · **F591** · **F593**
+**MVP DESK (17),** a keyboard is enough:
+- 🟠 **F391** · **F595** · **F596** · **F594**
+- 🟡 **F547** · **F587** · **F588** · **F589** · **F597**
+- 🟢 **F512** · **F544** · **F574** · **F590** · **F591** · **F593** · **F483** · **F598**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -24,10 +25,9 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F538** · **F545** · **F592**
 
-**MVP DECISION (5),** awaiting Tony:
-- 🟠 **F391** · **F575** · **F578**
+**MVP DECISION (3),** awaiting Tony:
+- 🟠 **F575** · **F578**
 - 🟡 **F342**
-- 🟢 **F483**
 <!-- index:end -->
 
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
