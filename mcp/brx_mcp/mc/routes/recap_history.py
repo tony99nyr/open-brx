@@ -32,6 +32,13 @@ def routes(ctx) -> list[BaseRoute]:
         return JSONResponse(r) if r else _err("no match", 404)
 
 
+    async def finalise_recap(_):
+        try:
+            return JSONResponse(s.finalise_recap())
+        except ValueError as e:
+            return _err(e, 409)
+
+
     async def match_history(_):
         """Past matches, newest first (A8): the RECAP screen's history picker. Read-only, so it needs
         no operator token — a spectator may look at how the last round went."""
@@ -133,6 +140,7 @@ def routes(ctx) -> list[BaseRoute]:
 
     return [
         Route("/api/recap", recap),
+        Route("/api/recap/finalise", finalise_recap, methods=["POST"]),
         Route("/api/matches", match_history),
         Route("/api/diag/matches", diag_matches),
         Route("/api/recap.csv", recap_csv),

@@ -167,9 +167,12 @@ class SnapshotCodec:
                 self.host._notify_listeners()
 
     def _match_snapshot(self) -> dict | None:
-        """The running match, as `resume_match` needs it. Only while ARMED or LIVE with a scorer."""
+        """The match in hand, including RECAP's final result."""
         match = self.host.match
-        if not self.host.in_play() or match is None or not match.head or not match.scorer:
+        if (self.host.phase not in ("armed", "live", "recap") or match is None
+                or not (match.head or match.ended_head) or not match.scorer):
+            return None
+        if self.host.phase == "recap" and not (match.finalised or match.final_winner is not None):
             return None
         return match.to_snapshot(
             live=self.host.phase == "live", adopted=self.host.is_adopted(), config=self.host.config,
