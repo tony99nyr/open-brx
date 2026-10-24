@@ -470,7 +470,7 @@ export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
 export type ItemKind = 'weapon' | 'perk' | 'sidearm';
 /** `policy.PRESET_NAMES` -- the named rulesets, plus "custom" for a hand-edited one. */
 export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
-export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered';
+export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered' | 'perk_blocked';
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';

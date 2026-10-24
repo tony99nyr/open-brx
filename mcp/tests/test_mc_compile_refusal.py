@@ -109,3 +109,24 @@ def test_a_host_fixing_the_primary_to_a_weapon_the_perk_cannot_ride_drops_the_pe
     lo = s.players[pid]["loadout"]
     assert lo["weapons"][0]["weapon_id"] == "sniper_rifle" and "perk" not in lo, lo
     s.push_config(force=True)            # nothing on the roster can refuse
+
+
+def test_a_fixed_perk_that_empties_the_fixed_primary_names_the_pairing_not_an_exclusion():
+    """F585 (brx4 review 2026-10-24): a fixed Charge Rifle with a fixed Armor Piercing. The F551 prune takes the only
+    primary out of the pool, and the refusal sent the operator to clear a class or id exclusion that does not exist."""
+    s, net, clock, ps = _real()
+    pol = s.policy()
+    pol["primary"] = {**pol["primary"], "choice": "fixed", "fixed_id": "charge_rifle"}
+    pol["perk"] = {**pol["perk"], "choice": "fixed", "fixed_id": "armor_piercing"}
+    s.set_config({"loadout_policy": pol})
+    lp = s.loadout_pool()
+    assert lp["primary"] == [] and lp["reasons"]["primary"] == "perk_blocked", lp
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said, s.config_errors
+    assert "ARMOR PIERCING" in said[0] and "CHARGE RIFLE" in said[0], said[0]
+    assert "EXCLUSION" not in said[0] and "FILTER" not in said[0], said[0]
+    # control: the same fixed primary with no fixed perk has a primary and no refusal
+    pol["perk"] = {**pol["perk"], "choice": "player", "fixed_id": None}
+    s.set_config({"loadout_policy": pol})
+    assert s.loadout_pool()["primary"] == ["charge_rifle"], s.loadout_pool()

@@ -32,6 +32,21 @@ describe('ITEMS — a station range edited on the station (A67)', () => {
     m.unmount();
   });
 
+  it('F586 (F543): the RANGE line shows EDITED ON STATION for a station value and clears once MC sets it again', async () => {
+    const base = await withStation({ range: { threshold: -60, threshold_src: 'station', threshold_edit_age_ms: 5_000,
+      tx_power: 'medium', tx_power_src: 'mc' } });
+    const render = (st: State) => (<StoreCtx.Provider value={makeStore({ state: st, view: 'muster' })}><Armory /></StoreCtx.Provider>);
+    const m = await mount(render(base));
+    const line = () => m.find('[data-station-range="util-a1b2c3"]')[0].textContent ?? '';
+    expect(line()).toMatch(/EDITED ON STATION/);
+    // the server clears the mark when MC writes the value (`<field>_src: "mc"`); the line must follow
+    const mcSet = { ...base, stations: [{ ...base.stations![0],
+      range: { threshold: -62, threshold_src: 'mc' as const, tx_power: 'medium' as const, tx_power_src: 'mc' as const } }] };
+    await m.update(render(mcSet));
+    expect(line()).toBe('-62 dBm');
+    m.unmount();
+  });
+
   it('the STRENGTH control PUTs tx_power with the adopted threshold, not a stale draft', async () => {
     const state = await withStation({ range: { threshold: -60, threshold_src: 'station', tx_power: 'medium', tx_power_src: 'mc' } });
     const puts: unknown[] = [];

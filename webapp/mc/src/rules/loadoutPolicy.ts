@@ -81,11 +81,14 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
   if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot
   else if (k.choice !== 'off') sp = visiblePerks.filter(x => inPool(k, x.perk_id, x.tags ?? [])).map(x => x.perk_id);
+  let perkEmptiedPrim = false, perkEmptiedSw = false;   // F585: the fixed-perk prune emptied the slot, not its own rule
   if (k.choice === 'fixed' && sp.length) {
     // F551, as policy.py pool(): a fixed perk takes the weapons it cannot ride with out of the pool
     const fixed = visiblePerks.find(x => x.perk_id === sp[0]);
+    const hadPrim = prim.length > 0, hadSw = sw.length > 0;
     prim = prim.filter(w => !(fixed?.blocked_primary ?? []).includes(w));
     sw = sw.filter(w => !(fixed?.blocked_secondary ?? []).includes(w));
+    perkEmptiedPrim = hadPrim && !prim.length; perkEmptiedSw = hadSw && !sw.length;
   }
   // S37 (field 2026-09-12): a swap perk (Quick Switch) with no legal secondary has nothing to switch
   // to — pruned from the pool itself, the same way apply()/a stored loadout drops it, so it disappears
@@ -101,8 +104,8 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const weaponIds = new Set(weapons.map(w => w.weapon_id));
   const perkIds = new Set(visiblePerks.map(x => x.perk_id));
   const reasons: LoadoutPoolReasons = {};
-  if (prim.length === 0) reasons.primary = emptyCode(p.primary, weaponIds, true);
-  if (sw.length === 0) reasons.secondary_weapons = emptyCode(s, weaponIds, true);
+  if (prim.length === 0) reasons.primary = perkEmptiedPrim ? 'perk_blocked' : emptyCode(p.primary, weaponIds, true);
+  if (sw.length === 0) reasons.secondary_weapons = perkEmptiedSw ? 'perk_blocked' : emptyCode(s, weaponIds, true);
   if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : emptyCode(k, perkIds);
   if (Object.keys(reasons).length) out.reasons = reasons;
   return out;
