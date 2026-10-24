@@ -150,6 +150,20 @@ describe('Report a problem', () => {
     m.unmount();
   });
 
+  // F540 review: the report is a WRITE, so a stale token (an MC restart) is MC refusing it: RED, in its own words, with
+  // the same way out (ENTER OPERATOR TOKEN).
+  it('a 401 on the report write says MC refused it, in red, and still offers the token control', async () => {
+    const m = await openPanel(async () => { throw new AuthError(true); }, 'muster', { setView: () => true });
+    await m.click('MAKE REPORT');
+    const p = panel(m);
+    expect(p.getAttribute('data-report-phase')).toBe('auth');
+    const line = m.find('[data-testid="report-panel"] [data-alert="frame-token-refused"]')[0];
+    expect(line?.getAttribute('data-sev')).toBe('red');
+    expect(line?.textContent ?? '').toMatch(/MC REFUSED THE CHANGE/);
+    expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('ENTER OPERATOR TOKEN'))).toBe(true);
+    m.unmount();
+  });
+
   // Round 2 (3): a LATCHED spectator tab (S25) never actually becomes `debug` -- `setView` just
   // records what it was asked for and stays on the board. This used to close the panel regardless,
   // stranding that tab behind no overlay and no token control at all, with nothing said about it.
