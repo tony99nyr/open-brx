@@ -137,7 +137,8 @@ inline int clamp_lock_s(long v) {
 // F391: flash stores a remaining-time snapshot, refreshed at most once a minute. A boot restores it in full
 // (Tony, 2026-10-24), clamped only to the protocol's ceiling. No clock runs while the Stick is off, so the
 // restored lock can run up to one interval, plus the time it was off, past the lock MC set: the safe side of a
-// tamper lock, and MC's next station_config replaces it outright once the Stick is back online.
+// tamper lock, and MC's next station_config replaces it outright once the Stick is back online. A Stick switched off
+// long after its match, then on with no MC in reach, comes back locked for the old remainder; A+B 7 s clears it.
 constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 60000;
 constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = contract::STATION_LOCK_MAX_S;
 inline uint32_t lock_restore_remaining_s(uint32_t saved_s) {

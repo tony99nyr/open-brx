@@ -137,8 +137,8 @@ locked holds are refused, and the threshold does not change. Row: F388.
 Stick rejoins MC with no re-type. Row: F397.
 
 **12. F391, the lock across an offline restart (5 min).** Tony's call (2026-10-24): the lock comes back as it was
-before the restart. With a match loaded and the Stick locked for 30 min, wait at least 2 min, take the Stick off Wi-Fi
-and restart it. **Pass:** `STATUS lock_s` after the boot is within about a minute of its value before the restart (not
+before the restart. Load a timed match at MC (MC locks the Stick for the time limit plus about 32 min), wait at least
+2 min, note `STATUS lock_s`, take the Stick off Wi-Fi and restart it. **Pass:** `STATUS lock_s` after the boot is within about a minute of its value before the restart (not
 0, not 120), and the side button stays locked. **Control:** A+B held 7 s, then the next boot is unlocked. Row: F391.
 
 ## Close
