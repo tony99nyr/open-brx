@@ -41,3 +41,15 @@ def test_play_teardown_still_ends_hittable_if_the_setup_frames_fail():
     cfg.setup_frames = broken
     run(d.teardown())
     assert sent == gc.end_hittable(), sent
+
+
+def test_play_teardown_re_sends_the_rows_that_gun_was_armed_with():
+    sent = []
+
+    async def sender(pid, frame, reply_window_ms=None):
+        sent.append(frame)
+    cfg = GameConfig()
+    d = GameDriver(cfg, {"p1": 1}, sender, announce=lambda s: None)
+    cfg.setup_frames = lambda *a, **kw: ["$CLEAR,*", "$SIR,15,0,,1,0,0,1,,*"]
+    run(d.teardown())
+    assert sent == gc.end_hittable(["$SIR,15,0,,1,0,0,1,,*"]), sent

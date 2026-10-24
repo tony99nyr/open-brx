@@ -374,6 +374,7 @@ def test_a_named_pattern_ends_on_its_own_table_even_after_a_ctrl_c_inside_its_ar
     p = PATTERNS["match"]
     rows = [f for f in p.once if f.startswith("$SIR,")]
     assert rows and "$CLEAR,*" in p.once
+    assert rows != list(gc._SIR_TABLE), rows                # MC's live pool, so the base table would be wrong
     clear_at = list(p.once).index("$CLEAR,*") + 1          # send() calls are counted from 1
     for raise_after in (None, clear_at + 1):
         clock = FakeClock()
