@@ -1182,7 +1182,7 @@ class Session:
             allowed = _policy.pool({**self.policy(), "perk": {**self.policy()["perk"], "choice": "player", "fixed_id": None}},
                                    weapons, perks)["primary"]
             names = ", ".join(next((w.get("name") for w in weapons if w.get("weapon_id") == wid), wid) for wid in allowed)
-            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH THE PRIMARY THIS GAME ALLOWS ({names.upper()}): "
+            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH ANY PRIMARY THIS GAME ALLOWS ({names.upper()}): "
                     "PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER PRIMARY")
         return ("PRIMARY FILTER EXCLUDES EVERY WEAPON (NO LEGAL PRIMARY IS LEFT): CLEAR A CLASS OR ID "
                 "EXCLUSION IN THE PRIMARY SLOT, OR PICK A PRESET")
