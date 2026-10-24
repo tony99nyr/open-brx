@@ -89,5 +89,9 @@ Candidate:
   2. "Pistols weak against the rifles" is tested on the R10b duel result, not on the published TTK. The USP now
      publishes 2.10 s and the hidden Glock 2.26 s, faster than the Burst Rifle's 2.53 s. Every primary still wins
      the R10b duel against each live sidearm; the lowest cell is the Bolt Rifle against the USP, about 90%.
+- Correction: the pistol call rests on the old-pace duel. The R10b duel engine still paces single shots with the
+  300 ms pull model, not the field fit. At field pace (seed 7, 10,000 reps) the USP wins most duels against the
+  Energy Rifle (the rifle wins .45) and the Suppressor (.29), and R10b fails. F579 reopens the call; Tony chose
+  to land F576 first ("go for it", relayed by brx1).
 - Tests: `mcp/tests/test_mc_compile.py::test_ttk_band_and_no_strictly_dominant_weapon` (the floor),
   `mcp/tests/test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering` (R10b at its own 65% bar).

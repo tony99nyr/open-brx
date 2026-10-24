@@ -405,7 +405,8 @@ its identity, not sustained-fire combat time the band is measuring.
 
 **Tony's call, 2026-10-24 (F576).** The Shotgun's band floor is 0.85 s, not 1.20 s. "Pistols weak against
 the rifles" is tested on the R10b duel result (`test_pistol_identities_keep_tonys_ordering`, 65% bar), not on
-the published TTK. See [balance-decisions.md](balance-decisions.md).
+the published TTK. The R10b duel still runs at the old 300 ms pull pace; at field pace the USP wins most duels
+against the Energy Rifle and the Suppressor, and F579 reopens the call. See [balance-decisions.md](balance-decisions.md).
 
 **2. Dominance runs WITHIN A FAMILY, not globally.** Family = the `$WEAP` fire mode (`t20`) plus
 `weapon_class`, except a sidearm, which is its own family regardless of mode or class (`_weapon_family()`
