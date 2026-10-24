@@ -359,3 +359,28 @@ def test_a_range_edit_line_lives_for_its_match_not_its_game_byte():
     s.push_config(force=True)
     s.start(runway_s=3, force=True)
     assert _lines(s) == [], "the pre-match edit cleared at the START after its match"
+
+
+def test_a_range_edit_line_clears_when_the_station_reports_the_value_mc_pushed():
+    """F543 (bench C.5, 2026-10-16): the card kept `RANGE EDITED ON STATION -75 → -40` while the station already reported
+    -75, MC's value. Once the station reports MC's pushed value again, the edit no longer applies, so the line goes."""
+    s, clock = _sess()
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    clock.t += 10_000
+    edit = {"seq": 1, "field": "threshold", "from": -57, "to": -40, "locked": False, "age_ms": 70_000}
+    # CONTROL: the station still applies its edit (an older one MC did not adopt): the line stays
+    _beat(s, clock, threshold=-40, threshold_src="station", threshold_edit_age_ms=70_000, range_edits=[edit])
+    assert _a(s)["threshold"] == -57, "the old edit must not be adopted"
+    assert _lines(s) == ["RANGE EDITED ON STATION -57 → -40"], _lines(s)
+    # MC re-arms the station with its own value, and the station reports it: the line clears
+    s.arm_stations()
+    clock.t += 2_000
+    _beat(s, clock, threshold=-57, threshold_src="mc", range_edits=[{**edit, "age_ms": 72_000}])
+    assert _lines(s) == [], _lines(s)
+    # ...and a NEW on-station edit after that is shown again
+    clock.t += 2_000
+    _beat(s, clock, threshold=-45, threshold_src="station", threshold_edit_age_ms=500,
+          range_edits=[{**edit, "age_ms": 74_000}, {"seq": 2, "field": "threshold", "from": -57, "to": -45,
+                                                    "locked": False, "age_ms": 500}])
+    assert _lines(s) == ["RANGE EDITED ON STATION -57 → -45"], _lines(s)

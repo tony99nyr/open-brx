@@ -936,7 +936,8 @@ class StationRegistry:
         return self._range_epoch if self.play.phase in ("armed", "live", "recap") else self._range_epoch + 1
 
     def _station_range_view(self, st: dict, rep: StationReport, now: int) -> tuple[StationRange, list[RangeEdit], list[str]]:
-        """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits."""
+        """A67: `StationView.range`, `.range_edits` and the attention lines for this game's on-station edits. A line goes
+        once the station reports MC's value again instead of the edit's (F543)."""
         a = st.get("assigned") or {}
         rng: dict = {}                         # a StationRange, built key by key
         for f in ("threshold", "tx_power"):
@@ -966,6 +967,8 @@ class StationRegistry:
             if isinstance(e.get("match"), int) and e["match"] >= epoch:
                 last[e["field"]] = e           # this match's edit: shown until the next START
         for f, e in last.items():
+            if rep.get(f) is not None and rep.get(f) != e["to"] and rep.get(f) == a.get(f):
+                continue                       # F543: the station reports MC's value again, so the edit no longer applies
             what = "RANGE" if f == "threshold" else "STRENGTH"
             lines.append(f"{what} EDITED ON STATION {_range_word(e['from'])} → {_range_word(e['to'])}"
                          + (" (LOCKED)" if e["locked"] else ""))
