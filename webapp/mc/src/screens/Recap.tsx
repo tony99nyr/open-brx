@@ -8,7 +8,7 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
-import { sitesNote, stationSource } from './objective';
+import { floorSource, sitesNote, stationSource } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -649,7 +649,8 @@ function Possession({ p, label, word, holdTargetS }: { p: NonNullable<RecapView[
             {stationSource(p, word, label)}
           </Alert>
         )}
-        {(p.station_sites ?? 0) < p.sites && (
+        {/* F586: the LIVE rule (objective.ts `floorSource`): sites 0 is a floor too */}
+        {floorSource(p, word) !== null && (
           <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
             BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
           </Alert>

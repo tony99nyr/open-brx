@@ -9,7 +9,7 @@ types.ts re-exports every generated shape and DECLARES none of them, which is th
 old six were approximating.
 
 What is still hand-mirrored, and so still checked here:
-  * `webapp/mc/src/mock/policy.ts` / `screens/gameSummary.ts` `DEFAULT_POLICY()` vs `policy.py`'s
+  * `webapp/mc/src/mock/policy.ts` / `rules/loadoutPolicy.ts` `DEFAULT_POLICY()` vs `policy.py`'s
     default. `withPolicy()` falls back to it whenever a served config arrives with no
     `loadout_policy`, and the `ConfigView` type then calls the result valid -- so if the two defaults
     drift, the console hands the server a policy it would refuse and nothing says so.
@@ -42,7 +42,7 @@ COMPILE_PY = REPO / "mcp" / "brx_mcp" / "mc" / "compile.py"
 WEAPONS_JSON = REPO / "mcp" / "brx_mcp" / "mc" / "weapons.json"
 TYPES_TS = REPO / "webapp" / "mc" / "src" / "api" / "types.ts"
 CONTRACT_TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
-SUMMARY_TS = REPO / "webapp" / "mc" / "src" / "screens" / "gameSummary.ts"
+POLICY_TS = REPO / "webapp" / "mc" / "src" / "rules" / "loadoutPolicy.ts"   # F586: moved out of screens/loadoutPolicy.ts
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 
 
@@ -235,7 +235,7 @@ def test_types_ts_re_exports_the_generated_shapes_and_declares_none_of_them():
 
 
 # ---------------------------------------------------------------------------
-# `DEFAULT_POLICY()` (gameSummary.ts) vs `policy.default_policy()` -- still hand-mirrored.
+# `DEFAULT_POLICY()` (loadoutPolicy.ts) vs `policy.default_policy()` -- still hand-mirrored.
 # ---------------------------------------------------------------------------
 _TS_KEY = re.compile(r"([A-Za-z_$][A-Za-z0-9_$]*)\s*:")
 
@@ -245,7 +245,7 @@ _TS_SPREAD = re.compile(r"\.\.\.([A-Za-z_$][A-Za-z0-9_$]*)")
 
 def _ts_object(text: str, start: int) -> tuple[dict, int]:
     """Evaluate the TS object literal whose `{` is at `text[start]`. Handles exactly the grammar
-    `gameSummary.ts`'s rule helpers use: string / boolean / null values, string arrays, nested
+    `loadoutPolicy.ts`'s rule helpers use: string / boolean / null values, string arrays, nested
     object literals, and a trailing `...identifier` spread (recorded as key `"...identifier"` with
     value `None` -- callers that need to tolerate it, e.g. `rule()`'s `...over`, pop it back out).
     Anything else is a genuine parser gap, not a renamed or missing shape, so it fails the test
@@ -257,7 +257,7 @@ def _ts_object(text: str, start: int) -> tuple[dict, int]:
         while i < len(text) and text[i] in " \n\r\t,":
             i += 1
         if i >= len(text):
-            raise AssertionError(f"an unterminated object literal in gameSummary.ts near {text[start:start + 40]!r}")
+            raise AssertionError(f"an unterminated object literal in loadoutPolicy.ts near {text[start:start + 40]!r}")
         if text[i] == "}":
             return out, i + 1
         m_spread = _TS_SPREAD.match(text, i)
@@ -267,7 +267,7 @@ def _ts_object(text: str, start: int) -> tuple[dict, int]:
             continue
         m = _TS_KEY.match(text, i)
         if not m:
-            raise AssertionError(f"an unparsable entry in gameSummary.ts near {text[i:i + 40]!r}")
+            raise AssertionError(f"an unparsable entry in loadoutPolicy.ts near {text[i:i + 40]!r}")
         key, i = m.group(1), m.end()
         while text[i] == " ":
             i += 1
@@ -288,36 +288,36 @@ def _ts_object(text: str, start: int) -> tuple[dict, int]:
             elif raw.startswith(("'", '"')):
                 out[key] = raw[1:-1]
             else:
-                raise AssertionError(f"an unparsable value for {key!r} in gameSummary.ts: {raw!r}")
+                raise AssertionError(f"an unparsable value for {key!r} in loadoutPolicy.ts: {raw!r}")
 
 
 def _ts_call_object(text: str, decl: str) -> dict:
     """The object literal in `const <decl> = ... => ({ ... })`."""
     m = re.search(rf"const {re.escape(decl)}\s*=.*?=>\s*\(?\s*(?=\{{)", text, re.S)
     if not m:
-        raise Skipped(f"`const {decl}` in gameSummary.ts (renamed or restructured?)")
+        raise AssertionError(f"`const {decl}` in loadoutPolicy.ts (renamed or restructured?): F586, a missing pattern fails")
     obj, _ = _ts_object(text, m.end())
     return obj
 
 
 def _ts_default_policy() -> dict:
-    """`DEFAULT_POLICY()` from gameSummary.ts, with `rule()` / `perkRule()` expanded."""
-    if not SUMMARY_TS.is_file():
-        raise Skipped(f"{SUMMARY_TS} (missing)")
-    text = _COMMENT.sub(" ", SUMMARY_TS.read_text(encoding="utf-8"))
+    """`DEFAULT_POLICY()` from loadoutPolicy.ts, with `rule()` / `perkRule()` expanded."""
+    if not POLICY_TS.is_file():
+        raise AssertionError(f"{POLICY_TS} (missing): F586, the drift guard must not skip")
+    text = _COMMENT.sub(" ", POLICY_TS.read_text(encoding="utf-8"))
     rule = _ts_call_object(text, "rule")
     rule.pop("...over", None)
     # `perkRule = (over = {}) => rule({ kinds: ['perk'], ...over })`
     m = re.search(r"const perkRule\s*=.*?rule\(\s*(?=\{)", text, re.S)
     if not m:
-        raise Skipped("`const perkRule` in gameSummary.ts (renamed or restructured?)")
+        raise AssertionError("`const perkRule` in loadoutPolicy.ts (renamed or restructured?): F586")
     perk_over, _ = _ts_object(text, m.end())
     perk_over.pop("...over", None)
     perk_rule = {**rule, **perk_over}
 
     m = re.search(r"const DEFAULT_POLICY\s*=.*?=>\s*\(\s*(?=\{)", text, re.S)
     if not m:
-        raise Skipped("`const DEFAULT_POLICY` in gameSummary.ts (renamed or restructured?)")
+        raise AssertionError("`const DEFAULT_POLICY` in loadoutPolicy.ts (renamed or restructured?): F586")
     end = _matching_brace(text, m.end())
     body = text[m.end() + 1:end]
     out: dict = {}
@@ -334,7 +334,7 @@ def _ts_default_policy() -> dict:
         else:
             # A found DEFAULT_POLICY with a value shape our scanner doesn't know is a parser gap,
             # not a rename -- fail loudly rather than skipping the comparison silently.
-            raise AssertionError(f"DEFAULT_POLICY.{key} is {val!r} in gameSummary.ts -- not a plain rule() call any more")
+            raise AssertionError(f"DEFAULT_POLICY.{key} is {val!r} in loadoutPolicy.ts -- not a plain rule() call any more")
     return out
 
 
@@ -358,7 +358,7 @@ def test_default_policy_matches_the_server_default():
             msgs.append(f"DEFAULT_POLICY() sets {k!r}={ts[k]!r}, which policy.py's default does not have")
         elif ts[k] != py[k]:
             msgs.append(f"DEFAULT_POLICY().{k} is {ts[k]!r}, policy.py's default is {py[k]!r}")
-    assert not msgs, ("webapp/mc/src/screens/gameSummary.ts DEFAULT_POLICY() has drifted from "
+    assert not msgs, ("webapp/mc/src/rules/loadoutPolicy.ts DEFAULT_POLICY() has drifted from "
                       "mcp/brx_mcp/mc/policy.py default_policy(): " + "; ".join(msgs))
 
 

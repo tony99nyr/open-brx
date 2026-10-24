@@ -650,4 +650,19 @@ describe('?mock&faults=noconfig · F549, the gun loaded nothing', () => {
     expect(row.headset_proof, 'a no_config ack proves nothing by echo: the link stands').toBe('link');
     expect(state.lobby.acks[state.players.find(p => p.gun_id === 'GUN-A')!.player_id]).toMatchObject({ ok: false, err: 'no_config' });
   });
+
+  it('F586: a gun whose headset an earlier echo already proved keeps proof "echo" (state.py _readiness_headset)', async () => {
+    const api = new MockBackend();
+    await api.pushLobby(true);                              // the clean push: every gun echoes, so GUN-A is proven by echo
+    // A re-push cures the demo fault, so no UI path reaches "no_config after an echo"; set that ack up directly.
+    type Poke = { demoNoConfigOnly: boolean; demoCured: boolean; acks: Record<string, unknown>; ackFor(p: unknown, cfg: string): unknown };
+    const poke = api as unknown as Poke;
+    poke.demoNoConfigOnly = true; poke.demoCured = false;
+    const gunA = (await api.getState()).players.find(p => p.gun_id === 'GUN-A')!;
+    poke.acks[gunA.player_id] = poke.ackFor(gunA, (await api.getState()).config.config_id);
+    const state = await api.getState();
+    const row = state.readiness.board.find(r => r.gun_id === 'GUN-A')!;
+    expect(row.blockers).toContain('GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH');
+    expect(row.headset_proof, 'the earlier echo stands; the no_config ack does not take it back').toBe('echo');
+  });
 });

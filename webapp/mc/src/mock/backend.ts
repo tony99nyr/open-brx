@@ -256,6 +256,8 @@ export class MockBackend implements Api {
     return this.demoCured && f !== 'noecho' ? undefined : f;
   }
   private demoCured = false;
+  /** F586: guns whose headset an echo already proved (state.py `ack_config` sets `headset = 'proven'`); a later no_config keeps it. */
+  private echoedGuns = new Set<string>();
 
   /** The `ack_config` this player's phone answers a push with — ONE place, so the initial push and
    *  the A35 re-push after a config edit cannot drift apart (and so the `?mock&faults=1` states are
@@ -281,6 +283,7 @@ export class MockBackend implements Api {
       case 'noconfig': ack = { ok: false, err: 'no_config', config_id: cfgId }; break;   // F549: the phone's own ack
       default: ack = { ok: true, gun_echo: echo, config_id: cfgId };
     }
+    if (p.gun_id && ack.ok && ack.gun_echo) this.echoedGuns.add(p.gun_id);   // F586: the server keeps `nodes[nid].headset = 'proven'`
     // The server serialises a clear error as null. The generated LobbyAck type still omits null.
     return { err: null, ...ack } as unknown as State['lobby']['acks'][string];   // F549: an ack's own err (no_config) wins
   }
@@ -910,7 +913,9 @@ export class MockBackend implements Api {
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
       // F549: a no_config ack proves nothing by echo; the link still stands (state.py leaves the headset to it)
-      const proof = red || confirming || flapping ? null : this.pushed && this.faultOf(sticker) !== 'noconfig' ? 'echo' as const : 'link' as const;
+      // F586: ...unless an earlier echo already proved the headset, which `_readiness_headset` reads first
+      const proof = red || confirming || flapping ? null
+        : this.pushed && (this.faultOf(sticker) !== 'noconfig' || this.echoedGuns.has(sticker)) ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and

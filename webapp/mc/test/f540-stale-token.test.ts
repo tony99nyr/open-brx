@@ -3,7 +3,7 @@
 // (so the toast hid them), and the refused WebSocket was accepted, then closed, so the tab reconnected twice a second
 // for ever and the link state toggled each time.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthError, createHttpApi, getToken, onAuthRequired, setToken } from '../src/api/client';
+import { AuthError, createHttpApi, getToken, onAuthRequired, onTokenPicked, setToken } from '../src/api/client';
 import { ALERTS, operatorTokenLine, tokenRefusedLine } from '../src/alerts';
 
 const json401 = () => new Response('{"error":"operator token required"}', { status: 401, headers: { 'content-type': 'application/json' } });
@@ -53,6 +53,19 @@ describe('F540 review: the cure and the diagnosis', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: before, newURL: location.href }));
     expect(getToken()).toBe('fresh2');
     expect(location.hash).toBe('#live');
+  });
+
+  it('F586: a pasted #tok= link tells the store, so it redials at once and clears the refused line', () => {
+    setToken('old');
+    const picked: string[] = [];
+    const un = onTokenPicked(tok => picked.push(tok));
+    location.hash = '#live&tok=fresh3';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(picked, 'the store hears the new token').toEqual(['fresh3']);
+    location.hash = '#live';                                   // CONTROL: a hash change with no token tells nobody
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(picked).toEqual(['fresh3']);
+    un();
   });
 
   it('the registry row says what the console shows', () => {

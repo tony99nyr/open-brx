@@ -6,11 +6,15 @@ const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} ($
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws; OP2: sent on GETs too, for the PINs) ----
 const TOK_KEY = 'brx_mc_tok';
+/** F586: told when a `#tok=` link replaces the stored token, so the store redials at once and clears the refused line. */
+const pickListeners = new Set<(tok: string) => void>();
+export const onTokenPicked = (cb: (tok: string) => void) => { pickListeners.add(cb); return () => { pickListeners.delete(cb); }; };
 function pickupHashToken(previousHash = '') {
   try {
     const m = /(?:^#|[#&])tok=([^&]+)/.exec(location.hash);
     if (m) {
       localStorage.setItem(TOK_KEY, decodeURIComponent(m[1]));
+      pickListeners.forEach(cb => cb(decodeURIComponent(m[1])));
       // Strip ONLY the token, keeping any other hash: the hash also carries the current view now, and
       // wiping it wholesale sent every refresh back to the phase screen.
       // A bare `#tok=` link pasted into an OPEN tab (F540 review) keeps the view that tab was on.
