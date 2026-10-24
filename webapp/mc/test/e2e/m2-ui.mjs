@@ -379,10 +379,11 @@ async function runMock(browser, viteBase, vp, tag) {
   await until(() => pg.locator('text=MATCH COMPLETE').count().then(n => n > 0), 15000, 'the RECAP screen');
   const rStk = await pg.locator('[data-cell="stk"]').evaluateAll(els => els.map(e => e.textContent.trim()));
   expect(rStk.length > 0 && rStk.every(v => /^\d+$/.test(v)), `RECAP's STK column renders (${rStk.join(',')})`);
+  // F596: the after-the-whistle box is gone even though the demo records two late facts; RESULT CHANGED covers a flipped winner
   const after = await pg.locator('[data-testid="after-end"]').count();
-  expect(after === 1, 'the after-the-whistle block is on the recap (the demo records two late facts)');
-  const afterTxt = after ? (await pg.locator('[data-testid="after-end"]').innerText()).replace(/\s+/g, ' ') : '';
-  expect(/RECORDED, NOT COUNTED/i.test(afterTxt), `it says the facts do not count (saw ${JSON.stringify(afterTxt.slice(0, 120))})`);
+  expect(after === 0, 'no after-the-whistle block on the recap (the demo records two late facts)');
+  const afterTxt = '';
+  expect(!/RECORDED, NOT COUNTED/i.test(await pg.locator('main').innerText()), 'and none of its words');
   await audit(pg, 'main', `${tag} RECAP`);
   ok(`RECAP: STK ${rStk.join(',')} · "${afterTxt.slice(0, 90)}"   ${await shot(pg, `04-${tag}-recap`)}`);
 

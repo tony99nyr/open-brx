@@ -33,6 +33,7 @@ import { sessionStartView } from '../rules/start';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
   sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
 import { galleryState } from './gallery';
+import type { RecapSyncRow, RecapSyncStage } from '../api/recapSync';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { sessionVersions } from '../rules/versions';
 import { sessionGameSentN } from '../rules/game';
@@ -40,7 +41,7 @@ import { compilerValidation, holdTargetWarning } from '../rules/configcheck';
 import releaseBuild from '../../../download/build.json';
 import demoLoadouts from './demoLoadouts.json';
 import { POWERUP_AMOUNT_MAX, POWERUP_AMOUNT_MIN, POWERUP_AMOUNT_STEP, POWERUP_CHARGES_MAX, POWERUP_CHARGES_MIN, POWERUP_SPAWN_EVERY_MAX, POWERUP_SPAWN_EVERY_MIN, POWERUP_SPAWN_EVERY_STEP } from '../api/contract.gen';
-import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM,
+import { HEALTH_PRESETS as GEN_HEALTH_PRESETS, SYNC_STUCK_S, STATION_KIND_LABEL, STATION_KIND_SHORT, POWERUP_PRESETS as GEN_POWERUP_PRESETS, NAME_MAX, RUNWAY_MIN_S, RUNWAY_MAX_S, TEAM_COUNT_MIN, TEAM_COUNT_MAX, STATION_THRESHOLD_MIN_DBM, STATION_THRESHOLD_MAX_DBM,
   STATION_SOURCE_DESCRIPTIONS, TIMED_PROTECT_S_OPTIONS, WEAPON_DELAY_MS_OPTIONS, STATION_PROTECT_S_OPTIONS } from '../api/contract.gen';
 
 const now = () => Date.now();
@@ -530,7 +531,7 @@ export class MockBackend implements Api {
   private gameSent: Record<string, string> = {};   // player_id -> config_id a socket accepted
   private cachedCompilerResult?: ReturnType<typeof compilerValidation>;
   private cachedCoverageLevel?: Coverage['level'];
-  private readonly mockOptions: { releaseVersion?: string };
+  private readonly mockOptions: { releaseVersion?: string; syncDemo?: boolean };
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
   // A25: the session option table and the per-node log state, mirrored so `?mock` shows the LOG SYNC
@@ -676,7 +677,7 @@ export class MockBackend implements Api {
    *  the ITEMS card's LOCKED tag can be seen without a real station bench. */
   private demoStationLock = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stationlock') === '1';
 
-  constructor(mockOptions: { releaseVersion?: string } = {}) {
+  constructor(mockOptions: { releaseVersion?: string; syncDemo?: boolean } = {}) {
     this.mockOptions = mockOptions;
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
       player_id: `p${i + 1}`, player_num: i + 1, display, team_id,
@@ -1192,7 +1193,62 @@ export class MockBackend implements Api {
     sessionMarkFlushedLive(ids, this.players, this.nodeReports, now(), this.scorerFlushed);
     return scorerMissing(ids, this.scorerFlushed);
   }
+  // ---- F596/F597: the RECAP sync view. Mirrors `state.py Session._recap_sync`: one row per phone bound at the whistle
+  // plus one per assigned station, a stage per row, `pending` while any row is not received and the operator has not
+  // finalised. `syncDemo` (`?mock` in a browser) spreads the phones' arrivals over the first half-minute so the strip
+  // MOVES; without it every connected phone has delivered at the whistle, as a phone that was in range does.
+  private syncBase: { player_id: string; node_id: string }[] = [];
+  private syncFinalised = false;
+  private syncFinalWinner: string | undefined;
+  private syncResultChanged = false;
+  private syncView(recap: RecapView): NonNullable<RecapView['sync']> | undefined {
+    if (this.phase !== 'recap' || this.endedAt === undefined) return undefined;
+    const elapsed = now() - this.endedAt;
+    const demo = !!this.mockOptions.syncDemo;
+    const unconfirmed = new Set((this.endDelivery()?.unconfirmed ?? []).map(u => u.player_id));
+    const rows: RecapSyncRow[] = this.syncBase.map((b, i): RecapSyncRow => {
+      const pl = this.players.find(p => p.player_id === b.player_id);
+      const linked = this.nodeConnected(b.node_id) && b.node_id !== this.demoQuietNodeId;
+      const arrive = demo ? 6000 + i * 2500 : 0;   // when this phone's last fact lands
+      const sendFrom = arrive - 4000;
+      const stage: RecapSyncStage = !linked ? 'unlinked' : elapsed >= arrive ? 'received' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
+      const pending = stage === 'sending' ? Math.max(1, Math.ceil((arrive - elapsed) / 1000)) : 0;
+      const idle = stage === 'received' || stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
+      const lost = demo && i === 2 ? 3 : 0;
+      return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage,
+        transport: stage === 'unlinked' ? null : i % 4 === 1 ? 'cellular' : i % 4 === 3 ? 'backhaul' : 'wifi',
+        ...(pending ? { pending } : {}), ...(lost ? { lost } : {}),
+        end_unconfirmed: unconfirmed.has(b.player_id),
+        idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S };
+    });
+    for (const st of recap.stations ?? []) {
+      const stage: RecapSyncStage = st.synced ? 'received' : this.nodeConnected(st.node_id) ? 'linked' : 'unlinked';
+      const idle = stage === 'received' ? 0 : Math.floor(elapsed / 1000);
+      rows.push({ kind: 'station', id: String(st.id), name: `${(STATION_KIND_LABEL as Record<string, string>)[st.kind] ?? st.kind.toUpperCase()} ${st.id}`,
+        team_id: null, stage, transport: null, end_unconfirmed: false, idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S });
+    }
+    const pending = !this.syncFinalised && rows.some(r => r.stage !== 'received');
+    const key = JSON.stringify(recap.winner);
+    if (!pending && this.syncFinalWinner === undefined) this.syncFinalWinner = key;
+    else if (this.syncFinalWinner !== undefined && key !== this.syncFinalWinner) this.syncResultChanged = true;
+    return { rows, pending, finalised: this.syncFinalised, result_changed: this.syncResultChanged } as unknown as NonNullable<RecapView['sync']>;   // typed by api/recapSync.ts, not the generated name clash
+  }
+  /** `state.py finalise_recap`: the operator releases the result although phones are missing. 409 outside RECAP. */
+  async finaliseRecap() {
+    if (this.phase !== 'recap') throw Object.assign(new Error('no match in RECAP to finalise'), { status: 409 });
+    if (!this.syncFinalised) {
+      this.syncFinalised = true;
+      this.recapView();   // captures the winner shown when the wait first ends
+      this.emit();
+    }
+    return { ok: true };
+  }
   private recapView(): RecapView | null {
+    const r = this.recapViewBase();
+    if (r && this.phase === 'recap') { const sync = this.syncView(r); if (sync) (r as { sync?: unknown }).sync = sync; }
+    return r;
+  }
+  private recapViewBase(): RecapView | null {
     if (this.phase !== 'live' && this.phase !== 'recap') return null;
     const settling = sessionSettling(this.players, this.nodeReports, this.endedAt, now());
     if (this.recap_) {
@@ -1472,6 +1528,8 @@ export class MockBackend implements Api {
     // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
     this.endedAt = now();
     const bound = this.players.filter(p => p.node_id);
+    this.syncBase = bound.map(p => ({ player_id: p.player_id, node_id: p.node_id! }));
+    this.syncFinalised = false; this.syncFinalWinner = undefined; this.syncResultChanged = false;
     const knownNodes = new Set(Object.keys(this.nodeReports));
     const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
     if (faultNode) this.disconnectedNodes.add(faultNode);
@@ -2791,7 +2849,7 @@ export class MockBackend implements Api {
   async newSession(keep_roster: boolean) {
     const rolling = keep_roster && this.phase === 'recap';
     if (this.phase === 'armed' || this.phase === 'live') this.recordRetired(this.start_?.match_id ?? this.live_?.match_id);
-    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
+    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined; this.syncBase = [];
     if (!rolling) for (const report of Object.values(this.nodeReports)) delete report.end;
     if (!rolling) this.endDeliveryTold = undefined;
     if (!rolling) this.staleTold.clear();

@@ -69,7 +69,10 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
       expect(state.recap?.missing).toEqual([]);
       expect(state.recap?.provisional).toBe(false);
       const screen = await mountScreen(<Recap />, { state, view: 'recap' });
-      expect(screen.find('[data-testid="end-delivery-recap"][data-end-state="confirmed"]')).toHaveLength(1);
+      // F596: no confirmation sentence; the server-shaped `sync` says every row is clean
+      expect(screen.find('[data-testid="end-delivery-recap"]')).toHaveLength(0);
+      expect((state.recap?.sync as unknown as { rows: { end_unconfirmed: boolean }[] }).rows.some(r => r.end_unconfirmed)).toBe(false);
+      expect(screen.find('[data-strip-end]')).toHaveLength(0);
     } finally { window.history.replaceState({}, '', was); }
   });
   it('the normal demo resumes reporting before END and confirms delivery on RECAP', async () => {
@@ -391,13 +394,15 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     const name = state.end_delivery!.unconfirmed[0].display;
     const recap = await mountScreen(<Recap />, { state, view: 'recap' });
     const live = await mountScreen(<Live />, { state, view: 'live' });
-    const recapDelivery = recap.find('[data-testid="end-delivery-recap"]')[0]?.textContent ?? '';
     const liveDelivery = live.find('[data-testid="end-delivery"]')[0]?.textContent ?? '';
-    expect(recapDelivery).toContain(name);
-    expect(recapDelivery).toContain('STILL RE-DELIVERING');
+    // F596: RECAP carries the same fact as a flag on that phone's strip icon, with no sentence and no settling banner
+    const pid = state.end_delivery!.unconfirmed[0].player_id;
+    expect(recap.find('[data-testid="end-delivery-recap"]')).toHaveLength(0);
+    expect(recap.find(`[data-strip-icon="${pid}"] [data-strip-end]`), 'the flag on the phone that has not confirmed').toHaveLength(1);
+    expect(recap.find(`[data-strip-icon="${pid}"]`)[0].getAttribute('title')).toContain(name);
+    expect(recap.find('[data-testid="settling"]')).toHaveLength(0);
     expect(liveDelivery).toContain(name);
     expect(liveDelivery).toContain('RE-DELIVERING');
-    expect(recap.find('[data-testid="settling"]')[0]?.textContent).toContain(name);
   });
 
   it('updates station sync and removes an evicted HUD from the delivery watch', async () => {

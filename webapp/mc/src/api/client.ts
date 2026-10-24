@@ -230,6 +230,7 @@ export function createHttpApi(): Api {
     control: (cmd, confirm) => post('/api/control', { cmd, confirm }),
     operatorAction: (id, cmd, match_id) => post<OperatorActionResult>(`/api/players/${encodeURIComponent(id)}/operator`, { cmd, match_id }),
     getRecap: () => j('/api/recap'),
+    finaliseRecap: () => post<{ ok: boolean }>('/api/recap/finalise', {}).catch(skewOr404),
     matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,

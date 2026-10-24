@@ -48,9 +48,13 @@ async function liveWith(end_delivery: EndDeliveryView | undefined) {
   return mountScreen(<Live />, { state, view: 'live' });
 }
 
-async function recapWith(end_delivery: EndDeliveryView | undefined) {
+/** `sync.end_unconfirmed` names the players whose row carries the END flag (the server's own `end_unconfirmed`). */
+async function recapWith(end_delivery: EndDeliveryView | undefined, sync?: { end_unconfirmed: string[] }) {
   const d = await demo();
-  const state: State = { ...d.state, phase: 'recap', recap: RECAP, end_delivery };
+  const rows = ['p1', 'p2'].map(id => ({ kind: 'phone', id, name: id === 'p1' ? 'ALPHA' : 'BRAVO', team_id: 'blue', stage: 'received',
+    transport: null, end_unconfirmed: !!sync?.end_unconfirmed.includes(id), idle_s: 0, stuck: false }));
+  const state: State = { ...d.state, phase: 'recap', end_delivery,
+    recap: sync ? ({ ...RECAP, sync: { pending: false, finalised: false, result_changed: false, rows } } as unknown as RecapView) : RECAP };
   return mountScreen(<Recap />, { state, view: 'recap' });
 }
 
@@ -102,33 +106,32 @@ describe('A42 · LIVE tells the operator who has not confirmed the end', () => {
 });
 
 describe('A42 · RECAP names it as a delivery fact, never as a score', () => {
-  it('names the HUD that never confirmed', async () => {
-    const m = await recapWith(SPENT);
-    const el = m.find('[data-testid="end-delivery-recap"]')[0];
-    expect(el).toBeTruthy();
-    const t = strip(el.textContent ?? '');
-    expect(t).toContain('BRAVO');
-    expect(t).toContain('NEVER CONFIRMED THE END');
-    // The one thing this line must never be mistaken for. It is about a phone, not about a player.
-    expect(t).toContain('DELIVERY');
-    expect(t).not.toMatch(/KILL|SCORE ?:|PENAL|CHEAT|DISQUALIF/);
+  it('flags the HUD that never confirmed with a small flag on its strip icon, and prints no sentence', async () => {
+    // F596: the full-width END sentence is gone; `sync.rows[].end_unconfirmed` is the flag badge on that phone's icon.
+    const m = await recapWith(SPENT, { end_unconfirmed: ['p2'] });
+    expect(m.find('[data-testid="end-delivery-recap"]').length, 'no END block').toBe(0);
+    expect(strip(m.text())).not.toContain('NEVER CONFIRMED THE END');
+    expect(m.find('[data-strip-icon="p2"] [data-strip-end]').length, 'BRAVO wears the flag').toBe(1);
+    expect(m.find('[data-strip-icon="p1"] [data-strip-end]').length, 'ALPHA does not').toBe(0);
+    expect(m.find('[data-strip-icon="p2"]')[0].getAttribute('title')).toContain('END not confirmed');
   });
 
   it("leaves that player's score row completely alone", async () => {
     const m = await recapWith(SPENT);
     const inRows = m.find('[data-testid="end-delivery-recap"] [data-cell="k"]');
     expect(inRows.length, 'the delivery notice is not inside the board').toBe(0);
-    expect(strip(m.text())).toContain('BRAVO');
+    expect(strip(m.text())).toContain('BRAVO');   // the player's own row is still there
     // BRAVO still scores exactly what they scored: the notice changes no number on the screen.
     const noNotice = await recapWith(undefined);
     const nums = (mm: typeof m) => mm.find('[data-cell="k"]').map(c => (c.textContent ?? '').trim());
     expect(nums(m)).toEqual(nums(noNotice));
   });
 
-  it('confirms a clean end', async () => {
-    const m = await recapWith(ALL_IN);
-    expect(strip(m.find('[data-testid="end-delivery-recap"]')[0].textContent ?? ''))
-      .toContain('ALL 2 NODES CONFIRMED THE END');
+  it('a clean end prints no confirmation sentence and no flag', async () => {
+    const m = await recapWith(ALL_IN, { end_unconfirmed: [] });
+    expect(m.find('[data-testid="end-delivery-recap"]').length).toBe(0);
+    expect(strip(m.text())).not.toContain('CONFIRMED THE END');
+    expect(m.find('[data-strip-end]').length).toBe(0);
   });
 
   it('renders nothing against a server that does not send it', async () => {

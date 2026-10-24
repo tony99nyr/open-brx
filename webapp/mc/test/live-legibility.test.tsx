@@ -240,33 +240,22 @@ describe('RECAP reads the A24 fields too', () => {
     m.unmount();
   });
 
-  it('shows the after-the-whistle facts as recorded, not counted', async () => {
+  it('prints no after-the-whistle box when the server sends a breakdown (F596: RESULT CHANGED covers a flipped winner)', async () => {
     const m = await recapScreen(recap({
       after_end: { facts: 3, by_player: { p1: { kills: 1, deaths: 0 } } },
     }));
-    const block = m.find('[data-testid="after-end"]')[0];
-    expect(block, 'the after_end block rendered').toBeTruthy();
-    expect(block.textContent).toMatch(/AFTER THE WHISTLE/);
-    expect(block.textContent).toMatch(/RECORDED, NOT COUNTED/i);
-    expect(block.textContent).toContain(m.nameOfP1);   // the player by NAME
-    expect(block.textContent).not.toMatch(/\bp1\b/);   // never the wire id
+    expect(m.find('[data-testid="after-end"]').length, 'the box is gone').toBe(0);
+    expect(m.text()).not.toMatch(/AFTER THE WHISTLE/);
+    expect(m.text()).not.toMatch(/RECORDED, NOT COUNTED/i);
     m.unmount();
   });
 
-  // "3 FACTS RECORDED" is what the SCORER calls a recorded event. The operator reading this screen
-  // out loud is talking about kills and deaths that landed late (review 2026-09-12).
-  it('counts what landed in words the operator uses, not wire vocabulary', async () => {
-    const m = await recapScreen(recap({ after_end: { facts: 3, by_player: { p1: { kills: 1, deaths: 0 } } } }));
-    const block = m.find('[data-testid="after-end"]')[0];
-    expect(block.textContent).toContain('3 LATE KILLS / DEATHS');
-    expect(block.textContent).not.toMatch(/FACTS? RECORDED/);
-    m.unmount();
-  });
-
-  it('says it in the singular for one', async () => {
-    const m = await recapScreen(recap({ after_end: { facts: 1, by_player: { p1: { kills: 1, deaths: 0 } } } }));
-    expect(m.find('[data-testid="after-end"]')[0].textContent).toContain('1 LATE KILL / DEATH');
-    m.unmount();
+  it('prints none of its words either, in singular or plural', async () => {
+    for (const facts of [1, 3]) {
+      const m = await recapScreen(recap({ after_end: { facts, by_player: { p1: { kills: 1, deaths: 0 } } } }));
+      expect(m.text()).not.toMatch(/LATE KILLS? \/ DEATHS?/);
+      m.unmount();
+    }
   });
 
   it('renders nothing at all when the server did not send the block', async () => {
@@ -285,15 +274,10 @@ describe('RECAP reads the A24 fields too', () => {
     m.unmount();
   });
 
-  it('an older MC that sends only the count still gets its count said', async () => {
-    // `post_end_facts` is the field MC has always sent. Dropping it because the A6.1 breakdown is
-    // absent threw away a fact the server HAD reported.
+  it('an older MC that sends only the count gets no box either', async () => {
     const m = await recapScreen(recap({ post_end_facts: 2 }));
-    const block = m.find('[data-testid="after-end-count"]')[0];
-    expect(block, 'the bare count is still worth saying').toBeTruthy();
-    expect(block.textContent).toContain('2 LATE KILLS / DEATHS');
-    expect(block.textContent).toMatch(/RECORDED, NOT COUNTED/i);
-    expect(m.find('[data-testid="after-end"]').length, 'and no per-player split is invented').toBe(0);
+    expect(m.find('[data-testid="after-end-count"]').length).toBe(0);
+    expect(m.text()).not.toMatch(/LATE KILLS/);
     m.unmount();
   });
 

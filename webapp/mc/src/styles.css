@@ -122,3 +122,14 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 /* SPECTATE under the fit rule (polish round 3): each cell's inline `font` shorthand resets line-height to
    "normal" (about 1.5 for Oswald), taller than the row's floor, so the text clipped. Keep it tight. */
 [data-spectate="row"][data-fit] > * { line-height: 1.15 !important; }
+
+/* F596: RECAP sync strip (screens/SyncStrip.tsx). Only a SENDING row moves; reduced motion gives still icons. */
+@keyframes sbDot{0%{transform:translateY(7px);opacity:0}25%{opacity:1}100%{transform:translateY(-7px);opacity:0}}
+@keyframes sbRing{0%{opacity:.75;transform:scale(.92)}100%{opacity:0;transform:scale(1.22)}}
+.sb-dot{animation:sbDot 1.2s linear infinite;transform-box:fill-box}
+.sb-dot:nth-child(2){animation-delay:.4s}.sb-dot:nth-child(3){animation-delay:.8s}
+.sb-ring{animation:sbRing 1.6s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@media (prefers-reduced-motion: reduce){
+.sb-dot,.sb-ring{animation:none}
+.sb-dot{opacity:1}.sb-dot:nth-child(1){transform:translateY(5px)}.sb-dot:nth-child(3){transform:translateY(-5px)}
+.sb-ring{opacity:0}}

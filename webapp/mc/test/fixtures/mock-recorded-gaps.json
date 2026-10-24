@@ -138,6 +138,12 @@
       "path": "$.stations[*]",
       "count": 1242,
       "sha1": "0c55bf9115639b88"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync",
+      "count": 1,
+      "sha1": "ed5b3ec7fde0b7ad"
     }
   ]
 }

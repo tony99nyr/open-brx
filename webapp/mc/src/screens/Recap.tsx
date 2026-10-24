@@ -1,21 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } from '../api/types';
-import { endDeliveryLine } from '../api/derive';
-import { recapDeliveryText, recapDeliveryOkText } from './recapDelivery';
+import { recapSync } from '../api/recapSync';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { isObjectiveScored, objectiveWord } from '../rules/scoring';
-import { floorSource, sitesNote, stationSource } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
-import { Alert, alertStyle } from '../ui/Alert';
-import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
+import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
-import { FinaliseButton, Glyphs, Icon, ResultChanged, SyncBoard, SyncStatus, plural, useSyncPhones, type BoardLayout, type SyncPhone } from './SyncBoard';
+import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, useSyncPhase } from './SyncStrip';
+import type { RecapSyncRow } from '../api/recapSync';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -36,9 +34,10 @@ const COLUMNS: Column[] = [
  *  places with nothing to fail. LIVE was fixed first; this is the same defect one file over
  *  (review 2026-09-12). Header and row now read the one lookup. */
 const edge = columnEdges(COLUMNS);
-// Option C (Tony 2026-10-24): the sync status lives IN the table, as a column after the name.
-const COLS_SYNC = 'minmax(110px,1.2fr) 132px 46px 46px 46px 60px 66px 54px minmax(130px,1fr)';
-const COLUMNS_SYNC: Column[] = [COLUMNS[0], { key: 'sync', head: 'SYNC', g: 'sync' }, ...COLUMNS.slice(1)];
+// F596 (Tony 2026-10-24): the SYNC column is the LAST column, while any phone has not delivered. Once every
+// row is in it collapses with the strip, and a row that lost facts or has an open END keeps a badge by its name.
+const COLS_SYNC = 'minmax(140px,1.6fr) 46px 46px 46px 60px 66px 54px minmax(130px,1fr) 104px';
+const COLUMNS_SYNC: Column[] = [...COLUMNS, { key: 'sync', head: 'SYNC', g: 'sync' }];
 const edgeSync = columnEdges(COLUMNS_SYNC);
 // A63: keyed by the AWARDS `key`; a recap stored before A63 has only the label, so it maps through AWARD_KEY.
 // F221 round 2: first_blood and multikill were T.bad/T.warn, the ALERT colours, on a medal, not a
@@ -94,11 +93,9 @@ export function Recap() {
     if (document.scrollingElement?.scrollTop) document.scrollingElement.scrollTop = 0;
   }, []);
   const live = state?.recap ?? null;
-  // F596/F597: the sync board's phones and the one-tap-twice FINALISE. Hooks, so above the early returns.
-  const [finalisedFor, setFinalisedFor] = useState<string | null>(null);
-  const syncPhones = useSyncPhones(state?.players ?? [], state?.nodes ?? [], live, state?.t ?? 0, state?.live?.match_id ?? null);
-  const boardLayoutQ = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('syncboard') : null;
-  const boardLayout: BoardLayout = boardLayoutQ === 'tiles' || boardLayoutQ === 'table' || boardLayoutQ === 'strip' ? boardLayoutQ : 'list';
+  // F596/F597: the strip is driven by the server's `recap.sync`. The collapse timer is a hook, so it sits above the early returns.
+  const [liveSyncRows] = [recapSync(live)?.rows ?? []];
+  const phase = useSyncPhase(liveSyncRows.length > 0 && liveSyncRows.every(r => r.stage === 'received'));
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
   const liveId = state?.live?.match_id ?? null;
@@ -161,22 +158,18 @@ export function Recap() {
   const tieLabel = (id: string) => ((past ? past.mode : state.config.mode) === 'ffa' ? name(id) : teamLabel(id));
   const inPlay = !past && (state.phase === 'live' || state.phase === 'armed');   // polish round 2: decided before the wording
   const wins = inPlay ? ' LEADS' : ' WINS';
-  // F596/F597: no winner and no team score while a phone bound at the whistle has not delivered. FINALISE
-  // (two taps) releases the winner anyway; the phones still missing then stay on the board, so a late
-  // arrival is seen, and RESULT CHANGED says so if it flips the winner.
-  const edv0 = past ? null : state.end_delivery;
-  const syncOn = !past && !inPlay && syncPhones.length > 0;
-  const unsynced = syncPhones.filter(p => p.stage !== 'received');
-  const finalised = syncOn && finalisedFor === (liveId ?? 'live');
-  const pendingResults = syncOn && unsynced.length > 0 && !finalised;
-  const syncOpen = syncOn && unsynced.length > 0;
-  const stuckAny = unsynced.some(p => p.stuck);
-  const tableMode = boardLayout === 'table';
-  const stripMode = boardLayout === 'strip';
-  const rowMode = tableMode || stripMode;   // C and D: the board is gone, FULL STATS carries dashes while pending
-  const syncCol = tableMode && syncOn && unsynced.length > 0;   // the SYNC column, while any phone is missing
-  const edUnconfirmed = new Set((edv0?.unconfirmed ?? []).map(u => u.player_id));
-  const syncOf = new Map(syncPhones.map(p => [p.id, p]));
+  // F596/F597: no winner and no team score while `sync.pending`. FINALISE (two taps) releases the winner anyway;
+  // the rows still missing then stay on the strip, so a late arrival is seen, and RESULT CHANGED says so if it
+  // flips the winner. An archived recap and an older MC carry no `sync`: then there is no pending state at all.
+  const sync = past || inPlay ? undefined : recapSync(rc);
+  const syncRows: RecapSyncRow[] = sync?.rows ?? [];
+  const pendingResults = !!sync?.pending;
+  const unsynced = syncRows.filter(r => r.stage !== 'received');
+  const stuckAny = unsynced.some(r => r.stuck);
+  const allIn = syncRows.length > 0 && unsynced.length === 0;
+  const syncById = new Map(syncRows.filter(r => r.kind === 'phone').map(r => [r.id, r]));
+  const syncCol = syncRows.length > 0 && !(allIn && phase === 'line');   // the column collapses with the strip
+  const rosterIx = new Map(state.players.map((p, i) => [p.player_id, i]));
   const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(tieLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
     : w.player_id ? { text: name(w.player_id), tail: wins }
@@ -190,12 +183,6 @@ export function Recap() {
   // export button rather than hand the operator the wrong game. It has its own endpoint now.
   const csv = past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
   const csvName = past ? `brx-recap-${past.match_id}.csv` : 'brx-recap.csv';
-  // A42: whether the END reached every HUD. `state.end_delivery` is about the match MC has in hand, so an
-  // ARCHIVED recap gets none of it — the phone it would name was put away hours ago. The ok-case sentence
-  // is `recapDeliveryOkText` (recapDelivery.ts), worded to agree with LIVE's `endDeliveryLine`.
-  const edv = past ? null : state.end_delivery;
-  const edLine = endDeliveryLine(edv);
-  const edText = edv ? recapDeliveryText(edv) : null;
   // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
   // as 10:00. F319: the server now sends the length itself (`played_s`). Without it (an older MC) the
   // length is read from the server's own clock: `since_end_ms` is `now - scorer.end_t`, `t` is that same
@@ -215,113 +202,46 @@ export function Recap() {
   const mode = past ? past.mode : state.config.mode;
   const objective = !!scoring && isObjectiveScored({ scoring }) && scores.length >= 2;
   const heldBy = objective && rc.possession ? rc.possession.by_team : null;
-  const anyTeamKill = rows.some(r => r.kills < 0);
   const lengthLabel = playedS == null && past ? ''
     : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
     : limitS && playedS < limitS ? ` · ${fmtDuration(playedS)} OF ${fmtDuration(limitS)}`
     : ` · ${fmtDuration(playedS)}`;
 
   return (
+    <EndAlertCtx.Provider value={!past && state.end_delivery && state.end_delivery.retrying === false ? 'recap-end-delivery-spent' : 'recap-end-delivery-retrying'}>
     <div className="screen" ref={top}>
-      <OrphanMatch />
+      <OrphanMatch compact />
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
-      {past && (
-        <Alert id="recap-archived-banner" testid="recap-archived" role="status"
-          style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${colourOf('recap-archived-banner')}` }}>
-          ARCHIVED MATCH{past.ended_t ? `: ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
-        </Alert>
-      )}
-      {/* F221: AMBER is one line, never a banner or a filled chip — fix before the next match, not
-          act now. */}
-      {rc.provisional && !syncOpen && (
-        <Alert id="recap-provisional-banner" testid="recap-provisional" style={{ marginBottom: 12 }}>
-          {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}):
-          {/* "bring them into range" is only actionable for the match still in hand */}
-          {past ? ' THESE NUMBERS ARE AS RECORDED WHEN THE MATCH WAS ARCHIVED.'
-                : " KILLS LIVE IN VICTIMS' REPORTS. BRING THEM INTO RANGE TO FINALIZE."}
-        </Alert>
-      )}
-      {/* F77 / F80: after-the-fact detectors from the scorer. A replayed hit cannot be dropped (it looks exactly
-          like real fire), so the recap NAMES the pattern; a wire-0 shooter scored for nobody, and the operator
-          should know whether that was a hill or a gun that never got its identity. MC words the line
-          (mcp scoring.py); `serverLine` decides which catalogue id and severity it carries, so this call site
-          never hard-codes the F74 words or picks a colour of its own. */}
-      {(rc.warnings ?? []).map(w => {
-        const sl = serverLine(w, 'amber');
-        return (
-          <Alert key={w} id={sl.id} sev={sl.sev} testid="recap-warning" role="status"
-            style={{ marginBottom: 12, font: F.chk(600, 11.5), letterSpacing: '.04em', textTransform: 'none' }}>
-            {w}
-          </Alert>
-        );
-      })}
-      {/* A8: `settling` means a bound node has not been heard from since the whistle, so the numbers on
-          this screen are still moving. `provisional` cannot cover it — a player is marked flushed on
-          their FIRST event, so anyone who fired is flushed long before the end (Tony, field 2026-08-30:
-          "it kinda was showing the final results as if it was final and then it finally popped up and
-          the totals changed"). The server has served this since A8 and nothing rendered it, which for
-          an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
-      {/* F221: AMBER is one line, never a banner. */}
-      {!past && rc.settling && !syncOpen && (
-        <Alert id="recap-settling-banner" testid="settling">
-          STILL SETTLING: {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
-          {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
-          {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}S AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
-        </Alert>
-      )}
-      {/* A42 (field 2026-09-12, twice: a tagger played on after the operator ended the match). Whether an
-          END reached a HUD is a fact about DELIVERY, and it is deliberately stated HERE — above the board,
-          in its own block, in the operator's own words — and never as a column, a mark or a footnote on
-          anybody's score row. A player whose phone dropped off the Wi-Fi did nothing wrong, and a line that
-          sits inside the results reads as if they did. Live match only: an archived recap is read long
-          after the phone in question was put away, and `end_delivery` is about the match in hand. */}
-      {/* M1 (visual QA 2026-09-23): this block said "8 HUDS NEVER CONFIRMED THE END" five seconds after
-          the whistle, while MC was still re-delivering, beside a command-bar "REACHED 8 OF 8 NODES" and a
-          row of "SYNCED ✓". It now follows the server's own `retrying`: amber and "NOT CONFIRMED YET"
-          while MC is still trying, red and "NEVER" only once the ladder is spent. It also says how many
-          phones the END REACHED (the socket took it), because reaching a phone is not a confirmation. */}
-      {!past && edLine && edv && (() => {
-        // F221: RED (spent) is a banner; AMBER (retrying) is one line, never a banner; a clean end is
-        // NOT-ALERT (a positive status, T.ok on the accent only, never T.warn/T.bad, no ▲).
-        const edId = edLine.ok ? null : edv.retrying ? 'recap-end-delivery-retrying' : 'recap-end-delivery-spent';
-        const sev = edId ? sevOf(edId) : null;
-        return (
-          <div data-testid="end-delivery-recap" data-end-state={edLine.ok ? 'confirmed' : edv.retrying ? 'retrying' : 'spent'}
-            data-alert={edId ?? undefined} data-sev={sev ?? undefined}
-            role={edLine.ok ? undefined : edv.retrying ? 'status' : 'alert'}
-            style={edLine.ok
-              ? { marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.ok}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, lineHeight: 1.5 }
-              : { marginBottom: 12, ...alertStyle(sev!, sev === 'red' ? 'banner' : 'line', 11) }}>
-            {edLine.ok ? `✓ ${recapDeliveryOkText(edv)}` : glyphed(sev!, edText!)}
-          </div>
-        );
-      })()}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]
+        {past && <span data-testid="recap-archived" title={`ARCHIVED MATCH${past.ended_t ? `, ENDED ${new Date(past.ended_t).toLocaleString()}` : ''}. READ ONLY.`}
+          style={{ marginLeft: 12, padding: '2px 8px', border: `1px solid ${T.line2}`, color: T.micro, letterSpacing: '.14em' }}>ARCHIVED</span>}
+      </div>
       {pendingResults ? (
-        <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: rowMode ? '8px 36px 8px 22px' : '14px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 28px', marginBottom: rowMode ? 8 : 12 }}>
-          <div data-testid="results-pending" style={{ font: F.osw(700, rowMode ? 30 : 36), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
+        <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '8px 36px 8px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', marginBottom: 8 }}>
+          <div data-testid="results-pending" style={{ font: F.osw(700, 30), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
+          <span aria-hidden="true" style={{ color: T.micro }}>·</span>
           <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>WAITING FOR {plural(unsynced.length, 'PHONE')}</div>
           <span style={{ flex: 1 }} />
-          <FinaliseButton prominent={stuckAny} onFinalise={() => setFinalisedFor(liveId ?? 'live')} />
+          <FinaliseButton prominent={stuckAny} onFinalise={async () => { await api.finaliseRecap(); }} />
         </Brackets>
       ) : (
-      <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: syncOn ? 10 : 18 }}>
+      <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: syncRows.length ? 10 : 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
-          {finalised && unsynced.length > 0 && (
+          {sync?.finalised && unsynced.length > 0 && (
             <div data-testid="final-without" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
-              FINAL WITHOUT {plural(unsynced.length, 'PHONE')} ({unsynced.map(p => p.name).join(', ')})
+              FINAL WITHOUT {plural(unsynced.length, 'PHONE')} ({unsynced.map(r => r.name).join(', ')})
             </div>
           )}
-          {syncOn && <ResultChanged winnerKey={JSON.stringify(rc.winner ?? {})} />}
+          {sync?.result_changed && <div data-testid="result-changed" role="status" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.14em', color: T.warn }}>RESULT CHANGED</div>}
         </div>
         {heldBy ? (
           <div data-testid="recap-headline" data-headline="held" style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
@@ -412,18 +332,11 @@ export function Recap() {
         </div>
       </Brackets>
       )}
-      {/* F596: DATA SYNC became the board; it sits straight under the header so it is above the fold. */}
-      {syncOn && !rowMode && unsynced.length > 0 && <SyncBoard phones={finalised ? unsynced : syncPhones} layout={boardLayout} />}
-      {syncOn && !rowMode && unsynced.length === 0 && (
-        <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
-          {Icon.check(16)}<span>{syncPhones.length} OF {syncPhones.length} PHONES SYNCED</span>
-        </div>
-      )}
-      {/* a phone that delivered but whose outbox dropped facts is the one thing a collapsed board must not hide */}
-      {syncOn && !rowMode && unsynced.length === 0 && syncPhones.some(p => p.lost > 0) && <SyncBoard phones={syncPhones.filter(p => p.lost > 0)} layout={boardLayout} />}
-      {!pendingResults && <AfterWhistle rc={rc} name={name} />}
-      {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} holdTargetS={scoring?.hold_target_s} />}
-      {rc.stations && rc.stations.length > 0 && !(rowMode && pendingResults) && <Stations rows={rc.stations} />}
+      {/* F596: the strip sits straight under the header so it is above the fold; while results are pending the
+          things that would name a winner (hold time, honours, stations) stay off the page. */}
+      {syncRows.length > 0 && <SyncStrip rows={syncRows} phase={phase} />}
+      {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} />}
+      {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -444,91 +357,74 @@ export function Recap() {
         })}
       </div>
       </>)}
-      {stripMode && syncOn && <SyncStatus phones={syncPhones} endOpen={edUnconfirmed}
-        stations={(rc.stations ?? []).map(st => ({ id: st.node_id, label: `${STATION_KIND_LABEL[st.kind] ?? st.kind} ${st.id}`, synced: st.synced !== false }))} />}
-      <SectionRule label="FULL STATS" style={rowMode && pendingResults ? { marginBottom: 6 } : undefined} />
-      {tableMode && syncOn && unsynced.length === 0 && (
-        <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
-          {Icon.check(16)}<span>{syncPhones.length} OF {syncPhones.length} PHONES SYNCED</span>
-        </div>
-      )}
+      <SectionRule label="FULL STATS" style={pendingResults ? { marginBottom: 6 } : undefined} />
       <div style={{ overflowX: 'auto' }}>
         {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
               under-reports how much there is to scroll to on a phone */}
-          <div style={{ minWidth: syncCol ? 910 : 780 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, padding: pendingResults && rowMode ? '5px 14px' : '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
+        <div style={{ minWidth: syncCol ? 890 : 780 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, padding: pendingResults ? '5px 14px' : '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
             {(syncCol ? COLUMNS_SYNC : COLUMNS).map(c => (
               <span key={c.key} data-col-head={c.key} data-group={c.g}
                 style={{ textAlign: c.num ? 'right' : 'left', ...(syncCol ? edgeSync : edge)(c.key) }}>{c.head}</span>
             ))}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: rowMode && pendingResults ? 1 : 2, marginTop: 1 }}>
-            {(rowMode && pendingResults ? rc.rows : rows).map(r => <Row key={r.player_id} r={r} mvp={mvpIds.has(r.player_id) && !pendingResults}
-              sync={rowMode ? syncOf.get(r.player_id) ?? null : null} syncCol={syncCol} hide={rowMode && pendingResults}
-              endOpen={edUnconfirmed.has(r.player_id)} />)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: pendingResults ? 1 : 2, marginTop: 1 }}>
+            {/* pending: ROSTER order, so a partial ranking cannot read as standings; the normal sort returns with the result */}
+            {(pendingResults ? [...rc.rows].sort((a, b) => (rosterIx.get(a.player_id) ?? 1e6) - (rosterIx.get(b.player_id) ?? 1e6)) : rows)
+              .map(r => <Row key={r.player_id} r={r} mvp={mvpIds.has(r.player_id) && !pendingResults}
+                sync={syncById.get(r.player_id) ?? null} syncCol={syncCol} pending={pendingResults} />)}
           </div>
         </div>
       </div>
-      {tableMode && !past && (rc.stations ?? []).some(st => st.synced === false) && pendingResults && (
-        <div data-testid="station-sync" style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 6 }}>
-          {(rc.stations ?? []).filter(st => st.synced === false).map(st => (
-            <div key={st.node_id} data-station-sync={st.node_id} title={`${STATION_KIND_LABEL[st.kind] ?? st.kind} ${st.id}: not synced`}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '3px 14px', background: T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${T.line2}`, minHeight: 26 }}>
-              <span style={{ font: F.chk(700, 12), letterSpacing: '.1em' }}>{STATION_KIND_LABEL[st.kind] ?? st.kind} {st.id}</span>
-              <span style={{ color: colourOf('recap-sync-outofrange'), display: 'inline-flex' }}>{Icon.unlinked(16)}</span>
-            </div>
-          ))}
-        </div>
-      )}
       <MedalLegend keys={recapKeys(rc)} />
-      {/* F221: identical wording to LIVE/SPECTATE — a status fact, not a fault, so NEUTRAL. */}
-      {anyTeamKill && (
-        <div data-testid="team-kill-note" data-alert="recap-team-kill-note" data-sev="neutral"
-          style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('recap-team-kill-note'), marginTop: 8 }}>
-          K BELOW ZERO: {TEAM_KILL_NOTE}
-        </div>
-      )}
     </div>
+    </EndAlertCtx.Provider>
   );
 }
 
-function Row({ r, mvp, sync = null, syncCol = false, hide = false, endOpen = false }: { r: ScoreRow; mvp: boolean; sync?: SyncPhone | null; syncCol?: boolean; hide?: boolean; endOpen?: boolean }) {
+function Row({ r, mvp, sync = null, syncCol = false, pending = false }: { r: ScoreRow; mvp: boolean; sync?: RecapSyncRow | null; syncCol?: boolean; pending?: boolean }) {
+  const endId = useContext(EndAlertCtx);
   // F119: the recap can still be settling (a parked node has not flushed), so ACC keeps the same
   // settling mark it wears on the live board rather than quietly becoming a fact at the whistle.
   const prov = !!r.acc_provisional;
   const eg = syncCol ? edgeSync : edge;
-  // Option C: while results are pending every stat is a dim dash (a kill can live in another phone's report)
-  const dash = (k: string, justify: 'right' | 'left' = 'right') => <span data-cell={k} data-pending="1" style={{ textAlign: justify, font: F.osw(600, 15), color: T.faint, ...eg(k) }}>—</span>;
-  const compact = hide;
+  // F596 (Tony 2026-10-24): while results are pending, a player whose phone has NOT delivered is shown dim: the
+  // numbers are there, but "not verified yet". A received player shows normally, and their kills may still rise in place.
+  const unverified = pending && !!sync && sync.stage !== 'received';
   return (
-    <div data-sync-row={sync ? r.player_id : undefined} data-stage={sync?.stage} data-stuck={sync?.stuck ? '1' : undefined}
-      style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: compact ? '1px 14px' : '10px 14px', minHeight: compact ? 26 : undefined, opacity: sync?.stuck ? 0.5 : 1, background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+    <div data-sync-row={sync ? r.player_id : undefined} data-stage={sync?.stage} data-stuck={sync?.stuck ? '1' : undefined} data-unverified={unverified ? '1' : undefined}
+      style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: pending ? '0 14px' : '10px 14px', ...(pending ? { height: 22, boxSizing: 'border-box' as const, overflow: 'hidden' } : {}), opacity: unverified ? (sync?.stuck ? 0.3 : 0.42) : 1, background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       {/* M8 (visual QA 2026-09-24): at 900 px a 24-character name ran over the K number */}
-      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, compact ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, pending ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display}</span>
-        {/* every phone received: no SYNC column, but a phone that lost facts keeps its warning, and a HUD whose END is open its flag */}
-        {sync && !syncCol && sync.lost > 0 && <span data-sync-lost title={`${sync.lost} facts lost`} style={{ color: T.warn, display: 'inline-flex' }}>{Icon.warn(14)}</span>}
-        {sync && !syncCol && endOpen && <span data-sync-end title="END not confirmed" style={{ color: colourOf('recap-end-delivery-retrying'), display: 'inline-flex' }}>{Icon.endOpen(14)}</span>}
+        {/* the column has collapsed (every phone in): a phone that lost facts keeps its warning, and a HUD whose END is open its flag */}
+        {sync && !syncCol && !!sync.lost && <span data-sync-lost title={`${sync.lost} facts lost`} style={{ color: T.warn, display: 'inline-flex' }}>{Icon.warn(14)}</span>}
+        {sync && !syncCol && sync.end_unconfirmed && <span data-sync-end title="END not confirmed" style={{ color: colourOf(endId), display: 'inline-flex' }}>{Icon.endOpen(14)}</span>}
       </span>
-      {syncCol && <span data-cell="sync" style={{ display: 'flex', alignItems: 'center', ...edgeSync('sync') }}>{sync && <Glyphs p={sync} size={16} endOpen={endOpen} />}</span>}
-      {hide ? <>{dash('k')}{dash('d')}{dash('a')}{dash('kd')}{dash('acc')}{dash('stk')}{dash('medals', 'left')}</> : <>
-      <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...eg('k') }}><Num value={r.kills} /></span>
-      <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...eg('d') }}><Num value={r.deaths} /></span>
-      <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...eg('a') }}><Num value={r.assists} /></span>
-      <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, 15), ...eg('kd') }}><Num value={r.kd.toFixed(1)} /></span>
+      <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, pending ? 14 : 17), display: 'inline-flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, ...eg('k') }}>
+        {/* a team kill costs the shooter one kill, so K can go below zero: the icon beside the number says so (the words are the hover) */}
+        {r.kills < 0 && <span data-testid="team-kill-icon" title={TEAM_KILL_NOTE} style={{ color: T.dim, display: 'inline-flex' }}>{Icon.teamKill(14)}</span>}
+        <Num value={r.kills} />
+      </span>
+      <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, pending ? 13 : 16), color: T.dim, ...eg('d') }}><Num value={r.deaths} /></span>
+      <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, pending ? 13 : 16), color: T.dim, ...eg('a') }}><Num value={r.assists} /></span>
+      <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, pending ? 12 : 15), ...eg('kd') }}><Num value={r.kd.toFixed(1)} /></span>
       <span data-cell="acc" data-provisional={prov ? '1' : '0'} title={prov ? 'Still settling — a node has not flushed its shot count' : undefined}
-        style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...eg('acc') }}>
+        style={{ textAlign: 'right', font: F.osw(600, pending ? 12 : 15), color: prov ? T.micro : T.dim, ...eg('acc') }}>
         {/* the mark LEADS the number, exactly as it does on the live board: "35%~" reads as a unit
             nobody uses, "~35%" is how an approximate value is written everywhere else, and the two
             screens must not write the same fact two ways (review 2026-09-12) */}
         {r.accuracy == null ? '—' : <>{prov ? '~' : ''}<Num value={Math.round(r.accuracy)} />%</>}
       </span>
-      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: T.dim, ...eg('stk') }}><Num value={bestStreak(r)} /></span>
-      <span data-cell="medals" style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', ...eg('medals') }}>
-        {r.medals.length ? r.medals.map((m, i) => { const c = medalChip(m, RECAP_ROWS);
-          return <span key={`${m}:${i}`} data-medal-chip={c.key ?? ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{c.key && <MedalIcon k={c.key} label={m} size={20} />}{m}</span>; }) : '—'}
+      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, pending ? 12 : 15), color: T.dim, ...eg('stk') }}><Num value={bestStreak(r)} /></span>
+      <span data-cell="medals" style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: pending ? 1.1 : 1.45, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', ...eg('medals') }}>
+        {/* an HONOUR is a ranking across players, so while results are pending it stays off the row (HONORS is hidden too) */}
+        {(() => {
+          const shown = r.medals.map(m => ({ m, c: medalChip(m, RECAP_ROWS) })).filter(({ c }) => !(pending && AWARDS.some(a => a.key === c.key)));
+          return shown.length ? shown.map(({ m, c }, i) => <span key={`${m}:${i}`} data-medal-chip={c.key ?? ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{c.key && <MedalIcon k={c.key} label={m} size={20} />}{m}</span>) : '—';
+        })()}
       </span>
-      </>}
+      {syncCol && <span data-cell="sync" style={{ display: 'flex', alignItems: 'center', ...edgeSync('sync') }}>{sync && <SyncCell r={sync} />}</span>}
     </div>
   );
 }
@@ -577,85 +473,13 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
 }
 
 
-/** A6.1 — what happened AFTER the whistle.
- *
- *  The scorer freezes at `end_t` and keeps recording: a shot fired a second late is a real fact and it
- *  does NOT count. Tony, field 2026-08-30: the totals "finally popped up and the totals changed" — a
- *  recap that moves without saying why is worse than one that is late. So these are shown as their own
- *  block, plainly marked unofficial, and never folded into the table above.
- *
- *  Rendered only when the server sent the breakdown. An older MC sends `post_end_facts` (a bare count)
- *  and nothing else; there is no way to invent the per-player split from it, so nothing is invented. */
-/** How many late facts there are to talk about, and what to call them.
- *
- *  "3 FACTS RECORDED" was wire vocabulary on a screen an operator reads out loud: `facts` is what the
- *  scorer calls a recorded event, and what actually landed after the whistle is kills and deaths
- *  (review 2026-09-12). */
-const lateLine = (n: number) => (n === 1 ? '1 LATE KILL / DEATH' : `${n} LATE KILLS / DEATHS`);
-
-/** The A6.1 block, or the count an older MC sends instead, or nothing.
- *
- *  Two bugs lived in the one-line `{rc.after_end && …}` this replaces (review 2026-09-12):
- *  `after_end: {facts: 0, by_player: {}}` — the normal case, a match where nothing landed late —
- *  rendered a whole titled block that said NOTHING ATTRIBUTED TO A PLAYER, and an older MC that
- *  sends only `post_end_facts` rendered nothing at all, dropping a fact it HAD sent. So the gate is
- *  the COUNT, from whichever field carried it, and a count with no breakdown is still said out loud. */
-function AfterWhistle({ rc, name }: { rc: RecapView; name: (id: string) => string }) {
-  const a = rc.after_end;
-  const n = a ? a.facts : (rc.post_end_facts ?? 0);
-  if (!n) return null;
-  if (!a) {
-    return (
-      <div data-testid="after-end-count" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
-        <SectionRule label="AFTER THE WHISTLE" hint={lateLine(n)} />
-        <Alert id="recap-after-whistle-count" role="status" style={{ padding: '12px 16px', font: F.chk(600, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>
-          RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
-          THIS MC SENT THE COUNT WITHOUT THE PER-PLAYER SPLIT, SO THERE IS NONE TO SHOW.
-        </Alert>
-      </div>
-    );
-  }
-  return <AfterEnd a={a} name={name} />;
-}
-
-function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (id: string) => string }) {
-  const rows = Object.entries(a.by_player).filter(([, v]) => (v.kills || 0) + (v.deaths || 0) > 0);
-  // S41 (field 2026-09-12): a titled, dashed section whose only content was "NOTHING ATTRIBUTED TO A
-  // PLAYER" read as an empty box to the operator — `facts > 0` with an empty `by_player` is real (a
-  // late fact the scorer could not pin on anyone), but it is not something the board can SHOW, so it
-  // must not spend a whole section saying so. The bare-count block above (the `!a` branch in
-  // `AfterWhistle`) still covers the one case where a count with no breakdown IS all there is to say —
-  // that is an older MC's honest shape, not this one.
-  if (rows.length === 0) return null;
-  return (
-    <div data-testid="after-end" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
-      <SectionRule label="AFTER THE WHISTLE" hint={lateLine(a.facts)} />
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Alert id="recap-after-whistle-breakdown" role="status" style={{ font: F.chk(600, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>
-          RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
-        </Alert>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {rows.map(([pid, v]) => (
-            <span key={pid} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px' }}>
-              <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{name(pid)}</span>
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>
-                {v.kills ? <>+<Num value={v.kills} /> K</> : null}{v.kills && v.deaths ? ' · ' : ''}{v.deaths ? <>+<Num value={v.deaths} /> D</> : null}
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** F70 — an objective mode's real scoreboard: seconds of possession per team.
  *
  *  Rendered BESIDE the kills, never instead of them: the kill table is still true, it just is not how
  *  a hill mode is won. `reports`/`observed` are shown because possession from a grenade is a LOWER
  *  BOUND — the beacon is IR and only a gun in range hears it (F92), so a match nobody watched reads 0
  *  and must not be dressed up as the result. */
-function Possession({ p, label, word, holdTargetS }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string; word: string; holdTargetS?: number | null }) {
+function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
   return (
@@ -674,31 +498,6 @@ function Possession({ p, label, word, holdTargetS }: { p: NonNullable<RecapView[
             <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={fmtDuration(secs)} /></span>
           </div>
         ))}
-        {p.neutral_s > 0 && (
-          <Alert id="recap-possession-neutral" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.1em' }}>
-            NEUTRAL {fmtDuration(p.neutral_s)}: NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
-          </Alert>
-        )}
-        {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
-        {sitesNote(p, holdTargetS) && (
-          <Alert id="recap-possession-sites" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-            {sitesNote(p, holdTargetS)}
-          </Alert>
-        )}
-        {/* F221: a coverage caveat about the MEASUREMENT, not a fault in the match — NEUTRAL, whatever
-            `thin` says, though it used to render amber under 75%. */}
-        {/* Milestone review 2026-10-18: a site the station counted is the authority, not a floor (F555, objective.ts `possessionSource`) */}
-        {stationSource(p, word, label) && (
-          <Alert id="recap-possession-station" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-            {stationSource(p, word, label)}
-          </Alert>
-        )}
-        {/* F586: the LIVE rule (objective.ts `floorSource`): sites 0 is a floor too */}
-        {floorSource(p, word) !== null && (
-          <Alert id="recap-possession-thin" role="status" style={{ font: F.mono(500, 11), letterSpacing: '.08em', lineHeight: 1.5 }}>
-            BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
-          </Alert>
-        )}
       </div>
     </div>
   );
@@ -737,16 +536,6 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
               <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.heard ? T.ok : colourOf('recap-station-never-heard') }}>
                 {r.heard ? 'REPORTED' : glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.')}
               </span>
-            )}
-            {/* F401: a HELD station can end a timed match on its own clock while out of Wi-Fi range, so
-                MC gets its result only once it is brought back. Only for a row that DID report (`heard`):
-                a station that never heard from anyone at all already carries its own, stronger alert
-                above, and showing both would say the same thing twice. Absent `synced` (an older MC, or
-                a match still live) renders nothing. */}
-            {r.heard && r.synced === false && (
-              <Alert id="recap-station-not-synced" role="status" style={{ font: F.mono(600, 11), letterSpacing: '.06em' }}>
-                {STATION_KIND_LABEL[r.kind] ?? r.kind} {r.id} NEEDS SYNC: BRING IT INTO WI-FI
-              </Alert>
             )}
           </div>
         ))}

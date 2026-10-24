@@ -95,7 +95,9 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     const block = m.find('[data-testid="recap-stations"]')[0];
     expect(block.textContent).toMatch(/RESPAWN 3/);
     expect(block.textContent).toMatch(/5 REVIVES/);
-    expect(block.textContent).toMatch(/NEEDS SYNC/);
+    // F596: no NEEDS SYNC sentence; the station is a diamond in the sync strip (the server's `sync.rows`)
+    expect(block.textContent).not.toMatch(/NEEDS SYNC/);
+    expect(m.text()).not.toMatch(/NEEDS SYNC|BRING IT INTO WI-FI/);
     m.unmount();
   });
 
