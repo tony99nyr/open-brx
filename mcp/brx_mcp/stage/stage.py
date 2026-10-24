@@ -5759,12 +5759,14 @@ class GunStage:
             (out := out if out is not None else {})[slot] = [live[slot][0], to, to - cur]
         return out
 
-    async def grant_ammo(self, item: dict) -> dict | None:
+    async def grant_ammo(self, item: dict, retry: bool = False) -> dict | None:
         """powerup-player.js `grantAmmo`, as a hand-driven stage action (the stage has no pickup claim or presence): one
         `$AMMO,<slot>,<live mag>,<new reserve>,1` per short slot, slot order, so the magazine is kept. The account and the
-        previous counts take the new reserve first, so the gun's echo is bookkeeping (F259/F460). The phone writes through
-        `writeMust` (a retry for the life); the stage's writes land at once, so a plain write is the twin. The phone also gives
-        a held heavy's `back` reserve the refill; the stage has no held heavy, so that half waits for one."""
+        previous counts take the new reserve first, so the gun's echo is bookkeeping (F259/F460). The phone writes once and
+        settles a failure itself (F589 below). The phone also gives
+        a held heavy's `back` reserve the refill; the stage has no held heavy, so that half waits for one.
+        F589: a failed write on the same life takes the refill back where the reserve is still the booked one, then grants
+        once more from the counts held then, never over a reload (powerup-player.js `grantAmmo`'s `settled`)."""
         name = str(item.get("name") or "AMMO")
         if not (self.spawned and self.alive):   # the phone grants only after an alive claim (Opus review)
             self._log(f"powerup: {name} grant refused: the player is not alive", "info")
@@ -5788,15 +5790,19 @@ class GunStage:
             self._prev_reserve[slot] = res
             frames.append(f"$AMMO,{slot},{'null' if mag is None else mag},{res},1,*")
             refilled[slot] = add
-        # the phone's `writeMust`: a failed write is sent again while this life lasts (Codex review)
         life = self._life_queued
-        for _ in range(2):
-            if await self.write(frames, f"powerup: {name} +{sum(refilled.values())} reserve") is not False:
-                break
+        if await self.write(frames, f"powerup: {name} +{sum(refilled.values())} reserve{' (retry)' if retry else ''}") is False:
             if not (self.alive and self._life_queued == life):
-                break
-        else:
-            self._log(f"powerup: {name} grant write failed twice; the gun may not hold the new reserve", "warn")
+                self._log(f"powerup: {name} grant write failed; a new life since, nothing to undo", "info")
+            else:
+                for slot, (_mag, to, add) in short.items():
+                    if self._prev_reserve.get(slot) == to:
+                        self._prev_reserve[slot] = to - add
+                busy = self.stunned or self.reloading or self.switching   # the phone also stands down for a reconcile or a resync
+                if not retry and not busy:
+                    self._log(f"powerup: {name} grant write failed; granting again from the counts now", "warn")
+                    return await self.grant_ammo(item, retry=True)
+                self._log(f"powerup: {name} grant write failed; the refill is off the books, not retried", "warn")
         if self.active_slot in short:
             self._show_slot_ammo(self.active_slot)
         return {"refilled": refilled}

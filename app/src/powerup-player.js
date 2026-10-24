@@ -876,14 +876,19 @@ export class PlayerPowerups {
     // F589 (brx3 review): a failed write takes the refill back off the phone's books, so the ammo block never shows a reserve
     // the gun did not get. The one retry is built again from the counts the phone holds then (a shot since the first try
     // moved the magazine), never over a reload. `$AMMO` sets absolute counts, so a row that did land is simply written again.
+    // Review (Codex): a new life owns its own counts, so a late failure undoes nothing; and only a slot whose reserve is still
+    // the booked one is taken back, since a newer gun report (a reload, a reconcile) is the truth.
     const life = h.lifeSeq, why = `powerup: ${item.name || 'AMMO'} +${added} reserve${retry ? ' (retry)' : ''} (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`;
     const settled = ok => {
       if (ok !== false) return;
-      for (const slot of Object.keys(short)) { const r = h.prevReserve(+slot); if (r != null) h.setReserve(+slot, Math.max(0, r - short[slot][2])); }
+      if (h.lifeSeq !== life || !h.alive) { h.log(`write ${why} failed -- a new life since, nothing to undo`, 'li'); return; }
+      for (const slot of Object.keys(short)) { const [, to, add] = short[slot]; if (h.prevReserve(+slot) === to) h.setReserve(+slot, to - add); }
       const bb = this._held && this._held.back;
-      if (bb && short[bb.slot]) this._held.back = { ...bb, res: Math.max(0, bb.res - short[bb.slot][2]) };
+      if (bb && short[bb.slot] && bb.res === short[bb.slot][1]) this._held.back = { ...bb, res: short[bb.slot][1] - short[bb.slot][2] };
       if (short[h.activeSlot]) h.showSlot(h.activeSlot);
-      if (retry || h.lifeSeq !== life || !h.alive || h.reloading) { h.log(`*** write ${why} failed -- the refill is off the books, not retried ***`, 'le'); h.changed(); return; }
+      // review (Opus): the retry stands down wherever SELECT or the claim would (a stun's $AMMO 0,0, a reconcile, a swap)
+      const busy = h.phase !== 'live' || !h.bleUp || h.stunned || h.reconciling || h.resync || h.reloading || (h.switching && !h.switching.pu);
+      if (retry || busy) { h.log(`*** write ${why} failed -- the refill is off the books, not retried ***`, 'le'); h.changed(); return; }
       h.log(`write ${why} failed -- granting again from the counts now`, 'le');
       this.grantAmmo(id, item, h.now(), true);
       h.changed();

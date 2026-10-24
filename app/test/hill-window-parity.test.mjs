@@ -56,7 +56,7 @@ test('engine and phone accrue possession only within the same match window', asy
     await utility.applyStationConfig({ ...hill, game: 190 });
     utility.settings.captureS = 10;
     utility.presence.players = () => [{ id: 7, team: 1, state: 1, present: true, inCircle: true, fading: false }];
-    // RED (tid 1) stands on the point through the lobby, the countdown, the match and past the whistle.
+    // BLUE (tid 1) stands on the point through the lobby, the countdown, the match and past the whistle.
     for (let ms = 0; ms <= 10_000; ms += 250) {
       t0 += 250; utility.controlTick(t0);   // one clock for both: the station's own `Date.now` moves with the ticks
       h.eng.setStations([entry()]); h.eng.tick();
