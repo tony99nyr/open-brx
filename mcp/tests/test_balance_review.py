@@ -324,12 +324,11 @@ def test_a_useless_ar_change_fails_viable_against_the_baseline_ar():
 
 
 def test_only_a_new_mechanic_can_carry_value_addition():
-    """A weak bolt Sniper (20 a hit) is near the top nowhere; the bolt alone carries value_addition. Break it once
-    (drop the bolt feature from trigger_mechanics) and watch it fail."""
+    """A number edit to the shipped Sniper keeps its existing bolt mechanic, so that mechanic earns no new value."""
     v = R.review({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": 20}}, reps_scale=REPS_SCALE)
     t = v["tests"]["value_addition"]
     assert t["numbers"]["near_top_in"] == [], t
-    assert t["numbers"]["new_mechanics"] == ["bolt action (1-round magazine)"] and t["status"] == "pass", t
+    assert t["numbers"]["new_mechanics"] == [] and t["status"] == "fail", t
 
 
 def test_a_pickup_only_candidate_is_not_judged_on_loadout_value():
@@ -595,14 +594,29 @@ def _visible_haze_world():
 
 @contextlib.contextmanager
 def _shipped_as(world):
-    """Run `haze_gate` with `world` as the shipped catalogue. The shipped sweep cache is keyed without the world, so
-    it is cleared on the way in and, in a `finally`, on the way out: a failed assertion cannot leak a result."""
-    R._SHIPPED_HAZE_CACHE.clear()
-    try:
-        with mock.patch.object(R, "shipped_world", return_value=world):
-            yield
-    finally:
-        R._SHIPPED_HAZE_CACHE.clear()
+    """Run `haze_gate` with `world` as the shipped catalogue."""
+    with mock.patch.object(R, "shipped_world", return_value=world):
+        yield
+
+
+def test_shipped_haze_cache_uses_row_content_and_clear_cache_clears_it():
+    world = _visible_haze_world()
+    calls = []
+
+    def sweep(current, reps, heat, weapon_id):
+        calls.append(current.cat._row(weapon_id)["wire"]["dmg"])
+        return [{"damage": calls[-1]}]
+
+    with _shipped_as(world), mock.patch.object(R, "haze_blind_sweep", side_effect=sweep):
+        R.clear_cache()
+        R._shipped_haze_sweep("smoke_gun", 4)
+        changed = copy.deepcopy(world)
+        changed.cat._row("smoke_gun")["wire"]["dmg"] += 1
+        with _shipped_as(changed):
+            R._shipped_haze_sweep("smoke_gun", 4)
+            assert len(calls) == 2
+            R.clear_cache()
+            assert not R._SHIPPED_HAZE_CACHE
 
 
 def test_f577_the_shipped_haze_is_hidden_so_no_standing_failure_ships():
@@ -872,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 13
+    assert R.SCENARIO_VERSION == 14
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1579,6 +1593,28 @@ def test_shared_finish_estimator_matches_bolt_charge_and_zero_overshoot():
     assert charge_f._finish_ms(1, charge_tgt, 0) >= combo.guns[1].fire_ms
 
 
+def test_sniper_finish_per_round_matches_compile_bolt_cycle():
+    cat = WeaponCatalog()
+    gun = R.make_gun(cat, "sniper_rifle")
+    result = R.finish_estimate(gun, pool=150, chance=1, ammo=1, reserve=5,
+                               reload_amount=0, ready_at=0, locked_until=0, t=0,
+                               pull_ms=R.PULL_MS, overshoot_ms=R.FIGHT_OVERSHOOT_MS,
+                               charged=False, count=0, dist="mid", heat=0, heat_t=0,
+                               heat_cool_while_firing=True)
+    expected = cat.paced_cycle_ms("sniper_rifle")
+    assert abs(result - expected) / expected < 0.01, (result, expected)
+
+
+def test_sampled_sniper_bolt_round_matches_compile_bolt_cycle():
+    """F581: the Fighter's sampled bolt round averages compile's bolt cycle. It used to add a second full pull
+    gap (about 95 ms a round slower)."""
+    rng = random.Random(7)
+    row = WeaponCatalog()._row("sniper_rifle")
+    gaps = [R.bolt_gap(rng, row["reload_ms"], R.PULL_MS) for _ in range(40000)]
+    mean, want = sum(gaps) / len(gaps), WeaponCatalog().paced_cycle_ms("sniper_rifle")
+    assert abs(mean - want) / want < 0.01, (round(mean), round(want))
+
+
 def test_shared_finish_estimator_counts_charge_heat_lockout_in_both_engines():
     row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
     row["heat"]["per_charge"] = 55
@@ -1693,16 +1729,16 @@ def test_heated_pickup_utility_checks_every_cooling_branch():
     assert "| none |" in R.report_markdown(v).split("## Heated pickup utility", 1)[1]
 
 
-def test_unheated_candidate_has_no_heat_section_or_alternate_rule_runs():
+def test_unheated_candidate_checks_heat_branches_because_roster_rules_include_heat():
     with mock.patch.object(R, "run_rules", wraps=R.run_rules) as rules, \
          mock.patch.object(R, "run_heated_rules", wraps=R.run_heated_rules) as heated_rules, \
          mock.patch.object(R, "dominance_matrix", wraps=R.dominance_matrix) as matrices:
         v = R.review({"weapon_id": "shotgun", "changes": {"wire.dmg": 30}}, reps_scale=0.001)
-    assert "heat_sensitivity" not in v["tests"]
-    assert not v["heat"]
+    assert "heat_sensitivity" in v["tests"]
+    assert v["heat"]
     assert rules.call_count == 3
-    assert heated_rules.call_count == 0
-    assert matrices.call_count == 2
+    assert heated_rules.call_count > 0
+    assert matrices.call_count > 2
 
 
 def test_pickup_only_heated_candidate_gets_heat_branches():

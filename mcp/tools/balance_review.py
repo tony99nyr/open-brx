@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 13
+SCENARIO_VERSION = 14
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -293,6 +293,15 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
 
 def _reps(kind: str, scale: float) -> int:
     return max(MIN_REPS, int(round(REPS[kind] * scale)))
+
+
+def bolt_gap(rng, reload_ms: float, pull_ms: float) -> float:
+    """F581: one sampled bolt round. The lever pull, the bolt, then the first press after it (the renewal
+    residual), as compile's `paced_cycle_ms` bolt branch and balance_sim's Match model it: about 2705 ms a
+    round for the Sniper. At `pull_ms` 0 only the bolt runs."""
+    if pull_ms <= 0:
+        return float(reload_ms)
+    return pull_gap(rng, pull_ms) + B.semi_interval(rng, reload_ms, pull_ms)
 
 
 def pull_gap(rng, pull_ms: float) -> float:
@@ -577,7 +586,10 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
                 return math.inf
             ammo += 1
             reserve -= 1
-            elapsed += max(fire_ms + overshoot_ms, 2 * pull_ms + reload_ms)
+            # F581: compile's bolt cycle (`paced_cycle_ms`): one lever pull, the bolt, then the mean renewal
+            # residual of the next press. It used to add a second full pull gap (about 95 ms a round slower).
+            residual = pull_ms * math.exp(B.PULL_SIGMA * B.PULL_SIGMA) / 2
+            elapsed += max(fire_ms + residual, pull_ms + reload_ms + residual)
         elif mode == "charge":
             charged = False
             elapsed += CHARGE_TAP_CADENCE_MS
@@ -902,7 +914,7 @@ class Fighter:
             if s.reserve > 0:
                 s.reserve -= 1
                 s.ammo += 1
-                iv = max(iv, pull_gap(self.rng, self.pull_ms) + g.reload_ms + pull_gap(self.rng, self.pull_ms))
+                iv = max(iv, bolt_gap(self.rng, g.reload_ms, self.pull_ms))
             self.next_t = t + iv
             s.bolt_until = self.next_t if s.ammo else 0.0
         elif g.mode == "semi":
@@ -1896,15 +1908,19 @@ _SHIPPED_HAZE_CACHE: dict = {}
 
 
 def _shipped_haze_sweep(wid: str, reps: int, heat_cool_while_firing=True) -> list[dict]:
-    key = (wid, reps, heat_cool_while_firing, haze_blind_sweep)
+    shipped = shipped_world()
+    row = shipped.cat._row(wid)
+    key = (wid, reps, heat_cool_while_firing, haze_blind_sweep, json.dumps(row, sort_keys=True))
     if key not in _SHIPPED_HAZE_CACHE:
-        _SHIPPED_HAZE_CACHE[key] = haze_blind_sweep(
-            shipped_world(), reps, heat_cool_while_firing, weapon_id=wid)
+        world = World(WeaponCatalog([row if r["weapon_id"] == wid else r
+                                     for r in shipped.cat._rows]), shipped.perks)
+        _SHIPPED_HAZE_CACHE[key] = haze_blind_sweep(world, reps, heat_cool_while_firing, weapon_id=wid)
     return _SHIPPED_HAZE_CACHE[key]
 
 
 def clear_cache() -> None:
     _CACHE.clear()
+    _SHIPPED_HAZE_CACHE.clear()
 
 
 def _run_cell(job):
@@ -2635,6 +2651,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                         for s in heated_specs) or any(
                             w in x.cat._by_id and x.cat._row(w).get("heat")
                             for w in touched for x in (base, world))
+    heat_involved = heat_involved or any(r.get("heat") for r in world.cat._rows)
     heated = [w for w in dict.fromkeys(w for s in heated_specs for w in (s.primary, s.secondary) if w)
               if any(w in x.cat._by_id and x.cat._row(w).get("heat") for x in (base, world))]
     heated += [w for w in touched if w not in heated and any(
@@ -2667,6 +2684,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         others = [w for w in loadout_ids(world.cat) if w != wid]
         have = set().union(*[trigger_mechanics(world.cat, w) for w in others])
         new_mech = sorted(trigger_mechanics(world.cat, wid) - have)
+        shipped_cat = shipped.cat
+        if wid in shipped_cat._by_id:
+            new_mech = sorted(set(new_mech) - trigger_mechanics(shipped_cat, wid))
         if role == "sidearm":
             fin = {w: sidearm_r10(world, w, reps_scale, duels=False,
                                  heat_cool_while_firing=heat_cool_while_firing)["finish_ms"]
