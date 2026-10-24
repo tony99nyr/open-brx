@@ -248,7 +248,7 @@
    "reserve": 48,
    "reload_ms": 400,
    "reload_type": "chain",
-   "dmg": 35,
+   "dmg": 34,
    "rof": 19,
    "rng": 75,
    "range_band": "close",
@@ -266,7 +266,7 @@
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
    },
    "wire": {
-    "dmg": 20,
+    "dmg": 19,
     "headset_dmg": 20,
     "headset_range_outdoor": 100,
     "headset_range_indoor": 100,
@@ -693,11 +693,11 @@
    "mag": 12,
    "reserve": 240,
    "reload_ms": 2200,
-   "dmg": 10,
+   "dmg": 9,
    "rof": 39,
    "rng": 75,
-   "htk": 10,
-   "ttk_ms": 2096,
+   "htk": 12,
+   "ttk_ms": 2562,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {
@@ -715,7 +715,7 @@
     "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
    },
    "wire": {
-    "dmg": 12,
+    "dmg": 10,
     "fire_ms": 190,
     "swap_ms": 500
    },

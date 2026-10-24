@@ -52,7 +52,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 126,
     "bars": {
-      "power": 64,
+      "power": 60,
       "rof": 53,
       "ammo": 45,
       "ttk": 64
@@ -108,7 +108,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 416,
     "bars": {
-      "power": 38,
+      "power": 40,
       "rof": 93,
       "ammo": 75,
       "ttk": 85
@@ -162,10 +162,10 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 420,
     "bars": {
-      "power": 47,
+      "power": 50,
       "rof": 100,
       "ammo": 82,
-      "ttk": 35
+      "ttk": 42
     }
   },
   {
@@ -224,7 +224,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 200,
     "bars": {
-      "power": 82,
+      "power": 80,
       "rof": 27,
       "ammo": 57,
       "ttk": 100
@@ -279,7 +279,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 103,
     "bars": {
-      "power": 64,
+      "power": 60,
       "rof": 40,
       "ammo": 38,
       "ttk": 20
@@ -333,7 +333,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 900,
     "bars": {
-      "power": 38,
+      "power": 40,
       "rof": 67,
       "ammo": 100,
       "ttk": 56
@@ -462,10 +462,10 @@ export const DEMO_WEAPONS = [
     "reserve": 48,
     "reload_s": 0.4,
     "reload_ms": 400,
-    "dmg": 35,
+    "dmg": 34,
     "rpm": 19,
     "rng": 75,
-    "dmg_per_hit": 40,
+    "dmg_per_hit": 39,
     "dual_emitter": true,
     "reload_type": "chain",
     "pool": 115,
@@ -487,9 +487,15 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
+      19,
       20
     ],
     "cells": [
+      {
+        "proto": 0,
+        "subtype": 0,
+        "mag": 19
+      },
       {
         "proto": 0,
         "subtype": 0,
@@ -498,7 +504,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 54,
     "bars": {
-      "power": 73,
+      "power": 70,
       "rof": 47,
       "ammo": 32,
       "ttk": 93
@@ -557,7 +563,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 438,
     "bars": {
-      "power": 38,
+      "power": 40,
       "rof": 93,
       "ammo": 88,
       "ttk": 85
@@ -612,7 +618,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 49,
     "bars": {
-      "power": 91,
+      "power": 90,
       "rof": 20,
       "ammo": 26,
       "ttk": 27
@@ -721,7 +727,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 459,
     "bars": {
-      "power": 29,
+      "power": 30,
       "rof": 73,
       "ammo": 94,
       "ttk": 49
@@ -774,7 +780,7 @@ export const DEMO_WEAPONS = [
     ],
     "ammo_total": 390,
     "bars": {
-      "power": 29,
+      "power": 30,
       "rof": 87,
       "ammo": 69,
       "ttk": 71
@@ -791,10 +797,10 @@ export const DEMO_WEAPONS = [
     "reserve": 240,
     "reload_s": 2.2,
     "reload_ms": 2200,
-    "dmg": 10,
+    "dmg": 9,
     "rpm": 39,
     "rng": 75,
-    "dmg_per_hit": 12,
+    "dmg_per_hit": 10,
     "dual_emitter": false,
     "reload_type": "magazine",
     "pool": 115,
@@ -808,8 +814,8 @@ export const DEMO_WEAPONS = [
       "sidearm",
       "close"
     ],
-    "htk": 10,
-    "ttk_ms": 2096,
+    "htk": 12,
+    "ttk_ms": 2562,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -818,21 +824,21 @@ export const DEMO_WEAPONS = [
       "recover_ms": 0
     },
     "hir": [
-      12
+      10
     ],
     "cells": [
       {
         "proto": 0,
         "subtype": 3,
-        "mag": 12
+        "mag": 10
       }
     ],
     "ammo_total": 252,
     "bars": {
-      "power": 56,
+      "power": 50,
       "rof": 60,
       "ammo": 63,
-      "ttk": 42
+      "ttk": 35
     }
   }
 ];

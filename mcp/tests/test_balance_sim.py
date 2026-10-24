@@ -951,13 +951,13 @@ def test_range_duel_close_band_adds_the_headset_word_mid_does_not():
     """`_pull_dmg()` is the whole close/mid mechanism (F308): close = gun word + a declared headset
     word, mid = gun word alone. Direct, RNG-free check of the numbers Tony gave -- SMG 7+2=9 close /
     7 mid (R5, 2026-09-23: moved from 8+1 so the gun word alone drops further past the headset
-    word's reach), Shotgun 20+20=40 close / 20 mid, Burst Rifle 10 either way (it declares no
+    word's reach), Shotgun 19+20=39 close / 19 mid (F579, 2026-10-24: the gun word moved 20 to 19), Burst Rifle 10 either way (it declares no
     headset word)."""
     m = _recoil_model()
     assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "close") == 9 == m.smg_gun_dmg + m.smg_headset_dmg
     assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "mid") == 7 == m.smg_gun_dmg
-    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 40
-    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 20
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 39
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 19
     assert m.br_dmg == 10   # no headset word declared; band never touches it
 
 
