@@ -522,7 +522,7 @@ Weapon {
   // 2026-09-18, weapon-design.md §7). It was t5 alone until then, which made a client re-deriving htk
   // from it disagree with the server. Armour Piercing zeroes the second word, so under that perk a pull
   // is worth its priced `ap_dmg` and no more; cycle_ms is the mean ms (player-paced on a single-shot
-  // weapon since 2026-10-17: about t14 + 205 ms, the gun interval stays in the $WEAP frame)
+  // weapon: t14 + about 43 ms, the field fight fit since 2026-10-24 (F576); the gun interval stays in the $WEAP frame)
   // between landed hits (burst-aware: (2*t14 + t23)/3 on a 3-round burst); `charged` weapons pay for
   // their FIRST shot, so their ttk is htk cycles, not htk-1. A row WITHOUT them (a synthetic/demo
   // catalog) scales its published `htk` by the pool ratio and withholds `ttk_ms` at any non-default pool.

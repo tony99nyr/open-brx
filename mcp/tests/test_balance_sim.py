@@ -598,8 +598,9 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
         kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
         mean = sum(k for k in kills if k is not None) / len([k for k in kills if k is not None])
-        want = (htk - 1) * (CAT.fire_ms(weapon_id) + B.FIGHT_OVERSHOOT_MS)
-        assert abs(mean - want) / want < 0.05, (weapon_id, round(mean), round(want))
+        want = (htk - 1) * (CAT.fire_ms(weapon_id) + B.FIGHT_OVERSHOOT_MS * math.exp(B.PULL_SIGMA ** 2 / 2))
+        # The lognormal's mean, not its median: the median is about 6 ms per gap short, about 1% of a kill.
+        assert abs(mean - want) / want < 0.005, (weapon_id, round(mean), round(want))
     m = _recoil_model()
     rng = random.Random(SEED)
     for name, gen in (("amr", B._amr_combatant(0.0, m, "mid", rng)), ("shotgun", B._shotgun_combatant(0.0, m, "close", rng))):
