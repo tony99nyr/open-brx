@@ -1127,7 +1127,7 @@ def _natural_family(cat: WeaponCatalog, w: dict) -> tuple:
 
 def test_ttk_band_and_no_strictly_dominant_weapon():
     """docs/weapon-design.md §2.3: every picker weapon lands in the 1.2-3.5s band (one-shot power,
-    cell weapons and the Shotgun excepted), no weapon strictly beats another weapon IN THE
+    cell weapons excepted, the Shotgun at its 0.85 s floor), no weapon strictly beats another weapon IN THE
     SAME FAMILY on {ideal TTK, kills per clip, one-magazine kill chance at p=0.7, sustained DPS} at
     once, and every visible weapon LEADS its family on at least one of those four axes or on one of
     the two declared-but-not-yet-wired qualifiers (`range_band`, `recoil`) (2026-09-17 balance pass).

@@ -80,3 +80,15 @@ Candidate:
 }
 ```
 
+
+## 2026-10-24: F576 published single-shot cycle
+
+- Verdict: none. F576 is a rule change, not a weapon candidate, so `balance_review.py` has no verdict to record and
+  this section is written by hand. A check run (seed 7, scale 0.25, before and after the change) changed no verdict.
+- Tony's call: "yes your rec" (2026-10-24, relayed by brx1), on two points:
+  1. The Shotgun's TTK band floor is 0.85 s, not 1.20 s. Its 400 ms pump and the fitted fight interval give 0.89 s.
+  2. "Pistols weak against the rifles" is tested on the R10b duel result, not on the published TTK. The USP now
+     publishes 2.10 s and the hidden Glock 2.26 s, faster than the Burst Rifle's 2.53 s. Every primary still wins
+     the R10b duel against each live sidearm; the lowest cell is the Bolt Rifle against the USP, about 90%.
+- Tests: `mcp/tests/test_mc_compile.py::test_ttk_band_and_no_strictly_dominant_weapon` (the floor),
+  `mcp/tests/test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering` (R10b at its own 65% bar).

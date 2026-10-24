@@ -11,9 +11,15 @@ weapons.json — custom games and the bench can still name it directly via `CAT.
 etc, which is why the catalog/frame-level tests below still use all three pistols (`ALL_PISTOLS`) while
 the pool/view tests use only the two now-visible sidearms (`PISTOLS`).
 """
+import pathlib
+import sys
+
 from brx_mcp.mc import policy as P
-from brx_mcp.mc.compile import DEFAULT_POOL, WeaponCatalog
+from brx_mcp.mc.compile import WeaponCatalog
 from brx_mcp.mc.perks import default_perks
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
+import balance_sim as B  # noqa: E402
 
 CAT = WeaponCatalog()
 W = CAT.all()
@@ -73,21 +79,15 @@ def test_pistol_identities_keep_tonys_ordering():
     # Tony's ask over an unrealistic cut), which reorders this axis -- the USP no longer carries the
     # deepest magazine of the three, only the Glock (hidden, untouched by R10) does now.
     assert mags["deagle"] < mags["usp"] < mags["glock"]
-    # Every pistol kills strictly slower than every rifle (D2). 2026-10-17: a single-shot weapon's cycle is
-    # player-paced (`paced_cycle_ms`, field 2026-10-17), which put all three sidearms near 3.6 s at the
-    # default pool, above the 3.5 s band the rifles keep; Tony wants them weak against the rifles, and
-    # accepted the USP's 12 damage ("ok to finish a player on standard life if you hit 10/12 shots").
-    # Their own gates are R10a (a 35 HP finish within 1.2 s) and R10b (every rifle beats them).
-    rifles = [w["weapon_id"] for w in CAT.all() if w.get("role") in ("assault", "marksman")
-              and CAT._row(w["weapon_id"]).get("reload_type") != "bolt"   # a bolt action is paced by its lever
-              and CAT.hits_to_kill(w["weapon_id"], DEFAULT_POOL) > 1
-              and not (CAT.rounds_per_charge(w["weapon_id"]) > 1 and CAT.tap_damage(w["weapon_id"]) > 0)]
-    slowest_rifle = max(CAT.time_to_kill(r, DEFAULT_POOL) for r in rifles)
-    want = {"usp": 3557, "glock": 3562, "deagle": 3621}
-    for w in ALL_PISTOLS:
-        ttk = CAT.time_to_kill(w, DEFAULT_POOL)
-        assert ttk > slowest_rifle, f"{w} must kill strictly slower than the slowest rifle ({slowest_rifle} ms)"
-        assert ttk == want[w], (w, ttk)
+    # "Weak against the rifles" is a duel result, not a published TTK (Tony, 2026-10-24, F576). Since the published
+    # single-shot cycle uses the field fight interval, the USP and the Glock publish a faster ideal TTK than the
+    # Burst Rifle, but every primary still wins the R10b duel from full Standard health. The bar is R10b's own 65%;
+    # at SEED 7 the lowest cell is the Bolt Rifle against the USP, about 90%. The hidden Glock is not a live sidearm.
+    m = B.RecoilDuelModel.from_catalog(CAT)
+    for p in B.R10_PRIMARIES:
+        for s in B.R10_SIDEARMS:
+            r = B.r10_duel_batch(m, p, s, 2_000, 7)
+            assert r.win_rate >= 0.65, (p, s, r.win_rate)
 
 
 def test_pistol_sounds_are_unique_on_gun_ids():
