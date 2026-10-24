@@ -82,8 +82,9 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
 3. **captures the gun's echo**: a configured gun answers the head with `$LCD,…`/`$ALCD,…` lines (protocol §7e).
    The node waits ~1.5 s for them. **What the echo proves:** the gun *answered*. It does **not** report state:
    `$START` answers `$LCD,0,0,0,0,0,0` (no config loaded yet), then the slot-0 `$WEAP` load answers its `$ALCD`.
-   Only that slot-0 `$ALCD` (or a non-zero `$LCD`) proves the config loaded (F549, field 2026-10-17: a broken
-   slot-0 frame answered only the zeroed `$LCD`). **Silence = the gun did not answer**: with the headset OFF the
+   Only that slot-0 `$ALCD` proves the config loaded (F549, field 2026-10-17: a broken slot-0 frame answered only
+   the zeroed `$LCD`), and only when it arrives after `$START`'s zeroed `$LCD` or after the whole head is written:
+   an earlier one is the old weapon's late report (F549 r2). **Silence = the gun did not answer**: with the headset OFF the
    head write echoes nothing and the gun drops the link (`$DISCONNECT`; bench 2026-08-25 §7r), so an empty echo
    is **red after the push** (contracts §4 Readiness). Before the push, headset is amber, never red (A5.4);
 4. after a successful echo window, sends `$QUERY,*` and waits up to 2.6 s after that write settles for its status
@@ -91,8 +92,9 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    late or malformed body simply omits this optional proof;
 5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
    the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
-   `ok:false, err:"no_echo"`; only a zeroed `$LCD,0,0,0,0,0,0` (no config loaded) and no well-formed slot-0 `$ALCD` →
-   `ok:false, err:"no_config"` (F549, field 2026-10-17); a BLE write failure → `ok:false` + the error.
+   `ok:false, err:"no_echo"`; an echo with no well-formed slot-0 `$ALCD` → `ok:false, err:"no_config"` (F549, field
+   2026-10-17). An `$LCD` is never the proof: the head's only `$LCD` is `$START`'s zeroed one, and a late reply to a
+   `$QUERY` sent before the head carries the old config (F549 r2). A BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so

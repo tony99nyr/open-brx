@@ -117,8 +117,8 @@ export const STALE_ACK_FAULT = 'ACKED AN OLDER CONFIG';
 export const ECHO_FAULT = 'GUN ECHO ≠ CONFIG';
 export const POOL_FAULT = 'GUN POOL ≠ CONFIG';
 export const GUN_CONFIG_FAULT = 'GUN CONFIG ≠ PUSHED HEAD';
-/** F549 (brx4): the phone acked `err: "no_config"`: the gun answered a zeroed `$LCD`, so it loaded nothing (F548's broken
- *  SMG head). The gun answered, so the headset is fine and the kit is the fault. A push cures it once the kit is fixed. */
+/** F549 (brx4): the phone acked `err: "no_config"`: the gun answered the head but sent no slot-0 `$ALCD`, the sign that its
+ *  slot-0 `$WEAP` loaded (F548's broken SMG head sent none). The gun answered, so the headset is fine and the kit is the fault. A push cures it once the kit is fixed. */
 export const GUN_DID_NOT_TAKE_CONFIG = 'GUN DID NOT TAKE THE CONFIG: CHECK THE KIT, THEN RE-PUSH';
 /** Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off). */
 export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK): TURN THE HEADSET ON';

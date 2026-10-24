@@ -398,9 +398,6 @@ export function toks(f) {
   return s.split(',');
 }
 
-/** F549 (field 2026-10-17): config proof from an `$LCD`: six whole numbers, not all zero. `$LCD,0,0,0,0,0,0` is the gun saying
- *  it has no config loaded (protocol `$LCD`); twice in the field it acked a gun whose slot-0 `$WEAP` never loaded. */
-export function lcdProof(t) { const v = t.slice(1, 7); return v.length === 6 && v.every(x => /^\d+$/.test(x)) && v.some(x => +x > 0); }
 /** F549: config proof from an `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>`: the first four tokens whole numbers, on slot 0,
  *  so a broken slot-0 `$WEAP` cannot ack green on another slot's report (Codex review). */
 export function alcdProof(t) { return t.length >= 5 && t.slice(1, 5).every(x => /^\d+$/.test(x)) && +t[3] === 0 && !(+t[1] === 0 && +t[2] === 0); }   // `$ALCD,0,0,0,0,0`: a wiped gun (manual dev.md)
@@ -690,7 +687,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _spawnCheck: 'F416 check in flight', _quietFrom: 'F416 radio-quiet window', _quietUntil: 'F416 radio-quiet window', _quietOpen: 'F416 radio-quiet window',
   _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
   // the config handshake and the head on the gun
-  headEcho: 'config echo window', echoProof: 'config echo window', configRefused: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
+  headEcho: 'config echo window', echoProof: 'config echo window', headStartSeen: 'config echo window', configRefused: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
   configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window',
   _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
@@ -893,7 +890,7 @@ export class Engine {
     // means "lost" and "out of coverage" identically (game test 2026-09-11 D3).
     this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
     this.resultAt = 0;
-    this.headEcho = null; this.echoProof = false; this.configRefused = false; this.headWrittenAt = 0; this.awaitingEcho = false; this.headWriteDone = false;
+    this.headEcho = null; this.echoProof = false; this.headStartSeen = false; this.configRefused = false; this.headWrittenAt = 0; this.awaitingEcho = false; this.headWriteDone = false;
     this.configQuery = null; this._configReadback = null;
     // A36: the SLOT-0 $ALCD the gun answers a head write with. `headEcho` is whatever frame came
     // back FIRST, and on a real tagger that is always $START's `$LCD,0,0,0,0,0,0,*` (protocol §3) --
@@ -2295,7 +2292,7 @@ export class Engine {
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
-    this.headEcho = null; this.echoProof = false; this.configRefused = false; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now(); this.configQuery = null; this._configReadback = null;
+    this.headEcho = null; this.echoProof = false; this.headStartSeen = false; this.configRefused = false; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now(); this.configQuery = null; this._configReadback = null;
     if (this._magQuery?.why === 'config read-back') this._magQuery = null;
     this.butSinceHead = false;         // A37/F-3: a fresh head, so the next ammo frame can be its echo again
     // Playtest 2026-09-13: the head is about 51 chunked BLE writes, and the window used to run from the QUEUE
@@ -2319,8 +2316,10 @@ export class Engine {
       this.awaitingEcho = false;
       const cid = this.config && this.config.config_id;
       if (!this.headEcho) { this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' }); return; }
-      // F549 (field 2026-10-17): the gun answered only `$LCD,0,0,0,0,0,0`, so it holds no config: no weapon loaded (F548's
-      // broken `$WEAP,0`). Every healthy gun that day also sent its slot-0 `$ALCD`; MC must not go green on this one.
+      // F549 (field 2026-10-17): the gun answered, but no slot-0 `$ALCD` came after `$START`, so no weapon loaded (F548's
+      // broken `$WEAP,0` answered only the zeroed `$LCD`). Every healthy gun that day sent the slot-0 `$ALCD`; MC must not go green.
+      // Residual (F549 r2 review): a stale death `$LCD,0,0,0,0,0,0` can open `headStartSeen` early. It needs a dead gun on
+      // slot 0 with no rounds AND a broken `$WEAP,0`, so it stays.
       if (!this.echoProof) { this.configRefused = true; this.log(`config not taken: the gun answered ${this.headEcho} and no slot-0 ammo report`, 'le'); this.report('ack_config', { config_id: cid, ok: false, err: 'no_config' }); this._changed(); return; }
       // Keep this independent of F264's `_queryAt`: that query classifies the following `$LCD` as a
       // cure response. This one only reads the status body and must not alter live pool/no-fire state.
@@ -5558,7 +5557,10 @@ export class Engine {
         // A frame with no slot token reads slot 0.
         if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this.am.onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, t[4] !== undefined && t[4] !== '' ? +t[4] : 0, null, true);   // a spawn query's answer is F416's to judge
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
-        if (this.awaitingEcho && lcdProof(t)) this.echoProof = true;   // F549: a zeroed `$LCD` is a gun with no config
+        // F549 r2 (Codex sol, 2026-10-24): an `$LCD` is never config proof. The head's only `$LCD` is `$START`'s zeroed one;
+        // any other in the window answers something else, and a late `$QUERY` reply carries the OLD config. Only the slot-0 `$ALCD` proves it.
+        // The zeroed `$LCD` is `$START`'s answer (protocol `$START`): the gun is clear, so a later `$ALCD` is the new head's.
+        if (this.awaitingEcho && t.length >= 7 && t.slice(1, 7).every(x => x === '0')) this.headStartSeen = true;
         const wasResync = !!this.resync;
         this._spawnCheckSeen(this.hp, this.armor, 0, t);   // F416: only a queried `$LCD` proves the weapon state
         if (this.resync) this._resyncEvidence('lcd');
@@ -5573,7 +5575,10 @@ export class Engine {
       }
       case 'ALCD': {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
-        if (this.awaitingEcho && alcdProof(t)) this.echoProof = true;   // F549: slot 0 loaded; a shot on it proves it too
+        // F549 r2 review (Codex sol): an `$ALCD` before `$START` ran is the OLD weapon's (a late round or reload on a re-push).
+        // Once `$START` answered, or the whole head is out, the gun holds no old weapon, so a slot-0 report is the new head's.
+        const newHead = this.headStartSeen || this.headWriteDone;
+        if (this.awaitingEcho && newHead && alcdProof(t)) this.echoProof = true;   // F549: slot 0 loaded; a shot on it proves it too
         // A36: …and keep the SLOT-0 one, whether or not it was first. Token 3 is the weapon slot;
         // the head writes slot 0, 1 and 4, so the primary's frame is the only one whose mag/reserve
         // MC can compare against `$WEAP,0`.
@@ -5587,8 +5592,9 @@ export class Engine {
         // (F-3). `butSinceHead` is the cut: a `$BUT` is the gun saying a control was touched, and
         // after one the ammo stream belongs to the player, not to the head. No echo then, which MC
         // reads as NOT ECHOED -- no claim, rather than a wrong one. F549 (field 2026-10-17): every healthy gun did send
-        // the slot-0 `$ALCD` after a head; a gun that sent only `$START`'s zeroed `$LCD` acks `no_config` (`_checkEcho`).
-        if (this.awaitingEcho && !this.ammoEcho && !this.butSinceHead
+        // the slot-0 `$ALCD` after a head; a gun that sent none acks `no_config` (`_checkEcho`). A slot-0 round after a `$BUT` is
+        // no echo, but it still proves slot 0 loaded (`echoProof` above).
+        if (this.awaitingEcho && newHead && !this.ammoEcho && !this.butSinceHead
             && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
         // S42: token 2 is the live per-shot accuracy `$ALCD` reports (docs/weapon-design.md §4.4,
         // bench 2026-09-17) — the ONLY answer the accuracy writer's verify step ever gets.
