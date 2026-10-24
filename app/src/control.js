@@ -87,6 +87,7 @@ export class ControlPoint {
     this.refusedSeen = false;     // F82: a tid-2 player has stood here (the operator is told once)
     this.log = [];                // §5d.6: the capture log, {t, from, to} per crossing, for recap
     this.at = null;               // when update() last ran, for dt
+    this.heldBy = null;           // F554: the team counted ALONE on the point at the last update, or null
   }
   /** Progress points per second at net 1 — the spec's `100 / capture_s`. */
   get rate() { return 100 / this.captureS; }
@@ -113,6 +114,7 @@ export class ControlPoint {
     if (this.owner !== STATION_TEAM_ANY) this.capturing = null;
     else if (this.capturing == null) this.progress = 0;
     this.at = null;               // the first tick back measures no elapsed time
+    this.heldBy = null;           // F554: and no earlier sample saw anybody on the point
     this.absentMs = 0;            // F464: a restored point restarts the decay delay (the conservative choice; not in the snapshot)
     return this;
   }
@@ -197,7 +199,13 @@ export class ControlPoint {
     // ---- possession time, for the station's own recap (it is self-authoritative, §5c) ----
     // F554 (field 2026-10-17, Tony: "hills should ignore dead players"): an owned point banks only while its owner has a
     // LIVING player counted on it. `counts`, not `capCounts`: a fading owner at the edge still holds what it owns.
-    if (this.owner !== STATION_TEAM_ANY && !this.contested && (counts[this.owner] || 0) > 0 && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
+    // brx2 review 2026-10-24: the test reads one sample, so a long gap (a throttled station) banks in full only when the
+    // owner was counted alone at BOTH ends. A gap whose start did not see it banks at most HILL_MAX_STEP_MS (`dtMs`), so an
+    // owner who steps back on just before a stalled tick cannot bank the minute nobody held. At an ordinary tick
+    // `dtMs === elapsedMs`, so nothing else changes. A gap whose end does not see the owner banks nothing, as before.
+    const sole = this.contested ? null : this.lead;
+    if (this.owner !== STATION_TEAM_ANY && sole === this.owner && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + (this.heldBy === this.owner ? elapsedMs : dtMs);
+    this.heldBy = sole;
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
