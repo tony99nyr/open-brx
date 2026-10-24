@@ -45,6 +45,16 @@ describe('F540 review: the cure and the diagnosis', () => {
     expect(location.hash, 'the token leaves the address bar, the view stays').toBe('#build');
   });
 
+  it('a bare #tok= link pasted into the open tab keeps the view the tab was on', () => {
+    setToken('old');
+    history.replaceState(null, '', location.pathname + '#live');
+    const before = location.href;
+    history.replaceState(null, '', location.pathname + '#tok=fresh2');
+    window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: before, newURL: location.href }));
+    expect(getToken()).toBe('fresh2');
+    expect(location.hash).toBe('#live');
+  });
+
   it('the registry row says what the console shows', () => {
     expect(ALERTS['frame-token-refused'].text.replace(/`/g, '')).toBe(tokenRefusedLine());
   });

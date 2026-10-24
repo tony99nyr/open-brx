@@ -6,21 +6,29 @@ const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} ($
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws; OP2: sent on GETs too, for the PINs) ----
 const TOK_KEY = 'brx_mc_tok';
-function pickupHashToken() {
+function pickupHashToken(previousHash = '') {
   try {
     const m = /(?:^#|[#&])tok=([^&]+)/.exec(location.hash);
     if (m) {
       localStorage.setItem(TOK_KEY, decodeURIComponent(m[1]));
       // Strip ONLY the token, keeping any other hash: the hash also carries the current view now, and
       // wiping it wholesale sent every refresh back to the phase screen.
-      const rest = location.hash.replace(/(?:^#|&)tok=[^&]*/, '').replace(/^[#&]+/, '');
+      // A bare `#tok=` link pasted into an OPEN tab (F540 review) keeps the view that tab was on.
+      const strip = (h: string) => h.replace(/(?:^#|&)tok=[^&]*/, '').replace(/^[#&]+/, '');
+      const rest = strip(location.hash) || strip(previousHash);
       history.replaceState(null, '', location.pathname + location.search + (rest ? '#' + rest : ''));
     }
   } catch { /* no storage / no history: ignore */ }
 }
 pickupHashToken();
 // F540 review: the cure the refusal names is "open the #tok= link"; pasted into an OPEN tab it changes only the hash.
-try { window.addEventListener('hashchange', pickupHashToken); } catch { /* no window: ignore */ }
+try {
+  window.addEventListener('hashchange', e => {
+    let old = '';
+    try { old = new URL(e.oldURL).hash; } catch { /* no old URL: no view to keep */ }
+    pickupHashToken(old);
+  });
+} catch { /* no window: ignore */ }
 export const getToken = (): string => { try { return localStorage.getItem(TOK_KEY) ?? ''; } catch { return ''; } };
 export const setToken = (tok: string) => { try { localStorage.setItem(TOK_KEY, tok.trim()); } catch { /* ignore */ } };
 

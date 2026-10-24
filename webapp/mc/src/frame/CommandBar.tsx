@@ -243,7 +243,9 @@ export function CommandBar() {
           The strip collapses to nothing when it is empty (styles.css). */}
       <div className="cb-notices" data-testid="cb-notices">
         {/* an action that failed must still say so somewhere immediate */}
-        {error && !(authRequired && error === operatorTokenLine()) && (() => {
+        {/* F540 review: the token refusal cannot be dismissed (a tap opens the token form), so it goes when MC takes a
+            token again (a live socket or a landed write clears `authRequired`) */}
+        {error && !(authRequired && error === operatorTokenLine()) && !(!authRequired && error === tokenRefusedLine()) && (() => {
           // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
           // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
           // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
