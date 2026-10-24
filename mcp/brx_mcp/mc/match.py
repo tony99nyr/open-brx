@@ -200,6 +200,8 @@ class Match:
                 # milestone round 4: the in-play readings, so a whistle moved earlier after a restart can re-bound a site
                 "station_history": {site: [[at, {str(tid): ms for tid, ms in per.items()}] for at, per in rows]
                                     for site, rows in getattr(self.scorer, "station_history", {}).items()},
+                # F586: a hill the scorer could not verify; nothing else rebuilds the flag after a restart
+                "station_unverified": sorted(getattr(self.scorer, "station_unverified", ())),
                 "alerts": self.scorer.match_state_alerts(),
                 "departed_stations": [dict(row) for row in sorted(
                     self.departed_stations.values(), key=lambda row: row["node_id"])],

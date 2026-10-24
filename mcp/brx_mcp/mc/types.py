@@ -511,7 +511,7 @@ class LoadoutPolicy(TypedDict):
     perk: SlotRule                        # A14: perks are their own slot (choice may be "off")
 
 
-PoolEmptyCode = Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered"]
+PoolEmptyCode = Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered", "perk_blocked"]
 
 
 class LoadoutPool(TypedDict):

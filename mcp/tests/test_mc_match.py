@@ -200,7 +200,7 @@ def test_to_snapshot_without_session_keeps_match_merge_and_order():
         "evicted_nodes": ["a", "z"], "unbound_nodes": ["b", "y"],
         "synced_at_lobby": {"live": True}, "clock_suspect": {"n": 3},
         "joined_t": {"p1": 123}, "cap_recv": 456, "station_possession": {"7": {"0": 5000}}, "station_seen": {},
-        "station_pre_end": {}, "station_history": {}, "alerts": {"leader": "p1"},
+        "station_pre_end": {}, "station_history": {}, "station_unverified": [], "alerts": {"leader": "p1"},
         "departed_stations": [
             {"node_id": "station-a", "kind": "respawn", "id": 1, "team": 0,
              "heard": False, "revives": 0},

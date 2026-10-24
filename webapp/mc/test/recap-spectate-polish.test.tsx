@@ -79,6 +79,12 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(m.find('[data-alert="recap-possession-thin"]').length, 'a phone-only hill keeps the caveat').toBe(1);
   });
 
+  it('F586: no hill reported a hold reading (sites 0) still shows the floor caveat, as LIVE does', async () => {
+    const m = await recap({}, { possession: { ...HELD, sites: 0, station_sites: 0 } });
+    expect(m.find('[data-alert="recap-possession-thin"]').length, 'sites 0 keeps the caveat').toBe(1);
+    m.unmount();
+  });
+
   it('labels the numbers KILLS when no held time was reported', async () => {
     const m = await recap();
     const h = m.find('[data-testid="recap-headline"]')[0];
