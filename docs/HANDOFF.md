@@ -41,10 +41,13 @@ the pistol finisher (scenario version 8).
 The Codex sim critique is folded in too: heat in the rule engines with three cooling branches (fail on a flip),
 Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12).
 Phase B (2026-10-24) is done: no one-field set passes; Tony's three calls are F578.
-**Next:** F576 (one paced cycle for compile and the sims); the F538 bench row (the rig's ack check, desk half done). The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+F576 (2026-10-24): compile publishes the field fight interval for single-shot weapons, from one constant the sims
+import; Tony set the Shotgun's band floor to 0.85 s and tests "pistols weak" on the R10b duel, which still runs
+at the old pull pace (F579: at field pace the USP beats the Energy Rifle and the Suppressor).
+**Next:** the F538 bench row (the rig's ack check, desk half done). The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
+**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony; F579 on Tony (brx2 sims the USP options).
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the

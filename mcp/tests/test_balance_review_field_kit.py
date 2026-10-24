@@ -108,3 +108,20 @@ def test_field_lever_vent_restarts_after_swap():
     match._swap_to(p, 0, 200)
     match._shot(p, 200, p.engage_id)
     assert p.heat_lock_until > 200 and p.reload_amount > 0 and p.ammo == 0
+
+
+def test_finish_estimate_steps_a_single_shot_at_the_published_cycle():
+    """F576: the finish estimate, the sampled fight and compile all step a single shot at the MEAN interval."""
+    world = R.shipped_world()
+    for wid in ("usp", "deagle", "amr"):
+        gun = R.make_kit(world, wid, wid).guns[0]
+        one = R.finish_estimate(gun, pool=1, chance=1.0, ammo=gun.mag, reserve=gun.reserve, reload_amount=0,
+                                ready_at=0.0, locked_until=-1.0, t=0.0, pull_ms=R.PULL_MS,
+                                overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=False, count=0, dist=10.0,
+                                heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+        two = R.finish_estimate(gun, pool=gun.gun_dmg + 1, chance=1.0, ammo=gun.mag, reserve=gun.reserve,
+                                reload_amount=0, ready_at=0.0, locked_until=-1.0, t=0.0, pull_ms=R.PULL_MS,
+                                overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=False, count=0, dist=10.0,
+                                heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+        published = world.cat.paced_cycle_ms(wid)
+        assert abs((two - one) - published) < 0.5, (wid, two - one, published)

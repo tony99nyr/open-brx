@@ -2,6 +2,28 @@
   "_comment": "The one list of generated artefacts. scripts/regen.mjs runs each entry's check or write argv from the repo root ({python} = the dev python from scripts/lib/python.mjs, 'node' = the running node). EXIT CONTRACT of every `check` argv: 0 = fresh, 3 = stale (a MISSING output is stale), anything else = the generator failed; regen.mjs reads only the exit code. `sources` are every repo file the generator reads or imports (brx2's changed.mjs will select on sources and outputs; `*` is one path segment, no `**`); mcp/tests/test_generated_fresh.py audits them by running each check under a read/import hook (node: every fs read and import, node children included; python: every open and import). A child process that is not node or python, such as git, cannot be audited, so list what it reads by hand. `not_registered` lists generated files whose generator is deliberately outside the registry, each with its reason.",
   "generators": [
     {
+      "name": "gen_weapon_ttk",
+      "sources": [
+        "mcp/tools/gen_weapon_ttk.py",
+        "mcp/brx_mcp/*.py",
+        "mcp/brx_mcp/mc/*.py",
+        "mcp/brx_mcp/mc/*.json",
+        "mcp/brx_mcp/modes/*.py"
+      ],
+      "outputs": [
+        "mcp/brx_mcp/mc/weapons.json"
+      ],
+      "write": [
+        "{python}",
+        "mcp/tools/gen_weapon_ttk.py"
+      ],
+      "check": [
+        "{python}",
+        "mcp/tools/gen_weapon_ttk.py",
+        "--check"
+      ]
+    },
+    {
       "name": "gen_contract",
       "sources": [
         "mcp/tools/gen_contract.py",

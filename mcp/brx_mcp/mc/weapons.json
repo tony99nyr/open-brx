@@ -155,7 +155,7 @@
    "rof": 50,
    "rng": 75,
    "htk": 8,
-   "ttk_ms": 2487,
+   "ttk_ms": 1350,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -254,7 +254,7 @@
    "range_band": "close",
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
-   "ttk_ms": 1211,
+   "ttk_ms": 886,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -392,7 +392,7 @@
    "rof": 19,
    "rng": 75,
    "htk": 4,
-   "ttk_ms": 1816,
+   "ttk_ms": 1329,
    "capture": {
     "src": "2026-08-26-weapons-plasmasniper-forcerifle.btsnoop",
     "frame": "$WEAP,0,2,100,0,0,80,0,,,,,,80,80,225,850,10,80,2000,0,7,100,100,,30,,,E17,,,,D35,D34,D36,A73,D122,,,,10,40,75,40,*"
@@ -431,7 +431,7 @@
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
    "htk": 5,
-   "ttk_ms": 2221,
+   "ttk_ms": 1572,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -641,7 +641,7 @@
    "rof": 31,
    "rng": 75,
    "htk": 9,
-   "ttk_ms": 3562,
+   "ttk_ms": 2263,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -697,7 +697,7 @@
    "rof": 39,
    "rng": 75,
    "htk": 10,
-   "ttk_ms": 3557,
+   "ttk_ms": 2096,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {
@@ -768,7 +768,7 @@
    "rof": 11,
    "rng": 75,
    "htk": 5,
-   "ttk_ms": 3621,
+   "ttk_ms": 2972,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
    "recoil": {

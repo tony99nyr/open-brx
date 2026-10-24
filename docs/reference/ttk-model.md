@@ -12,6 +12,10 @@ come from `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`, and `mcp/br
 > went stale the first time; it stays here for the REASONING (why a lever was chosen), which does not
 > expire the way a number does.
 
+Current BRX single-shot TTK uses a player-paced fight interval. The ordinary single-shot cycle is
+`t14` plus about 43 ms, the expected overshoot from the 2026-10-17 field fit. The Sniper keeps its
+bolt lever and pull model. See `docs/weapon-design.md` Balance rules row 14 for the live rule.
+
 ## 1. The standard formulas
 
 **Ideal (best-case) TTK**, the number every shooter community publishes first:
@@ -24,7 +28,7 @@ ttk  = (htk - 1) * fire_ms                 first-shot-free convention
 The first shot is assumed to land the instant the trigger is pulled, so it contributes zero delay;
 only the *gaps between* shots count. This is the convention used across Modern Combat Wiki's and
 the Game Balance Project's TTK writeups and every TTK calculator surveyed (xbitlabs, GameDevCalculators,
-CalculatorsUniverse). BRX's own `ttk_ms` field already follows it exactly: `assault_rifle` htk 13 at
+CalculatorsUniverse). BRX's automatic-weapon `ttk_ms` field follows it exactly: `assault_rifle` htk 13 at
 100 ms/round gives `(13-1)*100 = 1200`, matching the catalog (2026-09-17: native cycle, was 140 ms).
 
 **Ideal vs practical/effective TTK.** Every source that goes beyond the raw formula makes the same

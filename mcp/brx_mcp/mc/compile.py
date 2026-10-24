@@ -1157,16 +1157,15 @@ CHARGE_TAP_CADENCE_MS = 285
 # unproven ships. The bench row in `bench-field-1017.md` (a reserve of 1200 and 2400) lifts it.
 RESERVE_PROVEN_MAX = 384
 
-# A single-shot weapon (`$WEAP` t20 = 7) fires on the first trigger press at or after t14: the gun swallows a press
-# inside t14 (field 2026-10-17: taps about 150 ms apart on the AMR, t14 400, landed about 600 ms apart). So its
-# sustained cycle is set by the player, not by t14 alone. The field's 126 press-to-press gaps under 1 s from four
-# players were lognormal: median 271 ms, mean 325 ms, log-sigma 0.56. SEMI_PULL_MS is the modelled mean (300 ms,
-# Tony 2026-10-17: the players' average, not one player's). The expected wait from a shot to the first press at or
-# after t14 is t14 plus the mean overshoot of the pull process, pull * exp(sigma^2) / 2 (about 205 ms at 300 ms),
-# which `mcp/tools/balance_sim.py`'s sampled pulls reproduce within 3% (exact for a long t14). None of this
-# reaches the gun.
+# The field's 126 press gaps under 1 s from four players had a 271 ms median, 325 ms mean, and
+# log-sigma 0.56 (field 2026-10-17). SEMI_PULL_MS models the bolt lever and the press after it.
+# Legacy pull sampling also uses it. Ordinary single-shot fights use the fitted overshoot below.
 SEMI_PULL_MS = 300
 PULL_SIGMA = 0.56
+# Field 2026-10-17: USP 196 ms at t14 190, AMR 440 at 350, Deagle 714 at 700.
+# The least-squares median residual is 36.67 ms. The expected lognormal overshoot multiplies
+# this median by exp(PULL_SIGMA^2 / 2). This timing is published, not sent to the gun.
+FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3
 
 
 # Tails for SYNTHETIC catalogue rows that carry no `capture` block (tests only). Not a shipped weapon:
@@ -1757,7 +1756,7 @@ class WeaponCatalog:
 
         A 3-round burst (t20 == 9) spaces two rounds at t14 and then waits t23 before the next burst,
         so what a player sustains is (2*t14 + t23)/3 — the "cycle 75 +275" column of
-        docs/weapon-design.md §2.2, and the number `ttk_ms` is built from."""
+        docs/weapon-design.md §2.2. Burst `ttk_ms` uses that average."""
         fire = self.fire_ms(weapon_id)
         if self._frame_int(weapon_id, "mode") == self._BURST_MODE:
             gap = self._frame_int(weapon_id, "burst")
@@ -1766,8 +1765,8 @@ class WeaponCatalog:
         return float(fire)
 
     def paced_cycle_ms(self, weapon_id: str, pull_ms: float = SEMI_PULL_MS) -> float:
-        """Mean ms between rounds a PLAYER sustains: `cycle_ms()`, except on a single-shot weapon, where the
-        next round waits for the first trigger press at or after t14 (see `SEMI_PULL_MS`). `pull_ms` 0 gives
+        """Mean ms between rounds a player sustains. Ordinary single shots use the field fight overshoot, and
+        any `pull_ms` above 0 gives the same result for them. The bolt uses the pull model. `pull_ms` 0 gives
         `cycle_ms()`, except on a bolt action, whose bolt (`reload_ms`) runs between rounds at any pull. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
         that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
         `cycle_ms()`, the fastest interval the gun allows."""
@@ -1778,8 +1777,7 @@ class WeaponCatalog:
             overshoot = pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2
             return max(self.fire_ms(weapon_id) + overshoot, pull_ms + int(self._row(weapon_id)["reload_ms"]) + overshoot)
         if pull_ms > 0 and self._frame_int(weapon_id, "mode") == self._SEMI_MODE:
-            # max(): the renewal limit runs short for a t14 well under the pull; at t14 0 the cycle is one pull (brx3)
-            return max(pull_ms, self.fire_ms(weapon_id) + pull_ms * math.exp(PULL_SIGMA * PULL_SIGMA) / 2)
+            return self.fire_ms(weapon_id) + FIGHT_OVERSHOOT_MS * math.exp(PULL_SIGMA * PULL_SIGMA / 2)
         return self.cycle_ms(weapon_id)
 
     def rate_of_fire(self, weapon_id: str) -> int:

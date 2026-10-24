@@ -13,6 +13,7 @@ PATH, so no personal machine path is hardcoded.
 |---|---|
 | `gen_contract.py` | Generates `contract.gen.ts` / `.js` / `.d.ts` from `mcp/brx_mcp/mc/types.py` + `envelope.py`. Regenerate after you edit the source, or a test fails (`mcp/tests/test_contract_generated.py`). |
 | `gen_ui_catalog.py` | Regenerates the weapon and perk catalogue blocks in `webapp/mc/src/mock/data.ts` and `app/src/demo-catalog.js` from the server's own catalogues. Regenerate after you edit the source, or a test fails (`mcp/tests/test_ui_catalog_generated.py`). |
+| `gen_weapon_ttk.py` | Regenerates only the derived `ttk_ms` values in `weapons.json`. Run `--check` to detect stale values. |
 
 ## Shared helper (not a runnable tool)
 
