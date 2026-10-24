@@ -433,6 +433,14 @@ class BleControlPoint {
   }
 
   void freeze() { frozen = true; }
+  // F593: lift a freeze and restart the clock, so the first step back banks none of the time the point stood frozen
+  // (utility.js `applyHillClock`). A point that is not frozen keeps its clock.
+  void thaw() {
+    if (!frozen) return;
+    frozen = false;
+    has_at_ = false;
+    held_by = -1;
+  }
 
   // Restart survival (F332: the side button can still restart a locked Stick, and a restart must not
   // wipe an enemy's hold). Brings the point back HELD by `tid` at 100 with the possession tally saved at
