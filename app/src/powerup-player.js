@@ -878,6 +878,8 @@ export class PlayerPowerups {
     // moved the magazine), never over a reload. `$AMMO` sets absolute counts, so a row that did land is simply written again.
     // Review (Codex): a new life owns its own counts, so a late failure undoes nothing; and only a slot whose reserve is still
     // the booked one is taken back, since a newer gun report (a reload, a reconcile) is the truth.
+    // Residuals (Codex re-review, accepted 2026-10-24): a batch where one row landed and another failed takes both back, and a
+    // retry abandoned for a stun or a lost link leaves the refill off the books; RESYNC GUN, or the next life, puts both right.
     const life = h.lifeSeq, why = `powerup: ${item.name || 'AMMO'} +${added} reserve${retry ? ' (retry)' : ''} (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`;
     const settled = ok => {
       if (ok !== false) return;
