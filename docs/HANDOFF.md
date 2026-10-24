@@ -24,10 +24,14 @@ frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
 **Blocked on Tony:** F575 waits for the bench row "Charge Rifle heat while firing" first, then Tony (keep 70/16 or 73/14). F578 (phase B: the marksman rush test, the AMR fire rate, a Body Armor and Quick Switch direction). F572, F573 and F577 are decided and on main.
 
 ## Lane: brx1, orchestration
-**State:** 2026-10-18: ran the field push. The plan, the lanes' FIXED lines and the bench rows are in
-`/home/tony/reviews-2026-10-17/` (outside the repo); the milestone review is in the same folder.
-**Next:** the next APK cut on Tony's go, then the field bench sheet with Tony.
-**Blocked:** B21 on the MacBook; publishing waits for Tony's go.
+**State:** 2026-10-24: Stick U002 IR bench done (log 2026-10-24). The Unit IR sends on G9 and receives on G10. Its
+receiver hears real BRX guns at 1 to 3 m (30/30 words each), and its sender hits the Tactix-E20D headset at 30 cm to 3 m.
+Indoors, wall and ceiling bounce carries the hit, so the flat lid geometry is inconclusive. The field push plan is in
+`/home/tony/reviews-2026-10-17/` (outside the repo).
+**Next:** the outdoor range walk (MacBook over SSH, beyond 3 m, flat lid, no ceiling) and the Stick-to-Stick IR range.
+Then the next APK cut on Tony's go.
+**Blocked:** B21 on the MacBook; publishing waits for Tony's go. Power-cycle the gun after a CLI `deathmatch` run: the
+Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State:** 2026-10-24: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
