@@ -1908,7 +1908,7 @@ SyncStage = Literal["unlinked", "linked", "sending", "received"]
 SyncTransport = Literal["wifi", "cellular", "backhaul"]
 
 
-class SyncRow(TypedDict):
+class RecapSyncRow(TypedDict):
     """F596: one phone (or one hill station) on the RECAP sync board. Every field is a fact MC holds; nothing is a
     guess at a transfer the wire cannot prove. `pending`/`lost` are present only when above 0."""
     kind: Literal["phone", "station"]
@@ -1924,13 +1924,13 @@ class SyncRow(TypedDict):
     stuck: bool                      # idle_s >= SYNC_STUCK_S and not received
 
 
-class SyncView(TypedDict):
+class RecapSyncView(TypedDict):
     """F596: whether the result can be shown. `pending` while any row is not received and the operator has not
     finalised. `result_changed` once the winner differs from the one first shown as final."""
     pending: bool
     finalised: bool
     result_changed: bool
-    rows: list[SyncRow]
+    rows: list[RecapSyncRow]
 
 
 class RecapView(TypedDict):
@@ -1951,7 +1951,7 @@ class RecapView(TypedDict):
     post_end: NotRequired[int]
     parked: NotRequired[int]
     stations: NotRequired[list[RecapStationRow]]
-    sync: NotRequired[SyncView]      # F596: the live match in hand only; an archived recap never carries it
+    sync: NotRequired[RecapSyncView]      # F596: the live match in hand only; an archived recap never carries it
 
 
 class MatchHistoryRow(TypedDict):

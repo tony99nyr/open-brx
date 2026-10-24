@@ -22,6 +22,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
+  RecapSyncRow, RecapSyncView, SyncStage, SyncTransport,
   NoticesView, RestoredFromView, RestoreFailedView, FeedEntry, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,

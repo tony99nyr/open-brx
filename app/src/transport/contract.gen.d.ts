@@ -2256,25 +2256,34 @@ export interface AfterEndView {
 
 /** F596: one phone (or one hill station) on the RECAP sync board. Every field is a fact MC holds; nothing is a
  *  guess at a transfer the wire cannot prove. `pending`/`lost` are present only when above 0. */
-export interface SyncRow {
-  player_id: string;
-  display: string;
-  gun_id: string;
-  player_num: number;
-  bound: boolean;
-  phone_game: boolean;
-  gun_sent: boolean;
-  gun_acked: boolean;
-  gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null;
-  ack_state: SyncAckState;
+export interface RecapSyncRow {
+  kind: 'phone' | 'station';
+  /** player_id for a phone, station_id for a station */
+  id: string;
+  name: string;
+  team_id: string | null;
+  stage: SyncStage;
+  /** phones only, while linked: reach=backhaul, else status.transport */
+  transport: SyncTransport | null;
+  /** the phone's last reported unsent count (hello.pending or status.pending), > 0 */
+  pending?: number;
+  /** facts the phone's outbox dropped for this match (status.outbox_lost), > 0 */
+  lost?: number;
+  /** A42: the END has not been confirmed by this phone yet */
+  end_unconfirmed: boolean;
+  /** seconds since the row's stage or pending last changed; 0 once received */
+  idle_s: number;
+  /** idle_s >= SYNC_STUCK_S and not received */
+  stuck: boolean;
 }
 
 /** F596: whether the result can be shown. `pending` while any row is not received and the operator has not
  *  finalised. `result_changed` once the winner differs from the one first shown as final. */
-export interface SyncView {
-  rows: SyncRow[];
-  totals: SyncTotals;
-  unconfigured: string[];
+export interface RecapSyncView {
+  pending: boolean;
+  finalised: boolean;
+  result_changed: boolean;
+  rows: RecapSyncRow[];
 }
 
 export interface RecapView {
@@ -2296,7 +2305,7 @@ export interface RecapView {
   parked?: number;
   stations?: RecapStationRow[];
   /** F596: the live match in hand only; an archived recap never carries it */
-  sync?: SyncView;
+  sync?: RecapSyncView;
 }
 
 export interface MatchHistoryRow {

@@ -141,9 +141,39 @@
     },
     {
       "group": "the mock shows it wrong",
-      "path": "$.recap.sync",
+      "path": "$.recap.sync.pending",
       "count": 1,
-      "sha1": "ed5b3ec7fde0b7ad"
+      "sha1": "93ae445b778ef5fc"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*]",
+      "count": 1,
+      "sha1": "e25d1bc753e75b54"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].id",
+      "count": 2,
+      "sha1": "c8b34ae70d2386c0"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].name",
+      "count": 2,
+      "sha1": "b6f9c4d1410dce7a"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].team_id",
+      "count": 2,
+      "sha1": "7d73f5c549afb0ba"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].transport",
+      "count": 3,
+      "sha1": "838b1ffe04be0e40"
     }
   ]
 }
