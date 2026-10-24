@@ -117,13 +117,14 @@ def test_a_released_live_station_recap_survives_an_mc_restart():
                                             "team": 1, "heard": True, "revives": 5, "synced": False}]
 
 
-def test_the_snapshot_stops_naming_the_match_once_it_ended():
+def test_the_snapshot_keeps_the_finished_match_for_recap():
     s, net, clock, ps, info = persisting_live()
     s._persist_last = 0.0
     s._persist()
     s.control("end")
     s2, _net2 = restart_session(s, clock)
-    assert s2.resume_match() is None and s2.phase == "muster", "an ended match is never resumed"
+    assert s2.resume_match() == "recap" and s2.phase == "recap"
+    assert s2.recap()["sync"]["pending"]
 
 
 # ── 2. restart after the end time finishes the match ───────────────────────────────────────────────
@@ -150,7 +151,7 @@ def test_a_restart_in_recap_still_ends_a_phone_that_missed_the_end():
     s, net, clock, ps, info = persisting_live()
     s.control("end")
     s2, net2 = restart_session(s, clock)
-    assert s2.resume_match() is None
+    assert s2.resume_match() == "recap"
     tail = demo_armory()[1]["ble"]["tail"]
     net2.simulate_hello("node1", f"GUN-B-{tail}")
     resume_status(net2, clock, 1, "live", info["match_id"])

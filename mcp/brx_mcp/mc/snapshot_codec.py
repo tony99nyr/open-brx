@@ -172,8 +172,6 @@ class SnapshotCodec:
         if (self.host.phase not in ("armed", "live", "recap") or match is None
                 or not (match.head or match.ended_head) or not match.scorer):
             return None
-        if self.host.phase == "recap" and not (match.finalised or match.final_winner is not None):
-            return None
         return match.to_snapshot(
             live=self.host.phase == "live", adopted=self.host.is_adopted(), config=self.host.config,
             roster=self.host.players, node_player=self.host.node_player,

@@ -807,7 +807,7 @@ class Session:
     def _changed(self):
         self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
         if self.phase == "recap" and self.match is not None and self.match.scorer is not None:
-            self._recap_sync(self._scorer_recap(self.match.scorer, self.match.frozen_stations))
+            self._recap_sync(self.match.scorer.winner(), self.match.frozen_stations or [])
         for cb in self._listeners:
             cb()
         self._persist()
@@ -2923,7 +2923,6 @@ class Session:
             return "unlinked"
         pending = entry.get("pending")
         if (pending == 0 and entry.get("status_t") is not None
-                and entry["status_t"] >= entry.get("event_t", 0)
                 and entry.get("status_rev") == entry.get("event_rev", 0)):
             return "received"
         if isinstance(pending, int) and pending > 0:
@@ -2942,7 +2941,7 @@ class Session:
 
     def _sync_hello(self, nid: str, pending: object) -> None:
         entry = self._sync_entry(nid)
-        if entry is None or self.now_ms() < (self.match.scorer.end_t or 0):
+        if entry is None:
             return
         # A new socket starts with a fresh claim. The old zero cannot receive its later batch.
         old = entry.get("pending")
@@ -2958,7 +2957,7 @@ class Session:
 
     def _sync_status(self, nid: str, pending: object, at: int) -> None:
         entry = self._sync_entry(nid)
-        if entry is None or at < (self.match.scorer.end_t or 0):
+        if entry is None:
             return
         if _is_count(pending):
             if entry.get("pending") != pending:
@@ -2974,14 +2973,14 @@ class Session:
     def _sync_events(self, nid: str, events: list[Event], at: int) -> None:
         entry = self._sync_entry(nid)
         sc = self._m().scorer
-        if entry is None or sc is None or at < (sc.end_t or 0):
+        if entry is None or sc is None:
             return
         if any(ev.get("match_id") == sc.match_id for ev in events):
             entry["event_t"] = at
             entry["event_rev"] = entry.get("event_rev", 0) + 1
             self._sync_update(nid, at)
 
-    def _recap_sync(self, recap: RecapView) -> dict:
+    def _recap_sync(self, winner: dict, stations: list[RecapStationRow]) -> dict:
         match = self.match
         if match is None or match.scorer is None:
             return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
@@ -3010,12 +3009,14 @@ class Session:
             if (lost := self._node_loss(nv, "outbox")) > 0:
                 row["lost"] = lost
             rows.append(row)
-        for station in recap.get("stations") or []:
+        for station in stations:
+            if station["kind"] != "control":
+                continue
             nid = station["node_id"]
             key = "station:" + nid
-            stage = ("received" if station.get("synced") else
-                     "linked" if self._sync_linked(nid) else "unlinked")
             entry = match.sync_nodes.setdefault(key, {"changed_t": match.scorer.end_t or now})
+            stage = ("received" if entry.get("status_received") else
+                     "linked" if self._sync_linked(nid) else "unlinked")
             if entry.get("stage") != stage:
                 if "stage" in entry:
                     entry["changed_t"] = now
@@ -3025,8 +3026,8 @@ class Session:
             rows.append({"kind": "station", "id": str(station["id"]), "name": label, "team_id": None,
                          "stage": stage, "transport": None, "end_unconfirmed": False,
                          "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"})
-        pending = not match.finalised and any(row["stage"] != "received" for row in rows)
-        winner = recap["winner"]
+        pending = not (match.finalised or match.restored_final) and any(
+            row["stage"] != "received" for row in rows)
         if not pending and match.final_winner is None:
             match.final_winner = copy.deepcopy(winner)
         elif match.final_winner is not None and winner != match.final_winner:
@@ -3094,7 +3095,7 @@ class Session:
     def _merge_station_recap_report(row: RecapStationRow, report: StationReport) -> None:
         return StationRegistry._merge_station_recap_report(row, report)
 
-    def _late_station_report(self, nid: str) -> None:
+    def _late_station_report(self, nid: str, body: dict, t_recv: int) -> None:
         """utility.md §5c/§5d.6: a station is self-authoritative and "reports ... to MC when it is next
         in Wi-Fi range" -- so a station out of coverage at the whistle must still be able to land its
         tally once it re-joins, while still in RECAP and before any roll (F206 addendum, 2026-09-17).
@@ -3121,6 +3122,15 @@ class Session:
         rep = self.station_registry.station_view(nid)["report"]
         self._merge_station_recap_report(frozen, rep)
         self._station_possession(nid, None)   # F555: the station's late final tally is the authority for its point
+        tally = live.get("tally") or {}
+        control = body.get("control")
+        game_claim = control.get("game") if isinstance(control, dict) else None
+        if (frozen["kind"] == "control" and body.get("station_id") == frozen["id"]
+                and isinstance(control, dict) and isinstance(control.get("hold_ms"), dict)
+                and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte())
+                and tally.get("key") == [self._game_byte(), "control", frozen["id"]]
+                and tally.get("at") == t_recv):
+            self.match.sync_nodes.setdefault("station:" + nid, {"changed_t": self.now_ms()})["status_received"] = True
         self._restore_recap()
 
     # ---------- nodes ----------
@@ -3864,7 +3874,7 @@ class Session:
                 report = self.station_registry.station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             if not ended_here:
-                self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
+                self._late_station_report(nid, body, t_recv)   # F206 addendum: a station back in range during RECAP
             # F401: this heartbeat is what proves the node itself is back in Wi-Fi range, whichever match
             # it is now assigned to -- `_late_station_report`'s own guard (RECAP only, same assignment)
             # must not also gate LOAD's sync warning, which has to clear after a roll forward too.
@@ -4442,6 +4452,7 @@ class Session:
             self.match.finalised = m.get("finalised") is True
             winner = m.get("final_winner")
             self.match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
+            self.match.restored_final = self.match.final_winner is not None
             self.match.result_changed = m.get("result_changed") is True
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
@@ -4451,8 +4462,12 @@ class Session:
                                               if (row := snapshot_departed_station(raw)) is not None]
             self._finish()
             self.match.played = played
-            self.match.scorer.node_player = dict(node_player)
-            self.match.whistle(node_player)
+            raw_whistle = m.get("whistle_base")
+            whistle = ({nid: pid for nid, pid in raw_whistle.items()
+                        if isinstance(nid, str) and isinstance(pid, str) and pid in played}
+                       if isinstance(raw_whistle, dict) else dict(node_player))
+            self.match.scorer.node_player = dict(whistle)
+            self.match.whistle(whistle)
             if mid in self._ended:
                 self._ended[mid]["players"] = dict(played)
             self._changed()
@@ -7461,7 +7476,7 @@ class Session:
                 r["provisional"] = True
             r.update(self.settling())     # advisory only — never gates, see settling()
             if self.phase == "recap":
-                r["sync"] = self._recap_sync(r)
+                r["sync"] = self._recap_sync(r["winner"], r.get("stations") or [])
             return r
         return self.last_recap
 
@@ -7473,6 +7488,7 @@ class Session:
             self.match.finalised = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()
+            self.persist_now()
         return {"ok": True}
 
     @staticmethod

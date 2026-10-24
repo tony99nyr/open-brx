@@ -112,6 +112,7 @@ class Match:
     sync_nodes: dict[str, dict] = field(default_factory=dict)  # F596: only the match in hand
     finalised: bool = False
     final_winner: dict | None = None
+    restored_final: bool = False  # the recorded wait already ended before this MC process started
     result_changed: bool = False
     ended_head: dict | None = None
 
@@ -184,6 +185,7 @@ class Match:
                 **({"finished": True, "end_t": self.scorer.end_t,
                     "finalised": self.finalised, "final_winner": self.final_winner,
                     "result_changed": self.result_changed,
+                    "whistle_base": self.whistle_base,
                     "frozen_stations": self.frozen_stations} if self.head is None else {}),
                 "config": config, "players": {pid: dict(p) for pid, p in players.items()},
                 "node_player": {nid: pid for nid, pid in {**self.nodes, **node_player}.items()
