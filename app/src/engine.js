@@ -398,9 +398,6 @@ export function toks(f) {
   return s.split(',');
 }
 
-/** F549 (field 2026-10-17): config proof from an `$LCD`: six whole numbers, not all zero. `$LCD,0,0,0,0,0,0` is the gun saying
- *  it has no config loaded (protocol `$LCD`); twice in the field it acked a gun whose slot-0 `$WEAP` never loaded. */
-export function lcdProof(t) { const v = t.slice(1, 7); return v.length === 6 && v.every(x => /^\d+$/.test(x)) && v.some(x => +x > 0); }
 /** F549: config proof from an `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>`: the first four tokens whole numbers, on slot 0,
  *  so a broken slot-0 `$WEAP` cannot ack green on another slot's report (Codex review). */
 export function alcdProof(t) { return t.length >= 5 && t.slice(1, 5).every(x => /^\d+$/.test(x)) && +t[3] === 0 && !(+t[1] === 0 && +t[2] === 0); }   // `$ALCD,0,0,0,0,0`: a wiped gun (manual dev.md)
@@ -5558,7 +5555,8 @@ export class Engine {
         // A frame with no slot token reads slot 0.
         if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this.am.onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, t[4] !== undefined && t[4] !== '' ? +t[4] : 0, null, true);   // a spawn query's answer is F416's to judge
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
-        if (this.awaitingEcho && lcdProof(t)) this.echoProof = true;   // F549: a zeroed `$LCD` is a gun with no config
+        // F549 r2 (Codex sol, 2026-10-24): an `$LCD` is never config proof. Its pools come from `$PSET`, not `$WEAP,0`, and a
+        // late reply to a `$QUERY` sent before the head carries the OLD config's numbers. Only the slot-0 `$ALCD` proves it.
         const wasResync = !!this.resync;
         this._spawnCheckSeen(this.hp, this.armor, 0, t);   // F416: only a queried `$LCD` proves the weapon state
         if (this.resync) this._resyncEvidence('lcd');

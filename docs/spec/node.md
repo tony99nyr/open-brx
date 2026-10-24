@@ -91,8 +91,9 @@ Kit-out (`assign{player, team, roster, catalog, policy, game}`, contracts §5) s
    late or malformed body simply omits this optional proof;
 5. replies `ack_config{config_id, ok, err?, gun_echo, gun_config?}` — `gun_echo` is the most informative echo in
    the window (a slot-0 `$ALCD` when present, otherwise the first `$LCD`/`$ALCD`) verbatim; no head echo →
-   `ok:false, err:"no_echo"`; only a zeroed `$LCD,0,0,0,0,0,0` (no config loaded) and no well-formed slot-0 `$ALCD` →
-   `ok:false, err:"no_config"` (F549, field 2026-10-17); a BLE write failure → `ok:false` + the error.
+   `ok:false, err:"no_echo"`; an echo with no well-formed slot-0 `$ALCD` → `ok:false, err:"no_config"` (F549, field
+   2026-10-17). An `$LCD` is never the proof: its pools come from `$PSET`, and a late reply to a `$QUERY` sent before
+   the head carries the old config (F549 r2). A BLE write failure → `ok:false` + the error.
 
 **Pre-config probe set (contracts §3, A5.4).** Before any bundle exists — in **CONNECTED/KITTED only,
 never after a head is written** — the node sends `$PHONE,*` once (starts the ~30 s `$VOLTS` telemetry so
