@@ -134,7 +134,8 @@ def test_fight_press_keeps_bolt_lever_on_the_original_pull_model():
 
 
 def test_published_single_shot_cycle_matches_both_fight_sims():
-    """All mode-7 rows quote the sampled fight interval, including hidden rows and the bolt Sniper."""
+    """Every mode-7 row, hidden rows included, publishes the sims' interval: the sampled fight interval for an
+    ordinary single shot, and the pull model for the bolt Sniper."""
     rng = random.Random(SEED)
     rows = [row for row in CAT._rows if CAT._frame_int(row["weapon_id"], "mode") == 7]
     assert {row["weapon_id"] for row in rows} == {
@@ -571,7 +572,8 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
 
 
 def test_legacy_sampled_pull_gaps_match_the_renewal_estimate():
-    """Legacy pull sampling still models bolt actions and non-fight intervals at each pull rate."""
+    """The legacy pull sampler (`semi_interval`, which the bolt lever still uses) matches its renewal closed form
+    at each pull rate. The published single-shot cycle no longer comes from it (F576)."""
     rng = random.Random(SEED)
     for weapon_id in ("amr", "deagle", "usp", "shotgun"):
         fire = CAT.fire_ms(weapon_id)

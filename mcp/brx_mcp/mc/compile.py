@@ -1765,8 +1765,8 @@ class WeaponCatalog:
         return float(fire)
 
     def paced_cycle_ms(self, weapon_id: str, pull_ms: float = SEMI_PULL_MS) -> float:
-        """Mean ms between rounds a player sustains. Ordinary single shots use the field fight overshoot.
-        The bolt uses the pull model. `pull_ms` 0 gives
+        """Mean ms between rounds a player sustains. Ordinary single shots use the field fight overshoot, and
+        any `pull_ms` above 0 gives the same result for them. The bolt uses the pull model. `pull_ms` 0 gives
         `cycle_ms()`, except on a bolt action, whose bolt (`reload_ms`) runs between rounds at any pull. Only the htk/ttk arithmetic reads this (`time_to_kill()`, and the catalogue's `stats.cycle_ms`
         that `views.weapon_view()` re-derives ttk from): the `$SIR` sound fit and the bundle's `dual_emitters` keep
         `cycle_ms()`, the fastest interval the gun allows."""

@@ -525,6 +525,9 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if dist == 0 and not g.ap else 0)) if is_gun else g.pull_dmg
     heat_rule = dict(g.heat)
+    # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
+    # compile's published cycle do
+    overshoot_ms *= math.exp(PULL_SIGMA * PULL_SIGMA / 2)
     if mode == "charge" and charged and ammo + reload_amount >= rpc:
         ready_at = max(ready_at, t + fire_ms) if charged == "draw" else ready_at
     elapsed = max(0.0, ready_at - t)
