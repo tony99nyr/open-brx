@@ -245,7 +245,6 @@ export class Transport {
     /** @type {unknown} */ this._connectTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
     /** @type {unknown} */ this._pubRetryTimer = null;
-    /** @type {StatusBody|null} */ this._lastBeat = null;   // F595: the last heartbeat body, sent again when an ack empties the ring
     /** @type {TransportSocket|null} */ this._probeWs = null;
     /** @type {unknown} */ this._probeGiveupTimer = null;
     this._pubJustLearned = false; this._probeStale = false;
@@ -351,7 +350,6 @@ export class Transport {
   /** Live-only heartbeat: sent iff bound, else dropped (no seq, no queue). */
   /** @param {StatusBody} [body] @returns {boolean} */
   status(body = {}) {
-    this._lastBeat = { ...body };   // F595: what the ack that empties the ring sends again
     body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
     if (this.ring.holding) this._flush();   // M4 landed-late r4: a store that recovered with nothing new to send still flushes the held queue
@@ -857,8 +855,13 @@ export class Transport {
       const before = this.ring.size;
       this.ring.prune(Number(body.seq_hi));
       // F595: the beat that rode with the batch read the ring before this ack, so MC would hear pending 0 only on the next
-      // 2 s beat. An ack that empties the ring sends the last beat again at once, with pending 0.
-      if (before > 0 && this.ring.size === 0 && this._lastBeat && this.state === 'bound') this.status({ ...this._lastBeat });
+      // 2 s beat. An ack that empties a BATCH (more than one fact) sends a fresh beat at once, from the provider's body now.
+      // Review (Opus): a live fact is alone in the ring, so its own ack empties it too; that one waits for the next beat.
+      if (before > 1 && this.ring.size === 0 && this.statusProvider && this.state === 'bound') {
+        /** @type {StatusBody} */ let b = {};
+        try { b = this.statusProvider() || {}; } catch (e) { this._log('statusProvider', e); }
+        this.status(b);
+      }
       return;
     }
     if (kind === 'control' && body.cmd === 'clock_resync') { this._clockResync(); return; }   // F474: about the clock, not the game

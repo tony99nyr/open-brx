@@ -1,6 +1,8 @@
 """F595 item 1 (field 2026-10-17): the MC MacBook slept through every timed whistle, so the phones' results waited for it
 to wake (355 of the 540 s of post-whistle wait measured). MC now holds the Mac awake itself with `caffeinate`, on macOS
 only, never for an --ephemeral run (the tests, the demo harness) and never fatally."""
+import pathlib
+
 from brx_mcp.mc import keepawake
 
 
@@ -49,8 +51,7 @@ def test_a_failed_spawn_never_stops_mc():
 
 
 def test_mc_main_calls_it_once_with_the_ephemeral_flag():
-    src = (keepawake.__file__.rsplit("/", 1)[0] + "/__main__.py")
-    text = open(src, encoding="utf-8").read()
+    text = (pathlib.Path(keepawake.__file__).parent / "__main__.py").read_text(encoding="utf-8")
     assert text.count("keepawake.start(") == 1, "one call site in MC's own startup"
     assert "keepawake.start(ephemeral=args.ephemeral" in text
 
