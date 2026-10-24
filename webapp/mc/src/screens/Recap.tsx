@@ -15,6 +15,7 @@ import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { Alert, alertStyle } from '../ui/Alert';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
+import { FinaliseButton, Icon, ResultChanged, SyncBoard, plural, useSyncPhones, type BoardLayout } from './SyncBoard';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -89,6 +90,10 @@ export function Recap() {
     if (document.scrollingElement?.scrollTop) document.scrollingElement.scrollTop = 0;
   }, []);
   const live = state?.recap ?? null;
+  // F596/F597: the sync board's phones and the one-tap-twice FINALISE. Hooks, so above the early returns.
+  const [finalisedFor, setFinalisedFor] = useState<string | null>(null);
+  const syncPhones = useSyncPhones(state?.players ?? [], state?.nodes ?? [], live, state?.t ?? 0, state?.live?.match_id ?? null);
+  const boardLayout: BoardLayout = typeof location !== 'undefined' && new URLSearchParams(location.search).get('syncboard') === 'tiles' ? 'tiles' : 'list';
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
   const liveId = state?.live?.match_id ?? null;
@@ -151,6 +156,15 @@ export function Recap() {
   const tieLabel = (id: string) => ((past ? past.mode : state.config.mode) === 'ffa' ? name(id) : teamLabel(id));
   const inPlay = !past && (state.phase === 'live' || state.phase === 'armed');   // polish round 2: decided before the wording
   const wins = inPlay ? ' LEADS' : ' WINS';
+  // F596/F597: no winner and no team score while a phone bound at the whistle has not delivered. FINALISE
+  // (two taps) releases the winner anyway; the phones still missing then stay on the board, so a late
+  // arrival is seen, and RESULT CHANGED says so if it flips the winner.
+  const syncOn = !past && !inPlay && syncPhones.length > 0;
+  const unsynced = syncPhones.filter(p => p.stage !== 'received');
+  const finalised = syncOn && finalisedFor === (liveId ?? 'live');
+  const pendingResults = syncOn && unsynced.length > 0 && !finalised;
+  const syncOpen = syncOn && unsynced.length > 0;
+  const stuckAny = unsynced.some(p => p.stuck);
   const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(tieLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
     : w.player_id ? { text: name(w.player_id), tail: wins }
@@ -169,8 +183,6 @@ export function Recap() {
   // is `recapDeliveryOkText` (recapDelivery.ts), worded to agree with LIVE's `endDeliveryLine`.
   const edv = past ? null : state.end_delivery;
   const edLine = endDeliveryLine(edv);
-  const edStragglers = edv?.unconfirmed ?? [];
-  const edUnconfirmed = new Set(edStragglers.map(u => u.player_id));
   const edText = edv ? recapDeliveryText(edv) : null;
   // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
   // as 10:00. F319: the server now sends the length itself (`played_s`). Without it (an older MC) the
@@ -210,7 +222,7 @@ export function Recap() {
       )}
       {/* F221: AMBER is one line, never a banner or a filled chip — fix before the next match, not
           act now. */}
-      {rc.provisional && (
+      {rc.provisional && !syncOpen && (
         <Alert id="recap-provisional-banner" testid="recap-provisional" style={{ marginBottom: 12 }}>
           {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}):
           {/* "bring them into range" is only actionable for the match still in hand */}
@@ -239,7 +251,7 @@ export function Recap() {
           the totals changed"). The server has served this since A8 and nothing rendered it, which for
           an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
       {/* F221: AMBER is one line, never a banner. */}
-      {!past && rc.settling && (
+      {!past && rc.settling && !syncOpen && (
         <Alert id="recap-settling-banner" testid="settling">
           STILL SETTLING: {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
           {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
@@ -279,11 +291,25 @@ export function Recap() {
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
       <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
-      <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
+      {pendingResults ? (
+        <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '14px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 28px', marginBottom: 12 }}>
+          <div data-testid="results-pending" style={{ font: F.osw(700, 36), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
+          <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>WAITING FOR {plural(unsynced.length, 'PHONE')}</div>
+          <span style={{ flex: 1 }} />
+          <FinaliseButton prominent={stuckAny} onFinalise={() => setFinalisedFor(liveId ?? 'live')} />
+        </Brackets>
+      ) : (
+      <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: syncOn ? 10 : 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
+          {finalised && unsynced.length > 0 && (
+            <div data-testid="final-without" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
+              FINAL WITHOUT {plural(unsynced.length, 'PHONE')} ({unsynced.map(p => p.name).join(', ')})
+            </div>
+          )}
+          {syncOn && <ResultChanged winnerKey={JSON.stringify(rc.winner ?? {})} />}
         </div>
         {heldBy ? (
           <div data-testid="recap-headline" data-headline="held" style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
@@ -373,10 +399,20 @@ export function Recap() {
           )}
         </div>
       </Brackets>
-      <AfterWhistle rc={rc} name={name} />
-      {rc.possession && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} holdTargetS={scoring?.hold_target_s} />}
+      )}
+      {/* F596: DATA SYNC became the board; it sits straight under the header so it is above the fold. */}
+      {syncOn && unsynced.length > 0 && <SyncBoard phones={finalised ? unsynced : syncPhones} layout={boardLayout} />}
+      {syncOn && unsynced.length === 0 && (
+        <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
+          {Icon.check(16)}<span>{syncPhones.length} OF {syncPhones.length} PHONES SYNCED</span>
+        </div>
+      )}
+      {/* a phone that delivered but whose outbox dropped facts is the one thing a collapsed board must not hide */}
+      {syncOn && unsynced.length === 0 && syncPhones.some(p => p.lost > 0) && <SyncBoard phones={syncPhones.filter(p => p.lost > 0)} layout={boardLayout} />}
+      {!pendingResults && <AfterWhistle rc={rc} name={name} />}
+      {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} holdTargetS={scoring?.hold_target_s} />}
       {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
-      {rc.honors.length > 0 && (<>
+      {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
         {rc.honors.map(h => {
@@ -396,43 +432,6 @@ export function Recap() {
         })}
       </div>
       </>)}
-      {/* DATA SYNC reads the LIVE roster and node link state, so it says nothing true about a match
-          that ended hours ago — it would show today's phones against yesterday's game */}
-      {!past && <>
-      {/* M1: a bare "SYNCED ✓" beside "8 HUDS NEVER CONFIRMED THE END" read as a contradiction. The two
-          are different facts, so each chip names its own: the match DATA the phone delivered, and, for a
-          HUD still in `end_delivery.unconfirmed`, that its END is not confirmed. A phone MC has not heard
-          from since the whistle (`recap.awaiting`) is not called synced at all. */}
-      <SectionRule label="DATA SYNC" hint="WHO HAS DELIVERED THEIR MATCH DATA · NOT THE SAME AS CONFIRMING THE END" />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 22 }}>
-        {state.players.map(pl => {
-          const nv = state.nodes.find(n => n.node_id === pl.node_id);
-          const missing = rc.missing.includes(pl.player_id);
-          const quiet = (rc.awaiting ?? []).includes(pl.player_id);
-          const fresh = nv && (nv.last_seen_ms ?? 1e9) < 30000;
-          const pend = nv?.pending ?? null;
-          // F221: NO REPORT and OUT OF RANGE are AMBER (fix before the next match — a node still
-          // reachable, just not yet flushed); a phone still SENDING or newly CONNECTED is the
-          // NEUTRAL SENDING/HOLDING family, and a clean sync is NOT-ALERT (T.ok, no glyph).
-          const [txt, col] = !missing && quiet ? [glyphed('amber', 'NO REPORT SINCE THE WHISTLE: BRING IT INTO RANGE'), colourOf('recap-sync-no-report')]
-            : !missing ? ['DATA SYNCED ✓', T.ok]
-            : fresh && pend ? [`SENDING: ${pend} LEFT`, colourOf('recap-sync-sending')]
-            : fresh ? ['CONNECTED: AWAITING DATA', colourOf('recap-sync-awaiting')]
-            : [glyphed('amber', 'OUT OF RANGE: WILL SYNC ON RETURN'), colourOf('recap-sync-outofrange')];
-          const endOpen = edUnconfirmed.has(pl.player_id);
-          // A42: this suffix mirrors the end-delivery banner's own severity — amber while MC is still
-          // trying, red once the retry ladder is spent (a gun that may still be live is act-now).
-          const endId = edv?.retrying ? 'recap-end-delivery-retrying' : 'recap-end-delivery-spent';
-          return (
-            <span key={pl.player_id} data-sync-chip={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${endOpen && col === T.ok ? T.warn : col}`, padding: '8px 14px' }}>
-              <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{pl.display}</span>
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: col }}>{txt}</span>
-              {endOpen && <span data-end-open="1" data-alert={endId} data-sev={sevOf(endId)} style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: colourOf(endId) }}>· END NOT CONFIRMED</span>}
-            </span>
-          );
-        })}
-      </div>
-      </>}
       <SectionRule label="FULL STATS" />
       <div style={{ overflowX: 'auto' }}>
         {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container

@@ -32,6 +32,7 @@ import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/l
 import { sessionStartView } from '../rules/start';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
   sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
+import { galleryState } from './gallery';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { sessionVersions } from '../rules/versions';
 import { sessionGameSentN } from '../rules/game';
@@ -1007,7 +1008,13 @@ export class MockBackend implements Api {
    *  Otherwise half the tunnel phones are on Wi-Fi. */
   private demoFullCoverage = typeof location !== 'undefined' && new URLSearchParams(location.search).get('fullcoverage') === '1';
 
+  /** F596/F597 storyboard hook (`?gallery=<frame>`, `window.__brxGallery(frame)`): see gallery.ts. Off by default. */
+  private galleryFrame: string | null = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('gallery') : null;
   private state(): State {
+    const s = this.stateBase();
+    return this.galleryFrame ? galleryState(s, this.galleryFrame) : s;
+  }
+  private stateBase(): State {
     const t = now();
     const readiness = this.readiness();
     const end_delivery = this.endDelivery();
@@ -1556,6 +1563,8 @@ export class MockBackend implements Api {
   // ---------- Api ----------
   async getState() { return this.state(); }
   subscribe(snap: (s: State) => void, feed: (e: FeedEntry, edit?: boolean) => void) {
+    // F596/F597 storyboard hook, bound here because this is the instance the console actually uses (StrictMode builds two)
+    if (this.galleryFrame && typeof window !== 'undefined') (window as unknown as { __brxGallery?: (f: string) => void }).__brxGallery = (f: string) => { this.galleryFrame = f; this.emit(); };
     const s = { snap, feed }; this.subs.add(s); queueMicrotask(() => snap(this.state()));
     return () => { this.subs.delete(s); };
   }
