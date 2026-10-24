@@ -1861,6 +1861,26 @@
                   ]
                 },
                 "minItems": 1
+              },
+              "stalls": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "from_ms",
+                    "to_ms"
+                  ],
+                  "properties": {
+                    "from_ms": {
+                      "type": "integer"
+                    },
+                    "to_ms": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "minItems": 1
               }
             },
             "additionalProperties": false

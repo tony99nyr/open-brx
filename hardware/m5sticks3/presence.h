@@ -409,6 +409,7 @@ class BleControlPoint {
   int last_owner = -1;
   uint32_t hold_ms[4] = {0, 0, 0, 0};  // possession per tid, for the status report (MC's recap)
   bool contested = false;
+  int held_by = -1;           // F554: the team counted ALONE on the point at the last update (control.js `heldBy`), or -1
   int dir = 0;                // +1 rising, -1 falling, 0 static
   int net = 0;
   int lead = -1;
@@ -521,7 +522,10 @@ class BleControlPoint {
     // Possession time, on the unclamped clock.
     // F382: the team tick pauses while contested, even though it keeps ownership.
     // F554 (control.js): and banks only while the owner has a living player counted here (`counts`, so a fading owner holds).
-    if (owner != contract::STATION_TEAM_ANY && owner < 4 && !contested && counts[owner] > 0 && elapsed) hold_ms[owner] += elapsed;
+    // A gap banks in full only when the owner was counted alone at both ends; otherwise at most HILL_MAX_STEP_MS (`dt`).
+    const int sole = contested ? -1 : lead;
+    if (owner != contract::STATION_TEAM_ANY && owner < 4 && sole == owner && elapsed) hold_ms[owner] += held_by == owner ? elapsed : dt;
+    held_by = sole;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").

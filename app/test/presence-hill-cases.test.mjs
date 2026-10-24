@@ -38,8 +38,12 @@ function validate(c) {
     assert.ok(Array.isArray(c.known_fail.at) && c.known_fail.at.length, 'known_fail.at must list the checkpoints expected to fail');
     for (const t of c.known_fail.at) assert.ok((c.expect || []).some(e => e.t === t), `known_fail.at names t=${t}, which is not a checkpoint`);
   }
+  for (const g of c.stalls || []) {   // a station whose timers were throttled: no tick runs strictly between from_ms and to_ms
+    assert.ok(g.from_ms % c.setup.tick_ms === 0 && g.to_ms % c.setup.tick_ms === 0 && g.from_ms < g.to_ms && g.to_ms <= c.until_ms, `stall ${g.from_ms}-${g.to_ms} must run between two tick times within until_ms`);
+  }
   for (const e of c.expect || []) {
     assert.ok(e.t <= c.until_ms && e.t % c.setup.tick_ms === 0, `checkpoint t=${e.t} must be a tick time within until_ms`);
+    assert.ok(!stalled(c, e.t), `checkpoint t=${e.t} lies inside a stall, where no tick runs`);
     assert.ok(!seen.has(e.t), `duplicate checkpoint t=${e.t}`);
     seen.add(e.t);
     if (e.hill) hillByte(e.hill.state);
@@ -47,6 +51,9 @@ function validate(c) {
     for (const id of [...Object.keys(e.in || {}), ...Object.keys(e.present || {}), ...Object.keys(e.fading || {})]) assert.ok(id in c.players, `checkpoint t=${e.t} names player ${id}, which the case does not have`);
   }
 }
+
+/** True when a stall skips the tick at `t` (strictly inside it: the ticks at both ends run). */
+function stalled(c, t) { return (c.stalls || []).some(g => t > g.from_ms && t < g.to_ms); }
 
 /** Runs a case. With `collect`, a checkpoint whose assertions fail is recorded (its t) instead of thrown; returns those t's. */
 function runCase(c, collect = false) {
@@ -64,6 +71,7 @@ function runCase(c, collect = false) {
       const p = c.players[String(h.id)];
       presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state) })], h.rssi, h.t);
     }
+    if (stalled(c, t)) continue;
     presence.tick(t);
     point.update(presence.players(), t);
     const adv = point.advert();
