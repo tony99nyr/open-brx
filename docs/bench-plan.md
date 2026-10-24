@@ -35,12 +35,15 @@ Rockets first-equip probe, F532, F530 and F537, on one gun (the morning cut); a 
 other re-tests and the open 0422 steps, and P4 is Sitting B, optional and last. The open steps keep their procedure
 in the 0422 sheet, which also holds the *Not in this sitting* table.
 
-### NEXT: the tests from the 2026-10-17 field session
+### NEXT: the bench on APK 0.4.26 (2026-10-25)
 
-[`bench-field-1017.md`](bench-field-1017.md) holds the nine bench tests from
-[`field-2026-10-17.md`](field-2026-10-17.md) §5, in order of gameplay impact. P1 is the SMG frame terminator (F548),
-the ALT swallow matrix (F542), the lever on a full magazine and the charge rifle below one charge (F226). The lanes
-add their bench rows for the field fixes to it as the fixes land.
+[`bench-0426.md`](bench-0426.md) runs in tiers of game impact, about 3 h. P1 is every Stick from main, the SMG frame
+(F548), the ALT swallow matrix (F542), the spawn repairs (F533, F532), the F579 weapons on the gun and the Charge
+Rifle's heat (F575, F226). P2 is the Sniper bolt, the large reserve and the reconnect's battery cost (F563). P3 is the
+outdoor victim-side reach of the Shotgun headset word and of melee (F580).
+
+[`bench-field-1017.md`](bench-field-1017.md) holds the tests from the 2026-10-17 field session. None has run yet; the
+0426 sheet carries its P1 and points at its procedures. Its hill rows and tuning reads stay there.
 
 ## History
 
