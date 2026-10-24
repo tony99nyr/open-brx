@@ -117,3 +117,33 @@ def test_the_ack_read_stops_at_the_ack():
     lines = br._readlines(2.0, until=lambda ln: ln.startswith(("SENT", "ERR")))
     assert lines == ["SENT n=1 bits=25 gap=600"]
     assert time.monotonic() - t0 < 1.0, "the read must stop at the ack, not run the whole window"
+
+
+def test_only_the_sent_line_is_read_for_the_word_length():
+    # an AUTO-TX boot banner carries its own bits=; it must not be read as this word's ack
+    code, err = _emit("# AUTO-TX armed, every 400 ms, bits=24 | SENT n=1 bits=25 gap=600", repeat=1)
+    assert code is None, err
+
+
+def test_a_rejected_command_fails_and_says_so():
+    code, err = _emit("ERR TXN gap 0-10000 ms", repeat=1)
+    assert code not in (None, 0)
+    assert "ERR TXN" in err and "no ack" not in err.lower()
+
+
+def test_wait_does_not_sleep_again_after_the_ack():
+    # the board acks after its last word, so an ack means the run is over
+    import brx_mcp.__main__ as m
+    slept = []
+    real = m.time.sleep
+    m.time.sleep = lambda s: slept.append(s)
+    _FakeBridge.ack = "SENT n=4 bits=25 gap=600"
+    real_bridge = irbridge_mod.IRBridge
+    irbridge_mod.IRBridge = _FakeBridge
+    try:
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            cli._ir_emit(WORD, "COM8", 4, wait=True, gap_ms=600)
+    finally:
+        m.time.sleep = real
+        irbridge_mod.IRBridge = real_bridge
+    assert slept == [], slept

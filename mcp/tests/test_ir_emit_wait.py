@@ -158,7 +158,7 @@ def test_dispatch_positional_parsing_unchanged_without_wait():
 
 def test_gap_reaches_the_bridge_and_sets_the_estimate():
     def run(slept):
-        FakeBridge.ack = "SENT n=10 bits=25 gap=60"
+        FakeBridge.ack = ""   # a run that outlasts the ack read: --wait sleeps the estimate (F538: an ack ends it)
         out = _emit_capturing_stderr("1" * 25, None, 10, wait=True, gap_ms=60)
         assert FakeBridge.instances[0].calls == [("1" * 25, 10, 60)]
         assert slept == [10 * (37 + 60) / 1000 + 1], slept   # words start (word + gap) apart
