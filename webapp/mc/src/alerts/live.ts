@@ -43,7 +43,7 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   },
   // F540: a write refused for the token (an MC restart left the tab on the old one). The cure is in the words.
   'frame-token-refused': {
-    sev: 'red', text: "MC REFUSED THE CHANGE: THIS TAB'S OPERATOR TOKEN IS OLD OR WRONG (DID MC RESTART?). OPEN THE `#tok=` LINK THAT MC PRINTED, OR PASTE THE NEW TOKEN UNDER TOKEN ▸",
+    sev: 'red', text: "MC REFUSED THE CHANGE: THIS TAB'S OPERATOR TOKEN IS OLD OR WRONG (DID MC RESTART?). OPEN THE `#tok=` LINK THAT MC PRINTED, OR TAP HERE TO PASTE THE NEW TOKEN",
   },
   'frame-tunnel-down': { sev: 'red', text: 'INTERNET TUNNEL DOWN: {reason}' },
 

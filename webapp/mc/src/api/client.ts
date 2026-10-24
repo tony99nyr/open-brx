@@ -19,6 +19,8 @@ function pickupHashToken() {
   } catch { /* no storage / no history: ignore */ }
 }
 pickupHashToken();
+// F540 review: the cure the refusal names is "open the #tok= link"; pasted into an OPEN tab it changes only the hash.
+try { window.addEventListener('hashchange', pickupHashToken); } catch { /* no window: ignore */ }
 export const getToken = (): string => { try { return localStorage.getItem(TOK_KEY) ?? ''; } catch { return ''; } };
 export const setToken = (tok: string) => { try { localStorage.setItem(TOK_KEY, tok.trim()); } catch { /* ignore */ } };
 
@@ -58,7 +60,8 @@ async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOU
     if ((e as Error)?.name === 'TimeoutError') throw new Error(`MC DID NOT ANSWER IN ${Math.round(timeoutMs / 1000)} S: CHECK MC IS RUNNING, THEN TRY AGAIN`);
     throw e;
   }
-  if (r.status === 401) { notifyAuth(true); throw new AuthError(method !== 'GET'); }
+  // A write refused while the tab HOLDS a token is MC refusing that token; with none, it is still the neutral prompt.
+  if (r.status === 401) { notifyAuth(true); throw new AuthError(method !== 'GET' && !!getToken()); }
   if (!r.ok) {
     let msg = r.statusText || `HTTP ${r.status}`, body: unknown;
     // Review MEDIUM (brx1, 222b1a81): a 400 refusal can carry `{errors: [...]}` with no singular
@@ -134,7 +137,9 @@ export function createHttpApi(): Api {
             // F540: a socket is up when MC SENDS on it. MC accepts a socket whose token it refuses and then closes it
             // (4401), so `onopen` alone reported the link up and reset the backoff: a refused tab reconnected twice a
             // second for ever and the console flickered.
-            if (!live) { live = true; delay = 500; onLink?.(true); }
+            if (!live && (m.kind === 'snapshot' || m.kind === 'feed' || m.kind === 'feed_edit')) {
+              live = true; delay = 500; onLink?.(true); notifyAuth(false);   // F540 review: MC took the token
+            }
             if (m.kind === 'snapshot') onSnapshot(m.state as State);
             else if (m.kind === 'feed') onFeed(m.entry as FeedEntry);
             else if (m.kind === 'feed_edit') onFeed(m.entry as FeedEntry, true);

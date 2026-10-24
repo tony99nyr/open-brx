@@ -3,8 +3,8 @@
 // (so the toast hid them), and the refused WebSocket was accepted, then closed, so the tab reconnected twice a second
 // for ever and the link state toggled each time.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthError, createHttpApi, setToken } from '../src/api/client';
-import { operatorTokenLine, tokenRefusedLine } from '../src/alerts';
+import { AuthError, createHttpApi, getToken, onAuthRequired, setToken } from '../src/api/client';
+import { ALERTS, operatorTokenLine, tokenRefusedLine } from '../src/alerts';
 
 const json401 = () => new Response('{"error":"operator token required"}', { status: 401, headers: { 'content-type': 'application/json' } });
 
@@ -26,6 +26,30 @@ describe('F540: a refused write says so in its own words', () => {
   });
 });
 
+describe('F540 review: the cure and the diagnosis', () => {
+  const real = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = real; setToken(''); });
+
+  it('a tab with NO token keeps the neutral prompt on a refused write (nothing is "old or wrong" yet)', async () => {
+    setToken('');
+    globalThis.fetch = (async () => json401()) as typeof fetch;
+    const e = await createHttpApi().pick({ match: { night: true } }).then(() => null, x => x as Error);
+    expect(e!.message).toBe(operatorTokenLine());
+  });
+
+  it('pasting the #tok= link into the open tab picks the token up (no reload needed)', () => {
+    setToken('old');
+    location.hash = '#build&tok=fresh';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(getToken()).toBe('fresh');
+    expect(location.hash, 'the token leaves the address bar, the view stays').toBe('#build');
+  });
+
+  it('the registry row says what the console shows', () => {
+    expect(ALERTS['frame-token-refused'].text.replace(/`/g, '')).toBe(tokenRefusedLine());
+  });
+});
+
 class FakeWs {
   static made: FakeWs[] = [];
   onopen: (() => void) | null = null; onclose: ((ev: { code: number }) => void) | null = null;
@@ -34,6 +58,26 @@ class FakeWs {
   constructor(url: string) { this.url = url; FakeWs.made.push(this); }
   close() { /* the test drives onclose itself */ }
 }
+
+describe('F540 review: a socket MC accepts again clears the token prompt', () => {
+  const realWs = globalThis.WebSocket;
+  afterEach(() => { globalThis.WebSocket = realWs; FakeWs.made = []; });
+
+  it('refused (4401) asks for the token; a later socket that delivers a frame clears the ask', () => {
+    globalThis.WebSocket = FakeWs as unknown as typeof WebSocket;
+    const asks: boolean[] = [];
+    const un = onAuthRequired(r => asks.push(r));
+    const stop = createHttpApi().subscribe(() => {}, () => {}, () => {});
+    const ws = FakeWs.made.at(-1)!;
+    ws.onopen?.(); ws.onclose?.({ code: 4401 });
+    expect(asks.at(-1)).toBe(true);
+    const stop2 = createHttpApi().subscribe(() => {}, () => {}, () => {});   // the token valid again (MC restarted with it)
+    const live = FakeWs.made.at(-1)!;
+    live.onopen?.(); live.onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: { text: 'x' } }) });
+    expect(asks.at(-1), 'a live socket means MC took the token').toBe(false);
+    stop(); stop2(); un();
+  });
+});
 
 describe('F540: a WebSocket MC refuses does not flicker the link', () => {
   const realWs = globalThis.WebSocket, realFetch = globalThis.fetch;

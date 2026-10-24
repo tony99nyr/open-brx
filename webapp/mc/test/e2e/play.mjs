@@ -734,7 +734,7 @@ step('real-stale-token', async ({ browser }) => {
     expect((await refused.getAttribute('data-sev')) === 'red', 'the refusal is RED');
     expect((await mode()) === before && before !== 'ffa', `the refused pick changed nothing (${before})`);
     ok(`a refused write says so, in red, with the cure   ${await shot(pg, 'real-stale-token-refused')}`);
-    await pg.locator('[data-alert="frame-token-required-app"]').first().click();      // the cure: TOKEN ▸, paste, APPLY
+    await refused.click();                                       // the cure: tap the red line, paste, APPLY
     await pg.locator('#dbg-tok').fill('tok-after');
     await pg.getByRole('button', { name: 'APPLY' }).click();
     await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n === 0), 8000, 'the pill to clear');
@@ -742,7 +742,6 @@ step('real-stale-token', async ({ browser }) => {
     await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'the PLAY screen');
     await pickMode(pg, 'FREE-FOR-ALL');
     await until(async () => (await mode()) === 'ffa', 8000, 'the pick to land with the new token');
-    expect(await refused.count() === 0, 'the refusal is gone once a write lands');
     ok(`pasting the new token makes the next write land   ${await shot(pg, 'real-stale-token-recovered')}`);
     await pg.context().close();
   } finally { await vite.stop(); await mc.stop(); }

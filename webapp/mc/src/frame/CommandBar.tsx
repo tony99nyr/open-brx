@@ -259,12 +259,13 @@ export function CommandBar() {
           const id = skew ? 'frame-server-old' : error === tokenRefusedLine() ? 'frame-token-refused' : 'frame-error-toast';
           const sev = skew ? 'amber' : 'red';
           const c = colourOf(id);
+          const refused = id === 'frame-token-refused';   // F540 review: the tap is the cure, the token form; not a dismiss
           return (
-            <button type="button" role="alert" onClick={clearError} title={error} data-alert={id} data-sev={sev}
+            <button type="button" role="alert" onClick={refused ? () => setView('debug') : clearError} title={error} data-alert={id} data-sev={sev}
               style={{ background: skew ? 'rgba(255,176,32,.12)' : 'rgba(255,82,82,.12)', border: `1px solid ${c}`, color: c,
                        font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
                        maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
-                       maxHeight: '8em', overflowY: 'auto' }}>{glyphed(sev, error)} ✕</button>
+                       maxHeight: '8em', overflowY: 'auto' }}>{glyphed(sev, error)} {refused ? '▸' : '✕'}</button>
           );
         })()}
         {notice && (
