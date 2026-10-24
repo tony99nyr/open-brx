@@ -63,7 +63,6 @@ EXEMPT = {
 PACKAGE_EXEMPT = {
     "protocol.py",     # PANIC_SEQUENCE -- making the gun unhittable is the entire point
     "state.py",        # TRYOUT_TEARDOWN -- the gun stays idle until the real game is pushed
-    "__main__.py",     # cli.END_SEQUENCE -- game over, the app's own captured tail
 }
 
 

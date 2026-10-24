@@ -340,6 +340,11 @@ def _plan_or_exit(*a, **kw) -> ArmPlan:
         sys.exit(2)
 
 
+# Guns whose end sequence was started and has not finished. A second Ctrl-C can stop it after `$CLEAR`
+# and before the `$SIR` rows, which leaves that gun ignoring every hit (F11, F539).
+_ENDING: set[str] = set()
+
+
 MAX_TEAM_GUNS = 4          # teams 0-3: the IR word's team field is 2 bits (F35)
 
 
@@ -488,7 +493,9 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
               f"respawns {respawns} ***", file=sys.stderr)
     finally:
         try:
+            _ENDING.add(address)
             await send_all(plan.end, "ending game")
+            _ENDING.discard(address)
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})", file=sys.stderr)
         await mgr.disconnect("cli")
@@ -546,12 +553,14 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
         print(f"\n{deaths} death(s) handled.", file=sys.stderr)
     finally:
         try:
+            _ENDING.add(address)
             await send_all(plan.end, "ending game")
+            _ENDING.discard(address)
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})",
                   file=sys.stderr)
         await mgr.disconnect("cli")
-    print("Done. Power-cycle the tagger to clear any residual state.",
+    print("Done. The gun is idle and hittable; `reset` or a power cycle clears anything else.",
           file=sys.stderr)
 
 
@@ -693,7 +702,9 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         await asyncio.gather(*respawns.values(), return_exceptions=True)
         for alias, _addr, tid in players:
             try:
+                _ENDING.add(_addr)
                 await push(alias, plans[tid].end)
+                _ENDING.discard(_addr)
             except Exception as e:  # noqa: BLE001 — link may already be gone
                 print(f"({alias} teardown skipped: {type(e).__name__})",
                       file=sys.stderr)
@@ -1207,8 +1218,9 @@ HELP_WORDS = ("--help", "-h", "help")
 OWN_PARSERS = ("ir-emit", "stage")       # argparse owns their `--help`
 # Commands parsed by hand whose arguments are addresses, numbers and words, never options: an option
 # here is a typo, and it would otherwise be taken for a gun address (F539).
+# `rename` and `enroll` are left out: a gun name may start with "-".
 NO_OPTIONS = ("identify", "listen", "probe", "startgame", "deathmatch", "arena", "fieldstart",
-              "fieldresults", "diag", "diagnose", "fleet", "play", "diag-game", "reset", "rename", "enroll")
+              "fieldresults", "diag", "diagnose", "fleet", "play", "diag-game", "reset")
 
 
 def _is_option(a: str) -> bool:
@@ -1237,10 +1249,14 @@ def main() -> None:
         return
     try:
         _dispatch(cmd, args)
-    except (KeyboardInterrupt, asyncio.CancelledError):
+    except KeyboardInterrupt:
         # F539: a real Ctrl-C. asyncio.run has already cancelled the game, whose `finally` sent the
-        # teardown; the traceback after it told the operator nothing.
+        # teardown; the traceback after it told the operator nothing. A stray CancelledError is a bug
+        # and keeps its traceback.
         print("interrupted (Ctrl-C)", file=sys.stderr)
+        for addr in sorted(_ENDING):
+            print(f"the end sequence did not finish on {addr}: it may ignore every hit. "
+                  f"Run: python -m brx_mcp reset {addr}", file=sys.stderr)
         sys.exit(130)
     except ValueError as e:
         print(f"bad numeric argument: {e}\n", file=sys.stderr)
@@ -1743,8 +1759,14 @@ async def _enroll(name: str | None) -> None:
 def reset_frames() -> list[str]:
     """`reset`'s sequence: revive (`$SPAWN` clears the dead HP state), silence the spawn voice (`$PLAYX,0`),
     `$STOP`+`$CLEAR` to settle to idle, blank the headset LED, then re-send the live `$SIR` table so the gun
-    is left hittable (F11, F539). It is a CLI game's end."""
-    return arm_plan().end
+    is left hittable (F11, F539). It is a CLI game's end. `reset` is the recovery tool, so a compile
+    failure falls back to the fixed end and gameconfig's own table, with a warning."""
+    try:
+        return arm_plan().end
+    except Exception as e:  # noqa: BLE001 — never let the recovery tool depend on the compiler
+        from .gameconfig import _SIR_TABLE, END_SEQUENCE
+        print(f"(MC's compile failed, {type(e).__name__}: {e}; using the fixed $SIR table)", file=sys.stderr)
+        return [*END_SEQUENCE, *_SIR_TABLE]
 
 
 async def _reset(address: str) -> None:

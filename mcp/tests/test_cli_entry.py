@@ -9,6 +9,7 @@ import contextlib
 import io
 import os
 import pathlib
+import select
 import signal
 import subprocess
 import sys
@@ -64,7 +65,8 @@ def test_help_alone_prints_the_usage():
 
 def test_an_unknown_option_is_refused_before_connecting():
     for argv in (["deathmatch", "--minutes", "5"], ["deathmatch", "AA:BB:CC:DD:EE:FF", "--frobnicate"],
-                 ["arena", "A0", "A1", "--teams"], ["startgame", "-x"], ["reset", "--force"]):
+                 ["arena", "A0", "A1", "--teams"], ["startgame", "-x"], ["reset", "--force"],
+                 ["play", "tdm", "AA:BB:CC:DD:EE:FF", "--venue=indoor"]):
         code, _, err = _main(argv)
         assert code == 2, (argv, code)
         assert "unknown option" in err, (argv, err)
@@ -115,7 +117,8 @@ def test_ctrl_c_runs_the_teardown_then_exits_cleanly():
     p = subprocess.Popen([sys.executable, "-c", _CHILD], cwd=str(MCP), env=env, text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
-        assert p.stdout.readline().strip() == "READY"
+        ready, _, _ = select.select([p.stdout], [], [], 20)      # bounded: a child that never starts fails
+        assert ready and p.stdout.readline().strip() == "READY"
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=20)
     finally:
@@ -145,5 +148,68 @@ def test_a_cli_game_ends_hittable():
 
 def test_reset_leaves_the_gun_hittable():
     frames = cli.reset_frames()
+    gc.assert_sir_follows_clear(frames)
+    assert frames[:len(gc.END_SEQUENCE)] == list(gc.END_SEQUENCE), frames
+
+
+def test_a_name_may_start_with_a_dash():
+    seen = []
+    real = cli._rename
+
+    async def fake(address, name):
+        seen.append((address, name))
+
+    cli._rename = fake
+    real_argv = sys.argv
+    sys.argv = ["brx_mcp", "rename", "AA:BB:CC:DD:EE:FF", "-Ghost-"]
+    try:
+        cli.main()
+    finally:
+        cli._rename, sys.argv = real, real_argv
+    assert seen == [("AA:BB:CC:DD:EE:FF", "-Ghost-")], seen
+
+
+def test_a_second_ctrl_c_in_the_end_sequence_says_to_run_reset():
+    real = cli._dispatch
+
+    def interrupted(cmd, args):
+        cli._ENDING.add("AA:BB:CC:DD:EE:FF")     # the end sequence started and never finished
+        raise KeyboardInterrupt
+
+    cli._dispatch = interrupted
+    real_argv = sys.argv
+    sys.argv = ["brx_mcp", "deathmatch", "AA:BB:CC:DD:EE:FF"]
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            cli.main()
+        raise AssertionError("main() did not exit")
+    except SystemExit as e:
+        assert e.code == 130
+    finally:
+        cli._dispatch, sys.argv = real, real_argv
+        cli._ENDING.clear()
+    assert "python -m brx_mcp reset AA:BB:CC:DD:EE:FF" in err.getvalue(), err.getvalue()
+
+
+def test_a_finished_end_sequence_leaves_nothing_pending():
+    import test_cli_arm_frames as t
+    t._run_cli(lambda: cli._deathmatch("AA", 1, 0, 65))
+    t._run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65))
+    assert not cli._ENDING, cli._ENDING
+
+
+def test_reset_falls_back_when_the_compile_fails():
+    real = cli.arm_plan
+
+    def broken(*a, **kw):
+        raise ValueError("no catalogue")
+
+    cli.arm_plan = broken
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            frames = cli.reset_frames()
+    finally:
+        cli.arm_plan = real
     gc.assert_sir_follows_clear(frames)
     assert frames[:len(gc.END_SEQUENCE)] == list(gc.END_SEQUENCE), frames
