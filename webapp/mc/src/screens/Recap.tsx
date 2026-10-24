@@ -15,7 +15,7 @@ import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { Alert, alertStyle } from '../ui/Alert';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed, serverLine, sevOf } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
-import { FinaliseButton, Icon, ResultChanged, SyncBoard, plural, useSyncPhones, type BoardLayout } from './SyncBoard';
+import { FinaliseButton, Glyphs, Icon, ResultChanged, SyncBoard, SyncStatus, plural, useSyncPhones, type BoardLayout, type SyncPhone } from './SyncBoard';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
 // split into groups with a hairline between them (game test 2026-09-11, D4).
@@ -36,6 +36,10 @@ const COLUMNS: Column[] = [
  *  places with nothing to fail. LIVE was fixed first; this is the same defect one file over
  *  (review 2026-09-12). Header and row now read the one lookup. */
 const edge = columnEdges(COLUMNS);
+// Option C (Tony 2026-10-24): the sync status lives IN the table, as a column after the name.
+const COLS_SYNC = 'minmax(110px,1.2fr) 132px 46px 46px 46px 60px 66px 54px minmax(130px,1fr)';
+const COLUMNS_SYNC: Column[] = [COLUMNS[0], { key: 'sync', head: 'SYNC', g: 'sync' }, ...COLUMNS.slice(1)];
+const edgeSync = columnEdges(COLUMNS_SYNC);
 // A63: keyed by the AWARDS `key`; a recap stored before A63 has only the label, so it maps through AWARD_KEY.
 // F221 round 2: first_blood and multikill were T.bad/T.warn, the ALERT colours, on a medal, not a
 // fault. LIVE's own feed already moved FIRST BLOOD to T.ink and every other medal tag to T.acc
@@ -93,7 +97,8 @@ export function Recap() {
   // F596/F597: the sync board's phones and the one-tap-twice FINALISE. Hooks, so above the early returns.
   const [finalisedFor, setFinalisedFor] = useState<string | null>(null);
   const syncPhones = useSyncPhones(state?.players ?? [], state?.nodes ?? [], live, state?.t ?? 0, state?.live?.match_id ?? null);
-  const boardLayout: BoardLayout = typeof location !== 'undefined' && new URLSearchParams(location.search).get('syncboard') === 'tiles' ? 'tiles' : 'list';
+  const boardLayoutQ = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('syncboard') : null;
+  const boardLayout: BoardLayout = boardLayoutQ === 'tiles' || boardLayoutQ === 'table' || boardLayoutQ === 'strip' ? boardLayoutQ : 'list';
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
   const liveId = state?.live?.match_id ?? null;
@@ -159,12 +164,19 @@ export function Recap() {
   // F596/F597: no winner and no team score while a phone bound at the whistle has not delivered. FINALISE
   // (two taps) releases the winner anyway; the phones still missing then stay on the board, so a late
   // arrival is seen, and RESULT CHANGED says so if it flips the winner.
+  const edv0 = past ? null : state.end_delivery;
   const syncOn = !past && !inPlay && syncPhones.length > 0;
   const unsynced = syncPhones.filter(p => p.stage !== 'received');
   const finalised = syncOn && finalisedFor === (liveId ?? 'live');
   const pendingResults = syncOn && unsynced.length > 0 && !finalised;
   const syncOpen = syncOn && unsynced.length > 0;
   const stuckAny = unsynced.some(p => p.stuck);
+  const tableMode = boardLayout === 'table';
+  const stripMode = boardLayout === 'strip';
+  const rowMode = tableMode || stripMode;   // C and D: the board is gone, FULL STATS carries dashes while pending
+  const syncCol = tableMode && syncOn && unsynced.length > 0;   // the SYNC column, while any phone is missing
+  const edUnconfirmed = new Set((edv0?.unconfirmed ?? []).map(u => u.player_id));
+  const syncOf = new Map(syncPhones.map(p => [p.id, p]));
   const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(tieLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
     : w.player_id ? { text: name(w.player_id), tail: wins }
@@ -292,8 +304,8 @@ export function Recap() {
           it to "10:00" beside unpadded possession spans such as "7:21") */}
       <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]</div>
       {pendingResults ? (
-        <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '14px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 28px', marginBottom: 12 }}>
-          <div data-testid="results-pending" style={{ font: F.osw(700, 36), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
+        <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: rowMode ? '8px 36px 8px 22px' : '14px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 28px', marginBottom: rowMode ? 8 : 12 }}>
+          <div data-testid="results-pending" style={{ font: F.osw(700, rowMode ? 30 : 36), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
           <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>WAITING FOR {plural(unsynced.length, 'PHONE')}</div>
           <span style={{ flex: 1 }} />
           <FinaliseButton prominent={stuckAny} onFinalise={() => setFinalisedFor(liveId ?? 'live')} />
@@ -401,17 +413,17 @@ export function Recap() {
       </Brackets>
       )}
       {/* F596: DATA SYNC became the board; it sits straight under the header so it is above the fold. */}
-      {syncOn && unsynced.length > 0 && <SyncBoard phones={finalised ? unsynced : syncPhones} layout={boardLayout} />}
-      {syncOn && unsynced.length === 0 && (
+      {syncOn && !rowMode && unsynced.length > 0 && <SyncBoard phones={finalised ? unsynced : syncPhones} layout={boardLayout} />}
+      {syncOn && !rowMode && unsynced.length === 0 && (
         <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
           {Icon.check(16)}<span>{syncPhones.length} OF {syncPhones.length} PHONES SYNCED</span>
         </div>
       )}
       {/* a phone that delivered but whose outbox dropped facts is the one thing a collapsed board must not hide */}
-      {syncOn && unsynced.length === 0 && syncPhones.some(p => p.lost > 0) && <SyncBoard phones={syncPhones.filter(p => p.lost > 0)} layout={boardLayout} />}
+      {syncOn && !rowMode && unsynced.length === 0 && syncPhones.some(p => p.lost > 0) && <SyncBoard phones={syncPhones.filter(p => p.lost > 0)} layout={boardLayout} />}
       {!pendingResults && <AfterWhistle rc={rc} name={name} />}
       {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} word={objectiveWord(mode)} holdTargetS={scoring?.hold_target_s} />}
-      {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
+      {rc.stations && rc.stations.length > 0 && !(rowMode && pendingResults) && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -432,22 +444,42 @@ export function Recap() {
         })}
       </div>
       </>)}
-      <SectionRule label="FULL STATS" />
+      {stripMode && syncOn && <SyncStatus phones={syncPhones} endOpen={edUnconfirmed}
+        stations={(rc.stations ?? []).map(st => ({ id: st.node_id, label: `${STATION_KIND_LABEL[st.kind] ?? st.kind} ${st.id}`, synced: st.synced !== false }))} />}
+      <SectionRule label="FULL STATS" style={rowMode && pendingResults ? { marginBottom: 6 } : undefined} />
+      {tableMode && syncOn && unsynced.length === 0 && (
+        <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
+          {Icon.check(16)}<span>{syncPhones.length} OF {syncPhones.length} PHONES SYNCED</span>
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
               under-reports how much there is to scroll to on a phone */}
-          <div style={{ minWidth: 780 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, padding: '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
-            {COLUMNS.map(c => (
+          <div style={{ minWidth: syncCol ? 910 : 780 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, padding: pendingResults && rowMode ? '5px 14px' : '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
+            {(syncCol ? COLUMNS_SYNC : COLUMNS).map(c => (
               <span key={c.key} data-col-head={c.key} data-group={c.g}
-                style={{ textAlign: c.num ? 'right' : 'left', ...edge(c.key) }}>{c.head}</span>
+                style={{ textAlign: c.num ? 'right' : 'left', ...(syncCol ? edgeSync : edge)(c.key) }}>{c.head}</span>
             ))}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-            {rows.map(r => <Row key={r.player_id} r={r} mvp={mvpIds.has(r.player_id)} />)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: rowMode && pendingResults ? 1 : 2, marginTop: 1 }}>
+            {(rowMode && pendingResults ? rc.rows : rows).map(r => <Row key={r.player_id} r={r} mvp={mvpIds.has(r.player_id) && !pendingResults}
+              sync={rowMode ? syncOf.get(r.player_id) ?? null : null} syncCol={syncCol} hide={rowMode && pendingResults}
+              endOpen={edUnconfirmed.has(r.player_id)} />)}
           </div>
         </div>
       </div>
+      {tableMode && !past && (rc.stations ?? []).some(st => st.synced === false) && pendingResults && (
+        <div data-testid="station-sync" style={{ display: 'flex', flexDirection: 'column', gap: 1, marginTop: 6 }}>
+          {(rc.stations ?? []).filter(st => st.synced === false).map(st => (
+            <div key={st.node_id} data-station-sync={st.node_id} title={`${STATION_KIND_LABEL[st.kind] ?? st.kind} ${st.id}: not synced`}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '3px 14px', background: T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${T.line2}`, minHeight: 26 }}>
+              <span style={{ font: F.chk(700, 12), letterSpacing: '.1em' }}>{STATION_KIND_LABEL[st.kind] ?? st.kind} {st.id}</span>
+              <span style={{ color: colourOf('recap-sync-outofrange'), display: 'inline-flex' }}>{Icon.unlinked(16)}</span>
+            </div>
+          ))}
+        </div>
+      )}
       <MedalLegend keys={recapKeys(rc)} />
       {/* F221: identical wording to LIVE/SPECTATE — a status fact, not a fault, so NEUTRAL. */}
       {anyTeamKill && (
@@ -460,30 +492,43 @@ export function Recap() {
   );
 }
 
-function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
+function Row({ r, mvp, sync = null, syncCol = false, hide = false, endOpen = false }: { r: ScoreRow; mvp: boolean; sync?: SyncPhone | null; syncCol?: boolean; hide?: boolean; endOpen?: boolean }) {
   // F119: the recap can still be settling (a parked node has not flushed), so ACC keeps the same
   // settling mark it wears on the live board rather than quietly becoming a fact at the whistle.
   const prov = !!r.acc_provisional;
+  const eg = syncCol ? edgeSync : edge;
+  // Option C: while results are pending every stat is a dim dash (a kill can live in another phone's report)
+  const dash = (k: string, justify: 'right' | 'left' = 'right') => <span data-cell={k} data-pending="1" style={{ textAlign: justify, font: F.osw(600, 15), color: T.faint, ...eg(k) }}>—</span>;
+  const compact = hide;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+    <div data-sync-row={sync ? r.player_id : undefined} data-stage={sync?.stage} data-stuck={sync?.stuck ? '1' : undefined}
+      style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: compact ? '1px 14px' : '10px 14px', minHeight: compact ? 26 : undefined, opacity: sync?.stuck ? 0.5 : 1, background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       {/* M8 (visual QA 2026-09-24): at 900 px a 24-character name ran over the K number */}
-      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.display}</span>
-      <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
-      <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('d') }}><Num value={r.deaths} /></span>
-      <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('a') }}><Num value={r.assists} /></span>
-      <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, 15), ...edge('kd') }}><Num value={r.kd.toFixed(1)} /></span>
+      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, compact ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display}</span>
+        {/* every phone received: no SYNC column, but a phone that lost facts keeps its warning, and a HUD whose END is open its flag */}
+        {sync && !syncCol && sync.lost > 0 && <span data-sync-lost title={`${sync.lost} facts lost`} style={{ color: T.warn, display: 'inline-flex' }}>{Icon.warn(14)}</span>}
+        {sync && !syncCol && endOpen && <span data-sync-end title="END not confirmed" style={{ color: colourOf('recap-end-delivery-retrying'), display: 'inline-flex' }}>{Icon.endOpen(14)}</span>}
+      </span>
+      {syncCol && <span data-cell="sync" style={{ display: 'flex', alignItems: 'center', ...edgeSync('sync') }}>{sync && <Glyphs p={sync} size={16} endOpen={endOpen} />}</span>}
+      {hide ? <>{dash('k')}{dash('d')}{dash('a')}{dash('kd')}{dash('acc')}{dash('stk')}{dash('medals', 'left')}</> : <>
+      <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...eg('k') }}><Num value={r.kills} /></span>
+      <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...eg('d') }}><Num value={r.deaths} /></span>
+      <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...eg('a') }}><Num value={r.assists} /></span>
+      <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, 15), ...eg('kd') }}><Num value={r.kd.toFixed(1)} /></span>
       <span data-cell="acc" data-provisional={prov ? '1' : '0'} title={prov ? 'Still settling — a node has not flushed its shot count' : undefined}
-        style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...edge('acc') }}>
+        style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...eg('acc') }}>
         {/* the mark LEADS the number, exactly as it does on the live board: "35%~" reads as a unit
             nobody uses, "~35%" is how an approximate value is written everywhere else, and the two
             screens must not write the same fact two ways (review 2026-09-12) */}
         {r.accuracy == null ? '—' : <>{prov ? '~' : ''}<Num value={Math.round(r.accuracy)} />%</>}
       </span>
-      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: T.dim, ...edge('stk') }}><Num value={bestStreak(r)} /></span>
-      <span data-cell="medals" style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', ...edge('medals') }}>
+      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: T.dim, ...eg('stk') }}><Num value={bestStreak(r)} /></span>
+      <span data-cell="medals" style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px', ...eg('medals') }}>
         {r.medals.length ? r.medals.map((m, i) => { const c = medalChip(m, RECAP_ROWS);
           return <span key={`${m}:${i}`} data-medal-chip={c.key ?? ''} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{c.key && <MedalIcon k={c.key} label={m} size={20} />}{m}</span>; }) : '—'}
       </span>
+      </>}
     </div>
   );
 }

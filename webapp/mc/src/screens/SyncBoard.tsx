@@ -102,6 +102,8 @@ export const Icon = {
   sending: (s = 16) => svg(<><path d="M8 11V3" /><path d="M4.5 6.5 8 3l3.5 3.5" /><path d="M3 13.5h10" /></>, s, 'sending'),
   check: (s = 16) => svg(<path d="M2.5 8.5 6.3 12.3 13.5 4" />, s, 'received'),
   warn: (s = 16) => svg(<><path d="M8 2 14.5 13.5h-13z" /><path d="M8 6.5v3.2" /><circle cx="8" cy="11.8" r=".5" fill="currentColor" /></>, s, 'incomplete: facts lost'),
+  /** END not confirmed: a flag on a pole (the gun may not have been told the match is over) */
+  endOpen: (s = 16) => svg(<><path d="M4 14V2" /><path d="M4 3h8l-2 3 2 3H4" /></>, s, 'END not confirmed'),
   clock: (s = 16) => svg(<><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.4 1.6" /></>, s, 'no progress'),
 };
 const TRANSPORT_ICON = { wifi: Icon.wifi, cellular: Icon.cellular, backhaul: Icon.backhaul } as const;
@@ -111,7 +113,7 @@ const word = (p: SyncPhone) => p.stage === 'received' ? (p.lost ? `received, inc
   : p.stage === 'unlinked' ? 'not linked'
   : `linked${p.transport ? ` over ${TRANSPORT_WORD[p.transport]}` : ''}, data not in yet${p.pending ? `, ${p.pending} left to send` : ''}`;
 
-function Glyphs({ p, size }: { p: SyncPhone; size: number }) {
+function GlyphsBase({ p, size }: { p: SyncPhone; size: number; endOpen?: boolean }) {
   const gap = size >= 20 ? 10 : 8;
   const c = (col: string, kids: ReactNode, key: string) => <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: col }}>{kids}</span>;
   const num = (n: number, col: string) => <span data-sync-num style={{ font: F.mono(700, 12), color: col }}>{n}</span>;
@@ -133,7 +135,11 @@ function Glyphs({ p, size }: { p: SyncPhone; size: number }) {
   );
 }
 
-export type BoardLayout = 'list' | 'tiles';
+export function Glyphs({ p, size, endOpen }: { p: SyncPhone; size: number; endOpen?: boolean }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><GlyphsBase p={p} size={size} endOpen={endOpen} />{endOpen && <span data-sync-end title="END not confirmed" style={{ display: 'inline-flex', color: colourOf('recap-end-delivery-retrying') }}>{Icon.endOpen(size)}</span>}</span>;
+}
+
+export type BoardLayout = 'list' | 'tiles' | 'table' | 'strip';
 
 /** One compact row (A) or tile (B) per phone. A stuck row dims; a received row stays quiet. */
 export function SyncBoard({ phones, layout = 'list' }: { phones: SyncPhone[]; layout?: BoardLayout }) {
@@ -185,3 +191,117 @@ export function ResultChanged({ winnerKey }: { winnerKey: string }) {
 }
 
 export const plural = (n: number, one: string, many = `${one}S`) => `${n} ${n === 1 ? one : many}`;
+
+// ---- Option D: the STRIP. One generic phone icon per phone, no names. Only a stage the server reported
+// may move: a phone with facts left to send (`pending` > 0) shows travelling dots; everything else is
+// still. A Received phone is a still green check. No fill, no percentage: the wire cannot prove one. ----
+const STRIP_CSS = `
+@keyframes sbDot{0%{transform:translateY(7px);opacity:0}25%{opacity:1}100%{transform:translateY(-7px);opacity:0}}
+@keyframes sbRing{0%{opacity:.75;transform:scale(.92)}100%{opacity:0;transform:scale(1.22)}}
+.sb-dot{animation:sbDot 1.2s linear infinite;transform-box:fill-box}
+.sb-dot:nth-child(2){animation-delay:.4s}.sb-dot:nth-child(3){animation-delay:.8s}
+.sb-ring{animation:sbRing 1.6s ease-out infinite;transform-box:fill-box;transform-origin:center}
+@media (prefers-reduced-motion: reduce){
+.sb-dot,.sb-ring{animation:none}
+.sb-dot{opacity:1}.sb-dot:nth-child(1){transform:translateY(5px)}.sb-dot:nth-child(3){transform:translateY(-5px)}
+.sb-ring{opacity:0}}`;
+
+export interface StripStation { id: string; label: string; synced: boolean }
+
+/** icon width for n tiles: 44 px up to 16, 34 up to 32, then 28 (two rows of 33 at 1280 px) */
+export const stripIconW = (n: number) => (n <= 16 ? 44 : n <= 32 ? 34 : 28);
+
+function PhoneShape({ p, w }: { p: SyncPhone; w: number }) {
+  const h = Math.round(w * 52 / 44);
+  const col = p.stage === 'received' ? T.ok : p.stage === 'unlinked' ? T.dim : p.pending > 0 ? colourOf('recap-sync-sending') : T.body;
+  const dotCol = colourOf('recap-sync-sending');
+  return (
+    <svg width={w} height={h} viewBox="0 0 44 52" fill="none" stroke={col} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', opacity: p.stage === 'unlinked' ? 0.45 : 1 }}>
+      {p.stage === 'received' && <rect x="9" y="2" width="26" height="44" rx="5" fill="rgba(46,204,113,.14)" stroke="none" />}
+      <rect x="9" y="2" width="26" height="44" rx="5" />
+      <path d="M19 6h6" strokeWidth="2" />
+      {p.stage === 'received' && <path data-strip-tick d="M15 26l5.5 6L30 18" stroke={T.ok} strokeWidth="3.4" />}
+      {p.stage === 'waiting' && p.pending > 0 && <>
+        <rect className="sb-ring" x="9" y="2" width="26" height="44" rx="5" stroke={dotCol} strokeWidth="2" />
+        <g data-strip-motion stroke="none" fill={dotCol}><circle className="sb-dot" cx="15" cy="27" r="2.6" /><circle className="sb-dot" cx="22" cy="27" r="2.6" /><circle className="sb-dot" cx="29" cy="27" r="2.6" /></g>
+      </>}
+    </svg>
+  );
+}
+function StationShape({ synced, w }: { synced: boolean; w: number }) {
+  const h = Math.round(w * 52 / 44);
+  const col = synced ? T.ok : T.dim;
+  return (
+    <svg width={w} height={h} viewBox="0 0 44 52" fill="none" stroke={col} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ display: 'block', opacity: synced ? 1 : 0.45 }}>
+      {synced && <path d="M22 4 40 26 22 48 4 26z" fill="rgba(46,204,113,.14)" stroke="none" />}
+      <path d="M22 4 40 26 22 48 4 26z" />
+      {synced ? <path data-strip-tick d="M14 26l6 6L31 19" stroke={T.ok} strokeWidth="3.4" /> : <circle cx="22" cy="26" r="4" fill={col} stroke="none" />}
+    </svg>
+  );
+}
+
+function StripIcon({ p, st, w, labelRow, endOpen = false, crowded = false }: { p?: SyncPhone; st?: StripStation; w: number; labelRow: boolean; endOpen?: boolean; crowded?: boolean }) {
+  const b = w >= 40 ? 16 : w >= 32 ? 14 : 12;
+  const badge = (pos: CSSProperties, color: string, kids: ReactNode, key: string, attr: Record<string, string>) =>
+    <span key={key} {...attr} style={{ position: 'absolute', width: b + 2, height: b + 2, borderRadius: '50%', background: T.panelDeep, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color, ...pos }}>{kids}</span>;
+  const label = p ? (p.stuck && !crowded ? p.name : p.pending > 0 ? String(p.pending) : null) : null;
+  const name = p ? p.name : st!.label;
+  const stuck = !!p?.stuck;
+  const title = p ? `${p.name}: ${word(p)}` : `${st!.label}: ${st!.synced ? 'synced' : 'not synced'}`;
+  return (
+    <div data-strip-icon={p?.id ?? st!.id} data-kind={p ? 'phone' : 'station'} data-stage={p ? p.stage : st!.synced ? 'received' : 'unlinked'} data-stuck={stuck ? '1' : undefined}
+      aria-label={title} title={title} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: w, flex: 'none' }}>
+      <div style={{ position: 'relative', opacity: stuck ? 0.5 : 1 }}>
+        {p ? <PhoneShape p={p} w={w} /> : <StationShape synced={st!.synced} w={w} />}
+        {p && p.stage === 'waiting' && p.transport && badge({ right: -4, bottom: 0 }, T.body, TRANSPORT_ICON[p.transport](b - 2), 't', { 'data-strip-transport': p.transport })}
+        {((p && p.stage === 'unlinked') || (st && !st.synced)) && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
+        {endOpen && badge({ left: -4, top: 0 }, colourOf('recap-end-delivery-retrying'), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
+        {p && p.lost > 0 && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
+      </div>
+      {labelRow && <span data-strip-label style={{ marginTop: 3, minHeight: 14, font: F.mono(700, 11), color: stuck ? T.warn : colourOf('recap-sync-sending'), maxWidth: 76, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }} title={name}>{label ?? ''}</span>}
+    </div>
+  );
+}
+
+/** The strip, then the green line once every phone is in. When the last phone arrives the strip stays
+ *  up for 2 s, every icon still and green, and only then collapses to the line. */
+export function SyncStatus({ phones, stations, endOpen }: { phones: SyncPhone[]; stations: StripStation[]; endOpen: Set<string> }) {
+  const allIn = phones.every(p => p.stage === 'received') && stations.every(s => s.synced);
+  const [phase, setPhase] = useState<'live' | 'holding' | 'line'>(allIn ? 'line' : 'live');
+  useEffect(() => {
+    if (allIn && phase === 'live') setPhase('holding');
+    else if (!allIn && phase !== 'live') setPhase('live');
+  }, [allIn, phase]);
+  useEffect(() => {
+    if (phase !== 'holding') return;
+    const h = setTimeout(() => setPhase('line'), 2000);
+    return () => clearTimeout(h);
+  }, [phase]);
+  if (allIn && phase === 'line') {
+    return (
+      <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
+        {Icon.check(16)}<span>{phones.length} OF {phones.length} PHONES SYNCED</span>
+      </div>
+    );
+  }
+  const w = stripIconW(phones.length);
+  // Up to 16 phones the stalled icon wears its own name. Past that the names would collide, so they
+  // go in ONE line under the strip instead.
+  const crowded = phones.length > 16;
+  const stalled = phones.filter(p => p.stuck);
+  const labelRow = phones.some(p => (p.stuck && !crowded) || p.pending > 0);
+  return (
+    <div data-testid="sync-strip" data-icon-w={w} data-still={allIn ? '1' : undefined} role="list" aria-label="Phone sync"
+      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px 10px', padding: '8px 12px 6px', background: T.panel, border: `1px solid ${T.line}`, marginBottom: 8 }}>
+      <style>{STRIP_CSS}</style>
+      {phones.map(p => <StripIcon key={p.id} p={p} w={w} labelRow={labelRow} crowded={crowded} endOpen={endOpen.has(p.id)} />)}
+      {stations.length > 0 && <span aria-hidden="true" style={{ alignSelf: 'stretch', width: 1, background: T.line2, margin: '0 4px' }} />}
+      {stations.map(st => <StripIcon key={st.id} st={st} w={w} labelRow={labelRow} />)}
+      {crowded && stalled.length > 0 && (
+        <div data-strip-stalled style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 6, color: T.warn, font: F.mono(700, 11), letterSpacing: '.06em' }}>
+          {Icon.clock(14)}<span>NO PROGRESS: {stalled.map(p => p.name).join(', ')}</span>
+        </div>
+      )}
+    </div>
+  );
+}
