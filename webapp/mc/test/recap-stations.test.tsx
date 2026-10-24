@@ -101,6 +101,22 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     m.unmount();
   });
 
+  it('a control station that has not synced is a diamond in the sync strip (the F401 line it replaced)', async () => {
+    const d = await demo();
+    const hill = { node_id: 'util-c0', kind: 'control' as const, id: 1, team: 3, heard: true, synced: false, owner: null };
+    const sync = { pending: true, finalised: false, result_changed: false, rows: [
+      { kind: 'phone', id: 'p1', name: 'ALPHA', team_id: 'blue', stage: 'received', transport: null, end_unconfirmed: false, idle_s: 0, stuck: false },
+      { kind: 'station', id: '1', name: 'CONTROL POINT 1', team_id: null, stage: 'unlinked', transport: null, end_unconfirmed: false, idle_s: 30, stuck: false }] };
+    const state: State = { ...d.state, phase: 'recap', recap: { ...recapWith([hill]), sync } as unknown as RecapView };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const icon = m.find('[data-strip-icon="1"][data-kind="station"]')[0];
+    expect(icon, 'the hill is an icon in the strip').toBeTruthy();
+    expect(icon.getAttribute('data-stage')).toBe('unlinked');
+    expect(icon.querySelector('[data-strip-unlinked]'), 'with the not-linked badge').toBeTruthy();
+    expect((m.find('[data-testid="waiting-for"]')[0].textContent ?? '').toUpperCase()).toContain('1 HILL');
+    m.unmount();
+  });
+
   it('a station heard again since the whistle shows no sync alert', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap',

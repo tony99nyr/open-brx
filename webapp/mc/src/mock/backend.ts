@@ -1208,7 +1208,8 @@ export class MockBackend implements Api {
     const unconfirmed = new Set((this.endDelivery()?.unconfirmed ?? []).map(u => u.player_id));
     const rows: RecapSyncRow[] = this.syncBase.map((b, i): RecapSyncRow => {
       const pl = this.players.find(p => p.player_id === b.player_id);
-      const linked = this.nodeConnected(b.node_id) && b.node_id !== this.demoQuietNodeId;
+      const never = demo && i === this.syncBase.length - 1;   // the demo's last phone is out of range for good, so FINALISE can be tried
+      const linked = this.nodeConnected(b.node_id) && b.node_id !== this.demoQuietNodeId && !never;
       const arrive = demo ? 6000 + i * 2500 : 0;   // when this phone's last fact lands
       const sendFrom = arrive - 4000;
       const stage: RecapSyncStage = !linked ? 'unlinked' : elapsed >= arrive ? 'received' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
@@ -1216,13 +1217,16 @@ export class MockBackend implements Api {
       const idle = stage === 'received' || stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
       const lost = demo && i === 2 ? 3 : 0;
       return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage,
-        transport: stage === 'unlinked' ? null : i % 4 === 1 ? 'cellular' : i % 4 === 3 ? 'backhaul' : 'wifi',
+        transport: stage === 'unlinked' ? null : demo && i % 4 === 1 ? 'cellular' : demo && i % 4 === 3 ? 'backhaul' : 'wifi',
         ...(pending ? { pending } : {}), ...(lost ? { lost } : {}),
         end_unconfirmed: unconfirmed.has(b.player_id),
         idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S };
     });
-    for (const st of recap.stations ?? []) {
-      const stage: RecapSyncStage = st.synced ? 'received' : this.nodeConnected(st.node_id) ? 'linked' : 'unlinked';
+    // Server rule (`_recap_sync`): only a CONTROL station holds the wait, and it is received only once it has sent its
+    // tally (a heartbeat since the whistle is `synced`, but it is not the result). Every other kind gets no row.
+    for (const st of (recap.stations ?? []).filter(x => x.kind === 'control')) {
+      const tallied = st.synced === true && (st.owner != null || (st.hold_ms != null && Object.keys(st.hold_ms).length > 0));
+      const stage: RecapSyncStage = tallied ? 'received' : this.nodeConnected(st.node_id) ? 'linked' : 'unlinked';
       const idle = stage === 'received' ? 0 : Math.floor(elapsed / 1000);
       rows.push({ kind: 'station', id: String(st.id), name: `${(STATION_KIND_LABEL as Record<string, string>)[st.kind] ?? st.kind.toUpperCase()} ${st.id}`,
         team_id: null, stage, transport: null, end_unconfirmed: false, idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S });

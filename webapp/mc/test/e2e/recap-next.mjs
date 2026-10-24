@@ -103,14 +103,15 @@ try {
     console.log(`\n[${c.step}] PLAY AGAIN ▸, clicked`);
     const before = await srv.get('/api/state');
     const btn = pg.getByRole('button', { name: 'PLAY AGAIN ▸' });
-    // F596: the demo phones are not in range, so the result is PENDING and PLAY AGAIN stays hidden until FINALISE (two taps)
-    if (await pg.locator('[data-testid="results-pending"]').count() === 1) {
-      c.expect(await btn.count() === 0, 'while results are pending there is NO PLAY AGAIN ▸');
-      await pg.locator('[data-testid="finalise"]').click();
-      c.expect((await pg.locator('[data-testid="finalise"]').innerText()).includes('TAP AGAIN'), 'the first tap only arms FINALISE');
-      await pg.locator('[data-testid="finalise"]').click();
-      await c.until(async () => (await btn.count()) === 1, 10000, 'FINALISE to release the result (PLAY AGAIN ▸ appears)');
-    }
+    // F596: the demo phones are not in range, so the result MUST be pending and PLAY AGAIN hidden until FINALISE (two taps).
+    // A hard check: if the pending header is absent this step fails, it does not skip.
+    c.expect(await pg.locator('[data-testid="results-pending"]').count() === 1, 'RECAP shows RESULTS PENDING while a phone is unsynced');
+    c.expect(await pg.locator('[data-testid="finalise"]').count() === 1, 'and offers FINALISE');
+    c.expect(await btn.count() === 0, 'while results are pending there is NO PLAY AGAIN ▸');
+    await pg.locator('[data-testid="finalise"]').click();
+    c.expect((await pg.locator('[data-testid="finalise"]').innerText()).includes('TAP AGAIN'), 'the first tap only arms FINALISE');
+    await pg.locator('[data-testid="finalise"]').click();
+    await c.until(async () => (await btn.count()) === 1, 10000, 'FINALISE to release the result (PLAY AGAIN ▸ appears)');
     c.expect(await btn.count() === 1, 'RECAP shows one PLAY AGAIN ▸ button');
     await btn.click();
     await c.until(async () => new URL(pg.url()).hash === '#build', 10000, 'the console to land on PLAY (#build)');

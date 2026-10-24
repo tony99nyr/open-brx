@@ -12,7 +12,7 @@ import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.ge
 import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
-import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, useSyncPhase } from './SyncStrip';
+import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, useSyncPhase, waitingLine } from './SyncStrip';
 import type { RecapSyncRow } from '../api/recapSync';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
@@ -167,6 +167,9 @@ export function Recap() {
   const unsynced = syncRows.filter(r => r.stage !== 'received');
   const stuckAny = unsynced.some(r => r.stuck);
   const allIn = syncRows.length > 0 && unsynced.length === 0;
+  const missPhones = unsynced.filter(r => r.kind === 'phone'), missHills = unsynced.filter(r => r.kind === 'station');
+  const finalWithout = [missPhones.length ? `${plural(missPhones.length, 'PHONE')} (${missPhones.map(r => r.name).join(', ')})` : '',
+    missHills.length ? `${plural(missHills.length, 'HILL')} (${missHills.map(r => r.name).join(', ')})` : ''].filter(Boolean).join(' AND ');
   const syncById = new Map(syncRows.filter(r => r.kind === 'phone').map(r => [r.id, r]));
   const syncCol = syncRows.length > 0 && !(allIn && phase === 'line');   // the column collapses with the strip
   const rosterIx = new Map(state.players.map((p, i) => [p.player_id, i]));
@@ -225,8 +228,8 @@ export function Recap() {
       {pendingResults ? (
         <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '8px 36px 8px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', marginBottom: 8 }}>
           <div data-testid="results-pending" style={{ font: F.osw(700, 30), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
-          <span aria-hidden="true" style={{ color: T.micro }}>·</span>
-          <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>WAITING FOR {plural(unsynced.length, 'PHONE')}</div>
+          {waitingLine(syncRows) && <span aria-hidden="true" style={{ color: T.micro }}>·</span>}
+          {waitingLine(syncRows) && <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(syncRows)}</div>}
           <span style={{ flex: 1 }} />
           <FinaliseButton prominent={stuckAny} onFinalise={async () => { await api.finaliseRecap(); }} />
         </Brackets>
@@ -238,7 +241,7 @@ export function Recap() {
           </div>
           {sync?.finalised && unsynced.length > 0 && (
             <div data-testid="final-without" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
-              FINAL WITHOUT {plural(unsynced.length, 'PHONE')} ({unsynced.map(r => r.name).join(', ')})
+              FINAL WITHOUT {finalWithout}
             </div>
           )}
           {sync?.result_changed && <div data-testid="result-changed" role="status" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.14em', color: T.warn }}>RESULT CHANGED</div>}
@@ -376,7 +379,7 @@ export function Recap() {
           </div>
         </div>
       </div>
-      <MedalLegend keys={recapKeys(rc)} />
+      {!pendingResults && <MedalLegend keys={recapKeys(rc)} />}
     </div>
     </EndAlertCtx.Provider>
   );

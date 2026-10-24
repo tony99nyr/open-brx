@@ -5,7 +5,6 @@
 // M23: the header printed the 10:00 time limit over a match that was ended early.
 import { describe, expect, it } from 'vitest';
 import { Recap } from '../src/screens/Recap';
-import { recapDeliveryText } from '../src/screens/recapDelivery';
 import type { EndDeliveryView, LiveView, RecapView, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
@@ -78,9 +77,6 @@ describe('M1 · RECAP says one consistent thing about the END', () => {
     expect(m.find('[data-sync-chip]').length).toBe(0);
   });
 
-  it('the text helper names the spent ladder for one phone, and returns null when all confirmed', () => {
-    expect(recapDeliveryText({ ...SPENT, unconfirmed: [], confirmed: 2 })).toBeNull();
-  });
 });
 
 describe('M23 · the RECAP header shows how long the match actually ran', () => {

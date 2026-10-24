@@ -53,6 +53,15 @@ for (const [name, fr] of frames) {
   log.push(`all-green-col-collapsed: ${JSON.stringify(await probe(p))}`);
   await p.close();
 }
+{ // the projector (SPECTATE) while pending: no winner, no score, no ranking
+  const p = await ctx.newPage();
+  await p.goto(`${base}/?mock&norandom=1&gallery=c#spectate`);
+  await p.waitForSelector('[data-spectate="pending"]', { timeout: 15000 });
+  await p.waitForTimeout(400);
+  await p.screenshot({ path: `${out}/spectate-pending.png` });
+  log.push(`spectate-pending: ${await p.evaluate(() => /WINS/.test(document.body.innerText))}`);
+  await p.close();
+}
 { // e, f: the two taps, then FINALISE released the result
   const p = await open('d', ctx);
   await p.click('[data-testid="finalise"]');

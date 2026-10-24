@@ -47,6 +47,9 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     // F596: the possession caveat sentences are gone from RECAP; the summed time itself is on the headline
     expect(m.find('[data-alert="recap-possession-sites"]').length).toBe(0);
     expect(strip(m.text())).not.toContain('HELD TIME ADDS UP');
+    // positive: what the page says instead is the numbers themselves, per team, in the possession panel
+    const panel = strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '');
+    expect(panel).toContain('1:35'); expect(panel).toContain('7:37');
     expect(strip(m.find('[data-testid="recap-headline"]')[0]?.textContent ?? ''), 'the summed time is on the same screen').toContain('7:37');
     m.unmount();
     m = await recap({}, { possession: HELD });
@@ -59,6 +62,7 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     let m = await recap(target, { possession: { ...HELD, by_team: { blue: 50, yellow: 70 }, sites: 2 } });
     expect(m.find('[data-alert="recap-possession-sites"]').length, 'F596: no sentence').toBe(0);
     expect(strip(m.text())).not.toContain('SUMMED ACROSS HILLS');
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? ''), 'positive: both teams\' held times are still shown').toMatch(/0:50.*1:10|1:10.*0:50/);
     m.unmount();
     m = await recap(target, { possession: HELD });
     expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('SUMMED ACROSS HILLS');
@@ -69,6 +73,7 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(m.find('[data-alert="recap-possession-station"]').length, 'F596: no station-counted sentence').toBe(0);
     expect(strip(m.text())).not.toContain('COUNTED ITS OWN HOLD TIME');
     expect(m.find('[data-alert="recap-possession-thin"]').length, 'no floor caveat').toBe(0);
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? ''), 'positive: the station-counted times are the ones on the bars').toContain('3:32');
     m.unmount();
     m = await recap({}, { possession: { ...HELD, sites: 2, station_sites: 1, phones_by_team: { yellow: 200 } } });
     expect(strip(m.text())).not.toContain('COUNTED THEIR OWN HOLD TIME');
@@ -84,6 +89,8 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     const m = await recap({}, { possession: { ...HELD, sites: 0, station_sites: 0 } });
     expect(m.find('[data-alert="recap-possession-thin"]').length, 'F596: sites 0 prints no caveat').toBe(0);
     expect(strip(m.text())).not.toContain('BEST COVERAGE');
+    expect(m.find('[data-testid="possession"]').length, 'positive: the panel still renders its bars').toBe(1);
+    expect(m.find('[data-poss-bar]').length).toBe(2);
     m.unmount();
   });
 

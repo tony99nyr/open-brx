@@ -248,6 +248,12 @@ describe('RECAP reads the A24 fields too', () => {
     expect(m.text()).not.toMatch(/AFTER THE WHISTLE/);
     expect(m.text()).not.toMatch(/RECORDED, NOT COUNTED/i);
     m.unmount();
+    // positive: what replaced it. A late arrival that flips the winner says RESULT CHANGED, once, under the winner.
+    const flipped = await recapScreen(recap({ after_end: { facts: 3, by_player: { p1: { kills: 1, deaths: 0 } } },
+      sync: { pending: false, finalised: true, result_changed: true, rows: [] } } as unknown as Partial<RecapView>));
+    expect(flipped.find('[data-testid="result-changed"]')[0]?.textContent).toBe('RESULT CHANGED');
+    expect(flipped.find('[data-testid="after-end"]').length).toBe(0);
+    flipped.unmount();
   });
 
   it('prints none of its words either, in singular or plural', async () => {

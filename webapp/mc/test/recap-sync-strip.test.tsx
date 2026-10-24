@@ -271,9 +271,9 @@ describe('F596 · no `sync` at all (an archived recap, an older MC): the page is
     m.unmount();
   });
 
-  it('a malformed `sync` (no rows array) is ignored rather than crashing the page', async () => {
+  it('a pending `sync` with no usable rows stays PENDING (the result is not shown) rather than crashing the page', async () => {
     const m = await recapOf({ pending: true });
-    expect(m.find('[data-testid="results-pending"]').length).toBe(0);
+    expect(m.find('[data-testid="results-pending"]').length).toBe(1);
     m.unmount();
   });
 });

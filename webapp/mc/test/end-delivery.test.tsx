@@ -132,6 +132,7 @@ describe('A42 · RECAP names it as a delivery fact, never as a score', () => {
     expect(m.find('[data-testid="end-delivery-recap"]').length).toBe(0);
     expect(strip(m.text())).not.toContain('CONFIRMED THE END');
     expect(m.find('[data-strip-end]').length).toBe(0);
+    expect(strip(m.find('[data-testid="all-synced"]')[0]?.textContent ?? ''), 'positive: the green line says every phone is in').toBe('2 OF 2 PHONES SYNCED');
   });
 
   it('renders nothing against a server that does not send it', async () => {

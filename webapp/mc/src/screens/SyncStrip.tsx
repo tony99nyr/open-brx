@@ -30,6 +30,17 @@ export const Icon = {
 };
 const TRANSPORT_ICON = { wifi: Icon.wifi, cellular: Icon.cellular, backhaul: Icon.backhaul } as const;
 const TRANSPORT_WORD = { wifi: 'Wi-Fi', cellular: 'cellular', backhaul: 'internet backhaul' } as const;
+/** An unknown transport (a newer server) draws nothing, rather than throwing on an undefined icon. */
+const transportIcon = (t: string | null | undefined, size: number) => (t && t in TRANSPORT_ICON ? TRANSPORT_ICON[t as keyof typeof TRANSPORT_ICON](size) : null);
+const transportWord = (t: string | null | undefined) => (t && t in TRANSPORT_WORD ? TRANSPORT_WORD[t as keyof typeof TRANSPORT_WORD] : null);
+
+/** The header's count: phones and hills apart ("WAITING FOR 2 PHONES · 1 HILL"). Empty when nothing is listed. */
+export function waitingLine(rows: RecapSyncRow[]): string {
+  const open = rows.filter(r => r.stage !== 'received');
+  const ph = open.filter(r => r.kind === 'phone').length, hills = open.filter(r => r.kind === 'station').length;
+  const parts = [ph ? plural(ph, 'PHONE') : '', hills ? plural(hills, 'HILL') : ''].filter(Boolean);
+  return parts.length ? `WAITING FOR ${parts.join(' · ')}` : '';
+}
 
 /** Which catalogue id colours the END flag: amber while MC still re-delivers, red once the ladder is spent (a gun that may still be live). */
 export const EndAlertCtx = createContext<'recap-end-delivery-retrying' | 'recap-end-delivery-spent'>('recap-end-delivery-retrying');
@@ -42,8 +53,8 @@ export function wordOf(r: RecapSyncRow): string {
   const end = r.end_unconfirmed ? ', END not confirmed' : '';
   const body = r.stage === 'received' ? 'received'
     : r.stage === 'unlinked' ? 'not linked'
-    : r.stage === 'sending' ? `sending${r.transport ? ` over ${TRANSPORT_WORD[r.transport]}` : ''}${r.pending ? `, ${r.pending} left to send` : ''}`
-    : `linked${r.transport ? ` over ${TRANSPORT_WORD[r.transport]}` : ''}, data not in yet`;
+    : r.stage === 'sending' ? `sending${transportWord(r.transport) ? ` over ${transportWord(r.transport)}` : ''}${r.pending ? `, ${r.pending} left to send` : ''}`
+    : `linked${transportWord(r.transport) ? ` over ${transportWord(r.transport)}` : ''}, data not in yet`;
   return `${r.name}: ${body}${lost}${end}${r.stuck ? ', no progress for a while' : ''}`;
 }
 
@@ -57,6 +68,7 @@ export const stripIconW = (n: number) => (n <= 16 ? 44 : n <= 32 ? 34 : 28);
 function PhoneShape({ r, w }: { r: RecapSyncRow; w: number }) {
   const h = Math.round(w * 52 / 44);
   const sending = r.stage === 'sending';
+  const moving = sending && !r.stuck;   // a stalled phone is not shown as moving
   const col = r.stage === 'received' ? T.ok : r.stage === 'unlinked' ? T.dim : sending ? colourOf('recap-sync-sending') : T.body;
   const dotCol = colourOf('recap-sync-sending');
   return (
@@ -65,7 +77,7 @@ function PhoneShape({ r, w }: { r: RecapSyncRow; w: number }) {
       <rect x="9" y="2" width="26" height="44" rx="5" />
       <path d="M19 6h6" strokeWidth="2" />
       {r.stage === 'received' && <path data-strip-tick d="M15 26l5.5 6L30 18" stroke={T.ok} strokeWidth="3.4" />}
-      {sending && <>
+      {moving && <>
         <rect className="sb-ring" x="9" y="2" width="26" height="44" rx="5" stroke={dotCol} strokeWidth="2" />
         <g data-strip-motion stroke="none" fill={dotCol}><circle className="sb-dot" cx="15" cy="27" r="2.6" /><circle className="sb-dot" cx="22" cy="27" r="2.6" /><circle className="sb-dot" cx="29" cy="27" r="2.6" /></g>
       </>}
@@ -94,11 +106,11 @@ function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; la
   const label = r.stuck && !crowded ? r.name : r.pending ? String(r.pending) : null;
   const title = wordOf(r);
   return (
-    <div data-strip-icon={r.id} data-kind={r.kind} data-stage={r.stage} data-stuck={r.stuck ? '1' : undefined}
+    <div role="listitem" data-strip-icon={r.id} data-kind={r.kind} data-stage={r.stage} data-stuck={r.stuck ? '1' : undefined}
       aria-label={title} title={title} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: w, flex: 'none' }}>
       <div style={{ position: 'relative', opacity: r.stuck ? 0.5 : 1 }}>
         {phone ? <PhoneShape r={r} w={w} /> : <StationShape r={r} w={w} />}
-        {r.stage !== 'received' && r.stage !== 'unlinked' && r.transport && badge({ right: -4, bottom: 0 }, T.body, TRANSPORT_ICON[r.transport](b - 2), 't', { 'data-strip-transport': r.transport })}
+        {r.stage !== 'received' && r.stage !== 'unlinked' && transportWord(r.transport) && badge({ right: -4, bottom: 0 }, T.body, transportIcon(r.transport, b - 2), 't', { 'data-strip-transport': r.transport as string })}
         {r.stage === 'unlinked' && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
         {r.end_unconfirmed && badge({ left: -4, top: 0 }, colourOf(endId), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
         {!!r.lost && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
@@ -150,13 +162,15 @@ export function SyncStrip({ rows, phase }: { rows: RecapSyncRow[]; phase: SyncPh
   const stalled = rows.filter(r => r.stuck);
   const labelRow = rows.some(r => (r.stuck && !crowded) || r.pending);
   return (
-    <div data-testid="sync-strip" data-icon-w={w} data-still={allIn ? '1' : undefined} role="list" aria-label="Phone sync"
-      style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px 10px', padding: '8px 12px 6px', background: T.panel, border: `1px solid ${T.line}`, marginBottom: 8 }}>
+    <div data-testid="sync-strip" data-icon-w={w} data-still={allIn ? '1' : undefined}
+      style={{ padding: '8px 12px 6px', background: T.panel, border: `1px solid ${T.line}`, marginBottom: 8 }}>
+      <div role="list" aria-label="Phone sync" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px 10px' }}>
       {phones.map(r => <StripIcon key={r.id} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
       {stations.length > 0 && <span aria-hidden="true" style={{ alignSelf: 'stretch', width: 1, background: T.line2, margin: '0 4px' }} />}
       {stations.map(r => <StripIcon key={r.id} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
+      </div>
       {crowded && stalled.length > 0 && (
-        <div data-strip-stalled style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: 6, color: T.warn, font: F.mono(700, 11), letterSpacing: '.06em' }}>
+        <div data-strip-stalled style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, color: T.warn, font: F.mono(700, 11), letterSpacing: '.06em' }}>
           {Icon.clock(14)}<span>NO PROGRESS: {stalled.map(r => r.name).join(', ')}</span>
         </div>
       )}
@@ -172,7 +186,7 @@ export function SyncCell({ r }: { r: RecapSyncRow }) {
   return (
     <span data-sync-cell={r.id} data-stage={r.stage} title={wordOf(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       {r.stage === 'unlinked' && c(colourOf('recap-sync-outofrange'), Icon.unlinked(16), 'u')}
-      {(r.stage === 'linked' || r.stage === 'sending') && r.transport && c(T.body, TRANSPORT_ICON[r.transport](16), 't')}
+      {(r.stage === 'linked' || r.stage === 'sending') && transportWord(r.transport) && c(T.body, transportIcon(r.transport, 16), 't')}
       {r.stage === 'sending' && c(send, <>{Icon.sending(16)}{!!r.pending && <span data-sync-num style={{ font: F.mono(700, 12) }}>{r.pending}</span>}</>, 's')}
       {r.stage === 'received' && c(T.ok, Icon.check(16), 'c')}
       {!!r.lost && c(T.warn, <span data-sync-lost>{Icon.warn(16)}</span>, 'w')}
