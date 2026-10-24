@@ -49,8 +49,9 @@ Phase B (2026-10-24) is done: no one-field set passes; Tony's three calls are F5
 F576 (2026-10-24): compile publishes the field fight interval for single-shot weapons, from one constant the sims
 import; Tony set the Shotgun's band floor to 0.85 s and tests "pistols weak" on the R10b duel. F579: the duel engine
 runs at field pace too, with USP damage 10 and the Shotgun gun word 19 (Tony's calls, `docs/balance-decisions.md`).
-**Next:** the F538 and Shotgun headset-reach bench rows (the rig's ack check, desk half done). The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
-(F574 may fix the cause first).
+**Next:** the 0.4.26 bench sheet [`bench-0426.md`](bench-0426.md) (2026-10-25): it carries the Shotgun headset reach,
+the 2.2 s bolt and the CR heat-while-firing rows. F538's rig ack check stays in `~/reviews-2026-10-17/bench.md`. F512
+again once F574 has a cause.
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
