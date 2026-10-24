@@ -98,6 +98,8 @@ test('F563: within 30 s of a cellular kick that dialled, every kick but Wi-Fi wa
   assert.equal(kickHeld('cellular', 10000, cell), true);
   assert.equal(kickHeld('online', 10000, cell), true, 'the webview online event does not slip past the cellular gap');
   assert.equal(kickHeld('wifi', 10000, cell), false, 'Wi-Fi coming back always dials');
+  assert.equal(kickHeld('wifi', 400, cell), false, 'F588: even inside the 1 s coalesce, Wi-Fi after cellular is a new transition');
+  assert.equal(kickHeld('wifi', 400, { at: 0, why: 'wifi' }), true, 'a doubled Wi-Fi event still coalesces');
   assert.equal(kickHeld('cellular', 30000, cell), false);
   const wifi = { at: 0, why: 'wifi' };
   assert.equal(kickHeld('online', 500, wifi), true, 'the doubled event');
