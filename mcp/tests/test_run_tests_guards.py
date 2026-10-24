@@ -94,6 +94,18 @@ def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
     assert spawns == ["baseEnv"], spawns
 
 
+def test_test_all_jobs_never_inherit_the_wayland_display():
+    # 2026-10-24: a stalled WSLg compositor hung every headless Chromium page.screenshot ("waiting for fonts to load")
+    # while WAYLAND_DISPLAY was set, so every browser gate timed out. A headless browser never needs a display.
+    if shutil.which("node") is None:
+        from _skip import needs
+        needs(False, "node")
+    script = ("import { stripDebugEnv } from './scripts/lib/jobenv.mjs';"
+              "console.log(JSON.stringify(stripDebugEnv({ WAYLAND_DISPLAY: 'wayland-0', DISPLAY: ':0', PATH: 'p' })));")
+    got = run_node_json(script, cwd=REPO)
+    assert got["env"] == {"DISPLAY": ":0", "PATH": "p"} and got["dropped"] == [], got
+
+
 def test_every_ci_job_has_a_time_limit():
     for wf in sorted((REPO / ".github" / "workflows").glob("*.yml")):
         lines = wf.read_text().splitlines()
