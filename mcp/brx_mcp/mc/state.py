@@ -1154,8 +1154,8 @@ class Session:
         An empty pool blocks the push either way, but the operator has to be sent to the control that is actually
         wrong. A single "clear a class or id exclusion" line sent them to the class chips no matter what emptied the
         pool, including a `fixed_id` naming a weapon this game's catalog does not contain, where there are no
-        exclusions to clear at all (round-2 review 2026-09-12). The `kinds` case never reaches here: `policy()` heals
-        it. F594 (brx1 2026-10-24): the secondary is refused the same way. The console already greys CONTINUE for it
+        exclusions to clear at all (round-2 review 2026-09-12). The primary's `kinds` case never reaches here: `policy()`
+        heals it. F594 (brx1 2026-10-24): the secondary is refused the same way. The console already greys CONTINUE for it
         (`gameSummary.ts emptyRequiredSlots`); any other push path went through and `policy.apply` dropped the
         secondary silently.
         """

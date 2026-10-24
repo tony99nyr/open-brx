@@ -183,3 +183,19 @@ def test_a_slot_fixed_to_a_weapon_it_cannot_hold_says_so_not_clear_an_exclusion(
     s._validate()
     said = [e for e in s.config_errors if "PRIMARY" in e]
     assert said and "CANNOT GO IN THE PRIMARY SLOT" in said[0] and "EXCLUSION" not in said[0], said
+
+
+def test_a_secondary_fixed_to_a_pickup_only_weapon_is_refused_at_the_push_naming_the_weapon():
+    """F594 review: the only path to the fixed-slot wording on the secondary; and the push itself refuses, forced too."""
+    s, net, clock, ps = _real()
+    pickup = next(w for w in s._catalog_rows()[0] if w.get("pickup_only"))
+    pol = s.policy()
+    pol["secondary"] = {**pol["secondary"], "choice": "fixed", "fixed_id": pickup["weapon_id"]}
+    s.set_config({"loadout_policy": pol})
+    said = _secondary_errors(s)
+    assert said and pickup["name"].upper() in said[0] and "CANNOT GO IN THE SECONDARY SLOT" in said[0], s.config_errors
+    try:
+        s.push_config(force=True)
+        raise AssertionError("an empty secondary pool must refuse even a forced push")
+    except ValueError as e:
+        assert "SECONDARY" in str(e), e
