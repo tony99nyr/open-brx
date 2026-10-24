@@ -288,7 +288,7 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
   7 m 4/5, 10 m 0/5). The Shotgun headset word (t12 20 at t13 100) reached it to about 10 m and was gone by 13 m. Both
   are INCONCLUSIVE for victim range. Measure both with a second gun and headset as the target (or the IR rig), 5 strikes
   per mark, with a fabric control. Links F567 (melee t2 60 ladder) and the F579 headset-reach caveat (Shotgun gun word 19,
-  headset word at t13 100). `bench`.
+  headset word at t13 100). The range-token sweep (log item 6) found no usable effect of t2 or t13 on reach at 3 to 7 m as the U002 hears it, so F567's premise (a lower t2 cuts melee reach) is not supported by the proxy; the victim-headset cutoff is still open. `bench`.
 
 - **F275 🟠 AT WHAT `t13` VALUE DOES THE HEADSET WORD (t12) STOP ARRIVING? IT UNLOCKS THE WHOLE CLOSE-RANGE
   WEAPON CLASS.** 2026-09-18: the Shotgun/Plasma Sniper/Rocket Launcher's second IR word ships with
