@@ -1796,9 +1796,9 @@ def reset_frames() -> list[str]:
     try:
         return arm_plan().end
     except Exception as e:  # noqa: BLE001 — never let the recovery tool depend on the compiler
-        from .gameconfig import _SIR_TABLE, END_SEQUENCE
+        from .gameconfig import end_hittable
         print(f"(MC's compile failed, {type(e).__name__}: {e}; using the fixed $SIR table)", file=sys.stderr)
-        return [*END_SEQUENCE, *_SIR_TABLE]
+        return end_hittable()
 
 
 async def _reset(address: str) -> None:

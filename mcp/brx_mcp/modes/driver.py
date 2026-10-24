@@ -20,7 +20,7 @@ import time
 from typing import Awaitable, Callable, Optional
 
 from .. import sounds as snd
-from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, END_SEQUENCE
+from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, end_hittable
 from .. import poolgauge as pg
 from . import hillbeacon
 from .base import (
@@ -479,7 +479,14 @@ class GameDriver:
                 t.cancel()
         self._bursts.clear()
         for pid in self.players:
-            for f in END_SEQUENCE:
+            # F539: end hittable, with the gun's own $SIR table after the $CLEAR (F11)
+            try:
+                rows = [f for f in self.config.setup_frames(self.player_ids[pid], team=int(self.players[pid]))
+                        if f.startswith("$SIR,")] or None
+            except Exception as e:  # noqa: BLE001 — the end must still go out; the base table is hittable too
+                self.announce(f"⚠ {pid}: setup_frames failed ({type(e).__name__}: {e}); ending on the base $SIR table")
+                rows = None
+            for f in end_hittable(rows):
                 await self._send(pid, f)
 
     def feed(self, player_id: str, ev: dict, now: float) -> list[Action]:

@@ -402,6 +402,14 @@ RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
 END_SEQUENCE = ("$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*",
                 "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*")
 
+
+def end_hittable(sir_rows=None) -> list[str]:
+    """END_SEQUENCE, then a `$SIR` table: the end for a bench or CLI tool (F539). MC's own match end stays
+    END_SEQUENCE (the gun is inert until the next match arms it), but a bench run must never sign off on a
+    bare `$CLEAR` (F11), or the next run finds a gun that ignores every hit. `sir_rows` is the table the gun
+    was armed with; None is the base table."""
+    return [*END_SEQUENCE, *(_SIR_TABLE if sir_rows is None else sir_rows)]
+
 # on-gun volume 1–5 → $VOL (Tony's field-tested estimate), for the operator UI.
 VOLUME_LEVELS = {1: 60, 2: 70, 3: 80, 4: 90, 5: 100}
 
