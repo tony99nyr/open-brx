@@ -676,9 +676,19 @@ export class BrxLink {
   }
 
   /** F563 review: a resting reconnect loop (it stopped outside a match to save the battery) starts again on a match
-   *  arming, an app resume or Bluetooth coming back, without the player tapping. A running loop is left alone. */
+   *  arming, an app resume or Bluetooth coming back, without the player tapping. F563 r2 (brx3 review): a loop that is
+   *  running but asleep in a lobby wait (a quiet period up to QUIET_MAX_MS, or a 60 s retry gap) is cut to the in-match
+   *  wait once a match is on, and woken. Outside a match a running loop is left alone. */
   resumeReconnect(why) {
-    if (!this.deviceId || this.connected || this._reconnecting) return false;
+    if (!this.deviceId || this.connected) return false;
+    if (this._reconnecting) {
+      if (!this.unbounded()) return false;
+      const cap = this.now() + this.quietMs;
+      if (this._flapNextAt > cap) this._setFlap(this._flapStreak, cap);   // the loop re-reads the wait when woken
+      this._log(`reconnect: lobby wait cut short (${why})`, 'li');
+      if (this._wake) this._wake();
+      return true;
+    }
     this._log(`reconnect: starting again (${why})`, 'li');
     this._reconnect();
     return true;

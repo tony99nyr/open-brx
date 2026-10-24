@@ -233,6 +233,25 @@ test('F563 review: a resting loop starts again on resumeReconnect (a match armin
   await step(3000);
   assert.ok(r.attempts.A > tries && r.link.connected, 'the gun relinks with no tap');
 });
+// F563 r2 (brx3 review, 2026-10-24, P1): a loop already asleep in a lobby quiet period (up to 5 min) ignored a match
+// arming, because resumeReconnect left a running loop alone. Arming must cut the wait to the in-match QUIET_MS.
+test('F563 r2: a match arming cuts a running loop\'s lobby quiet wait to the in-match one', async ctx => {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  const step = async ms => { for (let t = 0; t < ms; t += 50) { ctx.mock.timers.tick(50); for (let k = 0; k < 6; k++) await new Promise(r => setImmediate(r)); } };
+  let inMatch = false;
+  const r = flapRig({ ...SCALED, unbounded: () => inMatch });
+  await r.link.connect('A', 'GUN-A-1111');
+  r.link._flapStreak = 6; r.link._upAt = r.link.now();   // six lobby flaps already: the 7th waits the doubled quiet (4000 ms here)
+  const before = r.attempts.A;
+  r.cb.A();
+  await step(100);
+  assert.equal(r.attempts.A, before, 'the loop is asleep in the lobby quiet period');
+  inMatch = true;
+  assert.equal(r.link.resumeReconnect('match armed'), true, 'the arming reached the running loop');
+  await step(SCALED.quietMs + 200);
+  assert.ok(r.attempts.A > before, `a connect inside the in-match quiet: ${r.attempts.A - before} attempts`);
+  inMatch = false;
+});
 for (const inMatch of [true, false]) {
   test(`F563 review: the 7th flap in a row waits ${inMatch ? 'QUIET_MS in a match' : 'the doubled quiet period outside one'}`, ctx => {
     // A mocked clock: on the real one a millisecond tick between the two now() reads gave 399 (2026-10-24).
