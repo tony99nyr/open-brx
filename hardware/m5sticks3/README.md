@@ -430,6 +430,8 @@ or similar); the firmware enables an internal pull-up on that pin, because the r
 enough that the Stick's pin state can drag it low. A VS1838B wired this way, sharing 3.3 V power with another
 receiver already on the bench, decoded 3 of 3 real gun shots at 1 m as whole 25-bit words.
 
+**M5Stack Unit IR (U002), bench 2026-10-24.** On the StickS3 Grove port the U002 sends on G9 (`TXPIN 9`) and receives on G10 (`RXPIN 10`). `TXPIN 10` gave 0 bursts to the rig receiver at 30 cm, `TXPIN 9` gave 10/10. Unlike the onboard receiver, the U002 receiver decodes real BRX gun shots: 30/30 words at 1, 2 and 3 m, with fabric over the receiver giving 0.
+
 Safe standalone wiring (not yet built): power the VS1838B's VCC from a Grove pin driven HIGH at 3.3 V (the part
 draws about 1 mA and runs on 2.7-5.5 V), OUT to the Grove RX pin with the internal pull-up, GND to the Grove
 black wire. Leave the Grove port's red 5 V wire unused. **Warning: never power a VS1838B from the Grove port's
