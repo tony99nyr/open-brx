@@ -256,6 +256,8 @@ export class MockBackend implements Api {
     return this.demoCured && f !== 'noecho' ? undefined : f;
   }
   private demoCured = false;
+  /** F586: guns whose headset an echo already proved (state.py `ack_config` sets `headset = 'proven'`); a later no_config keeps it. */
+  private echoedGuns = new Set<string>();
 
   /** The `ack_config` this player's phone answers a push with — ONE place, so the initial push and
    *  the A35 re-push after a config edit cannot drift apart (and so the `?mock&faults=1` states are
@@ -281,6 +283,7 @@ export class MockBackend implements Api {
       case 'noconfig': ack = { ok: false, err: 'no_config', config_id: cfgId }; break;   // F549: the phone's own ack
       default: ack = { ok: true, gun_echo: echo, config_id: cfgId };
     }
+    if (p.gun_id && ack.ok && ack.gun_echo) this.echoedGuns.add(p.gun_id);   // F586: the server keeps `nodes[nid].headset = 'proven'`
     // The server serialises a clear error as null. The generated LobbyAck type still omits null.
     return { err: null, ...ack } as unknown as State['lobby']['acks'][string];   // F549: an ack's own err (no_config) wins
   }
@@ -910,7 +913,9 @@ export class MockBackend implements Api {
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET CONFIRMING (LINK 4 S)');
       // F549: a no_config ack proves nothing by echo; the link still stands (state.py leaves the headset to it)
-      const proof = red || confirming || flapping ? null : this.pushed && this.faultOf(sticker) !== 'noconfig' ? 'echo' as const : 'link' as const;
+      // F586: ...unless an earlier echo already proved the headset, which `_readiness_headset` reads first
+      const proof = red || confirming || flapping ? null
+        : this.pushed && (this.faultOf(sticker) !== 'noconfig' || this.echoedGuns.has(sticker)) ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and
@@ -1484,7 +1489,7 @@ export class MockBackend implements Api {
     // needs a FULL fresh head push (A36), which is also what makes that push a first push rather
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
     // and with a re-push now being a distinct action that difference is visible.
-    this.pushed = false; this.acks = {};
+    this.pushed = false; this.acks = {}; this.echoedGuns.clear();
     for (const player of this.players) player.ready = false;
     this.gameLoaded = false; this.gameCfg = null; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
     const rows: ScoreRow[] = l.rows.map(r => {
@@ -2236,9 +2241,9 @@ export class MockBackend implements Api {
       this.gameCfg = this.config.config_id;
       this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, this.config.config_id]));
     }
-    if (this.pushed && errors.length) { this.pushed = false; this.acks = {}; }
+    if (this.pushed && errors.length) { this.pushed = false; this.acks = {}; this.echoedGuns.clear(); }
     else if (this.pushed) {
-      this.acks = {};
+      this.acks = {}; this.echoedGuns.clear();
       const cfgId = this.config.config_id;
       setTimeout(() => {
         if (!this.pushed || this.config.config_id !== cfgId) return;   // recalled, or superseded by a newer edit
@@ -2603,7 +2608,7 @@ export class MockBackend implements Api {
     // echoing its weapon, and no number of pushes changes that (webapp/mc/README.md → demo switches).
     if (repushed) this.demoCured = true;
     for (const n of Object.keys(this.stations)) this.armStation(n);
-    this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {};
+    this.setPhaseField('lobby'); this.pushed = true; this.trying = {}; this.acks = {}; this.echoedGuns.clear();
     this.cachedCompilerResult = undefined; // state.py push_config validates before sending.
     // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
     // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
@@ -2701,7 +2706,7 @@ export class MockBackend implements Api {
     // mock used to go back to LOBBY whenever a config head had been pushed, so a recall in `?mock`
     // ended somewhere a recall on a real MC never does.
     this.recordRetired(this.start_?.match_id ?? this.live_?.match_id);
-    this.start_ = undefined; this.live_ = undefined; this.setPhaseField('kit'); this.pushed = false; this.acks = {}; this.endedAt = undefined;
+    this.start_ = undefined; this.live_ = undefined; this.setPhaseField('kit'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.endedAt = undefined;
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
@@ -2777,7 +2782,7 @@ export class MockBackend implements Api {
   async newSession(keep_roster: boolean) {
     const rolling = keep_roster && this.phase === 'recap';
     if (this.phase === 'armed' || this.phase === 'live') this.recordRetired(this.start_?.match_id ?? this.live_?.match_id);
-    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
+    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     if (!rolling) for (const report of Object.values(this.nodeReports)) delete report.end;
     if (!rolling) this.endDeliveryTold = undefined;
     if (!rolling) this.staleTold.clear();
