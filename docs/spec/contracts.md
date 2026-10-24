@@ -871,19 +871,22 @@ MC was started with `--public-url` must present the secret. The secret is readab
 by anyone on the LAN via `GET /api/state`, deliberately: the LAN is already the trust boundary (§5b); the secret's
 one job is keeping internet strangers off the node socket.
 
-**A28.3 Reach policy on the node — the LAN is primary, backhaul is the FALLBACK.** The Transport holds `{ url, pub }`.
-Every dial pass starts on **`url`**. A LAN attempt that fails before a welcome (`LAN_GIVEUP_MS = 8000` with no
-event, a socket that cannot be created, or a close other than a 4001/4003 refusal) falls straight to `pub`, when
-one is held and the dial is not an A60 verify dial, with no backoff consumed. A `pub` attempt that fails before a
-welcome (`BACKHAUL_GIVEUP_MS = 8000`, or an error or close) ends the pass: offline, then the normal reconnect
-backoff, and the next pass starts on the LAN again. A 4001/4003 over either leg is terminal. While bound on the LAN
-the node **never probes `pub` and never drops the LAN for it**; a phone riding `pub` stays there until that socket
-drops, and its next pass is LAN first. `join {pub:null}` while on `pub` still drops to the LAN. With no `pub` the
-loop is exactly the plain LAN loop. Rationale (F595, 2026-10-24, replacing the 2026-09-12 pub-first rule and its
-30 s `PUB_RETRY_MS` probe): MC now starts its tunnel during kit and pushes `join.pub` to every phone, so a pub-first
-ladder would move every phone's redial into the config-ack window, and a Wi-Fi-only phone (no data plan) cannot
-reach `pub` at all. The ring covers the gap of any switch. Coverage stays **observed** (A28.4): a phone is counted
-on backhaul only while it actually rides the tunnel, which now means it lost the LAN. Traffic is tiny (a status every `STATUS_HEARTBEAT_MS` plus events, well under 1 MB/h) and the added
+**A28.3 Reach policy on the node: the LAN is primary, backhaul is the FALLBACK.** The Transport holds `{ url, pub }`.
+Every dial pass starts on **`url`**. A LAN attempt fails when it gets no welcome. That covers four cases: no event
+within `LAN_GIVEUP_MS = 8000`, a socket that cannot be created, a close other than a 4001/4003 refusal, and an open
+socket with no welcome within the 5 s hello timeout (`helloTimeoutMs`). After a LAN failure the node dials `pub` at
+once, with no backoff consumed. It does so only when it holds a `pub` and the dial is not an A60 verify dial. A `pub`
+attempt fails the same way, with `BACKHAUL_GIVEUP_MS = 8000` as its bound. A `pub` failure ends the pass: the node
+goes offline, waits the normal reconnect backoff, and starts the next pass on the LAN. A 4001/4003 over either leg
+is terminal. With a `pub` held, the `connect()` deadline is at least `LAN_GIVEUP_MS + BACKHAUL_GIVEUP_MS + 2000`, so
+a cold start off the Wi-Fi does not reject a dial that is about to bind. While bound on the LAN the node **never
+probes `pub` and never drops the LAN for it**. A phone riding `pub` stays there until that socket drops, and its
+next pass is LAN first. `join {pub:null}` while on `pub` still drops to the LAN. With no `pub` the loop is the plain
+LAN loop. This rule replaced the 2026-09-12 pub-first rule and its 30 s `PUB_RETRY_MS` probe (F595, 2026-10-24).
+The reason: MC now starts its tunnel during kit and pushes `join.pub` to every phone. A pub-first ladder would move
+every phone's redial into the config-ack window, and a Wi-Fi-only phone (no data plan) cannot reach `pub` at all.
+The ring covers the gap of any switch. Coverage stays **observed** (A28.4): a phone is on backhaul only while it
+actually rides the tunnel, which now means it lost the LAN. Traffic is tiny (a status every `STATUS_HEARTBEAT_MS` plus events, well under 1 MB/h) and the added
 round trip through the tunnel edge touches nothing time-critical (§7 start/end are pre-shared; feedback is
 best-effort). `status.reach: "lan"|"backhaul"` reports the live socket's path as the phone sees it, but **MC stamps `NodeView.reach`
 itself from the socket's arrival path** (the same test as the secret gate) and never from the claim: coverage and the

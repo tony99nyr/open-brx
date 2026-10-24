@@ -291,9 +291,17 @@ export class Transport {
       this._firstWelcome = { resolve, reject };
       // Armed BEFORE the dial: `_open()` can reach a close handler synchronously, and a handler that
       // re-arms this timeout (the reclaim retry below) would otherwise have its timer overwritten here.
-      this._armConnectTimeout(this.welcomeTimeoutMs);
+      this._armConnectTimeout(this._connectDeadlineMs());
       this._open();
     });
+  }
+  /** F595 review: with a pub held, a cold start off the Wi-Fi spends the whole LAN giveup before it dials
+   *  pub, so the plain welcome window (10 s) would reject a connect() the loop binds a moment later.
+   *  Give that ladder its full length: the LAN giveup, the pub giveup and 2 s of slack. A verify dial
+   *  never dials pub, so it keeps the plain window. @returns {number} */
+  _connectDeadlineMs() {
+    if (!this.pub || this.verify) return this.welcomeTimeoutMs;
+    return Math.max(this.welcomeTimeoutMs, this.lanGiveupMs + this.backhaulGiveupMs + 2000);
   }
   /** Arm (or re-arm, from `ms` NOW) the deadline that rejects the pending connect() when no welcome ever
    *  arrives. The reconnect loop keeps running either way — this only settles the promise the caller is
@@ -412,8 +420,8 @@ export class Transport {
   /** F153c: "the network just came back" -- the platform told the app connectivity changed (app.js wires
    *  Capacitor's Network plugin to this), or the player asked for it by hand. Whatever we are sitting on
    *  is worthless now: a backoff timer counting down, or a dial hanging on an address that had no route
-   *  while the radio was down. Drop it, reset the backoff, and dial from the TOP of the ladder (pub
-   *  first) this instant. A pending connect() promise is kept -- this IS that dial, restarted.
+   *  while the radio was down. Drop it, reset the backoff, and dial from the TOP of the ladder (the
+   *  LAN first, F595) this instant. A pending connect() promise is kept -- this IS that dial, restarted.
    *  No-op while there is a live link (open/bound), or once MC refused us / we were closed.
    *  @returns {boolean} whether a dial was actually kicked */
   dialNow() {

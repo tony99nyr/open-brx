@@ -131,8 +131,10 @@ the phones. This is optional, and a match never depends on it.
    TURN ON, and you can go on to PLAY while the link starts.
 3. The join QR now carries both addresses. New phones scan it as always. Phones that already joined over
    Wi-Fi pick the internet address up by themselves; nobody rescans.
-4. In the **Lobby**, each row shows LAN or BACKHAUL, and the header says how many phones are on backhaul. A
-   phone on backhaul keeps getting kill confirms, score and the result anywhere it has signal. The chip
+4. In the **Lobby**, each row shows LAN or BACKHAUL, and the header says how many phones are on backhaul.
+   Phones stay on the field Wi-Fi while it works. A phone uses the internet address only after it loses the
+   Wi-Fi, so every row reads LAN until then. A phone on backhaul keeps getting kill confirms, score and the
+   result anywhere it has signal. The chip
    also says how many of those are on mobile data. Only a phone on backhaul AND on mobile data counts as
    covered; when every phone is, the score-cap and last-one-standing ends reach every phone that keeps its signal.
 

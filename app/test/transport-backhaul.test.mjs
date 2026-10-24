@@ -92,6 +92,66 @@ test('A28.3 (F595): a LAN socket factory that throws falls to pub right away', a
   t.close();
 });
 
+test('A28.3 (F595): a LAN socket that opens but never welcomes gives up at helloTimeoutMs and dials pub at once', async ctx => {
+  const advance = useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1000, capMs: 2000, jitter: 0 }, lanGiveupMs: 5000, helloTimeoutMs: 20, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  sockets[0].open();   // the upgrade completes, and then nothing: a captive or wedged LAN
+  assert.equal(sockets[0].sent[0].body.via, 'lan');
+  await advance(19);
+  assert.equal(sockets.length, 1, 'still waiting on the LAN welcome');
+  await advance(1);    // helloTimeoutMs
+  assert.equal(sockets.length, 2, 'the missing welcome counts as a LAN failure'); assert.equal(sockets[1].url, 'wss://pub/ws');
+  assert.equal(t.reconnects, 0, 'no backoff consumed');
+  sockets[1].open(); sockets[1].recv(welcome());
+  await p;
+  assert.equal(t.reach, 'backhaul');
+  t.close();
+});
+
+test('A28.3 (F595): a cold start off the Wi-Fi resolves when pub welcomes after the LAN giveup, past welcomeTimeoutMs', async ctx => {
+  const advance = useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  // the real values: LAN giveup 8 s, then the tunnel dial; the plain welcome window is 10 s
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1000, capMs: 2000, jitter: 0 }, lanGiveupMs: 8000, backhaulGiveupMs: 8000, welcomeTimeoutMs: 10000 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  let settled = null;
+  p.then(() => { settled = 'resolved'; }, e => { settled = e.message; });
+  // the LAN address has no route: no event at all
+  for (let i = 0; i < 8; i++) { ctx.mock.timers.tick(1000); await flush(); }
+  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'wss://pub/ws');
+  for (let i = 0; i < 4; i++) { ctx.mock.timers.tick(500); await flush(); }   // 10 s: the old deadline passes
+  sockets[1].open();
+  ctx.mock.timers.tick(500); await flush();                                  // the tunnel welcomes at 10.5 s
+  sockets[1].recv(welcome());
+  await flush();
+  assert.equal(settled, 'resolved', 'the connect() deadline covers the LAN giveup plus a pub dial');
+  assert.equal(t.reach, 'backhaul');
+  t.close();
+});
+
+test('A28.3 (F595): dialNow() while bound on pub does nothing; the phone stays on pub until that socket drops', async ctx => {
+  useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  sockets[0].close(1006, 'no route');   // LAN fails -> pub
+  sockets[1].open(); sockets[1].recv(welcome());
+  await p;
+  assert.equal(t.reach, 'backhaul');
+  assert.equal(t.dialNow(), false, 'the Wi-Fi came back, but a live pub link is not dropped for it');
+  assert.equal(sockets.length, 2, 'no LAN dial');
+  assert.equal(t._ws, sockets[1]); assert.equal(t.state, 'bound');
+  t.close();
+});
+
 test('A28.3 (F595): a pub attempt that fails before welcome ends the pass, and the next pass is LAN first', async ctx => {
   const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
