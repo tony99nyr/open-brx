@@ -843,6 +843,8 @@ def main(argv=None):
         print(_rule, flush=True)
     if not session.powerups_enabled:
         print("  POWERUPS OFF (--no-powerups): powerup stations will not carry an item", flush=True)
+    from . import keepawake
+    keepawake.start(ephemeral=args.ephemeral)   # F595: macOS only; the Mac must not sleep through a whistle
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
         # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).
