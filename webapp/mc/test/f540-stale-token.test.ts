@@ -137,3 +137,25 @@ describe('F540: a WebSocket MC refuses does not flicker the link', () => {
     stop();
   });
 });
+
+describe('F586 review: a redial for a new token is not undone by the old socket closing late', () => {
+  const realWs = globalThis.WebSocket;
+  afterEach(() => { globalThis.WebSocket = realWs; FakeWs.made = []; });
+
+  it('the old live socket closing after the new one is up leaves the link up', () => {
+    globalThis.WebSocket = FakeWs as unknown as typeof WebSocket;
+    const link: boolean[] = [], onLink = (up: boolean) => link.push(up);
+    const stopOld = createHttpApi().subscribe(() => {}, () => {}, onLink);
+    const old = FakeWs.made.at(-1)!;
+    old.onopen?.(); old.onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: { text: 'x' } }) });
+    stopOld();                                                         // the store resubscribes for the new token
+    createHttpApi().subscribe(() => {}, () => {}, onLink);
+    const now = FakeWs.made.at(-1)!;
+    now.onopen?.(); now.onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: { text: 'y' } }) });
+    old.onclose?.({ code: 1000 });                                     // the browser reports the old close late
+    expect(link.at(-1), 'the new socket is the live one').toBe(true);
+    // control: a live socket that drops while its subscription is open still reports the link down
+    now.onclose?.({ code: 1006 });
+    expect(link.at(-1)).toBe(false);
+  });
+});

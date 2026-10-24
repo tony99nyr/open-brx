@@ -160,7 +160,7 @@ export function createHttpApi(): Api {
         };
         ws.onopen = () => { opened = true; };
         ws.onclose = ev => {
-          if (live) onLink?.(false);
+          if (live && !closed) onLink?.(false);   // F586 review: a closed subscription's socket closing late (a redial for a new token) must not mark the new link down
           if (ev.code === 4401 || ev.code === 1008) notifyAuth(true);     // server refused the token
           else if (!opened && !closed) {
             // Handshake refused before open (browsers report 1006): if the HTTP API answers, the server is up and
