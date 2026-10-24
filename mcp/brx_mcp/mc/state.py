@@ -4234,6 +4234,8 @@ class Session:
         mid, go, seq = head["match_id"], head["go_live_t"], head["seq"]
         self.config = cast(GameConfig, cfg)
         self.config["health"] = _compile.normalize_health(self.config.get("health"))   # S45: same legacy fill as restore_snapshot()
+        if self.config.get("environment") not in ("indoor", "outdoor"):
+            self.config["environment"] = "outdoor"         # F546: the same venue repair as restore_snapshot()
         # F469 round 3: the saved match's own config gets the same KOTH hold-target check as the restore, so a malformed
         # one never reaches the scorer
         sc = self.config.get("scoring")
