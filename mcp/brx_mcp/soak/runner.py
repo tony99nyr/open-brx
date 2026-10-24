@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .. import protocol
-from ..gameconfig import END_SEQUENCE
+from ..gameconfig import end_hittable
 from .patterns import SoakPattern, PATTERNS, assert_pattern_is_safe
 
 # ATT write-without-response chunk size (ble.py `_write`: MTU-3, default MTU 23 -> 20). Used only to
@@ -213,8 +213,9 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
 
     Ctrl-C (KeyboardInterrupt) ends the loop early but still runs the full teardown and returns a
     summary: "ends cleanly with the summary" (bench-screamers-2026-09-19.md). Teardown always sends
-    the WHOLE of `gameconfig.END_SEQUENCE`, never a truncated prefix, so a run never ends on a bare
-    `$CLEAR` (CLAUDE.md hard rule: `$CLEAR` alone leaves the gun with no `$SIR` table). If the link is
+    the WHOLE of `gameconfig.end_hittable()` (MC's end, then the `$SIR` table, F539), never a truncated
+    prefix, so a run never ends on a bare `$CLEAR` (CLAUDE.md hard rule: `$CLEAR` alone leaves the gun
+    with no `$SIR` table). If the link is
     already gone the teardown frames simply fail to send. Nothing here can wake a gun that is not
     listening, whatever sequence we ask the transport to write.
     """
@@ -258,9 +259,6 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     # `last_seq` taken afterwards would silently put that echo below the floor and never see it.
     last_seq = mgr.sessions[alias].seq if alias in mgr.sessions else 0
 
-    for cmd in p.once:
-        await send(cmd)
-
     next_due = {g.name: t0 + g.offset_s for g in p.repeating}   # offset_s: a group's first fire, after the arm
     next_ping = t0
     last_pong_at = t0
@@ -268,6 +266,9 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     deadline = t0 + minutes * 60
 
     try:
+        # inside the try: a Ctrl-C after the arm's $CLEAR must still reach the teardown, which puts the table back
+        for cmd in p.once:
+            await send(cmd)
         while clock.now() < deadline:
             now = clock.now()
 
@@ -318,7 +319,8 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     finally:
         summary.minutes_run = (clock.now() - t0) / 60
         with contextlib.suppress(Exception):
-            for cmd in END_SEQUENCE:
+            # the table the pattern armed (a named pattern arms MC's live pool), or the base table
+            for cmd in end_hittable([f for f in p.once if f.startswith("$SIR,")] or None):
                 await send(cmd)
         with contextlib.suppress(Exception):
             await mgr.disconnect(alias)
