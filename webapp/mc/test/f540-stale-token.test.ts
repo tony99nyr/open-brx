@@ -3,7 +3,7 @@
 // (so the toast hid them), and the refused WebSocket was accepted, then closed, so the tab reconnected twice a second
 // for ever and the link state toggled each time.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AuthError, createHttpApi, getToken, onAuthRequired, setToken } from '../src/api/client';
+import { AuthError, createHttpApi, getToken, onAuthRequired, onTokenPicked, setToken } from '../src/api/client';
 import { ALERTS, operatorTokenLine, tokenRefusedLine } from '../src/alerts';
 
 const json401 = () => new Response('{"error":"operator token required"}', { status: 401, headers: { 'content-type': 'application/json' } });
@@ -53,6 +53,19 @@ describe('F540 review: the cure and the diagnosis', () => {
     window.dispatchEvent(new HashChangeEvent('hashchange', { oldURL: before, newURL: location.href }));
     expect(getToken()).toBe('fresh2');
     expect(location.hash).toBe('#live');
+  });
+
+  it('F586: a pasted #tok= link tells the store, so it redials at once and clears the refused line', () => {
+    setToken('old');
+    const picked: string[] = [];
+    const un = onTokenPicked(tok => picked.push(tok));
+    location.hash = '#live&tok=fresh3';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(picked, 'the store hears the new token').toEqual(['fresh3']);
+    location.hash = '#live';                                   // CONTROL: a hash change with no token tells nobody
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(picked).toEqual(['fresh3']);
+    un();
   });
 
   it('the registry row says what the console shows', () => {
@@ -122,5 +135,27 @@ describe('F540: a WebSocket MC refuses does not flicker the link', () => {
     await vi.advanceTimersByTimeAsync(500);
     expect(FakeWs.made.length).toBe(n + 1);
     stop();
+  });
+});
+
+describe('F586 review: a redial for a new token is not undone by the old socket closing late', () => {
+  const realWs = globalThis.WebSocket;
+  afterEach(() => { globalThis.WebSocket = realWs; FakeWs.made = []; });
+
+  it('the old live socket closing after the new one is up leaves the link up', () => {
+    globalThis.WebSocket = FakeWs as unknown as typeof WebSocket;
+    const link: boolean[] = [], onLink = (up: boolean) => link.push(up);
+    const stopOld = createHttpApi().subscribe(() => {}, () => {}, onLink);
+    const old = FakeWs.made.at(-1)!;
+    old.onopen?.(); old.onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: { text: 'x' } }) });
+    stopOld();                                                         // the store resubscribes for the new token
+    createHttpApi().subscribe(() => {}, () => {}, onLink);
+    const now = FakeWs.made.at(-1)!;
+    now.onopen?.(); now.onmessage?.({ data: JSON.stringify({ kind: 'feed', entry: { text: 'y' } }) });
+    old.onclose?.({ code: 1000 });                                     // the browser reports the old close late
+    expect(link.at(-1), 'the new socket is the live one').toBe(true);
+    // control: a live socket that drops while its subscription is open still reports the link down
+    now.onclose?.({ code: 1006 });
+    expect(link.at(-1)).toBe(false);
   });
 });

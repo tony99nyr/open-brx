@@ -1118,12 +1118,11 @@ step('stale-server', async ({ browser, base }) => {
   // `piecesRes.error && connected`); the catalogue alert has no such guard. Both stay condition waits: 30 s only bounds
   // a stuck run. A timeout now says whether MC read as offline or token-locked, so the next red explains itself.
   await until(() => pg.locator('[data-alert="frame-catalogue-unavailable"]').count().then(n => n > 0), 30000, 'the catalogue retry alert');
-  try {
-    await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 30000, 'the pieces retry alert');
-  } catch (e) {
+  // F586: `until` records its failure and returns false (it never throws), so a catch here never ran.
+  if (!(await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 30000, 'the pieces retry alert'))) {
     const offline = await pg.locator('[data-alert="frame-mc-offline"]').count();
     const token = await pg.locator('[data-alert="frame-token-required-app"]').count();
-    throw new Error(`${e.message} (frame-mc-offline on screen: ${offline}, frame-token-required-app: ${token})`);
+    console.log(`    pieces retry alert missing (frame-mc-offline on screen: ${offline}, frame-token-required-app: ${token})`);
   }
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when there is nothing to pick');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'PLAY survives a missing station_source and game_pick (no undefined.something)');

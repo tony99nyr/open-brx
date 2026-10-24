@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 109.** Desk 14 · bench 90 · decision 5.
+**MVP open: 107.** Desk 12 · bench 90 · decision 5.
 
-**MVP DESK (14),** a keyboard is enough:
-- 🟡 **F547** · **F581** · **F585** · **F587** · **F588** · **F589**
-- 🟢 **F512** · **F544** · **F574** · **F582** · **F586** · **F590** · **F591** · **F593**
+**MVP DESK (12),** a keyboard is enough:
+- 🟡 **F547** · **F581** · **F587** · **F588** · **F589**
+- 🟢 **F512** · **F544** · **F574** · **F582** · **F590** · **F591** · **F593**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -51,8 +51,6 @@ A keyboard is enough. Highest value first.
 
 - **F581 🟡 `balance_review.py` RUNS THE SNIPER'S BOLT ABOUT 95 ms SLOWER A ROUND THAN COMPILE.** brx2, 2026-10-24 (brx5's milestone review, `~/reviews-2026-10-24/brx5.md` P2-1). `mcp/tools/balance_review.py:575` and `:900` price a bolt round as two pull gaps plus `reload_ms`; compile's bolt cycle (`compile.py:1773`) is one pull, plus `reload_ms`, plus the mean overshoot (2705 ms for the Sniper). A Sniper verdict near a threshold can pass on the catalogue and fail in the review. Fix: share compile's bolt cycle, as F576 did for single shots. Owner brx2. `desk`.
 - **F582 🟢 THREE WEAK SPOTS IN THE BALANCE REVIEW'S GATES ON AN EDIT.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx5.md` P2-2, P2-3, P3-9). (1) `balance_review.py:2630` runs `heat_sensitivity` only when the edited weapon or its kit is heated, but an unheated edit still moves its R1/R2 duels against the heated Charge Rifle. (2) `:2667` `value_addition` credits an edited weapon for its own mechanic: Sniper damage 1 still passes it (`test_balance_review.py:326` accepts this on purpose); compare with the shipped row, or say so in the skill. (3) `:1898` the shipped Haze sweep's cache key omits the row's content, and `clear_cache()` (`:1906`) does not clear it. Owner brx2. `desk`.
-- **F585 🟡 A FIXED CHARGE RIFLE WITH A FIXED ARMOUR PIERCING EMPTIES THE PRIMARY POOL, AND THE REFUSAL NAMES NO REAL RULE.** brx2, 2026-10-24 (brx4's milestone review, `~/reviews-2026-10-24/brx4.md` P2). `mcp/brx_mcp/mc/policy.py:411`: the policy refuses the pair and names an exclusion that does not exist. Owner brx3. `desk`.
-- **F586 🟢 MC AND CONSOLE: SEVEN SMALL GAPS FROM THE MILESTONE REVIEW.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx4.md` P3). (1) `match.py:194`: the snapshot drops `station_unverified`, so the recap loses it after an MC restart. (2) `Recap.tsx:652`: RECAP drops the floor caveat when every `hold_ms` is empty (LIVE keeps it). (3) `client.ts:29` (F540): a pasted `#tok=` link waits out the socket backoff (up to 10 s), and a stale refused line can come back. (4) `test_ui_contract.py:45`: the default-policy drift guard has skipped since `4526b7b29` (it reads `gameSummary.ts`; the rules moved to `rules/loadoutPolicy.ts`). (5) `koth.mjs:1121`: the catch's diagnostic never prints, because `until()` does not throw. (6) `mock/backend.ts:913`: the mock's `no_config` `headset_proof` is always `link` (the server can send `echo`). (7) F543: no console test covers the RANGE EDITED ON STATION line. Owner brx3. `desk`.
 - **F587 🟡 THE STAGE STILL APPLIES QUICK HANDS TO A BOLT.** brx2, 2026-10-24 (brx3's milestone review, `~/reviews-2026-10-24/brx3.md` P2-1). `stage.py:6440` applies `reload_mult` to a bolt; `ammo.js:529` and compile skip it since `07aa7a563`. The stage predicts an F277 reload timeout that the phone never shows, and `test_stage_mirror` does not pin it. Owner brx4. `desk`.
 - **F588 🟡 F563: A WI-FI KICK WITHIN 1 s OF A CELLULAR KICK IS HELD FOR THE BACKOFF.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx3.md` P2-2). `mcurl.js:74` `kickHeld` holds the Wi-Fi kick, so the LAN dial waits for the backoff. The test at `mcurl.test.mjs:100` checks only the 10 s case. Owner brx4. `desk`.
 - **F589 🟡 A76: AN AMMO GRANT IS BOOKED BEFORE ITS WRITE LANDS.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx3.md` P2-3). `powerup-player.js:870` `grantAmmo` books the refill first. A failed write followed by a shot gets no retry (pl4), so the phone shows a reserve the gun never got. A reload does not bump `_actSeq`, so a late retry can undo a refill. Owner brx4. `desk`.

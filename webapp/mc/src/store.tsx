@@ -37,7 +37,7 @@ function writeHash(v: View, want?: View | null) {
   } catch { /* no history: the view still works, it just will not survive a refresh */ }
 }
 import { loadWithRetry } from './api/retry';
-import { createHttpApi, getToken, onAuthRequired, setToken as saveToken } from './api/client';
+import { createHttpApi, getToken, onAuthRequired, onTokenPicked, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
 
 export const isMock = () => import.meta.env.VITE_MOCK === '1' || import.meta.env.MODE === 'mock' || new URLSearchParams(location.search).has('mock');
@@ -374,6 +374,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
     return () => { un(); unAuth(); stopModes(); stopWeapons(); stopPerks(); };
   }, [api, mock, tokenVersion, followPhase]);
+
+  // F586 (F540): a `#tok=` link pasted into the open tab changes the stored token only; route it through the same steps
+  // as `setToken` so the refused socket redials at once and the refused line clears.
+  useEffect(() => {
+    if (mock) return;
+    return onTokenPicked(() => { setAuthRequired(false); setError(null); setTokenVersion(v => v + 1); });
+  }, [mock]);
 
   // A test hook, and ONLY in `?mock`: the in-browser demo has no server to poke from outside, so a
   // browser walk had no way to reach a LIVE match without sitting through the 60 s runway the UI

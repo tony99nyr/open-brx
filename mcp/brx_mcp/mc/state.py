@@ -1174,6 +1174,16 @@ class Session:
             return ("PRIMARY LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
                     f"({', '.join(sorted(rule.get('only_ids') or []))}): CLEAR THE PRIMARY SLOT'S "
                     "ALLOW LIST, OR NAME WEAPONS THAT ARE IN THE CATALOGUE")
+        if code == "perk_blocked":
+            # F585: the fixed perk cannot ride with any primary the slot allows (the F551 prune); no exclusion exists
+            weapons, perks = self._catalog_rows()
+            perk_id = self.policy()["perk"].get("fixed_id")
+            perk = next((p.get("name") for p in perks if p.get("perk_id") == perk_id), perk_id)
+            allowed = _policy.pool({**self.policy(), "perk": {**self.policy()["perk"], "choice": "player", "fixed_id": None}},
+                                   weapons, perks)["primary"]
+            names = ", ".join(next((w.get("name") for w in weapons if w.get("weapon_id") == wid), wid) for wid in allowed)
+            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH ANY PRIMARY THIS GAME ALLOWS ({names.upper()}): "
+                    "PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER PRIMARY")
         return ("PRIMARY FILTER EXCLUDES EVERY WEAPON (NO LEGAL PRIMARY IS LEFT): CLEAR A CLASS OR ID "
                 "EXCLUSION IN THE PRIMARY SLOT, OR PICK A PRESET")
 
@@ -4115,7 +4125,8 @@ class Session:
                       derive_cap: bool = False, alerts: dict | None = None,
                       station_ms: dict[str, dict] | None = None, clock_trusted: bool = True,
                       station_seen: dict | None = None, station_pre_end: dict | None = None,
-                      station_history: dict | None = None, saved_ms: int | None = None) -> Scorer:
+                      station_history: dict | None = None, saved_ms: int | None = None,
+                      station_unverified: list | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
@@ -4153,6 +4164,7 @@ class Session:
                 got_rows = got_rows[:1] + got_rows[-(STATION_HISTORY_MAX - 1):]
             if got_rows:
                 sc.station_history[str(k)] = got_rows
+        sc.station_unverified |= {str(s) for s in (station_unverified or ()) if isinstance(s, (str, int)) and not isinstance(s, bool)}   # F586
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:
                 site, hold, seen = got
@@ -4282,6 +4294,7 @@ class Session:
                                     station_seen=m.get("station_seen") if isinstance(m.get("station_seen"), dict) else None,
                                     station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None,
                                     station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
+                                    station_unverified=m.get("station_unverified") if isinstance(m.get("station_unverified"), list) else None,
                                     saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
         self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                                  evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,

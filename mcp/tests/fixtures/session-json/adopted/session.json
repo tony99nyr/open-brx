@@ -294,6 +294,7 @@
     "station_possession": {},
     "station_pre_end": {},
     "station_seen": {},
+    "station_unverified": [],
     "store_path": "session.sqlite",
     "synced_at_lobby": {
       "node0": true,

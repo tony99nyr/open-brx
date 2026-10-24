@@ -1277,6 +1277,113 @@
           "stealth"
         ]
       }
+    },
+    {
+      "name": "F585: a fixed perk that cannot ride with the fixed primary empties the primary as perk_blocked, not filtered",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "sniper_rifle"
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "stealth"
+        }
+      },
+      "expect": {
+        "primary": [],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "stripper"
+        ],
+        "perks": [
+          "stealth"
+        ],
+        "reasons": {
+          "primary": "perk_blocked"
+        }
+      }
+    },
+    {
+      "name": "F585: a fixed perk that cannot ride with the fixed secondary empties the secondary as perk_blocked",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "fixed",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "shotgun"
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "stealth"
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [],
+        "perks": [
+          "stealth"
+        ],
+        "reasons": {
+          "secondary_weapons": "perk_blocked"
+        }
+      }
     }
   ],
   "easy_reload": [
