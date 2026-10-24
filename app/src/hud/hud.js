@@ -227,7 +227,7 @@ export class Hud {
       st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.spawnLost, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
-      !!st.emp,   // the EMP perk's chip exists or not; its countdown is patched
+      Live.empShown(st),   // the EMP perk's chip exists or not (hidden while down or stunned); its countdown is patched
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place

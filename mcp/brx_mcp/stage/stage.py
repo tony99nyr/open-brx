@@ -4261,9 +4261,14 @@ class GunStage:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 own = _tok_int(t, 4) is not None and self._own_shot(self._hir_word)   # F438: our own word never stuns or poisons
                 if len(t) > 2 and t[2] == "8" and not own:
-                    emp = self._emp_spec() if self._emp_word(8, _tok_int(t, 7)) else None
-                    if emp is not None:
-                        self._stun(float(emp["duration_s"]))   # the EMP perk's <8,1> throw (engine.js `_empWord`)
+                    if self._emp_word(8, _tok_int(t, 7)):   # the EMP perk's <8,1> throw (engine.js `_empWord`)
+                        ap = self._arm_pending
+                        if self._emp_friendly(_tok_int(t, 4)):
+                            self._log("EMP word from a teammate: ignored", "info")
+                        elif ap is not None and ap.get("off"):   # engine.js `_protectOwedMs() > 0`, on the stage's own record
+                            self._log("EMP word inside spawn protection: no jam", "info")
+                        else:
+                            self._stun(self._emp_stun_ms() / 1000)
                     else:
                         self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
                 # S16 (engine.js `feedFrame` HIR): a readable team is a real hit word -- stamp the clock the
@@ -5732,6 +5737,20 @@ class GunStage:
         """engine.js `_empSpec`: the bundle's `emp` block ({cooldown_s, duration_s}) when a player holds the EMP perk."""
         e = (getattr(self, "bundle", None) or {}).get("emp")
         return e if isinstance(e, dict) and (e.get("cooldown_s") or 0) > 0 and (e.get("duration_s") or 0) > 0 else None
+
+    def _emp_stun_ms(self) -> int:
+        """engine.js `_empStunMs`: `emp.duration_s`, never shorter than the gun's own fn-23 blind (SMOKE_MS)."""
+        e = self._emp_spec()
+        return max(int(e["duration_s"]) * 1000 if e else 0, SMOKE_MS)
+
+    def _emp_friendly(self, team: int | None) -> bool:
+        """engine.js `_empFriendly`: an EMP word from my own team in a team match. The stage has no roster, so it reads the
+        word's team field; FFA (and one-team LMS or extraction) has no teammates."""
+        c = getattr(self, "config", None) or {}
+        mode = c.get("mode") or self.profile.get("mode")
+        if mode == "ffa" or (mode in ("lms", "extraction") and len({int(t.get("tid", -1)) for t in c.get("teams") or []}) < 2):
+            return False
+        return team is not None and team == int(self.profile.get("tid", -1))
 
     def _emp_word(self, proto: int | None, subtype: int | None) -> bool:
         """engine.js `_empWord`: a `$HIR` on the EMP perk's <8,1> cell, in a match whose guns carry its row."""

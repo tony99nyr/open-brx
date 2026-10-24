@@ -990,7 +990,7 @@ def _with_stun_row(rows: list[str]) -> list[str]:
 # 2026-10-24 (Tony via brx1): the EMP PERK, in place of the Haze weapon. The holder's phone throws a host `$IRTX` on
 # `<8,1>` (`engine.js _empThrow`), a free cell, so `<8,0>` stays the Charge Rifle's. Every gun in a match with a holder
 # carries this fn-23 row (the stun primitive above: accuracy 0, no pool moves) and its phone runs the stun for
-# `FrameBundle.emp.duration_s`. Absent from every other game. Hidden until docs/bench-0426.md P2.5-P2.9 pass.
+# `FrameBundle.emp.duration_s`. Absent from every other game. Hidden until docs/bench-0426.md P2.5-P2.11 pass.
 EMP_PERK_ID = "emp"
 _EMP_SIR_ROW = "$SIR,8,1,,23,0,0,1,,*"
 _EMP_CELL = ("8", "1")
@@ -3526,6 +3526,11 @@ class Compiler:
         except ValueError:
             plan, sir = _ha.Plan(), _sir_index(_SIR_TABLE)
         self._validate_distinct_cells(ctx.config, ctx.roster, plan, ctx.warnings)   # F315 (own hunk: the flag's moves and its budget)
+        # brx3 Medium 1 (2026-10-24): the final live table, counted. An EMP holder, a Breacher and a Toxin Rifle make 15.
+        live_rows = len(self._with_capture_row(self.sir_table(plan, None, stun=stun_enabled(ctx.config))))
+        if live_rows > _ha.MAX_SIR_ROWS and not any("community ceiling" in w for w in ctx.warnings):
+            ctx.warnings.append(f"the live $SIR table is {live_rows} rows, over the {_ha.MAX_SIR_ROWS}-row community ceiling "
+                                f"(hitaudio.MAX_SIR_ROWS, never measured: F39): a gun may drop the rows past it")
         T = self.catalog._T
         # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
         # weapon `continue` and silently turn the whole guard into a no-op.
