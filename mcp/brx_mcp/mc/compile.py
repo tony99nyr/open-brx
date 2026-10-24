@@ -1873,9 +1873,9 @@ class WeaponCatalog:
         weapons. A weapon can put more than one number on the wire: t5 (`dmg`, the gun word), t12
         (`headset_dmg`, the shooter's own second word on a dual-emitter weapon) and t37 (`tap`, a cell
         weapon's tap damage, independent of its charge). Each is included only when the compiled frame
-        carries it greater than 0 -- the Shotgun's t5 and t12 are both 20, so it publishes one entry,
-        not two, because the phone can only tell a hit's SIZE, not which emitter sent it. Sorted
-        ascending and de-duplicated for the same reason `hir_from_weap()` is."""
+        carries it greater than 0. Equal words publish one entry, because the phone can only tell a
+        hit's SIZE, not which emitter sent it (the Shotgun's t5 19 and t12 20 publish two since F579).
+        Sorted ascending and de-duplicated for the same reason `hir_from_weap()` is."""
         return hir_from_weap(self.resolve(weapon_id, 0))
 
 
