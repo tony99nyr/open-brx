@@ -75,6 +75,13 @@ static std::vector<Heard> expand(const Value& c) {
   return out;
 }
 
+// A stall: a station whose timers were throttled runs no tick strictly between from_ms and to_ms (the ends run).
+static bool stalled(const Value& c, long long t) {
+  for (const Value& g : c.get("stalls").arr)
+    if (t > g.get("from_ms").as_int64() && t < g.get("to_ms").as_int64()) return true;
+  return false;
+}
+
 // Structure a runner must reject whatever the rules say: a checkpoint off the tick grid, past until_ms, repeated,
 // or naming a player the case does not have. Returns false (after reporting) when the case cannot be run.
 static bool validate(const Value& c) {
@@ -86,9 +93,17 @@ static bool validate(const Value& c) {
   for (const char* key : {"decay_s", "decay_delay_ms", "fade_after_ms"})
     if (!c.get("setup").has(key)) { shape(std::string("setup needs ") + key); ok = false; }
   if (c.get("setup").has("decay_s") && c.get("setup").get("decay_s").as_int() <= 0) { shape("setup decay_s must be positive"); ok = false; }
+  long long stall_end = 0;
+  for (const Value& g : c.get("stalls").arr) {
+    const long long from = g.get("from_ms").as_int64(), to = g.get("to_ms").as_int64();
+    if (from % tick != 0 || to % tick != 0 || from >= to || to > c.get("until_ms").as_int64()) { shape("stall " + std::to_string(from) + "-" + std::to_string(to) + " must run between two tick times within until_ms"); ok = false; }
+    if (from < stall_end) { shape("stall " + std::to_string(from) + "-" + std::to_string(to) + " must start at 0 or later, after the stall before it ends"); ok = false; }
+    stall_end = to;
+  }
   for (const Value& ex : c.get("expect").arr) {
     const long long t = ex.get("t").as_int64();
     if (t > c.get("until_ms").as_int64() || t % tick != 0) { shape("checkpoint t=" + std::to_string(t) + " must be a tick time within until_ms"); ok = false; }
+    if (stalled(c, t)) { shape("checkpoint t=" + std::to_string(t) + " lies inside a stall, where no tick runs"); ok = false; }
     if (std::find(seen.begin(), seen.end(), t) != seen.end()) { shape("duplicate checkpoint t=" + std::to_string(t)); ok = false; }
     seen.push_back(t);
     for (const char* key : {"in", "present", "fading"})
@@ -142,6 +157,7 @@ static void run_case(const Value& c) {
       a.state = player_state(h.state ? *h.state : p.get("state"));
       pr.observe(a, h.rssi, (uint32_t)h.t);
     }
+    if (stalled(c, t)) continue;
     pr.tick((uint32_t)t);
     cp.update(pr, (uint32_t)t);
     if (std::getenv("CASES_TRACE")) {  // the phone runner's CASES_TRACE line, so the two timelines diff
