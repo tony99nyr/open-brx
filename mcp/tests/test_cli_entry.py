@@ -1,0 +1,149 @@
+"""F539: the command-line tool's entry papercuts, found in bench A.7 (0.4.22).
+
+(a) `deathmatch --help` took `--help` for a gun address and tried to connect.
+(b) A real Ctrl-C printed a KeyboardInterrupt/CancelledError traceback after the teardown.
+(c) A CLI game ended on `$CLEAR` with no `$SIR` after it (F11), so the next bench run found a gun that
+    could not be hit.
+"""
+import contextlib
+import io
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+
+from brx_mcp import __main__ as cli
+from brx_mcp import gameconfig as gc
+
+MCP = pathlib.Path(__file__).resolve().parents[1]
+
+# Every command whose first argument is a gun address (or a list of them) and that the CLI parses by hand.
+ADDRESS_COMMANDS = ("identify", "listen", "probe", "startgame", "deathmatch", "arena", "fieldstart",
+                    "fieldresults", "diag", "diagnose", "fleet", "diag-game", "reset", "rename", "soak",
+                    "raw-bytes", "connect-metrics")
+
+
+def _main(argv):
+    """Run `cli.main` with `argv`; return (exit code, stdout, stderr). Any attempt to run a coroutine fails."""
+    out, err = io.StringIO(), io.StringIO()
+    real_argv, real_run = sys.argv, cli.asyncio.run
+
+    def no_run(coro):
+        coro.close()
+        raise AssertionError(f"{argv} tried to run a gun coroutine")
+
+    sys.argv = ["brx_mcp", *argv]
+    cli.asyncio.run = no_run
+    code = 0                              # main() returning is a clean exit
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            cli.main()
+    except SystemExit as e:
+        code = e.code
+    finally:
+        sys.argv, cli.asyncio.run = real_argv, real_run
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_help_prints_the_usage_and_never_connects():
+    for cmd in ADDRESS_COMMANDS + ("play", "sounds", "ir-capture", "ir-range", "usb-query", "enroll"):
+        for argv in ([cmd, "--help"], [cmd, "-h"], [cmd, "AA:BB:CC:DD:EE:FF", "--help"]):
+            if cmd == "play":
+                argv = [cmd, "tdm", *argv[1:]]
+            code, out, _ = _main(argv)
+            assert code == 0, (argv, code)
+            assert "python -m brx_mcp deathmatch" in out, argv     # the usage, on stdout
+
+
+def test_help_alone_prints_the_usage():
+    for argv in (["--help"], ["-h"], ["help"]):
+        code, out, _ = _main(argv)
+        assert code == 0 and "python -m brx_mcp deathmatch" in out, argv
+
+
+def test_an_unknown_option_is_refused_before_connecting():
+    for argv in (["deathmatch", "--minutes", "5"], ["deathmatch", "AA:BB:CC:DD:EE:FF", "--frobnicate"],
+                 ["arena", "A0", "A1", "--teams"], ["startgame", "-x"], ["reset", "--force"]):
+        code, _, err = _main(argv)
+        assert code == 2, (argv, code)
+        assert "unknown option" in err, (argv, err)
+
+
+def test_the_arm_options_still_parse():
+    seen = {}
+    real = cli._deathmatch
+
+    async def fake(address, *a, venue, friendly_fire):
+        seen.update(address=address, rest=a, venue=venue, ff=friendly_fire)
+
+    cli._deathmatch = fake
+    real_argv = sys.argv
+    sys.argv = ["brx_mcp", "deathmatch", "AA:BB:CC:DD:EE:FF", "3", "--venue", "indoor", "--friendly-fire"]
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            cli.main()
+    finally:
+        cli._deathmatch, sys.argv = real, real_argv
+    assert seen == {"address": "AA:BB:CC:DD:EE:FF", "rest": (3, 15, 69, "primary"), "venue": "indoor",
+                    "ff": True}, seen
+
+
+# A real SIGINT in a child process: the game's teardown runs, then the tool exits 130 with one line and no
+# traceback. The child swaps the deathmatch body for one that blocks, so no Bluetooth is involved.
+_CHILD = r"""
+import asyncio, sys
+from brx_mcp import __main__ as cli
+
+async def blocking(address, *a, **kw):
+    try:
+        print("READY", flush=True)
+        await asyncio.sleep(30)
+    finally:
+        await asyncio.sleep(0)            # the teardown awaits, as the real one does
+        print("--- ending game", flush=True)
+
+cli._deathmatch = blocking
+sys.argv = ["brx_mcp", "deathmatch", "AA:BB:CC:DD:EE:FF"]
+cli.main()
+print("FELL THROUGH", flush=True)
+"""
+
+
+def test_ctrl_c_runs_the_teardown_then_exits_cleanly():
+    env = {**os.environ, "PYTHONPATH": str(MCP)}
+    p = subprocess.Popen([sys.executable, "-c", _CHILD], cwd=str(MCP), env=env, text=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        assert p.stdout.readline().strip() == "READY"
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=20)
+    finally:
+        if p.poll() is None:
+            p.kill()
+            p.communicate()
+    assert "--- ending game" in out, out
+    assert "FELL THROUGH" not in out, out
+    assert p.returncode == 130, (p.returncode, err)
+    assert "Traceback" not in err and "KeyboardInterrupt" not in err and "CancelledError" not in err, err
+    assert "interrupted" in err, err
+
+
+def _head_sir(plan):
+    return [f for f in plan.arm if f.startswith("$SIR,")]
+
+
+def test_a_cli_game_ends_hittable():
+    for mode in ("tdm", "ffa"):
+        for venue in ("outdoor", "indoor"):
+            plan = cli.arm_plan(mode, venue, volume=65)
+            gc.assert_sir_follows_clear(plan.end)
+            n = len(gc.END_SEQUENCE)
+            assert plan.end[:n] == list(gc.END_SEQUENCE), plan.end      # MC's game-over end, unchanged
+            assert plan.end[n:] == _head_sir(plan), plan.end            # then the table the arm wrote
+
+
+def test_reset_leaves_the_gun_hittable():
+    frames = cli.reset_frames()
+    gc.assert_sir_follows_clear(frames)
+    assert frames[:len(gc.END_SEQUENCE)] == list(gc.END_SEQUENCE), frames

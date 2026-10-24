@@ -249,7 +249,9 @@ def _expect_sequences(b, ammo_rows=None):
     return {"spawn": swap(rp["spawn"]),
             # the phone writes `headset.down.stop` ($HLOOP,0,0) first, then the revive; trigger_live follows
             "revive": [b["headset"]["down"]["stop"], *swap(rp["revive"])],
-            "trigger_live": rp["trigger_live"], "trigger_ms": rp["trigger_ms"], "end": list(b["end"])}
+            "trigger_live": rp["trigger_live"], "trigger_ms": rp["trigger_ms"],
+            # F539: the CLI re-sends the live $SIR table after MC's end, so a bench gun is left hittable
+            "end": list(b["end"]) + list(b["sir_pool"][0])}
 
 
 def test_cli_spawn_revive_trigger_and_end_equal_the_bundles():
@@ -263,7 +265,7 @@ def test_cli_spawn_revive_trigger_and_end_equal_the_bundles():
         got = {"spawn": plan.spawn, "revive": plan.revive, "trigger_live": plan.trigger_live,
                "trigger_ms": plan.trigger_ms, "end": plan.end}
         assert got == want, (mode, venue, tid, ff)
-        assert plan.end == list(gc.END_SEQUENCE)                  # the soak runner's teardown is the same one
+        assert plan.end[:len(gc.END_SEQUENCE)] == list(gc.END_SEQUENCE)   # the soak runner's teardown, then $SIR
         assert plan.arm == cli.arm_frames(mode, venue, friendly_fire=ff, volume=65, tid=tid)
         if tid is not None:
             assert plan.spawn[2] == plan.revive[3] == f"$TID,{tid},*"

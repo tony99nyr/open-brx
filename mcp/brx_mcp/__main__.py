@@ -1,6 +1,9 @@
 """Entry point.
 
   python -m brx_mcp            # run the MCP server (stdio)
+  python -m brx_mcp --help     # this text; `<command> --help` (or -h) prints it too, and never connects
+  (Ctrl-C ends a running game cleanly: the teardown is sent, then the tool exits 130. A game ends
+   with the live $SIR table re-sent, so the gun is left hittable for the next run, F11)
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
   python -m brx_mcp probe <address> [seconds]    # send the app handshake ($CONNECT/$INIT/$PHONE), then listen
@@ -260,7 +263,11 @@ def arm_plan(mode: str = "tdm", venue: str = DEFAULT_VENUE, *, friendly_fire: bo
              tid: int | None = None, player_num: int | None = None) -> ArmPlan:
     """The config phase, spawn, revive and end for one gun: MC's compiled bundle for `mode` and `venue` plus
     the CLI additions above. `tid` puts the gun on that team (0-3 only, F35); None = MC's default team for
-    the mode. Runs MC's own `validate`, and raises ValueError with its errors."""
+    the mode. Runs MC's own `validate`, and raises ValueError with its errors.
+
+    The end is MC's game-over end plus the live $SIR table (addition 6, F539): MC's end leaves the gun
+    inert until the next match arms it, but a bench tool must never sign off on a bare `$CLEAR` (F11), or
+    the next run finds a gun that ignores every hit."""
     from .mc.compile import Compiler
     from .mc.state import TEAM_DEFS, default_config
     from .mc.types import Player, Team
@@ -316,7 +323,7 @@ def arm_plan(mode: str = "tdm", venue: str = DEFAULT_VENUE, *, friendly_fire: bo
                    spawn=own_ammo(rp["spawn"]),
                    revive=[down["stop"], *own_ammo(rp["revive"])],
                    trigger_live=rp["trigger_live"], trigger_ms=int(rp["trigger_ms"]),
-                   end=list(bundle["end"]))
+                   end=list(bundle["end"]) + list(pool[0]))                    # addition 6
 
 
 def arm_frames(mode: str = "tdm", venue: str = DEFAULT_VENUE, **kw) -> list[str]:
@@ -1196,6 +1203,18 @@ def _dispatch_connect_metrics(rest: list[str]) -> None:
                                  log_path=log_path))
 
 
+HELP_WORDS = ("--help", "-h", "help")
+OWN_PARSERS = ("ir-emit", "stage")       # argparse owns their `--help`
+# Commands parsed by hand whose arguments are addresses, numbers and words, never options: an option
+# here is a typo, and it would otherwise be taken for a gun address (F539).
+NO_OPTIONS = ("identify", "listen", "probe", "startgame", "deathmatch", "arena", "fieldstart",
+              "fieldresults", "diag", "diagnose", "fleet", "play", "diag-game", "reset", "rename", "enroll")
+
+
+def _is_option(a: str) -> bool:
+    return a.startswith("-") and len(a) > 1 and not a[1].isdigit()
+
+
 def main() -> None:
     # The Windows console defaults to cp1252, which raises UnicodeEncodeError on the
     # emoji/arrows in game output (crashed a live game mid-score). Force UTF-8 with
@@ -1213,8 +1232,16 @@ def main() -> None:
         run_server()
         return
     cmd = args[0]
+    if cmd in HELP_WORDS or (cmd not in OWN_PARSERS and any(a in HELP_WORDS[:2] for a in args[1:])):
+        print(__doc__)                    # F539: `--help` used to reach the address slot and connect
+        return
     try:
         _dispatch(cmd, args)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        # F539: a real Ctrl-C. asyncio.run has already cancelled the game, whose `finally` sent the
+        # teardown; the traceback after it told the operator nothing.
+        print("interrupted (Ctrl-C)", file=sys.stderr)
+        sys.exit(130)
     except ValueError as e:
         print(f"bad numeric argument: {e}\n", file=sys.stderr)
         print(__doc__, file=sys.stderr)
@@ -1713,16 +1740,20 @@ async def _enroll(name: str | None) -> None:
           + ("  Power-cycle to refresh its BLE advert." if nm else ""), file=sys.stderr)
 
 
+def reset_frames() -> list[str]:
+    """`reset`'s sequence: revive (`$SPAWN` clears the dead HP state), silence the spawn voice (`$PLAYX,0`),
+    `$STOP`+`$CLEAR` to settle to idle, blank the headset LED, then re-send the live `$SIR` table so the gun
+    is left hittable (F11, F539). It is a CLI game's end."""
+    return arm_plan().end
+
+
 async def _reset(address: str) -> None:
     """Reset a tagger to a clean idle state — including reviving a gun left DEAD at
     game end ($SPAWN clears the dead HP state). Deliberately reuses gameconfig's
-    canonical END_SEQUENCE (the same teardown MC ships; the CLI games end with the same bundle["end"])."""
+    canonical END_SEQUENCE (the same teardown MC ships), then the live $SIR table, as a CLI game ends."""
     from .ble import ConnectionManager
     mgr = ConnectionManager()
-    # revive (SPAWN clears the dead HP state), immediately silence the spawn voice
-    # ($PLAYX,0), then STOP+CLEAR to settle to idle, and blank the headset LED.
-    from .gameconfig import END_SEQUENCE
-    seq = list(END_SEQUENCE)
+    seq = reset_frames()
     try:
         await mgr.connect(address, "rst")
         try:
@@ -1737,7 +1768,7 @@ async def _reset(address: str) -> None:
         print(f"# reset FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
         return
     print(f"\n# reset {address} to clean idle (revived, quiet, headset dark; pulses its "
-          f"team colour). Same sequence the game teardown uses.", file=sys.stderr)
+          f"team colour, hittable). Same sequence the CLI game teardown uses.", file=sys.stderr)
 
 
 def _mac_tail(address: str) -> str:
@@ -1957,6 +1988,11 @@ def _dispatch(cmd: str, args: list[str]) -> None:
     venue, friendly_fire = DEFAULT_VENUE, False
     if cmd in ARM_COMMANDS:
         args, venue, friendly_fire = _take_arm_options(args)
+    if cmd in NO_OPTIONS and (bad := [a for a in args[1:] if _is_option(a)]):
+        print(f"unknown option {bad[0]!r} for {cmd}\n", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    if cmd in ARM_COMMANDS:
         print(f"venue: {venue}" + (", friendly fire forced on" if friendly_fire else ""), file=sys.stderr)
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))
