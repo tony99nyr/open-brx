@@ -436,10 +436,11 @@ flag, and only an enemy's net drains it. So a point whose owners are all down, o
 drained by a lone enemy, pays nobody. The field caught the last case three times (station 2, match 3: +14.8 s to RED
 while BLUE alone drained it from 100 to 10). The tick banks its real elapsed time (F103), so a long gap between ticks
 (a throttled station) banks in full only when the owner was counted alone on the tick before it too. Otherwise it banks
-at most `HILL_MAX_STEP_MS`, and an owner who steps back on just before a stalled tick cannot bank the minute nobody held
-(brx2 review 2026-10-24). A gap whose closing tick does not see the owner banks nothing. Pinned in
-`presence-hill-cases.json` (the F554 cases, and the F554 gap cases with `stalls`) for the phone (`control.js`) and the
-Stick (`presence.h`).
+at most `HILL_MAX_STEP_MS`, and an owner who steps back on just before a late tick cannot bank the minute nobody held
+(brx2 review 2026-10-24). A gap whose closing tick does not see the owner banks nothing, as at every ordinary tick:
+crediting it a step would add a tick to every ordinary exit, so the cost of a late tick (at most the gap, and only on a
+throttled station) falls on the owner who left. Pinned in `presence-hill-cases.json` (the F554 cases, and the F554 gap
+cases, whose `stalls` skip ticks) for the phone (`control.js`) and the Stick (`presence.h`).
 
 `net` is clamped to `net_cap` (**proposed default 3**, tunable, not measured) so a six-player rush is fast and
 not instant.

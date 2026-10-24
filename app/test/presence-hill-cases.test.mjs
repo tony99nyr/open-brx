@@ -38,8 +38,11 @@ function validate(c) {
     assert.ok(Array.isArray(c.known_fail.at) && c.known_fail.at.length, 'known_fail.at must list the checkpoints expected to fail');
     for (const t of c.known_fail.at) assert.ok((c.expect || []).some(e => e.t === t), `known_fail.at names t=${t}, which is not a checkpoint`);
   }
+  let stallEnd = 0;
   for (const g of c.stalls || []) {   // a station whose timers were throttled: no tick runs strictly between from_ms and to_ms
     assert.ok(g.from_ms % c.setup.tick_ms === 0 && g.to_ms % c.setup.tick_ms === 0 && g.from_ms < g.to_ms && g.to_ms <= c.until_ms, `stall ${g.from_ms}-${g.to_ms} must run between two tick times within until_ms`);
+    assert.ok(g.from_ms >= stallEnd, `stall ${g.from_ms}-${g.to_ms} must start at 0 or later, after the stall before it ends`);
+    stallEnd = g.to_ms;
   }
   for (const e of c.expect || []) {
     assert.ok(e.t <= c.until_ms && e.t % c.setup.tick_ms === 0, `checkpoint t=${e.t} must be a tick time within until_ms`);

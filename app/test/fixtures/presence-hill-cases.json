@@ -960,7 +960,7 @@
     },
     {
       "name": "F554 gap: an owner who goes down just before a stalled tick banks nothing for the stall",
-      "why": "brx2 review 2026-10-24: the other direction. RED holds the point through a 60 s stall and goes down just before the next tick. That tick does not see RED counted, so it banks nothing, as at an ordinary tick: the station credits only time whose end it saw held. The undercount is at most the stall, and only on a station whose timers stalled.",
+      "why": "brx2 review 2026-10-24: the other direction. RED holds the point through a 60 s stall and goes down just before the next tick. That tick does not see RED counted, so it banks nothing, as at an ordinary tick: the station credits only time whose end it saw held. The undercount is at most the stall, and only on a station whose timers stalled. The old rule gives the same numbers: this case pins the choice against a later change that credits the gap's start.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "stalls": [{"from_ms": 20000, "to_ms": 80000}],
@@ -986,6 +986,23 @@
       "expect": [
         {"t": 20000, "hold_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held"], "value": 100}},
         {"t": 80000, "hold_ms": {"0": 70000}}
+      ]
+    },
+    {
+      "name": "F554 gap: an enemy alone on the point before the stall does not let the owner bank it",
+      "why": "brx2 review 2026-10-24: the full gap banks only when the OWNER was the team counted alone at its start, not any team. BLUE stands alone on RED's point at the tick before a 60 s stall and leaves; RED steps back on just before the next tick. RED banks one step.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "stalls": [{"from_ms": 20000, "to_ms": 80000}],
+      "until_ms": 81000,
+      "series": [
+        {"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]},
+        {"id": 2, "from_ms": 19000, "to_ms": 20000, "every_ms": 250, "rssi": [-60]},
+        {"id": 1, "from_ms": 79750, "to_ms": 81000, "every_ms": 250, "rssi": [-60]}
+      ],
+      "expect": [
+        {"t": 20000, "in": {"1": false, "2": true}, "hold_ms": {"0": 6000}},
+        {"t": 80000, "in": {"1": true, "2": false}, "hold_ms": {"0": 7000}}
       ]
     }
   ]

@@ -97,6 +97,8 @@ def test_every_checkpoint_is_on_a_tick_once_and_names_a_player_the_case_has():
         for ex in c["expect"]:
             at = f"{c['name']} t={ex['t']}"
             assert ex["t"] <= c["until_ms"] and ex["t"] % c["setup"]["tick_ms"] == 0, at
+            # a stall (a throttled station) runs no tick strictly inside it, so nothing can be checked there
+            assert not any(g["from_ms"] < ex["t"] < g["to_ms"] for g in c.get("stalls", [])), f"{at} lies inside a stall"
             assert ex["t"] not in seen, f"duplicate checkpoint {at}"
             seen.add(ex["t"])
             for id in [*ex.get("in", {}), *ex.get("present", {}), *ex.get("fading", {})]:

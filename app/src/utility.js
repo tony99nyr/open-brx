@@ -639,6 +639,7 @@ function resetPoint(why) {
   point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
   point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
   point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
+  point.heldBy = null;                    // F554 gap: no earlier sample saw anybody (the Stick's reset() does the same)
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');
 }

@@ -93,9 +93,12 @@ static bool validate(const Value& c) {
   for (const char* key : {"decay_s", "decay_delay_ms", "fade_after_ms"})
     if (!c.get("setup").has(key)) { shape(std::string("setup needs ") + key); ok = false; }
   if (c.get("setup").has("decay_s") && c.get("setup").get("decay_s").as_int() <= 0) { shape("setup decay_s must be positive"); ok = false; }
+  long long stall_end = 0;
   for (const Value& g : c.get("stalls").arr) {
     const long long from = g.get("from_ms").as_int64(), to = g.get("to_ms").as_int64();
     if (from % tick != 0 || to % tick != 0 || from >= to || to > c.get("until_ms").as_int64()) { shape("stall " + std::to_string(from) + "-" + std::to_string(to) + " must run between two tick times within until_ms"); ok = false; }
+    if (from < stall_end) { shape("stall " + std::to_string(from) + "-" + std::to_string(to) + " must start at 0 or later, after the stall before it ends"); ok = false; }
+    stall_end = to;
   }
   for (const Value& ex : c.get("expect").arr) {
     const long long t = ex.get("t").as_int64();
