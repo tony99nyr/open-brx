@@ -116,6 +116,24 @@ test('A60 transport: a dial the player named asks for its trust key, keeps it, a
   assert.equal(holdsTrustKey(storage), false);
 });
 
+test('A60 + F595 transport: a verify dial whose LAN attempt fails never falls to the trusted MC\'s tunnel', async ctx => {
+  const advance = useClock(ctx);
+  const mc = new FakeMc();
+  const { storage } = enrolledPhone(ctx, mc);
+  storage.setItem('brx.pub', 'wss://old-tunnel.example/ws'); storage.setItem('brx.pub_url', 'ws://192.168.1.10:8766/ws');
+  const f = factory();
+  const t = new Transport({ storage, wsFactory: f.wsFactory, heartbeatMs: 1e9, lanGiveupMs: 5, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.connect({ url: 'ws://192.168.7.20:8766/ws', verify: true }).catch(() => { /* never welcomes in this test */ });
+  assert.equal(t.pub, 'wss://old-tunnel.example/ws', 'the pub is still held while the proof is pending');
+  f.sockets[0].close(1006, 'no route');
+  assert.equal(t.state, 'offline', 'the LAN failure ends the pass instead of falling to pub');
+  await advance(10);   // the backoff, a second LAN attempt and its giveup
+  assert.ok(f.sockets.length >= 2, 'the reconnect loop ran');
+  assert.ok(f.sockets.every(w => w.url === 'ws://192.168.7.20:8766/ws'), 'only the address it was given, never the tunnel');
+  t.close();
+});
+
 test('A60 transport: a verify dial with the right proof binds, applies config, and sent no secret', ctx => {
   const mc = new FakeMc();
   const { storage } = enrolledPhone(ctx, mc);

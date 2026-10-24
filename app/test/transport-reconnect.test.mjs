@@ -47,7 +47,7 @@ test('F153: LAN_GIVEUP_MS is exported and matches the backhaul giveup — one bo
   assert.equal(LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS);
 });
 
-test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and the next dial is pub, not the OS timeout', async ctx => {
+test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and falls to pub, not the OS timeout', async ctx => {
   const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
@@ -55,21 +55,21 @@ test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and
   ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://pub/ws' });
   p.catch(() => { /* never welcomes in this test */ });
-  assert.equal(sockets[0].url, 'wss://pub/ws', 'pub first');
-  sockets[0].close(1006, 'no data');                 // data is off: pub fails at once
-  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'ws://192.168.28.167:8766/ws', 'falls to LAN');
+  assert.equal(sockets[0].url, 'ws://192.168.28.167:8766/ws', 'LAN first (F595)');
   // ...and that LAN address has no route from this phone: no onopen, no onerror, no onclose. Ever.
   await advance(19);
-  assert.equal(sockets.length, 2, 'still waiting on the LAN dial before the giveup');
-  assert.equal(sockets[1].closed, null, 'and not closed before its bound');
+  assert.equal(sockets.length, 1, 'still waiting on the LAN dial before the giveup');
+  assert.equal(sockets[0].closed, null, 'and not closed before its bound');
   await advance(1);                                   // the LAN giveup
-  assert.ok(sockets[1].closed, 'the hung LAN socket was closed by us, not left to the OS');
+  assert.ok(sockets[0].closed, 'the hung LAN socket was closed by us, not left to the OS');
+  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'wss://pub/ws', 'and the ladder fell to pub at once');
+  sockets[1].close(1006, 'no data');                 // data is off too: pub fails, the pass ends
   await advance(1);                                   // the 1 ms backoff
   assert.equal(sockets.length, 3, 'a new pass started');
-  assert.equal(sockets[2].url, 'wss://pub/ws', 'and it dials pub again — pub -> lan -> pub');
+  assert.equal(sockets[2].url, 'ws://192.168.28.167:8766/ws', 'and it starts on the LAN again: lan -> pub, then lan');
   sockets[2].open(); sockets[2].recv(welcome());
   await p;
-  assert.equal(t.reach, 'backhaul');
+  assert.equal(t.reach, 'lan');
 });
 
 test('F153a: the LAN giveup does not consume a live LAN link — a socket that opens gets the ordinary welcome timeout', async ctx => {
@@ -111,19 +111,21 @@ test('F153b: a new connect() closes the dial already in flight and dials the NEW
   ctx.after(() => t.close());
   const first = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://old-tunnel/ws' });
   const firstErr = first.then(() => null, e => e);
-  sockets[0].close(1006, 'tunnel restarted — the old hostname is gone');
-  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'ws://192.168.28.167:8766/ws');
-  const hung = sockets[1];                            // hanging on an unroutable LAN address, fires nothing
+  sockets[0].close(1006, 'off the field Wi-Fi');     // LAN fails -> pub
+  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'wss://old-tunnel/ws');
+  const hung = sockets[1];                            // the tunnel restarted, the old hostname hangs and fires nothing
   // the player rescans the QR MC is showing now: same MC, new tunnel hostname
   const second = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://new-tunnel/ws', secret: 'sek' });
   assert.ok(hung.closed, 'the hanging socket was closed, not left holding the slot');
   assert.equal(hung.onopen, null, 'and its handlers were detached first, so it cannot schedule anything');
   assert.equal(sockets.length, 3, 'the new target is dialled immediately, not after the OS timeout');
-  assert.equal(sockets[2].url, 'wss://new-tunnel/ws', 'and pub-first, with the freshly scanned hostname');
+  assert.equal(sockets[2].url, 'ws://192.168.28.167:8766/ws', 'LAN first, from the top of the ladder');
   assert.equal((await firstErr).message, 'connect: superseded by a new connect()', 'the old promise settles');
-  sockets[2].open();
-  assert.equal(sockets[2].sent[0].body.secret, 'sek');
-  sockets[2].recv(welcome());
+  sockets[2].close(1006, 'still off the Wi-Fi');
+  assert.equal(sockets[3].url, 'wss://new-tunnel/ws', 'then the freshly scanned hostname');
+  sockets[3].open();
+  assert.equal(sockets[3].sent[0].body.secret, 'sek');
+  sockets[3].recv(welcome());
   await second;
   assert.equal(t.reach, 'backhaul');
   t.close();
@@ -147,20 +149,20 @@ test('F153b: the superseded dial cannot resurrect itself — a late event on the
   t.close();
 });
 
-test('F153c: dialNow() resets the backoff and restarts the ladder from pub, keeping the pending connect()', async ctx => {
+test('F153c: dialNow() resets the backoff and restarts the ladder from the LAN, keeping the pending connect()', async ctx => {
   const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 10000, capMs: 10000, jitter: 0 }, backhaulGiveupMs: 5000, lanGiveupMs: 5000, welcomeTimeoutMs: 5000 });
   ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
-  sockets[0].close(1006, 'no data');                  // pub fails
-  const lanDial = sockets[1];                         // LAN hangs (no route while the radio was down)
-  assert.equal(lanDial.url, 'ws://lan/ws');
+  sockets[0].close(1006, 'no route');                 // LAN fails
+  const pubDial = sockets[1];                         // pub hangs (no data while the radio was down)
+  assert.equal(pubDial.url, 'wss://pub/ws');
   // the OS says the network is back
   assert.equal(t.dialNow(), true);
-  assert.ok(lanDial.closed, 'the dial started with no network was dropped');
-  assert.equal(sockets.length, 3); assert.equal(sockets[2].url, 'wss://pub/ws', 'restarted from the top of the ladder');
+  assert.ok(pubDial.closed, 'the dial started with no network was dropped');
+  assert.equal(sockets.length, 3); assert.equal(sockets[2].url, 'ws://lan/ws', 'restarted from the top of the ladder');
   assert.equal(t.attempt, 0, 'backoff reset');
   sockets[2].open(); sockets[2].recv(welcome());
   await p;                                            // the original connect() promise still resolves
@@ -201,25 +203,6 @@ test('F153c: kick() is dialNow(), and neither dials with no target at all', ctx 
   ctx.after(() => t.close());
   assert.equal(t.kick(), false, 'never scanned a QR, nothing remembered — nothing to dial');
   assert.equal(sockets.length, 0);
-  t.close();
-});
-
-test('F153b/c: an in-flight pub REACHABILITY PROBE is torn down by a new connect() too (it belongs to the old target)', async ctx => {
-  const advance = useClock(ctx);
-  const { sockets, wsFactory } = factory();
-  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
-    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 5000, pubRetryMs: 5 });
-  ctx.after(() => t.close());
-  const p = t.connect({ url: 'ws://lan/ws' });
-  sockets[0].open(); sockets[0].recv(welcome({ join: { pub: 'wss://pub/ws', secret: 'sek' } }));
-  await p;
-  await advance(5);
-  assert.equal(sockets[1].url, 'wss://pub/ws', 'a probe is in flight');
-  const probe = sockets[1];
-  const p2 = t.connect({ url: 'ws://other-mc/ws' });   // told to join a different MC entirely
-  p2.catch(() => { /* closed below */ });
-  assert.ok(probe.closed, 'the probe for the OLD mc was closed');
-  assert.equal(probe.onopen, null, 'and detached, so it cannot drop the new link when it settles');
   t.close();
 });
 

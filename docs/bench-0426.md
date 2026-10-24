@@ -6,7 +6,7 @@ and F580 checks. The steps run in order of game impact, about 3 h in all:
 
 1. **P1, about 1 h 45 min**: the Stick firmware, the SMG frame, the ALT matrix, the spawn repairs, the F579 weapons
    and the Charge Rifle.
-2. **P2, about 35 min**: the Sniper bolt, the large reserve and the reconnect battery cost.
+2. **P2, about 45 min**: the Sniper bolt, the large reserve, the reconnect battery cost and the backhaul fallback.
 3. **P3, outdoors, about 40 min**: the victim-side reach of the Shotgun headset word and of melee.
 
 Where a step says "procedure: 1017 P1.2", the procedure is in that sheet; this sheet adds only what changed. Each
@@ -102,7 +102,7 @@ read.* Tactix-9498, armed from `compile.resolve()` with the shipped Charge Rifle
 **Control:** from exactly 10 rounds, a charge fires. End with `$AMMO,0,<clip>,<reserve>,1,*` from the recipe (only
 an `$AMMO` refill clears the lock), then re-arm. Rows: F575 (Tony's call waits on step 1), F226, F238.
 
-## P2: the gun's own limits (about 35 min)
+## P2: the gun's own limits (about 45 min)
 
 **P2.1. The Sniper's 2.2 s bolt (10 min).** *Impact: the Sniper fires one round, then needs the lever, as the sim
 assumes.* Procedure: 1017 P2.5, three times. Then arm with Quick Hands, and then with Extended Mags: the bolt stays
@@ -120,6 +120,14 @@ drained fast in the field.* The grey Pixel, the app open on the lobby, outside a
 percentage and the time. After 15 min, note them again and count the connect attempts in the app log. **Pass:** the
 attempts are 10 s apart for 12 tries, then 30 s and 60 s, and the link rests at TAP TO RECONNECT after 30 tries.
 **Read:** the battery drop. **Control:** the same phone for 15 min with its gun on and linked. Row: F563.
+
+**P2.4. The backhaul is a fallback, not a pull (10 min).** *Impact: a kit-started tunnel must not move every phone
+off the LAN inside the config-ack window, and a phone that leaves the Wi-Fi must still reach MC.* MC on main with its
+backhaul up (MC shows the public URL), two or more phones bound on the field Wi-Fi, and one of them with mobile data.
+Start a match. Mid-match, turn off Wi-Fi on the phone with data. **Pass:** that phone reaches MC through `pub` within
+about 20 s (the LAN giveup of 8 s plus the tunnel dial), and MC shows it on backhaul. The other phones never redial:
+the MC log shows no new hello from them after the start. **Control:** before the match, with the tunnel up, every
+phone stays on the LAN and MC logs no new hello from any of them. Row: F595.
 
 ## P3: outdoors, the victim-side reach (about 40 min)
 

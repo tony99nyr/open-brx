@@ -16,9 +16,8 @@
 //      without ever sending a hello. `ws://` from the app's https origin is exactly what the LAN join
 //      path already does successfully on these phones, so it is not blocked the way an http fetch is;
 //      and a completed websocket upgrade is a much stronger "this is Mission Control" signal than a bare
-//      TCP accept. Sending no hello is the same rule `transport.js:_probePub` follows, for the same
-//      reason: MC's node registry is one-socket-per-node, so a hello from a probe would make MC hand the
-//      node over and close the real link.
+//      TCP accept. No hello, because MC's node registry is one-socket-per-node: a hello from a probe
+//      would make MC hand the node over and close the real link.
 //
 // Bounded on purpose: `pool` sockets in flight, `timeoutMs` each, a pause between batches, and
 // `shouldStop()` is consulted between every batch so a join that lands mid-sweep ends it. A full pass of

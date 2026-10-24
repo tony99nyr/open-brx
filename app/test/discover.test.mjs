@@ -86,7 +86,7 @@ test('F139: with nothing known at all the plan is still valid — the common ran
 test('F139: the probe OPENS a websocket and closes it without ever sending a hello', async () => {
   const { sockets, wsFactory } = lan(['ws://192.168.0.12:8766/ws']);
   assert.equal(await probeWsOpen('ws://192.168.0.12:8766/ws', { wsFactory, timeoutMs: 50 }), true);
-  assert.equal(sockets[0].sent.length, 0, 'a hello here would make MC hand the node over and kill the real link (transport.js _probePub)');
+  assert.equal(sockets[0].sent.length, 0, 'a hello here would make MC hand the node over and kill the real link (net.py: one socket per node)');
   assert.deepEqual(sockets[0].closed, { code: 1000, reason: 'probe' }, 'closed the moment it opened');
   assert.equal(sockets[0].onopen, null, 'handlers detached');
 });
@@ -339,7 +339,7 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
   assert.match(t, /this\.nodeKey && this\.trusted \? \{ node_key: this\.nodeKey \}/);
   assert.match(t, /if \(!pu \|\| !this\.trusted \|\| this\._firstContact \|\| !pu\.mc_url \|\| normUrl\(pu\.mc_url\) !== normUrl\(this\.url\)\) return undefined;/,
     'the utility proof: trusted, not a first contact, and only to the MC url it came from (F346 d r1)');
-  assert.match(t, /if \(this\.pub && !this\.verify\) this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel');
+  assert.match(t, /if \(this\.pub && !this\.verify\) \{ this\._dialVia\('backhaul'/, 'and never goes to the trusted MC\'s tunnel, even as the LAN fallback (F595)');
   // F421: the one other caller no person started — `connectMc(priorMc, false)`, a phone just RELEASED from
   // utility mode reconnecting to the MC it was JUST bound to as a station. Unlike the two above this one IS
   // trusted (`connectMc`'s own defaults: `trusted: true`, `firstContact: false`), which is what lets it carry
