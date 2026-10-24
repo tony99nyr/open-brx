@@ -2004,6 +2004,15 @@ export interface Coverage {
   bound: number;
 }
 
+/** F595: why MC started the backhaul itself. Absent when it did not (or the operator took over). */
+export interface TunnelAuto {
+  reason: 'kit' | 'cellular';
+  /** bound, fresh phones on cellular right now (derived per snapshot) */
+  cellular?: number;
+  /** the start was refused at once (not installed, port not bound) */
+  error?: string;
+}
+
 export interface LanPublic {
   ws_url: string | null;
   status: TunnelStatus;
@@ -2012,6 +2021,7 @@ export interface LanPublic {
   was_up?: boolean;
   detail?: string;
   error?: string;
+  auto?: TunnelAuto;
 }
 
 export interface PresentationRow {

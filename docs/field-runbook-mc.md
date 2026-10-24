@@ -117,8 +117,9 @@ already sets the cleartext + Wi-Fi permissions and forces landscape):
 - **Join the game SSID** once. Phones rejoin a saved network by themselves, so nothing else is set.
 - **Leave the phone's connection settings alone** (Tony, 2026-09-23: players never change mobile data, Wi-Fi or
   Wi-Fi Assist options). If the field Wi-Fi has no internet, Android may send the Mission Control socket over
-  mobile data, where the game network cannot be reached. The host fixes that by turning the internet tunnel on:
-  the phone then reaches MC over mobile data by itself. On Android the app also opens its LAN socket
+  mobile data, where the game network cannot be reached. MC turns the internet tunnel on by itself at the kit push
+  (F595), and again the first time a phone reports mobile data, so the phone reaches MC over mobile data by itself.
+  Check the backhaul row reads UP before ARM; ARM does not wait for it. On Android the app also opens its LAN socket
   on the Wi-Fi network itself (`app/plugins/brx-net`, not yet proven on a phone). iOS keeps on-link private IPs on Wi-Fi.
 - **Do Not Disturb ON.** The app itself keeps the screen awake and locked to landscape while armed/live (keep-awake
   plugin), so no auto-lock setting is needed — but **do not press the power button and do not take calls**: a locked or
@@ -141,7 +142,9 @@ The launcher runs `python -m brx_mcp.mc`. It prints the URL and node socket, wit
 `--help` lists every flag. `mcp/brx_mcp/mc/README.md` → *Start it* explains the flags that need more, the
 one-MC-per-home lock and the busy-port trap. A field match needs no flag. Flags a field host may need:
 - `--advertise <ip>` on a WSL2 host (`wsl-dev-runbook.md` → *MC on this box*).
-- `--tunnel` or `--public-url <wss://…>` for phones that must reach MC over the internet.
+- `--tunnel` (start at boot) or `--public-url <wss://…>` for phones that must reach MC over the internet. Without
+  either, MC starts the tunnel itself at the kit push and when a phone reports mobile data (F595); `--no-tunnel`
+  keeps it to the console switch. Turning it off on the console holds for the session.
 
 Never pass `--bench-volume` for a real game: it overrides the venue volume.
 
@@ -254,7 +257,7 @@ starts the next game (keep or clear the roster).
 |---|---|---|
 | **NO NODE — OPEN THE APP AND SET THE GUN** | no phone has bound this player's gun | player opens the app, taps Set Gun, connects the tagger |
 | **CLOCK NOT SYNCED — BLOCKS START** | the node hasn't completed the time handshake | wait a few seconds; if stuck, the phone can't reach MC — check Wi-Fi (below) |
-| **WRONG WI-FI / MC UNREACHABLE** | phone is off the game SSID or on cellular | join the game SSID; if it is joined and still unreachable, the host turns the internet tunnel on (never ask the player to change mobile data) |
+| **WRONG WI-FI / MC UNREACHABLE** | phone is off the game SSID or on cellular | join the game SSID; if it is joined and still unreachable, check the internet tunnel is UP (MC starts it at kit; turn it on if an operator turned it off). Never ask the player to change mobile data |
 | **GUN LINK LOST — BLOCKS START** | the phone's BLE to its tagger dropped | power-cycle the tagger with its headset on; re-tap Set Gun |
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
@@ -263,7 +266,7 @@ starts the next game (keep or clear the roster).
 | **1 FACT FROM <player> COULD NOT BE READ AND IS LOST: UPDATE THE APP** | MC could not read a fact after retries (F513) | update that player's app after the match |
 
 Other field issues:
-- **A phone won't rejoin the SSID** after a drop → the host turns the internet tunnel on, so the phone reaches
+- **A phone won't rejoin the SSID** after a drop → the internet tunnel (MC starts it at the kit push; check it reads UP) lets the phone reach
   MC over mobile data by itself (never ask the player to change a phone setting); a phone that never rejoins still ran its own gun locally — its events backfill when it
   reconnects, and it shows **stale** on the board meanwhile.
 - **MC's address changed** (router handed a new IP / you restarted) → the printed `ws://` and the UI's

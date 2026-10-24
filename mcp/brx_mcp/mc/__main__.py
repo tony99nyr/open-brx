@@ -225,7 +225,8 @@ def build(args):
         print(f"  {lan_warning}", flush=True)
         print(_rule, flush=True)
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
-    # install line); it only spawns anything on --tunnel or POST /api/tunnel.
+    # install line); it only spawns anything on --tunnel, POST /api/tunnel or an F595 trigger (kit push,
+    # a phone on cellular), and those only in a run `auto_tunnel_allowed` passes.
     from pathlib import Path as _PT
     from .tunnel import Tunnel
     from ..storage import home_dir
@@ -250,6 +251,7 @@ def build(args):
               + (f"  ({error})" if error else ""), flush=True)
     tunnel.on_change(print_tunnel)
     session.attach_tunnel(tunnel)
+    session.tunnel_auto = auto_tunnel_allowed(args, fake_net)   # F595: kit push / cellular starts it
     # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
     # `restore_snapshot` compares against and what the first write records.
     session.demo_session = bool(args.demo)
@@ -463,6 +465,13 @@ def _bench_volume(value: str) -> int:
     return n
 
 
+def auto_tunnel_allowed(args, fake_net: bool) -> bool:
+    """F595: may MC start the backhaul itself (the kit push, a phone on cellular)? Only a real, persistent
+    run with a real node socket: --demo, --ephemeral, --fake-net and --no-tunnel keep it to the switch."""
+    return not (fake_net or args.fake_net or args.demo or getattr(args, "ephemeral", False)
+                or getattr(args, "no_tunnel", False))
+
+
 def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="brx_mcp.mc")
     ap.add_argument("--host", default="0.0.0.0")
@@ -478,6 +487,10 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-auth", action="store_true", help="disable the operator token (open API — trusted LAN only)")
     ap.add_argument("--tunnel", action="store_true",
                     help="A28: expose the NODE socket (never the API) through a cloudflared quick tunnel at boot")
+    ap.add_argument("--no-tunnel", action="store_true",
+                    help="F595: never start the backhaul by itself. By default MC starts it at the kit push "
+                         "(with a phone bound) and when a bound phone reports cellular; the console switch "
+                         "still works with this flag, and an operator OFF always holds")
     ap.add_argument("--public-url", default=None,
                     help="A28: a public wss:// node URL you already run (named tunnel, Tailscale Funnel, port "
                      "forward). provider: manual — MC hands it out but never starts or stops it")

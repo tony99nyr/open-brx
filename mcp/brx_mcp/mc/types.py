@@ -1801,6 +1801,13 @@ TunnelStatus = Literal["off", "starting", "up", "error"]
 TunnelProviderValue = Literal["cloudflared", "manual"]
 
 
+class TunnelAuto(TypedDict):
+    """F595: why MC started the backhaul itself. Absent when it did not (or the operator took over)."""
+    reason: Literal["kit", "cellular"]
+    cellular: NotRequired[int]        # bound, fresh phones on cellular right now (derived per snapshot)
+    error: NotRequired[str]           # the start was refused at once (not installed, port not bound)
+
+
 class LanPublic(TypedDict):
     ws_url: str | None
     status: TunnelStatus
@@ -1809,6 +1816,7 @@ class LanPublic(TypedDict):
     was_up: NotRequired[bool]
     detail: NotRequired[str]
     error: NotRequired[str]
+    auto: NotRequired[TunnelAuto]
 
 
 class PresentationRow(TypedDict):
