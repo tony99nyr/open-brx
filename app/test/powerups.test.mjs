@@ -2259,6 +2259,25 @@ test('AMMO review: a gun write that fails is retried for the life', async () => 
   await new Promise(r => setImmediate(r)); h.adv(2000);
   assert.ok(h.since(n).filter(f => f === '$AMMO,0,20,384,1,*').length >= 2, 'the refill is written again after the failure');
 });
+// F589 (brx3 review 2026-10-24): the grant booked the refill before the write landed. A failed write with a shot before its
+// result was not retried (pl4: the counts moved), so the phone showed a reserve the gun never got. Now the refill comes off the
+// phone's books when the write fails, and the retry is built again from the counts the phone holds then.
+test('F589: a failed AMMO write with a shot before its result is retried at the new magazine; a second failure takes it back', async () => {
+  const h = harness(AMMO_GAME);
+  h.at(46); h.fire(0, 20, 40);
+  h.failNext(fr => fr.includes('$AMMO,0,20,384,1,*'));
+  const n = h.mark(); h.take(8);
+  h.fire(0, 19, 384);                                    // a round before the result: the phone's books say 384
+  await new Promise(r => setImmediate(r)); h.adv(500);
+  assert.deepEqual(ammoRows(h, n), ['$AMMO,0,20,384,1,*', '$AMMO,0,19,384,1,*'], 'the retry keeps the magazine the shot left');
+  assert.equal(h.eng.state().reserve, 384);
+  const g = harness(AMMO_GAME);
+  g.at(46); g.fire(0, 20, 40);
+  g.failNext(fr => fr.some(f => f.startsWith('$AMMO,0,')), 2);
+  g.take(8); g.fire(0, 19, 384);
+  await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r)); g.adv(500);
+  assert.equal(g.eng.state().reserve, 40, 'the gun never got the refill: the ammo block shows what the gun holds');
+});
 test('AMMO review: with slot 1 on the trigger the hint names slot 1\'s own gain', () => {
   const h = harness(AMMO_GAME);
   h.at(46); h.fire(0, 20, 40); h.pull(); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(1000); h.fire(1, 5, 10);

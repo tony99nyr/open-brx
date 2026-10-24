@@ -1621,11 +1621,11 @@ class GunStage:
                     should_send: Callable[[], bool] | None = None) -> bool | None:
         """engine.js `_write` around the send (F570, milestone review 2026-10-18): a write that carries `$AMMO`/`$WEAP` rows
         holds those rows' echo windows open while it is on the link (at most ECHO_HOLD_MAX_S), because the gun echoes each
-        row as it reads it and a real link takes seconds for a head; when it settles, delivered or not, they restart, so
-        they close ACC_ECHO_S later. Only the write that still owns a window touches it (`_echo_gens`, bug 3 r2 M2)."""
+        row as it reads it and a real link takes seconds for a head; when it settles they restart, so they close ACC_ECHO_S
+        later, unless the write failed before it sent anything: then the hold is put back (F590). Only the write that still owns a window touches it (`_echo_gens`, bug 3 r2 M2)."""
         rows = [f for f in frames if f and (f.startswith("$AMMO,") or f.startswith("$WEAP,"))]
         gens = self._echo_gens(rows) if rows else None
-        before = {sl: self._shot_acct[sl]["echo_until"] for sl in (gens or {}) if sl in self._shot_acct}
+        before = self._echo_untils(rows, gens)
         sent = [0]   # milestone round 4: THIS write's groups that went out (`_send` counts into it), never another write's
         token = _WRITE_SENDS.set(sent)
         if rows:
@@ -1640,13 +1640,22 @@ class GunStage:
             if rows and result is False and not sent[0]:
                 # bug 3 r2 M1: a write that never left (the link was down) lands nothing, so it holds no window: put back what
                 # the hold changed. (Round 3: a write that sent a group and then failed restarts them, as the phone does on
-                # any settle, since those rows may still echo.)
-                for sl, until in before.items():
-                    a = self._shot_acct.get(sl)
-                    if a is not None and a["echo_until"] > until and (gens is None or gens.get(sl) == a.get("echo_gen")):
-                        a["echo_until"] = until
+                # any settle, since those rows may still echo. F590: the phone now does the same, ammo.js `restoreEchoes`.)
+                self._restore_echoes(before, gens)
             elif rows:
                 self._restamp_echoes(rows, gens)
+
+    def _echo_untils(self, rows: list[str], gens: dict | None) -> dict:
+        """ammo.js `echoUntils` (F590): each owned window's close time before `_hold_echoes`."""
+        return {sl: self._shot_acct[sl]["echo_until"] for sl in (gens if gens is not None else self._echo_gens(rows))
+                if sl in self._shot_acct}
+
+    def _restore_echoes(self, before: dict, gens: dict | None) -> None:
+        """ammo.js `restoreEchoes` (F590): a write that never left lands nothing, so it holds no window."""
+        for sl, until in before.items():
+            a = self._shot_acct.get(sl)
+            if a is not None and a["echo_until"] > until and (gens is None or gens.get(sl) == a.get("echo_gen")):
+                a["echo_until"] = until
 
     async def _write_frames(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                             on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
@@ -6437,7 +6446,8 @@ class GunStage:
             secs = round(ms / 1000, 1)
         pk = self._catalog_row("perk_catalog", "perk_id", lo.get("perk"))
         rm = ((pk or {}).get("effects") or {}).get("reload_mult")
-        if rm and float(rm) > 0 and float(rm) != 1 and self.active_slot == 0:
+        # compile applies reload_mult to slot 0 only, and never to a bolt (ammo.js `_reloadPulled`, F573 review; F587)
+        if rm and float(rm) > 0 and float(rm) != 1 and self.active_slot == 0 and (row or {}).get("reload_type") != "bolt":
             secs *= float(rm)
         return max(0.3, round(secs * 1000) / 1000)
 

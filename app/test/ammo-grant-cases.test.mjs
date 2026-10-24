@@ -17,7 +17,7 @@ function host(c, rec) {
     spawnAmmo: () => rows(c.spawn), liveAmmo: () => rows(c.live),
     acctWrote: (slot, mag, res) => rec.acct.push([slot, mag, res]), setPrev: (slot, mag, res) => rec.prev.push([slot, mag, res]),
     showSlot: slot => rec.shown.push(slot),
-    writeMust: frames => { rec.writes.push(...frames); },
+    write: frames => { rec.writes.push(...frames); },   // F589: the grant writes once and settles its own failure
   };
 }
 

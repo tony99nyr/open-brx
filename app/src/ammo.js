@@ -13,7 +13,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //   TRIGGER_NO_FIRE_MS · ACC_ECHO_MS · OVERHEAT_CAP_MS · HEAT_STALE_MS · OVERHEAT_SHOWN_MS · ENERGY_REFILL_MAX_MS
 //   Ammo(host)
 //     account     acctLive(slot, now) · acctOutstanding(slot, now) · acctEchoing(slot, now) · pressedRounds(slot) ·
-//                 acctWrote(slot, mag, res, weap, resetMag) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · acctPress() · acctAmmo(slot, mag, prev)
+//                 acctWrote(slot, mag, res, weap, resetMag) · acctWroteRows(frames, skip, weap) · restampEchoes(frames, gens) · echoGens(frames) · echoUntils(frames, gens) · restoreEchoes(before, gens) · acctPress() · acctAmmo(slot, mag, prev)
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
@@ -832,6 +832,20 @@ export class Ammo {
       const slot = +f.split(',')[1], a = this.acct[slot];
       if (gens && (!a || gens[slot] !== a.echoGen)) continue;
       if (a && a.echoPending > 0) a.echoUntil = Math.max(a.echoUntil, this.host.now() + ECHO_HOLD_MAX_MS);
+    }
+  }
+  /** F590: {slot: echoUntil} for each slot a write's rows name, taken before `holdEchoes`. PURE. */
+  echoUntils(frames, gens = null) {
+    const out = {};
+    for (const slot of Object.keys(gens || this.echoGens(frames))) { const a = this.acct[slot]; if (a) out[slot] = a.echoUntil; }
+    return out;
+  }
+  /** F590: a write that failed before it sent a frame lands nothing: put back what `holdEchoes` changed, for each window
+   *  this write still owns (stage.py `_restore_echoes`). */
+  restoreEchoes(before, gens = null) {
+    for (const [slot, until] of Object.entries(before || {})) {
+      const a = this.acct[slot];
+      if (a && a.echoUntil > until && (!gens || gens[slot] === a.echoGen)) a.echoUntil = until;
     }
   }
   /** Bug 3 r2 M2: {slot: echoGen} for each slot a write's rows name, taken when the write is called. PURE. */

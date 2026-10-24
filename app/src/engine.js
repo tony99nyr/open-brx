@@ -527,6 +527,7 @@ function powerupHost(e) {
     weaponRow: id => e.weaponRow(id), slotCount: () => e._slotCount(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS,
     // the node's magazine account (F259/F164)
     liveAmmo: () => e.am.liveAmmo(), acctLive: slot => e.am.acctLive(slot), prevReserve: slot => e.am.prevReserve[slot],
+    setReserve: (slot, res) => { e.am.prevReserve[slot] = res; },   // F589: a failed AMMO write takes its refill back
     spawnAmmo: () => e.am.spawnAmmo(), showSlot: slot => e.am.showSlot(slot), get reloading() { return !!e.am.reloading; },   // AMMO pickup
     recentPull: (slot, now) => { const p = e._pull; return !!(p && p.slot === slot && now - p.at < TRIGGER_NO_FIRE_MS); },
     // the engine state the module reads (never writes)
@@ -1356,14 +1357,20 @@ export class Engine {
       } } : options;
       const ammoRows = frames.some(f => typeof f === 'string' && (f.startsWith('$AMMO,') || f.startsWith('$WEAP,')));
       const gens = ammoRows ? this.am.echoGens(frames) : null;   // bug 3 r2 M2: the windows this write owns, at call time
-      const result = this.writer(frames, why, writeOptions);
+      // F590 (brx3 review): what the windows were before the hold, and whether any frame left, as stage.py `write` keeps them
+      const before = ammoRows ? this.am.echoUntils(frames, gens) : null;
+      let sentAny = false;
+      const sendOptions = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
+      const result = this.writer(frames, why, sendOptions);
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
       if (ammoRows && result && typeof result.then === 'function') {
         // F570 (bench 2026-10-17): the gun echoes each row as it READS it, so a long write's early rows echo while it is still
         // on the link, past a window stamped at the call. Hold this write's windows open until it settles, then restart them;
-        // a failed write restarts them too, so they close ACC_ECHO_MS later instead of staying open.
+        // a failed write that sent a frame restarts them too, so they close ACC_ECHO_MS later instead of staying open. F590: a
+        // failed write that sent nothing lands nothing, so the hold is put back (stage.py `write`).
         this.am.holdEchoes(frames, gens);
-        result.then(() => this.am.restampEchoes(frames, gens), () => this.am.restampEchoes(frames, gens));
+        const settled = ok => { if (ok === false && !sentAny) this.am.restoreEchoes(before, gens); else this.am.restampEchoes(frames, gens); };
+        result.then(settled, () => settled(false));
       }
       if (!hasPlay && onSent) onSent();
       const playFrame = hasPlay ? frames.find(f => typeof f === 'string' && f.startsWith('$PLAY,')) : null;

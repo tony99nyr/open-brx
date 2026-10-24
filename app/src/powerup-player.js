@@ -863,7 +863,7 @@ export class PlayerPowerups {
   }
   /** AMMO: one `$AMMO,<slot>,<the node's live magazine>,<new reserve>,1` per short slot, so the magazine is kept. The F259
    *  echo window makes the gun's echo bookkeeping (F460), and the ammo block shows the new reserve at once. */
-  grantAmmo(id, item, now) {
+  grantAmmo(id, item, now, retry = false) {
     const h = this.host, short = this._ammoShort(item);
     if (!short) { h.log(`powerup: ${item.name || 'AMMO'} from station ${id}, but every slot is full`, 'li'); return false; }
     const frames = [], refilled = {};
@@ -873,9 +873,22 @@ export class PlayerPowerups {
       h.acctWrote(+slot, mag, res); h.setPrev(+slot, mag, res);
       frames.push(`$AMMO,${slot},${mag},${res},1,*`); refilled[slot] = add; added += add;
     }
-    // Review: a failed write is retried for this life, or the phone would book a reserve the gun never got
-    const life = h.lifeSeq;
-    h.writeMust(frames, `powerup: ${item.name || 'AMMO'} +${added} reserve (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`, () => h.lifeSeq === life && h.alive);
+    // F589 (brx3 review): a failed write takes the refill back off the phone's books, so the ammo block never shows a reserve
+    // the gun did not get. The one retry is built again from the counts the phone holds then (a shot since the first try
+    // moved the magazine), never over a reload. `$AMMO` sets absolute counts, so a row that did land is simply written again.
+    const life = h.lifeSeq, why = `powerup: ${item.name || 'AMMO'} +${added} reserve${retry ? ' (retry)' : ''} (${Object.keys(short).map(s => `slot ${s} ${short[s][1]}`).join(', ')})`;
+    const settled = ok => {
+      if (ok !== false) return;
+      for (const slot of Object.keys(short)) { const r = h.prevReserve(+slot); if (r != null) h.setReserve(+slot, Math.max(0, r - short[slot][2])); }
+      const bb = this._held && this._held.back;
+      if (bb && short[bb.slot]) this._held.back = { ...bb, res: Math.max(0, bb.res - short[bb.slot][2]) };
+      if (short[h.activeSlot]) h.showSlot(h.activeSlot);
+      if (retry || h.lifeSeq !== life || !h.alive || h.reloading) { h.log(`*** write ${why} failed -- the refill is off the books, not retried ***`, 'le'); h.changed(); return; }
+      h.log(`write ${why} failed -- granting again from the counts now`, 'le');
+      this.grantAmmo(id, item, h.now(), true);
+      h.changed();
+    };
+    Promise.resolve(h.write(frames, why)).then(settled, () => settled(false));
     if (short[h.activeSlot]) h.showSlot(h.activeSlot);
     // Review (High): a held heavy keeps the loadout slot's counts to put back on SELECT or the next pickup; they take the refill
     const b = this._held && this._held.back;
