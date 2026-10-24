@@ -7425,6 +7425,29 @@ test('F549 r2: a late reply to a query sent before the head is no config proof',
   assert.equal(good.reports.find(r => r.k === 'ack_config')?.b.ok, true, 'the slot-0 $ALCD still proves the head');
 });
 
+// F549 r2 review (Codex sol): on a re-push the old weapon's shot or reload report can land after the head is queued but
+// before the gun ran its `$START`. Only an `$ALCD` after `$START`'s zeroed `$LCD` (or after the whole head is out) is the new head's.
+test('F549 r2: a slot-0 $ALCD from before the head reached the gun is no config proof', () => {
+  const h = harness().kit().config_();
+  h.eng.headWriteDone = false;              // the head is still on the link
+  h.frame('$ALCD,31,100,0,192,0,*');        // the old weapon's last round, late
+  h.eng.headWriteDone = true; h.eng.headWrittenAt = h.eng.now();   // the head is out; the new `$WEAP,0` loaded nothing
+  h.adv(1600); h.eng.tick(); h.queryConfig();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack?.b.err, 'no_config', 'the stale round proves nothing');
+  assert.equal(h.eng.ammoEcho, null, 'and it is not kept as the echo');
+  const good = harness().kit().config_();
+  good.eng.headWriteDone = false;
+  good.frame('$ALCD,31,100,0,192,0,*');      // stale
+  good.frame('$LCD,0,0,0,0,0,0,*');          // `$START` ran: the gun is clear
+  good.frame('$ALCD,32,100,0,192,0,*');      // the new slot-0 load
+  good.eng.headWriteDone = true; good.eng.headWrittenAt = good.eng.now();
+  good.adv(1600); good.eng.tick(); good.queryConfig();
+  const ok = good.reports.find(r => r.k === 'ack_config');
+  assert.equal(ok?.b.ok, true, 'the load after $START proves the head');
+  assert.equal(ok?.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'MC compares the new load, not the stale round');
+});
+
 test('F271: a head echo starts $QUERY readback and defers ack_config', () => {
   const h = harness().kit().config_().echo();
   h.adv(1600); h.eng.tick();
