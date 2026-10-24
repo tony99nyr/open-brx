@@ -428,7 +428,7 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
     # widened again, 410ms->550ms, once modelling the crit reopened R6, then 2567->2530 on 2026-09-24
     # (polish round 2, F308, "full auto point blank ... too harsh") when the gap eased 550ms->540ms --
     # htk is unchanged throughout, only cycle_ms moved, see the Balance rules table
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 2221), ("toxin_rifle", 15, 1540)):
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 1572), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \

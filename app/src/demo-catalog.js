@@ -31,7 +31,7 @@ export const DEMO_WEAPONS = [
       "long"
     ],
     "htk": 5,
-    "ttk_ms": 2221,
+    "ttk_ms": 1572,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -55,7 +55,7 @@ export const DEMO_WEAPONS = [
       "power": 64,
       "rof": 53,
       "ammo": 45,
-      "ttk": 49
+      "ttk": 64
     }
   },
   {
@@ -111,7 +111,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 93,
       "ammo": 75,
-      "ttk": 93
+      "ttk": 85
     }
   },
   {
@@ -165,7 +165,7 @@ export const DEMO_WEAPONS = [
       "power": 47,
       "rof": 100,
       "ammo": 82,
-      "ttk": 42
+      "ttk": 35
     }
   },
   {
@@ -259,7 +259,7 @@ export const DEMO_WEAPONS = [
       "close"
     ],
     "htk": 5,
-    "ttk_ms": 3621,
+    "ttk_ms": 2972,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -336,7 +336,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 64
+      "ttk": 56
     }
   },
   {
@@ -389,7 +389,7 @@ export const DEMO_WEAPONS = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 93
+      "ttk": 85
     }
   },
   {
@@ -478,7 +478,7 @@ export const DEMO_WEAPONS = [
       "close"
     ],
     "htk": 3,
-    "ttk_ms": 1211,
+    "ttk_ms": 886,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -501,7 +501,7 @@ export const DEMO_WEAPONS = [
       "power": 73,
       "rof": 47,
       "ammo": 32,
-      "ttk": 85
+      "ttk": 93
     }
   },
   {
@@ -560,7 +560,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 93,
       "ammo": 88,
-      "ttk": 93
+      "ttk": 85
     }
   },
   {
@@ -615,7 +615,7 @@ export const DEMO_WEAPONS = [
       "power": 91,
       "rof": 20,
       "ammo": 26,
-      "ttk": 35
+      "ttk": 27
     }
   },
   {
@@ -724,7 +724,7 @@ export const DEMO_WEAPONS = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 56
+      "ttk": 49
     }
   },
   {
@@ -809,7 +809,7 @@ export const DEMO_WEAPONS = [
       "close"
     ],
     "htk": 10,
-    "ttk_ms": 3557,
+    "ttk_ms": 2096,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -832,7 +832,7 @@ export const DEMO_WEAPONS = [
       "power": 56,
       "rof": 60,
       "ammo": 63,
-      "ttk": 27
+      "ttk": 42
     }
   }
 ];

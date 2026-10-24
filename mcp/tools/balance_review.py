@@ -39,8 +39,8 @@ healing and a spawn-reserve pickup, and pistol
 finishers after a dry primary. Haze runs in a separate optional report.
 Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo stress score because
 the down time rule measures bolt exposure instead of ammunition.
-Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms still uses a 300 ms pull,
-so the published semi TTK and the fight sim disagree (F576). Heat cooling while firing is unproven (F575).
+Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms uses the same field fit
+(F576). Heat cooling while firing is unproven (F575).
 The matrix reports REAL_AIM separately at close, mid and long range. Each matrix 1v1 column scores
 the first kill within 10 s. Long contact uses 20 s. The field ratio
 uses a 150 s kill-count match. `assumptions()` names every other scoring horizon. The Shields preset
@@ -98,7 +98,7 @@ REPO = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS.parent))
 import balance_sim as B  # noqa: E402
-from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, PULL_SIGMA, WeaponCatalog  # noqa: E402
+from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEALTH_PRESETS, PULL_SIGMA, WeaponCatalog  # noqa: E402
 from brx_mcp.mc.perks import PerkCatalog  # noqa: E402
 from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS  # noqa: E402
@@ -205,9 +205,9 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
     return {
         "scenario_version": SCENARIO_VERSION, "seed": SEED, "reps": dict(REPS),
         "aim": AIM, "real_aim": REAL_AIM, "pull_ms_mean": PULL_MS, "pull_sigma": PULL_SIGMA,
-        "fight_overshoot_ms": B.FIGHT_OVERSHOOT_MS,
+        "fight_overshoot_ms": FIGHT_OVERSHOOT_MS,
         "fight_overshoot_fit": "lognormal median fitted to the USP, AMR and Deagle field median residuals",
-        "compile_semi_ttk": "published ttk_ms still uses the 300 ms pull; the fight sim uses additive overshoot",
+        "compile_semi_ttk": "ordinary single-shot ttk_ms uses the fitted fight overshoot; the bolt keeps its pull model",
         "reload_swap": "a reload or lever vent progresses only in hand; a swap credits a finished reload and cancels an unfinished one",
         "revenge_seek": "a stale seek cannot replace an active engagement after respawn",
         "heat_cooling": heat_cool_while_firing,
@@ -759,7 +759,7 @@ class Fighter:
         return finish_estimate(g, pool=remaining, chance=self._hit_chance(idx), ammo=s.ammo,
                                reserve=s.reserve, reload_amount=s.reload_amount, ready_at=s.ready_at,
                                locked_until=s.locked_until, t=t, pull_ms=self.pull_ms,
-                               overshoot_ms=B.FIGHT_OVERSHOOT_MS if self.pull_ms > 0 else 0.0,
+                               overshoot_ms=FIGHT_OVERSHOOT_MS if self.pull_ms > 0 else 0.0,
                                charged=charged, count=s.count, dist=self.dist, heat=s.heat,
                                heat_t=s.heat_t, heat_cool_while_firing=self.heat_cool_while_firing,
                                cooling_started=s.cooling_started)
@@ -1521,7 +1521,7 @@ def pistol_finish_ms(gun: Gun, swap_ms: float, *, dry=False) -> float:
         gun, pool=B.R10_FINISH_POOL_HP, chance=chance,
         ammo=0 if dry else gun.mag, reserve=gun.reserve, reload_amount=0,
         ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=PULL_MS,
-        overshoot_ms=B.FIGHT_OVERSHOOT_MS, charged=not dry, count=0,
+        overshoot_ms=FIGHT_OVERSHOOT_MS, charged=not dry, count=0,
         dist=DIST[PISTOL_FINISH_RANGE], heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
 
 

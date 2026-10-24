@@ -7,6 +7,7 @@ same run gives the same numbers. The toxin test holds the published result in do
 """
 import copy
 import heapq
+import math
 import pathlib
 import random
 import shutil
@@ -18,6 +19,7 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 
 import balance_sim as B  # noqa: E402
+import balance_review as R  # noqa: E402
 from brx_mcp.mc.compile import WeaponCatalog  # noqa: E402
 
 SEED = 7
@@ -129,6 +131,35 @@ def test_fight_press_keeps_bolt_lever_on_the_original_pull_model():
     mean = sum(kills) / len(kills)
     want = CAT.paced_cycle_ms("sniper_rifle")
     assert abs(mean - want) / want < 0.06, (mean, want)
+
+
+def test_published_single_shot_cycle_matches_both_fight_sims():
+    """All mode-7 rows quote the sampled fight interval, including hidden rows and the bolt Sniper."""
+    rng = random.Random(SEED)
+    rows = [row for row in CAT._rows if CAT._frame_int(row["weapon_id"], "mode") == 7]
+    assert {row["weapon_id"] for row in rows} == {
+        "bolt_rifle", "shotgun", "sniper_rifle", "plasma_sniper", "amr",
+        "glock", "usp", "deagle", "rocket_launcher", "ion_sniper",
+    }
+    assert abs(B.FIGHT_OVERSHOOT_MS - ((196 - 190) + (440 - 350) + (714 - 700)) / 3) < 0.01
+    assert R.FIGHT_OVERSHOOT_MS == B.FIGHT_OVERSHOOT_MS
+    for row in rows:
+        wid = row["weapon_id"]
+        published = CAT.paced_cycle_ms(wid)
+        if row.get("reload_type") == "bolt":
+            # The match sim samples the first press after the bolt. The review duel samples
+            # a full press gap, which differs by about 95 ms on the 2.2 s Sniper cycle.
+            match_mean = B.DEFAULT_PULL_MS + sum(
+                B.semi_interval(rng, row["reload_ms"], B.DEFAULT_PULL_MS) for _ in range(5000)
+            ) / 5000
+            review_mean = 2 * R.PULL_MS + row["reload_ms"]
+            assert abs(match_mean - published) / published < 0.02, (wid, match_mean, published)
+            assert abs(review_mean - published) / published < 0.04, (wid, review_mean, published)
+        else:
+            fire = CAT.fire_ms(wid)
+            mean = sum(B.fight_semi_interval(rng, fire) for _ in range(5000)) / 5000
+            # The fit is a median. Its lognormal mean exceeds the median by about 17%.
+            assert abs(mean - published) / published < 0.02, (wid, mean, published)
 
 
 def test_refit_two_shooter_victim_clusters_match_the_field():
@@ -539,19 +570,15 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
         assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
 
 
-def test_sampled_single_shot_pulls_match_the_paced_cycle():
-    """Field 2026-10-17: a single-shot round fires on the first press at or after t14. The sim samples the presses
-    (`semi_interval`); `WeaponCatalog.paced_cycle_ms()` is the closed form the published ttk uses. They must agree,
-    at every pull rate Tony asked about, or the arsenal shows a TTK the sim does not play."""
+def test_legacy_sampled_pull_gaps_match_the_renewal_estimate():
+    """Legacy pull sampling still models bolt actions and non-fight intervals at each pull rate."""
     rng = random.Random(SEED)
-    # Not the Sniper Rifle: since 2026-10-17 it is a bolt action, paced by its lever (`paced_cycle_ms`'s bolt branch);
-    # the bolt is modelled in mcp/tools/balance_review.py, not in this sampler.
     for weapon_id in ("amr", "deagle", "usp", "shotgun"):
         fire = CAT.fire_ms(weapon_id)
         for pull in (250, 300, 350):
             n = 20_000
             mean = sum(B.semi_interval(rng, fire, pull) for _ in range(n)) / n
-            want = CAT.paced_cycle_ms(weapon_id, pull)
+            want = max(pull, fire + pull * math.exp(B.PULL_SIGMA * B.PULL_SIGMA) / 2)
             # The closed form is the renewal limit, exact for a long t14; a t14 well under the pull runs up to
             # about 2% short (the USP at 350 ms: 422 against 429).
             assert abs(mean - want) / want < 0.03, (weapon_id, pull, round(mean), round(want))

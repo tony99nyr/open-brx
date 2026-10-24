@@ -46,7 +46,7 @@ MECHANICS MODELLED
 - ``reload_type: chain`` (Shotgun): ``reload_ms`` is per shell.
 - Single shot (t20 = 7): a fight adds a sampled overshoot after t14
   (``--fight-overshoot-ms``). The bolt lever and its following press retain ``--pull-ms``.
-  Compile's published semi ``ttk_ms`` still uses a 300 ms pull, so its values differ from the sim.
+  Compile publishes the same fitted fight interval for ordinary single-shot weapons.
 - Catalogue heat: a crossing round fires, then the Charge Rifle waits through a self lockout.
   The Energy Rifle vents in declared lever pulls until heat falls below lock_at, then reloads its cell.
   The match and rule engines use the same three cooling branches.
@@ -125,7 +125,7 @@ from dataclasses import dataclass, field, replace
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
-from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, HEALTH_PRESETS, PULL_SIGMA, SEMI_PULL_MS,  # noqa: E402
+from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEALTH_PRESETS, PULL_SIGMA, SEMI_PULL_MS,  # noqa: E402
                                 WeaponCatalog)
 from brx_mcp.mc.types import RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG  # noqa: E402
 
@@ -160,7 +160,6 @@ DEFAULT_HIT_PROBS = (0.35,)
 # whose lognormal median fits the USP, AMR and Deagle field median residuals.
 # Both clocks use the same lognormal spread. A zero overshoot restores a press at t14.
 DEFAULT_PULL_MS = float(SEMI_PULL_MS)
-FIGHT_OVERSHOOT_MS = (196 - 190 + 440 - 350 + 714 - 700) / 3  # least-squares fit to field median residuals
 HEAT_COOLING_BRANCHES = ("throughout", "after_lockout", "none")
 HEAT_COOL_WHILE_FIRING = True  # compatibility with callers of the old boolean option
 
