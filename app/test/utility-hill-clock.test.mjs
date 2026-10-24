@@ -62,7 +62,7 @@ async function armFresh(extra = {}) {
 test('the countdown wipes what the lobby counted, and the point waits for go-live', async () => {
   await api.applyStationConfig({ ...hill, game: ++game });
   redOnThePoint();
-  const t0 = Date.now();
+  const t0 = api.stationNow();
   for (let t = 0; t <= 15_000; t += 250) api.controlTick(t0 + t);   // RED stands on it in the lobby and takes it
   assert.ok(api.point.owner === RED && api.point.holdMs[RED] > 0, 'setup: the lobby counted');
   await api.applyStationConfig({ ...hill, game, starts_in_ms: 5_000, ends_in_ms: 65_000 });   // START
@@ -78,7 +78,7 @@ test('the countdown wipes what the lobby counted, and the point waits for go-liv
 
 test('a LIVE re-send keeps the count, and the deadline freezes it at the whistle', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 12_000; t += 250) api.controlTick(now + t);   // RED takes it at 10 s
   const held = api.point.holdMs[RED];
   assert.ok(held > 0 && api.point.owner === RED, 'setup: RED holds it');
@@ -93,23 +93,23 @@ test('a LIVE re-send keeps the count, and the deadline freezes it at the whistle
 
 test('an END (ends_in_ms 0) freezes the point now; a config with no timing counts as before', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 12_000; t += 250) api.controlTick(now + t);
   await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });
   const frozen = api.point.holdMs[RED] || 0;
-  api.controlTick(Date.now() + 5_000); api.controlTick(Date.now() + 9_000);
+  api.controlTick(api.stationNow() + 5_000); api.controlTick(api.stationNow() + 9_000);
   assert.ok((api.point.holdMs[RED] || 0) - frozen <= 300, 'the point banked after END');
   // CONTROL: a hill with no match clock at all (an old MC, an adopted match) still counts
   await api.applyStationConfig({ ...hill, game: ++game });
   redOnThePoint();
-  const t1 = Date.now();
+  const t1 = api.stationNow();
   for (let t = 0; t <= 12_000; t += 250) api.controlTick(t1 + t);
   assert.ok(api.point.holdMs[RED] > 0, 'a hill with no clock stopped counting');
 });
 
 
 test('a late END never moves a whistle that has passed, and a START with no deadline clears the old one', async () => {
-  // `applyStationConfig` reads Date.now(), so the arming times are driven by a fake clock here
+  // `applyStationConfig` reads the station clock, which follows a wall clock that runs ahead (F590), so a fake Date.now() drives the arming times here; the tests read `api.stationNow()` for that reason
   const realNow = Date.now;
   let clock = realNow();
   Date.now = () => clock;
@@ -136,7 +136,7 @@ test('a late END never moves a whistle that has passed, and a START with no dead
 
 test('F557: a steady hold is saved as it grows, not only when the advert changes', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 30_000; t += 250) api.controlTick(now + t);
   const saved = JSON.parse(localStorage.getItem('brx.station.control'));
   const held = api.point.holdMs[RED];
@@ -147,7 +147,7 @@ test('F557: a steady hold is saved as it grows, not only when the advert changes
 
 test('a START with no tick before go-live still counts from go-live', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
-  const t0 = Date.now();
+  const t0 = api.stationNow();
   for (let t = 0; t <= 4_000; t += 250) api.controlTick(t0 + t);   // RED builds 40% before the next match
   await api.applyStationConfig({ ...hill, game: ++game });
   redOnThePoint();
@@ -160,7 +160,7 @@ test('a START with no tick before go-live still counts from go-live', async () =
 
 test('F558: status.control carries the inputs: net, counts and lead', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
   const c = api.statusBody().control;
   assert.equal(c.net, 1);
@@ -180,7 +180,7 @@ test('F559: MC sets the hill pace when the arming carries it, and an arming with
   assert.equal(api.settings.netCap, 2);
   await api.applyStationConfig({ ...hill, game, lock_s: 30 });   // a re-send with no pace
   assert.equal(api.settings.captureS, 5, 'an arming without a pace changed it');
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 5_250; t += 250) api.controlTick(now + t);   // RED alone: 5 s at net 1 takes it
   assert.equal(api.point.owner, RED, 'the pushed pace did not reach the point');
   await api.applyStationConfig({ ...hill, game, capture_s: 2, net_cap: 9 });   // out of range: ignored
@@ -191,7 +191,7 @@ test('F559: MC sets the hill pace when the arming carries it, and an arming with
 test('F559: a pushed net cap limits a crowd on the point', async () => {
   await armFresh({ capture_s: 10, net_cap: 1 });
   api.presence.players = () => [1, 2, 3].map(id => ({ id, team: RED, state: 1, present: true, inCircle: true, fading: false }));
-  const now = Date.now();
+  const now = api.stationNow();
   for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
   assert.equal(api.point.net, 1, 'three RED at net_cap 1 convert at net 1');
   assert.ok(Math.abs(api.point.progress - 20) < 1e-6, `2 s at net 1 builds 20%: ${api.point.progress}`);

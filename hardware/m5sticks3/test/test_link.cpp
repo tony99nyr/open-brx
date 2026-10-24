@@ -2297,10 +2297,10 @@ static void test_a_hill_reopened_after_its_whistle_restarts_its_clock() {
   StationAssignment again = control_config(7);
   again.starts_known = true; again.starts_in_ms = 5000; again.ends_in_ms = 65000;
   link.apply_station_config(again, 100000);
-  link.tick_players(p, 105000);   // go-live: the first step since the whistle
-  CHECK(link.hill().hold_ms[1] - frozen <= 1000u);
-  link.tick_players(p, 106000);
-  CHECK(link.hill().hold_ms[1] - frozen <= 2000u);
+  link.tick_players(p, 105000);   // go-live: the first step since the whistle banks nothing
+  CHECK_EQ(link.hill().hold_ms[1] - frozen, 0u);
+  link.tick_players(p, 106000);   // and the point counts on from there
+  CHECK_EQ(link.hill().hold_ms[1] - frozen, 1000u);
 }
 
 // Review 2026-09-25: a duration hill out of Wi-Fi keeps WAITING (neutral, no accrual) until its anchor;
@@ -3062,6 +3062,8 @@ int main(int argc, char** argv) {
     ctrl.control_net = 1;
     ctrl.control_counts[1] = 2;
     ctrl.control_lead = 1;
+    ctrl.control_capture_s = 20;      // F591: the pace the Stick applies
+    ctrl.control_net_cap = 2;
     write("status_control.json",
           make_envelope("status", build_status_body(ctrl), "status000002", 1700000030000LL));
     std::printf("wrote goldens to %s\n", dir.c_str());

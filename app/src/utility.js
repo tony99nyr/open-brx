@@ -58,13 +58,19 @@ const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? locatio
 const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }); } catch (_) { return { ...DEFAULTS }; } })();
 /** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
 /** F590 (3): the station's own clock for everything its 250 ms tick touches (sightings, the hill and its MC deadline, the
- *  powerup schedule, the advert and scan timers). Wall time at load, then monotonic: MC's deadlines are relative
- *  (`ends_in_ms`), so a phone clock step must not move the whistle. A saved time read back after a restart lands on the
- *  new anchor, as a Date.now() value did. A value another module compares with its own Date.now() (the HUD handoff,
- *  the auto-join guard, the A58 lock) stays on Date.now(). */
+ *  powerup schedule, the advert and scan timers). It runs on the monotonic clock and never goes backwards, so a phone
+ *  clock stepped back cannot hold MC's relative whistle off or score past it. It catches up whenever wall time runs
+ *  ahead of it: `performance.now()` stops while a phone deep-sleeps, and a sleep is real time the hill must not lose.
+ *  A forward wall step therefore still moves the whistle, as before; nothing on the phone can tell it from a sleep.
+ *  It starts at wall time, so a saved time read back after a restart lands where a Date.now() value did. A value
+ *  another module compares with its own Date.now() (the HUD handoff, the auto-join guard, the A58 lock) stays on it. */
 const stationNow = (() => {
-  const wall = Date.now(), mono = performance.now();
-  return () => wall + Math.round(performance.now() - mono);
+  let offset = Date.now() - performance.now();
+  return () => {
+    const mono = performance.now();
+    offset = Math.max(offset, Date.now() - mono);   // wall ahead of the station clock (a sleep): catch up
+    return Math.round(mono + offset);               // wall behind it (a step back): keep counting on the monotonic clock
+  };
 })();
 const thr = () => stationThreshold(settings);
 // Milestone round 3: a pace saved under the old +/- range (2-120 s, 1-12) comes back inside A77's bounds
@@ -258,7 +264,9 @@ function applyHillClock(cfg, now, sameStation = true) {
   // F593: a point that took its last step to the whistle is frozen there. A config that lifts the freeze (a same-game
   // lobby or abort re-send clears the deadline, or a later one replaces it) restarts its clock below, so the first step
   // back banks none of the frozen time.
-  const frozenAtWhistle = () => settings.hillEndsAt != null && point.at != null && point.at >= settings.hillEndsAt;
+  // The whistle counts as gone once the station clock or the point's last step reached it: a tick loop paused across
+  // the whistle has not stepped to it yet, and an END followed by a lobby config can arrive before any tick.
+  const frozenAtWhistle = () => settings.hillEndsAt != null && Math.max(now, point.at ?? -Infinity) >= settings.hillEndsAt;
   const wasFrozen = frozenAtWhistle();
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
@@ -575,7 +583,7 @@ function flushTaken() {
     try { if (transport.report('station_action', { ...b, t: transport.syncedNow() - (stationNow() - b.t) })) return true; }
     catch (err) { log('station_action refused: ' + (err && err.message || err), 'le'); }
     _takenFailAt = stationNow(); return false;   // retried in 5 s, not every tick
-  });
+  }, stationNow());   // F590 (3): the take times are on the station clock
   if (n) log(`MC told: ${n} item${n === 1 ? '' : 's'} taken`, 'li');
   return n > 0;
 }
@@ -654,7 +662,7 @@ function resetPoint(why) {
   point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
   point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
   point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
-  point.heldBy = null;                    // F554 gap: no earlier sample saw anybody (the Stick's reset() does the same)
+  point.heldBy = null; point.at = null;   // F554 gap, F593: no earlier sample, and no old game's time in the first step (the Stick's reset() does the same)
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');
 }

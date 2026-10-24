@@ -60,17 +60,33 @@ async function armFresh(extra = {}) {
   api.point.owner = RED; api.point.progress = 100;           // RED holds the point, as the Stick tests set it
 }
 
-test('F590: a phone clock step forward does not blow the whistle early or bank the time to it', async () => {
-  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
+test('F590: a phone clock stepped back an hour does not hold the whistle off', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 1_500 });
   const realNow = Date.now;
   try {
-    api.tick(); api.tick();                                    // RED is counted at both ends from here on
-    const before = api.point.holdMs[RED] || 0;
-    Date.now = () => realNow() + 3_600_000;                    // the phone's wall clock steps forward an hour
     api.tick();
-    const banked = (api.point.holdMs[RED] || 0) - before;
-    assert.ok(banked < 2_000, `one real tick banked ${banked} ms: the clock step reached the hill`);
-    assert.ok(api.settings.hillEndsAt - api.stationNow() > 25_000, 'the whistle moved with the wall clock');
+    Date.now = () => realNow() - 3_600_000;                    // the phone's wall clock steps back an hour
+    const t0 = realNow();
+    // wait for the condition, in real time: the whistle is 1.5 s after arming on any honest clock
+    while (!(api.point.at != null && api.point.at >= api.settings.hillEndsAt) && realNow() - t0 < 6_000) {
+      api.tick();
+      await new Promise(r => realSetTimeout(r, 50));
+    }
+    assert.ok(api.point.at != null && api.point.at >= api.settings.hillEndsAt, 'the hill was still counting 6 s after a 1.5 s whistle');
+    const banked = api.point.holdMs[RED] || 0;
+    assert.ok(banked <= 2_000, `the hill banked ${banked} ms in a 1.5 s match`);
+  } finally { Date.now = realNow; }
+});
+
+test('F590: the station clock follows wall time that runs ahead of it, as after a phone sleep', () => {
+  const realNow = Date.now;
+  try {
+    const before = api.stationNow();
+    Date.now = () => realNow() + 60_000;                       // a minute of wall time the monotonic clock did not see
+    const after = api.stationNow();
+    assert.ok(after - before >= 59_990 && after - before < 61_000, `the station clock moved ${after - before} ms`);
+    Date.now = realNow;                                        // wall time "falls back" behind it: the station clock holds
+    assert.ok(api.stationNow() >= after, 'the station clock went backwards');
   } finally { Date.now = realNow; }
 });
 
@@ -98,4 +114,15 @@ test('F593: a hill reopened after its whistle by a same-game lobby config restar
   assert.ok(banked <= 1_000, `the first step after the reopen banked ${banked} ms of frozen time`);
   api.controlTick(t0 + 100_250);
   assert.equal(api.point.holdMs[RED] - frozen - banked, 250, 'the reopened point counts on from its restart');
+});
+
+test('F593: an END and a lobby config with no tick between them still restart the clock', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
+  api.controlTick(api.stationNow() - 1_000);                   // one live step, a second before the END: RED is counted
+  const held = api.point.holdMs[RED] || 0;
+  await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });   // END: the whistle is now
+  await api.applyStationConfig({ ...hill, game });                  // a lobby re-send before any tick stepped to it
+  api.controlTick(api.stationNow() + 100_000);                 // the station's next step, much later
+  const banked = (api.point.holdMs[RED] || 0) - held;
+  assert.ok(banked <= 1_000, `the first step after END and the lobby banked ${banked} ms`);
 });
