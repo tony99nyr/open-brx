@@ -2316,8 +2316,10 @@ export class Engine {
       this.awaitingEcho = false;
       const cid = this.config && this.config.config_id;
       if (!this.headEcho) { this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' }); return; }
-      // F549 (field 2026-10-17): the gun answered only `$LCD,0,0,0,0,0,0`, so it holds no config: no weapon loaded (F548's
-      // broken `$WEAP,0`). Every healthy gun that day also sent its slot-0 `$ALCD`; MC must not go green on this one.
+      // F549 (field 2026-10-17): the gun answered, but no slot-0 `$ALCD` came after `$START`, so no weapon loaded (F548's
+      // broken `$WEAP,0` answered only the zeroed `$LCD`). Every healthy gun that day sent the slot-0 `$ALCD`; MC must not go green.
+      // Residual (F549 r2 review): a stale death `$LCD,0,0,0,0,0,0` can open `headStartSeen` early. It needs a dead gun on
+      // slot 0 with no rounds AND a broken `$WEAP,0`, so it stays.
       if (!this.echoProof) { this.configRefused = true; this.log(`config not taken: the gun answered ${this.headEcho} and no slot-0 ammo report`, 'le'); this.report('ack_config', { config_id: cid, ok: false, err: 'no_config' }); this._changed(); return; }
       // Keep this independent of F264's `_queryAt`: that query classifies the following `$LCD` as a
       // cure response. This one only reads the status body and must not alter live pool/no-fire state.
@@ -5555,8 +5557,8 @@ export class Engine {
         // A frame with no slot token reads slot 0.
         if (t[5] !== undefined && !(this._spawnCheck && this._spawnCheck.queryAt && !this._spawnCheck.done)) this.am.onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, t[4] !== undefined && t[4] !== '' ? +t[4] : 0, null, true);   // a spawn query's answer is F416's to judge
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
-        // F549 r2 (Codex sol, 2026-10-24): an `$LCD` is never config proof. Its pools come from `$PSET`, not `$WEAP,0`, and a
-        // late reply to a `$QUERY` sent before the head carries the OLD config's numbers. Only the slot-0 `$ALCD` proves it.
+        // F549 r2 (Codex sol, 2026-10-24): an `$LCD` is never config proof. The head's only `$LCD` is `$START`'s zeroed one;
+        // any other in the window answers something else, and a late `$QUERY` reply carries the OLD config. Only the slot-0 `$ALCD` proves it.
         // The zeroed `$LCD` is `$START`'s answer (protocol `$START`): the gun is clear, so a later `$ALCD` is the new head's.
         if (this.awaitingEcho && t.length >= 7 && t.slice(1, 7).every(x => x === '0')) this.headStartSeen = true;
         const wasResync = !!this.resync;
@@ -5590,7 +5592,8 @@ export class Engine {
         // (F-3). `butSinceHead` is the cut: a `$BUT` is the gun saying a control was touched, and
         // after one the ammo stream belongs to the player, not to the head. No echo then, which MC
         // reads as NOT ECHOED -- no claim, rather than a wrong one. F549 (field 2026-10-17): every healthy gun did send
-        // the slot-0 `$ALCD` after a head; a gun that sent only `$START`'s zeroed `$LCD` acks `no_config` (`_checkEcho`).
+        // the slot-0 `$ALCD` after a head; a gun that sent none acks `no_config` (`_checkEcho`). A slot-0 round after a `$BUT` is
+        // no echo, but it still proves slot 0 loaded (`echoProof` above).
         if (this.awaitingEcho && newHead && !this.ammoEcho && !this.butSinceHead
             && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
         // S42: token 2 is the live per-shot accuracy `$ALCD` reports (docs/weapon-design.md §4.4,
