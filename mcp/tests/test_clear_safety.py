@@ -29,7 +29,6 @@ from brx_mcp import __main__ as cli
 INTENTIONAL_TEARDOWNS = {
     "gameconfig.END_SEQUENCE": "game over: the gun should be inert until the next match arms it",
     "protocol.PANIC_SEQUENCE": "panic stop: making the gun unhittable is the POINT",
-    "cli.arm_plan.end": "CLI teardown (the bundle's own end)",
     "golden_bundle/end": "game over (the bundle MC ships for teardown)",
     "golden_bundle/panic": "panic stop",
     "mc.TRYOUT_TEARDOWN": "end of a private try-out: the gun stays idle until the game is pushed",
