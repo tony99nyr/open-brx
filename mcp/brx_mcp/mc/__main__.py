@@ -239,6 +239,10 @@ def build(args):
     tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_dir=pid_dir)
     if public_url and getattr(args, "tunnel", False):
         print("  backhaul: --tunnel ignored (--public-url already names a public node URL)", flush=True)
+    boot_ignored = boot_tunnel_ignored(args)
+    if boot_ignored and getattr(args, "tunnel", False) and not public_url:
+        # SAY so: a flag that is silently ignored is the shape of half the bugs in this repo's history.
+        print(f"  backhaul: --tunnel ignored ({boot_ignored})", flush=True)
     # A cloudflared we started and never stopped (a hard crash, a SIGKILL) still points its hostname at
     # this ws port, and THIS process has no child -- so the secret gate would be down on a socket the
     # internet can still reach. Kill it before we bind.
@@ -337,7 +341,7 @@ def build(args):
             # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —
             # the banner renders before this async bind, when the port is still 0/unbound.
             print(f"  nodes: {session.lan['ws_url']}   (scan the join QR / enter this URL on each phone)", flush=True)
-            if getattr(args, "tunnel", False) and tunnel.stoppable:
+            if getattr(args, "tunnel", False) and tunnel.stoppable and not boot_ignored:
                 # A28.1: start on boot, once the ws port is REAL. Failures land in `lan.public.error`
                 # and the LAN path is untouched, so this must never stop MC coming up.
                 try:
@@ -353,10 +357,6 @@ def build(args):
         # Refresh the bare URL now that the transport owns its real advertised endpoint; set_ws_url
         # also re-derives the QR and keeps the join secret in sync.
         session.refresh_join_info(net, ws_url)   # O8: logged and shown on the console on failure, cleared on success
-        if getattr(args, "tunnel", False):
-            # --fake-net has no socket to expose, so --tunnel has nothing to do. SAY so: a flag that is
-            # silently ignored is the shape of half the bugs in this repo's history.
-            print("  backhaul: --tunnel ignored (--fake-net has no node socket to expose)", flush=True)
     try:
         evidence_path = _PT(args.evidence_dir) if getattr(args, "evidence_dir", None) else None
         if evidence_path:
@@ -465,6 +465,14 @@ def _bench_volume(value: str) -> int:
     return n
 
 
+def boot_tunnel_ignored(args) -> str | None:
+    """Why `--tunnel` must not start a real cloudflared at boot in this run, or None when it may."""
+    for flag, attr in (("--fake-net", "fake_net"), ("--demo", "demo"), ("--ephemeral", "ephemeral")):
+        if getattr(args, attr, False):
+            return f"{flag} never opens a real tunnel" + (" (no node socket to expose)" if attr == "fake_net" else "")
+    return None
+
+
 def auto_tunnel_allowed(args, fake_net: bool) -> bool:
     """F595: may MC start the backhaul itself (the kit push, a phone on cellular)? Only a real, persistent
     run with a real node socket: --demo, --ephemeral, --fake-net and --no-tunnel keep it to the switch."""
@@ -490,7 +498,7 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-tunnel", action="store_true",
                     help="F595: never start the backhaul by itself. By default MC starts it at the kit push "
                          "(with a phone bound) and when a bound phone reports cellular; the console switch "
-                         "still works with this flag, and an operator OFF always holds")
+                         "still works with this flag, and an operator OFF holds until MC restarts or a new session starts")
     ap.add_argument("--public-url", default=None,
                     help="A28: a public wss:// node URL you already run (named tunnel, Tailscale Funnel, port "
                      "forward). provider: manual — MC hands it out but never starts or stops it")

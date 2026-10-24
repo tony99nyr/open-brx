@@ -570,6 +570,8 @@ class Session:
         self._tunnel_operator_off = False         # F595: the operator switched it off; no trigger restarts it
         self._tunnel_auto_fired: set[str] = set() # F595: each trigger gets one try per session
         self._tunnel_auto: TunnelAuto | None = None
+        self._tunnel_seq = 0                      # F595: bumps on every switch press, so a later ON wins an OFF in flight
+        self._tunnel_stopping = 0                 # F595: OFFs still awaiting the child's exit
         # F142 (field 2026-09-12): is THIS process a demo? Set by `__main__` when `--demo` seeds the
         # roster, persisted with the snapshot, and compared on restore — a demo roster must never wake
         # up inside a real match day, and a real roster must never be handed to a demo run.
@@ -1093,17 +1095,31 @@ class Session:
         t = self.tunnel
         if t is None:
             raise TunnelError("this Mission Control was built without tunnel support")
+        # The choice is recorded BEFORE any await, so an ON that lands while an OFF is still stopping
+        # the child is not lost: the OFF sees the newer press and starts it again once the stop is done.
+        self._tunnel_seq += 1
+        seq = self._tunnel_seq
+        self._tunnel_operator_off = not on
         if on:
-            self._tunnel_operator_off = False
             if t.status not in ("starting", "up"):
                 self._tunnel_auto = None          # the operator started this one, not a trigger
-            t.start(self._ws_port())
+            if not self._tunnel_stopping:
+                t.start(self._ws_port())
         else:
-            await t.stop()
-            self._tunnel_operator_off = True
             self._tunnel_auto = None
+            self._tunnel_stopping += 1
+            try:
+                await t.stop()
+            finally:
+                self._tunnel_stopping -= 1
+            if self._tunnel_seq != seq and not self._tunnel_operator_off and not self._tunnel_stopping:
+                t.start(self._ws_port())          # a later ON landed during the stop: it wins
         self._changed()
-        return self._public().copy()
+        return self._tunnel_public()
+
+    def _tunnel_public(self) -> LanPublic:
+        """`lan.public` exactly as GET /api/state shows it (`public.auto` included)."""
+        return cast(LanPublic, dict(self._lan_view().get("public") or PUBLIC_OFF))
 
     def _auto_tunnel(self, reason: Literal["kit", "cellular"]) -> None:
         """F595: start the backhaul because of `reason`, the way the console switch does. Never awaits and
@@ -1124,6 +1140,11 @@ class Session:
         self._tunnel_auto = auto
         self._changed()
 
+    def _auto_tunnel_kit(self) -> None:
+        """F595: any push, first or re-push, with a phone bound: every connected phone holds `join.pub` before ARM."""
+        if any(pid in self.players for pid in self.node_player.values()):
+            self._auto_tunnel("kit")
+
     def _cellular_phones(self) -> int:
         """F595: bound, fresh phones whose own status says cellular (the console's "N PHONE ON CELLULAR")."""
         n = 0
@@ -1140,6 +1161,9 @@ class Session:
         lan = cast(LanView, dict(self.lan))
         pub = cast(LanPublic, dict(self._public()))
         pub["auto"] = {**self._tunnel_auto, "cellular": self._cellular_phones()}
+        err = self._tunnel_auto.get("error")
+        if err and not pub.get("error") and pub.get("status") not in ("starting", "up"):
+            pub["error"] = err                    # the backhaul row already renders `error`
         lan["public"] = pub
         return lan
 
@@ -3719,6 +3743,7 @@ class Session:
             nv["transport"] = body["transport"]
         # F595: the backstop. Android moves the default route to cellular when the field Wi-Fi has no
         # internet, and a phone that has lost the LAN can only learn `join.pub` while it still has a socket.
+        # It trusts the phone's own `transport` claim; only a bound phone counts, and kit-start runs anyway.
         if (nv.get("transport") == "cellular" and self.phase in ("kit", "lobby", "armed", "live")
                 and self.node_player.get(nid) in self.players):
             self._auto_tunnel("cellular")
@@ -6465,6 +6490,7 @@ class Session:
             # fresh heads for everybody, acks/echo/pool judgements dropped.
             self._set_phase("lobby")            # A58: before the re-push, which re-arms the stations with the LOAD lock
             self._fresh_head_repush()
+            self._auto_tunnel_kit()
             self._changed()
             return {"ok": True, "acks": self.acks, "repushed": True,
                     "config_id": self.config["config_id"]}
@@ -6479,8 +6505,7 @@ class Session:
         self._set_phase("lobby")
         self.station_registry.reset_for_load()  # A58: the LOAD lock reads the phase set above
         self.station_registry.arm_stations()                    # A13.5: every assigned station learns this game's number
-        if any(pid in self.players for pid in self.node_player.values()):
-            self._auto_tunnel("kit")           # F595: every connected phone holds `join.pub` before ARM
+        self._auto_tunnel_kit()
         self._changed()
         self.persist_now()                     # A59: a crash in the snapshot debounce must not lose the game_no bump
         return {"ok": True, "acks": self.acks, "repushed": False,
@@ -7483,6 +7508,12 @@ class Session:
         # match is still being delivered: late facts (`_ingest_retired`), the A42 end watch and the A34
         # re-tell ledger all carry across. A FRESH SESSION drops them, as before.
         rolling = keep_roster and self.phase == "recap"
+        # F595: each match gets its own tries, so a tunnel that died after the last one restarts at kit.
+        # The operator's OFF outlives NEXT MATCH and ends with a fresh session (or an MC restart).
+        self._tunnel_auto_fired = set()
+        self._tunnel_auto = None
+        if not rolling:
+            self._tunnel_operator_off = False
         if rolling:
             self._retire_scorer()
         else:

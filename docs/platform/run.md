@@ -124,7 +124,7 @@ the phones. This is optional, and a match never depends on it.
 
 1. Install `cloudflared` on the laptop once (`brew install cloudflared` on a Mac). No account, no login.
 2. Start Mission Control as usual. Mission Control turns the tunnel on by itself when you push the game to the
-   phones in kit, and again the first time a phone reports mobile data. Arming never waits for it. To start it
+   phones in kit. It also turns it on the first time a phone reports mobile data. Arming never waits for it. To start it
    sooner, go to the **Armory** screen, find **REACH** in the join panel and press **TURN ON** under INTERNET. The row reads STARTING, then UP with a hostname. If it reads ERROR, the text
    beside it is the reason; the usual one is no internet at the laptop. When every phone on the board is
    green, the Armory also shows **ENABLE BACKHAUL** beside **HARDWARE READY**. It does the same thing as
@@ -142,7 +142,7 @@ If the tunnel dies, a banner says so on every screen and the phones fall back to
 it back on gives a new hostname, which only matters for a phone that never comes back into Wi-Fi range: that
 one rescans the QR. You can also start with the tunnel on: `./start.sh -- --tunnel` (anything after
 `--` goes to Mission Control). To keep it manual, start with `./start.sh -- --no-tunnel`. If you turn it off
-on the console, it stays off for the rest of the session.
+on the console, it stays off until Mission Control restarts or a new session starts.
 
 Two rules from the first field run: **do not turn the tunnel off during a session** (every phone on it drops and
 must rescan), and **wait for the row to read UP before anyone scans**. A new hostname can take a few minutes to
@@ -209,7 +209,7 @@ join, silently. Look for the rainbow blink, fix the headset, power-cycle that ta
 **A phone shows as on the wrong Wi-Fi, or Mission Control unreachable.** The field router has no
 internet, so Android decides the network is dead and sends new connections over mobile data, where the
 game network cannot be reached. A current Android app is built to keep its own link on the game Wi-Fi, which is not yet proven on a phone. Do not ask the player to change anything on the phone. Mission Control turns the internet tunnel
-on by itself when it hears that (see *Reaching phones over the internet*); if an operator turned it off, turn
+on by itself when it hears that (see *Reaching phones over the internet*). If an operator turned it off, turn
 it back on. That phone then reaches Mission Control over mobile
 data by itself, and its row reads BACKHAUL. A phone with no mobile data at all is simply on the game
 Wi-Fi and is not affected.

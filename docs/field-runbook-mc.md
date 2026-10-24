@@ -144,7 +144,7 @@ one-MC-per-home lock and the busy-port trap. A field match needs no flag. Flags 
 - `--advertise <ip>` on a WSL2 host (`wsl-dev-runbook.md` → *MC on this box*).
 - `--tunnel` (start at boot) or `--public-url <wss://…>` for phones that must reach MC over the internet. Without
   either, MC starts the tunnel itself at the kit push and when a phone reports mobile data (F595); `--no-tunnel`
-  keeps it to the console switch. Turning it off on the console holds for the session.
+  keeps it to the console switch. Turning it off on the console holds until Mission Control restarts or a new session starts.
 
 Never pass `--bench-volume` for a real game: it overrides the venue volume.
 

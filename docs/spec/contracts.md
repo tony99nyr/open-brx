@@ -844,15 +844,16 @@ are the CLI forms. **F595 (Tony 2026-10-24): MC also starts it by itself, during
 first config push with a phone bound and on a bound phone's first `status.transport: "cellular"` in KIT..LIVE. Each
 trigger tries once a session, never blocks the push or ARM, and a refused start is one log line plus
 `public.auto.error`. `public.auto? = {reason: "kit"|"cellular", cellular?: int, error?: string}` says why (the
-count is bound, fresh phones on cellular now). An operator OFF holds for the session; `--no-tunnel` turns the
+count is bound, fresh phones on cellular now). An operator OFF holds until Mission Control restarts or a new session starts (NEXT MATCH keeps it; each new match gets fresh trigger tries); `--no-tunnel` turns the
 triggers off and leaves the switch; `--demo`, `--ephemeral` and `--fake-net` never fire them. No `starting`→`up` within 20 s, or the process exiting, is `status:"error"` with the last output
 line in `error`; `ws_url` goes back to null. The tunnel is **opt-in and additive**: the LAN path is untouched and
-the host needs internet for it to come up; without internet it errors and the LAN path plays on.
+the host needs internet for it to come up; without internet it errors and phones stay on the game network.
 
 **A28.2 The two-URL join.** `lan.qr` becomes `ws://<lan-ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded
 public ws_url>]` — the LAN URL first, the join secret always, the public URL when `public.status == "up"`.
 `Session.join_secret` is 8 url-safe chars, random per session and **persisted with the session snapshot** so a
-restore keeps every printed QR valid. The node splits the query off before dialling (`mcurl.parseMcJoin` →
+restore keeps every printed QR valid. It is `secrets.token_urlsafe(6)`, about 48 bits: enough against guessing at the
+rate a socket can connect, and it is not a password. The node splits the query off before dialling (`mcurl.parseMcJoin` →
 `{ url, pub, secret }`; `parseMcQr` keeps returning the bare LAN URL for old callers) and stores all three.
 `hello` gains `via: "lan"|"backhaul"` (which URL this socket dialled) and `secret?`. **`welcome.join = { pub:
 string|null, secret }`** hands both to every node on every welcome, so a phone that joined over the LAN before

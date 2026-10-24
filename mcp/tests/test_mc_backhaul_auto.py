@@ -264,3 +264,189 @@ def test_an_auto_started_tunnel_arms_the_join_secret_gate():
     assert gate._secret_ok(_Ws(), {}) is False
     assert gate._secret_ok(_Ws(), {"secret": "nope"}) is False
     assert gate._secret_ok(_Ws(), {"secret": s.join_secret}) is True
+
+
+# --------------------------------------------------------------------------- review round 2026-10-24
+def test_a_refused_auto_start_puts_its_reason_in_lan_public_error_too():
+    s, net, clock, ps, t = _kit(fail="cloudflared is not installed")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    pub = s.snapshot()["lan"]["public"]
+    assert pub["error"] == "cloudflared is not installed" and pub["auto"]["error"] == pub["error"]
+
+
+def test_tunnel_at_boot_is_ignored_under_demo_ephemeral_and_fake_net():
+    from brx_mcp.mc.__main__ import boot_tunnel_ignored, parser
+    P = parser()
+    assert boot_tunnel_ignored(P.parse_args(["--tunnel"])) is None
+    for flags in (["--demo"], ["--ephemeral"], ["--fake-net"], ["--demo", "--ephemeral"]):
+        why = boot_tunnel_ignored(P.parse_args([*flags, "--tunnel"]))
+        assert why and flags[0] in why, (flags, why)
+
+
+def test_tunnel_at_boot_starts_nothing_in_a_demo_ephemeral_build():
+    needs(HAVE_UVICORN, "uvicorn")
+    import asyncio
+    import contextlib
+    import io
+    from brx_mcp.mc.__main__ import build, parser
+    old, old_tmp = os.environ.get("BRX_MCP_HOME"), tempfile.tempdir
+    root = pathlib.Path(tempfile.mkdtemp())
+    os.environ["BRX_MCP_HOME"] = str(root / "home")
+    tempfile.tempdir = str(root)
+    try:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            s, _n, extra = build(parser().parse_args(["--demo", "--ephemeral", "--tunnel", "--no-auth",
+                                                      "--ws-port", "0"]))
+            spawned: list = []
+            s.tunnel._spawn = lambda cmd: spawned.append(cmd)      # a real child would land here
+            s.tunnel.start = lambda *a, **k: spawned.append(a)     # ...and so would any start at all
+
+            async def boot():
+                for fn in extra[:1]:                               # `_start_net` binds the socket and runs --tunnel
+                    await fn()
+                s.net.stop() if hasattr(s.net, "stop") else None
+            asyncio.run(boot())
+        assert spawned == [], spawned
+        assert out.getvalue().count("--tunnel ignored") == 1, out.getvalue()
+        if s.store:
+            s.store.close()
+    finally:
+        tempfile.tempdir = old_tmp
+        if old is None:
+            os.environ.pop("BRX_MCP_HOME", None)
+        else:
+            os.environ["BRX_MCP_HOME"] = old
+        shutil.rmtree(root, ignore_errors=True)
+
+
+class _SlowStopTunnel(_FakeTunnel):
+    """`stop` waits on a gate, so an ON can land while the OFF is still in flight."""
+
+    def __init__(self):
+        super().__init__()
+        import asyncio
+        self.gate = asyncio.Event()
+
+    async def stop(self) -> dict:
+        self.stops += 1
+        await self.gate.wait()
+        self.status = "off"
+        self._emit()
+        return self.public()
+
+
+def test_an_on_that_lands_during_an_off_wins():
+    import asyncio
+    s, net, clock, ps, _t = _kit()
+
+    async def go():
+        t = _SlowStopTunnel()
+        s.attach_tunnel(t)
+        await s.set_tunnel(True)
+        assert t.status == "starting"
+        off = asyncio.ensure_future(s.set_tunnel(False))
+        await asyncio.sleep(0)
+        assert s._tunnel_operator_off, "the OFF is recorded before the stop is awaited"
+        await s.set_tunnel(True)                  # the later ON
+        t.gate.set()
+        await off
+        return t
+    t = asyncio.run(go())
+    assert t.status == "starting" and not s._tunnel_operator_off, (t.status, t.starts)
+    _status(s, net, clock, 0, "cellular")         # and the triggers are not locked out by the lost OFF
+    assert s._tunnel_operator_off is False
+
+
+def test_a_forced_first_push_then_a_repush_with_a_phone_bound_fires_the_kit_trigger():
+    s, net, clock, ps, t = _kit()
+    s.push_config(force=True)                     # nobody bound yet
+    assert t.starts == []
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)                     # the re-push
+    assert t.starts == [8766]
+    assert s.snapshot()["lan"]["public"]["auto"]["reason"] == "kit"
+
+
+def _to_recap(s, net, clock, ps):
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    _arm(s, net, clock, ps)
+    clock["t"] += 11_000
+    s.tick()
+    clock["t"] += 700_000                         # past the 600 s limit: the timed end
+    s.tick()
+    assert s.phase == "recap", s.phase
+
+
+def test_next_match_rearms_the_triggers_but_keeps_the_operator_off():
+    from _async import run
+    s, net, clock, ps, t = _kit()
+    _to_recap(s, net, clock, ps)
+    assert t.starts == [8766]
+    t.status = "error"                            # the tunnel died after match 1
+    s.next_match()
+    s.set_phase("kit")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    assert t.starts == [8766, 8766], "a new match gets a fresh kit trigger"
+    run(s.set_tunnel(False))
+    _to_recap(s, net, clock, ps)
+    s.next_match()
+    s.set_phase("kit")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    assert t.starts == [8766, 8766], "an operator OFF outlives NEXT MATCH"
+
+
+def test_a_new_session_clears_the_operator_off():
+    from _async import run
+    s, net, clock, ps, t = _kit()
+    run(s.set_tunnel(False))
+    s.new_session(keep_roster=False)
+    s.add_player("OP0", gun_id="GUN-A")
+    s.set_phase("kit")
+    online(s, net, clock, next(iter(s.players.values())), 0)
+    s.push_config(force=True)
+    assert t.starts == [8766]
+
+
+def test_post_api_tunnel_answers_with_public_auto_like_the_state_does():
+    try:
+        from starlette.testclient import TestClient
+        import httpx  # noqa: F401
+    except Exception:
+        needs(False, "starlette + httpx")
+    from brx_mcp.mc.api import create_app
+    s, net, clock, ps, t = _kit(fail="cloudflared is not installed")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    t.fail = None
+    c = TestClient(create_app(s))
+    # an ON while the auto attempt's reason is showing replaces it (the operator took over)
+    s._tunnel_auto = {"reason": "cellular"}
+    t.status = "up"                               # already up, so ON keeps the auto reason
+    r = c.post("/api/tunnel", json={"on": True})
+    assert r.status_code == 200, r.text
+    assert r.json() == c.get("/api/state").json()["lan"]["public"], r.json()
+    assert r.json()["auto"]["reason"] == "cellular"
+
+
+def test_an_auto_start_that_comes_up_broadcasts_join_to_the_phones():
+    s, net, clock, ps, t = _kit()
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    t.status = "up"
+    t.public = lambda: {"ws_url": "wss://x.trycloudflare.com/ws", "status": "up", "provider": "cloudflared",
+                        "available": True, "was_up": True}
+    t._emit()
+    bodies = [b for _n, _k, b in net.pushes("join")]
+    assert bodies and bodies[-1]["pub"] == "wss://x.trycloudflare.com/ws", bodies
