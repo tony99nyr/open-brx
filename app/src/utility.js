@@ -268,6 +268,8 @@ function applyHillClock(cfg, now, sameStation = true) {
   // the whistle has not stepped to it yet, and an END followed by a lobby config can arrive before any tick.
   const frozenAtWhistle = () => settings.hillEndsAt != null && Math.max(now, point.at ?? -Infinity) >= settings.hillEndsAt;
   const wasFrozen = frozenAtWhistle();
+  // A whistle that passed before any tick stepped to it is settled first: the last stretch up to it is the match's.
+  if (wasFrozen && point.at != null && point.at < settings.hillEndsAt) controlTick(now);
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
@@ -1220,7 +1222,7 @@ function wireExit() {
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset, controlTick, clampPace,
-    tick, stationNow };   // F590 (3) test seams: one station tick, on the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    tick, stationNow };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 

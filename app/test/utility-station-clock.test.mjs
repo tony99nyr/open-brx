@@ -1,6 +1,7 @@
 // F590 (3) and F593 (brx2's milestone review, 2026-10-24): the phone hill's clock.
-// F590 (3): MC's deadline is relative, so a wall-clock step on the phone must not move the whistle. The station runs its
-// 250 ms tick, its sightings and the hill deadline on one wall-anchored monotonic clock (`stationNow`).
+// F590 (3): MC's deadline is relative, so a wall clock stepped back on the phone must not hold the whistle off. The station
+// runs its 250 ms tick, its sightings and the hill deadline on its own clock (`stationNow`): monotonic, never going
+// backwards, and catching up with wall time that runs ahead of it (a phone's deep sleep stops the monotonic clock).
 // F593: a hill frozen at its whistle and reopened by a same-game lobby or abort config restarts its clock, so its first
 // step back does not bank the frozen time.
 //
@@ -68,11 +69,11 @@ test('F590: a phone clock stepped back an hour does not hold the whistle off', a
     Date.now = () => realNow() - 3_600_000;                    // the phone's wall clock steps back an hour
     const t0 = realNow();
     // wait for the condition, in real time: the whistle is 1.5 s after arming on any honest clock
-    while (!(api.point.at != null && api.point.at >= api.settings.hillEndsAt) && realNow() - t0 < 6_000) {
+    while (!(api.point.at != null && api.point.at >= api.settings.hillEndsAt) && realNow() - t0 < 20_000) {
       api.tick();
       await new Promise(r => realSetTimeout(r, 50));
     }
-    assert.ok(api.point.at != null && api.point.at >= api.settings.hillEndsAt, 'the hill was still counting 6 s after a 1.5 s whistle');
+    assert.ok(api.point.at != null && api.point.at >= api.settings.hillEndsAt, 'the hill was still counting 20 s after a 1.5 s whistle');
     const banked = api.point.holdMs[RED] || 0;
     assert.ok(banked <= 2_000, `the hill banked ${banked} ms in a 1.5 s match`);
   } finally { Date.now = realNow; }
@@ -118,11 +119,26 @@ test('F593: a hill reopened after its whistle by a same-game lobby config restar
 
 test('F593: an END and a lobby config with no tick between them still restart the clock', async () => {
   await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
-  api.controlTick(api.stationNow() - 1_000);                   // one live step, a second before the END: RED is counted
+  api.controlTick(api.stationNow() - 2_000);                   // seeds the sample: RED is counted alone
+  api.controlTick(api.stationNow() - 1_000);                   // the last live step, a second before the END
   const held = api.point.holdMs[RED] || 0;
   await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });   // END: the whistle is now
   await api.applyStationConfig({ ...hill, game });                  // a lobby re-send before any tick stepped to it
+  const settled = (api.point.holdMs[RED] || 0) - held;
+  // the last stretch to the whistle is the match's: about a second, banked before the lobby restarts the clock
+  assert.ok(settled >= 1_000 && settled < 1_500, `the stretch to the whistle banked ${settled} ms, not about 1 s`);
   api.controlTick(api.stationNow() + 100_000);                 // the station's next step, much later
-  const banked = (api.point.holdMs[RED] || 0) - held;
-  assert.ok(banked <= 1_000, `the first step after END and the lobby banked ${banked} ms`);
+  assert.equal((api.point.holdMs[RED] || 0) - held, settled, 'the first step after END and the lobby banked frozen time');
+});
+
+test('F593: a new game that starts live begins its first step from a cleared clock', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 600_000 });
+  const t0 = api.stationNow();
+  for (let t = 0; t <= 2_000; t += 250) api.controlTick(t0 + t);
+  await api.applyStationConfig({ ...hill, game: ++game });     // a new game resets the point
+  redOnThePoint();
+  await api.applyStationConfig({ ...hill, game, starts_in_ms: -1_000, ends_in_ms: 600_000 });
+  api.point.owner = RED; api.point.progress = 100;
+  api.controlTick(t0 + 30_000);                                // its first step, long after the old game's last
+  assert.equal(api.point.holdMs[RED] || 0, 0, 'the new game banked the old game\'s time in its first step');
 });
