@@ -234,7 +234,9 @@ test('F563 review: a resting loop starts again on resumeReconnect (a match armin
   assert.ok(r.attempts.A > tries && r.link.connected, 'the gun relinks with no tap');
 });
 for (const inMatch of [true, false]) {
-  test(`F563 review: the 7th flap in a row waits ${inMatch ? 'QUIET_MS in a match' : 'the doubled quiet period outside one'}`, () => {
+  test(`F563 review: the 7th flap in a row waits ${inMatch ? 'QUIET_MS in a match' : 'the doubled quiet period outside one'}`, ctx => {
+    // A mocked clock: on the real one a millisecond tick between the two now() reads gave 399 (2026-10-24).
+    ctx.mock.timers.enable({ apis: ['Date'], now: 1_700_000_000_000 });
     const link = new BrxLink({ ble: {}, log: () => {}, unbounded: () => inMatch, quietMs: 400 });
     link.deviceId = 'A'; link._upAt = link.now(); link._flapStreak = 6;
     let wait = null; link._setFlap = (s, until) => { if (until != null) wait = until - link.now(); }; link._reconnect = () => {};
