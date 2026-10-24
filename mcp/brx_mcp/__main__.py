@@ -1788,15 +1788,19 @@ async def _reset(address: str) -> None:
     try:
         await mgr.connect(address, "rst")
         try:
+            _ENDING.add(address)              # a Ctrl-C between its $CLEAR and its $SIR rows leaves it deaf
             for cmd in seq:
                 r = await mgr.send("rst", cmd, reply_window_ms=200)
                 print(">> " + cmd
                       + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
+            _ENDING.discard(address)
             await asyncio.sleep(0.4)
         finally:
             await mgr.disconnect("rst")
     except Exception as e:  # noqa: BLE001
         print(f"# reset FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
+        if address in _ENDING:
+            _warn_unfinished_end(address)
         return
     print(f"\n# reset {address} to clean idle (revived, quiet, headset dark; pulses its "
           f"team colour, hittable). Same sequence the CLI game teardown uses.", file=sys.stderr)

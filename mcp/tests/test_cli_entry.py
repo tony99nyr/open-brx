@@ -257,3 +257,22 @@ def test_a_link_lost_inside_the_end_says_to_run_reset():
         assert "hittable;" not in err, err             # startgame no longer claims the gun is hittable
         cli._ENDING.clear()
     assert not cli._ENDING
+
+
+def test_an_interrupted_or_failed_reset_says_to_run_reset_again():
+    try:
+        _run_cli_game(lambda: cli._reset("AA"), hook=_ctrl_c_in_the_end("rst"))
+        raise AssertionError("the Ctrl-C did not reach the caller")
+    except KeyboardInterrupt:
+        pass
+    assert cli._ENDING == {"AA"}, cli._ENDING
+    cli._ENDING.clear()
+
+    def lost(alias, cmd):
+        if cmd.startswith("$SIR,"):
+            raise ConnectionError("link lost")
+    _, err = _run_cli_game(lambda: cli._reset("AA"), hook=lost)
+    assert "Run: python -m brx_mcp reset AA" in err, err
+    cli._ENDING.clear()
+    _run_cli_game(lambda: cli._reset("AA"))
+    assert not cli._ENDING, cli._ENDING
