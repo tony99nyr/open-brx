@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 110.** Desk 15 · bench 90 · decision 5.
+**MVP open: 111.** Desk 16 · bench 90 · decision 5.
 
-**MVP DESK (15),** a keyboard is enough:
+**MVP DESK (16),** a keyboard is enough:
 - 🟡 **F547** · **F581** · **F583** · **F584** · **F585** · **F587** · **F588** · **F589**
-- 🟢 **F512** · **F544** · **F574** · **F582** · **F586** · **F590** · **F591**
+- 🟢 **F512** · **F544** · **F574** · **F582** · **F586** · **F590** · **F591** · **F593**
 
 **MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F593 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F594 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -60,6 +60,7 @@ A keyboard is enough. Highest value first.
 - **F589 🟡 A76: AN AMMO GRANT IS BOOKED BEFORE ITS WRITE LANDS.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx3.md` P2-3). `powerup-player.js:870` `grantAmmo` books the refill first. A failed write followed by a shot gets no retry (pl4), so the phone shows a reserve the gun never got. A reload does not bump `_actSeq`, so a late retry can undo a refill. Owner brx4. `desk`.
 - **F590 🟢 PHONE ENGINE: THREE SMALL GAPS FROM THE MILESTONE REVIEW.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx3.md` P3). (1) F570: `engine.js:1369` restamps the echo windows after an unsent failure, but `stage.py:1640` restores them, and the stage docstring contradicts its `finally` block. (2) `utility-hill-clock.test.mjs:42` drives `controlTick` directly, with no engine comparison. (3) The hill deadline is a `Date.now()` value (`utility.js:261`, compared at `:601`), so a phone clock step moves the whistle; the Stick uses `millis()` (brx2's review, `~/reviews-2026-10-24/brx2.md` P2). Owner brx4 for (1) and (2), brx5 for (3). `desk`.
 - **F591 🟢 THE STICK'S STATUS DOES NOT REPORT THE PACE IT APPLIES.** brx2, 2026-10-24 (`~/reviews-2026-10-24/brx2.md` P2). `hardware/m5sticks3/station_link.h:1972` `fill_status` leaves out `capture_s` and `net_cap`; the phone reports both (`utility.js:289`) and the generated `StationControl` allows them. MC cannot confirm a Stick's pace from its heartbeat. Owner brx5. `desk`.
+- **F593 🟢 A HILL FROZEN AT THE WHISTLE AND REOPENED BY A SAME-GAME LOBBY OR ABORT CONFIG KEEPS ITS CLOCK.** brx2, 2026-10-24 (brx5, from Codex in the F554 gap fix; brx5 rates it P3). `utility.js:255` and `:601` on the phone, `station_link.h:1551` on the Stick: the first tick after the reopen can bank the frozen time into the lobby tally. The next START wipes that tally, so no match score moves. Fix: clear `at` and `heldBy` (phone) and the clock and `held_by` (Stick) when the freeze ends. Owner brx5. `desk`.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`. **→ 2026-10-18 (checked, not assumed):** not yet. Of 151 main CI runs from 2026-10-11, `mc-play` passed 132 and failed 2 (16 had no `mc-play` job; 1 still ran): 2026-10-11 run `38122943216` ("the three fresh-install pickers show against a real MC") and 2026-10-12 run `38268828276` ("timed out waiting for the first snapshot", then the PLAY screen). Both are F574. The earliest clean 7-day window ends 2026-10-19 at about 15:17 UTC; check again then.
 - **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
 - **F547 🟡 HUD: THE TOXIN RIFLE'S AMMO PIPS BECOME A BAR.** brx1, 2026-10-16 (bench C.12). Tony: the pips are broken, too many, and they take a lot of screen; use a bar. HUD lane (brx-hud): show Tony a static before and after gallery first (`ui-review-static-gallery`), then build. Owner brx4 with the HUD lane. `build`.
