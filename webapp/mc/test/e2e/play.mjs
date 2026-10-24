@@ -17,7 +17,8 @@
 //                                              #   favourites-fallback | favourites-rename |
 //                                              #   favourites-delete | real-favourites |
 //                                              #   real-fresh | real-silent-snipers | real-load-feedback |
-//                                              #   real-teams-hold | real-hill | real-last-match-restart
+//                                              #   real-teams-hold | real-hill | real-last-match-restart |
+//                                              #   real-stale-token
 //   HEADED=1   KEEP_SHOTS=1   MC_PY=…
 //
 // Every vite/MC pair below always picks its OWN fresh free port at the moment it starts (never
@@ -100,20 +101,22 @@ function findPython() {
  *  :8765 -- this must never fight a lane's own bench session, or koth.mjs's own hardcoded default,
  *  for that port). Mirrors test/e2e/koth.mjs's startMC, minus the session-file/persistence option
  *  this suite never needs (--ephemeral always). */
-async function startRealMC() {
+async function startRealMC({ token, port: atPort, wsPort: atWsPort } = {}) {
   const py = findPython();
   // Always fresh free ports too -- see the comment in startVite() above: four `real-*` steps each
   // start and stop their own MC in turn, and a single fixed MC_PORT/MC_WS_PORT would have the next one
   // try to bind the port the previous one has not fully released yet.
-  const port = await freePort();
-  const wsPort = await freePort();
-  const args = ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(port), '--ws-port', String(wsPort), '--demo', '--fake-net', '--no-auth', '--ephemeral'];
+  // F540: `token` runs it WITH the operator token (no `--no-auth`); `port`/`wsPort` restart it where a tab already points.
+  const port = atPort ?? await freePort();
+  const wsPort = atWsPort ?? await freePort();
+  const args = ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(port), '--ws-port', String(wsPort), '--demo', '--fake-net',
+    ...(token ? ['--token', token] : ['--no-auth']), '--ephemeral'];
   const proc = spawn(py, args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
     env: { ...process.env, BRX_MCP_HOME: MC_HOME } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 200; i++) {
-    try { const r = await fetch(`${base}/api/state`); if (r.ok) { console.log(`  MC (real): ${base}`); return { base, port, stop: () => killGroup(proc) }; } } catch { /* not yet */ }
+    try { const r = await fetch(`${base}/api/state`); if (r.ok) { console.log(`  MC (real): ${base}`); return { base, port, wsPort, stop: () => killGroup(proc) }; } } catch { /* not yet */ }
     if (proc.exitCode != null) break;
     await new Promise(r => setTimeout(r, 100));
   }
@@ -700,6 +703,50 @@ step('hold', async ({ browser, base }) => {
 
 // ---------------------------------------------------------------- against a REAL MC (VQA round 1:
 // "no test renders PLAY against a real MC")
+
+// F540 (bench A.7, 2026-10-16): after an MC restart the open tab kept the OLD token; every write was refused and the
+// console only flickered. Now a refused write shows a RED line with the cure, the refused socket backs off instead of
+// reconnecting twice a second, and pasting the new token under TOKEN ▸ makes the next write land.
+step('real-stale-token', async ({ browser }) => {
+  let mc = await startRealMC({ token: 'tok-before' });
+  const vite = await startVite(mc.port);
+  const mode = async () => (await (await fetch(`${mc.base}/api/state`)).json()).config.mode;
+  try {
+    const pg = await openReal(browser, vite.base, '#build&tok=tok-before', 1280);
+    // The refused writes below log their 401 as a console error; every other console error still fails the step.
+    pg.removeAllListeners('console');
+    pg.on('console', m => { if (m.type() === 'error' && !/status of 401/.test(m.text())) failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
+    await pickMode(pg, 'KING OF THE HILL');                     // CONTROL: the tab's token works before the restart
+    await until(async () => (await mode()) === 'koth', 8000, 'the pick to land with the right token');
+    await mc.stop();
+    mc = await startRealMC({ token: 'tok-after', port: mc.port, wsPort: mc.wsPort });
+    await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n > 0), 15000, 'the TOKEN pill');
+    let sockets = 0;
+    pg.on('websocket', () => { sockets++; });
+    await pg.waitForTimeout(4000);
+    expect(sockets <= 4, `a refused socket backs off (${sockets} reconnects in 4 s; it used to be about 8)`);
+    const before = await mode();                                  // the new MC is a fresh session (TDM)
+    await pickMode(pg, 'FREE-FOR-ALL');
+    const refused = pg.locator('[data-alert="frame-token-refused"]');
+    await until(() => refused.isVisible(), 5000, 'the refused-write alert');
+    const words = (await refused.innerText()).toUpperCase();
+    expect(/MC REFUSED THE CHANGE/.test(words) && /#TOK=/.test(words) && /PASTE THE NEW TOKEN/.test(words), `it names the refusal and the cure (saw "${words}")`);
+    expect((await refused.getAttribute('data-sev')) === 'red', 'the refusal is RED');
+    expect((await mode()) === before && before !== 'ffa', `the refused pick changed nothing (${before})`);
+    ok(`a refused write says so, in red, with the cure   ${await shot(pg, 'real-stale-token-refused')}`);
+    await pg.locator('[data-alert="frame-token-required-app"]').first().click();      // the cure: TOKEN ▸, paste, APPLY
+    await pg.locator('#dbg-tok').fill('tok-after');
+    await pg.getByRole('button', { name: 'APPLY' }).click();
+    await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n === 0), 8000, 'the pill to clear');
+    await pg.getByRole('button', { name: /PLAY/ }).first().click();
+    await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'the PLAY screen');
+    await pickMode(pg, 'FREE-FOR-ALL');
+    await until(async () => (await mode()) === 'ffa', 8000, 'the pick to land with the new token');
+    expect(await refused.count() === 0, 'the refusal is gone once a write lands');
+    ok(`pasting the new token makes the next write land   ${await shot(pg, 'real-stale-token-recovered')}`);
+    await pg.context().close();
+  } finally { await vite.stop(); await mc.stop(); }
+});
 
 step('real-fresh', async ({ browser }) => {
   const mc = await startRealMC();

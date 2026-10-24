@@ -1,5 +1,5 @@
 import type { Api, FeedEntry, GameConfig, OperatorActionResult, Player, ReportResult, State } from './types';
-import { MC_OLDER, MC_RESTART_CMD, alertWords, operatorTokenLine } from '../alerts';
+import { MC_OLDER, MC_RESTART_CMD, alertWords, operatorTokenLine, tokenRefusedLine } from '../alerts';
 
 /** A missing route can occur while Vite serves this console against a separate, older MC. */
 const olderServer = (): string => `${alertWords(MC_OLDER.what, MC_OLDER.act)} (${MC_RESTART_CMD})`;
@@ -32,7 +32,8 @@ const notifyAuth = (required: boolean) => authListeners.forEach(cb => cb(require
 // F221 round 2: this used to retype OPERATOR_TOKEN in a second, mixed-case wording. `operatorTokenLine()`
 // is the one fact, one sentence; the header's own NEUTRAL token control already shows it (CommandBar
 // skips the RED error toast for this message, see `frame-error-toast`'s render site).
-export class AuthError extends Error { constructor() { super(operatorTokenLine()); } }
+// F540: a refused WRITE says so in red with the cure (`tokenRefusedLine`); the neutral prompt was hidden behind the pill.
+export class AuthError extends Error { constructor(write = false) { super(write ? tokenRefusedLine() : operatorTokenLine()); } }
 
 /** O15: a stalled MC (a blocking scan, a hung executor) must not leave a control busy for ever. */
 export const REQUEST_TIMEOUT_MS = 15000;
@@ -57,7 +58,7 @@ async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOU
     if ((e as Error)?.name === 'TimeoutError') throw new Error(`MC DID NOT ANSWER IN ${Math.round(timeoutMs / 1000)} S: CHECK MC IS RUNNING, THEN TRY AGAIN`);
     throw e;
   }
-  if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
+  if (r.status === 401) { notifyAuth(true); throw new AuthError(method !== 'GET'); }
   if (!r.ok) {
     let msg = r.statusText || `HTTP ${r.status}`, body: unknown;
     // Review MEDIUM (brx1, 222b1a81): a 400 refusal can carry `{errors: [...]}` with no singular
@@ -123,22 +124,26 @@ export function createHttpApi(): Api {
       let ws: WebSocket | null = null, closed = false, delay = 500;
       const open = () => {
         if (closed) return;
-        let opened = false;
+        let opened = false, live = false;
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const tok = getToken();
         ws = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
         ws.onmessage = ev => {
           try {
             const m = JSON.parse(ev.data);
+            // F540: a socket is up when MC SENDS on it. MC accepts a socket whose token it refuses and then closes it
+            // (4401), so `onopen` alone reported the link up and reset the backoff: a refused tab reconnected twice a
+            // second for ever and the console flickered.
+            if (!live) { live = true; delay = 500; onLink?.(true); }
             if (m.kind === 'snapshot') onSnapshot(m.state as State);
             else if (m.kind === 'feed') onFeed(m.entry as FeedEntry);
             else if (m.kind === 'feed_edit') onFeed(m.entry as FeedEntry, true);
             else if (m.kind === 'error' && m.code === 401) notifyAuth(true);
           } catch { /* malformed frame: ignore */ }
         };
-        ws.onopen = () => { opened = true; delay = 500; onLink?.(true); };
+        ws.onopen = () => { opened = true; };
         ws.onclose = ev => {
-          onLink?.(false);
+          if (live) onLink?.(false);
           if (ev.code === 4401 || ev.code === 1008) notifyAuth(true);     // server refused the token
           else if (!opened && !closed) {
             // Handshake refused before open (browsers report 1006): if the HTTP API answers, the server is up and

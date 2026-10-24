@@ -7,7 +7,7 @@ import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 import { ServerFailures } from '../ui/ServerFailures';
 import { panicReceipt, splitWarning } from './frameText';
-import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
+import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine, tokenRefusedLine } from '../alerts';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -255,7 +255,8 @@ export function CommandBar() {
           // via `olderServer()`) is AMBER everywhere else on the console: this toast used to force every
           // failure red, including that one. Detected by the message's own words, `frame-server-old`'s.
           const skew = error.startsWith(MC_OLDER.what);
-          const id = skew ? 'frame-server-old' : 'frame-error-toast';
+          // F540: a write refused for the token is its own RED alert (the cure is in its words), not the neutral prompt.
+          const id = skew ? 'frame-server-old' : error === tokenRefusedLine() ? 'frame-token-refused' : 'frame-error-toast';
           const sev = skew ? 'amber' : 'red';
           const c = colourOf(id);
           return (
