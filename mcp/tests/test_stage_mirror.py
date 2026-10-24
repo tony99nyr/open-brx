@@ -1417,6 +1417,21 @@ def test_the_takeover_is_as_long_as_THIS_weapon_not_a_flat_1_5s():
     asyncio.run(go())
 
 
+def test_a_reload_perk_never_shortens_a_bolt():
+    """F587 (brx3 review 2026-10-24): compile (`_ammo`) and ammo.js `_reloadPulled` skip `reload_mult` for a bolt
+    (F573 review). The stage multiplied every slot-0 reload, so a Sniper with Quick Hands got a 1.1 s deadline
+    against the phone's 2.2 s, and the bench predicted a RELOAD DID NOT TAKE the phone never shows."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.player["loadout"]["weapons"][0] = {"weapon_id": "sniper_rifle"}
+        st.player["loadout"]["perk"] = "quick_hands"
+        st.alcd(mag=1, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading["s"] == 2.2, f"the bolt keeps its 2.2 s under quick_hands: {st.reloading}"
+    asyncio.run(go())
+
+
 def test_a_new_life_and_the_end_of_the_match_clear_the_whole_takeover_not_just_the_bar():
     """engine.js clears `reloading`, `_reloadOutcome` AND `held` at `_afterSpawn`/`_revive` (~1170),
     `_endLocal` (~1599) and on PANIC. The stage cleared only `reloading`, so the last life's VERDICT
@@ -2035,7 +2050,7 @@ _AMMO_PAIRS = {
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
     "am.acctWroteRows": "_acct_wrote_rows", "am.holdEchoes": "_hold_echoes", "am.forgetCounts": "_forget_counts",
     # bug 3 r1 M1: the window restarts when the write lands
-    "am.restampEchoes": "_restamp_echoes", "am.echoGens": "_echo_gens",
+    "am.restampEchoes": "_restamp_echoes", "am.echoGens": "_echo_gens", "am.echoUntils": "_echo_untils", "am.restoreEchoes": "_restore_echoes",
 }
 
 

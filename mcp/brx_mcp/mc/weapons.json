@@ -43,7 +43,7 @@
    ],
    "ap_dmg": 7,
    "ap_fire_ms": 225,
-   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim. **2026-09-23 (R7, F308):** `after_heavy` tightened 8 → 7 (heavy now starts on round 7, not round 8 -- degraded is still round 6 alone) so the Burst Rifle, weakened for R6, still loses to a full-auto Assault Rifle less often (R7): a full-auto AR earns its own penalty one round sooner, which is what makes room for the Burst Rifle to beat it. **2026-09-24 (F308, polish round 2, bench 4.3 \"too harsh\"):** `heavy` eased 40 → 45; R7 now holds at its own 55% bar. See the Balance rules table."
+   "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 384 in reserve: 32 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim. **2026-09-23 (R7, F308):** `after_heavy` tightened 8 → 7 (heavy now starts on round 7, not round 8 -- degraded is still round 6 alone) so the Burst Rifle, weakened for R6, still loses to a full-auto Assault Rifle less often (R7): a full-auto AR earns its own penalty one round sooner, which is what makes room for the Burst Rifle to beat it. **2026-09-24 (F308, polish round 2, bench 4.3 \"too harsh\"):** `heavy` eased 40 → 45; R7 now holds at its own 55% bar. See the Balance rules table."
   },
   {
    "weapon_id": "burst_rifle",
@@ -89,7 +89,7 @@
    "tags": [
     "assault"
    ],
-   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 12 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6), against a real trade with R7. 2026-09-23, polish round 1 (F308): modelling the Burst Rifle's own 40% crit reopened R6 (and R4's SMG pairing) at 410ms, so t23 moved again, 410 to 550ms -- the smallest single-token value that cleared R4b, R4d, R6 and R7 together with the crit kept. 2026-09-24, polish round 2 (F308): eased 550 to 540ms beside the AR's heavy 40 to 45. See the Balance rules table."
+   "notes": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 12 hits from a 36-round mag with 384 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence. 2026-09-23 (R6/R7, F291/F308): the gap between bursts (t23) widened 275ms to 410ms so a disciplined AR burst beats it most of the time (R6), against a real trade with R7. 2026-09-23, polish round 1 (F308): modelling the Burst Rifle's own 40% crit reopened R6 (and R4's SMG pairing) at 410ms, so t23 moved again, 410 to 550ms -- the smallest single-token value that cleared R4b, R4d, R6 and R7 together with the crit kept. 2026-09-24, polish round 2 (F308): eased 550 to 540ms beside the AR's heavy 40 to 45. See the Balance rules table."
   },
   {
    "weapon_id": "force_rifle",
@@ -164,13 +164,13 @@
     "fire_ms": 150,
     "dmg": 15
    },
-   "verified": true,
+   "verified": false,
    "captured": true,
    "hidden": true,
    "tags": [
     "assault"
    ],
-   "notes": "Single shot, deliberate cadence. 15 a hit, a round every 150ms at most (2026-10-17, the player-paced retune), with 18 up and 180 back. That is 24 kills from a full kit, for operators who would rather aim than hold."
+   "notes": "Single shot, deliberate cadence. 15 a hit, a round every 150ms at most (2026-10-17, the player-paced retune), with 18 up and 360 back. That is 47 kills from a full kit, for operators who would rather aim than hold."
   },
   {
    "weapon_id": "smg",
@@ -281,7 +281,7 @@
    ],
    "ap_dmg": 15,
    "ap_fire_ms": 500,
-   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 19 from the gun and 20 from the shooter's own headset, 39 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 19 from the gun alone, at its 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). 2026-10-17 (field; Tony: \"shotgun is kinda weak\"): the pump gap 700ms to 400ms under the player-paced single-shot model (Balance rules row 14), so it wins close range against every rifle (R11) and still loses past headset range (R12); the pull stayed 20+20, because 45 or more would one-shot the 45-health presets. 2026-10-24 (F579, Tony): the gun word 20 to 19, so past headset range a kill needs 7 gun hits, more than the tube, and the rifles win there at field pace (R9, R12). Sustained pressure from the shallowest ammo pool outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
+   "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 19 from the gun and 20 from the shooter's own headset, 39 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 19 from the gun alone, at its 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). 2026-10-17 (field; Tony: \"shotgun is kinda weak\"): the pump gap 700ms to 400ms under the player-paced single-shot model (Balance rules row 14), so it wins close range against every rifle (R11) and still loses past headset range (R12); the pull stayed 20+20, because 45 or more would one-shot the 45-health presets. 2026-10-24 (F579, Tony): the gun word 20 to 19, so past headset range a kill needs 7 gun hits, more than the tube, and the rifles win there at field pace (R9, R12). Sustained pressure from one of the shallowest ammo pools outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
   },
   {
    "weapon_id": "stinger",
@@ -320,7 +320,7 @@
    ],
    "ap_dmg": 5,
    "ap_fire_ms": 250,
-   "notes": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range."
+   "notes": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 288 in reserve: eight hits to drop, 38 kills to spend, and nothing held back for range."
   },
   {
    "weapon_id": "sniper_rifle",
@@ -412,7 +412,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "A marksman rifle that fires like a carbine and pays for it in heat. One pull sends two words, 25 from the gun and 10 from the shooter's own headset, 35 together: four to drop, ten up and 80 back. Lean on it and it overheats."
+   "notes": "A marksman rifle that fires like a carbine and pays for it in heat. One pull sends two words, 25 from the gun and 10 from the shooter's own headset, 35 together: four to drop, ten up and 160 back. Lean on it and it overheats."
   },
   {
    "weapon_id": "amr",
@@ -460,7 +460,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 350ms at most, five hits to a kill, 14 up and only 56 behind. The hardest hit outside the power tier, and the shallowest reserve. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it."
+   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 350ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it."
   },
   {
    "weapon_id": "suppressor",
@@ -574,7 +574,7 @@
     "vent": "self"
    },
    "name": "Charge Rifle",
-   "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
+   "desc": "Hold it, and it holds. A full charge and three taps ends a standard player (more health takes five taps), which is why it belongs to whoever saw the other person first.",
    "cls": 5,
    "role": "marksman",
    "types": ["rifle", "long"],
@@ -618,7 +618,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, nine across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py). The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: +56 a charge, +14 a tap, a lockout at about 103 for about 4.8 s, then a restart from 0, and about 30 a second of passive cooling."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, 160 back -- three combo kills a magazine, 15 across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py). The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: +56 a charge, +14 a tap, a lockout at about 103 for about 4.8 s, then a restart from 0, and about 30 a second of passive cooling."
   },
   {
    "weapon_id": "glock",
@@ -680,7 +680,7 @@
     "sidearm",
     "pistol"
    ],
-   "notes": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading."
+   "notes": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 128 behind it: 16 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading."
   },
   {
    "weapon_id": "usp",
@@ -814,7 +814,7 @@
     "sidearm",
     "pistol"
    ],
-   "notes": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. 2026-09-23 (R10, F308): cadence (`wire.fire_ms`, the real-world lever Tony chose -- .50 AE recoil, magazine left at 7) slowed 480\u2192700ms so the Deagle finishes a kill rather than competing with a rifle on sustained output; ttk moved 1.92\u21922.80s. A slow cycle that punishes every miss, more than ever now."
+   "notes": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 96 behind it: 20 kills across the kit. 2026-09-23 (R10, F308): cadence (`wire.fire_ms`, the real-world lever Tony chose -- .50 AE recoil, magazine left at 7) slowed 480\u2192700ms so the Deagle finishes a kill rather than competing with a rifle on sustained output; ttk moved 1.92\u21922.80s. A slow cycle that punishes every miss, more than ever now."
   },
   {
    "weapon_id": "rocket_launcher",
@@ -1051,7 +1051,7 @@
    "wire": {
     "range_outdoor_pct": 60
    },
-   "verified": true,
+   "verified": false,
    "captured": true,
    "hidden": true,
    "tags": [
