@@ -42,7 +42,7 @@ COMPILE_PY = REPO / "mcp" / "brx_mcp" / "mc" / "compile.py"
 WEAPONS_JSON = REPO / "mcp" / "brx_mcp" / "mc" / "weapons.json"
 TYPES_TS = REPO / "webapp" / "mc" / "src" / "api" / "types.ts"
 CONTRACT_TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
-POLICY_TS = REPO / "webapp" / "mc" / "src" / "rules" / "loadoutPolicy.ts"   # F586: moved out of screens/loadoutPolicy.ts
+POLICY_TS = REPO / "webapp" / "mc" / "src" / "rules" / "loadoutPolicy.ts"   # F586: moved out of screens/gameSummary.ts
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 
 
