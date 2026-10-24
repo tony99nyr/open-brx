@@ -64,7 +64,7 @@ const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.p
  *  A forward wall step therefore still moves the whistle, as before; nothing on the phone can tell it from a sleep.
  *  It starts at wall time, so a saved time read back after a restart lands where a Date.now() value did. A value
  *  another module compares with its own Date.now() (the HUD handoff, the auto-join guard, the A58 lock) stays on it. */
-const stationNow = (() => {
+const ratchetClock = (() => {
   let offset = Date.now() - performance.now();
   return () => {
     const mono = performance.now();
@@ -72,6 +72,10 @@ const stationNow = (() => {
     return Math.round(mono + offset);               // wall behind it (a step back): keep counting on the monotonic clock
   };
 })();
+let _stationClock = ratchetClock;
+const stationNow = () => _stationClock();
+/** Test seam: drive the station clock from a test's own clock (`fn`), or back to the real one (`null`). */
+function useStationClock(fn) { _stationClock = typeof fn === 'function' ? fn : ratchetClock; }
 const thr = () => stationThreshold(settings);
 // Milestone round 3: a pace saved under the old +/- range (2-120 s, 1-12) comes back inside A77's bounds
 const clampPace = () => {
@@ -1222,7 +1226,7 @@ function wireExit() {
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset, controlTick, clampPace,
-    tick, stationNow };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    tick, stationNow, useStationClock };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
