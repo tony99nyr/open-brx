@@ -95,3 +95,80 @@ Candidate:
   to land F576 first ("go for it", relayed by brx1).
 - Tests: `mcp/tests/test_mc_compile.py::test_ttk_band_and_no_strictly_dominant_weapon` (the floor),
   `mcp/tests/test_mc_sidearms.py::test_pistol_identities_keep_tonys_ordering` (R10b at its own 65% bar).
+
+## 2026-10-24: F579 USP damage 10 at field pace
+
+- Verdict: **PASS** (scenario version 13, seed 7, git `2b5ab96b7`, fingerprint `ed3d11a64c650421`).
+- Tony's call: sounds good
+- Command: `--record-from verdict2-usp.json`
+
+| test | result | numbers |
+|---|---|---|
+| value_addition | pass | {"finish_ms": {"deagle": 1017, "usp": 1008}, "new_mechanics": []} |
+| no_domination | pass | {"near_top_everywhere": [], "baseline_near_top_everywhere": [], "field_ceiling_exceeded": [], "field_ratio_ceiling": 1.6, "priority_near_top": [], "priority_columns": ["1v1 close", "1v1 mid", "1v1 long", "field"]} |
+| viable | pass | {"finish_ms": 1008, "bar_ms": 1200} |
+| pickup_utility | n/a | {} |
+| balance_kept | pass | {"rule_flips": {}, "already_failing_when_shipped": ["standard|R9", "standard|R12d", "standard|R12e", "standard|R10b energy_rifle/usp", "standard|R10b suppressor/usp"], "kits_losing_last_near_top": [], "near_top_losses_within_noise": [], "noise_z": 2.0, "haze_flip_over_bar": false, "haze_win_bar": 0.65, "r10b_primaries_beat_it": {"standard|ar_burst": 0.991, "standard|burst_rifle": 0.963, "standard|energy_rifle": 1.0, "standard|suppressor": 0.839, "standard|amr": 0.998, "standard|bolt_rifle": 1.0, "shields|ar_burst": 1.0, "shields|burst_rifle": 1.0, "shields|energy_rifle": 1.0, "shields|suppressor": 0.999, "shields|amr": 1.0, "shields|bolt_rifle": 1.0}, "r10b_under_bar": {}} |
+| op_rule | pass | {"failing": [], "already_one_shot_when_shipped": []} |
+| marksman_rush_counter | n/a | {} |
+
+Candidate:
+
+```json
+{
+ "title": "F579 USP damage 10 at field pace",
+ "weapon_id": "usp",
+ "changes": {
+  "wire.dmg": 10
+ },
+ "with": [
+  {
+   "weapon_id": "shotgun",
+   "changes": {
+    "wire.dmg": 19
+   }
+  }
+ ]
+}
+```
+
+## 2026-10-24: F579 Shotgun gun word 19 at field pace
+
+- Verdict: **PASS** (scenario version 13, seed 7, git `2b5ab96b7`, fingerprint `ed3d11a64c650421`).
+- Tony's call: yeah sounds good
+- Command: `--record-from verdict2-sg.json`
+- Caveat: the mid-range gain assumes only the gun word reaches past headset range. Past it a kill needs 7 gun
+  hits of 19 instead of 6 of 20, more than the 6-shell tube, so R9, R12d and R12e go green. If the headset word
+  carries as far as the gun word, a pull stays at 39 there and the gain is gone. A bench row checks the reach
+  (`~/reviews-2026-10-17/bench.md`, F579). Scenario 13 is the first with the R1-R12 duels at field pace.
+
+| test | result | numbers |
+|---|---|---|
+| value_addition | pass | {"near_top_in": ["real aim"], "new_mechanics": ["shell-by-shell reload"]} |
+| no_domination | pass | {"near_top_everywhere": [], "baseline_near_top_everywhere": [], "field_ceiling_exceeded": [], "field_ratio_ceiling": 1.6, "priority_near_top": [], "priority_columns": ["1v1 close", "1v1 mid", "1v1 long", "field"]} |
+| viable | pass | {"field": 0.678, "kit_field": 0.641, "floor": 0.5, "beats_in_some_band": ["Assault Rifle", "Sniper Rifle", "AMR", "Suppressor", "Energy Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+QS"]} |
+| pickup_utility | n/a | {} |
+| balance_kept | pass | {"rule_flips": {}, "already_failing_when_shipped": ["standard|R9", "standard|R12d", "standard|R12e", "standard|R10b energy_rifle/usp", "standard|R10b suppressor/usp"], "kits_losing_last_near_top": [], "near_top_losses_within_noise": [], "noise_z": 2.0, "haze_flip_over_bar": false, "haze_win_bar": 0.65} |
+| op_rule | pass | {"failing": [], "already_one_shot_when_shipped": []} |
+| marksman_rush_counter | n/a | {} |
+
+Candidate:
+
+```json
+{
+ "title": "F579 Shotgun gun word 19 at field pace",
+ "weapon_id": "shotgun",
+ "changes": {
+  "wire.dmg": 19
+ },
+ "with": [
+  {
+   "weapon_id": "usp",
+   "changes": {
+    "wire.dmg": 10
+   }
+  }
+ ]
+}
+```
+

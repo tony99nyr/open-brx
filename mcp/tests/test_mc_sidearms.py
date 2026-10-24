@@ -79,12 +79,10 @@ def test_pistol_identities_keep_tonys_ordering():
     # Tony's ask over an unrealistic cut), which reorders this axis -- the USP no longer carries the
     # deepest magazine of the three, only the Glock (hidden, untouched by R10) does now.
     assert mags["deagle"] < mags["usp"] < mags["glock"]
-    # "Weak against the rifles" is a duel result, not a published TTK (Tony, 2026-10-24, F576). Since the published
-    # single-shot cycle uses the field fight interval, the USP and the Glock publish a faster ideal TTK than the
-    # Burst Rifle. This is the OLD-PACE check: the R10b duel engine still paces single shots with the 300 ms pull
-    # model, not the field fit. At field pace the USP wins most duels against the Energy Rifle and the Suppressor,
-    # and F579 reopens the call. The bar is R10b's own 65%; at SEED 7 the lowest old-pace cell is the Bolt Rifle
-    # against the USP, about 90%. The hidden Glock is not a live sidearm.
+    # "Weak against the rifles" is a duel result, not a published TTK (Tony, 2026-10-24, F576). The hidden Glock
+    # publishes a faster ideal TTK than the Burst Rifle (the USP did at 12 damage), but every primary must still win the R10b duel from full
+    # Standard health. Since F579 the duel engine paces single shots at the field fit, as compile does, and the USP
+    # moved to 10 damage to hold this. The bar is R10b's own 65%. The hidden Glock is not a live sidearm.
     m = B.RecoilDuelModel.from_catalog(CAT)
     for p in B.R10_PRIMARIES:
         for s in B.R10_SIDEARMS:

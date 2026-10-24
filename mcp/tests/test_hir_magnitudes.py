@@ -23,10 +23,11 @@ def test_smg_publishes_both_the_gun_and_the_headset_word():
     assert CAT.hir_magnitudes("smg") == [2, 7]
 
 
-def test_shotgun_deduplicates_equal_gun_and_headset_words():
-    # shotgun: t5 == t12 == 20 (wire.dmg + wire.headset_dmg). One entry, not two: the phone can only
-    # tell a hit's SIZE, not which emitter sent it.
-    assert CAT.hir_magnitudes("shotgun") == [20]
+def test_shotgun_publishes_its_gun_and_headset_words_as_two_magnitudes():
+    # shotgun: t5 19 (wire.dmg) and t12 20 (wire.headset_dmg) since F579 (2026-10-24). Until then both were 20
+    # and published one entry. Equal words still collapse to one: the phone can only tell a hit's SIZE.
+    assert CAT.hir_magnitudes("shotgun") == [19, 20]
+    assert hir_from_weap("$WEAP,0,2,100,0,0,20,0,,,,,,20,100,400,*") == [20]
 
 
 def test_charge_rifle_publishes_the_charge_and_the_tap_magnitude():

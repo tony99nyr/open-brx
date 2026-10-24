@@ -607,6 +607,18 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         times = [next(gen)[0] for _ in range(4)]
         gaps = [b - a for a, b in zip(times, times[1:])]
         assert min(gaps) > CAT.fire_ms(name) and len(set(gaps)) > 1, (name, gaps)   # sampled, never inside t14
+    # F579: the duel's single shots wait t14 plus the field overshoot (its mean), not the old 300 ms pull, and the
+    # model's own overshoot reaches them (the CLI's --fight-overshoot-ms).
+    for overshoot in (B.FIGHT_OVERSHOOT_MS, 100.0):
+        mm = B.RecoilDuelModel.from_catalog(CAT, fight_overshoot_ms=overshoot)
+        for name, make in (("amr", lambda r: B._amr_combatant(0.0, mm, "mid", r)),
+                           ("shotgun", lambda r: B._shotgun_combatant(0.0, mm, "close", r))):
+            gaps = []
+            for seed in range(300):
+                times = [next(g)[0] for g in [make(random.Random(seed))] for _ in range(5)]
+                gaps += [b - a for a, b in zip(times, times[1:])]
+            want = CAT.fire_ms(name) + overshoot * math.exp(B.PULL_SIGMA ** 2 / 2)
+            assert abs(sum(gaps) / len(gaps) - want) / want < 0.02, (name, overshoot, sum(gaps) / len(gaps), want)
 
 
 def test_the_bolt_sniper_kills_at_the_paced_bolt_cycle():
@@ -939,13 +951,13 @@ def test_range_duel_close_band_adds_the_headset_word_mid_does_not():
     """`_pull_dmg()` is the whole close/mid mechanism (F308): close = gun word + a declared headset
     word, mid = gun word alone. Direct, RNG-free check of the numbers Tony gave -- SMG 7+2=9 close /
     7 mid (R5, 2026-09-23: moved from 8+1 so the gun word alone drops further past the headset
-    word's reach), Shotgun 20+20=40 close / 20 mid, Burst Rifle 10 either way (it declares no
+    word's reach), Shotgun 19+20=39 close / 19 mid (F579, 2026-10-24: the gun word moved 20 to 19), Burst Rifle 10 either way (it declares no
     headset word)."""
     m = _recoil_model()
     assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "close") == 9 == m.smg_gun_dmg + m.smg_headset_dmg
     assert B._pull_dmg(m.smg_gun_dmg, m.smg_headset_dmg, "mid") == 7 == m.smg_gun_dmg
-    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 40
-    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 20
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "close") == 39
+    assert B._pull_dmg(m.sg_gun_dmg, m.sg_headset_dmg, "mid") == 19
     assert m.br_dmg == 10   # no headset word declared; band never touches it
 
 

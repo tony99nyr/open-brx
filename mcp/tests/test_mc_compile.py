@@ -1029,7 +1029,8 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
 
     The USP was exempt here from 2026-09-23 (R10: 13 hits against a 12-round magazine, a forced
     mid-fight reload). The 2026-10-17 single-shot retune made it 12 damage for R10a (a 35 HP finish
-    within 1.2 s), so it kills in 10 hits and fits its magazine again. The bolt-action Sniper Rifle
+    within 1.2 s), so it kills in 10 hits and fits its magazine again. F579 (2026-10-24) moved it to 10
+    damage: 12 hits, exactly its 12-round magazine. The bolt-action Sniper Rifle
     is exempt since 2026-10-17 (one round, a lever pull per shot), and only while its row stays a bolt
     (F573 review); the stale check below still fires."""
     cat = WeaponCatalog()

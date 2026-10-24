@@ -1,6 +1,6 @@
 {
   "name": "hp-dual-emitter",
-  "why": "F354 and the dual-emitter pairing: two equal words of the bundle's dual emitter inside 150 ms share one shot_group, a third word past the window starts a new one, an EMP word between a damaging word and its `$HP` leaves the damage with the damaging word, and a drop with no word inside 1000 ms books no hit.",
+  "why": "F354 and the dual-emitter pairing: the bundle's dual emitter's body then headset words (19 then 20 since F579) inside 150 ms share one shot_group, a third word past the window starts a new one, an EMP word between a damaging word and its `$HP` leaves the damage with the damaging word, and a drop with no word inside 1000 ms books no hit.",
   "source": "app/test/engine.test.mjs shot_group and F354 tests; app/src/engine.js `_onHp`",
   "runners": ["engine","stage"],
   "setup": {
@@ -11,15 +11,15 @@
     {"advance_ms":10},
     {"advance_ms":3000},
     {"check":"live","preamble":true},
-    {"frames":["$HIR,4,0,19,2,20,0,0,*","$HP,45,50,0,*"]},
+    {"frames":["$HIR,4,0,19,2,19,0,0,*","$HP,45,51,0,*"]},
     {"advance_ms":0},
-    {"frames":["$HIR,0,0,19,2,20,0,0,*","$HP,45,30,0,*"]},
+    {"frames":["$HIR,0,0,19,2,20,0,0,*","$HP,45,31,0,*"]},
     {"check":"paired"},
     {"advance_ms":1000},
-    {"frames":["$HIR,4,0,19,2,20,0,0,*","$HP,45,10,0,*"]},
+    {"frames":["$HIR,4,0,19,2,19,0,0,*","$HP,45,12,0,*"]},
     {"check":"new_group"},
     {"advance_ms":1000},
-    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HIR,4,8,19,2,0,0,0,*","$HP,45,1,0,*"]},
+    {"frames":["$HIR,4,0,19,2,9,0,3,*","$HIR,4,8,19,2,0,0,0,*","$HP,45,3,0,*"]},
     {"check":"emp_between"},
     {"advance_ms":1500},
     {"frames":["$HP,40,0,0,*"]},
@@ -44,7 +44,7 @@
         "$GSET,0,0,1,0,1,0,0,1,*",
         "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
         "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*",
-        "$WEAP,1,2,100,0,0,20,0,,,,,,20,100,400,850,6,48,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,24,75,100,*",
+        "$WEAP,1,2,100,0,0,19,0,,,,,,20,100,400,850,6,48,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,24,75,100,*",
         "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
         "$SIR,0,0,,28,0,0,1,,*",
         "$SIR,0,1,,28,0,0,1,,*",
@@ -101,8 +101,8 @@
     },
     {
       "at": "paired",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":30,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":20,"shooter_team":2,"shooter_key":"yellow","sensor":0,"hp":45,"armor":30,"shield":0,"weapon":null}}},
-      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:1"},{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":0,"sensor":0,"shot_group":"epoch:1"}],
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":31,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":20,"shooter_team":2,"shooter_key":"yellow","sensor":0,"hp":45,"armor":31,"shield":0,"weapon":null}}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":19,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:1"},{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":0,"sensor":0,"shot_group":"epoch:1"}],
       "reports": [],
       "writes": [
         "$GLED,4,4,4,0,10,,*",
@@ -111,8 +111,8 @@
     },
     {
       "at": "new_group",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":10,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":20,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":10,"shield":0,"weapon":null}}},
-      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":20,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:2"}],
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":12,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":19,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":12,"shield":0,"weapon":null}}},
+      "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":19,"ir_proto":0,"ir_subtype":0,"sensor":4,"shot_group":"epoch:2"}],
       "reports": [],
       "writes": [
         "$GLED,9,4,4,0,10,,*",
@@ -123,7 +123,7 @@
     },
     {
       "at": "emp_between",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":1,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":9,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":1,"shield":0,"weapon":null}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":3,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":9,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":45,"armor":3,"shield":0,"weapon":null}}},
       "facts": [{"type":"hit_taken","match_id":"m1","shooter_num":19,"shooter_team":2,"dmg":9,"ir_proto":8,"ir_subtype":0,"sensor":4,"shot_group":"epoch:3"}],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
@@ -134,7 +134,7 @@
     },
     {
       "at": "no_word_no_hit",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":6,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":40,"armor":0,"shield":0,"weapon":null}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":40,"armor":0,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"moment":{"kind":"hit","data":{"dmg":8,"shooter_team":2,"shooter_key":"yellow","sensor":4,"hp":40,"armor":0,"shield":0,"weapon":null}}},
       "facts": [],
       "reports": [],
       "writes": [

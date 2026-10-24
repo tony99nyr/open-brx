@@ -186,9 +186,9 @@ test('T2: after a restart, a dual-emitter pull still counts as one shot group', 
   h.restart().relink(); h.frame('$ALCD,0,100,0,0,0,*'); h.adv(4000);
   assert.equal(h.eng.phase, 'live', 'setup: the relink resumed the match');
   const de = golden.dual_emitters[0];
-  h.frame(`$HIR,4,${de.proto},19,2,${de.body},0,${de.subtype},*`).frame('$HP,45,50,0,*');
+  h.frame(`$HIR,4,${de.proto},19,2,${de.body},0,${de.subtype},*`).frame(`$HP,45,${70 - de.body},0,*`);
   h.adv(50, 50);
-  h.frame(`$HIR,0,${de.proto},19,2,${de.headset},0,${de.subtype},*`).frame('$HP,45,30,0,*');
+  h.frame(`$HIR,0,${de.proto},19,2,${de.headset},0,${de.subtype},*`).frame(`$HP,45,${70 - de.body - de.headset},0,*`);
   const pair = h.facts.filter(f => f.type === 'hit_taken').slice(-2);
   assert.equal(pair.length, 2, 'setup: both words booked a hit');
   assert.equal(pair[0].shot_group, pair[1].shot_group, 'one physical trigger pull counts once');
