@@ -998,9 +998,9 @@ export class MockBackend implements Api {
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
    *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
-   *  _independent_path()`: only a connected phone on the tunnel that reports cellular is covered. */
+   *  _independent_path()`: a connected phone that reports cellular is covered on the tunnel, or on the LAN while the tunnel is up. */
   private coverage(nodes: NodeView[]): Coverage {
-    return sessionCoverage(this.players, nodes);
+    return sessionCoverage(this.players, nodes, this.tunnelStatus === 'up');
   }
   /** `?mock&fullcoverage=1` — F309: once the tunnel is up every phone joins through it on cellular and
    *  none is stale (the demo's 52 s link included), so the console's FULL coverage chip can be seen.
@@ -1042,7 +1042,7 @@ export class MockBackend implements Api {
     // The server retains the same node record after disconnect. Readiness can say "none" while
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
-    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes, this.tunnelStatus === 'up'), sessionReadinessRosterSize(this.players));
     const holdWarning = holdTargetWarning(this.config, Object.values(this.stations).filter(st => st.assigned?.kind === 'control').length);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {

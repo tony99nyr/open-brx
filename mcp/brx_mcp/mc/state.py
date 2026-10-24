@@ -1167,14 +1167,14 @@ class Session:
         lan["public"] = pub
         return lan
 
-    @staticmethod
-    def _independent_path(nv: dict) -> bool:
-        """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale), through the
-        tunnel (`reach`, MC's own stamp from the socket), and riding cellular by its own report
-        (`transport`, the one fact only the phone has). F256: `reach` alone named only the URL, so
+    def _independent_path(self, nv: dict) -> bool:
+        """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale) and riding cellular by
+        its own report (`transport`, the one fact only the phone has), with the tunnel as its path: it came
+        through it (`reach`, MC's own stamp from the socket), or (A28.3 LAN-first, F595) it is on the LAN while
+        MC's tunnel is up, so it holds `pub` as a working fallback. F256: `reach` alone named only the URL, so
         two phones on one Wi-Fi behind one tunnel read as covered and were one point of failure."""
-        return (nv.get("reach") == "backhaul" and not nv.get("stale")
-                and nv.get("transport") == "cellular")
+        return (not nv.get("stale") and nv.get("transport") == "cellular"
+                and (nv.get("reach") == "backhaul" or bool(self._pub_url())))
 
     def coverage(self) -> Coverage:
         """A28.4: coverage is DERIVED, not asserted. `on_backhaul` counts the bound player nodes that are

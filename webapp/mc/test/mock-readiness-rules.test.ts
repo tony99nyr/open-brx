@@ -32,6 +32,17 @@ describe('server readiness rules in the mock', () => {
     expect(sessionCoverage(players, nodes)).toEqual({ level: 'zones', bound: 2, on_backhaul: 1, on_cellular: 1 });
   });
 
+  it('F595: a LAN phone on cellular counts only while the tunnel is up; Wi-Fi never does (state.py _independent_path)', () => {
+    const players = [{ player_id: 'a', display: 'ALPHA', node_id: 'node-a', ready: true }];
+    const cell = [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'cellular' as const }];
+    const wifi = [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'wifi' as const }];
+    expect(sessionCoverage(players, cell, true).level).toBe('full');
+    expect(sessionCoverage(players, cell, false).level).toBe('zones');
+    expect(sessionCoverage(players, wifi, true).level).toBe('zones');
+    expect(sessionOffGrid(players, cell, true)).toEqual([]);
+    expect(sessionOffGrid(players, cell, false)).toEqual(['ALPHA']);
+  });
+
   it('shows a phoneless player as waiting, even when the demo gun is unpowered', async () => {
     const backend = new MockBackend();
     try {

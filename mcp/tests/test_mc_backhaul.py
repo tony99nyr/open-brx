@@ -509,14 +509,22 @@ def test_coverage_is_full_only_when_every_phone_on_the_tunnel_rides_cellular():
     assert s.coverage() == {"level": "zones", "on_backhaul": 1, "on_cellular": 1, "bound": 2}, "stale is not connected"
 
 
-def test_cellular_on_the_lan_url_is_not_coverage():
-    """A phone that reports cellular but reached MC over the LAN URL is on the field network MC sees;
-    the tunnel is the independent path, so both facts are required."""
+def test_cellular_on_the_lan_url_counts_only_while_the_tunnel_is_up():
+    """A28.4 with A28.3's LAN-first fallback (F595, brx1 2026-10-24): coverage means MC still hears the phone after it
+    leaves the Wi-Fi. A LAN phone that reports cellular while MC's tunnel is up holds `pub` as a working fallback, so it
+    counts. With the tunnel down it has nowhere to go. A phone that reports Wi-Fi proves no data plan."""
     s = _sess()
     _two_players_on(s, "lan", "lan")
     _on(s, "n-a", "cellular")
     _on(s, "n-b", "cellular")
-    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 0, "bound": 2}
+    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 0, "bound": 2}, "tunnel down: no fallback"
+    s._tunnel_changed({"status": "up", "ws_url": "wss://t.example.com/ws"})
+    assert s.coverage() == {"level": "full", "on_backhaul": 0, "on_cellular": 2, "bound": 2}, "tunnel up: both hold a fallback"
+    assert s._off_grid() == [], "an MC-decided end reaches them through the fallback"
+    _on(s, "n-b", "wifi")
+    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 1, "bound": 2}, "Wi-Fi proves no data plan"
+    s._tunnel_changed({"status": "off"})
+    assert s.coverage()["on_cellular"] == 0, "the tunnel went down: no fallback again"
 
 
 def test_every_phone_on_the_tunnel_keeps_the_frag_warning_until_each_rides_cellular():

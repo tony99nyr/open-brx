@@ -110,6 +110,23 @@ test('A28.3 (F595): a pub attempt that fails before welcome ends the pass, and t
   t.close();
 });
 
+test('F595 review (Codex): a socket that opens but never welcomes does not reset the backoff, so repeated failed passes slow down', async ctx => {
+  const advance = useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 10, capMs: 1000, jitter: 0 }, lanGiveupMs: 5000, backhaulGiveupMs: 5000, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  p.catch(() => { /* never welcomes in this test */ });
+  const pass = () => { const lan = sockets.at(-1); lan.open(); lan.close(1006, 'reset'); const pub = sockets.at(-1); pub.open(); pub.close(1006, 'reset'); };
+  pass();                                          // pass 1: both open, neither welcomes
+  await advance(10); assert.equal(sockets.length, 3, 'the first retry waits the base delay');
+  pass();                                          // pass 2
+  await advance(10); assert.equal(sockets.length, 4, 'the second retry waits longer than the base');
+  await advance(10); assert.equal(sockets.length, 5);
+  t.close();
+});
+
 test('A28.3 (F595): a pub dial that never fires ANY event (a dead or blackholed tunnel) gives up at BACKHAUL_GIVEUP_MS and ends the pass', async ctx => {
   const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();

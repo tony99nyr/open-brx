@@ -893,7 +893,9 @@ takeover rule would kill the live link.
 
 **A28.4 Coverage is derived, no longer asserted.** `Session.coverage()` counts the bound player nodes connected with
 `reach == "backhaul"` (`on_backhaul`), and those that also report `status.transport == "cellular"` (`on_cellular`,
-F309, below). **`level` is `"full"` iff every bound node is `on_cellular` (connected, so not stale)**, else `"zones"`. It rides on the snapshot
+F309, below). **`level` is `"full"` iff every bound node is `on_cellular` (connected, so not stale)**, else `"zones"`. **[F595, 2026-10-24]** With A28.3's LAN-first fallback, `on_cellular` also counts a connected node on the LAN that
+reports `cellular` while MC's tunnel is up: it holds `pub`, so MC still hears it after it leaves the Wi-Fi. With the
+tunnel down it has nowhere to go and does not count; a node that reports `wifi` proves no data plan and never counts. It rides on the snapshot
 as `coverage: { level, on_backhaul, on_cellular, bound }` and is passed to `Compiler.validate(..., {coverage})` at config validation and at the lobby push. Full
 coverage **clears the A6.1 frag-limit warning and makes frag-limit / survival ends authoritative** (`scoring.frag_limit`,
 `win_by:"survival"`). It does **not** unlock `time_limit_s: null`: a cell signal is less trustworthy than a venue

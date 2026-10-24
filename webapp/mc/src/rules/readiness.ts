@@ -20,27 +20,28 @@ export function sessionUpdating(players: readonly (Binding & Pick<Player, 'ready
   }).length;
 }
 
-const independentPath = (node?: Path): boolean =>
-  node?.reach === 'backhaul' && !node.stale && node.transport === 'cellular';
+// Server: state.py Session._independent_path(). F595: a LAN phone on cellular counts while the tunnel is up (its fallback).
+const independentPath = (node: Path | undefined, tunnelUp: boolean): boolean =>
+  !!node && !node.stale && node.transport === 'cellular' && (node.reach === 'backhaul' || tunnelUp);
 
 // Server: state.py Session.coverage(). Walking players equals the server's node_player walk only
 // while bind and evict keep node_player and players[*].node_id inverse maps.
-export function sessionCoverage(players: readonly Binding[], nodes: readonly Path[]): Coverage {
+export function sessionCoverage(players: readonly Binding[], nodes: readonly Path[], tunnelUp = false): Coverage {
   const byId = new Map(nodes.map(node => [node.node_id, node]));
   const bound = players.filter(p => !!p.node_id);
   const on_backhaul = bound.filter(p => {
     const node = byId.get(p.node_id!);
     return node?.reach === 'backhaul' && !node.stale;
   }).length;
-  const on_cellular = bound.filter(p => independentPath(byId.get(p.node_id!))).length;
+  const on_cellular = bound.filter(p => independentPath(byId.get(p.node_id!), tunnelUp)).length;
   return { level: bound.length && on_cellular === bound.length ? 'full' : 'zones',
     on_backhaul, on_cellular, bound: bound.length };
 }
 
 // Server: state.py Session._off_grid().
-export function sessionOffGrid(players: readonly Binding[], nodes: readonly Path[]): string[] {
+export function sessionOffGrid(players: readonly Binding[], nodes: readonly Path[], tunnelUp = false): string[] {
   const byId = new Map(nodes.map(node => [node.node_id, node]));
-  return players.filter(p => !p.node_id || !independentPath(byId.get(p.node_id)))
+  return players.filter(p => !p.node_id || !independentPath(byId.get(p.node_id), tunnelUp))
     .map(p => p.display || p.player_id);
 }
 

@@ -686,7 +686,6 @@ export class Transport {
     }, via === 'backhaul' ? this.backhaulGiveupMs : this.lanGiveupMs);
     ws.onopen = () => {
       if (ws !== this._ws) return;
-      this.attempt = 0;
       if (this.verify) {   // A60: a fresh challenge per socket, so a recorded proof can never be replayed
         try { this._challenge = newChallenge(this.randomBytes); } catch (_) { this._failVerify('no_random'); return; }
       }
@@ -832,6 +831,7 @@ export class Transport {
     }
     const node = objectBody(body.node);
     if (node) this._absorb(node);
+    this.attempt = 0;   // F595 review (Codex): only a welcome resets the backoff; a socket that opens and never welcomes does not
     this._setState('open');
     this.bind();
     this._boundConnType = this.connectionType;   // F309: a socket stays on the network it was opened on
