@@ -990,7 +990,7 @@ def _with_stun_row(rows: list[str]) -> list[str]:
 # 2026-10-24 (Tony via brx1): the EMP PERK, in place of the Haze weapon. The holder's phone throws a host `$IRTX` on
 # `<8,1>` (`engine.js _empThrow`), a free cell, so `<8,0>` stays the Charge Rifle's. Every gun in a match with a holder
 # carries this fn-23 row (the stun primitive above: accuracy 0, no pool moves) and its phone runs the stun for
-# `FrameBundle.emp.duration_s`. Absent from every other game. Hidden until docs/bench-0426.md P2.4-P2.8 pass.
+# `FrameBundle.emp.duration_s`. Absent from every other game. Hidden until docs/bench-0426.md P2.5-P2.9 pass.
 EMP_PERK_ID = "emp"
 _EMP_SIR_ROW = "$SIR,8,1,,23,0,0,1,,*"
 _EMP_CELL = ("8", "1")
