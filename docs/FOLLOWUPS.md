@@ -35,7 +35,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F580 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F581 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -281,6 +281,14 @@ B and C hold the steps, and its *Not in this sitting* table points the rest at t
 - **F461 🟡 BENCH: DOES THE GUN EVER DROP THE SPAWN FILL'S `$HP`?** The node now waits for the fill's answer with no time limit; a hit with the shield up and an unpaired damaging word inside 1 s is measured from the full shield. An overshield grant during a pending fill builds on the full shield (on main at `82426e56`, `node.md` §3.2a). On a Shields spawn, log how often the fill's `$HP` is missing, and whether a hit can arrive before the gun applies the fill. `bench`. **Bench 2026-10-16 (0.4.22, brx1, C.18):** INCONCLUSIVE. Ten spawns logged `spawn shield fill: 105/105`; no lost fill occurred, so the "measured from the full shield" path never ran. Cosmetic: the HUD draws the shield bar late on REDEPLOYED (HUD lane, low). Tony hit a player during the redeploy screen: by design (timed respawn has no protection).
 
 ### Later: outdoors and in the house
+
+- **F580 🟠 BENCH: TRUE VICTIM-SIDE CUTOFFS OF MELEE (t2 60) AND THE SHOTGUN HEADSET WORD (t13 100).** brx1, 2026-10-24
+  (outdoor IR walk, log 2026-10-24). The numbers so far came from the M5 U002 receiver, which is not a BRX headset
+  receiver, so they bound the emitter, not the victim. Melee (slot 4, t2 60) reached the U002 to about 7 m (2 m 3/5, 5 m 5/5,
+  7 m 4/5, 10 m 0/5). The Shotgun headset word (t12 20 at t13 100) reached it to about 10 m and was gone by 13 m. Both
+  are INCONCLUSIVE for victim range. Measure both with a second gun and headset as the target (or the IR rig), 5 strikes
+  per mark, with a fabric control. Links F567 (melee t2 60 ladder) and the F579 headset-reach caveat (Shotgun gun word 19,
+  headset word at t13 100). `bench`.
 
 - **F275 🟠 AT WHAT `t13` VALUE DOES THE HEADSET WORD (t12) STOP ARRIVING? IT UNLOCKS THE WHOLE CLOSE-RANGE
   WEAPON CLASS.** 2026-09-18: the Shotgun/Plasma Sniper/Rocket Launcher's second IR word ships with

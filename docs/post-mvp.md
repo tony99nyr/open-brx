@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-10-17 (see experiment-log/2026-10.md for the day's changes).
+Updated: 2026-10-24 (see experiment-log/2026-10.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -227,6 +227,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
     `game-modes.md`, not in the advert table yet. Do it after K2-K4 prove the intent-bit path.
 
 - **F338 🟡 POST-MVP: THE GRENADE HILL AND STICK IR RECEIVE.** Tony 2026-09-24: the MVP hill is a Bluetooth control point (`station_source: "phone"`, now KOTH's stock default): a phone station today, and a StickS3 once brx4's presence-capture port is bench-proven (it needs a reflash; older Stick firmware is an IR hill); StickS3 stations are Bluetooth-only for MVP (hill, pickup, respawn), and Stick IR TRANSMIT stays. **Do not build before MVP:** new grenade-hill features (the grenade stays selectable, marked POST-MVP, and bench-proven 2026-09-10) or Stick IR receive (the onboard receiver cannot hear BRX IR; an external VS1838B on Grove G9 decodes shots, `0f50605e`). A CONTROL station under a grenade objective raises a SETUP warning (`a4d2a1ee`). The Stick's SETTINGS screen waits with it (2026-09-25): it would edit MODE, ID, GAME and TXPIN, which only the IR hill and bridge use; `station_render.h` keeps the drawing, and MC assigns the station id (A66). `post-MVP`
+  - **Shoot-to-claim (Tony 2026-10-24: post-MVP).** When built, a station shows every decoded hit on the box itself: a white flash of about 150 ms on each word, the ring filling in the shooter's team colour (from the word's team field), a capture pulse on the claim, and optionally a speaker click (bench check: the speaker was off when RX was on G42, and it may work with RX on the Grove G10).
+  - **Hardware findings (outdoor walk, log 2026-10-24).** A box receiver must face sideways, because a face-up lid window hears nothing beyond about 1 m. Its useful cone is about +-40 degrees, so a ground box needs about four side-facing receivers, one per side. `post-MVP`
 
 - **F344 🟠 A STATION COUNTS REVIVES OFF THE PLAYER'S OWN STATE BIT, NOT RSSI, AND REVIVE COUNTING IS NOW POST-MVP.** Both sides were built: MC's fallback (`beacon.js countRevives`, near = median at or above the threshold minus 10 dB, no dwell, own team only, only after a death seen this game) and the Stick's own rule (`presence.h`), which counts a revive on the rising edge of player state bit 6 `PLAYER_REVIVED`, no RSSI, tagged with the reviving station's id (needed because the Stick hears phones 20-30 dB weaker than phones hear it). The phone half that sets bit 6 is built but PARKED on `origin/revive-bit` (3304ef06): Tony, 2026-09-24/25, "let's remove the revive count for now and we can add those post mvp." `REVIVE_FEEDBACK_ENABLED` is off by default, so a respawn Stick today only advertises; nothing here is live until revive counting returns post-MVP. `post-MVP`.
 
