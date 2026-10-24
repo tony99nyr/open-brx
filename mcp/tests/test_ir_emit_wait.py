@@ -158,7 +158,7 @@ def test_dispatch_positional_parsing_unchanged_without_wait():
 
 def test_gap_reaches_the_bridge_and_sets_the_estimate():
     def run(slept):
-        FakeBridge.ack = "SENT n=10 bits=25 gap=60"
+        FakeBridge.ack = ""   # a run that outlasts the ack read: --wait sleeps the estimate (F538: an ack ends it)
         out = _emit_capturing_stderr("1" * 25, None, 10, wait=True, gap_ms=60)
         assert FakeBridge.instances[0].calls == [("1" * 25, 10, 60)]
         assert slept == [10 * (37 + 60) / 1000 + 1], slept   # words start (word + gap) apart
@@ -170,8 +170,15 @@ def test_gap_reaches_the_bridge_and_sets_the_estimate():
 def test_gap_warns_when_the_board_runs_old_firmware():
     def run(slept):
         FakeBridge.ack = "SENT n=5 bits=28"   # no gap= : an old ir_emit.ino read the gap as bits
-        out = _emit_capturing_stderr("1" * 25, None, 5, gap_ms=30)
-        assert "older ir_emit.ino" in out
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf):
+                cli._ir_emit("1" * 25, None, 5, gap_ms=30)
+        except SystemExit as e:
+            assert e.code == 2   # F538: the garbled word fails the command, not a warning beside a "sent"
+        else:
+            raise AssertionError("an old board's garbled word must fail the command")
+        assert "older ir_emit.ino" in buf.getvalue()
     _with_fake_bridge_and_sleep(run)
     FakeBridge.ack = "ACK"
 
@@ -202,7 +209,7 @@ def test_bridge_builds_the_gap_command_and_bounds_it():
     sent = []
     br = ib.IRBridge.__new__(ib.IRBridge)
     br._ser = type("S", (), {"write": lambda self, b: sent.append(b.decode())})()
-    br._readlines = lambda t: ["SENT n=3 bits=25 gap=0"]
+    br._readlines = lambda t, until=None: ["SENT n=3 bits=25 gap=0"]
     assert "gap=0" in br.emit("1" * 25, 3, gap_ms=0)
     assert sent == [f"TXN 3 {'1' * 25} 0\n"]
     try:
