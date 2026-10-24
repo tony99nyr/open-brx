@@ -115,9 +115,10 @@ export const BOARD_LIVE_MAX_AGE_MS = 16000;
  *  lied by 3 pips a shot. Pips now count exactly the magazine size — one pip per round — up to this many; past
  *  it they stop reading as bullets and the gauge switches to a continuous bar (exact count stays in the digits
  *  beside it). F547 (Tony 2026-10-24, option C: "i only like the pips when it represents the shots 1:1. I think I
- *  prefer the bar otherwise"): 20, down from 30, the most the pip row fits at 667×375. Thirty pips on the Toxin Rifle
- *  were too many to read as rounds. Every stock mag of 18 or fewer keeps its pips; Extended Mags moves a doubled AMR
- *  (28) or USP (24) to the bar with the rest. */
+ *  prefer the bar otherwise"): 20, down from 30. Thirty is still the most the pip row fits at 667×375, but thirty pips on
+ *  the Toxin Rifle were too many to read as rounds. Every stock mag of 20 or fewer keeps its pips. Extended Mags now
+ *  crosses the line on purpose: it moves the AMR (28), the Glock (24, pistols take x1.5 rounded down), the Bolt Rifle and
+ *  the Stinger (36) to the bar; the USP (18) and the Plasma Sniper (20) keep their pips. */
 export const AMMO_PIP_MAX = 20;
 /** Bench 2026-09-17: `weapon_class` ("ballistic" | "energy" | "melee", `st.weaponClass`) decides the
  *  reload-versus-overheat WORDING (RECHARGE for energy, RELOAD for ballistic) -- that is

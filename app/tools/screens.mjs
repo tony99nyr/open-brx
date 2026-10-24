@@ -3316,11 +3316,17 @@ await step('ammo gauge se F547: the 30-round Toxin Rifle renders the bar with th
   await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 30);
   let r = await gaugeState(pg);
   must(r.bar && r.ammoBar && r.pips === 0, `a 30-round Toxin mag must render the bar, not 30 pips: ${JSON.stringify(r)}`);
-  const fill = () => pg.evaluate(() => { const i = document.querySelector('#pips > .bar.ammobar > i'); const b = i && i.parentElement; return i && { warn: b.classList.contains('warn'), bg: getComputedStyle(i).backgroundColor }; });
+  // review (Codex): the fill must be the HUD's own amber, `--warn`, read through a probe element so both sides are rgb()
+  const fill = () => pg.evaluate(() => {
+    const i = document.querySelector('#pips > .bar.ammobar > i'); if (!i) return null;
+    const probe = document.createElement('i'); probe.style.background = 'var(--warn)'; i.parentElement.appendChild(probe);
+    const warnBg = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { warn: i.parentElement.classList.contains('warn'), bg: getComputedStyle(i).backgroundColor, warnBg };
+  });
   const full = await fill();
   await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 4);
   const low = await fill();
-  must(low && low.warn && !full.warn && low.bg !== full.bg, `4 of 30 must turn the bar amber (warn class and a different fill colour): full ${JSON.stringify(full)} low ${JSON.stringify(low)}`);
+  must(low && low.warn && !full.warn && low.bg === low.warnBg && full.bg !== full.warnBg, `4 of 30 must turn the bar the HUD amber (--warn): full ${JSON.stringify(full)} low ${JSON.stringify(low)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-toxin-bar-low.png` });
   await setAmmo(pg, 'amr', 0, 14, 84, 7);
   r = await gaugeState(pg);
