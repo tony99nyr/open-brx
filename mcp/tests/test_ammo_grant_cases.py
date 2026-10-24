@@ -65,7 +65,7 @@ def test_a_grant_books_the_new_reserve_so_its_echo_is_bookkeeping():
 
 
 def test_a_grant_to_a_down_player_writes_nothing():
-    """Opus review: the phone grants only after an alive claim, and its writeMust drops a write once the life ends."""
+    """Opus review: the phone grants only after an alive claim, and a failed write on a later life undoes and retries nothing (F589)."""
     async def go():
         st, _mgr = mk_stage()
         st._spawn_ammo = lambda: {0: [30, 120]}     # type: ignore[method-assign]
@@ -84,7 +84,7 @@ def test_a_grant_to_a_down_player_writes_nothing():
 
 
 def test_a_failed_grant_write_is_sent_again_while_the_life_lasts():
-    """The phone's writeMust (Codex review): a write the link refuses is retried for the life."""
+    """powerup-player.js `grantAmmo` (F589): a write the link refuses is granted once more from the counts held then."""
     async def go():
         st, _mgr = mk_stage()
         st._spawn_ammo = lambda: {0: [30, 120]}     # type: ignore[method-assign]
@@ -98,6 +98,35 @@ def test_a_failed_grant_write_is_sent_again_while_the_life_lasts():
         st.write = write   # type: ignore[method-assign]
         await st.grant_ammo({"name": "AMMO", "refill": "reserve"})
         assert tries == [["$AMMO,0,12,120,1,*"]] * 2, tries
+    asyncio.run(go())
+
+
+def test_f589_a_grant_that_fails_twice_is_taken_back_and_a_new_life_undoes_nothing():
+    """powerup-player.js `grantAmmo` (F589): a failed write on the same life takes the refill back, then grants once more
+    from the counts held then; a second failure leaves the reserve the gun holds. A failure after a new life undoes nothing."""
+    async def go():
+        st, _mgr = mk_stage()
+        st._spawn_ammo = lambda: {0: [30, 120]}     # type: ignore[method-assign]
+        st._prev_ammo[0] = 12; st._prev_reserve[0] = 40
+        st._live_ammo = lambda: {0: [12, st._prev_reserve.get(0)]}   # type: ignore[method-assign]
+        st.spawned = st.alive = True
+        tries: list[list[str]] = []
+
+        async def write(frames, why, *a, **kw):
+            tries.append(list(frames))
+            return False
+        st.write = write   # type: ignore[method-assign]
+        await st.grant_ammo({"name": "AMMO", "refill": "reserve"})
+        assert tries == [["$AMMO,0,12,120,1,*"]] * 2, tries
+        assert st._prev_reserve[0] == 40, f"the gun never got the refill: {st._prev_reserve}"
+        st._prev_reserve[0] = 40; tries.clear()
+
+        async def write_new_life(frames, why, *a, **kw):
+            tries.append(list(frames)); st._life_queued += 1
+            return False
+        st.write = write_new_life   # type: ignore[method-assign]
+        await st.grant_ammo({"name": "AMMO", "refill": "reserve"})
+        assert len(tries) == 1 and st._prev_reserve[0] == 120, (tries, st._prev_reserve)
     asyncio.run(go())
 
 

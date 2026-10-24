@@ -8178,6 +8178,21 @@ test('F570 review: a write whose promise never settles holds its echo windows at
   h.adv(7000);
   assert.equal(h.eng.am.acctEchoing(4), false, 'never held for ever');
 });
+// F590 (brx3 review 2026-10-24, P3-1): a write that failed before it sent a frame lands nothing, so it holds no window. The
+// phone restarted its windows on any settle and held them ACC_ECHO_MS longer than the stage (stage.py `write`). A write that
+// sent a frame and then failed still restarts them: those rows may echo.
+test('F590: a failed write that sent nothing puts its echo windows back; one that sent a frame restarts them', async () => {
+  for (const sentOne of [false, true]) {
+    const h = harness().kit();
+    let finish, opts;
+    h.eng.writer = (frames, why, o) => { h.writes.push(...frames); if (!frames.some(f => f.startsWith('$WEAP,'))) return true; opts = o; return new Promise(r => { finish = r; }); };
+    h.config_();
+    h.adv(1500);
+    if (sentOne) opts?.onFrameSent?.('$START,*');
+    finish(false); await new Promise(r => setImmediate(r));
+    assert.equal(h.eng.am.acctEchoing(4), sentOne, sentOne ? 'a write that sent a frame restarts its windows' : 'nothing left the phone: the window is the one booked at the call, long closed');
+  }
+});
 // F277 (field 2026-10-17, report §3.2 cause 4): a reload that never took was read only by the debug panel. The ammo block
 // now says so for RELOAD_FAILED_SHOW_MS, so a player on a slot the gun is not on finds out (a shot then shows GUN WAS ON).
 test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a few seconds; a landed one does not', () => {

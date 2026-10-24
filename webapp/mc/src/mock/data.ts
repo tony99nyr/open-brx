@@ -186,7 +186,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold it, and it holds. A full charge and three taps ends anyone, which is why it belongs to whoever saw the other person first.",
+    "desc": "Hold it, and it holds. A full charge and three taps ends a standard player (more health takes five taps), which is why it belongs to whoever saw the other person first.",
     "clip": 40,
     "mags": 4,
     "reserve": 160,
@@ -868,7 +868,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "body_armor",
     "name": "Body Armor",
-    "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer.",
+    "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer (not the Sniper Rifle's bolt).",
     "tags": [
       "passive",
       "defense"
@@ -892,7 +892,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "extended_mags",
     "name": "Extended Mags",
-    "desc": "Double the magazine on your primary, and the reserve up to 384 rounds (2026-10-17: the largest reserve a gun has proven, so the Assault Rifle, Burst Rifle, SMG, Suppressor and Energy Rifle gain no reserve); +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
+    "desc": "Double the magazine on your primary, and the reserve up to 384 rounds (2026-10-17: the largest reserve a gun has proven, so the Assault Rifle, Burst Rifle, SMG, Suppressor and Energy Rifle gain no reserve); +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). The Sniper Rifle is exempt: its bolt keeps one round. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
     "tags": [
       "passive",
       "ammo"
@@ -917,7 +917,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "quick_hands",
     "name": "Quick Hands",
-    "desc": "Reload in half the time. Your primary is back in the fight before theirs is -- the trade is a lighter magazine, 20% fewer rounds carried.",
+    "desc": "Reload in half the time (not the Sniper Rifle's bolt). Your primary is back in the fight before theirs is -- the trade is a lighter magazine, 20% fewer rounds carried.",
     "tags": [
       "passive",
       "handling"
