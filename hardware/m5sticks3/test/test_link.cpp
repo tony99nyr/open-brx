@@ -2278,6 +2278,31 @@ static void test_duration_anchor_needs_a_player_heard_down_in_this_game_first() 
   CHECK(!link.anchor_hill_on_advert(spawned8, 6000));
 }
 
+// F593 (brx2's milestone review, 2026-10-24): a hill frozen at its whistle and reopened by a same-game lobby config
+// restarts its clock. Its first step back (here the next START's go-live) must not bank the time it stood frozen.
+static void test_a_hill_reopened_after_its_whistle_restarts_its_clock() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  StationAssignment a = control_config(7);
+  a.starts_known = true; a.starts_in_ms = -1000; a.ends_in_ms = 30000;
+  link.apply_station_config(a, 0);
+  PlayerPresence p = blue_on_the_point(0);
+  link.hill().owner = 1; link.hill().progress = 100;
+  for (uint32_t t = 0; t <= 40000; t += 250) link.tick_players(p, t);
+  CHECK(link.hill_ended());
+  const uint32_t frozen = link.hill().hold_ms[1];
+  CHECK(frozen >= 29000 && frozen <= 30000);
+  link.apply_station_config(control_config(7), 50000);   // a same-game lobby or abort re-send: no times
+  CHECK(!link.hill().frozen);
+  StationAssignment again = control_config(7);
+  again.starts_known = true; again.starts_in_ms = 5000; again.ends_in_ms = 65000;
+  link.apply_station_config(again, 100000);
+  link.tick_players(p, 105000);   // go-live: the first step since the whistle
+  CHECK(link.hill().hold_ms[1] - frozen <= 1000u);
+  link.tick_players(p, 106000);
+  CHECK(link.hill().hold_ms[1] - frozen <= 2000u);
+}
+
 // Review 2026-09-25: a duration hill out of Wi-Fi keeps WAITING (neutral, no accrual) until its anchor;
 // F374's 60 s offline go-live is only for a config without a duration.
 static void test_duration_hill_skips_the_offline_go_live() {
@@ -3153,6 +3178,7 @@ int main(int argc, char** argv) {
   test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi_gate();
   test_duration_anchor_needs_a_player_heard_down_in_this_game_first();
   test_duration_hill_skips_the_offline_go_live();
+  test_a_hill_reopened_after_its_whistle_restarts_its_clock();
   test_muster_duration_hill_waits_for_player_after_offline_drop();
   test_duration_clock_survives_an_offline_restart();
   test_boot_assoc_mode_defaults_to_held_and_a_saved_mode_wins();

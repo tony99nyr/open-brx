@@ -57,6 +57,15 @@ const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? locatio
 // F345: settings saved before thrV 2 hold the old -74 default as if chosen; migrateThreshold reads it as 0 once.
 const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }); } catch (_) { return { ...DEFAULTS }; } })();
 /** The threshold this station advertises (byte 14) and measures players by: the override, else the platform default. */
+/** F590 (3): the station's own clock for everything its 250 ms tick touches (sightings, the hill and its MC deadline, the
+ *  powerup schedule, the advert and scan timers). Wall time at load, then monotonic: MC's deadlines are relative
+ *  (`ends_in_ms`), so a phone clock step must not move the whistle. A saved time read back after a restart lands on the
+ *  new anchor, as a Date.now() value did. A value another module compares with its own Date.now() (the HUD handoff,
+ *  the auto-join guard, the A58 lock) stays on Date.now(). */
+const stationNow = (() => {
+  const wall = Date.now(), mono = performance.now();
+  return () => wall + Math.round(performance.now() - mono);
+})();
 const thr = () => stationThreshold(settings);
 // Milestone round 3: a pace saved under the old +/- range (2-120 s, 1-12) comes back inside A77's bounds
 const clampPace = () => {
@@ -154,7 +163,7 @@ function advertFields() {
   if (settings.kind === 'control') return point.advert();
   // A56: a powerup station with an item advertises its item's state: 1 available, or 0 with the seconds to the next
   // spawn and the winner in byte 15 (`taker`); 0 with value 0 until MC's first `station_update` (unknown).
-  if (settings.kind === 'powerup' && pu.item) return { team: settings.team, ...pu.advert(Date.now()) };
+  if (settings.kind === 'powerup' && pu.item) return { team: settings.team, ...pu.advert(stationNow()) };
   return { team: settings.team, state: 1, value: 0 };
 }
 function stationUuid() {
@@ -167,7 +176,7 @@ async function startAdvert(quiet = false) {
   // Record the intent FIRST, whatever happens next: `seq` (byte 12) bumps on every change, and the
   // republish check in tick() is driven off what we last decided to publish. Doing this inside the try
   // below left the stage (no radio) asking to republish on every 250 ms tick, forever.
-  advert.published(advertFields(), Date.now());
+  advert.published(advertFields(), stationNow());
   if (DEMO) { advertising = true; settings.live = true; save(); if (!quiet) log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
   if (!plugins.beacon) { log('no beacon plugin: this build cannot advertise (desktop?)', 'le'); render(); return; }
   // START is a deployment boundary before the native promise settles. Hide/cancel the recovery exit now,
@@ -225,7 +234,7 @@ async function applyStationConfig(body) {
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (settings.game !== wasGame) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
-  if (cfg.kind === 'control') applyHillClock(cfg, Date.now(), sameStation);
+  if (cfg.kind === 'control') applyHillClock(cfg, stationNow(), sameStation);
   // F559: MC's hill pace wins on every arming that carries it; absent keeps the station's own (a +/- edit holds until then)
   if (cfg.kind === 'control' && cfg.capture_s != null) settings.captureS = cfg.capture_s;
   if (cfg.kind === 'control' && cfg.net_cap != null) settings.netCap = cfg.net_cap;
@@ -246,6 +255,11 @@ async function applyStationConfig(body) {
  *  already past) leaves it alone. `ends_in_ms` sets the whistle, 0 = now; a config with no timing (a lobby or an abort
  *  re-send) clears both, so the point counts as before. F555: MC scores the hill on this tally. */
 function applyHillClock(cfg, now, sameStation = true) {
+  // F593: a point that took its last step to the whistle is frozen there. A config that lifts the freeze (a same-game
+  // lobby or abort re-send clears the deadline, or a later one replaces it) restarts its clock below, so the first step
+  // back banks none of the frozen time.
+  const frozenAtWhistle = () => settings.hillEndsAt != null && point.at != null && point.at >= settings.hillEndsAt;
+  const wasFrozen = frozenAtWhistle();
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
@@ -261,6 +275,7 @@ function applyHillClock(cfg, now, sameStation = true) {
   if (cfg.ends_in_ms > 0) settings.hillEndsAt = now + cfg.ends_in_ms;
   else if (cfg.ends_in_ms === 0) settings.hillEndsAt = settings.hillEndsAt != null ? Math.min(settings.hillEndsAt, now) : now;
   else if (!liveResend) settings.hillEndsAt = null;
+  if (wasFrozen && !frozenAtWhistle()) { point.at = null; point.heldBy = null; }
 }
 function utilityStatusBody() {
   // F365 / A67: the applied radius and strength, who set each and how long ago, and the last on-station edits,
@@ -476,8 +491,8 @@ async function startScan() {
   // scanMode 2 (low latency), not 1 (balanced): Android throttles a balanced scan so hard that presence
   // froze on the player side (app.js, hardware 2026-09-04), and the station reads player adverts through
   // the same starved radio (S6). A station is usually stationary/plugged, so the battery cost is fine.
-  scanGuard.reset(Date.now());
-  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, Date.now()); }, { scanMode: SCAN_MODES[_scanModeIdx], onRaw: () => scanGuard.hit(Date.now()) }); _lastScanRestart = Date.now(); log('watching for players'); }
+  scanGuard.reset(stationNow());
+  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, stationNow()); }, { scanMode: SCAN_MODES[_scanModeIdx], onRaw: () => scanGuard.hit(stationNow()) }); _lastScanRestart = stationNow(); log('watching for players'); }
   catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
 }
 // S6: stop+start to recover a scan whose callbacks Android silently paused (advertise+scan on one radio
@@ -493,7 +508,7 @@ async function refreshScan() {
 let _lastBatteryPoll = 0;
 const BATTERY_POLL_MS = 30000;   // roadmap A3: battery does not need 250 ms resolution, and Device.getBatteryInfo is async
 function tick() {
-  const now = Date.now();
+  const now = stationNow();
   if (now - _lastBatteryPoll >= BATTERY_POLL_MS) { _lastBatteryPoll = now; readBattery().then(b => { lastBattery = b; }); }
   // S6: keep the player-watch scan alive. Recover one stuck OFF (a startScan() throw left scanning=false),
   // and restart a possibly-stalled one on a period so the station keeps hearing planting/defusing/reviving
@@ -545,7 +560,7 @@ function tick() {
 function applyStationUpdate(body) {
   if (!body || typeof body !== 'object') return;
   if (body.id != null && +body.id !== settings.id) return;
-  pu.update(body, Date.now()); savePowerup();
+  pu.update(body, stationNow()); savePowerup();
   log(`MC: item ${body.available ? 'AVAILABLE' : 'TAKEN'}${Number.isFinite(+body.next_spawn_in_ms) ? ` · next spawn in ${Math.round(+body.next_spawn_in_ms / 1000)} s` : ''}`, 'li');
   if (settings.live) startAdvert();
   render();
@@ -555,11 +570,11 @@ function applyStationUpdate(body) {
  *  this phone's clock onto the synced one. True when something left the queue. */
 let _takenFailAt = 0;
 function flushTaken() {
-  if (!pu.unsent.length || !transport || transport.state !== 'bound' || Date.now() - _takenFailAt < 5000) return false;
+  if (!pu.unsent.length || !transport || transport.state !== 'bound' || stationNow() - _takenFailAt < 5000) return false;
   const n = pu.drain(b => {
-    try { if (transport.report('station_action', { ...b, t: transport.syncedNow() - (Date.now() - b.t) })) return true; }
+    try { if (transport.report('station_action', { ...b, t: transport.syncedNow() - (stationNow() - b.t) })) return true; }
     catch (err) { log('station_action refused: ' + (err && err.message || err), 'le'); }
-    _takenFailAt = Date.now(); return false;   // retried in 5 s, not every tick
+    _takenFailAt = stationNow(); return false;   // retried in 5 s, not every tick
   });
   if (n) log(`MC told: ${n} item${n === 1 ? '' : 's'} taken`, 'li');
   return n > 0;
@@ -971,7 +986,7 @@ function renderPowerup() {
   const on = settings.kind === 'powerup' && !!pu.item;
   el.hidden = !on;
   if (!on) { delete document.documentElement.dataset.kindItem; return; }
-  const now = Date.now(), v = pu.view(now), item = pu.item;
+  const now = stationNow(), v = pu.view(now), item = pu.item;
   document.documentElement.dataset.kindItem = '';
   document.documentElement.style.setProperty('--item', /^#[0-9a-f]{6}$/i.test(item.color || '') ? item.color : 'var(--glow)');
   $('team').textContent = String(item.name || 'POWERUP').toUpperCase();
@@ -1196,7 +1211,8 @@ function wireExit() {
     connectTypedMc, openRangeEdit: () => { _editOpen = true; _editIdleAt = Date.now(); render(); },
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
-    applyNativeInset, controlTick, clampPace };   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    applyNativeInset, controlTick, clampPace,
+    tick, stationNow };   // F590 (3) test seams: one station tick, on the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
@@ -1210,7 +1226,7 @@ function gapHistogram(gaps) {
 
 /** The station's state as plain data, for a CDP read in the field (window.brx.diag()). */
 function utilityDiag() {
-  const now = Date.now();
+  const now = stationNow();
   return {
     kind: settings.kind, id: settings.id, team: settings.team, game: settings.game, threshold: thr(), live: !!settings.live, advertising,
     point: settings.kind === 'control' ? { owner: point.owner, capturing: point.capturing, progress: Math.round(point.progress), contested: point.contested,
@@ -1234,7 +1250,7 @@ function seedDemo() {
                 { id: 23, team: 1, alive: true, rssi: () => -74 + 9 * Math.sin((Date.now() - t0) / 4000) },
                 { id: 31, team: 0, alive: true, rssi: () => -70 + 14 * Math.sin((Date.now() - t0) / 11000) }];
   setInterval(() => {
-    const now = Date.now();
+    const now = stationNow();
     // A56: `bits`/`value` let a stage step make a fake phone CLAIM a powerup station (`claiming`/`claim_ready`, station id)
     for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
   }, 250);
