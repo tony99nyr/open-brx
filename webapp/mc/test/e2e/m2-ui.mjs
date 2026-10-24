@@ -469,6 +469,11 @@ async function runMock(browser, viteBase, vp, tag) {
   // The OTHER branch of the board: after the whistle the projector shows the final card and the same
   // table, and it has to fit for the same reason. Ended through the control, not by poking the rows.
   await pg.evaluate(async () => { await window.__MC_MOCK__.control('end'); });
+  // F596: the demo's last phone never arrives, so the projector first shows RESULTS PENDING, with no winner and no ranking.
+  await until(() => pg.locator('[data-spectate="pending"]').count().then(n => n > 0), 20000, 'the pending card on the projector');
+  expect(await pg.locator('[data-spectate="final"]').count() === 0, 'no winner card while results are pending');
+  expect(!/WINS/.test(await pg.locator('body').innerText()), 'and no WINS line anywhere on the projector');
+  await pg.evaluate(async () => { await window.__MC_MOCK__.finaliseRecap(); });
   // Wait for the thing that CHANGES. "12 rows on the board" is already true of the live board, so
   // waiting on it measured the live board and called it the final card (caught in this run's own
   // screenshot, 2026-09-12): the result card is the only proof the whistle has blown.
