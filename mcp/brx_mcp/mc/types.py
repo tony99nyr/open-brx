@@ -549,6 +549,8 @@ class PerkEffects(TypedDict, total=False):
     crit_pct_add: int       # F278 (2026-09-18): no row declares this yet -- filed and refused before it
                             # ships. `compile._refuse_if_crit_perk_ineligible` refuses it at runtime on
                             # any equipped weapon declaring `wire.headset_dmg`.
+    cooldown_s: int         # 2026-10-24, the hidden EMP: seconds between throws, on the match clock (a placeholder)
+    stun_duration_s: int    # the EMP: seconds a victim's gun stays jammed (a placeholder)
 
 
 class PerkView(TypedDict):
@@ -966,6 +968,12 @@ class ConfigView(GameConfigBase):
     loadout_policy: LoadoutPolicy
 
 
+class EmpSpec(TypedDict):
+    """The EMP perk's numbers for one match (perks.json `emp` effects). Placeholders until benched."""
+    cooldown_s: int    # the holder's throw recharge, on the match clock
+    duration_s: int    # how long a victim's gun stays jammed
+
+
 class FrameBundle(TypedDict):
     config_id: str
     player_id: str
@@ -1011,6 +1019,8 @@ class FrameBundle(TypedDict):
     perk_effects: NotRequired[PerkEffectsResolved]   # S50 build 4: this player's compiled perk effect,
     #                                      absent when they carry no perk. Persisted here (not a
     #                                      one-shot message) so it survives an app restart.
+    emp: NotRequired["EmpSpec"]   # 2026-10-24: present when a player in this match holds the EMP perk (every bundle, so a
+    #                                      victim's phone knows the <8,1> word is a stun); absent otherwise.
     callout_team: NotRequired[int | None]   # S57 (docs/ir-callouts.md): the smallest team id in 0..3 that
     #                                      no player in this match holds, or None when all four are in use.
     #                                      Every player's dead-man IR callout word (protocol 15) carries this

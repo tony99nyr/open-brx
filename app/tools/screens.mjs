@@ -5044,6 +5044,25 @@ for (const view of VIEWS) for (const night of [false, true]) {
       if (night) must(!green(r.color) && r.anim === 'none', `night: no green, no motion: ${JSON.stringify(r)}`);
       must(bad.length === 0, bad.join(' ; '));
     });
+    // The EMP perk (2026-10-24, hidden until benched): one chip by the ammo, lit when the throw is ready, dimmed with the
+    // seconds left while it recharges, and absent for a player without the perk.
+    await step(`${view.name} EMP perk ${skin}: lit when ready, dim with the seconds while it recharges, absent without the perk`, async () => {
+      const pg = await open(view, 'live-emp', N);
+      const ready = await look(pg, '#empchip .emp');
+      await pg.evaluate(() => window.brx.engine.feedFrame('$BUT,4,1,*')); await settled(pg);
+      const st = await pg.evaluate(() => window.brx.engine.state().emp);
+      const cool = await look(pg, '#empchip .emp');
+      await pg.screenshot({ path: `${OUT}/${view.name}-emp-${skin}.png` });
+      const bad = await invariants(pg); await pg.close();
+      const pg2 = await open(view, 'live', N);
+      const none = await look(pg2, '#empchip'); await pg2.close();
+      must(ready && ready.shown && /EMP/.test(ready.text) && /READY/.test(ready.text) && ready.op === 1 && ready.font >= 11, `a ready EMP must be lit and say READY: ${JSON.stringify(ready)}`);
+      must(st && !st.ready && st.leftMs > 0, `pre-condition: LEFT threw, the cooldown runs: ${JSON.stringify(st)}`);
+      must(cool && cool.shown && /EMP/.test(cool.text) && /\d+\s*S/.test(cool.text) && !/READY/.test(cool.text) && cool.op <= 0.7, `a recharging EMP must dim and count its seconds: ${JSON.stringify(cool)}`);
+      if (night) must(!green(ready.color) && !green(cool.color), `night: no green: ${ready.color} ${cool.color}`);
+      must(!none, `no perk, no EMP chip: ${JSON.stringify(none)}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
   }
   for (const view of VIEWS) {
     await step(`${view.name} QA-17/22 night live HUD: no green; armour and link status shown; clock and reserve >= 4.5:1`, async () => {

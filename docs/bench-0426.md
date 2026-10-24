@@ -2,11 +2,11 @@
 
 Updated: 2026-10-24. This sheet is the bench of 2026-10-25 on APK 0.4.26. It collects the open field tests from
 [`bench-field-1017.md`](bench-field-1017.md) (which never ran), the lanes' bench rows since 2026-10-17, and the F579
-and F580 checks. The steps run in order of game impact, about 3 h in all:
+and F580 checks. The steps run in order of game impact, about 3 h 35 min in all:
 
 1. **P1, about 1 h 45 min**: the Stick firmware, the SMG frame, the ALT matrix, the spawn repairs, the F579 weapons
    and the Charge Rifle.
-2. **P2, about 35 min**: the Sniper bolt, the large reserve and the reconnect battery cost.
+2. **P2, about 1 h 10 min**: the Sniper bolt, the large reserve, the reconnect battery cost and the hidden EMP perk.
 3. **P3, outdoors, about 40 min**: the victim-side reach of the Shotgun headset word and of melee.
 
 Where a step says "procedure: 1017 P1.2", the procedure is in that sheet; this sheet adds only what changed. Each
@@ -102,7 +102,7 @@ read.* Tactix-9498, armed from `compile.resolve()` with the shipped Charge Rifle
 **Control:** from exactly 10 rounds, a charge fires. End with `$AMMO,0,<clip>,<reserve>,1,*` from the recipe (only
 an `$AMMO` refill clears the lock), then re-arm. Rows: F575 (Tony's call waits on step 1), F226, F238.
 
-## P2: the gun's own limits (about 35 min)
+## P2: the gun's own limits (about 1 h 10 min)
 
 **P2.1. The Sniper's 2.2 s bolt (10 min).** *Impact: the Sniper fires one round, then needs the lever, as the sim
 assumes.* Procedure: 1017 P2.5, three times. Then arm with Quick Hands, and then with Extended Mags: the bolt stays
@@ -120,6 +120,30 @@ drained fast in the field.* The grey Pixel, the app open on the lobby, outside a
 percentage and the time. After 15 min, note them again and count the connect attempts in the app log. **Pass:** the
 attempts are 10 s apart for 12 tries, then 30 s and 60 s, and the link rests at TAP TO RECONNECT after 30 tries.
 **Read:** the battery drop. **Control:** the same phone for 15 min with its gun on and linked. Row: F563.
+
+**P2.4 to P2.8: the EMP perk (35 min).** *Impact: the EMP replaces the Haze weapon, and it stays hidden until these
+pass.* The thrower is Tactix-9498 with the EMP perk (`loadout.perk: "emp"`), a second gun is the victim, and a third
+is a teammate of the thrower. Arm all three from `compile.resolve()`, friendly fire off. The phone throws on LEFT:
+`$IRTX,100,8,<player>,<own tid>,1,0,1,100,1,,0,*` (`engine.js _empThrow`). Rows: this sheet.
+
+**P2.4. A blocked LEFT reports (5 min).** Send `$BMAP,4,98,,,,,*`, then press LEFT. **Pass:** `$BUT,4,1` arrives and no
+IR leaves the gun. **Control:** a receiver facing the barrel and the domes hears nothing on the press.
+
+**P2.5. The throw lands on `<8,1>` (10 min).** Press LEFT on the thrower. **Pass:** the victim reports `$HIR` with
+proto 8 and subtype 1, its accuracy reads 0 and its trigger fires nothing, no pool moves, and its HUD shows STUNNED
+for the set duration (3 s, a placeholder). **Control:** a Charge Rifle hit on the same victim, with `config.stun` off,
+still deals its plain damage on `<8,0>`.
+
+**P2.6. Team immunity (5 min).** Throw with the teammate in range. **Pass:** the teammate registers no `$HIR` and its
+gun keeps firing. **Control:** the enemy victim beside it is stunned by the same throw.
+
+**P2.7. Range (10 min).** Throw at 3, 6 and 10 m, with the victim in front of the thrower, behind and beside. Three
+throws per mark. **Read:** which marks stun, for the numbers Tony sets. **Control:** a cloth over the victim's
+headset at 3 m gives no `$HIR`.
+
+**P2.8. The cooldown (5 min).** Throw, then press LEFT again inside the cooldown, then once after it. **Pass:** the
+second press sends nothing (the app log says "EMP not thrown: recharging") and the third throws. **Control:** the
+HUD chip counts the seconds down and reads READY when the third press is allowed.
 
 ## P3: outdoors, the victim-side reach (about 40 min)
 

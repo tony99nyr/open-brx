@@ -1360,6 +1360,10 @@ one costs the player their backup gun. That cost is the whole balance.
 | **Breacher** | `<5,0>` fn 20 | takes 9 off whatever the target is WEARING, through every layer in order, with the overflow carrying between them. It cannot touch health. Pointed at a teammate it does the opposite and grants armour, because fn 20 is dual-polarity | shield 120 to 0, then armour 70 to 0, health fixed at 999 throughout; eleven further hits on a bare target moved nothing |
 | **Haze** | `<7,0>` fn 23 | the target's live accuracy falls to 0 for about three seconds. They keep firing and keep spending rounds, and every shot misses. It takes no health | accuracy 100 to 0 in the same millisecond as the hit, recovering 0, 2, 4, 7, 12 over about 3 s, nothing left behind |
 
+**The EMP perk's cell is `<8,1>` fn 23** (2026-10-24, the perk that replaced the Haze as a weapon). No weapon fires
+on it: the holder's phone writes a host `$IRTX` there, and every gun in a match with a holder carries the row. It sits
+beside `<8,0>`, which stays the Charge Rifle's cell. `hitaudio.RESERVED_CELLS` keeps the allocator off it.
+
 **They publish `dmg`, `htk` and `ttk_ms` of zero, and that is deliberate.** Their frames carry real
 magnitudes, so the ordinary derivation would advertise the Breacher at an 8 damage bar and 13 hits to
 kill. A player reading that would expect it to kill in 13 hits, and it cannot kill at all. The zeros are

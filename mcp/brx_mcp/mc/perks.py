@@ -29,8 +29,10 @@ _HERE = pathlib.Path(__file__).resolve().parent
 # pistol carried as the primary (role `sidearm` or the `pistol` tag) -- `compile.py`
 # `WeaponCatalog._ammo` is the one place that reads it instead of the plain `ammo_mult`, rounding the
 # result DOWN (Tony's rule), never the round-to-nearest every other `ammo_mult` use gets.
+# `cooldown_s` / `stun_duration_s` (2026-10-24): the hidden EMP's throw recharge (match clock) and the jam it lands. The
+# phone reads both off `FrameBundle.emp`, which `compile.py` fills from this row; the numbers are placeholders.
 EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "ammo_mult_pistol", "reload_mult", "alt_reload",
-                        "switch_mult", "armor_piercing", "crit_pct_add"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+                        "switch_mult", "armor_piercing", "crit_pct_add", "cooldown_s", "stun_duration_s"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
 # S50 gain/cost lines (2026-09-19, F-desc): the phone (`app/src/hud/loadout.js` `perkEffect`) and the console
 # (`webapp/mc/src/screens/Kit.tsx` `effectLine`) each used to derive their own "gain · cost" line from
@@ -48,7 +50,7 @@ _NODE_LOCAL_GAIN = {
     "second_wind": "SURVIVE ONE NEAR-KILL",
 }
 _HANDLED_KEYS = frozenset({"max_armor_add", "ammo_mult", "ammo_mult_pistol", "reload_mult",
-                          "switch_mult", "alt_reload", "armor_piercing", "crit_pct_add"})
+                          "switch_mult", "alt_reload", "armor_piercing", "crit_pct_add", "cooldown_s", "stun_duration_s"})
 
 
 def _rate(m: float) -> str:
@@ -103,6 +105,10 @@ def gain_cost_lines(perk_id: str, effects: PerkEffects) -> tuple[list[str], list
     if "crit_pct_add" in effects:
         n = effects["crit_pct_add"]
         (gain if n > 0 else cost).append(f"{n:+d}% CRIT CHANCE")
+    if "stun_duration_s" in effects:
+        gain.append(f"JAMS ENEMY GUNS {effects['stun_duration_s']:g} S")
+    if "cooldown_s" in effects:
+        cost.append(f"{effects['cooldown_s']:g} S RECHARGE")
     if not gain and perk_id in _NODE_LOCAL_GAIN:
         gain.append(_NODE_LOCAL_GAIN[perk_id])
     return gain, cost
@@ -149,6 +155,10 @@ class PerkCatalog:
             effects["armor_piercing"] = raw_effects["armor_piercing"]
         if "crit_pct_add" in raw_effects:
             effects["crit_pct_add"] = raw_effects["crit_pct_add"]
+        if "cooldown_s" in raw_effects:
+            effects["cooldown_s"] = raw_effects["cooldown_s"]
+        if "stun_duration_s" in raw_effects:
+            effects["stun_duration_s"] = raw_effects["stun_duration_s"]
         gain, cost = gain_cost_lines(r["perk_id"], effects)
         return {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
                 "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),

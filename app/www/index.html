@@ -190,6 +190,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .puchip b{font-family:var(--fd);font-weight:700;font-size:20px;line-height:1;color:var(--num)}
 .puchip.on{border-color:var(--item);box-shadow:0 0 16px -6px var(--item)}
 .puchip{white-space:nowrap}.puchip .sel{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.08em;color:var(--item);opacity:.8}   /* A56: SELECT toggles the trigger */
+/* the EMP perk: in the ammo column's flow under the weapon name; lit when ready, dimmed with a recharge ring while it cools */
+.empchip{display:flex;--emp:var(--glow)}
+.empchip .emp{display:flex;align-items:center;gap:7px;padding:2px 9px;white-space:nowrap;border:1px solid color-mix(in srgb,var(--emp) 60%,transparent);background:color-mix(in srgb,var(--emp) 10%,transparent);color:var(--emp);transform:skewX(-12deg);opacity:.55}
+.empchip .emp > *{transform:skewX(12deg)}
+.empchip .emp.lit{opacity:1;border-color:var(--emp);box-shadow:0 0 14px -6px var(--emp)}
+.empchip .ring{display:block;width:14px;height:14px;border-radius:50%;background:conic-gradient(currentColor calc(var(--p) * 1turn),color-mix(in srgb,currentColor 22%,transparent) 0)}
+.empchip .nm{font-family:var(--fd);font-weight:700;font-size:14px;letter-spacing:.14em}
+.empchip b{font-family:var(--fd);font-weight:700;font-size:16px;line-height:1;color:var(--num)}
+.empchip b small{font-size:11px;margin-left:1px}
+.empchip .sel{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.08em;opacity:.8}
+[data-env="night"] .empchip{--emp:var(--num)}[data-env="night"] .empchip .emp{background:transparent;box-shadow:none}[data-env="night"] .empchip .emp.lit{border-color:#3a1414}   /* R2-12: the night ink, nothing glows */
 .ammo{position:absolute;right:36px;bottom:32px;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .ammo .nums{display:flex;align-items:baseline;gap:8px}
 .ammo .mag{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)}

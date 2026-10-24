@@ -985,6 +985,22 @@ def _with_stun_row(rows: list[str]) -> list[str]:
     if not done:
         out.append(_STUN_SIR_ROW)
     return out
+
+
+# 2026-10-24 (Tony via brx1): the EMP PERK, in place of the Haze weapon. The holder's phone throws a host `$IRTX` on
+# `<8,1>` (`engine.js _empThrow`), a free cell, so `<8,0>` stays the Charge Rifle's. Every gun in a match with a holder
+# carries this fn-23 row (the stun primitive above: accuracy 0, no pool moves) and its phone runs the stun for
+# `FrameBundle.emp.duration_s`. Absent from every other game. Hidden until docs/bench-0426.md P2.4-P2.8 pass.
+EMP_PERK_ID = "emp"
+_EMP_SIR_ROW = "$SIR,8,1,,23,0,0,1,,*"
+_EMP_CELL = ("8", "1")
+
+
+def _with_emp_row(rows: list[str]) -> list[str]:
+    """The table with the EMP's `<8,1>` fn-23 row appended, unless a row already keys that cell."""
+    return rows if _EMP_CELL in _sir_index(rows) else [*rows, _EMP_SIR_ROW]
+
+
 # Modes whose objective IS this grenade beacon -- defined in `.types` beside the GameConfig shape,
 # because `state.py`'s PUT validator and `scoring.py` read the same set (keep the local alias: it is
 # what every guard in this file reads).
@@ -2244,7 +2260,12 @@ class Compiler:
         It must be computed once and handed to every player's `compile()`: a plan derived per player
         would give two guns different tables, and a hit keyed to a cell the victim does not carry is
         silently dropped. `rekey=False` (the default, and what ships) moves nothing -- see
-        `hitaudio.plan_in_place`."""
+        `hitaudio.plan_in_place`. `emp` is set when any player holds the EMP perk (`_EMP_SIR_ROW`)."""
+        out = self._hit_plan(roster, rekey)
+        out.emp = any((p.get("loadout") or {}).get("perk") == EMP_PERK_ID for p in roster or [])
+        return out
+
+    def _hit_plan(self, roster: list[Player], rekey: bool) -> _ha.Plan:
         sir = _sir_index(_SIR_TABLE)
         ids: list[str] = []
         for p in roster or []:
@@ -2276,7 +2297,7 @@ class Compiler:
         Called only on the in-place plan: `hit_audio_rekey` allocates cells by class and is not composed."""
         order = {wid: i for i, wid in enumerate(self.catalog._by_id)}
         taken = ({e.cell for e in entries} | set(_sir_cells(_SIR_TABLE)) | set(_ha.RESERVED_CELLS)
-                 | {_STUN_CELL, ("15", "0"), _AP_CELL})
+                 | {_STUN_CELL, _EMP_CELL, ("15", "0"), _AP_CELL})
         out = list(entries)
         claimed: dict[tuple[str, str], set[int]] = {}      # cell -> magnitudes an earlier weapon already sends on it
         for i in sorted(range(len(out)), key=lambda i: (order.get(out[i].weapon_id, len(order)), out[i].weapon_id)):
@@ -2424,7 +2445,8 @@ class Compiler:
             # preserved deliberately: the table is a wire artefact and churning it churns every bundle.
             rows = rows + [_sir_row(cell, "", fn, by_fn.get(fn))
                            for cell, (_k, fn) in sorted(plan.groups.items()) if cell not in cells]
-            return _with_stun_row(rows) if stun else rows   # F15/A20: the EMP cell, only when the game asks
+            rows = _with_stun_row(rows) if stun else rows   # F15/A20: the EMP cell, only when the game asks
+            return _with_emp_row(rows) if plan.emp else rows   # the EMP perk's cell, only when a player holds it
         for cell, (cls, fn) in sorted(plan.groups.items()):
             sound = _ha.class_sound(cls, rng, self._cell_cycle_ms(plan, cell))
             if cell in cells:
@@ -2432,7 +2454,8 @@ class Compiler:
                 rows[i] = _sir_with_sound(rows[i], sound)
             else:
                 rows.append(_sir_row(cell, sound, fn, by_fn.get(fn)))
-        return _with_stun_row(rows) if stun else rows   # F15/A20: same substitution on the class-sound path (and so on every `sir_pool` take)
+        rows = _with_stun_row(rows) if stun else rows   # F15/A20: same substitution on the class-sound path (and so on every `sir_pool` take)
+        return _with_emp_row(rows) if plan.emp else rows
 
     def _weapon_cell(self, weapon_id: str) -> tuple[str, str] | None:
         """The `<proto, subtype>` cell a weapon fires on today (its `$WEAP` tok3/tok4), or None for an unknown id."""
@@ -3054,6 +3077,10 @@ class Compiler:
         dot = self.dot_table(build.plan)
         if dot:
             ctx.bundle["dot"] = dot
+        # The EMP perk: game-wide like `dot` (a victim needs the jam's length, the holder its recharge), off the plan.
+        if build.plan.emp:
+            fx = self.perks.effects(EMP_PERK_ID)
+            ctx.bundle["emp"] = {"cooldown_s": int(fx["cooldown_s"]), "duration_s": int(fx["stun_duration_s"])}
         assert_no_denied_frames(ctx.bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
 
 

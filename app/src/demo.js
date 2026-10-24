@@ -422,6 +422,7 @@ export function startDemo({ engine, log }) {
       twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
       fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'quick_switch' }; ev.assign(); },   // A14: AR + pistol + Quick Switch
+      empPerk: () => { player.loadout = { ...player.loadout, perk: 'emp' }; bundle.emp = { cooldown_s: 45, duration_s: 3 }; ev.assign(); },   // the hidden EMP perk; MC ships `emp` on every bundle of a match with a holder
       quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
@@ -760,6 +761,7 @@ export function startDemo({ engine, log }) {
       'live-shield':       [...live, [2300, 'die'], [2800, 'stationRespawn']],
       'live-stunned':      [[0, () => { config.stun = { duration_s: 10 }; }], ...live, [2300, 'stun']],
       'live-overheat':     [...live, [2300, 'overheat']],
+      'live-emp':          [[0, 'empPerk'], ...live],   // the EMP perk's chip, ready; LEFT (`$BUT,4,1`) throws and starts the cooldown
       // docs/announcer.md "Aim tells and the lanes" (Tony 2026-09-25: "what about recoil screen in the alerts?"). A centre
       // tell is up, then my kill and a second kill with its medal chain land on top of it. All four drive the REAL engine.
       // RECOIL: one held pull on the Assault Rifle, 22 rounds 100 ms apart (RECOIL from round 6), two kills mid-burst,

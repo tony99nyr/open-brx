@@ -227,6 +227,7 @@ export class Hud {
       st.poolStale && st.poolStale.why, st.cure && st.cure.verdict, !!st.spawnLost, !!st.gunFlapping, st.headsetJoin && st.headsetJoin.state, !!st.reconciling, !!st.gunLocked, st.gunRecovery, st.downReason,
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
+      !!st.emp,   // the EMP perk's chip exists or not; its countdown is patched
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
       // whole screen. The picker's rows, its empty placeholder and its fold are all patched in place
@@ -423,6 +424,7 @@ export class Hud {
       setHtml('fxbar', this._fx(st));                   // S16: the poison countdown
       setHtml('aimfx', this._aimFx(st));                // S53: the smoke countdown (the slot itself is structural)
       setHtml('stunfx', this._stunFx(st));              // F15: the stun countdown
+      setHtml('empchip', this._empChip(st));            // the EMP perk's recharge
       // EFF-6: TAKING FIRE and the reticle share the centre slot; swap the one element on the edge (no rebuild).
       const idle = this.hudEl.querySelector('.takingfire, .reticle');
       if (idle && idle.className !== (st.underFire ? 'takingfire' : 'reticle')) idle.outerHTML = this._centreIdle(st);
