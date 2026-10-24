@@ -12,7 +12,7 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 98.** Desk 10 · bench 82 · decision 6.
+**MVP open: 97.** Desk 10 · bench 82 · decision 5.
 
 **MVP DESK (10),** a keyboard is enough:
 - 🔴 **F533** · **F548**
@@ -26,8 +26,8 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F538** · **F545**
 
-**MVP DECISION (6),** awaiting Tony:
-- 🟠 **F391** · **F575** · **F578** · **F579**
+**MVP DECISION (5),** awaiting Tony:
+- 🟠 **F391** · **F575** · **F578**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
