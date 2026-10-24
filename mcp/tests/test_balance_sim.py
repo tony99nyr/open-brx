@@ -607,6 +607,18 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
         times = [next(gen)[0] for _ in range(4)]
         gaps = [b - a for a, b in zip(times, times[1:])]
         assert min(gaps) > CAT.fire_ms(name) and len(set(gaps)) > 1, (name, gaps)   # sampled, never inside t14
+    # F579: the duel's single shots wait t14 plus the field overshoot (its mean), not the old 300 ms pull, and the
+    # model's own overshoot reaches them (the CLI's --fight-overshoot-ms).
+    for overshoot in (B.FIGHT_OVERSHOOT_MS, 100.0):
+        mm = B.RecoilDuelModel.from_catalog(CAT, fight_overshoot_ms=overshoot)
+        for name, make in (("amr", lambda r: B._amr_combatant(0.0, mm, "mid", r)),
+                           ("shotgun", lambda r: B._shotgun_combatant(0.0, mm, "close", r))):
+            gaps = []
+            for seed in range(300):
+                times = [next(g)[0] for g in [make(random.Random(seed))] for _ in range(5)]
+                gaps += [b - a for a, b in zip(times, times[1:])]
+            want = CAT.fire_ms(name) + overshoot * math.exp(B.PULL_SIGMA ** 2 / 2)
+            assert abs(sum(gaps) / len(gaps) - want) / want < 0.02, (name, overshoot, sum(gaps) / len(gaps), want)
 
 
 def test_the_bolt_sniper_kills_at_the_paced_bolt_cycle():

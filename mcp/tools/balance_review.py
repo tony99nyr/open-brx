@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 12
+SCENARIO_VERSION = 13
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -1553,7 +1553,8 @@ def pistol_finisher_report(world: World, scale: float = 1.0) -> list[dict]:
 
         def combatant(t, m, band, rng):
             return B._ar_shots(t, dmg, fire_ms, mag, reserve, float(reload_ms), profile,
-                               m.aim_factor, rng=rng, crit_pct=crit, pull_ms=m.pull_ms if semi else 0.0)
+                               m.aim_factor, rng=rng, crit_pct=crit, pull_ms=m.pull_ms if semi else 0.0,
+                               overshoot_ms=m.fight_overshoot_ms)
 
         B.RANGE_COMBATANTS[pistol] = combatant
         try:
@@ -3016,7 +3017,8 @@ def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True,
 
         def temp(t, m, band, rng):
             return B._ar_shots(t, dmg, fire, mag, res, float(rel), prof, m.aim_factor, rng=rng, crit_pct=crit,
-                               pull_ms=m.pull_ms if semi else 0.0)
+                               pull_ms=m.pull_ms if semi else 0.0,
+                               overshoot_ms=m.fight_overshoot_ms)
         kind = f"candidate:{wid}"
         B.RANGE_COMBATANTS[kind] = temp
     try:
