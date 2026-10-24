@@ -99,6 +99,13 @@ describe('UX-2 — a slot FIXED to an unplayable weapon', () => {
     expect(msg, 'the old copy sent the operator to filters that do not exist').not.toContain('FILTERS');
   });
 
+  it('F585: a slot the fixed perk emptied names the perk, never a filter to clear', () => {
+    const msg = poolEmptyMessage('PRIMARY', 'perk_blocked');
+    expect(msg).toContain('FIXED PERK');
+    expect(msg).toContain('ANY PRIMARY');
+    expect(msg).not.toMatch(/FILTER|EXCLUSION/);
+  });
+
   it('an allow-list naming nothing but the launcher is the same fact', async () => {
     const d = await demo();
     const weapons = withSyntheticLauncher(d.weapons);

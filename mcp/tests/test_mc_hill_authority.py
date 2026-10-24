@@ -656,6 +656,28 @@ def test_r4_a_pre_upgrade_tally_saved_after_the_whistle_is_unverified():
     assert str(sid) not in sc.station_possession_ms, sc.station_possession_ms
 
 
+def test_f586_an_unverified_hill_stays_unverified_across_a_restart():
+    """F586: the snapshot kept no `station_unverified`, so a restart rebuilt nothing and the recap lost `unverified`."""
+    s, net, clock, ps = mk_stored_session(2, "koth")
+    net.simulate_utility_hello("util-hill")
+    s.set_station("util-hill", {"kind": "control"})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config(force=True)
+    info = s.start(runway_s=1, force=True)
+    clock["t"] = info["go_live_t"] + 5_000
+    s.tick()
+    sid = str(s.station_registry.stations["util-hill"]["assigned"]["id"])
+    s._m().scorer.station_unverified.add(sid)     # a hill the scorer could not verify (a late fact moved the whistle)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    clock["t"] += 10_000
+    s2, _net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert sid in s2._m().scorer.station_unverified, s2._m().scorer.station_unverified
+
+
 def test_r4_a_late_reading_already_bounded_is_bounded_again_when_the_end_moves_earlier():
     """Opus review r4: a late reading bounded against the old end left the receipt time at the in-play reading, so a kill
     cap that then moved the end earlier skipped the site."""
