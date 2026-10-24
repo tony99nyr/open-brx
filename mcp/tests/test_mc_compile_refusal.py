@@ -130,3 +130,56 @@ def test_a_fixed_perk_that_empties_the_fixed_primary_names_the_pairing_not_an_ex
     pol["perk"] = {**pol["perk"], "choice": "player", "fixed_id": None}
     s.set_config({"loadout_policy": pol})
     assert s.loadout_pool()["primary"] == ["charge_rifle"], s.loadout_pool()
+
+
+def _secondary_errors(s):
+    s._validate()
+    return [e for e in s.config_errors if "SECONDARY" in e]
+
+
+def test_a_secondary_the_fixed_perk_empties_is_refused_and_named_like_the_primary():
+    """brx1 2026-10-24 (after F585): the server refused only an empty PRIMARY. An emptied secondary only greyed the
+    console's CONTINUE; any other push path went through and `policy.apply` dropped the secondary silently."""
+    s, net, clock, ps = _real()
+    # no catalogue perk blocks a secondary today, so this session's Armor Piercing blocks the SMG as one
+    real_rows = s._catalog_rows
+    def rows():
+        weapons, perks = real_rows()
+        return weapons, [{**p, "blocked_secondary": ["smg"]} if p["perk_id"] == "armor_piercing" else p for p in perks]
+    s._catalog_rows = rows
+    perk = next(p for p in rows()[1] if p["perk_id"] == "armor_piercing")
+    pol = s.policy()
+    pol["secondary"] = {**pol["secondary"], "choice": "fixed", "fixed_id": perk["blocked_secondary"][0]}
+    pol["perk"] = {**pol["perk"], "choice": "fixed", "fixed_id": perk["perk_id"]}
+    s.set_config({"loadout_policy": pol})
+    assert s.loadout_pool()["reasons"]["secondary_weapons"] == "perk_blocked", s.loadout_pool()
+    said = _secondary_errors(s)
+    assert said and perk["name"].upper() in said[0] and "ANY SECONDARY" in said[0], (said, s.config_errors)
+    assert "EXCLUSION" not in said[0] and "FILTER" not in said[0], said[0]
+    assert s._validate()["ok"] is False
+
+
+def test_a_secondary_filter_that_leaves_nothing_is_refused_naming_the_secondary_slot():
+    s, net, clock, ps = _real()
+    pol = s.policy()
+    pol["secondary"] = {**pol["secondary"], "choice": "player", "only_ids": ["nope_gun"]}
+    s.set_config({"loadout_policy": pol})
+    said = _secondary_errors(s)
+    assert said and "SECONDARY" in said[0] and "nope_gun" in said[0], s.config_errors
+    # control: a secondary that is OFF is no refusal (nothing to load is the operator's choice)
+    pol["secondary"] = {**pol["secondary"], "choice": "off", "only_ids": []}
+    s.set_config({"loadout_policy": pol})
+    assert not _secondary_errors(s), s.config_errors
+
+
+def test_a_slot_fixed_to_a_weapon_it_cannot_hold_says_so_not_clear_an_exclusion():
+    """A fixed id that IS in the game but not allowed in the slot (a support weapon as primary) read `filtered`, and the
+    refusal sent the operator to class or id exclusions the slot does not have."""
+    s, net, clock, ps = _real()
+    support = next(w["weapon_id"] for w in s._catalog_rows()[0] if "support" in (w.get("tags") or []))
+    pol = s.policy()
+    pol["primary"] = {**pol["primary"], "choice": "fixed", "fixed_id": support}
+    s.set_config({"loadout_policy": pol})
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said and "CANNOT GO IN THE PRIMARY SLOT" in said[0] and "EXCLUSION" not in said[0], said
