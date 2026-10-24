@@ -432,3 +432,23 @@ def test_resumed_match_keeps_the_whistle_bindings_without_new_hellos():
     rows = s2.recap()["sync"]["rows"]
     assert len(rows) == 2 and all(row["stage"] == "unlinked" for row in rows)
     assert s2.recap()["sync"]["pending"]
+
+
+def test_the_recap_csv_waits_for_the_result_like_the_page():
+    """F596 review (Codex): the console hides EXPORT CSV while the result is pending, but a saved /api/recap.csv link still
+    downloaded the provisional table. It answers 409 until every row is received or the operator finalises."""
+    from _skip import needs
+    try:
+        from starlette.testclient import TestClient
+        import httpx  # noqa: F401
+    except ImportError:
+        needs(False, "starlette + httpx")
+    from brx_mcp.mc.api import create_app
+    s, net, clock, ps, _ = go_live(2)
+    c = TestClient(create_app(s))
+    s.control("end")
+    assert s.recap()["sync"]["pending"], s.recap()["sync"]
+    r = c.get("/api/recap.csv")
+    assert r.status_code == 409 and "PENDING" in r.json()["error"].upper(), (r.status_code, r.text)
+    s.finalise_recap()
+    assert c.get("/api/recap.csv").status_code == 200
