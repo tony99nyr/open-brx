@@ -230,6 +230,13 @@ describe('M7 · MC offline', () => {
     m.unmount();
   });
 
+  it('F540 review: a refused token (the socket is down for that) names the token, not MC IS OFFLINE', async () => {
+    const { m } = await board('live', {}, [row()], {}, { connected: false, authRequired: true });
+    expect(m.find('[data-testid="controls-offline"]').length).toBe(0);
+    expect(m.find('[data-testid="controls-token"]')[0].textContent).toMatch(/OPERATOR TOKEN NEEDED/);
+    m.unmount();
+  });
+
   it('online, the same row reads ALIVE and the controls are live', async () => {
     const { m } = await board('live', {}, [row()]);
     expect(m.find('[data-cell="status"]')[0].textContent).toBe('ALIVE');

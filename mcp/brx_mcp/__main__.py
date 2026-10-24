@@ -1,6 +1,9 @@
 """Entry point.
 
   python -m brx_mcp            # run the MCP server (stdio)
+  python -m brx_mcp --help     # this text; `<command> --help` (or -h) prints it too, and never connects
+  (Ctrl-C ends a running game cleanly: the teardown is sent, then the tool exits 130. A game ends
+   with the live $SIR table re-sent, so the gun is left hittable for the next run, F11)
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
   python -m brx_mcp probe <address> [seconds]    # send the app handshake ($CONNECT/$INIT/$PHONE), then listen
@@ -260,7 +263,11 @@ def arm_plan(mode: str = "tdm", venue: str = DEFAULT_VENUE, *, friendly_fire: bo
              tid: int | None = None, player_num: int | None = None) -> ArmPlan:
     """The config phase, spawn, revive and end for one gun: MC's compiled bundle for `mode` and `venue` plus
     the CLI additions above. `tid` puts the gun on that team (0-3 only, F35); None = MC's default team for
-    the mode. Runs MC's own `validate`, and raises ValueError with its errors."""
+    the mode. Runs MC's own `validate`, and raises ValueError with its errors.
+
+    The end is MC's game-over end plus the live $SIR table (addition 6, F539): MC's end leaves the gun
+    inert until the next match arms it, but a bench tool must never sign off on a bare `$CLEAR` (F11), or
+    the next run finds a gun that ignores every hit."""
     from .mc.compile import Compiler
     from .mc.state import TEAM_DEFS, default_config
     from .mc.types import Player, Team
@@ -316,7 +323,7 @@ def arm_plan(mode: str = "tdm", venue: str = DEFAULT_VENUE, *, friendly_fire: bo
                    spawn=own_ammo(rp["spawn"]),
                    revive=[down["stop"], *own_ammo(rp["revive"])],
                    trigger_live=rp["trigger_live"], trigger_ms=int(rp["trigger_ms"]),
-                   end=list(bundle["end"]))
+                   end=list(bundle["end"]) + list(pool[0]))                    # addition 6
 
 
 def arm_frames(mode: str = "tdm", venue: str = DEFAULT_VENUE, **kw) -> list[str]:
@@ -331,6 +338,16 @@ def _plan_or_exit(*a, **kw) -> ArmPlan:
     except ValueError as e:
         print(f"cannot arm: {e}", file=sys.stderr)
         sys.exit(2)
+
+
+# Guns whose end sequence was started and has not finished. A second Ctrl-C can stop it after `$CLEAR`
+# and before the `$SIR` rows, which leaves that gun ignoring every hit (F11, F539).
+_ENDING: set[str] = set()
+
+
+def _warn_unfinished_end(address: str) -> None:
+    print(f"the end sequence did not finish on {address}: it may ignore every hit. "
+          f"Run: python -m brx_mcp reset {address}", file=sys.stderr)
 
 
 MAX_TEAM_GUNS = 4          # teams 0-3: the IR word's team field is 2 bits (F35)
@@ -481,9 +498,12 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
               f"respawns {respawns} ***", file=sys.stderr)
     finally:
         try:
+            _ENDING.add(address)
             await send_all(plan.end, "ending game")
+            _ENDING.discard(address)
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})", file=sys.stderr)
+            _warn_unfinished_end(address)
         await mgr.disconnect("cli")
 
 
@@ -539,13 +559,17 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
         print(f"\n{deaths} death(s) handled.", file=sys.stderr)
     finally:
         try:
+            _ENDING.add(address)
             await send_all(plan.end, "ending game")
+            _ENDING.discard(address)
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})",
                   file=sys.stderr)
+            _warn_unfinished_end(address)
         await mgr.disconnect("cli")
-    print("Done. Power-cycle the tagger to clear any residual state.",
-          file=sys.stderr)
+    if address not in _ENDING:
+        print("Done. The gun is idle and hittable; `reset` or a power cycle clears anything else.",
+              file=sys.stderr)
 
 
 async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
@@ -684,12 +708,15 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         for task in respawns.values():
             task.cancel()
         await asyncio.gather(*respawns.values(), return_exceptions=True)
+        _ENDING.update(addr for _, addr, _ in players)       # a Ctrl-C in one gun's end stops the rest too
         for alias, _addr, tid in players:
             try:
                 await push(alias, plans[tid].end)
+                _ENDING.discard(_addr)
             except Exception as e:  # noqa: BLE001 — link may already be gone
                 print(f"({alias} teardown skipped: {type(e).__name__})",
                       file=sys.stderr)
+                _warn_unfinished_end(_addr)
             try:
                 await mgr.disconnect(alias)
             except Exception:  # noqa: BLE001
@@ -1196,6 +1223,20 @@ def _dispatch_connect_metrics(rest: list[str]) -> None:
                                  log_path=log_path))
 
 
+HELP_WORDS = ("--help", "-h", "help")
+OWN_PARSERS = ("ir-emit", "stage")       # argparse owns their `--help`
+# Commands parsed by hand whose arguments are addresses, numbers and words, never options: an option
+# here is a typo, and it would otherwise be taken for a gun address (F539).
+# `rename` and `enroll` are left out: a gun name may start with "-".
+NO_OPTIONS = ("identify", "listen", "probe", "startgame", "deathmatch", "arena", "fieldstart",
+              "fieldresults", "diag", "diagnose", "fleet", "play", "diag-game", "reset")
+
+
+def _is_option(a: str) -> bool:
+    """A word that starts with "-" and is not a number (a negative number passes)."""
+    return a.startswith("-") and len(a) > 1 and not re.fullmatch(r"-\d+(\.\d+)?", a)
+
+
 def main() -> None:
     # The Windows console defaults to cp1252, which raises UnicodeEncodeError on the
     # emoji/arrows in game output (crashed a live game mid-score). Force UTF-8 with
@@ -1213,8 +1254,19 @@ def main() -> None:
         run_server()
         return
     cmd = args[0]
+    if cmd in HELP_WORDS or (cmd not in OWN_PARSERS and any(a in HELP_WORDS[:2] for a in args[1:])):
+        print(__doc__)                    # F539: `--help` used to reach the address slot and connect
+        return
     try:
         _dispatch(cmd, args)
+    except KeyboardInterrupt:
+        # F539: a real Ctrl-C. asyncio.run has already cancelled the game, whose `finally` sent the
+        # teardown; the traceback after it told the operator nothing. A stray CancelledError is a bug
+        # and keeps its traceback.
+        print("interrupted (Ctrl-C)", file=sys.stderr)
+        for addr in sorted(_ENDING):
+            _warn_unfinished_end(addr)
+        sys.exit(130)
     except ValueError as e:
         print(f"bad numeric argument: {e}\n", file=sys.stderr)
         print(__doc__, file=sys.stderr)
@@ -1548,10 +1600,33 @@ def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False, gap_m
     print(f"# emitting {bits!r} ×{repeat} on {br.port}" + (f", gap {gap_ms} ms" if gap_ms is not None else ""), file=sys.stderr)
     ack = br.emit(bits, repeat) if gap_ms is None else br.emit(bits, repeat, gap_ms=gap_ms)
     print(ack)
-    if gap_ms is not None and "gap=" not in ack:
+    br.close()
+    # F538: the SENT line echoes the word length the board actually sent. An ir_emit.ino older than the TXN gap
+    # reads the gap as more bits ("bits=29" for a 25-bit word), and a gun ignores that garbled word.
+    lines = ack.split(" | ")
+    rejected = next((ln for ln in lines if ln.startswith("ERR")), None)
+    if rejected:
+        print(f"# ERROR: the board refused the command ({rejected}); nothing was sent.", file=sys.stderr)
+        raise SystemExit(2)
+    sent_line = next((ln for ln in lines if ln.startswith("SENT")), None)
+    sent = re.search(r"\bbits=(\d+)", sent_line) if sent_line else None
+    if sent and int(sent.group(1)) != len(bits):
+        print(f"# ERROR: the board sent a {sent.group(1)}-bit word, not the {len(bits)}-bit word asked for"
+              + (": it runs an older ir_emit.ino, which reads the gap as more bits" if gap_ms is not None else "")
+              + ". A gun ignores that word. Reflash the emitter board (Tony) from hardware/esp32-ir-bridge/ir_emit.ino.",
+              file=sys.stderr)
+        raise SystemExit(2)
+    if not sent_line:
+        # the board acks only after its last word, and the bridge stops reading at ACK_READ_MAX_S
+        print("# no ack yet: the run outlasts the ack read, so the board's word length is unchecked. "
+              "Check the firmware with one word first (repeat 1).", file=sys.stderr)
+    elif gap_ms is not None and "gap=" not in sent_line:
         print("# WARNING: the board did not echo gap= -- it runs an older ir_emit.ino, which reads the gap as more bits. "
               "Reflash the emitter board (Tony) before trusting this run.", file=sys.stderr)
-    br.close()
+    if wait and sent_line:
+        # the SENT line comes after the last word, so the run is already over
+        print("# emitter done", file=sys.stderr)
+        return
     if wait:
         sleep_s = est_s + 1
         print(f"# --wait: sleeping {sleep_s:.0f} s for the emitter to finish...",
@@ -1713,31 +1788,45 @@ async def _enroll(name: str | None) -> None:
           + ("  Power-cycle to refresh its BLE advert." if nm else ""), file=sys.stderr)
 
 
+def reset_frames() -> list[str]:
+    """`reset`'s sequence: revive (`$SPAWN` clears the dead HP state), silence the spawn voice (`$PLAYX,0`),
+    `$STOP`+`$CLEAR` to settle to idle, blank the headset LED, then re-send the live `$SIR` table so the gun
+    is left hittable (F11, F539). It is a CLI game's end. `reset` is the recovery tool, so a compile
+    failure falls back to the fixed end and gameconfig's own table, with a warning."""
+    try:
+        return arm_plan().end
+    except Exception as e:  # noqa: BLE001 — never let the recovery tool depend on the compiler
+        from .gameconfig import end_hittable
+        print(f"(MC's compile failed, {type(e).__name__}: {e}; using the fixed $SIR table)", file=sys.stderr)
+        return end_hittable()
+
+
 async def _reset(address: str) -> None:
     """Reset a tagger to a clean idle state — including reviving a gun left DEAD at
     game end ($SPAWN clears the dead HP state). Deliberately reuses gameconfig's
-    canonical END_SEQUENCE (the same teardown MC ships; the CLI games end with the same bundle["end"])."""
+    canonical END_SEQUENCE (the same teardown MC ships), then the live $SIR table, as a CLI game ends."""
     from .ble import ConnectionManager
     mgr = ConnectionManager()
-    # revive (SPAWN clears the dead HP state), immediately silence the spawn voice
-    # ($PLAYX,0), then STOP+CLEAR to settle to idle, and blank the headset LED.
-    from .gameconfig import END_SEQUENCE
-    seq = list(END_SEQUENCE)
+    seq = reset_frames()
     try:
         await mgr.connect(address, "rst")
         try:
+            _ENDING.add(address)              # a Ctrl-C between its $CLEAR and its $SIR rows leaves it deaf
             for cmd in seq:
                 r = await mgr.send("rst", cmd, reply_window_ms=200)
                 print(">> " + cmd
                       + "".join(f"\n   << {x['raw']}" for x in r.get('replies_within_window', [])))
+            _ENDING.discard(address)
             await asyncio.sleep(0.4)
         finally:
             await mgr.disconnect("rst")
     except Exception as e:  # noqa: BLE001
         print(f"# reset FAILED to reach {address}: {type(e).__name__}: {e}", file=sys.stderr)
+        if address in _ENDING:
+            _warn_unfinished_end(address)
         return
     print(f"\n# reset {address} to clean idle (revived, quiet, headset dark; pulses its "
-          f"team colour). Same sequence the game teardown uses.", file=sys.stderr)
+          f"team colour, hittable). Same sequence the CLI game teardown uses.", file=sys.stderr)
 
 
 def _mac_tail(address: str) -> str:
@@ -1957,6 +2046,11 @@ def _dispatch(cmd: str, args: list[str]) -> None:
     venue, friendly_fire = DEFAULT_VENUE, False
     if cmd in ARM_COMMANDS:
         args, venue, friendly_fire = _take_arm_options(args)
+    if cmd in NO_OPTIONS and (bad := [a for a in args[1:] if _is_option(a)]):
+        print(f"unknown option {bad[0]!r} for {cmd}\n", file=sys.stderr)
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    if cmd in ARM_COMMANDS:
         print(f"venue: {venue}" + (", friendly fire forced on" if friendly_fire else ""), file=sys.stderr)
     if cmd == "scan":
         asyncio.run(_scan(int(args[1]) if len(args) > 1 else 8))

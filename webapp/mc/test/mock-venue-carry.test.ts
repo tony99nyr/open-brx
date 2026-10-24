@@ -28,6 +28,17 @@ describe('mock: a mode change keeps the venue', () => {
     expect(((await b.getState()).config as { volume?: number }).volume).toBe(85);
   });
 
+  it('a PICK keeps the operator venue (F546: gamepick.py compose no longer writes outdoor)', async () => {
+    const b = new MockBackend();
+    expect((await b.getState()).config.environment, 'a new session must still start outdoors').toBe('outdoor');
+    await b.putConfig({ environment: 'indoor' } as never);
+    const r = await b.pick({ pieces: { mode: 'builtin:mode:ffa' } });
+    expect(r.ok).toBe(true);
+    expect((await b.getState()).config.environment, 'a mode pick reset the venue').toBe('indoor');
+    expect((await b.pick({ match: { time_limit_s: 600 } })).ok).toBe(true);
+    expect((await b.getState()).config.environment, 'a same-mode pick reset the venue').toBe('indoor');
+  });
+
   it('a null coverage clears the key, as config_merge.py does (not a stored null)', async () => {
     const b = new MockBackend();
     await b.putConfig({ coverage: 'full' } as never);

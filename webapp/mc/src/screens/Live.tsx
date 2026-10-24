@@ -12,7 +12,7 @@ import { floorSource, heldSeconds, hillOwner, sitesNote, stationSource } from '.
 import { objectiveWord } from '../rules/scoring';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
-import { colourOf, glyphed } from '../alerts';
+import { colourOf, glyphed, operatorTokenLine } from '../alerts';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -100,7 +100,7 @@ const reachTxt = (r: ControlResult) =>
 const short = (r: ControlResult) => r.nodes != null && (r.reached ?? 0) < r.nodes;
 
 export function Live() {
-  const { state, feed, run, api, serverNow, connected } = useStore();
+  const { state, feed, run, api, serverNow, connected, authRequired } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);   // A47: the row whose operator menu is open
@@ -288,7 +288,9 @@ export function Live() {
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} disabled={offline}
                   title={offline ? OFFLINE_WHY : 'Two-step: revive and hold every node in range'}>RECALL</GhostButton>
               )}
-              {offline && <span data-testid="controls-offline" data-alert="live-controls-offline" data-sev="red" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('live-controls-offline') }}>{glyphed('red', OFFLINE_WHY.toUpperCase())}</span>}
+              {/* F540 review: a refused token also leaves the socket down; that is not "MC IS OFFLINE" */}
+              {offline && authRequired && <span data-testid="controls-token" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('frame-token-required-app') }}>{operatorTokenLine()}</span>}
+              {offline && !authRequired && <span data-testid="controls-offline" data-alert="live-controls-offline" data-sev="red" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('live-controls-offline') }}>{glyphed('red', OFFLINE_WHY.toUpperCase())}</span>}
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
