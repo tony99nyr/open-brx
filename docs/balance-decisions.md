@@ -80,7 +80,6 @@ Candidate:
 }
 ```
 
-
 ## 2026-10-24: F576 published single-shot cycle
 
 - Verdict: none. F576 is a rule change, not a weapon candidate, so `balance_review.py` has no verdict to record and
