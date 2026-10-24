@@ -73,3 +73,47 @@ def test_a_run_still_going_is_not_called_old_firmware():
 def test_an_ack_without_gap_echo_still_warns():
     code, err = _emit("SENT n=4 bits=25", repeat=4)
     assert "older ir_emit.ino" in err
+
+
+def _bridge_reading(read_for):
+    import brx_mcp.irbridge as ib
+    br = ib.IRBridge.__new__(ib.IRBridge)
+    br._ser = type("S", (), {"write": lambda self, b: None})()
+
+    def readlines(secs, until=None):
+        read_for.append(secs)
+        return ["SENT n=1 bits=25 gap=600"]
+    br._readlines = readlines
+    return br
+
+
+def test_a_gap_run_reads_long_enough_for_its_ack():
+    # a new board acks after its last word and gap: one word at gap 600 acks at 637 ms, past a fixed 0.6 s read
+    import brx_mcp.irbridge as ib
+    read_for = []
+    br = _bridge_reading(read_for)
+    br.emit(WORD, 1, gap_ms=600)
+    br.emit(WORD, 4, gap_ms=600)
+    br.emit(WORD, 1000, gap_ms=600)
+    one, four, flood = read_for
+    assert one > (ib.WORD_MS + 600) / 1000, one
+    assert four > 4 * (ib.WORD_MS + 600) / 1000, four
+    assert flood <= ib.ACK_READ_MAX_S, flood   # a long flood still returns within the cap (the --wait contract)
+
+
+def test_the_ack_read_stops_at_the_ack():
+    import brx_mcp.irbridge as ib
+    br = ib.IRBridge.__new__(ib.IRBridge)
+    data = [b"SENT n=1 bits=25 gap=600\n"]
+
+    class S:
+        in_waiting = 0
+
+        def read(self, n):
+            return data.pop(0) if data else b""
+    br._ser = S()
+    import time
+    t0 = time.monotonic()
+    lines = br._readlines(2.0, until=lambda ln: ln.startswith(("SENT", "ERR")))
+    assert lines == ["SENT n=1 bits=25 gap=600"]
+    assert time.monotonic() - t0 < 1.0, "the read must stop at the ack, not run the whole window"

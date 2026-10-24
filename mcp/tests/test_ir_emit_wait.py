@@ -209,7 +209,7 @@ def test_bridge_builds_the_gap_command_and_bounds_it():
     sent = []
     br = ib.IRBridge.__new__(ib.IRBridge)
     br._ser = type("S", (), {"write": lambda self, b: sent.append(b.decode())})()
-    br._readlines = lambda t: ["SENT n=3 bits=25 gap=0"]
+    br._readlines = lambda t, until=None: ["SENT n=3 bits=25 gap=0"]
     assert "gap=0" in br.emit("1" * 25, 3, gap_ms=0)
     assert sent == [f"TXN 3 {'1' * 25} 0\n"]
     try:
