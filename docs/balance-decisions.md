@@ -172,3 +172,17 @@ Candidate:
 }
 ```
 
+
+## 2026-10-24: corrections to earlier sections (F583)
+
+The log is append-only, so these corrections do not edit the sections they name.
+- **s75_2200 (2026-10-18).** Commit `781164436` rewrote the `s75_2000` section in place, which this log forbids.
+  The rewritten section keeps the 2 s run's git (`0b30c24ae`) and fingerprint (`b3a838ca6f86a22f`). Tony's 2 s
+  call, as first recorded: "Ok so 2s still fits. If sniper misses shot it dies. If it hits twice peaking it wins.
+  That seems ok to me". The 2 s verdict failed `marksman_rush_counter` too (rushers from 20 m won 31%). The
+  shipped bolt is 2200 ms, which matches the section as it reads now. The full 2 s text is in
+  `git show 781164436^:docs/balance-decisions.md`.
+- **The Charge Rifle 55/14 half (s75_2200, last bullet).** "Withdrawn before it shipped" is true: 55/14 was on
+  main from `e75f1fdbc` to `324b1a869` (2026-10-18, 01:51 to 08:46), and no APK came from that window (0.4.25 is
+  from `e91600c2`, 2026-10-17; 0.4.26 is from `29c755645`, 2026-10-24).
+- **F576.** The USP's 2.10 s is the figure at 12 damage. Since F579 (10 damage) the USP publishes 2.56 s.

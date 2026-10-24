@@ -5,9 +5,12 @@ Asserts the bundle STRUCTURE (head silent + ends $TID + carries $PSET,<1..63>; s
 shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames, and medals.
 """
 from _session import TEAMS
+import json
 import math
+from pathlib import Path
 
 from brx_mcp import poolgauge as pg
+from brx_mcp.mc import compile as compile_mod
 from brx_mcp.mc.compile import Compiler, WeaponCatalog, golden_bundle
 from brx_mcp.mc.types import MAX_PLAYERS
 from _session import match_config
@@ -341,6 +344,11 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # range value t2 in F234's table), so neither ships byte-for-byte any more.
     assert by["assault_rifle"]["verified"] is False
     assert by["burst_rifle"]["verified"] is False
+    # F583: a balance `wire` edit means the row no longer ships as captured, so it cannot be verified. The Bolt
+    # Rifle (15 at 150 ms) and melee (outdoor t2 60) kept `verified: true` after their 2026-10-17 edits.
+    raw = json.loads((Path(compile_mod.__file__).parent / "weapons.json").read_text())["weapons"]
+    stale = [w["weapon_id"] for w in raw if w.get("verified") and w.get("wire")]
+    assert not stale, f"verified weapons with a balance wire edit: {stale}"
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
