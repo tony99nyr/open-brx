@@ -1174,6 +1174,16 @@ class Session:
             return ("PRIMARY LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
                     f"({', '.join(sorted(rule.get('only_ids') or []))}): CLEAR THE PRIMARY SLOT'S "
                     "ALLOW LIST, OR NAME WEAPONS THAT ARE IN THE CATALOGUE")
+        if code == "perk_blocked":
+            # F585: the fixed perk cannot ride with any primary the slot allows (the F551 prune); no exclusion exists
+            weapons, perks = self._catalog_rows()
+            perk_id = self.policy()["perk"].get("fixed_id")
+            perk = next((p.get("name") for p in perks if p.get("perk_id") == perk_id), perk_id)
+            allowed = _policy.pool({**self.policy(), "perk": {**self.policy()["perk"], "choice": "player", "fixed_id": None}},
+                                   weapons, perks)["primary"]
+            names = ", ".join(next((w.get("name") for w in weapons if w.get("weapon_id") == wid), wid) for wid in allowed)
+            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH ANY PRIMARY THIS GAME ALLOWS ({names.upper()}): "
+                    "PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER PRIMARY")
         return ("PRIMARY FILTER EXCLUDES EVERY WEAPON (NO LEGAL PRIMARY IS LEFT): CLEAR A CLASS OR ID "
                 "EXCLUSION IN THE PRIMARY SLOT, OR PICK A PRESET")
 
