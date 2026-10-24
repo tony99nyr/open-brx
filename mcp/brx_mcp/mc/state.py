@@ -2400,8 +2400,8 @@ class Session:
         mode = patch.get("mode", self.config["mode"])
         if not isinstance(mode, str) or mode not in {m["mode"] for m in MODES}:
             raise ValueError(f"unknown mode {mode!r}")
-        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT (GAMES re-asserts it right after
-            self._policy_notice = None                       # a picked piece applies) must not eat the reset notice
+        if set(patch) - {"environment", "night", "config_id"}:     # a VENUE-only PUT must not eat the reset notice
+            self._policy_notice = None
 
         cfg = self._candidate_config(patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]

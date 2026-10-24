@@ -64,6 +64,8 @@ def test_a_pick_keeps_the_operators_venue():
     res = g.pick({"mode": "builtin:mode:ffa"}, {})
     assert res["ok"], res["errors"]
     assert s.config["mode"] == "ffa" and s.config["environment"] == "indoor", "a mode pick reset the venue"
+    from brx_mcp.mc.compile import head_volume, play_volume
+    assert head_volume(s.config) == play_volume("indoor") != play_volume("outdoor"), "the play volume follows the venue"
     res = g.pick({}, {"time_limit_s": 600})
     assert res["ok"], res["errors"]
     assert s.config["environment"] == "indoor", "a same-mode pick reset the venue"

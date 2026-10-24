@@ -362,6 +362,10 @@ class SnapshotCodec:
                         self.host.config.pop("volume", None)
                 except ValueError:
                     self.host.config.pop("volume", None)
+                # F546: a pick keeps the venue and no longer writes one, so it cannot repair a file without it; compile
+                # reads `config["environment"]`. A missing or unknown venue restores as outdoors (F410's default).
+                if self.host.config.get("environment") not in ("indoor", "outdoor"):
+                    self.host.config["environment"] = "outdoor"
             gp = snap.get("game_pick")
             self.host.game_pick = cast(GamePick, gp if _gamepick.looks_like_pick(gp) else
                                        _gamepick.derive_pick_from_config(self.host.config, self.mvp_modes))
