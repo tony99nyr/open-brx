@@ -1615,6 +1615,23 @@ def test_sampled_sniper_bolt_round_matches_compile_bolt_cycle():
     assert abs(mean - want) / want < 0.01, (round(mean), round(want))
 
 
+def test_the_sampled_fight_uses_bolt_gap_for_a_bolt_sniper():
+    """F581: the Fighter's bolt round goes through `bolt_gap`, so the helper's test covers the fight. Break it by
+    restoring an inline two-pull interval in `Fighter`: this fails."""
+    with mock.patch.object(R, "bolt_gap", wraps=R.bolt_gap) as gap:
+        R.review({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": 74}}, reps_scale=0.001)
+    assert gap.call_count > 0
+
+
+def test_a_two_round_bolt_edit_is_still_a_bolt():
+    """F581 review: the review used to call any one-round single shot a bolt, so a Sniper edit to `mag` 2 lost the
+    bolt the compiler still runs (it reads `reload_type`)."""
+    row = copy.deepcopy(WeaponCatalog()._row("sniper_rifle"))
+    row["mag"] = 2
+    cat = WeaponCatalog([row if r["weapon_id"] == "sniper_rifle" else r for r in WeaponCatalog()._rows])
+    assert R.make_gun(cat, "sniper_rifle").mode == "bolt"
+
+
 def test_shared_finish_estimator_counts_charge_heat_lockout_in_both_engines():
     row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
     row["heat"]["per_charge"] = 55

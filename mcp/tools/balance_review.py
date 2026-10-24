@@ -301,7 +301,8 @@ def bolt_gap(rng, reload_ms: float, pull_ms: float) -> float:
     round for the Sniper. At `pull_ms` 0 only the bolt runs."""
     if pull_ms <= 0:
         return float(reload_ms)
-    return pull_gap(rng, pull_ms) + B.semi_interval(rng, reload_ms, pull_ms)
+    # A bolt of 0 ms still waits for one press after the lever (`semi_interval` returns 0 for a 0 cycle).
+    return pull_gap(rng, pull_ms) + B.semi_interval(rng, max(float(reload_ms), 1e-9), pull_ms)
 
 
 def pull_gap(rng, pull_ms: float) -> float:
@@ -405,7 +406,7 @@ def make_gun(cat: WeaponCatalog, wid: str, mods: dict | None = None) -> Gun:
     elif m == cat._BURST_MODE:
         mode = "burst"
     elif m == B.SEMI_MODE:
-        mode = "bolt" if mag == 1 else "semi"
+        mode = "bolt" if row.get("reload_type") == "bolt" else "semi"   # F581: as compile decides a bolt
     else:
         mode = "auto"    # a charge mode with no tap fires every t14, as `Match` does
     band = row.get("range_band") if row.get("range_band") in B.BAND_FIT else "mid"
@@ -1908,13 +1909,13 @@ _SHIPPED_HAZE_CACHE: dict = {}
 
 
 def _shipped_haze_sweep(wid: str, reps: int, heat_cool_while_firing=True) -> list[dict]:
+    # F582: keyed on the whole shipped catalogue and perks, because the sweep also fights the AR, the secondary and
+    # Body Armor; a change to any of them must not return a stale sweep.
     shipped = shipped_world()
-    row = shipped.cat._row(wid)
-    key = (wid, reps, heat_cool_while_firing, haze_blind_sweep, json.dumps(row, sort_keys=True))
+    content = json.dumps([shipped.cat._rows, shipped.perks._rows], sort_keys=True, default=str)
+    key = (wid, reps, heat_cool_while_firing, haze_blind_sweep, content)
     if key not in _SHIPPED_HAZE_CACHE:
-        world = World(WeaponCatalog([row if r["weapon_id"] == wid else r
-                                     for r in shipped.cat._rows]), shipped.perks)
-        _SHIPPED_HAZE_CACHE[key] = haze_blind_sweep(world, reps, heat_cool_while_firing, weapon_id=wid)
+        _SHIPPED_HAZE_CACHE[key] = haze_blind_sweep(shipped, reps, heat_cool_while_firing, weapon_id=wid)
     return _SHIPPED_HAZE_CACHE[key]
 
 
