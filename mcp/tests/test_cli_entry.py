@@ -16,6 +16,7 @@ import sys
 
 from brx_mcp import __main__ as cli
 from brx_mcp import gameconfig as gc
+from _cli import _run_cli_game
 
 MCP = pathlib.Path(__file__).resolve().parents[1]
 
@@ -66,7 +67,7 @@ def test_help_alone_prints_the_usage():
 def test_an_unknown_option_is_refused_before_connecting():
     for argv in (["deathmatch", "--minutes", "5"], ["deathmatch", "AA:BB:CC:DD:EE:FF", "--frobnicate"],
                  ["arena", "A0", "A1", "--teams"], ["startgame", "-x"], ["reset", "--force"],
-                 ["play", "tdm", "AA:BB:CC:DD:EE:FF", "--venue=indoor"]):
+                 ["play", "tdm", "AA:BB:CC:DD:EE:FF", "--venue=indoor"], ["identify", "-5oops"]):
         code, _, err = _main(argv)
         assert code == 2, (argv, code)
         assert "unknown option" in err, (argv, err)
@@ -113,6 +114,8 @@ print("FELL THROUGH", flush=True)
 
 
 def test_ctrl_c_runs_the_teardown_then_exits_cleanly():
+    if sys.platform == "win32":           # select() cannot wait on a pipe there, and SIGINT is a console event
+        return
     env = {**os.environ, "PYTHONPATH": str(MCP)}
     p = subprocess.Popen([sys.executable, "-c", _CHILD], cwd=str(MCP), env=env, text=True,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -193,10 +196,36 @@ def test_a_second_ctrl_c_in_the_end_sequence_says_to_run_reset():
 
 
 def test_a_finished_end_sequence_leaves_nothing_pending():
-    import test_cli_arm_frames as t
-    t._run_cli(lambda: cli._deathmatch("AA", 1, 0, 65))
-    t._run_cli(lambda: cli._arena(["A0", "A1"], 1, 0, 65))
+    _run_cli_game(lambda: cli._deathmatch("AA", 1, 0, 65))
+    _run_cli_game(lambda: cli._startgame("AA", 3, 0, 65))
+    _run_cli_game(lambda: cli._arena(["A0", "A1"], 1, 0, 65))
     assert not cli._ENDING, cli._ENDING
+
+
+def _ctrl_c_in_the_end(on_alias):
+    """A hook that raises a Ctrl-C at `on_alias`'s first `$SIR` row after its `$STOP` (inside the end)."""
+    stopped = set()
+
+    def hook(alias, cmd):
+        if cmd == "$STOP,*":
+            stopped.add(alias)
+        elif alias == on_alias and alias in stopped and cmd.startswith("$SIR,"):
+            raise KeyboardInterrupt
+    return hook
+
+
+def test_a_ctrl_c_inside_the_end_leaves_the_gun_listed():
+    for run, alias, want in ((lambda: cli._deathmatch("AA", 1, 0, 65), "cli", {"AA"}),
+                             (lambda: cli._startgame("AA", 3, 0, 65), "cli", {"AA"}),
+                             # gun p0's end is cut short, so p1's never starts: both are listed
+                             (lambda: cli._arena(["A0", "A1"], 1, 0, 65), "p0", {"A0", "A1"})):
+        try:
+            _run_cli_game(run, hook=_ctrl_c_in_the_end(alias))
+            raise AssertionError("the Ctrl-C did not reach the caller")
+        except KeyboardInterrupt:
+            pass
+        assert cli._ENDING == want, cli._ENDING
+        cli._ENDING.clear()
 
 
 def test_reset_falls_back_when_the_compile_fails():
@@ -213,3 +242,18 @@ def test_reset_falls_back_when_the_compile_fails():
         cli.arm_plan = real
     gc.assert_sir_follows_clear(frames)
     assert frames[:len(gc.END_SEQUENCE)] == list(gc.END_SEQUENCE), frames
+
+
+def test_a_link_lost_inside_the_end_says_to_run_reset():
+    def hook(alias, cmd):
+        if cmd == "$STOP,*":
+            hook.stopped = True
+        elif getattr(hook, "stopped", False) and cmd.startswith("$SIR,"):
+            raise ConnectionError("link lost")
+    for run in (lambda: cli._deathmatch("AA", 1, 0, 65), lambda: cli._startgame("AA", 3, 0, 65)):
+        hook.stopped = False
+        _, err = _run_cli_game(run, hook=hook)
+        assert "Run: python -m brx_mcp reset AA" in err, err
+        assert "hittable;" not in err, err             # startgame no longer claims the gun is hittable
+        cli._ENDING.clear()
+    assert not cli._ENDING

@@ -345,6 +345,11 @@ def _plan_or_exit(*a, **kw) -> ArmPlan:
 _ENDING: set[str] = set()
 
 
+def _warn_unfinished_end(address: str) -> None:
+    print(f"the end sequence did not finish on {address}: it may ignore every hit. "
+          f"Run: python -m brx_mcp reset {address}", file=sys.stderr)
+
+
 MAX_TEAM_GUNS = 4          # teams 0-3: the IR word's team field is 2 bits (F35)
 
 
@@ -498,6 +503,7 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
             _ENDING.discard(address)
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})", file=sys.stderr)
+            _warn_unfinished_end(address)
         await mgr.disconnect("cli")
 
 
@@ -559,9 +565,11 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
         except Exception as e:  # noqa: BLE001 — link may already be gone
             print(f"(teardown skipped: {type(e).__name__}: {e})",
                   file=sys.stderr)
+            _warn_unfinished_end(address)
         await mgr.disconnect("cli")
-    print("Done. The gun is idle and hittable; `reset` or a power cycle clears anything else.",
-          file=sys.stderr)
+    if address not in _ENDING:
+        print("Done. The gun is idle and hittable; `reset` or a power cycle clears anything else.",
+              file=sys.stderr)
 
 
 async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
@@ -700,14 +708,15 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
         for task in respawns.values():
             task.cancel()
         await asyncio.gather(*respawns.values(), return_exceptions=True)
+        _ENDING.update(addr for _, addr, _ in players)       # a Ctrl-C in one gun's end stops the rest too
         for alias, _addr, tid in players:
             try:
-                _ENDING.add(_addr)
                 await push(alias, plans[tid].end)
                 _ENDING.discard(_addr)
             except Exception as e:  # noqa: BLE001 — link may already be gone
                 print(f"({alias} teardown skipped: {type(e).__name__})",
                       file=sys.stderr)
+                _warn_unfinished_end(_addr)
             try:
                 await mgr.disconnect(alias)
             except Exception:  # noqa: BLE001
@@ -1224,7 +1233,8 @@ NO_OPTIONS = ("identify", "listen", "probe", "startgame", "deathmatch", "arena",
 
 
 def _is_option(a: str) -> bool:
-    return a.startswith("-") and len(a) > 1 and not a[1].isdigit()
+    """A word that starts with "-" and is not a number (a negative number passes)."""
+    return a.startswith("-") and len(a) > 1 and not re.fullmatch(r"-\d+(\.\d+)?", a)
 
 
 def main() -> None:
@@ -1255,8 +1265,7 @@ def main() -> None:
         # and keeps its traceback.
         print("interrupted (Ctrl-C)", file=sys.stderr)
         for addr in sorted(_ENDING):
-            print(f"the end sequence did not finish on {addr}: it may ignore every hit. "
-                  f"Run: python -m brx_mcp reset {addr}", file=sys.stderr)
+            _warn_unfinished_end(addr)
         sys.exit(130)
     except ValueError as e:
         print(f"bad numeric argument: {e}\n", file=sys.stderr)
