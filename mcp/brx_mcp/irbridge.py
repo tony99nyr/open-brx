@@ -238,6 +238,7 @@ def find_esp32_port() -> Optional[str]:
 
 GAP_MAX_MS = 10000   # ir_emit.ino TXN gap bound (F321)
 WORD_MS = 37          # one 25-bit word from ir_emit.ino, sync included
+ACK_READ_MAX_S = 3.0  # F538: the longest a gap run waits for its ack; a longer run returns before the board acks
 
 class IRBridge:
     """Thin serial wrapper around the ESP32 IR firmware."""
@@ -257,7 +258,8 @@ class IRBridge:
         except Exception:
             pass
 
-    def _readlines(self, secs: float) -> list[str]:
+    def _readlines(self, secs: float, until=None) -> list[str]:
+        """Read lines for `secs`, or until a line satisfies `until`."""
         out: list[str] = []
         buf = b""
         end = time.time() + secs
@@ -269,6 +271,8 @@ class IRBridge:
                 while b"\n" in buf:
                     ln, buf = buf.split(b"\n", 1)
                     out.append(ln.decode("ascii", "ignore").rstrip("\r"))
+                    if until and until(out[-1]):
+                        return out
         return out
 
     def capture(self, secs: float = 15.0) -> list[IRFrame]:
@@ -284,10 +288,14 @@ class IRBridge:
             if not (0 <= gap_ms <= GAP_MAX_MS):
                 raise ValueError(f"gap_ms must be 0-{GAP_MAX_MS}, got {gap_ms}")
             cmd = f"TXN {repeat} {bits} {gap_ms}"
+            # F538: the board acks after its last word and gap, so wait for a short run's ack (one word at gap 600
+            # acks at 637 ms), up to ACK_READ_MAX_S
+            secs = min(ACK_READ_MAX_S, repeat * (WORD_MS + gap_ms) / 1000 + 0.6)
         else:
             cmd = (f"TXN {repeat} {bits}" if repeat > 1 else f"TX {bits}")
+            secs = 0.6
         self._ser.write((cmd + "\n").encode())
-        return " | ".join(self._readlines(0.6))
+        return " | ".join(self._readlines(secs, until=lambda ln: ln.startswith(("SENT", "ERR"))))
 
     def ping(self) -> bool:
         self._ser.write(b"PING\n")

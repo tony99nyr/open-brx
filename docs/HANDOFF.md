@@ -21,7 +21,7 @@ Tony's balance calls of the push are in [`weapon-design.md`](weapon-design.md) a
 [`balance-decisions.md`](balance-decisions.md) through `.claude/skills/balance-review`.
 **Next:** the bench sheet [`bench-field-1017.md`](bench-field-1017.md), P1 first (the large-reserve ceiling, the SMG
 frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
-**Blocked on Tony:** F575 (the Charge Rifle numbers inside the heat budget: keep 70/16 or 73/14). F572 (summed across hills) and F573 (Sniper 75, 2.2 s bolt) are decided and on main.
+**Blocked on Tony:** F575 waits for the bench row "Charge Rifle heat while firing" first, then Tony (keep 70/16 or 73/14). F578 (phase B: the marksman rush test, the AMR fire rate, a Body Armor and Quick Switch direction). F572, F573 and F577 are decided and on main.
 
 ## Lane: brx1, orchestration
 **State:** 2026-10-18: ran the field push. The plan, the lanes' FIXED lines and the bench rows are in
@@ -30,7 +30,7 @@ frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State:** 2026-10-18: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
+**State:** 2026-10-24: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
 flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
 balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/balance-review/SKILL.md`); FOLLOWUPS
 bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damage bolt action with a 2.2 s bolt
@@ -40,10 +40,11 @@ The review also gained rush from 20 and 30 m at every marksman, a KOTH hill hold
 the pistol finisher (scenario version 8).
 The Codex sim critique is folded in too: heat in the rule engines with three cooling branches (fail on a flip),
 Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12).
-**Next:** phase B, the combo sweep re-run on the fixed sims, for brx1. The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
+Phase B (2026-10-24) is done: no one-field set passes; Tony's three calls are F578.
+**Next:** F576 (one paced cycle for compile and the sims); the F538 bench row (the rig's ack check, desk half done). The 2.2 s bolt and CR heat-while-firing bench rows (`~/reviews-2026-10-17/bench.md`). F512 again on or after 2026-10-19 15:17 UTC
 (F574 may fix the cause first).
 R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F577 (the Haze) on Tony.
+**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
 **State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
 - **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
