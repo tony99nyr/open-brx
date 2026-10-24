@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .. import protocol
-from ..gameconfig import END_SEQUENCE
+from ..gameconfig import end_hittable
 from .patterns import SoakPattern, PATTERNS, assert_pattern_is_safe
 
 # ATT write-without-response chunk size (ble.py `_write`: MTU-3, default MTU 23 -> 20). Used only to
@@ -213,8 +213,9 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
 
     Ctrl-C (KeyboardInterrupt) ends the loop early but still runs the full teardown and returns a
     summary: "ends cleanly with the summary" (bench-screamers-2026-09-19.md). Teardown always sends
-    the WHOLE of `gameconfig.END_SEQUENCE`, never a truncated prefix, so a run never ends on a bare
-    `$CLEAR` (CLAUDE.md hard rule: `$CLEAR` alone leaves the gun with no `$SIR` table). If the link is
+    the WHOLE of `gameconfig.end_hittable()` (MC's end, then the `$SIR` table, F539), never a truncated
+    prefix, so a run never ends on a bare `$CLEAR` (CLAUDE.md hard rule: `$CLEAR` alone leaves the gun
+    with no `$SIR` table). If the link is
     already gone the teardown frames simply fail to send. Nothing here can wake a gun that is not
     listening, whatever sequence we ask the transport to write.
     """
@@ -318,7 +319,7 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     finally:
         summary.minutes_run = (clock.now() - t0) / 60
         with contextlib.suppress(Exception):
-            for cmd in END_SEQUENCE:
+            for cmd in end_hittable():
                 await send(cmd)
         with contextlib.suppress(Exception):
             await mgr.disconnect(alias)

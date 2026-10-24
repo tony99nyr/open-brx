@@ -19,6 +19,7 @@ real BLE write.
 import math
 
 from _async import run
+from brx_mcp import gameconfig as gc
 
 from brx_mcp.soak.patterns import PATTERNS, ScheduledFrames, SoakPattern
 from brx_mcp.soak.runner import (
@@ -351,3 +352,17 @@ def test_a_group_offset_delays_its_first_fire():
     run(run_soak(mgr, "AA:BB", pattern, minutes=9 / 60, clock=clock, status=None))
     in_run = [t for t in fired_at if t < 9.0]   # the teardown sends $HLOOP too, at the deadline
     assert in_run == [3.0, 7.0], fired_at
+
+
+def test_the_teardown_leaves_the_gun_hittable():
+    """F539 follow-up: the end is MC's end then the $SIR table, never a bare $CLEAR (F11), on a clean run and
+    after a Ctrl-C."""
+    for raise_after in (None, 5):
+        clock = FakeClock()
+        mgr = FakeMgr(clock)
+        if raise_after:
+            mgr.raise_after = raise_after
+        run(run_soak(mgr, "AA:BB", _TINY, minutes=5 / 60 if raise_after is None else 5, clock=clock, status=None))
+        end = gc.end_hittable()
+        tail = [f for f in mgr.sent if not f.startswith("$PING")][-len(end):]
+        assert tail == end, (raise_after, tail)
