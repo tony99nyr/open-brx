@@ -245,6 +245,7 @@ export class Transport {
     /** @type {unknown} */ this._connectTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
     /** @type {unknown} */ this._pubRetryTimer = null;
+    /** @type {StatusBody|null} */ this._lastBeat = null;   // F595: the last heartbeat body, sent again when an ack empties the ring
     /** @type {TransportSocket|null} */ this._probeWs = null;
     /** @type {unknown} */ this._probeGiveupTimer = null;
     this._pubJustLearned = false; this._probeStale = false;
@@ -350,6 +351,7 @@ export class Transport {
   /** Live-only heartbeat: sent iff bound, else dropped (no seq, no queue). */
   /** @param {StatusBody} [body] @returns {boolean} */
   status(body = {}) {
+    this._lastBeat = { ...body };   // F595: what the ack that empties the ring sends again
     body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
     if (this.ring.holding) this._flush();   // M4 landed-late r4: a store that recovered with nothing new to send still flushes the held queue
@@ -656,6 +658,7 @@ export class Transport {
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
+      pending: this.ring.pending().length,   // F595: the unsent count, so MC's sync board shows SENDING before the batch lands
       ...((pu => pu ? { prior_utility: pu } : {})(this._priorUtilityHello())),
     };
   }
@@ -850,7 +853,14 @@ export class Transport {
     const { kind, body } = env;
     if (kind === 'welcome') return this._onWelcome(body);
     if (this.verify) return;   // A60: an unproven host gets nothing processed, not even an ack
-    if (kind === 'ack') { this.ring.prune(Number(body.seq_hi)); return; }
+    if (kind === 'ack') {
+      const before = this.ring.size;
+      this.ring.prune(Number(body.seq_hi));
+      // F595: the beat that rode with the batch read the ring before this ack, so MC would hear pending 0 only on the next
+      // 2 s beat. An ack that empties the ring sends the last beat again at once, with pending 0.
+      if (before > 0 && this.ring.size === 0 && this._lastBeat && this.state === 'bound') this.status({ ...this._lastBeat });
+      return;
+    }
     if (kind === 'control' && body.cmd === 'clock_resync') { this._clockResync(); return; }   // F474: about the clock, not the game
     if (kind === 'time_res') {
       const took = this.clock.sample(Number(body.t_node), Number(body.server_t), this.now());

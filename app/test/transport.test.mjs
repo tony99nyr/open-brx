@@ -88,6 +88,34 @@ class FakeWS {
   open() { this.onopen && this.onopen(); }
   recv(obj) { this.onmessage && this.onmessage({ data: JSON.stringify(obj) }); }
 }
+// F595 (field 2026-10-17): MC's sync board could not see "sending results" (the first pending arrived with the batch), and
+// pending 0 reached MC only on the next 2 s beat, because the beat that rode with the batch read the ring before the ack.
+test('F595: the hello carries the unsent count; an ack that empties the ring sends the last beat again at pending 0', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 }); t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  assert.equal(ws.sent[0].kind, 'hello'); assert.equal(ws.sent[0].body.pending, 2, 'MC knows the count before the batch');
+  E.validate(ws.sent[0], 'node');
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 })); await p;
+  t.status({ arm_state: 'ended', hp: 0 });
+  const beats = () => ws.sent.filter(e => e.kind === 'status');
+  assert.equal(beats().at(-1).body.pending, 2, 'setup: the beat read the ring before the ack');
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 1 }));
+  assert.equal(beats().length, 1, 'a partial prune waits for the next beat');
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 2 }));
+  const last = beats().at(-1);
+  assert.equal(beats().length, 2, 'the ack that empties the ring sends a beat at once');
+  assert.equal(last.body.pending, 0); assert.equal(last.body.arm_state, 'ended', 'the last beat again, not a default one');
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 2 }));
+  assert.equal(beats().length, 2, 'an ack with nothing to prune sends nothing');
+  await advance(1);
+});
+
 test('transport: hello→welcome→bind, queue offline, flush on reconnect, prune on ack', async ctx => {
   const advance = useClock(ctx);
   const sockets = [];
