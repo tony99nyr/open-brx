@@ -1548,10 +1548,23 @@ def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False, gap_m
     print(f"# emitting {bits!r} ×{repeat} on {br.port}" + (f", gap {gap_ms} ms" if gap_ms is not None else ""), file=sys.stderr)
     ack = br.emit(bits, repeat) if gap_ms is None else br.emit(bits, repeat, gap_ms=gap_ms)
     print(ack)
-    if gap_ms is not None and "gap=" not in ack:
+    br.close()
+    # F538: the ack echoes the word length the board actually sent. An ir_emit.ino older than the TXN gap reads
+    # the gap as more bits ("bits=29" for a 25-bit word), and a gun ignores that garbled word.
+    sent = re.search(r"\bbits=(\d+)", ack)
+    if sent and int(sent.group(1)) != len(bits):
+        print(f"# ERROR: the board sent a {sent.group(1)}-bit word, not the {len(bits)}-bit word asked for"
+              + (": it runs an older ir_emit.ino, which reads the gap as more bits" if gap_ms is not None else "")
+              + ". A gun ignores that word. Reflash the emitter board (Tony) from hardware/esp32-ir-bridge/ir_emit.ino.",
+              file=sys.stderr)
+        raise SystemExit(2)
+    if not sent:
+        # the board acks only after its last word, and the bridge reads for 0.6 s
+        print("# no ack yet: the run outlasts the ack read, so the board's word length is unchecked. "
+              "Check the firmware with one word first (repeat 1).", file=sys.stderr)
+    elif gap_ms is not None and "gap=" not in ack:
         print("# WARNING: the board did not echo gap= -- it runs an older ir_emit.ino, which reads the gap as more bits. "
               "Reflash the emitter board (Tony) before trusting this run.", file=sys.stderr)
-    br.close()
     if wait:
         sleep_s = est_s + 1
         print(f"# --wait: sleeping {sleep_s:.0f} s for the emitter to finish...",

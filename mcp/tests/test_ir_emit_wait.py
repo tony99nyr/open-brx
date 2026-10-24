@@ -170,8 +170,15 @@ def test_gap_reaches_the_bridge_and_sets_the_estimate():
 def test_gap_warns_when_the_board_runs_old_firmware():
     def run(slept):
         FakeBridge.ack = "SENT n=5 bits=28"   # no gap= : an old ir_emit.ino read the gap as bits
-        out = _emit_capturing_stderr("1" * 25, None, 5, gap_ms=30)
-        assert "older ir_emit.ino" in out
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf):
+                cli._ir_emit("1" * 25, None, 5, gap_ms=30)
+        except SystemExit as e:
+            assert e.code == 2   # F538: the garbled word fails the command, not a warning beside a "sent"
+        else:
+            raise AssertionError("an old board's garbled word must fail the command")
+        assert "older ir_emit.ino" in buf.getvalue()
     _with_fake_bridge_and_sleep(run)
     FakeBridge.ack = "ACK"
 
