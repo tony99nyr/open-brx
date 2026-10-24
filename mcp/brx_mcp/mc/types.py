@@ -1903,6 +1903,36 @@ class AfterEndView(TypedDict):
     by_player: dict[str, AfterEndPlayer]
 
 
+SYNC_STUCK_S = 120   # F596 (Tony 2026-10-24): a row with no progress this long is stuck, and FINALISE turns prominent
+SyncStage = Literal["unlinked", "linked", "sending", "received"]
+SyncTransport = Literal["wifi", "cellular", "backhaul"]
+
+
+class SyncRow(TypedDict):
+    """F596: one phone (or one hill station) on the RECAP sync board. Every field is a fact MC holds; nothing is a
+    guess at a transfer the wire cannot prove. `pending`/`lost` are present only when above 0."""
+    kind: Literal["phone", "station"]
+    id: str                          # player_id for a phone, station_id for a station
+    name: str
+    team_id: str | None
+    stage: SyncStage
+    transport: SyncTransport | None  # phones only, while linked: reach=backhaul, else status.transport
+    pending: NotRequired[int]        # the phone's last reported unsent count (hello.pending or status.pending), > 0
+    lost: NotRequired[int]           # facts the phone's outbox dropped for this match (status.outbox_lost), > 0
+    end_unconfirmed: bool            # A42: the END has not been confirmed by this phone yet
+    idle_s: int                      # seconds since the row's stage or pending last changed; 0 once received
+    stuck: bool                      # idle_s >= SYNC_STUCK_S and not received
+
+
+class SyncView(TypedDict):
+    """F596: whether the result can be shown. `pending` while any row is not received and the operator has not
+    finalised. `result_changed` once the winner differs from the one first shown as final."""
+    pending: bool
+    finalised: bool
+    result_changed: bool
+    rows: list[SyncRow]
+
+
 class RecapView(TypedDict):
     winner: WinnerView
     score: dict[str, int]
@@ -1921,6 +1951,7 @@ class RecapView(TypedDict):
     post_end: NotRequired[int]
     parked: NotRequired[int]
     stations: NotRequired[list[RecapStationRow]]
+    sync: NotRequired[SyncView]      # F596: the live match in hand only; an archived recap never carries it
 
 
 class MatchHistoryRow(TypedDict):

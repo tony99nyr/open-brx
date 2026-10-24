@@ -323,6 +323,8 @@ export const TEAM_COLOUR_HEX = ['#f43f5e', '#3a86ff', '#ffd23f', '#bf4ce6'] as c
 export const TEAM_INK_HEX = ['#1a0404', '#04121e', '#1a1400', '#140a1c'] as const;
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export const ROLE_LABELS = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' } as const;
+/** F596 (Tony 2026-10-24): a row with no progress this long is stuck, and FINALISE turns prominent */
+export const SYNC_STUCK_S = 120;
 /** contracts.md §5 "Size cap" (the retired net.md §8) */
 export const MAX_ENVELOPE_BYTES = 65536;
 /** log_data chunk cap (fits under the envelope cap) */
@@ -487,6 +489,8 @@ export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenc
 export type StationDepartureReason = 'back_to_hud' | 'released';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
+export type SyncStage = 'unlinked' | 'linked' | 'sending' | 'received';
+export type SyncTransport = 'wifi' | 'cellular' | 'backhaul';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
@@ -2106,6 +2110,29 @@ export interface AfterEndView {
   by_player: Record<string, AfterEndPlayer>;
 }
 
+/** F596: one phone (or one hill station) on the RECAP sync board. Every field is a fact MC holds; nothing is a
+ *  guess at a transfer the wire cannot prove. `pending`/`lost` are present only when above 0. */
+export interface SyncRow {
+  player_id: string;
+  display: string;
+  gun_id: string;
+  player_num: number;
+  bound: boolean;
+  phone_game: boolean;
+  gun_sent: boolean;
+  gun_acked: boolean;
+  gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null;
+  ack_state: SyncAckState;
+}
+
+/** F596: whether the result can be shown. `pending` while any row is not received and the operator has not
+ *  finalised. `result_changed` once the winner differs from the one first shown as final. */
+export interface SyncView {
+  rows: SyncRow[];
+  totals: SyncTotals;
+  unconfigured: string[];
+}
+
 export interface RecapView {
   winner: WinnerView;
   score: Record<string, number>;
@@ -2124,6 +2151,8 @@ export interface RecapView {
   post_end?: number;
   parked?: number;
   stations?: RecapStationRow[];
+  /** F596: the live match in hand only; an archived recap never carries it */
+  sync?: SyncView;
 }
 
 export interface MatchHistoryRow {
