@@ -135,8 +135,9 @@ the phones. This is optional, and a match never depends on it.
    Phones stay on the field Wi-Fi while it works. A phone uses the internet address only after it loses the
    Wi-Fi, so every row reads LAN until then. A phone on backhaul keeps getting kill confirms, score and the
    result anywhere it has signal. The chip
-   also says how many of those are on mobile data. Only a phone on backhaul AND on mobile data counts as
-   covered; when every phone is, the score-cap and last-one-standing ends reach every phone that keeps its signal.
+   also says how many of those are on mobile data. A phone on mobile data counts as covered
+   when it is on backhaul, or on the Wi-Fi while the backhaul is up (it can switch to it). When every phone is covered,
+   the score-cap and last-one-standing ends reach every phone that keeps its signal.
 
 What it needs and what it does not do: the laptop must have internet; the phone must have a data plan and a
 signal, so a park with no cell service plays exactly as it does without it; the time limit is still required.
