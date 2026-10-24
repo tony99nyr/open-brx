@@ -19,7 +19,7 @@
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
 // renders without crashing and shows the degraded state instead of a blank control), venue (F162:
 // the manual link beside DAY/NIGHT on PLAY, at desk and phone width, proving no popup renders on
-// PLAY or KIT, and F410's environment=outdoor always holds — including against a config with no
+// PLAY or KIT, and a fresh session starts outdoor (F410) — including against a config with no
 // `environment` at all), faults
 // (A36/A37: `?mock&faults=1` puts a stale ack, an echo mismatch, a pool fault and a gun that does
 // not echo on four otherwise-green guns, so all four states can be looked at without hardware).
@@ -508,10 +508,10 @@ async function runStale(browser, viteBase, mcBase) {
  *  really there and really points at the manual.
  *
  *  F411/F410 (2026-09-26): the venue PICKER this step used to drive (indoor/outdoor on GAMES) is gone
- *  — MVP is outdoors only, so `config.environment` is always `"outdoor"` and there is nothing left to
- *  switch (games-presets.md §3.7). The manual link itself is unchanged and un-reactive to venue (it
- *  always pointed at the same anchor); this step now proves the link on PLAY, and that `environment`
- *  really does stay pinned to outdoor on the real server.
+ *  — MVP is outdoors only, so a new session starts with `config.environment` `"outdoor"` and the console
+ *  has nothing to switch (games-presets.md §3.7; a pick keeps a venue set over the API, F546). The manual link
+ *  itself is unchanged and un-reactive to venue (it always pointed at the same anchor); this step now proves the
+ *  link on PLAY, and that a fresh real server starts outdoor.
  *
  *  Runs against the REAL python MC, at desk and phone width, and then against a server whose config
  *  carries no `environment` at all (the pre-venue shape), where it must still show no popup. */
@@ -542,8 +542,8 @@ async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 8
   expect((await manualLink(pg).getAttribute('rel') ?? '').split(/\s+/).includes('noopener'), 'it carries rel="noopener"');
   expect(await reminder(pg).count() === 0, 'no dismissable popup renders any more');
   const env = (await (await fetch(`${mcBase}/api/state`)).json()).config.environment;
-  expect(env === 'outdoor', `F410: MVP is outdoors only, so the real server always composes outdoor (saw ${JSON.stringify(env)})`);
-  ok(`PLAY: manual link present, no popup, environment pinned outdoor   ${await shot(pg, `40-venue-games-link-${tag}`)}`);
+  expect(env === 'outdoor', `F410: MVP is outdoors only, so a fresh real server starts outdoor (saw ${JSON.stringify(env)})`);
+  ok(`PLAY: manual link present, no popup, environment starts outdoor   ${await shot(pg, `40-venue-games-link-${tag}`)}`);
 
   // KIT is where the guns are handed out, no control lives there, so no popup and no link either
   await toKit(pg);

@@ -816,6 +816,22 @@ def test_a_resumed_match_drops_a_malformed_hold_target_from_its_saved_config():
     assert "hold_target_s" not in s2.config["scoring"], s2.config["scoring"]
 
 
+def test_a_resumed_match_without_a_venue_resumes_outdoors():
+    """F546 polish: restore fills a missing venue on the session config, but `resume_match` takes the saved match's own
+    config, and compile reads `config["environment"]`. That config gets the same repair."""
+    s, net, clock, ps, info = persisting_live()
+    s._persist_last = 0.0
+    s._persist()
+    saved = json.loads(s._persist_path.read_text())
+    saved["match"]["config"].pop("environment", None)
+    saved["config"].pop("environment", None)
+    s._persist_path.write_text(json.dumps(saved))
+    clock["t"] += 20_000
+    s2, _net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert s2.config.get("environment") == "outdoor", s2.config.get("environment")
+
+
 def test_f487_a_phone_first_back_in_recap_after_a_corrupt_armory_restart_still_binds_and_its_late_facts_count():
     """F487: F468's node-map fallback ran only in play. A phone that first came back in RECAP after an MC restart with a
     corrupt armory bound nobody, and the late death it then flushed was lost."""
