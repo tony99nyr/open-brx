@@ -26,8 +26,9 @@ under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `sess
 made sure Node, Python and the console are in place; `pnpm mc` skips straight to starting when they
 already are.)
 
-**Keep the Mac awake while MC runs.** In a second Terminal tab, run `caffeinate -dimsu` and leave it open until the
-last match ends, then press Ctrl-C. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
+**Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
+and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
+in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
 the lid open: closing it still sleeps the Mac unless an external display is connected. On
 2026-10-17 the Mac slept during play: the clock stepped 8 times, the phone sockets were taken over 19 times and 31
 keepalives timed out (`docs/field-2026-10-17.md` §2 item 5).
