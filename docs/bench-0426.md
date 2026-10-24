@@ -121,27 +121,27 @@ percentage and the time. After 15 min, note them again and count the connect att
 attempts are 10 s apart for 12 tries, then 30 s and 60 s, and the link rests at TAP TO RECONNECT after 30 tries.
 **Read:** the battery drop. **Control:** the same phone for 15 min with its gun on and linked. Row: F563.
 
-**P2.4 to P2.8: the EMP perk (35 min).** *Impact: the EMP replaces the Haze weapon, and it stays hidden until these
+**P2.5 to P2.9: the EMP perk (35 min).** *Impact: the EMP replaces the Haze weapon, and it stays hidden until these
 pass.* The thrower is Tactix-9498 with the EMP perk (`loadout.perk: "emp"`), a second gun is the victim, and a third
 is a teammate of the thrower. Arm all three from `compile.resolve()`, friendly fire off. The phone throws on LEFT:
 `$IRTX,100,8,<player>,<own tid>,1,0,1,100,1,,0,*` (`engine.js _empThrow`). Rows: this sheet.
 
-**P2.4. A blocked LEFT reports (5 min).** Send `$BMAP,4,98,,,,,*`, then press LEFT. **Pass:** `$BUT,4,1` arrives and no
+**P2.5. A blocked LEFT reports (5 min).** Send `$BMAP,4,98,,,,,*`, then press LEFT. **Pass:** `$BUT,4,1` arrives and no
 IR leaves the gun. **Control:** a receiver facing the barrel and the domes hears nothing on the press.
 
-**P2.5. The throw lands on `<8,1>` (10 min).** Press LEFT on the thrower. **Pass:** the victim reports `$HIR` with
+**P2.6. The throw lands on `<8,1>` (10 min).** Press LEFT on the thrower. **Pass:** the victim reports `$HIR` with
 proto 8 and subtype 1, its accuracy reads 0 and its trigger fires nothing, no pool moves, and its HUD shows STUNNED
 for the set duration (3 s, a placeholder). **Control:** a Charge Rifle hit on the same victim, with `config.stun` off,
 still deals its plain damage on `<8,0>`.
 
-**P2.6. Team immunity (5 min).** Throw with the teammate in range. **Pass:** the teammate registers no `$HIR` and its
+**P2.7. Team immunity (5 min).** Throw with the teammate in range. **Pass:** the teammate registers no `$HIR` and its
 gun keeps firing. **Control:** the enemy victim beside it is stunned by the same throw.
 
-**P2.7. Range (10 min).** Throw at 3, 6 and 10 m, with the victim in front of the thrower, behind and beside. Three
+**P2.8. Range (10 min).** Throw at 3, 6 and 10 m, with the victim in front of the thrower, behind and beside. Three
 throws per mark. **Read:** which marks stun, for the numbers Tony sets. **Control:** a cloth over the victim's
 headset at 3 m gives no `$HIR`.
 
-**P2.8. The cooldown (5 min).** Throw, then press LEFT again inside the cooldown, then once after it. **Pass:** the
+**P2.9. The cooldown (5 min).** Throw, then press LEFT again inside the cooldown, then once after it. **Pass:** the
 second press sends nothing (the app log says "EMP not thrown: recharging") and the third throws. **Control:** the
 HUD chip counts the seconds down and reads READY when the third press is allowed.
 
