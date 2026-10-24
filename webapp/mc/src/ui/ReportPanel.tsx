@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton } from './index';
 import { Alert } from './Alert';
-import { OPERATOR_TOKEN, colourOf, glyphed } from '../alerts';
+import { OPERATOR_TOKEN, colourOf, glyphed, tokenRefusedLine } from '../alerts';
 
 type Phase = 'idle' | 'busy' | 'done' | 'error' | 'auth';
 
@@ -26,6 +26,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<ReportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);   // F540: MC refused the token this tab holds (an MC restart)
   const dialogRef = useRef<HTMLDivElement | null>(null);
 
   // M22 (visual QA 2026-09-23): focus goes INTO the dialog when it opens, and back into it whenever the
@@ -57,7 +58,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
       const r = await api.makeReport();
       setResult(r); setPhase('done');
     } catch (e) {
-      if (e instanceof AuthError) { setPhase('auth'); return; }
+      if (e instanceof AuthError) { setRefused(e.message === tokenRefusedLine()); setPhase('auth'); return; }
       setError((e as Error).message || 'Report failed'); setPhase('error');
     }
   }
@@ -131,9 +132,13 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
           )}
           {phase === 'auth' && (
             <>
-              <div role="status" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-required-app'), padding: '9px 12px' }}>
-                {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}, THEN TRY AGAIN TO MAKE THE REPORT.
-              </div>
+              {refused
+                ? <div role="alert" data-alert="frame-token-refused" data-sev="red" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-refused'), padding: '9px 12px' }}>
+                    {glyphed('red', tokenRefusedLine())}
+                  </div>
+                : <div role="status" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-required-app'), padding: '9px 12px' }}>
+                    {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}, THEN TRY AGAIN TO MAKE THE REPORT.
+                  </div>}
               <span>
                 <PrimaryButton onClick={goToToken}>ENTER OPERATOR TOKEN</PrimaryButton>
               </span>

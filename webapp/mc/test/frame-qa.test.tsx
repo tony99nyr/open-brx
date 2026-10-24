@@ -252,3 +252,18 @@ describe('frame Lows', () => {
     onKit.unmount();
   });
 });
+
+describe('F540 · the red token refusal', () => {
+  it('shows while MC is refusing the token, and goes once the token works again (it cannot be dismissed)', async () => {
+    const { tokenRefusedLine } = await import('../src/alerts');
+    const d = await demo();
+    const refused = await bar(d.state, { error: tokenRefusedLine(), authRequired: true });
+    const line = refused.find('[data-alert="frame-token-refused"]')[0];
+    expect(line?.getAttribute('data-sev')).toBe('red');
+    refused.unmount();
+    // a live socket on the new token clears `authRequired`; the stale refusal must not stay stuck on screen
+    const recovered = await bar(d.state, { error: tokenRefusedLine(), authRequired: false });
+    expect(recovered.find('[data-alert="frame-token-refused"]').length).toBe(0);
+    recovered.unmount();
+  });
+});

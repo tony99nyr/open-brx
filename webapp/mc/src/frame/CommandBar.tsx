@@ -7,7 +7,7 @@ import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 import { ServerFailures } from '../ui/ServerFailures';
 import { panicReceipt, splitWarning } from './frameText';
-import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine } from '../alerts';
+import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine, tokenRefusedLine } from '../alerts';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -243,7 +243,9 @@ export function CommandBar() {
           The strip collapses to nothing when it is empty (styles.css). */}
       <div className="cb-notices" data-testid="cb-notices">
         {/* an action that failed must still say so somewhere immediate */}
-        {error && !(authRequired && error === operatorTokenLine()) && (() => {
+        {/* F540 review: the token refusal cannot be dismissed (a tap opens the token form), so it goes when MC takes a
+            token again (a live socket or a landed write clears `authRequired`) */}
+        {error && !(authRequired && error === operatorTokenLine()) && !(!authRequired && error === tokenRefusedLine()) && (() => {
           // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
           // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
           // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
@@ -255,15 +257,17 @@ export function CommandBar() {
           // via `olderServer()`) is AMBER everywhere else on the console: this toast used to force every
           // failure red, including that one. Detected by the message's own words, `frame-server-old`'s.
           const skew = error.startsWith(MC_OLDER.what);
-          const id = skew ? 'frame-server-old' : 'frame-error-toast';
+          // F540: a write refused for the token is its own RED alert (the cure is in its words), not the neutral prompt.
+          const id = skew ? 'frame-server-old' : error === tokenRefusedLine() ? 'frame-token-refused' : 'frame-error-toast';
           const sev = skew ? 'amber' : 'red';
           const c = colourOf(id);
+          const refused = id === 'frame-token-refused';   // F540 review: the tap is the cure, the token form; not a dismiss
           return (
-            <button type="button" role="alert" onClick={clearError} title={error} data-alert={id} data-sev={sev}
+            <button type="button" role="alert" onClick={refused ? () => setView('debug') : clearError} title={error} data-alert={id} data-sev={sev}
               style={{ background: skew ? 'rgba(255,176,32,.12)' : 'rgba(255,82,82,.12)', border: `1px solid ${c}`, color: c,
                        font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
                        maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
-                       maxHeight: '8em', overflowY: 'auto' }}>{glyphed(sev, error)} ✕</button>
+                       maxHeight: '8em', overflowY: 'auto' }}>{glyphed(sev, error)} {refused ? '▸' : '✕'}</button>
           );
         })()}
         {notice && (

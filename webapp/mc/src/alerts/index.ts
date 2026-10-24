@@ -90,6 +90,10 @@ export const OPERATOR_TOKEN = { what: 'OPERATOR TOKEN NEEDED', actPre: 'OPEN THE
 /** `OPERATOR_TOKEN` as one line for a plain-text context (an `aria-label`, a `title`) that cannot
  *  hold a `<code>` element. The words are already upper case; `code` keeps its exact, lower-case form. */
 export const operatorTokenLine = (): string => `${OPERATOR_TOKEN.what}: ${OPERATOR_TOKEN.actPre} ${OPERATOR_TOKEN.code} ${OPERATOR_TOKEN.actPost}`;
+/** F540: a WRITE MC refused for the token. Unlike `OPERATOR_TOKEN` (a prompt), this is a failure the operator just
+ *  caused, so it is RED and names the cure. The usual cause is an MC restart: the open tab still holds the old token. */
+export const TOKEN_REFUSED = { what: 'MC REFUSED THE CHANGE', act: "THIS TAB'S OPERATOR TOKEN IS OLD OR WRONG (DID MC RESTART?). OPEN THE #tok= LINK THAT MC PRINTED, OR TAP HERE TO PASTE THE NEW TOKEN" } as const;
+export const tokenRefusedLine = (): string => `${TOKEN_REFUSED.what}: ${TOKEN_REFUSED.act}`;
 /** A gun whose HP/armour pools disagree with the game (LIVE): the cure is a forced respawn. */
 export const GUN_POOLS_WRONG = { what: 'GUN POOLS WRONG', act: 'FORCE RESPAWN' } as const;
 
