@@ -91,13 +91,19 @@ static void test_f390_deadline_rejoin_for_each_station_kind() {
   CHECK(!untimed.automatic_rejoin_due(9000000));
 }
 
-static void test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes() {
+// F391 (Tony 2026-10-24): a restart comes back with the lock as it was, for the saved game only. The snapshot is
+// refreshed once a minute, so the restored lock is at most a minute (plus the time the Stick was off) longer.
+static void test_f391_lock_restores_as_it_was_and_saves_once_a_minute() {
   CHECK_EQ(lock_restore_remaining_s(90), 90u);
-  CHECK_EQ(lock_restore_remaining_s(8000), 120u);
-  CHECK(!lock_save_due(30, 1000, 300999));
-  CHECK(lock_save_due(30, 1000, 301000));
-  CHECK(!lock_save_due(0, 1000, 301000));
-  CHECK_EQ(lock_restore_remaining_s(7200), 120u); // No clock runs while power is off.
+  CHECK_EQ(lock_restore_remaining_s(1800), 1800u);   // not cut to 120 s
+  CHECK_EQ(lock_restore_remaining_s(9000), (uint32_t)contract::STATION_LOCK_MAX_S);
+  CHECK(!lock_save_due(30, 1000, 60999));
+  CHECK(lock_save_due(30, 1000, 61000));
+  CHECK(!lock_save_due(0, 1000, 61000));
+  CHECK_EQ(boot_lock_restore_s(true, true, 3, 3, 1800), 1800u);
+  CHECK_EQ(boot_lock_restore_s(true, true, 4, 3, 1800), 0u);   // another game's lock
+  CHECK_EQ(boot_lock_restore_s(false, true, 3, 3, 1800), 0u);  // no station restored
+  CHECK_EQ(boot_lock_restore_s(true, false, 3, 3, 1800), 0u);  // no saved game byte
 }
 
 static void test_f397_typed_mc_url_storage_policy() {
@@ -3017,7 +3023,7 @@ int main(int argc, char** argv) {
   test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();
   test_f390_rejoin_waits_for_a_known_deadline();
-  test_f391_lock_snapshot_never_grows_and_saves_once_five_minutes();
+  test_f391_lock_restores_as_it_was_and_saves_once_a_minute();
   test_f397_typed_mc_url_storage_policy();
   test_f397_typed_url_falls_back_after_failed_dials();
   if (argc > 1) {

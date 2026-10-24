@@ -12,20 +12,20 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 107.** Desk 12 · bench 90 · decision 5.
+**MVP open: 107.** Desk 12 · bench 91 · decision 4.
 
 **MVP DESK (12),** a keyboard is enough:
 - 🟡 **F547** · **F581** · **F587** · **F588** · **F589**
 - 🟢 **F512** · **F544** · **F574** · **F582** · **F590** · **F591** · **F593**
 
-**MVP BENCH (90),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
-- 🟠 **F562** · **F563** · **F157** · **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F340** · **F345** · **F311** · **F275** · **F231** · **F541** · **F580**
+- 🟠 **F562** · **F563** · **F157** · **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F340** · **F345** · **F311** · **F275** · **F231** · **F541** · **F580** · **F391**
 - 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537**
 - 🟢 **F538** · **F545** · **F592**
 
-**MVP DECISION (5),** awaiting Tony:
-- 🟠 **F391** · **F575** · **F578**
+**MVP DECISION (4),** awaiting Tony:
+- 🟠 **F575** · **F578**
 - 🟡 **F342**
 - 🟢 **F483**
 <!-- index:end -->
@@ -330,6 +330,7 @@ sitting* table points the rest at their sheets.
 ### Later: eyes on the LED language
 
 - **S10 🟡** LED language v2 (A16), the MVP half: the L10 hold. The build half closed (A16 shipped in app 0.1.8, `cfe2a8eb`, and passed state by state on a gun 2026-09-09; see the archive). The down signal: never send `$HLED,,6` in play, write nothing at death, and re-arm with one `$HLOOP,1,2500,*` (`0d58d92f`; it was `$HLOOP,2,750`; whether the slow loop reads as down is F296). **Left: L10** dim 2-of-3 **held 60 s** (the render itself is confirmed, only the long hold is not): on a spawned, blanked gun send `$GLED,3,3,9,0,1,,*`; pass is two clean green segments held 60 s, then the paint survives `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`, `$HLED,6,0,,,10,,*` and `$LED,9,1,1,1,*` sent one at a time. ⚠ F35: never leave the gun there. The ladder itself is `archive/bench-flash-control-2026-09-05.md` §6. The post-MVP parts ((a), (b), (d) and the `beacon`/`extracted` signals) are in `post-mvp.md`. Owner brx2. `eyes`.
+- **F391 🟠 AN OFFLINE STICK RESTART KEEPS THE A58 TAMPER LOCK AS IT WAS (BUILT, BENCH IT).** Tony, 2026-10-24: a Stick restarted offline mid-match comes back with its lock as it was before the restart, not unlocked. Built (brx5): the boot restores the saved lock in full for the saved game byte (the old 120 s cap is gone), and the snapshot is refreshed once a minute, so the restored lock can outlast MC's by up to a minute plus the time the Stick was off. Host test `test_an_offline_restart_comes_back_with_the_lock_as_it_was`. Bench: `bench-stick-2026-09-29.md` step 12. Owner brx5. `bench`.
 
 ## MVP DECISION: awaiting Tony
 
@@ -339,7 +340,6 @@ Tony's call. Each row says what the answer unblocks.
 - **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim modelled heat then, so every Charge Rifle verdict before 2026-10-18 missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call. **→ 2026-10-18 (brx2, sim gaps):** the sims now model heat from the rows' `heat` blocks (bench F229). Our own bench says the Charge Rifle cools about 30 a second on its own; if it also cools while firing, a charge plus five taps at the 285 ms cadence reaches about 84 heat and 55/14 does NOT lock before the kill. Whether it cools while firing is unproven, so every Charge Rifle verdict reports three cooling branches (throughout, after a lockout only, none; `--heat-cooling`) and fails only on a flip under one of them. With cooling only after a lockout or none, the shipped 70/16 already fails the Shields R1 rule (a 150 pool needs a charge plus five taps, 126 heat), so the bench row also decides whether today's Charge Rifle holds on Shields. This waits for the bench row "Charge Rifle heat while firing" before Tony picks; 70/16 fits the budget either way.
 
 
-- **F391 🟠 AN OFFLINE STICK RESTART LOSES THE A58 TAMPER LOCK.** A Stick taken offline mid-match (powerup game 40) kept its station assignment across a restart but came back with `lock_s=0`, unlocked. Decide whether the lock is meant to survive an offline boot while a match is loaded or live (as F332 proved it survives an ordinary restart), and if so save `lock_s` (or its deadline) to NVS alongside the range edits. `bench` + `build`. **→ 2026-09-25 built (`60a52f03`), default design for Tony to confirm:** the lock survives an ordinary restart, restored for at most 120 s and only for the saved game; the A+B 7 s restart or MC `lock_s` 0 clears it. **→ 2026-10-03:** for Tony: keep the lock across an ordinary restart for at most 120 s, for the same game only? Confirm or change this default. Then bench the restart (`bench-stick-2026-09-29.md` step 12). Owner brx4. `decision` + `bench`.
 
 - **F342 🟡 THE BEACON SCAN FLOODS THE BRIDGE IN A STATION GAME.** Field 2026-09-24 (Pixel 5): 60 results/s (budget 25) about 2 s after phase armed, during the T-3 hit table and the T-0 spawn burst, and 78 results/s at the lowest scan mode (scanMode 0) at 21:07, from station, Stick and player adverts. Fixed 2026-09-24: in a respawn-only station game the scan is open only while the player is down (only a down player reads a respawn station), and a gun reconnect inside the match no longer resets the guard's lowered mode. Open: a game with a powerup station or a phone control point still scans while alive and still floods at the floor. The plugin cannot filter natively (one 128-bit UUID whose low bytes carry state, no mask). No phone desk work is left (checked 2026-09-25). Candidates: a slower Stick advert (today `setMinInterval(0x50)`, 50 ms, in `hardware/m5sticks3`; owner brx4), or a native filter. **→ 2026-10-03:** measured: 47-64 results/s in KOTH and powerup games (2026-09-28 and 2026-10-02). F416's radio-quiet window now closes the scan around spawn and grant writes. Tony decides: slow the Stick advert, or accept the flood. **→ 2026-10-05:** `fix/koth-dense-adverts` (worktree `wt-dense`, brx5, not on main) puts a phone's KOTH claim advert on low latency in a live match; it waits for the 0.4.19 sheet's scan-flood baseline (step 24, main's advert rate), then an A/B with its own labelled APK. `decision`.
 

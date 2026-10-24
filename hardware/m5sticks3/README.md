@@ -652,7 +652,7 @@ unlocks itself at zero. While it is on, a padlock shows in the status strip and:
 releasing either button cancels. It works whether the Stick is locked or not, and the joint hold
 never also triggers A's home or B's RESET.
 
-The lock remaining seconds are saved to NVS when a lock starts and at most once per five minutes. A boot restores at most 120 seconds because the Stick cannot count time while powered off. A saved lock applies only to the saved game byte. An ordinary restart keeps this bounded lock. Without Wi-Fi or MC, the screen shows `A+B 7S: RESTART`; that gesture clears the saved lock. A two-hour lock makes at most 24 timer snapshots, plus one removal at expiry. Each changed MC lock config can add one write. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
+The lock remaining seconds are saved to NVS when a lock starts and at most once a minute. A boot, online or offline, restores the saved lock in full (F391, Tony 2026-10-24). The Stick cannot count time while powered off, so the restored lock can run up to a minute plus the time it was off past MC's; MC's next config replaces it. A saved lock applies only to the saved game byte. Without Wi-Fi or MC, the screen shows `A+B 7S: RESTART`; that gesture clears the saved lock. A two-hour lock makes at most 120 timer snapshots, plus one removal at expiry. Each changed MC lock config can add one write. MC detects a restart from the status heartbeat: `uptime_s` goes back to near zero and
 `boot_count` goes up. The heartbeat also carries `assoc` (`muster` or `held`) and `lock_s`, the
 seconds left on the lock.
 

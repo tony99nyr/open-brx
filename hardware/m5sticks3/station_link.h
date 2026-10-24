@@ -125,7 +125,8 @@ inline bool same_powerup_claim_scope(const StationAssignment& before, const Stat
 // Absent means 0. A LATER station_config REPLACES the running lock outright, including a same-game
 // re-push (MC re-sends the current config mid-match as the lock's carrier), and lock_s 0 unlocks at
 // once. The state machine is in RAM, while F391 snapshots its remaining time to NVS. An ordinary
-// restart restores that snapshot. A+B held 7 s clears the saved lock before the forced restart.
+// restart, online or off, restores that snapshot in full for the saved game (Tony, 2026-10-24: "as it was
+// before the restart"). A+B held 7 s clears the saved lock before the forced restart.
 
 inline int clamp_lock_s(long v) {
   if (v < 0) return 0;
@@ -133,14 +134,23 @@ inline int clamp_lock_s(long v) {
   return (int)v;
 }
 
-// F391: flash stores a remaining-time snapshot, refreshed at most once per five minutes.
-constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 300000;
-constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = 120;
+// F391: flash stores a remaining-time snapshot, refreshed at most once a minute. A boot restores it in full
+// (Tony, 2026-10-24), clamped only to the protocol's ceiling. No clock runs while the Stick is off, so the
+// restored lock can run up to one interval, plus the time it was off, past the lock MC set: the safe side of a
+// tamper lock, and MC's next station_config replaces it outright once the Stick is back online.
+constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 60000;
+constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = contract::STATION_LOCK_MAX_S;
 inline uint32_t lock_restore_remaining_s(uint32_t saved_s) {
   return saved_s > MATCH_LOCK_RESTORE_MAX_S ? MATCH_LOCK_RESTORE_MAX_S : saved_s;
 }
 inline bool lock_save_due(uint32_t remaining_s, uint32_t last_saved_ms, uint32_t now_ms) {
   return remaining_s > 0 && (uint32_t)(now_ms - last_saved_ms) >= MATCH_LOCK_SAVE_INTERVAL_MS;
+}
+// The seconds of a saved lock a boot restores: the saved game's lock only, for the restored station's game.
+inline uint32_t boot_lock_restore_s(bool assigned, bool has_saved_game, uint8_t saved_game, int assigned_game,
+                                    uint32_t saved_s) {
+  if (!assigned || !has_saved_game || saved_game != (uint8_t)assigned_game) return 0;
+  return lock_restore_remaining_s(saved_s);
 }
 
 class MatchLock {
