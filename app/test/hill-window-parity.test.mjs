@@ -50,6 +50,7 @@ test('engine and phone accrue possession only within the same match window', asy
   const realNow = Date.now;
   let t0 = realNow();
   Date.now = () => t0;
+  utility.useStationClock(() => t0);   // F590 (3): the station runs on its own clock, so drive that one too
   try {
     const h = engineHarness();
     const hill = { kind: 'control', team: 255, id: 9 };
@@ -96,5 +97,5 @@ test('engine and phone accrue possession only within the same match window', asy
     assert.equal((h.eng.hold['9'] || {})[1] || 0, engineLive, 'engine accrued after the deadline');
     assert.equal(utility.point.holdMs[1] || 0, phoneLive, 'phone accrued after the deadline');
     assert.equal(h.clock, start + 20_000);
-  } finally { Date.now = realNow; }
+  } finally { Date.now = realNow; utility.useStationClock(null); }
 });
