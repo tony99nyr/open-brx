@@ -408,12 +408,15 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         sp = [pr_fid] if pr_fid and any(p["perk_id"] == pr_fid for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
+    perk_emptied: set[str] = set()   # F585: the slots the fixed-perk prune below emptied (no rule of the slot's own did)
     if pr["choice"] == "fixed" and sp:
         # F551 (Codex review): a FIXED perk that cannot ride with a weapon (`PerkView.blocked_*`, the compile guards'
         # own rule) takes that weapon out of the pool, so a pick, a fill or `apply` can never pair them and refuse the push
         fixed = _perk_row(perks, sp[0]) or {}
+        had_primary, had_sw = bool(primary), bool(sw)
         primary = [w for w in primary if w not in (fixed.get("blocked_primary") or [])]
         sw = [w for w in sw if w not in (fixed.get("blocked_secondary") or [])]
+        perk_emptied = {k for k, had, now in (("primary", had_primary, primary), ("secondary_weapons", had_sw, sw)) if had and not now}
     pruned_swap: list[str] = []
     if not sw:
         # S37: with no legal secondary there is nothing to switch to, so a swap perk is not a choice —
@@ -424,9 +427,9 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     out: LoadoutPool = {"primary": primary, "secondary_weapons": sw, "perks": sp}
     reasons: dict[str, PoolEmptyCode] = {}
     if not primary:
-        reasons["primary"] = _empty_code(prim, weapons, "weapon_id")
+        reasons["primary"] = "perk_blocked" if "primary" in perk_emptied else _empty_code(prim, weapons, "weapon_id")
     if not sw:
-        reasons["secondary_weapons"] = _empty_code(sec, weapons, "weapon_id")
+        reasons["secondary_weapons"] = "perk_blocked" if "secondary_weapons" in perk_emptied else _empty_code(sec, weapons, "weapon_id")
     if not sp:
         # The S37 prune first: it is the only cause that is NOT about this slot's own rule, and blaming
         # the perk filters for it sends the operator to the wrong control entirely.

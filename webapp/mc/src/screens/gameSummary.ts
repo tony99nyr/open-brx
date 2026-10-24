@@ -49,6 +49,8 @@ export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: P
     // rule only carries an id); without one the sentence still says the right thing about the slot.
     case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED: ITS HIT ROW DEALS NO DAMAGE (CATALOGUE), PICK ANOTHER WEAPON.`;
     case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING: CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
+    // F585: the fixed perk cannot ride with any weapon this slot allows (F551); there is no filter to clear
+    case 'perk_blocked': return `THE FIXED PERK CANNOT RIDE WITH ANY ${slot} THIS GAME ALLOWS: PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER WEAPON.`;
     case 'off': return '';   // never shown — an off slot is not a problem
   }
 }
