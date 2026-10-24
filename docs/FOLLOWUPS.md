@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-18. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-24. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -62,7 +62,6 @@ A keyboard is enough. Highest value first.
 - **F538 🟢 THE RIG'S `ir-emit` REPEAT AND `--gap` MODE LANDS NO HITS.** brx1, 2026-10-16 (bench setup, 0.4.22). On a hit-ready headset, single `ir-emit` shots hit 4/4 (armour 70 to 34); `--repeat 4 --gap 600` hit 0/4. Use single shots until this is read. Find out whether the ESP32 repeat path re-sends a bad frame, or the gap breaks the word. Owner brx5. `build`.
 - **F539 🟡 CLI PAPERCUTS FOUND IN A.7.** brx1, 2026-10-16 (0.4.22). (a) `python -m brx_mcp deathmatch --help` treats `--help` as an address and tries to connect. (b) A real Ctrl-C prints a full `KeyboardInterrupt`/`CancelledError` traceback after `--- ending game`. (c) The end sequence ends on `$CLEAR`, `$HLOOP,0,0`, `$HLED,0,0,0,0,0,0`, which leaves the gun with no `$SIR` table (F11 state): check the intent, and end on a re-arm if it is not wanted. Owner brx5. `build`.
 - **F540 🟡 MC CONSOLE: A STALE OPERATOR TOKEN FAILS SILENTLY.** brx1, 2026-10-16 (bench A.7, real MC `66635de4`). After MC restarted, Tony's open tab kept the old token. Every write (PLAY pick, LOAD, STANDBY) was refused and the console only flickered, with no "token rejected, reopen the URL" message. The same calls through the API worked. A 401 must say so plainly. Owner brx3. `build`.
-- **F543 🟢 MC CONSOLE: A STALE "RANGE EDITED" ATTENTION LINE.** brx1, 2026-10-16 (bench C.5). The attention list kept `RANGE EDITED ON STATION -75 to -40` while the station already reported -75. Clear the line when the station reports the value MC pushed. Owner brx3. `build`.
 - **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
 - **F546 🟡 MC: PICKING A MODE RESETS THE VENUE TO OUTDOOR.** brx1, 2026-10-16 (bench C.1). `play/pick ffa` after `PUT` venue indoor set the venue back to outdoor. A pick must keep the operator's venue. Owner brx3. `build`.
 - **F547 🟡 HUD: THE TOXIN RIFLE'S AMMO PIPS BECOME A BAR.** brx1, 2026-10-16 (bench C.12). Tony: the pips are broken, too many, and they take a lot of screen; use a bar. HUD lane (brx-hud): show Tony a static before and after gallery first (`ui-review-static-gallery`), then build. Owner brx4 with the HUD lane. `build`.
