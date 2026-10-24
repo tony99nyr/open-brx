@@ -114,11 +114,11 @@ export const BOARD_LIVE_MAX_AGE_MS = 16000;
 /** Bench 2026-09-17: bullet-shaped pips read as one pip per round, so a 12-pip gauge on a 4-round sniper mag
  *  lied by 3 pips a shot. Pips now count exactly the magazine size — one pip per round — up to this many; past
  *  it they stop reading as bullets and the gauge switches to a continuous bar (exact count stays in the digits
- *  beside it). 30 is the largest count the pip row fits at 667×375 (the SE stage viewport) without reaching the
- *  vitals plate on the other corner, and it sits in the gap the weapon catalogue leaves between a doubled
- *  (Extended Mags) marksman mag — sniper 4→8, AMR 14→28 — and a doubled sidearm or assault mag — glock 16→32,
- *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
-export const AMMO_PIP_MAX = 30;
+ *  beside it). F547 (Tony 2026-10-24, option C: "i only like the pips when it represents the shots 1:1. I think I
+ *  prefer the bar otherwise"): 20, down from 30, the most the pip row fits at 667×375. Thirty pips on the Toxin Rifle
+ *  were too many to read as rounds. Every stock mag of 18 or fewer keeps its pips; Extended Mags moves a doubled AMR
+ *  (28) or USP (24) to the bar with the rest. */
+export const AMMO_PIP_MAX = 20;
 /** Bench 2026-09-17: `weapon_class` ("ballistic" | "energy" | "melee", `st.weaponClass`) decides the
  *  reload-versus-overheat WORDING (RECHARGE for energy, RELOAD for ballistic) -- that is
  *  its only job. The old id regex is the named fallback for a pre-A48 bundle that carries no class at
