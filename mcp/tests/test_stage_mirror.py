@@ -1368,6 +1368,10 @@ def test_an_emp_perk_word_on_8_1_stuns_for_the_bundles_emp_length_with_no_config
         st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
         assert st.stunned is None, "spawn protection: no jam"
         st._arm_pending = None
+        st._os_protect_until = clock.t + 2.0     # engine.js `pu.protectUntil`: an overshield grant's protection is owed too
+        st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
+        assert st.stunned is None, "overshield protection: no jam (engine.js `_protectOwedMs`)"
+        st._os_protect_until = 0.0
         n = mark(mgr)
         st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
         # 3 s asked, but never shorter than the gun's own fn-23 blind (engine.js `_empStunMs`, SMOKE_MS)
@@ -2269,8 +2273,6 @@ KNOWN_UNMIRRORED = {
     "_restoredClock", "_clockRebase", "pu.clockItems",
     # (ARCH-3, 2026-10-10: `_drainPlayWrites`, `_playSendAt` and `_dropWaitingPlays` left this set and the Engine for
     # app/src/play-queue.js, which this scan does not read. The stage is to run app/test/fixtures/play-queue-cases.json.)
-    # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
-    "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,
     # has no phone BLE connection to diagnose, and never models a batch resolving false after a radio-only link.
     "_sendGunProbe", "_gunLockTick", "_beginGunRecovery", "_gunRecoveryWrite", "_gunRecoveryTick",

@@ -4246,14 +4246,15 @@ export class Engine {
   /** The jam a victim's phone holds: `emp.duration_s`, but never shorter than the gun's own fn-23 blind (SMOKE_MS, about 6 s
    *  on the bench), or the trigger would come back while every shot still misses. */
   _empStunMs() { const e = this._empSpec(); return Math.max(e ? e.duration_s * 1000 : 0, SMOKE_MS); }
-  /** An EMP word from my own team in a team match. The shooter's team comes from the roster (`$HIR` t3 is the player id),
-   *  else the word's team field. FFA, and LMS or extraction with one team, have no teammates (`_onIrCallout`'s `solo`). */
-  _empFriendly(latch) {
+  /** An EMP word from my own team in a team match. The wire decides: `$HIR` t4 is the thrower's immune team (its own tid),
+   *  so a roster gone stale after a team flip cannot override it. Only a missing t4 falls back to the roster row for t3, the
+   *  player id. FFA, and LMS or extraction with one team, have no teammates (`_onIrCallout`'s `solo`). */
+  _empFriendly(num, team) {
     const c = this.config;
     if (!c || c.mode === 'ffa' || (['lms', 'extraction'].includes(c.mode) && new Set((c.teams || []).map(t => Number(t.tid))).size < 2)) return false;
-    const r = this.roster.find(x => x.player_num === latch.shooter_num), mine = this.player && this.player.team_id;
-    if (r && r.team_id != null && mine != null) return r.team_id === mine;
-    return this.teamTid != null && latch.shooter_team === this.teamTid;
+    if (Number.isFinite(team)) return this.teamTid != null && team === this.teamTid;
+    const r = this.roster.find(x => x.player_num === num), mine = this.player && this.player.team_id;
+    return !!(r && r.team_id != null && mine != null && r.team_id === mine);
   }
   /** Ms until the next throw; 0 = ready. The cooldown runs on the match clock (perk-design.md §1): a death never resets it. */
   _empLeftMs(now = this.now()) { const e = this._emp; return e && e.match === this.matchId ? Math.max(0, e.readyAt - now) : 0; }
@@ -4269,10 +4270,17 @@ export class Engine {
       : (num == null || tid == null) ? 'no player id or team' : null;
     if (why) { this.log(`EMP not thrown: ${why}`, 'li'); return; }
     const T = EMP_THROW;
-    // The cooldown starts with the write, so a second press while it is in flight sends nothing; a failed write gives it back.
+    // The cooldown starts with the write, so a second press while it is in flight sends nothing. A failed write gives it back
+    // only when the frame never left the phone: BrxLink can resolve false after sending it (lost chunk acks), and then the
+    // word may have landed. Never into another match.
     const spent = this._emp = { match: this.matchId, readyAt: now + this._empSpec().cooldown_s * 1000 };
-    const refund = () => { if (this._emp !== spent) return; this._emp = null; this.log('EMP throw failed on the link; the throw is back', 'le'); this._changed(); };
-    const r = this._write([`$IRTX,${T.DIRECTION},${T.PROTO},${num},${tid},${T.MAGNITUDE},0,${T.SUBTYPE},100,1,,0,*`], 'EMP throw');
+    let sent = false;
+    const refund = () => {
+      if (sent || this._emp !== spent || spent.match !== this.matchId) return;
+      this._emp = null; this.log('EMP throw failed on the link; the throw is back', 'le'); this._changed();
+    };
+    const r = this._write([`$IRTX,${T.DIRECTION},${T.PROTO},${num},${tid},${T.MAGNITUDE},0,${T.SUBTYPE},100,1,,0,*`], 'EMP throw',
+      { onFrameSent: () => { sent = true; } });
     if (r && typeof r.then === 'function') r.then(ok => { if (ok === false || ok === null) refund(); }, refund);
     else if (r === false || r === null) { refund(); return; }   // a writer that returns nothing (the demo gun) delivered
     this.log(`⚡ EMP thrown; next in ${this._empSpec().cooldown_s} s`, 'le');
@@ -5734,7 +5742,7 @@ export class Engine {
         const own = !Number.isNaN(team) && this._ownShot(this.latch);
         if (t[2] === '8' && !own) {   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
           if (this._empWord(8, parseInt(t[7], 10))) {   // the EMP perk's <8,1> throw: never a teammate's, never inside spawn protection
-            if (this._empFriendly(this.latch)) this.log('EMP word from a teammate: ignored', 'li');
+            if (this._empFriendly(num, team)) this.log('EMP word from a teammate: ignored', 'li');
             else if (this._protectOwedMs() > 0) this.log('EMP word inside spawn protection: no jam', 'li');
             else this._stun(this._empStunMs());
           } else this._stun();

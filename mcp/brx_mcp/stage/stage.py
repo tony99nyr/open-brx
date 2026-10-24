@@ -908,6 +908,7 @@ class GunStage:
         # A56: engine.js `_overshield` ({amount, base, ...}). The stage models no powerup station, so nothing sets
         # it yet (the grant is pinned in test_stage_mirror's KNOWN_UNMIRRORED); `_readout_max` reads it the phone's way.
         self._overshield: dict | None = None
+        self._os_protect_until: float = 0.0   # engine.js `pu.protectUntil`: when an overshield grant's protection ends (0 = none owed)
         self.max_hp = 45
         self.max_armor = 70
         self.max_shield = 0        # S45 (engine.js `maxShield`): the `$PSET` t5 ceiling, read back off the compiled head
@@ -3075,6 +3076,16 @@ class GunStage:
         rows = [f for f in self.bundle.get("revive") or [] if f.startswith("$SIR,")]
         return "twin" if rows and all(len(_toks(f)) > 4 and _toks(f)[4] == "28" for f in rows) else None
 
+    def _protect_owed_ms(self) -> int:
+        """engine.js `_protectOwedMs`: the ms of protection still owed (an overshield grant's, then a spawn's), or 0. The
+        stage's `ArmPending` carries no infection `flip`, so only a living player is owed spawn protection here."""
+        osp = self._os_protect_until
+        os_ms = max(1, int((osp - self.now()) * 1000)) if osp and self.alive else 0
+        p, mode = self._arm_pending, self._protect_mode()
+        if not p or not self.alive or not (mode == "twin" or (mode == "tmp" and p.get("off") is not False)):
+            return os_ms
+        return max(os_ms, 1, int(p["until"] * 1000))
+
     def _protects_spawn(self) -> bool:
         return self._protect_mode() is not None
 
@@ -4262,10 +4273,9 @@ class GunStage:
                 own = _tok_int(t, 4) is not None and self._own_shot(self._hir_word)   # F438: our own word never stuns or poisons
                 if len(t) > 2 and t[2] == "8" and not own:
                     if self._emp_word(8, _tok_int(t, 7)):   # the EMP perk's <8,1> throw (engine.js `_empWord`)
-                        ap = self._arm_pending
                         if self._emp_friendly(_tok_int(t, 4)):
                             self._log("EMP word from a teammate: ignored", "info")
-                        elif ap is not None and ap.get("off"):   # engine.js `_protectOwedMs() > 0`, on the stage's own record
+                        elif self._protect_owed_ms() > 0:
                             self._log("EMP word inside spawn protection: no jam", "info")
                         else:
                             self._stun(self._emp_stun_ms() / 1000)

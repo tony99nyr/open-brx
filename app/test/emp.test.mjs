@@ -26,7 +26,7 @@ function harness({ perk = 'emp', emp = EMP, storage = mkStorage(), mode = 'tdm',
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' },
     { player_id: 'p3', player_num: 21, display: 'GHOST', team_id: 'blue' }];
-  const mk = () => new Engine({ writer: (fr, why) => { const n = writes.push(...fr); if (why === 'EMP throw' && irtx) return irtx(fr); return String(why).startsWith('gun liveness probe') ? false : n; },
+  const mk = () => new Engine({ writer: (fr, why, opts) => { const n = writes.push(...fr); if (why === 'EMP throw' && irtx) return irtx(fr, opts); return String(why).startsWith('gun liveness probe') ? false : n; },
     emit: () => {}, report: () => {}, now, clockOffset: off, wallNow: raw, synced: () => true, storage, log: l => logs.push(l), delay: (ms, fn) => fn() });
   let eng = mk();
   const bundle = { ...golden, player_id: 'p1', ...(emp ? { emp } : {}) };
@@ -37,6 +37,7 @@ function harness({ perk = 'emp', emp = EMP, storage = mkStorage(), mode = 'tdm',
     restart() { eng._save(); est = null; eng = h.eng = mk(); return h; },
     attach() { est = trueOff; return h; },
     adv(ms) { clock += ms; h.eng.tick(); return h; },
+    newMatch(id) { h.eng.onMcMessage({ kind: 'start', body: { match_id: id, go_live_t: clock, config_id: golden.config_id, seq: 2, countdown_s: 0 } }); return h; },
     live() {
       eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
       eng.onMcMessage({ kind: 'assign', body: { player, team, roster } });
@@ -197,4 +198,39 @@ test('EMP victim: a teammate\'s word is ignored in a team match; in FFA everyone
   const ffa = harness({ perk: null, mode: 'ffa' }).live();
   ffa.eng.feedFrame('$HIR,4,8,21,1,1,0,1,*');
   assert.ok(ffa.eng.stunned, 'FFA: the same player is an enemy');
+});
+
+test('EMP throw: a write that sent the frame keeps the cooldown even when the link then reports failure (lost chunk acks)', async () => {
+  const sentFalse = harness({ irtx: (fr, o) => { o && o.onFrameSent && o.onFrameSent(fr[0]); return Promise.resolve(false); } }).live();
+  sentFalse.left(); await new Promise(r => setImmediate(r));
+  assert.equal(sentFalse.eng.state().emp.leftMs, 45000, 'the frame left the phone: the throw is spent');
+  const sentRej = harness({ irtx: (fr, o) => { o && o.onFrameSent && o.onFrameSent(fr[0]); return Promise.reject(new Error('ack lost')); } }).live();
+  sentRej.left(); await new Promise(r => setImmediate(r));
+  assert.equal(sentRej.eng.state().emp.leftMs, 45000, 'a rejection after the frame went out keeps it spent');
+  const unsent = harness({ irtx: () => Promise.resolve(false) }).live();
+  unsent.left(); await new Promise(r => setImmediate(r));
+  assert.equal(unsent.eng.state().emp.ready, true, 'CONTROL: nothing left the phone, the throw is back');
+});
+
+test('EMP throw: a failure that resolves after a new match started refunds nothing into it', async () => {
+  let settle;
+  const h = harness({ irtx: () => new Promise(r => { settle = r; }) }).live();
+  h.left();
+  const spent = h.eng._emp;
+  h.newMatch('m2');
+  settle(false); await new Promise(r => setImmediate(r));
+  assert.equal(h.eng._emp, spent, 'the old match\'s record is left alone, not refunded');
+  assert.ok(!h.logs.some(l => /the throw is back/.test(l)), 'no refund line');
+});
+
+test('EMP victim: the word\'s own team (token 4) decides a teammate, over a stale roster', () => {
+  const flipped = harness({ perk: null }).live();
+  flipped.eng.feedFrame('$HIR,4,8,21,2,1,0,1,*');            // the roster says GHOST is blue; the wire says yellow
+  assert.ok(flipped.eng.stunned, 'token 4 = 2: an enemy, whatever the roster says');
+  const turned = harness({ perk: null }).live();
+  turned.eng.feedFrame('$HIR,4,8,19,1,1,0,1,*');             // the roster says VIPER is yellow; the wire says my team
+  assert.equal(turned.eng.stunned, null, 'token 4 = my tid: a teammate');
+  const blank = harness({ perk: null }).live();
+  blank.eng.feedFrame('$HIR,4,8,21,,1,0,1,*');               // no team on the wire: the roster says blue, my team
+  assert.equal(blank.eng.stunned, null, 'token 4 missing: the roster decides');
 });
