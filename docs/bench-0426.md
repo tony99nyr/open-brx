@@ -54,9 +54,10 @@ hardware/m5sticks3/tools/stick.py status`. Once the Stick joins MC, read its `ap
 `GET /api/state` (the serial `STATUS` line does not carry it). **Pass:** `app_ver` reads `h8-0.3+` and the first 10
 characters of that checkout's sha (`git rev-parse --short=10 HEAD`), with no `_dirty`, and MC's station list shows no
 STICK FIRMWARE TOO OLD line. **Control:** `python3 hardware/m5sticks3/tools/stick.py ports` lists the Stick before
-the flash. Before the first flash, let one Stick join MC on its old build: an h8-0.2 Stick shows STICK FIRMWARE TOO
-OLD: REFLASH IT in MC's station list (MC's floor is h8-0.3), and the line goes once it is reflashed. Unplug each
-Stick when it is done: an unassigned Stick on USB moved a presence reading on 2026-10-16.
+the flash. MC must run from a checkout at or after e6399e22b (floor h8-0.3). Before the first flash, check that one
+Stick on its old build appears in MC's `stations` list: a Stick below h8-0.3 shows STICK FIRMWARE TOO OLD: REFLASH IT
+in MC's station list (MC's floor is h8-0.3), and the line goes once it is reflashed. Unplug each Stick when it is
+done: an unassigned Stick on USB moved a presence reading on 2026-10-16.
 
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* Procedure: 1017 P1.1, then 1017 L1 (an MC push with the SMG as PRIMARY). **Pass:** the raw frame echoes

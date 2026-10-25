@@ -39,7 +39,7 @@ FOLLOWUPS row.
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Log the banner and the token.
 3. **Reflash EVERY Stick from current `main` before the session:** `python3 hardware/m5sticks3/tools/stick.py flash`.
-   MC refuses older firmware: its floor is `STATION_MIN_FW` "h8-0.3", and a Stick still on h8-0.2 or older shows the
+   MC flags older firmware: its floor is `STATION_MIN_FW` "h8-0.3", and a Stick still on h8-0.2 or older shows the
    station line "STICK FIRMWARE TOO OLD: REFLASH IT" until it is reflashed. The firmware reports `h8-0.3+<git sha>`,
    with `_dirty` added when built from a dirty tree: log that string, and reflash from a clean tree if it says
    `_dirty`.

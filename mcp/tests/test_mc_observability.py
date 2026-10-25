@@ -232,7 +232,7 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"]
     s.nodes["stick-1"]["stale"] = True
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" not in stick()["attention"]
-    assert station_fw_too_old("h8-" + "9" * 5000 + ".1") is not None    # a hostile version never raises
+    assert station_fw_too_old("h8-" + "9" * 5000 + ".1") is True    # a hostile version never raises, and is flagged
     assert parse_station_fw("h8-" + "9" * 5000 + ".1") is None and parse_station_fw("h8-1234567.0") is None
     assert parse_station_fw("h8-123456.0+x") == (8, 123456, 0)
 
@@ -250,10 +250,10 @@ def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returne
 
 def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not():
     s, net, clock, ps = mk_session()
-    base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.2+a1b2c3d"}
+    base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.3+a1b2c3d"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "platform": "esp32"}, clock["t"])
-    assert not any("SAVE TO FLASH" in a for a in stick()["attention"])
+    assert stick()["attention"] == [], stick()["attention"]
     net.simulate_status("stick-1", {**base, "platform": "esp32", "nvs_fail": 2}, clock["t"])
     assert any(a == "STICK CANNOT SAVE TO FLASH [2 FAILED WRITES], A RESTART LOSES ITS SETTINGS: REPLACE IT" for a in stick()["attention"])
     assert stick()["report"]["nvs_fail"] == 2
