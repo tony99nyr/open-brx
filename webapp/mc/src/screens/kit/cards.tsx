@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { PerkView, Player, WeaponView } from '../../api/types';
 import { F, PERK_COLOR, T, roleOf } from '../../tokens';
 import { GLYPH, colourOf } from '../../alerts';
-import { BTN_RESET, GhostButton, NumberCell, Seg, SegBar, StripedSlot, SectionRule, Tag, ValueBox, onKey } from '../../ui';
+import { BTN_RESET, GhostButton, NumberCell, Seg, SegBar, StripedSlot, SectionRule, Tag, ValueBox } from '../../ui';
 import { useStore } from '../../store';
 import { PRESET_LABELS } from '../../api/contract.gen';
 import { FaultPill } from '../../ui/Compact';
@@ -32,7 +32,12 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
   // trades one unreadable reserve count for a missing one.
   const clearW = onClear ? 96 : 0;
   return (
-    <div role="button" tabIndex={0} aria-pressed={active} onClick={onClick} onKeyDown={onKey(onClick)} className="hov-acc"
+    <div role="button" tabIndex={0} aria-pressed={active} onClick={e => {
+      if (!(e.target as Element).closest('button')) onClick();
+    }} onKeyDown={e => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+    }} className="hov-acc"
       style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', minHeight: 96, cursor: 'pointer',
         background: active ? (isPerk ? 'rgba(196,139,255,.07)' : 'rgba(57,180,255,.07)') : T.panel,
         borderTop: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderRight: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderBottom: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderLeft: `3px solid ${active ? color : T.line2}` }}>
@@ -52,7 +57,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, paddingRight: clearW }}>
           <span style={{ width: 84, height: 48, flex: 'none', background: T.inset, border: `1px solid ${T.line}` }}><WeaponArt key={item.weapon_id} id={item.weapon_id} size={20} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
+            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', overflowWrap: 'anywhere' }}>{item.name.toUpperCase()}</span>
             <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
           </span>
         </div>
@@ -72,7 +77,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
       {/* A required primary blocks the player until the host picks one. */}
       {required && !item && <FaultPill id="kit-primary-required" role="status" short="Primary required" why="Pick a primary before continuing." />}
       {overridden && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.chk(600, 12), color: colourOf('kit-changed-from-phone') }}>
+        <div data-alert="kit-changed-from-phone" data-sev="amber" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.chk(600, 12), color: colourOf('kit-changed-from-phone') }}>
           {GLYPH} Changed from their phone. Yours was {overridden.label}.
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
             style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>

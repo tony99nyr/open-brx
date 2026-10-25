@@ -409,6 +409,7 @@ step('pieces-failure', async ({ browser, base }) => {
   await pg.evaluate(() => { location.hash = '#build'; });
   await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 6000, 'the pieces-error banner');
   const failure = pg.getByTestId('play-pieces-error');
+  expect(/Could not load the game pieces/i.test(await failure.innerText()), 'the visible error names the game pieces');
   await failure.getByRole('button', { name: /Why\?/i }).click();
   const t1 = (await failure.getByTestId('fault-detail').innerText()) ?? '';
   expect(/500/.test(t1), 'the real failure is shown, not swallowed');

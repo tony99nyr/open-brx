@@ -573,8 +573,13 @@ function GunCard({ g }: { g: ReadinessRow }) {
             // MC words the detail, and `serverLine` keeps its catalogue id and severity.
             const line = b;
             const { id, sev } = serverLine(line, blocking ? 'blocker' : 'amber');
-            if (sev === 'red') return <FaultPill key={`${i}-${b}`} id={id} sev={sev} short="Check this gun" why={line} />;
-            if (sev === 'amber') return <ItemChip key={`${i}-${b}`} id={id} sev={sev} short={id === 'armory-amber-app-older-field' ? 'App update needed' : 'Gun needs attention'} detail={line} />;
+            if (sev === 'red') return <FaultPill key={`${i}-${b}`} id={id} sev={sev} short="Check this gun" why={line} role="status" />;
+            if (sev === 'amber') {
+              const lost = id === 'armory-nodecard-outbox-lost' ? /\b(\d+) FACTS? LOST\b/i.exec(line)?.[1] : null;
+              const short = lost ? `${lost} ${lost === '1' ? 'fact' : 'facts'} lost`
+                : id === 'armory-amber-app-older-field' ? 'App update needed' : 'Gun needs attention';
+              return <ItemChip key={`${i}-${b}`} id={id} sev={sev} short={short} detail={line} />;
+            }
             return <Alert key={`${i}-${b}`} id={id} sev={sev} variant="row">{line}</Alert>;
           })}
         </div>

@@ -106,9 +106,10 @@ describe('ITEMS — the powerup item picker', () => {
     const { m } = await muster({ getPowerups: async () => { throw e404; } });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toContain('Item list unavailable');
-    await m.click('Item list unavailable');
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toContain('Not Found');
+    const note = m.find('[data-testid="item-note"]')[0];
+    expect(note?.textContent).toContain('COULD NOT READ THE ITEM LIST: Not Found');
+    expect(note?.getAttribute('role')).toBeNull();
+    expect(note?.getAttribute('data-alert')).toBeNull();
     m.unmount();
   });
 

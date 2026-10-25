@@ -476,7 +476,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
                     display: 'flex', alignItems: 'baseline', gap: 26, flexWrap: 'wrap' }}>
         <span style={{ ...osw(700, Math.round(SZ.score * 0.78)), letterSpacing: '.08em', color }}>{headline}</span>
         {rc.provisional && (
-          <ItemChip id="spectate-final-provisional" short="Provisional score" detail="Still settling." size={Math.max(16, SZ.label)} static />
+          <ItemChip id="spectate-final-provisional" short="Provisional score" detail="Still settling." size={Math.max(16, SZ.label)} static role={null} />
         )}
       </div>
       <Board rows={rows} SZ={SZ} fit={fit} />

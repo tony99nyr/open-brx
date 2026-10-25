@@ -223,7 +223,7 @@ export function Games() {
           {[...state.config_warnings!].filter(w => /HAS NOT SYNCED THE LAST MATCH/.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
             return line.sev === 'red'
-              ? <FaultPill key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" short="Station not synced" why={w} role="status" />
+              ? <FaultPill key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" short="Station not synced" why={w} />
               : <ItemChip key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" short="Station not synced" detail={w} />;
           })}
           {setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w)).map((w, i) => {
@@ -232,7 +232,7 @@ export function Games() {
             return (
               <div key={`setup-conflict-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {line.sev === 'red'
-                  ? <FaultPill id={line.id} sev={line.sev} testid="games-setup-line" short="Station conflict" why={w} role="status" />
+                  ? <FaultPill id={line.id} sev={line.sev} testid="games-setup-line" short="Station conflict" why={w} />
                   : <ItemChip id={line.id} sev={line.sev} testid="games-setup-line" inline short={isRespawnSetup ? 'Respawn station missing' : 'Station conflict'} detail={w} />}
                 {isRespawnSetup && (
                   <span data-testid="assign-a-respawn-station">

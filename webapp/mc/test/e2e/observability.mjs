@@ -45,9 +45,12 @@ async function checkChip(pg, testid, sev, headWords) {
     'JOIN QR HAS NO ADDRESS': 'Join QR has no address',
     'JOIN ADDRESS NOT REFRESHED': 'Join address out of date',
   };
-  const label = labels[headWords] ?? (/facts lost/i.test(headWords) ? headWords : '');
+  const label = labels[headWords] ?? headWords;
+  const lostCount = /^([0-9]+) facts lost$/.exec(headWords ?? '')?.[1];
   c.expect(s === sev, `${testid} is ${sev} (data-sev=${s})`);
-  c.expect(t.toLowerCase().includes(label.toLowerCase()) || /facts lost/i.test(headWords) && /Gun needs attention/i.test(t), `${testid} reads "${label}" (saw "${t.slice(0, 90)}")`);
+  c.expect(typeof label === 'string' && label.length > 0 && (lostCount
+    ? t.replace(/[▾▴]\s*$/, '').trim().toLowerCase() === label.toLowerCase()
+    : t.toLowerCase().includes(label.toLowerCase())), `${testid} reads "${label}" (saw "${t.slice(0, 90)}")`);
   if (await el.evaluate(e => e.tagName === 'BUTTON')) {
     if (await el.getAttribute('aria-expanded') !== 'true') await el.click();
   } else {
@@ -65,8 +68,8 @@ async function checkChip(pg, testid, sev, headWords) {
     'JOIN QR HAS NO ADDRESS': /the QR holds no address/i,
     'JOIN ADDRESS NOT REFRESHED': /the QR may be out of date/i,
   };
-  const reason = reasons[headWords] ?? /\d+ facts lost from the phone outbox/i;
-  c.expect(reason.test(detail), `${testid} explains the fault (saw "${detail.slice(0, 110)}")`);
+  const reason = reasons[headWords] ?? (lostCount ? new RegExp(`\\b${lostCount} facts lost from the phone outbox`, 'i') : null);
+  c.expect(reason !== null && reason.test(detail), `${testid} explains the fault (saw "${detail.slice(0, 110)}")`);
   c.expect(/(?:What to do:|:)\s*(Check this player's recap by hand|Check the disk and the MC log|Restart MC|Check the MC log|Check the laptop network)/i.test(detail), `${testid} ends with what to do (saw "${detail.slice(-100)}")`);
   const colour = await el.evaluate(e => getComputedStyle(e).color);
   c.expect(colour !== 'rgb(0, 0, 0)', `${testid} is drawn in a catalogue colour (${colour})`);

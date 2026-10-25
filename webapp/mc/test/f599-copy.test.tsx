@@ -28,6 +28,11 @@ async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: strin
   expect(m.text()).toContain(detail);
   expect(button.getAttribute('aria-expanded')).toBe('true');
   if (button.textContent?.includes('Why?')) expect(button.textContent).not.toContain('Hide');
+  await act(async () => { pointer(hoverTarget, 'pointerout'); });
+  expect(m.text()).not.toContain(detail);
+  expect(button.getAttribute('aria-expanded')).toBe('false');
+  await act(async () => { pointer(hoverTarget, 'pointerover'); });
+  expect(m.text()).toContain(detail);
   await act(async () => { button.click(); });
   expect(m.text()).toContain(detail);
   if (button.textContent?.includes('Why?') || button.textContent?.includes('Hide')) expect(button.textContent).toContain('Hide');

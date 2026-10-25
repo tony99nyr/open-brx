@@ -10,7 +10,6 @@ import { spawn } from 'node:child_process';
 import net from 'node:net'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { DEMO_WEAPONS } from '../src/demo-catalog.js';
-import { AMMO_PIP_MAX } from '../src/hud/shared.js';
 import { bundleStale } from '../../scripts/lib/bundles.mjs';
 import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 
@@ -944,7 +943,7 @@ await step('RELOAD warns only when actually low; pips track the real mag (loadou
   expect((await hudA.locator('.reload').count()) === 0, `RELOAD must not nag at ~60% of ${M}`);
   const st1 = await hudA.evaluate(() => window.brx.engine.state());
   // One pip per round up to AMMO_PIP_MAX rounds (F547: 20), a continuous bar above that.
-  if (st1.mag <= AMMO_PIP_MAX) {
+  if (st1.mag <= 20) {
     const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
     expect(lit === st1.ammo, `pips ${lit} should equal the rounds left ${st1.ammo}/${st1.mag}`);
   } else {

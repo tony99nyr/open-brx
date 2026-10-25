@@ -178,6 +178,7 @@ step('tunnel-error-banner-persists-across-screens', async ({ browser, base }) =>
   expect(!/FELL BACK/.test(txt ?? ''), `a tunnel that never started does not claim a fallback (saw ${JSON.stringify(txt)})`);
   await pg.locator(bannerSel).first().locator('button', { hasText: 'Why?' }).click();
   const detail = await pg.locator(bannerSel).first().locator('[data-testid="fault-detail"]').innerText();
+  expect(!/WRONG WI-FI/i.test(await pg.locator('body').innerText()), 'the page never says WRONG WI-FI');
   expect(/phones can join over Wi-Fi only/i.test(detail), 'the banner says what phones can do now');
   expect(/cloudflared exited/i.test(detail), 'the banner carries the server-supplied reason, never swallowed');
   ok(`tunnel-down banner appears on ARMORY after a simulated failure  ${await shot(pg, 'b08-tunnel-error-armory')}`);

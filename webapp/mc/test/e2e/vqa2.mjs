@@ -342,7 +342,7 @@ try {
     expect(/RESTARTED(?: \d+ TIMES)?: CHECK THE STATION/i.test(await restarted.innerText()), 'RESTARTED has its next step (M5)');
     await battery.getByRole('button').click();
     await restarted.getByRole('button').click();
-    expect(await battery.getByTestId('chip-detail').count() === 0 && await restarted.getByTestId('fault-detail').count() === 0,
+    expect(await battery.getByTestId('chip-detail').count() === 0 && await restarted.getByTestId('chip-detail').count() === 0,
       'the station details are closed before measuring the board');
     expect(await pg.getByTestId('hill-panel').isVisible().catch(() => false) && await pg.getByTestId('powerup-strip').isVisible().catch(() => false),
       'control: the hill panel and the powerup strip are on the board too');

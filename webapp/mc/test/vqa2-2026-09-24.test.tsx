@@ -221,7 +221,8 @@ describe('M7 · LIVE keeps the board and the operator menu in view', () => {
     try {
       const { m } = await screen(<Live />, { phase: 'live', live: liveView([row()]) });
       await act(async () => { m.find('[data-live-row-toggle="p1"]')[0].click(); });
-      expect(spy, 'the menu asked to be scrolled into view').toHaveBeenCalled();
+      await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+      expect(spy, 'the menu asked to be scrolled into view').toHaveBeenCalledTimes(1);
       m.unmount();
     } finally { Element.prototype.scrollIntoView = orig; }
   });

@@ -54,17 +54,8 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
   // host tapped and saw nothing change. The menu brings itself into view once, when it opens.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const menu = box.current;
-    if (!menu) return;
-    const show = (force = false) => {
-      const rect = menu.getBoundingClientRect();
-      if (force || rect.bottom > window.innerHeight || rect.top < 0) menu.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
-    };
-    show(true);
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => show());
-    observer.observe(menu);
-    return () => observer.disconnect();
+    const frame = requestAnimationFrame(() => box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }));
+    return () => cancelAnimationFrame(frame);
   }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);

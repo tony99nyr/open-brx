@@ -22,7 +22,7 @@ import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val,
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, setupLines } from '../ui/SetupSteps';
 import { AlertTag } from '../ui/Alert';
-import { SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
+import { GLYPH, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
 
 const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
@@ -486,7 +486,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
-  if (pu.s === 'err') return <div data-testid="item-note"><ItemChip id="items-itempicker-err" short="Item list unavailable" detail={pu.msg} /></div>;
+  if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
   if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
