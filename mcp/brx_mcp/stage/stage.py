@@ -6481,7 +6481,7 @@ class GunStage:
         exactly that slot. Floored at 0.3 s, as the phone floors its `ms` at 300.
 
         A hardcoded 1.5 s here (every weapon, every perk) was the divergence: the phone's shotgun
-        takeover runs 2.4 s and its quick_hands AR runs 0.7 s, so the bench predicted a timeout the field
+        takeover runs 2.4 s and its fast_hands AR runs 0.7 s, so the bench predicted a timeout the field
         would never see, and missed the one it would (polish review 2026-09-12).
         """
         secs = 1.5

@@ -723,7 +723,7 @@ export interface LoadoutOverrides {
 }
 
 /** weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
- *  beside a secondary weapon (AR + pistol + Quick Switch). The one exception: S50 (2026-09-17)
+ *  beside a secondary weapon (AR + pistol + Fast Hands). The one exception: S50 (2026-09-17)
  *  moved it from a perk to `overrides.easy_reload` (a per-player accessibility switch, host-set
  *  only) -- it still takes the ALT button, so the server refuses it beside a second weapon; the
  *  host UI warns and drops the other one (A14, loadout.md §2/§2.1). */
@@ -900,7 +900,7 @@ export interface LoadoutPool {
  *  refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
  *
  *  S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
- *  +20, quick_switch -20). This field is the one source of the number: `compile._MAX_ARMOR_ADD` is built
+ *  +20). This field is the one source of the number: `compile._MAX_ARMOR_ADD` is built
  *  from it, keyed by perk_id, and the compiled arithmetic reads that (F604). Kept an integer because
  *  `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally. */
 export interface PerkEffects {

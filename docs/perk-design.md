@@ -43,16 +43,14 @@ Tony's daughter cannot work the reload lever, so it must never compete with a ba
 
 ## 2. The core set
 
-Seven picks. Each one buys on a lever its neighbour sells, so the set reads as a square rather than a
-ladder, and every pick has a named enemy.
+Six picks. Each one has a distinct role; Fast Hands is a free convenience pick.
 
 | perk | what the player gets | what it costs | beaten by |
 |---|---|---|---|
 | **Body Armor** | +20 armour, about 17% more Standard pool; unavailable on the Shields preset | primary reload takes 25% longer | Armour Piercing, and anything that ticks |
 | **Armour Piercing** | your primary ignores armour and shields, straight to health | heavier rounds: less damage AND a slower cycle, set per weapon (§7.7) | a bare-pool opponent, who takes the damage cut for free |
-| **Quick Hands** | reload in half the time | magazine and reserve cut by 20% | Extended Mags, in a long fight |
-| **Extended Mags** | Standard: ×2 magazine and reserve; Shields: ×1.5; pistols: ×1.5; reserve ceiling applies | weapon swap ×1.3 | Quick Switch, at close range |
-| **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
+| **Fast Hands** | reload and swap weapons in half the time; Sniper bolts are unchanged | none; ammunition is unchanged | Extended Mags, in a long fight |
+| **Extended Mags** | Standard: ×2 magazine and reserve; Shields: ×1.5; pistols: ×1.5; reserve ceiling applies | weapon swap ×1.3 | Fast Hands, at close range |
 | **Motion Tracker** | nearby enemies appear on your HUD as a list, with no bearing and no range | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
 | **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
 
@@ -168,8 +166,8 @@ is in [`ir-effects-design.md`](ir-effects-design.md) §6.3b and the open work is
 first, the Toxin Rifle; a "your rounds burn" perk is the same mechanism in the third slot.
 
 **Now buildable.** Lucky Shot, a crit chance on your primary: F62 closed 2026-09-18 (`$WEAP` t6 is a
-percentage the gun rolls), and `crit_pct` already ships on the Burst Rifle and the AMR. It must never
-ride with Armour Piercing (`weapon-design.md` §7.5).
+percentage the gun rolls), and `crit_pct` already ships on the Burst Rifle and the AMR. Armour Piercing
+sets the primary's crit chance to zero (`weapon-design.md` §7.5).
 
 **Blocked on hardware or a fact we do not have.** Alt-Fire Mode (t7 to t11 are empty on all 20 captured
 frames; a 2026-09-18 code read says they are a live chance-based alt-fire, `ir-effects-design.md` §6.3f,
@@ -201,7 +199,7 @@ stations, because station adverts are already broadcast openly to every phone.
    `$HP`, so the node books the death with no attribution.
 3. **Pick rates.** Nothing aggregates perk choice across matches today. The store already logs each
    match's config, so the data exists; the query does not. Worth adding once real sessions run.
-4. **`max_armor_add` going negative** (Quick Switch): closed. `armed_armor()` now floors at 0 as well as
+4. **`max_armor_add` going negative** (former swap perk): closed. `armed_armor()` now floors at 0 as well as
    capping at 255 (item 6).
 5. **How big is the Motion Tracker's bubble?** The RSSI threshold was tuned for walking up to a
    station, not for a fight. Measure it between two phones before the perk ships, and retune the
@@ -239,8 +237,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 |---|---|---|---|---|
 | Body Armor (reworked) | Extra armour, at the cost of a slower reload. | `max_armor_add: 20` (2026-10-25; was 25, originally 50; see §2). Adds `reload_mult: 1.25` on the primary. | Reload takes 25% longer. | S50-perk-balance-report §4 |
 | Extended Mags (reworked) | Bigger magazine and reserve, but a slower draw. | Keeps `ammo_mult: 2` (primary only; +50% on a pistol primary, D5, see §2). Adds `switch_mult: 1.3`. | Weapon swap is 30% slower. | S50-perk-balance-report §4 |
-| Quick Hands (reworked) | Faster reloads, smaller magazine. | Keeps `reload_mult: 0.5`. Adds `ammo_mult: 0.8`. | Magazine and reserve cut by 20%. | S50-perk-balance-report §4 |
-| Quick Switch (reworked) | Faster weapon draw, lighter armour. | Keeps `switch_mult: 0.5` (all slots, gun enforces the larger value). Adds `max_armor_add: -20`. | 20 less armour. `armed_armor()` floors at 0 (done, §5 item 6). | S50-perk-balance-report §4 |
+| Fast Hands | Faster reloads and weapon swaps. | `reload_mult: 0.5`, except the Sniper Rifle bolt; `switch_mult: 0.5`; ammunition multiplier 1.0. | No armour or ammunition cost. | Tony, 2026-10-25 |
 | Armour Piercing Rounds | Your primary ignores armour and shields. | Rekeys the primary's `$WEAP` t3/t4 to a new, permanently shipped `$SIR` cell keyed to fn 2 (armour piercing); `dmg_mult` cuts t5. | CORRECTED: about 60% less raw damage, not the 20% this sweep proposed. Bypassing armour already cuts the pool from 115 to 45 (see §2). direct counter to Body Armor and the Shields preset. | S50-perk-balance-report §5, report-11 (AP mechanism) §1-6 |
 | Heavy Barrel | Hits harder, cycles slower. | `$WEAP` t5 +25%, t14 +20%, baked at arming. | Fewer, bigger hits; worse against fast weapons in close exchanges. | S50-perk-balance-report §5 |
 | Overcharged Rounds | Every hit lands harder, but you carry fewer rounds. | `$WEAP` t5 up (flat damage buff, CoD Stopping Power pattern). `ammo_mult` on t16/t39 cut to compensate. | Smaller magazine; no cycle-time change (distinct from Heavy Barrel). | report-03 (Stopping Power) + report-07 (`ammo_mult`/`dmg` levers) |
@@ -275,7 +272,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 |---|---|---|---|---|---|
 | Personal EMP | Your primary's hits jam the enemy's gun for a few seconds. | A per-player `$SIR` cell keyed to the stun function the game-wide `config.stun` toggle already uses. | MOVED HERE ON REVIEW: it is not compile-time buildable. A `$SIR` table is game-wide, so keying one player's weapon to a stun function stuns for everyone who carries that key. | True per-player `$SIR` keys, the same blocker Medic Beam has. ⚠️ The stun cell is fn 23 (F253); fn 24 ships a phantom hit every 5 s and must never be keyed. | report-07, report-08 §4 |
 | Killstreak / Vengeance | A run of kills earns a reward, fully offline. | Would need the node to detect its own kills locally. | The gun never learns it hit someone; the node cannot see its own kills at all (ADR-0001). | Nothing short of a firmware change (disallowed), or accepting MC's best-effort `score`/`feedback` push, which moves the idea into Group C instead. | report-10 §13 (hard limit 1) |
-| Lucky Shot | A rare shot crits for extra damage. | `$WEAP` t6 (`primaryCritChance`). | NONE NOW: F62 closed 2026-09-18. t6 is a percentage the gun rolls; a crit lands ×1.5 and sets `$HIR` token 6. `crit_pct` ships on the Burst Rifle and the AMR. | Buildable as a perk; never beside Armour Piercing (`weapon-design.md` §7.5). | report-08 §1 (t6), F62 |
+| Lucky Shot | A rare shot crits for extra damage. | `$WEAP` t6 (`primaryCritChance`). | NONE NOW: F62 closed 2026-09-18. t6 is a percentage the gun rolls; a crit lands ×1.5 and sets `$HIR` token 6. `crit_pct` ships on the Burst Rifle and the AMR. | Buildable as a perk; Armour Piercing sets t6 to zero (`weapon-design.md` §7.5). | report-08 §1 (t6), F62 |
 | Alt-Fire Mode | Your weapon carries a second, different attack. | `$WEAP` t7-t11 (secondary fire block: chance, damage type, power type, damage, crit chance). | Empty on all 20 captured stock frames. A 2026-09-18 code read says t7 is a chance and t8-t11 the rolled key, damage and crit (`ir-effects-design.md` §6.3f); code read, not bench-proven. | A bench flip of t7-t11 on a live weapon to see if a secondary fire mode actually fires. | report-08 §1 (t7-t11), ir-effects-design §6.3f |
 | Emitter Selection | Your weapon fires from the headset only, or from both emitters. | `$WEAP` t4, read either as IR subtype or as `primaryPowerType` (which emitter fires). | The two source documents contradict each other on what t4 does; neither reading is bench-flipped. | A bench test that isolates t4 from t3 and checks which reading holds. | report-08 §1 and §11 (t3/t4 contradiction) |
 | Regional Quiet Mode | Your weapon runs on reduced power for indoor play. | `$GSET` t3 (`gunLaserRegion`), described as a legal power-region control. | APK-decoded only, never exercised on the bench. | A bench sweep of t3 values with a range ladder, the same method used to prove t2. | report-08 §3 (t3), report-09 (t3 "written, NOT RUN") |

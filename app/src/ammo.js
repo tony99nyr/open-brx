@@ -522,7 +522,7 @@ export class Ammo {
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && (ws[this.host.activeSlot] || ws[0]);
     const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
     // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
-    // takeover must shrink with it too — quick_hands halves the reload (Tony, 2026-09-04).
+    // takeover must shrink with it too: fast_hands halves the reload (Tony, 2026-10-25).
     const pk = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkRow(this.host.player.loadout.perk) : null;
     const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
     // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods), and never to a bolt (`_ammo`, F573 review)

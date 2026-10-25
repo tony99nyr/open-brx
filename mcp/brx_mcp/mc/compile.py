@@ -304,7 +304,7 @@ def play_volume(environment: str | None) -> int:
 
 # S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
 # `max_armor_add` perk carries. Body Armor is +20 (down from S50's +25 on 2026-10-25);
-# Quick Switch is -20 (its cost for the swap-speed grant). The number
+# Fast Hands has no armour cost. The number
 # lives once, in `perks.json`'s `effects.max_armor_add`; the arithmetic runs here (`armed_armor`,
 # `armed_shield`). F604 (Astra sim review #11): this used to be a second, hand-kept table, so a
 # perks.json-only change was simulated by the balance review but never reached the gun.
@@ -390,9 +390,7 @@ def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> Healt
 def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
     floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
-    `_to_gc()`; both bounds are our own policy choice). The floor matters now that a cost perk
-    (Quick Switch, docs/perk-design.md §2) carries a NEGATIVE grant -- `armed_armor()` used to only
-    cap, never floor, before S50 (docs/perk-design.md §5.4).
+    `_to_gc()`; both bounds are our own policy choice). The floor also handles negative grants in candidate catalogues.
 
     One arithmetic, called wherever the armed armour is needed -- it drifted into three disagreeing
     copies once already (review 2026-09-01: a `body_armor` player was armed at a 165 pool while a
@@ -1377,7 +1375,7 @@ class WeaponCatalog:
         """
         w = self._row(weapon_id)
         if w.get("reload_type") == "bolt":
-            # Tony, 2026-10-17: perks leave a bolt action alone. Quick Hands, Body Armor and Extended Mags would
+            # Tony, 2026-10-17: perks leave a bolt action alone. Fast Hands, Body Armor and Extended Mags would
             # otherwise halve, slow or double the bolt (its reload_ms) and its one-round magazine.
             mods = None
         pistol_mult = mods.get("ammo_mult_pistol") if mods and self._is_pistol(w) else None
@@ -2108,7 +2106,7 @@ class Compiler:
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=team_damage_on(config),     # Q13: see `team_damage_on`
             hp=hp,
-            # S50 (docs/perk-design.md §2): body_armor / quick_switch's `max_armor_add` (`_MAX_ARMOR_
+            # S50 (docs/perk-design.md §2): body_armor's `max_armor_add` (`_MAX_ARMOR_
             # ADD`), capped at the wire's 255 and floored at 0 — NOTE: 255 is OUR POLICY CEILING, not
             # a device limit. Bench 2026-08-27: $PSET pools are not 8-bit -- armor and HP store and
             # decrement exactly to at least 1000, clamping at zero with no wrap (shield was never
@@ -2507,13 +2505,15 @@ class Compiler:
             warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
                             "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")
     @staticmethod
-    def _rekey(frame: str, cell) -> str:
-        """`$WEAP` with tok3/tok4 (the IR word's B and U fields) pointed at `cell`. Nothing else moves."""
+    def _rekey(frame: str, cell, *, zero_crit: bool = False) -> str:
+        """Point tok3/tok4 at `cell`; an AP rekey also removes the primary's crit roll."""
         if cell is None:
             return frame
         t = frame.split(",")
         if len(t) > 5:
             t[4], t[5] = cell[0], cell[1]
+        if zero_crit:
+            t[WeaponCatalog._T["crit"] + 1] = "0"
         return ",".join(t)
 
     def _ap_block(self, weapon_id: str) -> str | None:
@@ -2753,7 +2753,7 @@ class Compiler:
                 *venue_mode_frames(_gset, env),
                 build.gc._pset(build.pnum, build.player.get("voice"), build.voice_slots, team=build.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
                 self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env), build.plan.cell_for(build.w0)),
-                            _AP_CELL if build.armor_piercing else None)]
+                            _AP_CELL if build.armor_piercing else None, zero_crit=build.armor_piercing)]
         if build.w1:
             ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
         ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env), build.plan.cell_for("melee")))

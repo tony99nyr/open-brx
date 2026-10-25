@@ -23,6 +23,8 @@ still says "perk" inside `secondary.kinds` is a validation error and `normalize`
 """
 from __future__ import annotations
 
+from .perks import canonical_perk_id
+
 import copy
 import functools
 import json
@@ -69,19 +71,10 @@ def easy_reload_on(loadout: Loadout) -> bool:
 
 
 def swaps_weapons(row: PerkView | None) -> bool:
-    """Does this perk do NOTHING without a second weapon? (`effects.switch_mult` < 1 — a perk whose
-    WHOLE value is a faster swap, Quick Switch, which compiles to the `$WEAP` tok15 swap delay.)
-
-    S37 (field 2026-09-12, Tony): "if either weapon slot is disabled, the Quick Switch perk must be
-    disabled too — with one weapon there is nothing to swap." Asked of the EFFECT rather than of the
-    perk id, so a second swap-benefit perk is covered the day it exists.
-
-    S50 (2026-09-17): `< 1` is deliberate, not `bool(...)`. Extended Mags now carries `switch_mult:
-    1.3` too — a COST paid on the same lever Quick Switch buys, not a benefit — and that cost simply
-    does nothing with no second weapon to slow the draw to; it must not also prune Extended Mags'
-    real (ammo_mult) value out of the pool the way a genuine swap-benefit perk should be pruned."""
-    sm = ((row or {}).get("effects") or {}).get("switch_mult")
-    return bool(sm) and sm < 1
+    """Does this perk give only a faster swap, with no reload benefit?"""
+    effects = (row or {}).get("effects") or {}
+    sm = effects.get("switch_mult")
+    return bool(sm) and sm < 1 and effects.get("reload_mult", 1) >= 1
 
 
 @functools.lru_cache(maxsize=1)
@@ -176,12 +169,12 @@ def _check_rule(slot: str, r: Any) -> SlotRule:
             v = r[key]
             if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
                 raise ValueError(f"loadout_policy.{slot}.{key} must be a list of strings")
-            out[key] = list(dict.fromkeys(v))
+            out[key] = list(dict.fromkeys(canonical_perk_id(x) if slot == "perk" and key != "exclude_tags" else x for x in v))
     if "fixed_id" in r:
         v = r["fixed_id"]
         if v is not None and not isinstance(v, str):
             raise ValueError(f"loadout_policy.{slot}.fixed_id must be a string or null")
-        out["fixed_id"] = v or None
+        out["fixed_id"] = canonical_perk_id(v) if slot == "perk" and v else v or None
     if out["choice"] == "fixed" and not out["fixed_id"]:
         raise ValueError(f"loadout_policy.{slot}: choice 'fixed' needs a fixed_id")
     return out

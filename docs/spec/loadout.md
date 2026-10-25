@@ -77,7 +77,7 @@ stacking, and `easy_reload` left the slot entirely (§2) — it is accessibility
 
 ```jsonc
 PerkView {
-  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "quick_switch" | "armor_piercing" | "motion_tracker" | "second_wind" | "med_kit" | "concussion"
+  perk_id: string,                 // "body_armor" | "extended_mags" | "fast_hands" | "armor_piercing" | "motion_tracker" | "second_wind" | "med_kit" | "concussion"
   name: string, desc: string,      // house-written, human (no protocol jargon)
   tags: string[],                  // "passive" | "utility"
   mechanism: "passive" | "slot_frame",
@@ -88,8 +88,7 @@ PerkView {
                                     // arithmetic (F604). Kept a plain integer. `gain`/`cost`
                                     // below (S50, 2026-09-19) turn it into the "+N ARMOR" line either UI
                                     // renders — neither reads this field directly any more. body_armor
-                                    // +20 (was +25, originally a flat +50), quick_switch
-                                    // -20. Capped at 255, floored at 0. In a game whose BASE
+                                    // +20 (was +25, originally a flat +50). Capped at 255, floored at 0. In a game whose BASE
                                     // health.max_armor is 0 (the Shields preset, `mc/compile.py`
                                     // `is_shields_preset`), the grant compiles into the SHIELD ceiling
                                     // instead of armour — adding an armour layer to a preset built with
@@ -97,14 +96,13 @@ PerkView {
     ammo_mult?: number,            // extended_mags: ×2 mag + reserve on Standard, ×1.5 on Shields.
                                     // The reserve caps at max(`RESERVE_PROVEN_MAX`, the row's own reserve).
                                     // The health-preset variant overrides this key before compilation,
-                                    // unless the primary is a
-                                    // pistol (see ammo_mult_pistol below); quick_hands: ×0.8 (the cost of a faster reload)
+                                    // unless the primary is a pistol (see ammo_mult_pistol below).
     ammo_mult_pistol?: number,     // D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override, read INSTEAD of ammo_mult when
                                     // the primary is a pistol (role "sidearm" or the "pistol" tag): ×1.5, rounded DOWN, not ×2. USP
                                     // 12→18, Deagle 7→10. `mc/compile.py` `WeaponCatalog._ammo` is the one place this is applied.
-    reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18); body_armor: ×1.25 (armour is heavier in the hands)
+    reload_mult?: number,          // fast_hands: ×0.5 reload_ms on the PRIMARY (t18), except the Sniper Rifle bolt; body_armor: ×1.25
     alt_reload?: boolean,          // unused by any current row (S50: moved to `overrides.easy_reload`, §2) — kept for a future ALT-button perk
-    switch_mult?: number,          // quick_switch (2026-09-04): ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover. extended_mags: ×1.3 (a bulkier magazine draws slower)
+    switch_mult?: number,          // fast_hands: ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the gun takes the larger of slots 0/1; bench-proven, linear, no floor). MC puts the resolved value in FrameBundle.swap_ms for the HUD's SWITCHING takeover. extended_mags: ×1.3 (a bulkier magazine draws slower)
     armor_piercing?: boolean       // S50 NEW (armor_piercing perk): the PRIMARY's $SIR key is swapped, compile-time, to
                                     // a fixed cell (mc/compile.py `_AP_CELL`, `(4,0)`) permanently wired in
                                     // `gameconfig._SIR_TABLE` to fn 2 (bench-proven to bypass armour AND
@@ -146,8 +144,8 @@ PerkView {
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)
 }
 ```
-v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed),
-`quick_switch` (verified — A14, 2026-09-04), `armor_piercing` (unverified, new — S50), `motion_tracker`
+v1 rows: `body_armor` (verified), `extended_mags` (verified), `fast_hands` (unverified),
+`armor_piercing` (unverified, new — S50), `motion_tracker`
 + `second_wind` (unverified, new — S50, node-local: `effects: {}`, no compile-time lever, docs/perk-design.md
 §2), `med_kit` + `concussion` (`hidden: true`, `mechanism: "slot_frame"`).
 
@@ -155,7 +153,7 @@ v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unv
 ```jsonc
 Loadout {
   weapons: WeaponSel[],            // [primary] or [primary, secondary]; index == gun slot. NEVER empty (primary required).
-  perk?: string | null,            // A14: the PERK slot — rides BESIDE a secondary weapon (AR + pistol + Quick Switch is a legal kit)
+  perk?: string | null,            // A14: the PERK slot — rides BESIDE a secondary weapon (AR + pistol + Fast Hands is a legal kit)
   overrides?: { max_hp?: 1..999, max_armor?: 0..999, easy_reload?: boolean }   // per-player POOL + accessibility (§2.1)
 }
 ```
@@ -364,7 +362,7 @@ TRY IT → MC roster shows TRYING → READY → MC shows READY.
 
 ## 7. Bench items (A10a-e; `docs/post-mvp.md` → *Old bench rungs*)
 Body Armor: push head with $PSET armor +50 → `$LCD` shows it → a hit absorbs. Extended Mags: HUD max matches
-`$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Quick Hands: reload chain timing.
+`$AMMO`. Easy Reload: ALT reloads. Empty slot 1: ALT press → reload, no crash. Fast Hands: reload and swap timing.
 
 ## 8. Saved games — REPLACED by F411 (2026-09-26)
 

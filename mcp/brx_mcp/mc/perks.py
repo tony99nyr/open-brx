@@ -15,6 +15,15 @@ from .types import PerkEffects, PerkVariant, PerkView
 
 _HERE = pathlib.Path(__file__).resolve().parent
 
+# Stored perk identifiers from before the Fast Hands merge.
+PERK_ALIASES = {"quick_hands": "fast_hands", "quick_switch": "fast_hands"}
+
+
+def canonical_perk_id(perk_id: str) -> str:
+    """Read an old perk identifier using the current catalogue name."""
+    return PERK_ALIASES.get(perk_id, perk_id)
+
+
 # Effect keys the compiler understands. Anything else in `effects` is a data error, not a silent no-op.
 # `alt_reload` has no current row (S50, 2026-09-17: `easy_reload` moved out of the perk slot to
 # `loadout.overrides.easy_reload`, the per-player accessibility block -- it is accessibility, not
@@ -22,7 +31,7 @@ _HERE = pathlib.Path(__file__).resolve().parent
 # perk that claims the ALT button the same way (`policy.py`'s docstring: "a new perk that claims a
 # button in future joins the rule by setting alt_reload").
 # `armor_piercing` (S50, new): the primary's $SIR key is swapped to the armour-piercing cell and its
-# damage is cut -- see `compile.py` `_MAX_ARMOR_ADD`, `_AP_CELL`, `_AP_DAMAGE_MULT`.
+# damage and cycle use the weapon's AP values -- see `compile.py` `_AP_CELL` and `weapons.json`.
 # `crit_pct_add` (F278, 2026-09-18): no row declares it yet -- the guard is filed and fixed before the
 # perk exists. `compile.py`'s `_refuse_if_crit_perk_ineligible` refuses it at RUNTIME on a weapon
 # declaring `wire.headset_dmg`, the same combination the catalogue-time guard
@@ -60,8 +69,7 @@ def _rate(m: float) -> str:
     and the word. A multiplier under 1 is inverted first (0.5 reload_mult -> reloads take half the
     time -> the player-facing number is '2', not '0.5'). Rounded to one decimal, then that decimal is
     dropped when it is a bare '.0' (`2.0` -> `2`) -- both UIs' kit plate is a fixed ~124 px wide, and
-    a needless ".0" on the one perk whose rate happens to be a whole number (Quick Hands, Quick
-    Switch) was enough to clip it (screens.mjs `se kitted-perk: invariants`)."""
+    a needless ".0" on the one perk whose rate happens to be a whole number (Fast Hands) was enough to clip it (screens.mjs `se kitted-perk: invariants`)."""
     v = round(m if m > 1 else 1 / m, 1)
     return f"{v:g}"
 
@@ -79,10 +87,10 @@ def gain_cost_lines(perk_id: str, effects: PerkEffects) -> tuple[list[str], list
     if "max_armor_add" in effects:
         n = effects["max_armor_add"]
         (gain if n > 0 else cost).append(f"{n:+d} ARMOR")
-    if "ammo_mult" in effects:
+    if "ammo_mult" in effects and effects["ammo_mult"] != 1:
         m = effects["ammo_mult"]
         # 2026-10-17: a gain doubles the MAGAZINE; the reserve only grows up to compile.RESERVE_PROVEN_MAX, so five
-        # rifles gain no reserve at all. A cut (Quick Hands) still cuts both, so it keeps the AMMO word.
+        # rifles gain no reserve at all. A multiplier below one cuts both, so it keeps the AMMO word.
         (gain if m > 1 else cost).append(f"×{m:g} MAG" if m > 1 else f"×{m:g} AMMO")
     if "ammo_mult_pistol" in effects:
         # D5 (2026-09-25): a per-class override, not a second player-facing line -- the catalogue's
@@ -191,16 +199,20 @@ class PerkCatalog:
         return [r["perk_id"] for r in self._rows if not r.get("hidden")]
 
     def row(self, perk_id: str) -> dict:
+        perk_id = canonical_perk_id(perk_id)
         if perk_id not in self._by_id:
             raise KeyError(f"unknown perk_id {perk_id!r}")
         return self._by_id[perk_id]
 
     def has(self, perk_id: str) -> bool:
-        return perk_id in self._by_id
+        return canonical_perk_id(perk_id) in self._by_id
 
     def effects(self, perk_id: str | None, preset: str | None = None) -> dict:
         """Effect knobs for a perk id (empty dict for None / unknown)."""
-        if not perk_id or perk_id not in self._by_id:
+        if not perk_id:
+            return {}
+        perk_id = canonical_perk_id(perk_id)
+        if perk_id not in self._by_id:
             return {}
         return resolve_effects(self._by_id[perk_id], preset)
 

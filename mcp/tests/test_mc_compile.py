@@ -18,6 +18,19 @@ from _session import match_config
 C = Compiler()
 
 
+def test_ap_rekey_zeroes_a_crit_primary_without_changing_plain_crit():
+    """AP takes away the gun's t6 roll even on a crit row the current AP guard refuses."""
+    crit = WeaponCatalog._T["crit"] + 1
+    for weapon_id in ("amr", "burst_rifle"):
+        assert C._ap_block(weapon_id) is not None
+        plain = C.catalog.resolve(weapon_id, 0)
+        assert int(plain.split(",")[crit]) > 0
+        assert C._rekey(plain, None).split(",")[crit] == plain.split(",")[crit]
+        ap = C._rekey(plain, compile_mod._AP_CELL, zero_crit=True)
+        assert ap.split(",")[crit] == "0"
+        assert ap.split(",")[4:6] == list(compile_mod._AP_CELL)
+
+
 def test_validate_rejects_an_untyped_win_by_typo():
     cfg = _cfg()
     cfg["scoring"]["win_by"] = "kils"

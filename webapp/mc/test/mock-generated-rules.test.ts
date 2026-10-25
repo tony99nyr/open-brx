@@ -91,13 +91,13 @@ describe('generated server rule inputs', () => {
       player.loadout = { weapons: [{ weapon_id: weaponId }], perk };
       return perkEffectsResolved(state.config, player, weapons, perks);
     };
-    for (const perk of ['extended_mags', 'quick_hands']) {
+    for (const perk of ['extended_mags', 'fast_hands']) {
       const r = resolved('sniper_rifle', perk);
       expect(r?.mag, perk).toBeUndefined();
       expect(r?.reserve, perk).toBeUndefined();
       expect(r?.reload_ms, perk).toBeUndefined();
     }
-    expect(resolved('assault_rifle', 'quick_hands')?.reload_ms).toBeDefined();   // control: a magazine weapon moves
+    expect(resolved('assault_rifle', 'fast_hands')?.reload_ms).toBeDefined();   // control: a magazine weapon moves
   });
 
   it('keeps a hidden primary from throwing during a state snapshot', async () => {
@@ -105,7 +105,7 @@ describe('generated server rule inputs', () => {
     const state = await backend.getState();
     const hidden = WEAPON_MOCK_FIELDS.find(row => row.weapon_id === 'bolt_rifle')!;
     const player = structuredClone(state.players[0]);
-    player.loadout = { weapons: [{ weapon_id: hidden.weapon_id }], perk: 'quick_hands' };
+    player.loadout = { weapons: [{ weapon_id: hidden.weapon_id }], perk: 'fast_hands' };
     const weapons = await backend.getWeapons(), perks = await backend.getPerks();
     expect(() => perkEffectsResolved(state.config, player, weapons, perks)).not.toThrow();
   });

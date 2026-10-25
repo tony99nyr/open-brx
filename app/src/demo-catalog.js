@@ -914,50 +914,25 @@ export const DEMO_PERKS = [
     "blocked_presets": []
   },
   {
-    "perk_id": "quick_hands",
-    "name": "Quick Hands",
-    "desc": "Reload in half the time (not the Sniper Rifle's bolt). Your primary is back in the fight before theirs is -- the trade is a lighter magazine, 20% fewer rounds carried.",
+    "perk_id": "fast_hands",
+    "name": "Fast Hands",
+    "desc": "Reload and swap weapons in half the time. The Sniper Rifle's bolt keeps its normal speed.",
     "tags": [
       "passive",
       "handling"
     ],
     "mechanism": "passive",
     "effects": {
-      "ammo_mult": 0.8,
-      "reload_mult": 0.5
-    },
-    "gain": [
-      "RELOADS 2× FASTER"
-    ],
-    "cost": [
-      "×0.8 AMMO"
-    ],
-    "verified": false,
-    "hidden": false,
-    "blocked_primary": [],
-    "blocked_secondary": [],
-    "blocked_presets": []
-  },
-  {
-    "perk_id": "quick_switch",
-    "name": "Quick Switch",
-    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s. A lighter rig means less padding though -- 20 less armor.",
-    "tags": [
-      "passive",
-      "handling"
-    ],
-    "mechanism": "passive",
-    "effects": {
-      "max_armor_add": -20,
+      "ammo_mult": 1.0,
+      "reload_mult": 0.5,
       "switch_mult": 0.5
     },
     "gain": [
+      "RELOADS 2× FASTER",
       "SWAPS 2× FASTER"
     ],
-    "cost": [
-      "-20 ARMOR"
-    ],
-    "verified": true,
+    "cost": [],
+    "verified": false,
     "hidden": false,
     "blocked_primary": [],
     "blocked_secondary": [],

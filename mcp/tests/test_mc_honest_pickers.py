@@ -25,7 +25,7 @@ def test_each_perk_view_names_the_presets_it_is_refused_under_from_its_effects()
     assert perks["armor_piercing"]["blocked_presets"] == ["shields"], perks["armor_piercing"]
     assert perks["body_armor"]["blocked_presets"] == ["shields"], perks["body_armor"]
     # control: a perk with a negative armour effect, and a perk with neither, are refused under no preset
-    assert perks["quick_switch"]["blocked_presets"] == [], perks["quick_switch"]
+    assert perks["fast_hands"]["blocked_presets"] == [], perks["fast_hands"]
     assert perks["extended_mags"]["blocked_presets"] == [], perks["extended_mags"]
 
 
