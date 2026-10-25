@@ -3100,8 +3100,18 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
     entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
     (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
-    flips = [k for k in rules_c if (rules_b[k]["pass"] and not rules_c[k]["pass"])
-             or (rules_s[k]["pass"] and not (rules_b[k]["pass"] and rules_c[k]["pass"]))]
+    def flipped(passes):
+        return [k for k in rules_c if (passes(rules_b, k) and not passes(rules_c, k))
+                or (passes(rules_s, k) and not (passes(rules_b, k) and passes(rules_c, k)))]
+
+    def ceiling_passes(rules, k):
+        v, bar = rules[k].get("ceiling_value"), rules[k]["bar"]
+        return True if v is None else (v < bar if k.split("|", 1)[1].startswith("R10a") else v >= bar)
+
+    flips = flipped(lambda rules, k: rules[k]["pass"])
+    # F610: a cell the shipped catalogue already fails at real aim can still be broken at the 0.9 ceiling
+    ceiling_flips = [k for k in flipped(ceiling_passes) if k not in flips]
+    flips += ceiling_flips
     already = [k for k in rules_s if not rules_s[k]["pass"]]
     by_key_c = {key: name for name, key in mc["keys"].items()}
     candidates = [(name, key, by_key_c[key]) for name, key in mb["keys"].items()
@@ -3112,6 +3122,7 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
                      if not _last_cell_material_loss(mb, mc, name, new_name)]
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
                                "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
+            "ceiling_rule_flips": ceiling_flips,
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
             "haze_flip_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
@@ -3183,7 +3194,9 @@ def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_
 def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True,
                 heat_cool_while_firing=True) -> dict:
     """R10 uses the CI duel engine for unheated pairs and the kit engine when either gun has heat.
-    R10a is the median finish time for 35 HP. R10b tests each primary on Standard and Shields."""
+    R10a is the median finish time for 35 HP. R10b tests each primary on Standard and Shields.
+    F610: this gate stays at aim 0.9. It is absolute, not a flip, and every shipped sidearm already fails it at
+    REAL_AIM, so a real-aim bar would refuse any sidearm; the rule table reports the real-aim R10b cells."""
     reps = _reps("rule", scale)
     sidearm_heated = bool(world.cat._row(wid).get("heat"))
     kind, temp = wid, None

@@ -1551,6 +1551,18 @@ def test_a_duel_undecided_at_the_cap_is_a_draw_not_a_pool_ranking():
     assert rate == 0.5 and rate.censored == 1.0
 
 
+def test_a_rule_broken_only_at_the_ceiling_still_flips():
+    # F610 (Opus review): a cell the shipped catalogue fails at real aim could never flip, so a candidate could gut
+    # the rule at 0.9 unseen
+    def cell(real, ceiling):
+        return {"standard|R1": {"value": real, "bar": 0.65, "pass": real >= 0.65, "ceiling_value": ceiling}}
+    empty = {"keys": {}, "near_top": {}}
+    kept = R.balance_kept(cell(0.40, 0.93), cell(0.40, 0.93), cell(0.20, 0.30), empty, empty, None)
+    assert not kept["pass"] and kept["numbers"]["ceiling_rule_flips"] == ["standard|R1"]
+    held = R.balance_kept(cell(0.40, 0.93), cell(0.40, 0.93), cell(0.38, 0.90), empty, empty, None)
+    assert held["pass"] and not held["numbers"]["ceiling_rule_flips"]
+
+
 def test_melee_finishes_at_close_only():
     w = R.shipped_world()
     kit = R.make_kit(w, "Glock", "glock")
