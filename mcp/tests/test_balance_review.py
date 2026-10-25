@@ -77,6 +77,12 @@ def test_a_last_round_that_kills_if_it_lands_is_a_finish():
     assert fighter._finish_ms(1, target, 0) < float("inf")
 
 
+def test_a_zero_success_cell_is_never_near_top():
+    # Every kit is within 0.05 of a 0.011 top, but zero wins add no value.
+    assert not R._near_top("hill hold", 0.0, 0.011)
+    assert R._near_top("hill hold", 0.01, 0.011)
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)

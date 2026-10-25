@@ -2268,6 +2268,9 @@ def _top(values) -> float:
 
 
 def _near_top(column: str, value: float, top: float) -> bool:
+    # A zero-success cell adds no value, even when every kit is within the absolute margin of zero.
+    if value <= 0:
+        return False
     if column == "ammo stress":
         return value >= top * (1 - NEAR_TOP_MARGIN[column])
     return value >= top - NEAR_TOP_MARGIN[column]
