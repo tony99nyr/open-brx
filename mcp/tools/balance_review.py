@@ -145,7 +145,9 @@ CLOSE_EDGE_M = 10.0           # range bands for the rush model: close under 10 m
 # rush compares it with its tracked distance, and a duel band counts as inside it only for the close band. The
 # U002 proxy put the emitter's physical reach near 10 m, which is a sensitivity line, not a range-token effect.
 HEADSET_WORD_REACH_M = None
-HEADSET_WORD_DELAY_MS = 88.0  # the word lands this long after the gun word (Callsign capture cap30, compile.py)
+HEADSET_WORD_DELAY_MS = B.HEADSET_WORD_DELAY_MS   # the word lands this long after the gun word (balance_sim)
+# The word lands on the same hit as its gun word, needs the target exposed when it lands, and is dropped when the
+# shooter has died since the pull (its headset no longer fires). It carries no weapon effect (no Haze, no DoT).
 MID_EDGE_M = 30.0
 RUSH_SPEED_MS = 5.0           # a rusher closes at 5 m/s ...
 RUSH_SPEED_SWEEP = (2.5, 5.0, 8.0)
@@ -649,7 +651,7 @@ class Fighter:
         # F609: melee only where the rush tracks the distance (`dist_m`); a plain close duel never swings.
         self.melee_ready, self.melee_winding, self.melee_in_hand = 0.0, False, False
         self.pending_head = 0       # F602: the last pull's headset word, delivered HEADSET_WORD_DELAY_MS later
-        self.word = None            # (due t, damage, target) of a queued headset word
+        self.words = []             # queued headset words: (due t, damage, target)
         self.dist_m = None
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
@@ -1028,20 +1030,22 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
     alert = alert or {}
     for f in alert:
         f.next_t = math.inf
+    for f in allf:
+        f.words = []
     first_hit = None
     while True:
         if stop_when and stop_when():
+            while any(word_due(f) <= cap_ms for f in allf):      # words already in flight still land
+                land_word(min(allf, key=word_due))
             break
         cands = [f for f in allf if f.alive and f.next_t <= cap_ms and f.target() is not None]
         ticks = [f for f in allf if f.alive and f.dot_next <= cap_ms]
-        words = [f for f in allf if f.word and f.word[0] <= cap_ms]
+        words = [f for f in allf if word_due(f) <= cap_ms]
         if not cands and not ticks and not words:
             break
-        if words and min(f.word[0] for f in words) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
-                                                         default=math.inf):
-            f = min(words, key=lambda x: x.word[0])
-            if land_word(f) and first_hit is None:
-                first_hit = f.kill_times[-1]
+        if words and min(map(word_due, words)) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
+                                                     default=math.inf):
+            land_word(min(words, key=word_due))
             continue
         if ticks and min(f.dot_next for f in ticks) <= min((f.next_t for f in cands), default=math.inf):
             f = min(ticks, key=lambda x: x.dot_next)
@@ -1221,10 +1225,11 @@ def peek_encounter(rng, m: Fighter, v: Fighter, escape_p=PEEK_P_ESCAPE):
         nxt = min((f.next_t for f in cands), default=math.inf)
         ticks = [f for f in (m, v) if f.alive and f.dot_next <= FIGHT_CAP_MS]
         tick_t = min((f.dot_next for f in ticks), default=math.inf)
-        words = [f for f in (m, v) if f.word and f.word[0] <= FIGHT_CAP_MS]
-        word_t = min((f.word[0] for f in words), default=math.inf)
-        if words and word_t <= min(nxt, tick_t):
-            if land_word(min(words, key=lambda x: x.word[0])):
+        words = [f for f in (m, v) if word_due(f) <= FIGHT_CAP_MS]
+        word_t = min(map(word_due, words), default=math.inf)
+        pending_alert = t_alert if t_alert is not None and not alerted else math.inf
+        if words and word_t <= min(nxt, tick_t) and word_t < pending_alert:
+            if land_word(min(words, key=word_due)):
                 break
             continue
         nxt = min(nxt, tick_t)
@@ -1275,21 +1280,27 @@ def headset_word_reaches(dist: int, dist_m: float | None = None) -> bool:
 
 
 def queue_word(f, tgt, t: float) -> None:
-    """After `f`'s gun word lands on `tgt`, queue the pull's headset word HEADSET_WORD_DELAY_MS later. It lands
-    when the gun word did (one pull, one aim: an assumption until the bench measures the two apart)."""
+    """After `f`'s gun word lands on `tgt`, queue the pull's headset word HEADSET_WORD_DELAY_MS later (see the
+    assumptions beside HEADSET_WORD_REACH_M)."""
     if f.pending_head:
-        f.word = (t + HEADSET_WORD_DELAY_MS, f.pending_head, tgt)
+        f.words.append((t + HEADSET_WORD_DELAY_MS, f.pending_head, tgt))
+
+
+def word_due(f) -> float:
+    return min((w[0] for w in f.words), default=math.inf)
 
 
 def land_word(f) -> bool:
-    """Deliver `f`'s queued headset word. True when it kills."""
-    t, dmg, tgt = f.word
-    f.word = None
-    if not tgt.alive:
+    """Deliver `f`'s earliest queued headset word. True when it kills."""
+    w = min(f.words, key=lambda x: x[0])
+    f.words.remove(w)
+    t, dmg, tgt = w
+    if not f.alive or not tgt.alive or not exposed(tgt, t):
         return False
     killed = tgt.receive(dmg, src=f, t=t)
     if killed:
         f.kill_times.append(t)
+        f.after(t, False, True)
     return killed
 
 
@@ -1312,12 +1323,12 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float, speed_m_s=RUSH_S
     while True:
         cands = [f for f in (m, v) if f.alive and f.next_t <= RUSH_CAP_MS and f.target() is not None]
         ticks = [f for f in (m, v) if f.alive and f.dot_next <= RUSH_CAP_MS]
-        words = [f for f in (m, v) if f.word and f.word[0] <= RUSH_CAP_MS]
+        words = [f for f in (m, v) if word_due(f) <= RUSH_CAP_MS]
         if not cands and not ticks and not words:
             break
-        if words and min(f.word[0] for f in words) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
-                                                         default=math.inf):
-            land_word(min(words, key=lambda x: x.word[0]))
+        if words and min(map(word_due, words)) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
+                                                     default=math.inf):
+            land_word(min(words, key=word_due))
             continue
         if ticks and min(f.dot_next for f in ticks) <= min((f.next_t for f in cands), default=math.inf):
             target = min(ticks, key=lambda x: x.dot_next)

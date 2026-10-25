@@ -1453,6 +1453,21 @@ def test_the_headset_word_reaches_every_range_and_lands_88_ms_later():
     assert est == 0.0, est
 
 
+def test_headset_words_queue_and_a_dead_shooters_word_is_dropped():
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    f = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    tgt = R.Fighter(kit, (500, 0, 0), 0, 0, random.Random(3))
+    f.pending_head = 20
+    R.queue_word(f, tgt, 0.0)
+    R.queue_word(f, tgt, 50.0)          # a second word inside 88 ms queues, it does not overwrite the first
+    assert len(f.words) == 2 and R.word_due(f) == R.HEADSET_WORD_DELAY_MS
+    R.land_word(f)
+    assert tgt.health == 480 and R.word_due(f) == 50.0 + R.HEADSET_WORD_DELAY_MS
+    f.alive = False                     # the shooter died since the pull: its headset no longer fires
+    assert not R.land_word(f) and tgt.health == 480 and not f.words
+
+
 def test_a_stated_headset_reach_keeps_the_word_inside_it_only():
     old = R.HEADSET_WORD_REACH_M
     R.HEADSET_WORD_REACH_M = 10.0      # the U002 proxy's physical reach, a sensitivity line

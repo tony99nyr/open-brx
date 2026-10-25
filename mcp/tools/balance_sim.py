@@ -152,6 +152,7 @@ DEFAULT_BAND = "mid"
 # Slot-kind anchors: a weapon is compared with an anchor of its own kind (`anchor_for()`).
 ROLE_ANCHORS = {"sidearm": "usp"}
 CRIT_MULT = 1.5
+HEADSET_WORD_DELAY_MS = 88.0   # the headset word lands this long after the gun word (Callsign capture cap30, compile.py; F602)
 INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
 DEFAULT_N = tuple(range(2, 11))
@@ -409,16 +410,17 @@ class Match:
         self.heap: list = []
         self._seq = itertools.count()
         self.dist_w = VENUE_DISTANCE[cfg.venue]
+        self._words: dict = {}      # F602: event key -> (target pid, damage, target deaths, shooter deaths)
 
     def push(self, t: float, kind: int, pid: int, gen: int = 0) -> None:
         heapq.heappush(self.heap, (t, next(self._seq), kind, pid, gen))
 
-    SEEK, SHOT, CEND, TICK, RESPAWN = range(5)
+    SEEK, SHOT, CEND, TICK, RESPAWN, WORD = range(6)
 
     def run(self) -> None:
         for p in self.players:
             self.push(self.rng.uniform(0, INITIAL_JITTER_MS), self.SEEK, p.pid)
-        handlers = (self._seek, self._shot, self._contact_end, self._tick, self._respawn)
+        handlers = (self._seek, self._shot, self._contact_end, self._tick, self._respawn, self._word)
         end = self.cfg.match_ms
         while self.heap:
             t, _s, kind, pid, gen = heapq.heappop(self.heap)
@@ -564,7 +566,12 @@ class Match:
             if self.rng.random() < p.hit_p:
                 if w.crit_pct and self.rng.random() * 100.0 < w.crit_pct:
                     gun = int(gun * CRIT_MULT)
-                self._hit(p, target, gun + extra, t)
+                self._hit(p, target, gun, t)
+                if extra and target.alive:
+                    # F602: the headset word lands HEADSET_WORD_DELAY_MS later, on the same hit, as its own event
+                    key = next(self._seq)
+                    self._words[key] = (target.pid, extra, target.deaths, p.deaths)
+                    self.push(t + HEADSET_WORD_DELAY_MS, self.WORD, p.pid, key)
         if not p.alive or p.target is None or p.engage_id != gen:
             return
         nxt = t + interval
@@ -601,6 +608,21 @@ class Match:
             tgt.poison_dmg = w.dot_per_tick
             tgt.poison_tick_ms = w.dot_tick_ms
             self.push(t + w.dot_tick_ms, self.TICK, tgt.pid, tgt.poison_gen)
+        if tgt.health <= 0:
+            self._death(tgt, src, t, dot=False)
+
+    def _word(self, src: Player, t: float, key: int) -> None:
+        """Deliver a queued headset word: plain damage, no weapon effect. Dropped when either side died since the
+        pull (the shooter's headset no longer fires; the target is a new life)."""
+        tpid, dmg, tgt_deaths, src_deaths = self._words.pop(key)
+        tgt = self.players[tpid]
+        if not src.alive or not tgt.alive or src.deaths != src_deaths or tgt.deaths != tgt_deaths:
+            return
+        rem = dmg
+        for layer in ("shield", "armour", "health"):
+            take = min(getattr(tgt, layer), rem)
+            setattr(tgt, layer, getattr(tgt, layer) - take)
+            rem -= take
         if tgt.health <= 0:
             self._death(tgt, src, t, dot=False)
 
