@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 108.** Desk 12 · bench 92 · decision 4.
+**MVP open: 106.** Desk 10 · bench 92 · decision 4.
 
-**MVP DESK (12),** a keyboard is enough:
-- 🟠 **F595** · **F604** · **F605** · **F613**
+**MVP DESK (10),** a keyboard is enough:
+- 🟠 **F595** · **F613**
 - 🟡 **F547** · **F614**
 - 🟢 **F512** · **F544** · **F574** · **F598** · **F608** · **F615**
 
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F616 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F617 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -49,8 +49,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F604 🟠 SIM: A CANDIDATE'S ARMOUR CAN DIFFER FROM THE COMPILED POOL.** brx2, 2026-10-25 (Astra #11, brx1). The review reads `effects.max_armor_add`; compile uses its own `_MAX_ARMOR_ADD` table, so a JSON-only armour change is simulated but never shipped. Share one grant calculation or refuse such a candidate, and print the compiled pools in every report. Owner brx2. `build`.
-- **F605 🟠 SIM: THE FIELD MODEL NEVER REGENERATES SHIELDS.** brx2, 2026-10-25 (phase C pass 5, brx1). Only the duel `Fighter` has `advance_shield`; `balance_sim.Match` and `KitMatch` do not, so Shields team and field numbers ignore regen, and a regen perk (pass 7's Recharge) cannot be measured. Add regen with a per-kit delay. Owner brx2. `build`.
 - **F608 🟢 SIM: A FIGHTER STALLS WHEN ITS SECONDARY IS EMPTY BUT HAS RESERVE.** brx2, 2026-10-25 (Codex sol review of F601). `Fighter._maybe_swap` draws only a secondary with rounds in the magazine, so a fighter whose primary is spent and whose secondary is empty with reserve stops firing (`next_t` infinite). Older than F601; rare in the shipped kits. The field's combo kit stalls the same way: the alpha path draws a spent finisher (the Sniper) unconditionally, and the base shot schedules nothing, though the Charge Rifle can still fire (Codex sol review of the field half). Owner brx2. `build`.
 - **F613 🟠 GATE: A WORKTREE VENV WITHOUT PYRIGHT TURNS THE PYRIGHT CHECK INTO A SILENT SKIP.** brx2 for brx3, 2026-10-25 (brx1). brx3's polish passed `test:all --ui` 31/31 locally and went red at land on `test_pyright`: a Codex subagent had made a partial uv venv in the lane worktree (python 3.13 with httpx, uvicorn and websockets, no pyright). `scripts/lib/python.mjs` picks the checkout's own `.venv` first with no warning, so `test_pyright` took its legitimate skip; the lander uses the main `.venv`, which has pyright. Fix one or both: `test:all` fails, or prints a loud line, on a pyright skip when a repo venv was found; `python.mjs` warns on or refuses a worktree `.venv` without the dev extras (`import pyright, websockets, starlette`). Until then, run `cd mcp && ~/gitrepos/battlecompany/.venv/bin/python run_tests.py pyright` before a submit. `build`.
 - **F614 🟡 THE PUBLISHED TIME-TO-KILL ENDS AT THE LAST PULL, NOT AT THE HEADSET WORD.** brx2, 2026-10-25 (brx1's call; Opus review of F602). `WeaponCatalog.time_to_kill()` (and the `ttk_ms`/`bars.ttk` it feeds) counts a kill at its last pull. When that kill needs the pull's headset word, it lands about 88 ms later on the wire (the Shotgun against 115 always does). Add the delay to the published number. A correctness fix, not a balance change; after the sim fixes and the phase C pass 6 and 7 re-runs. Owner: whoever owns compile then. `build`.

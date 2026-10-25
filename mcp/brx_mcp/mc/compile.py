@@ -304,12 +304,17 @@ def play_volume(environment: str | None) -> int:
 
 # S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
 # `max_armor_add` perk carries. Body Armor +25 (was +50 -- "maybe 50 is too much armor and it should
-# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). Kept as
-# a compiler-side table, keyed by perk_id, rather than trusting `perks.json`'s own `effects.
-# max_armor_add` at compile time: the two must obviously agree (perks.json is the wire-visible
-# documentation of the same number), but this is the one place the ARITHMETIC runs, matching every
-# other shared-formula table in this module (`_POOL_GRANT_PCT`'s S50-draft predecessor, `_SIR_*`).
-_MAX_ARMOR_ADD: dict[str, int] = {"body_armor": 25, "quick_switch": -20}
+# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). The number
+# lives once, in `perks.json`'s `effects.max_armor_add`; the arithmetic runs here (`armed_armor`,
+# `armed_shield`). F604 (Astra sim review #11): this used to be a second, hand-kept table, so a
+# perks.json-only change was simulated by the balance review but never reached the gun.
+def max_armor_grants(perks: PerkCatalog) -> dict[str, int]:
+    """{perk_id: flat armour grant} from a perk catalogue's `effects.max_armor_add` (F604)."""
+    return {r["perk_id"]: int(r["effects"]["max_armor_add"]) for r in perks._rows
+            if (r.get("effects") or {}).get("max_armor_add")}
+
+
+_MAX_ARMOR_ADD: dict[str, int] = max_armor_grants(PerkCatalog())
 
 
 # §7.3: the health the Shields preset carries, and the floor the warning below measures against. It
@@ -382,7 +387,7 @@ def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> Healt
     return "custom"
 
 
-def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -> int:
+def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
     floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
     `_to_gc()`; both bounds are our own policy choice). The floor matters now that a cost perk
@@ -399,18 +404,18 @@ def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -
     §2) -- so this returns `armor` (0, by construction of that branch) untouched."""
     if shields:
         return max(0, min(255, int(armor)))
-    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    grant = (_MAX_ARMOR_ADD if grants is None else grants).get(perk_id or "", 0)   # `grants`: a candidate catalogue's
     return max(0, min(255, int(armor) + grant))
 
 
-def armed_shield(shield: int, perk_id: str | None = None, shields: bool = False) -> int:
+def armed_shield(shield: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET shield after a `max_armor_add` perk's grant, ONLY when `shields` (`is_shields_preset()`)
     -- the branch `armed_armor()` defers to. Same 255 cap / 0 floor as armour; outside a shields
     preset this is the shield pool untouched (still clamped, for consistency, though nothing writes
     it that high today)."""
     if not shields:
         return max(0, min(255, int(shield)))
-    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    grant = (_MAX_ARMOR_ADD if grants is None else grants).get(perk_id or "", 0)
     return max(0, min(255, int(shield) + grant))
 
 
@@ -2016,6 +2021,7 @@ class Compiler:
                  distinct_weapon_cells: bool = False) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
+        self._grants = max_armor_grants(self.perks)   # F604: this compiler's own catalogue arms the pools
         # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
         # F312: None = the shipped fn-28 row. A number = `--bench-capture-row`: the `<15,0>` row's function.
@@ -2104,11 +2110,11 @@ class Compiler:
             # measured that far). Keep the cap, but do not "fix" it believing the hardware requires
             # it. In a base-armour-0 game (`shields`) the grant compiles into SHIELD instead — see
             # `armed_armor()`/`armed_shield()`.
-            armor=armed_armor(armor_base, pid, shields),
+            armor=armed_armor(armor_base, pid, shields, self._grants),
             # S45: `shield_base` is now the HOST'S OWN `health.max_shield` (was a fixed constant every
             # game armed regardless of what the host asked for) -- `armed_shield()` still redirects a
             # `max_armor_add` perk's grant here in a shields-preset game (S50), on top of that number.
-            shield=armed_shield(shield_base, pid, shields),
+            shield=armed_shield(shield_base, pid, shields, self._grants),
             alt_reload=bool(ov.get("easy_reload")),          # S50: moved from the perk slot to the per-player override; $BMAP,1,97
         )
 
@@ -2209,9 +2215,9 @@ class Compiler:
             pe["swap_ms"] = v
         # max_hp is never moved by any current perk — never populated, which is the correct "absent"
         # per the wire contract, not an oversight.
-        if (v := pair(armor_base, armed_armor(armor_base, pid, shields))) is not None:
+        if (v := pair(armor_base, armed_armor(armor_base, pid, shields, self._grants))) is not None:
             pe["max_armor"] = v
-        if (v := pair(shield_base, armed_shield(shield_base, pid, shields))) is not None:
+        if (v := pair(shield_base, armed_shield(shield_base, pid, shields, self._grants))) is not None:
             pe["max_shield"] = v
         return pe
 
