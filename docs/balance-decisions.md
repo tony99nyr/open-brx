@@ -187,11 +187,27 @@ The log is append-only, so these corrections do not edit the sections they name.
   from `e91600c2`, 2026-10-17; 0.4.26 is from `29c755645`, 2026-10-24).
 - **F576.** The USP's 2.10 s is the figure at 12 damage. Since F579 (10 damage) the USP publishes 2.56 s.
 
-## 2026-10-25: balance 0.4.31 part A
+## 2026-10-25: balance review sign-off (0.4.31)
 
-- Verdict: none. This records Tony's documentation and tuning call; no balance review verdict is available here.
-- Tony's call: AMR fire interval 450 ms on both presets; Body Armor reload ×1.25; use fraction arithmetic for AP damage; Extended Mags ammunition multipliers are ×1.5 on Shields and ×2 on Standard, with swap ×1.3; merge FH in part B.
-- Decision: Body Armor adds 20 armour and costs ×1.25 primary reload time. Extended Mags uses ×2 ammunition on Standard and ×1.5 on Shields, with ×1.3 weapon swap time. AP prices are per weapon: Assault Rifle 4/131, SMG 4/131, Shotgun 15/467, Suppressor 6/314 and Energy Rifle 4/170. AMR ordinary fire interval is 450 ms on Standard and Shields, with no AP pair in part A.
-- AP guard: lift the guard for AMR, Burst Rifle and USP only after fraction arithmetic proves each price. Keep the lift pending that proof. Higher AP damage for SMG and Shotgun was rejected because it would remove the headset-word cost. Recharge Shields was rejected.
-- FH merge is part B and remains pending.
-- Command: documentation record, no `balance_review.py` verdict.
+- Verdict: none from `balance_review.py` for the set as a whole. The evidence is the phase C sandbox passes 6, 7a,
+  7b, 7c, 7d and 7e (`~/reviews-2026-10-18-sandbox/phase-c/report.md`); pass 7e's Standard-only gate on scenario 22
+  passed Body Armor +20 / reload ×1.25. The sim's field ratios carry the F607 caveat (field contacts are not
+  independent timers).
+- Tony's call (2026-10-25, relayed by brx1, from his signed-off review page):
+  1. AMR fire interval 350 to 450 ms on both presets. Every other AMR number stays.
+  2. Body Armor: +25 to +20 armour. Reload ×1.25 stays, with the Sniper bolt exempt.
+  3. Armour Piercing pairs (`ap_dmg` / `ap_fire_ms`): Assault Rifle 4/131, SMG 4/131, Shotgun 15/467, Suppressor
+     6/314, Energy Rifle 4/170. The Stinger stays 5/250.
+  4. AP on the AMR (10/399), Burst Rifle (7/430) and USP (5/277): approved, but the compiler guard on their fn 37
+     cell stays until the F618 bench row proves the gun-side emission after the AP re-key. Under AP a weapon's crit
+     chance is zero, which keeps the "no AP with crit chance" rule; this only matters once F618 lifts the guard for
+     the AMR (30% crit) and the Burst Rifle (40% crit).
+  5. Fast Hands: Quick Hands and Quick Switch merge into one perk, reload ×0.5, swap ×0.5, ammo ×1.0, no armour
+     cost. Stored loadouts move both old ids to `fast_hands`.
+  6. Extended Mags: ammo ×1.5 on Shields; ×2.0 on Standard; swap ×1.3 on both.
+  7. Rejected: raising AP damage on the SMG and Shotgun to price in the headset word AP loses (the shipped gun
+     drops it, `compile.py` AP path). Close-range AP against the plain gun stays SMG 35.2%, Shotgun 49.7%.
+  8. Rejected: the Recharge perk on Shields (pass 7c found no passing variant, and every OP Recharge kit carried
+     the AMR).
+- The Shields perk pool is Fast Hands and Extended Mags. Body Armor and AP stay refused there (A80).
+- Command: recorded by hand; no `--record-from` run.
