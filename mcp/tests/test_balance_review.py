@@ -1013,7 +1013,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 20
+    assert R.SCENARIO_VERSION == 21
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -2255,3 +2255,18 @@ def test_record_needs_a_call_a_clean_tree_and_an_unmoved_fingerprint():
         assert "last paragraph.\n\n## 2026-10-18: f\n" in tight, tight
         assert "- Fails: viable, balance_kept." in tight, tight
         assert "- Fails:" not in text
+
+
+def test_the_verdict_states_the_compiled_pools_and_they_match_the_sim():
+    # F604 (Astra #11): every candidate report states the pools the compiler arms, and they equal the sim's
+    w = R.shipped_world()
+    pools = R.compiled_pools(w)
+    for pid in [None] + R.fieldable_perks(w.perks):
+        for preset in ("standard", "shields"):
+            if pools[str(pid or "none")][preset] is not None:     # None: the preset refuses the perk
+                assert pools[str(pid or "none")][preset] == list(R.pool_parts(preset, w.perks.effects(pid)))
+    assert pools["body_armor"]["shields"] is None
+    rows = [dict(r, effects=dict(r.get("effects") or {})) for r in w.perks._rows]
+    next(r for r in rows if r["perk_id"] == "body_armor")["effects"]["max_armor_add"] = 40
+    cand = R.World(w.cat, R.PerkCatalog(rows))
+    assert R.compiled_pools(cand)["body_armor"]["standard"][1] == 110

@@ -108,8 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 20   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611)
+SCENARIO_VERSION = 21   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -354,6 +354,24 @@ def pool_parts(preset: str, fx: dict) -> tuple[int, int, int]:
     return hp, max(0, min(255, arm + add)), max(0, min(255, sh))
 
 
+def compiled_pools(world: "World") -> dict:
+    """{perk or "none": {preset: [health, armour, shield]}} through compile's own armed_armor/armed_shield, with
+    the world's grant for each perk (F604)."""
+    grants = _compile_mod.max_armor_grants(world.perks)
+    compiler = _compile_mod.Compiler(perks=world.perks)
+    out = {}
+    for pid in [None] + fieldable_perks(world.perks):
+        out[str(pid or "none")] = {}
+        for preset in ("standard", "shields"):
+            if pid and compiler.preset_block(pid, preset):
+                out[str(pid)][preset] = None          # refused on this preset: no player can field it
+                continue
+            hp, arm, sh = HEALTH_PRESETS[preset]
+            out[str(pid or "none")][preset] = [hp, _compile_mod.armed_armor(arm, pid, arm == 0, grants),
+                                               _compile_mod.armed_shield(sh, pid, arm == 0, grants)]
+    return out
+
+
 def pool_total(preset: str, fx: dict) -> int:
     return sum(pool_parts(preset, fx))
 
@@ -450,6 +468,7 @@ class Kit:
     melee_dmg: int
     melee_ms: float
     melee_swap_ms: float         # F609: the slot-4 draw, the larger t15 of the gun and the melee slot
+    shield_regen_delay_ms: float = float(SHIELD_REGEN_DELAY_MS)   # F605: a sim-only per-kit quiet window (set with replace())
 
     def pool(self, preset: str) -> int:
         return dict(self.pools)[preset]
@@ -672,10 +691,10 @@ class Fighter:
         return self.health + self.armour + self.shield
 
     def advance_shield(self, t):
-        """Apply the Shields preset's four one-second grants after 6.5 seconds without damage."""
+        """Apply the Shields preset's four one-second grants after the kit's quiet window (6.5 s shipped)."""
         if not self.alive or self.shield_max <= 0 or self.shield >= self.shield_max:
             return
-        first = self.last_damage_t + SHIELD_REGEN_DELAY_MS
+        first = self.last_damage_t + self.kit.shield_regen_delay_ms
         step = math.ceil(self.shield_max / SHIELD_REGEN_GRANTS)
         while self.shield_grants < SHIELD_REGEN_GRANTS and first + self.shield_grants * SHIELD_REGEN_STEP_MS <= t:
             self.shield = min(self.shield_max, self.shield + step)
@@ -1779,6 +1798,7 @@ class FieldKit:
     pool: B.Pool
     combo: bool
     ap: bool
+    shield_regen_delay_ms: float = float(SHIELD_REGEN_DELAY_MS)   # F605: a sim-only per-kit quiet window
 
 
 def _wm(world: World, wid: str, fx: dict | None):
@@ -1788,7 +1808,11 @@ def _wm(world: World, wid: str, fx: dict | None):
 
 
 def field_kit(world: World, name: str, primary: str, secondary: str | None = None, perk: str | None = None,
-              combo=False) -> FieldKit:
+              combo=False, preset: str = "standard") -> FieldKit:
+    """`preset` (F605): the health preset the field kit fields; "shields" gives an armour-0 pool that regenerates.
+    A perk the preset refuses (Armour Piercing or an armour grant on Shields) raises, as MC refuses it."""
+    if perk and (why := _compile_mod.Compiler(perks=world.perks).preset_block(perk, preset)):
+        raise ValueError(f"{perk} on {preset}: {why}")
     fx = world.fx(perk)
     models, swap = (_wm(world, primary, fx),), 0.0
     ap = bool(fx.get("armor_piercing"))
@@ -1802,7 +1826,7 @@ def field_kit(world: World, name: str, primary: str, secondary: str | None = Non
         models += (_wm(world, secondary, None),)
         sw = {"switch_mult": fx["switch_mult"]} if "switch_mult" in fx else None
         swap = float(max(world.cat.swap_ms(primary, sw), world.cat.swap_ms(secondary, sw)))
-    hp, arm, sh = pool_parts("standard", fx)
+    hp, arm, sh = pool_parts(preset, fx)
     return FieldKit(name, models, swap, B.Pool(hp, arm, sh, B.default_pool().respawn_ms),
                     combo and secondary is not None, ap)
 
@@ -1909,6 +1933,8 @@ class KitMatch(B.Match):
             tgt.health -= min(tgt.health, dmg)
             if tgt.health <= 0:
                 self._death(tgt, src, t, dot=False)
+            elif dmg > 0:
+                self._damaged(tgt, t)
             return
         super()._hit(src, tgt, dmg, t)
 
@@ -1985,6 +2011,7 @@ class KitMatch(B.Match):
         pool = p.kpool
         p.alive = True
         p.committed = False
+        p.regen_gen += 1           # F605: a new life starts full
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
         if len(p.models) > 1:
             p.stash = [(m.mag, m.reserve, -1.0, 0.0, t, -1.0, 0.0, -1e9, 0, 0, False) for m in p.models]
@@ -2008,6 +2035,7 @@ def _kit_player(pid, team, fk: FieldKit):
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
     p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
+    p.regen_delay_ms = fk.shield_regen_delay_ms     # F605 (shield_max comes from the pool in Player.__init__)
     return p
 
 
@@ -2958,6 +2986,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "tests": tests, "pass": _overall_pass(tests),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
+        # F604 (Astra #11): the pools the compiler arms for each fieldable perk in the candidate world. The compiler
+        # reads perks.json's max_armor_add, so these equal pool_parts by construction; the report states them.
+        "compiled_pools": compiled_pools(world),
         "marksman_watch": watch,
         "rush_speed_sweep": {"rows": rush_sweep, "verdict_flips": rush_flip} if rush_sweep else None,
         "aim_sweep": subject_aim_sweep(world, mc, subject_kit, _reps("aim_sweep", reps_scale),
@@ -3617,6 +3648,15 @@ def report_markdown(v: dict) -> str:
             numbers = result["numbers"]
             out.append(f"| {branch} | {_num(numbers['kills_per_stock'])} | "
                        f"{_num(numbers['median_ttk_ms'])} | {result['pass']} |")
+        out.append("")
+    if v.get("compiled_pools"):
+        out += ["## Compiled pools (health / armour / shield)", "",
+                "What the compiler arms for each fieldable perk in the candidate world (F604). Refused: the preset "
+                "refuses the perk.", "", "| perk | standard | shields |", "|---|---|---|"]
+        for pid, by_preset in v["compiled_pools"].items():
+            cells = [" / ".join(map(str, by_preset[p])) if by_preset.get(p) else "refused"
+                     for p in ("standard", "shields")]
+            out.append(f"| {pid} | {cells[0]} | {cells[1]} |")
         out.append("")
     rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
     out += ["## Balance rules", "",
