@@ -83,9 +83,9 @@ PerkView {
   mechanism: "passive" | "slot_frame",
   effects: {                       // passive knobs the compiler understands (all optional)
     max_armor_add?: number,        // a FLAT armour grant/cost (docs/perk-design.md §2, decided
-                                    // 2026-09-17): `mc/compile.py` `_MAX_ARMOR_ADD`, keyed by perk_id,
-                                    // is the one table the compiled arithmetic reads; this field is its
-                                    // wire-visible documentation, kept a plain integer. `gain`/`cost`
+                                    // 2026-09-17). This field is the one source of the number:
+                                    // `mc/compile.py` builds `_MAX_ARMOR_ADD` from it and runs the
+                                    // arithmetic (F604). Kept a plain integer. `gain`/`cost`
                                     // below (S50, 2026-09-19) turn it into the "+N ARMOR" line either UI
                                     // renders — neither reads this field directly any more. body_armor
                                     // +25 (was a flat +50), quick_switch

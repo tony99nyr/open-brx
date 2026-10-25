@@ -2263,7 +2263,9 @@ def test_the_verdict_states_the_compiled_pools_and_they_match_the_sim():
     pools = R.compiled_pools(w)
     for pid in [None] + R.fieldable_perks(w.perks):
         for preset in ("standard", "shields"):
-            assert pools[str(pid or "none")][preset] == list(R.pool_parts(preset, w.perks.effects(pid)))
+            if pools[str(pid or "none")][preset] is not None:     # None: the preset refuses the perk
+                assert pools[str(pid or "none")][preset] == list(R.pool_parts(preset, w.perks.effects(pid)))
+    assert pools["body_armor"]["shields"] is None
     rows = [dict(r, effects=dict(r.get("effects") or {})) for r in w.perks._rows]
     next(r for r in rows if r["perk_id"] == "body_armor")["effects"]["max_armor_add"] = 40
     cand = R.World(w.cat, R.PerkCatalog(rows))
