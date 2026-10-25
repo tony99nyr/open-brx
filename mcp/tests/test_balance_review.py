@@ -146,7 +146,7 @@ def test_ammo_stress_matrix_formats_ratio_as_ratio():
     assert R._fmt("ammo stress", float("nan")) == "n/a"
 
 
-def test_bolt_kits_have_no_ammo_stress_cell_or_last_cell_loss():
+def test_bolt_kits_have_no_ammo_stress_cell_or_niche_score_loss():
     world = R.shipped_world()
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
              R.KitSpec("Sniper", "sniper_rifle", R.SECONDARY, None, False),
@@ -162,7 +162,7 @@ def test_bolt_kits_have_no_ammo_stress_cell_or_last_cell_loss():
 
     baseline, candidate = copy.deepcopy(matrix), copy.deepcopy(matrix)
     baseline["near_top"]["Sniper"] = ["peek mid"]
-    # Ammo stress would be the candidate's only near-top cell, but a bolt has no score there.
+    # Ammo stress remains absent for the bolt; its own peek score determines the niche loss.
     candidate["near_top"]["Sniper"] = [column for column in ("ammo stress",)
                                           if math.isfinite(candidate["columns"]["Sniper"][column])]
     assert candidate["near_top"]["Sniper"] == []
@@ -433,61 +433,62 @@ def test_balance_kept_judges_with_context_against_shipped_and_keys_kits_by_weapo
     ok = _rules({"standard|R1": True})
     renamed_b = _m({"Sniper Rifle": ("sniper_rifle", ["peek mid"]), "AMR": ("amr", ["1v1 long"])})
     renamed_c = _m({"Sniper Mk2": ("sniper_rifle", []), "AMR": ("amr", ["1v1 long"])})
+    renamed_b["columns"] = {"Sniper Rifle": {"peek mid": 0.9}}
+    renamed_c["columns"] = {"Sniper Mk2": {"peek mid": 0.5}}
+    renamed_b["reps"] = renamed_c["reps"] = {"duel": 1000}
     t = R.balance_kept(ok, ok, ok, renamed_b, renamed_c, "amr")
     assert t["numbers"]["kits_losing_last_near_top"] == ["sniper_rifle"], t
 
 
-def test_last_near_top_cell_ignores_sampling_noise_but_catches_a_real_drop():
-    baseline = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
-    baseline["columns"] = {"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}}
-    baseline["top"] = {"1v1 close": 0.85}
+def test_baseline_niche_ignores_sampling_noise_but_catches_a_real_drop():
+    baseline = _m({"Top": ("top", ["peek mid"]), "Other": ("other", ["peek mid"])})
+    baseline["columns"] = {"Top": {"peek mid": 0.85}, "Other": {"peek mid": 0.80}}
+    baseline["top"] = {"peek mid": 0.85}
+    baseline["reps"] = {"duel": 1000}
     candidate = copy.deepcopy(baseline)
-    candidate["columns"]["Top"]["1v1 close"] = 0.851
-    candidate["top"]["1v1 close"] = 0.851
+    candidate["columns"]["Top"]["peek mid"] = 0.851
+    candidate["top"]["peek mid"] = 0.851
     candidate["near_top"]["Other"] = []
     quiet = R.balance_kept({}, {}, {}, baseline, candidate, None)
     assert quiet["status"] == "pass", quiet
-    candidate["columns"]["Other"]["1v1 close"] = 0.75
+    assert quiet["numbers"]["near_top_losses_within_noise"] == ["other"]
+    candidate["columns"]["Other"]["peek mid"] = 0.6
     real = R.balance_kept({}, {}, {}, baseline, candidate, None)
     assert real["status"] == "fail", real
 
 
-def test_last_cell_noise_uses_mean_precision_and_non_binomial_errors():
+def test_niche_score_error_uses_mean_precision_and_non_binomial_errors():
     many = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
     many["kits"] += [f"Opponent {i}" for i in range(9)]
     many.update(columns={"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}},
                 top={"1v1 close": 0.85}, reps={"duel": 100})
-    dropped = copy.deepcopy(many)
-    dropped["columns"]["Other"]["1v1 close"] = 0.70
-    assert R._last_cell_material_loss(many, dropped, "Other", "Other")
+    assert math.isclose(R._column_standard_error(many, "Other", "1v1 close", 0.80, 100),
+                        math.sqrt(0.8 * 0.2 / (100 * 10)))
 
     baseline = _m({"Top": ("top", ["field"]), "Other": ("other", ["field"])})
     baseline.update(columns={"Top": {"field": 1.0}, "Other": {"field": 0.99}},
                     top={"field": 1.0}, reps={"field": 600})
     candidate = copy.deepcopy(baseline)
-    candidate["near_top"]["Other"] = []
     candidate["columns"]["Other"]["field"] = 0.8
-    assert R._last_cell_material_loss(baseline, candidate, "Other", "Other")
-
+    assert R._niche_score_material_loss(baseline, candidate, "Other", "Other", "field")
 
     # The same ratio from two kills has much less precision than one from thousands of kills.
     candidate["field_counts"] = {"Top": [(2, 2)] * len(R.FIELD_NS),
                                   "Other": [(2, 2)] * len(R.FIELD_NS)}
-    assert not R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+    assert not R._niche_score_material_loss(baseline, candidate, "Other", "Other", "field")
     candidate["field_counts"] = {"Top": [(2000, 2000)] * len(R.FIELD_NS),
                                   "Other": [(1600, 2000)] * len(R.FIELD_NS)}
-    assert R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+    assert R._niche_score_material_loss(baseline, candidate, "Other", "Other", "field")
 
     baseline["near_top"]["Other"] = ["ambush"]
     baseline["columns"]["Other"] = {"ambush": 1.25}
-    baseline["top"] = {"ambush": 1.3}
     baseline["reps"] = {"ambush": 100}
     candidate = copy.deepcopy(baseline)
     candidate["columns"]["Other"]["ambush"] = 1.19
-    assert not R._last_cell_material_loss(baseline, candidate, "Other", "Other")
+    assert not R._niche_score_material_loss(baseline, candidate, "Other", "Other", "ambush")
 
 
-def test_zero_field_kills_do_not_hide_a_last_near_top_loss():
+def test_zero_field_kills_do_not_hide_a_niche_score_loss():
     baseline = _m({"Top": ("top", ["field"]), "Other": ("other", ["field"])})
     baseline.update(columns={"Top": {"field": 1.0}, "Other": {"field": 0.99}},
                     top={"field": 1.0}, reps={"field": 600})
@@ -497,6 +498,80 @@ def test_zero_field_kills_do_not_hide_a_last_near_top_loss():
     candidate["field_counts"] = {"Top": [(10000, 10000)] * len(R.FIELD_NS),
                                   "Other": [(0, 10000)] + [(10000, 10000)] * (len(R.FIELD_NS) - 1)}
     assert R.balance_kept({}, {}, {}, baseline, candidate, None)["numbers"]["kits_losing_last_near_top"] == ["other"]
+
+
+def test_moved_column_top_cannot_fail_a_kit_whose_own_niche_score_holds():
+    baseline = _m({"Top": ("top", ["peek mid", "field"]), "Related": ("related", ["peek mid"])})
+    baseline.update(columns={"Top": {"peek mid": 0.90, "field": 0.95},
+                             "Related": {"peek mid": 0.88, "field": 0.4}},
+                    top={"peek mid": 0.90, "field": 0.95}, reps={"duel": 10000})
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Top"].update({"peek mid": 0.99, "field": 0.70})
+    candidate["top"].update({"peek mid": 0.99, "field": 0.70})
+    candidate["near_top"]["Related"] = []
+    verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert verdict["status"] == "pass", verdict
+    assert verdict["numbers"]["kits_losing_last_near_top"] == []
+    assert verdict["numbers"]["near_top_losses_within_noise"] == ["related"]
+
+
+def test_own_score_drop_in_every_baseline_niche_column_fails_even_when_still_near_top():
+    baseline = _m({"Top": ("top", ["peek mid", "shields"]),
+                   "Other": ("other", ["peek mid", "shields"])})
+    baseline.update(columns={"Top": {"peek mid": 0.85, "shields": 0.85},
+                             "Other": {"peek mid": 0.80, "shields": 0.80}},
+                    reps={"duel": 1000})
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Top"]["peek mid"] = 0.62
+    candidate["columns"]["Other"].update({"peek mid": 0.60, "shields": 0.60})
+    candidate["top"] = {"peek mid": 0.62, "shields": 0.85}
+    candidate["near_top"]["Other"] = ["peek mid"]
+    verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert verdict["status"] == "fail", verdict
+    assert verdict["numbers"]["kits_losing_last_near_top"] == ["other"]
+    candidate["columns"]["Other"]["shields"] = 0.80
+    candidate["near_top"]["Other"] = ["peek mid", "shields"]
+    held = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert held["status"] == "pass", held
+    assert held["numbers"]["kits_losing_last_near_top"] == []
+
+
+def test_paired_sampling_uses_one_standard_error_for_a_niche_score_drop():
+    baseline = _m({"Top": ("top", ["peek mid"]), "Other": ("other", ["peek mid"])})
+    baseline.update(columns={"Top": {"peek mid": 0.85}, "Other": {"peek mid": 0.80}},
+                    top={"peek mid": 0.85}, reps={"duel": 1000})
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Other"]["peek mid"] = 0.77
+    candidate["near_top"]["Other"] = []
+    verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert verdict["status"] == "fail", verdict
+    assert verdict["numbers"]["kits_losing_last_near_top"] == ["other"]
+
+
+def test_a_kit_carrying_the_changed_perk_is_not_judged_as_a_bystander():
+    # F611: a Body Armor nerf must not fail on CR+Sniper+BA's own score drop; that kit is part of the change
+    def matrix(score):
+        return {"keys": {"Combo": "Combo"}, "near_top": {"Combo": ["peek mid"]},
+                "columns": {"Combo": {"peek mid": score}}, "top": {"peek mid": 0.9}, "kits": ["Combo", "Other"],
+                "specs": {"Combo": {"primary": "charge_rifle", "secondary": "sniper_rifle", "perk": "body_armor",
+                                    "shields_perk": "body_armor", "combo": True}},
+                "reps": {"duel": 3000}}
+    dropped = R.balance_kept({}, {}, {}, matrix(0.9), matrix(0.5), None)
+    assert dropped["numbers"]["kits_losing_last_near_top"] == ["Combo"]
+    kept = R.balance_kept({}, {}, {}, matrix(0.9), matrix(0.5), None, involved={"body_armor"})
+    assert kept["pass"] and kept["numbers"]["kits_losing_last_near_top"] == []
+
+
+def test_ceiling_only_near_top_cells_do_not_define_a_niche():
+    baseline = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
+    baseline.update(columns={"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}},
+                    top={"1v1 close": 0.85}, reps={"duel": 1000})
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Other"]["1v1 close"] = 0.10
+    candidate["near_top"]["Other"] = []
+    verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert verdict["status"] == "pass", verdict
+    assert verdict["numbers"]["kits_losing_last_near_top"] == []
 
 
 def test_a_real_rule_flip_is_caught():
@@ -1985,7 +2060,7 @@ def test_a_rule_flip_only_after_lockout_names_that_branch():
     assert "standard|R1" not in v["failed_heat_branches"].get("throughout", [])
 
 
-def test_branch_last_cell_loss_is_recorded_beside_a_rule_flip():
+def test_branch_niche_score_loss_is_recorded_beside_a_rule_flip():
     real_matrix = R.dominance_matrix
     real_rules = R.run_heated_rules
 
@@ -1996,10 +2071,9 @@ def test_branch_last_cell_loss_is_recorded_beside_a_rule_flip():
             result = copy.deepcopy(result)
             if world.cat._row("charge_rifle")["heat"]["cool_per_s"] == 29:
                 result["near_top"]["Shotgun"] = []
-                result["columns"]["Shotgun"]["1v1 close"] = 0.0
-                result["top"]["1v1 close"] = 0.9
+                result["columns"]["Shotgun"]["peek mid"] = 0.0
             else:
-                result["near_top"]["Shotgun"] = ["1v1 close"]
+                result["near_top"]["Shotgun"] = ["peek mid"]
             result["reps"]["duel"] = 1_000_000
         return result
 
