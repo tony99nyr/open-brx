@@ -443,7 +443,7 @@ class Kit:
     parts: tuple
     melee_dmg: int
     melee_ms: float
-    melee_swap_ms: float = 0.0   # F609: the slot-4 draw, the larger t15 of the gun and the melee slot
+    melee_swap_ms: float         # F609: the slot-4 draw, the larger t15 of the gun and the melee slot
 
     def pool(self, preset: str) -> int:
         return dict(self.pools)[preset]
@@ -735,7 +735,8 @@ class Fighter:
             self.shots += 1
         return r
 
-    def _swap(self, idx, t):
+    def _holster(self, t):
+        """The gun in hand leaves it: a reload or a lever vent stops, and a deferred pickup applies."""
         old = self.gs[self.active]
         self._credit_reload(old, t)
         if old.reload_amount or old.venting:
@@ -746,6 +747,9 @@ class Fighter:
             if old.pending_pickup:
                 old.reserve = max(old.reserve, old.pending_pickup)
                 old.pending_pickup = 0
+
+    def _swap(self, idx, t):
+        self._holster(t)
         self.active = idx
         chosen = self.gs[idx]
         draw = t + self.kit.swap_ms
@@ -842,11 +846,8 @@ class Fighter:
             if not self.melee_winding:
                 self.melee_winding = True
                 if not self.melee_in_hand:
-                    # the slot-4 draw: the gun takes the larger of the two slots' delays; it stops a reload, as a swap does
-                    old = self.gs[self.active]
-                    self._credit_reload(old, t)
-                    if old.reload_amount:
-                        old.reload_amount, old.ready_at = 0, min(old.ready_at, t)
+                    # the slot-4 draw: the gun takes the larger of the two slots' delays, and holsters as a swap does
+                    self._holster(t)
                     self.melee_in_hand = True
                     self.next_t = t + self.kit.melee_swap_ms + MELEE_SWING_MS
                 else:
@@ -860,7 +861,8 @@ class Fighter:
         self.melee_winding = False                      # a wind-up whose condition lapsed is dropped
         if self.melee_in_hand:
             self.melee_in_hand = False                  # swap back to the gun before it fires (F609)
-            self.committed = True                       # the gun acts before any further swap: one draw, not two
+            g = self.gs[self.active]
+            self.committed = bool(g.ammo or g.reserve)   # the gun acts before a further swap, unless it is spent
             self.next_t = t + self.kit.melee_swap_ms
             return None
         if self.committed:

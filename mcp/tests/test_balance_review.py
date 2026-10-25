@@ -1469,6 +1469,20 @@ def test_a_stated_headset_reach_keeps_the_word_inside_it_only():
     assert R.headset_word_reaches(R.DIST["long"])
 
 
+def test_a_lapsed_melee_back_to_a_spent_gun_still_draws_the_secondary():
+    # F609 (Opus re-review): the swap back committed the gun, and a spent gun then idled for ever
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun + Deagle", "shotgun", "deagle")
+    f = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
+    f.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(3))]
+    f.gs[0].ammo = f.gs[0].reserve = 0
+    assert f.act(0) is None and f.melee_in_hand
+    f.targets[0].health = 200
+    assert f.act(f.next_t) is None and not f.melee_in_hand
+    f.act(f.next_t)
+    assert f.active == 1
+
+
 def test_melee_finishes_at_close_only():
     w = R.shipped_world()
     kit = R.make_kit(w, "Glock", "glock")
