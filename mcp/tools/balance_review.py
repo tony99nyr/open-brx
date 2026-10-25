@@ -642,7 +642,7 @@ class Fighter:
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
         self.swap_until = 0.0
-        self.committed = False   # a drawn slot fires or reloads once before the slot is reconsidered (F601)
+        self.committed = False   # a drawn slot acts once (fires, reloads or waits) before the slot is reconsidered (F601)
         self.gs = [_GunState(g, charged=(i == 0)) for i, g in enumerate(kit.guns)]  # a slot not in hand holds no charge
         self.active, self.phase, self.next_t, self.alive = (1 if kit.plan == "haze" else 0), "open", 0.0, True
         self.targets: list = []

@@ -1325,14 +1325,31 @@ def test_a_dry_primary_draws_a_lethal_secondary_and_pays_both_swaps():
     assert solo.active == 0 and solo.shots == shots and len(solo.gs) == 1
 
 
-def test_a_fast_reload_primary_does_not_ping_pong_with_its_secondary():
-    # F601: a dry primary drew the secondary unconditionally, and the way back counted the primary's short reload,
-    # so a Quick Hands Shotgun swapped back and forth for the whole fight and never fired or reloaded.
+def _dry_fast_reload_shotgun():
     w = R.shipped_world()
     kit = R.make_kit(w, "Shotgun + Deagle + QH", "shotgun", "deagle", perk="quick_hands")
     f = R.Fighter(kit, 115, 0.4, R.DIST["long"], random.Random(2))
     f.targets = [R.Fighter(kit, 45, 0, R.DIST["long"], random.Random(3))]   # a target already down to health
     f.gs[0].ammo = 0
+    return f
+
+
+def test_a_fast_reload_primary_reloads_instead_of_drawing():
+    # F601: a dry primary drew the secondary unconditionally, and the way back counted the primary's short reload,
+    # so a Quick Hands Shotgun swapped back and forth for the whole fight and never fired or reloaded.
+    f = _dry_fast_reload_shotgun()
+    assert f.act(0) is None
+    assert f.active == 0 and f.gs[0].reload_amount > 0
+
+
+def test_a_drawn_secondary_acts_before_the_slot_is_reconsidered():
+    f = _dry_fast_reload_shotgun()
+    f._swap(1, 0)
+    assert f.act(f.next_t) is not None and f.active == 1
+
+
+def test_a_fast_reload_primary_does_not_ping_pong_with_its_secondary():
+    f = _dry_fast_reload_shotgun()
     swaps, t = 0, 0.0
     for _ in range(40):
         before = f.active
