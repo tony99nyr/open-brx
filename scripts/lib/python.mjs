@@ -19,3 +19,19 @@ export function findPython(root) {
   const found = candidates.find(p => fs.existsSync(p));
   return { python: found || 'python3', foundVenv: Boolean(found) };
 }
+
+/** The code `mcp/tests/test_pyright.py` checks (`mcp/pyproject.toml` `[tool.pyright] include = ["brx_mcp"]`). */
+export const inPyrightScope = p => p.startsWith('mcp/brx_mcp/') || p === 'mcp/pyproject.toml';
+
+/** The `--no-skip` flags test-all passes the mcp runner. T7: a repo .venv has mcp's `mc` extra, so a websockets or
+ *  uvicorn skip means a broken venv. F613 (2026-10-25): a worktree's partial .venv had no pyright, `test_pyright`
+ *  skipped, the --changed gate read green and the lander went red on 3 type errors. So a gate on code pyright checks
+ *  (a --changed run whose `changedPaths` touch it, or any lander gate) refuses a pyright skip too: install pyright
+ *  (`pip install pyright`) or gate from a venv that has it. A plain run keeps the skip, since `./start.sh` installs
+ *  no pyright. MC_PY and system python skip by design (CLAUDE.md), so they refuse nothing. */
+export function noSkipFor({ foundVenv, landGate = false, changedPaths = null }) {
+  if (!foundVenv) return [];
+  const reasons = ['websockets', 'uvicorn'];
+  if (landGate || (Array.isArray(changedPaths) && changedPaths.some(inPyrightScope))) reasons.push('pyright');
+  return reasons.flatMap(s => ['--no-skip', s]);
+}
