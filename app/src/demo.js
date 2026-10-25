@@ -408,7 +408,7 @@ export function startDemo({ engine, log }) {
         team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },
         honors: [{ medal: 'FIRST BLOOD', player_id: 'p-2', display: 'VIPER' }], provisional: false, t: Date.now() } }),   // no `stat` at all: the honour still names the player
       // The settle window has passed and MC is still unreachable: "MC NOT REACHED", which is NOT "you lost".
-      unreached: () => { engine.endedAt = engine.now() - 31000; engine.setWsState('closed'); },
+      unreached: () => { engine.endedAt = engine.now() - 31000; engine.setWsState('closed'); syncAs({ bound: false, pending: 0, drainedAt: 0 }); },   /* MC never had its report */
       mcVerify: line => { game.mc_verify = line || 'A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE'; ev.assign(); },
       seedHistory: () => { const h = hud(); if (!h) return;
         h.sessionId = 'demo-session'; const t0 = Date.now() - 3600e3;
@@ -796,8 +796,10 @@ export function startDemo({ engine, log }) {
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
       // ---- A24 FINAL RESULTS. `ended` is the local fact; the OUTCOME only ever arrives as a `result` push. ----
       'result-pending':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'mcLost']],            // ended, no result, MC gone: PENDING — never "lost"
-      'result-unreached':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'unreached']],         // ... and still nothing 30 s later: MC NOT REACHED
+      'result-unreached':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2350, () => syncAs({ bound: false, pending: 0, drainedAt: 0 })], [2400, 'end'], [2500, 'unreached']],         // ... and still nothing 30 s later: MC NOT REACHED
       // Phone sync track (hud/synctrack.js): the result with each sync state app.js's poll can report (window.brxDemoSync)
+      // A81: MC withholds the result until every phone is in, so a linked phone that is still sending waits with no outcome
+      'result-pending-linked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan' })]],
       'result-sync-sending': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan' })], [2500, () => ev.result('win')]],
       'result-sync-cell':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'cellular', reach: 'backhaul' })], [2500, () => ev.result('win')]],
       'result-sync-stuck': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 125_000; syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan', pendingChangedAt: Date.now() - 125_000, boundAt: 1 }); /* the whistle 125 s ago */ }], [2500, () => ev.result('win')]],

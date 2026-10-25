@@ -1950,7 +1950,7 @@ for (const view of VIEWS) {
     const OUTCOME = /\b(WIN|WON|LOSE|LOST|DEFEAT|VICTORY|DRAW)\b/;
     const before = await text(pg);
     must(/RESULT PENDING/.test(before), 'the screen does not say the result is pending: ' + before.slice(0, 200));
-    must(/CONFIRM AT MISSION CONTROL/.test(before), 'it does not say where the result comes from');
+    must(/when every phone is in, or when the host finalises it/.test(before), 'it does not say when the result comes (A81: every phone in, or FINALISE)');
     must(!OUTCOME.test(before), 'an outcome word is on screen with NO result pushed: ' + (before.match(OUTCOME) || [])[0] + ' — ' + before.slice(0, 260));
     must(await pg.evaluate(() => window.brx.engine.state().result === null), 'the engine invented a result');
     // the same assertion, against a screen that SHOULD carry the word — proves the regex can fail this step
@@ -1967,6 +1967,20 @@ for (const view of VIEWS) {
     must(wait === 'unreached', 'settle window state: ' + wait);
     must(/MC NOT REACHED/.test(t) && /SEE MISSION CONTROL/.test(t), 'copy: ' + t.slice(0, 200));
     must(!/\b(LOSE|LOST|DEFEAT)\b/.test(t), 'an unreachable MC was rendered as a defeat: ' + t.slice(0, 200));
+  });
+  await step(`${view.name} A81 result-pending-linked: a linked phone waits beside its sync track with no outcome, and the winner appears at the release`, async () => {
+    const pg = await open(view, 'result-pending-linked');
+    await pg.waitForTimeout(1200);   // past app.js's 1 s sync poll
+    const OUTCOME = /\b(WIN|WON|LOSE|LOST|DEFEAT|VICTORY|DRAW)\b/;
+    const before = await pg.evaluate(() => ({ head: (document.querySelector('.result .rh1') || {}).textContent || '', body: document.body.innerText,
+      sync: (document.querySelector('.result .rfoot .sy') || { dataset: {} }).dataset.sync, wait: window.brx.engine.state().resultWait }));
+    await pg.evaluate(() => window.brxDemo.result('win')); await settled(pg);
+    const after = await pg.evaluate(() => (document.querySelector('.result .rh1') || {}).textContent || '');
+    await pg.close();
+    must(before.head.trim() === 'RESULT PENDING', 'head: ' + before.head);
+    must(before.sync === 'sending' && before.wait === 'pending', 'not a linked phone still sending: ' + JSON.stringify(before));
+    must(!OUTCOME.test(before.body), 'an outcome word before the release: ' + (before.body.match(OUTCOME) || [])[0]);
+    must(/WIN/.test(after), 'the released result did not replace RESULT PENDING: ' + after);
   });
   await step(`${view.name} A24 result-pending: the sync track says NOT LINKED and its walk-back action blinks until the result is in`, async () => {
     const pg = await open(view, 'result-pending');

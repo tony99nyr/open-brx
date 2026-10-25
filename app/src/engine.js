@@ -743,7 +743,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   tutorial: 'try-out mode', tutorialWeapon: 'try-out mode', tryoutArming: 'try-out in flight', tryoutUnconfirmed: 'try-out verdict', tryoutSeen: 'try-out panel dismissed',
   browsing: 'LOADOUT browser open', loadoutAck: 'MC pick verdict (cleared after ~4 s)', pendingPick: 'pick awaiting its ack', _pickDue: 'A26 pick debounce: at worst the player picks again',
   kitLocked: 'lobby notice: MC enforces the lock', kitLockedFor: 'goes with `kitLocked`', ready: 'MC states it in `assign` and the welcome (`hydrate`), on only',
-  refused: 'diagnostic count', endAck: 'the result screen shows again until OK', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
+  refused: 'diagnostic count', endAck: 'the result screen shows again until OK', _linkedSinceEnd: 'A81: a restart in RECAP may show MC NOT REACHED until the sync track reads RECEIVED again', score: 'MC re-pushes the score on the welcome', scoreAt: 'goes with `score`',
   cuesFired: 'schedule cues: the resume does not replay passed cues', held: 'buttons held: a restart drops every press', lastButton: 'last button edge',
   _turned: 'SUSPECT: infection flip (post-MVP); a restart forgets this player turned, so a survivor result can be wrong',
 });
@@ -2206,6 +2206,7 @@ export class Engine {
     // skew), so the match was real after all: restore the results screen and its history entry before the result lands.
     if (!this.ended && mid === this._noMatchEnd) {
       this.ended = true; this.endedAt = this.now(); this.endAck = false; this.moment = { kind: 'match_over', at: this.now() };
+      this._linkedSinceEnd = false;
       try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
       this.log(`result for ${mid}: that end was real after all — showing the results`, 'li');
     }
@@ -2219,9 +2220,14 @@ export class Engine {
 
   /** 'in' once MC has told us how it ended · 'unreached' once the settle window has passed with no MC link ·
    *  'pending' otherwise. NONE of the three is an outcome — the screen says what it knows, not what it guesses. */
+  /** A81: MC has this phone's post-whistle report (app.js: the sync track reads RECEIVED). From then on the phone waits on
+   *  RESULT PENDING out of range too, because "never reached Mission Control" would be false. */
+  markReached() { if (this.ended && !this._linkedSinceEnd) { this._linkedSinceEnd = true; this._changed(); } }
   resultWait(now = this.now()) {
     if (this.result) return 'in';
-    if (this.ended && this.endedAt && (now - this.endedAt) >= RESULT_SETTLE_MS && this.wsState !== 'bound') return 'unreached';
+    // A81: MC holds the result until every phone is in, so a phone whose report MC received and then walked out of range
+    // is waiting, not unreached ("never reached Mission Control" would be false beside its RECEIVED sync track)
+    if (this.ended && this.endedAt && (now - this.endedAt) >= RESULT_SETTLE_MS && this.wsState !== 'bound' && !this._linkedSinceEnd) return 'unreached';
     return 'pending';
   }
 
@@ -4175,6 +4181,7 @@ export class Engine {
     this.ended = true; this._spawnCheck = null; this._panicked = null;   // F416 r3: the check ends with the match
     this.endAck = false; this._armPending = null; this._triggerPending = null; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this.gunLocked = null;   // F209/F272: never arm or keep a lock verdict for an ended match
     this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
+    this._linkedSinceEnd = false;   // A81: set by markReached() once MC has this phone's post-whistle report
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
     this._ann.clear(); this._gun.clear();         // nor a queued announcer line or banner, nor the old audio model
     this._pendingHurtWrite = false;   // review 2026-09-19: a queued low-health alert must not survive match end
