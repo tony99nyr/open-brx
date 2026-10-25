@@ -49,10 +49,15 @@ run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session
 ## P1: what changes a match (about 1 h 45 min)
 
 **P1.0. Every Stick from main (10 min).** *Impact: an old Stick runs an old hill and station.* For each Stick, from a
-checkout at `origin/main`: `python3 hardware/m5sticks3/tools/stick.py flash`, then `stick.py status`. **Pass:**
-`app_ver` reads `h8-0.2+<short sha of that checkout>` with no `_dirty`, and MC's station list shows no STICK FIRMWARE
-TOO OLD line. **Control:** `stick.py ports` lists the Stick before the flash. Unplug each Stick when it is done: an
-unassigned Stick on USB moved a presence reading on 2026-10-16.
+checkout at `origin/main`: `python3 hardware/m5sticks3/tools/stick.py flash`, then `python3
+hardware/m5sticks3/tools/stick.py status`. Once the Stick joins MC, read its `app_ver` in the `stations` list of MC's
+`GET /api/state` (the serial `STATUS` line does not carry it). **Pass:** `app_ver` reads `h8-0.3+` and the first 10
+characters of that checkout's sha (`git rev-parse --short=10 HEAD`), with no `_dirty`, and MC's station list shows no
+STICK FIRMWARE TOO OLD line. **Control:** `python3 hardware/m5sticks3/tools/stick.py ports` lists the Stick before
+the flash. MC must run from a checkout at or after e6399e22b (floor h8-0.3). Before the first flash, check that one
+Stick on its old build appears in MC's `stations` list: a Stick below h8-0.3 shows STICK FIRMWARE TOO OLD: REFLASH IT
+in MC's station list (MC's floor is h8-0.3), and the line goes once it is reflashed. Unplug each Stick when it is
+done: an unassigned Stick on USB moved a presence reading on 2026-10-16.
 
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* Procedure: 1017 P1.1, then 1017 L1 (an MC push with the SMG as PRIMARY). **Pass:** the raw frame echoes
@@ -116,11 +121,13 @@ Extended Mags adds nothing to the reserve of five rifles.* Procedure: 1017 P1.0.
 reserve sent and counts down normally. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value (desk,
 after the bench).
 
-**P2.3. The reconnect's battery cost (15 min, runs beside P2.1 and P2.2).** *Impact: a phone showing GUN LINK LOST
-drained fast in the field.* The grey Pixel, the app open on the lobby, outside a match, its gun off. Note the battery
-percentage and the time. After 15 min, note them again and count the connect attempts in the app log. **Pass:** the
-attempts are 10 s apart for 12 tries, then 30 s and 60 s, and the link rests at TAP TO RECONNECT after 30 tries.
-**Read:** the battery drop. **Control:** the same phone for 15 min with its gun on and linked. Row: F563.
+**P2.3. The reconnect's battery cost (up to 30 min, runs beside P2.1 and P2.2).** *Impact: a phone showing GUN LINK
+LOST drained fast in the field.* The grey Pixel, the app open on the lobby, outside a match, its gun off. Note the
+battery percentage and the time. When the link rests at TAP TO RECONNECT (stop at 30 min), note them again and count
+the connect attempts in the app log. **Pass:** the wait after each failed attempt is at most about 10 s for the first
+12 tries (the first few shorter), then 30 s and 60 s, and the link rests after 30 tries (about 14 min of waits plus
+each attempt's own time: expect about 20 min). Judge the spacing by the log's "retrying in N ms" value. **Read:** the
+battery drop per hour. **Control:** the same phone for the same time with its gun on and linked. Row: F563.
 
 **P2.4. The backhaul is a fallback, not a pull (15 min).** *Impact: a kit-started tunnel must not move every phone
 off the LAN inside the config-ack window, and a phone that leaves the Wi-Fi must still reach MC.* MC on main with its

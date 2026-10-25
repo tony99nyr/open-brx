@@ -165,9 +165,10 @@ APP_MINOR = 4
 
 # O13: the oldest StickS3 firmware MC accepts, in the Stick's own scheme `h<hardware gen>-<major>.<minor>` (its
 # `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
-# change is one MC needs. "h8-0.2" is the first build that reports the git sha and `nvs_fail`: a Stick that
-# reports plain "h8-0.1" cannot say what it runs, so it must be reflashed.
-STATION_MIN_FW = "h8-0.2"
+# change is one MC needs. "h8-0.2" was the first build that reports the git sha and `nvs_fail`. "h8-0.3"
+# (2026-10-25) is the first with the hill gap rule, the F391 lock restore and F591's hill fields, so a Stick on
+# any older build is flagged for a reflash.
+STATION_MIN_FW = "h8-0.3"
 
 
 def parse_station_fw(app_ver: str | None) -> tuple[int, int, int] | None:

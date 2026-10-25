@@ -908,7 +908,7 @@ class GunStage:
         # A56: engine.js `_overshield` ({amount, base, ...}). The stage models no powerup station, so nothing sets
         # it yet (the grant is pinned in test_stage_mirror's KNOWN_UNMIRRORED); `_readout_max` reads it the phone's way.
         self._overshield: dict | None = None
-        self._os_protect_until: float = 0.0   # engine.js `pu.protectUntil`: when an overshield grant's protection ends (0 = none owed)
+        self._os_protect_until: float = 0.0   # engine.js `pu.protectUntil`: when an overshield grant's protection ends (0 = none owed); nothing sets it yet, as with `_overshield` above
         self.max_hp = 45
         self.max_armor = 70
         self.max_shield = 0        # S45 (engine.js `maxShield`): the `$PSET` t5 ceiling, read back off the compiled head
@@ -5815,7 +5815,7 @@ class GunStage:
             return None
         # milestone review (powerup-player.js `_claimTick`): the phone holds a claim while the gun is stunned (its $AMMO 0,0
         # would be undone), reloading (the write would undo the gun's refill) or mid ALT swap; so does the stage
-        held = "stunned" if self.stunned else "reloading" if self.reloading else "swapping" if self.switching else None
+        held = "stunned" if self.stunned else "reloading" if self.reloading else "swapping" if self.switching and not self.switching.get("pu") else None
         if held:
             self._log(f"powerup: {name} grant held: the gun is {held}", "info")
             return None
@@ -5840,7 +5840,7 @@ class GunStage:
                 for slot, (_mag, to, add) in short.items():
                     if self._prev_reserve.get(slot) == to:
                         self._prev_reserve[slot] = to - add
-                busy = self.stunned or self.reloading or self.switching   # the phone also stands down for a reconcile or a resync
+                busy = self.stunned or self.reloading or (self.switching and not self.switching.get("pu"))   # the phone also stands down off LIVE, off the link, and for a reconcile or a resync
                 if not retry and not busy:
                     self._log(f"powerup: {name} grant write failed; granting again from the counts now", "warn")
                     return await self.grant_ammo(item, retry=True)

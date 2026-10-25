@@ -1029,7 +1029,7 @@ async function sweepForMc() {
       // own forever-reconnect loop. Opening the picker on top of it steals the radio, and `scanning`
       // then stays true after the loop reconnects (nothing here clears it), which keeps the beacon
       // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
-      // F563: the loop now rests after about 14 min outside a match, so Bluetooth coming back starts it again.
+      // F563: the loop now rests after about 16 min outside a match, so Bluetooth coming back starts it again.
       if (on) { if (!link.connected && !link.deviceId && !scanning) openPicker({ auto: true }).catch(() => {}); else link.resumeReconnect('bluetooth back on'); }
       else if (scanning) { scanning = false; stopPickerPaint(); hud.setScan([]); link.stopScan().catch(() => {}); }
       // F537 review r3: the adapter is off, so nothing listens; close BeaconWatch so Presence pauses instead of expiring
