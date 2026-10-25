@@ -14,6 +14,7 @@ import shutil
 import sys
 import tempfile
 from contextlib import contextmanager
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -868,6 +869,25 @@ def test_the_charge_rifle_carries_no_recoil_profile():
 
 def _recoil_model(**kw) -> B.RecoilDuelModel:
     return B.RecoilDuelModel.from_catalog(CAT, **kw)
+
+
+def test_rule_batches_count_kills_losses_and_draws_separately():
+    outcomes = ["winner"] * 6 + ["loser"] * 2 + [None] * 2
+    recoil = B.recoil_duel_batch(lambda _rng: outcomes.pop(0), "winner", 10, SEED, "draw_split")
+    assert (recoil.wins, recoil.losses, recoil.draws) == (6, 2, 2)
+    assert recoil.win_rate == 0.6 and recoil.draw_rate == 0.2
+    assert recoil.win_rate < 0.65
+
+    for batch in ("range", "r10"):
+        with mock.patch.object(B, "run_range_duel", side_effect=["winner"] * 6 + ["loser"] * 2 + [None] * 2):
+            if batch == "range":
+                with mock.patch.dict(B.RANGE_RULES, {"draw_split": ("draw split", "winner", "a", "b", "mid")}):
+                    result = B.range_duel_batch(_recoil_model(), "draw_split", 10, SEED)
+            else:
+                result = B.r10_duel_batch(_recoil_model(), "winner", "loser", 10, SEED)
+        assert (result.wins, result.losses, result.draws) == (6, 2, 2)
+        assert result.win_rate == 0.6 and result.draw_rate == 0.2
+        assert result.win_rate < 0.65
 
 
 def test_recoil_duel_seeded_runs_land_in_band():

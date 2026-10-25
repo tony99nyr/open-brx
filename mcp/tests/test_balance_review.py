@@ -268,6 +268,7 @@ def test_an_ar_at_27_damage_fails_no_domination():
 
 
 def test_priority_column_dominance_fails_without_a_field_ceiling_breach():
+    assert R.DOMINATION_PRIORITY == ("real aim close", "real aim mid", "real aim long", "field")
     row = {column: 0.5 for column in R.COLUMNS}
     row["field"] = 1.2
     matrix = {"kits": ["candidate"], "columns": {"candidate": row},
@@ -276,6 +277,9 @@ def test_priority_column_dominance_fails_without_a_field_ceiling_breach():
     assert result["status"] == "fail"
     assert result["numbers"]["priority_near_top"] == ["candidate"]
     assert result["numbers"]["field_ceiling_exceeded"] == []
+    matrix["near_top"]["candidate"] = ["1v1 close", "1v1 mid", "1v1 long", "field"]
+    ceiling = R.domination_verdict(matrix, matrix)
+    assert ceiling["status"] == "pass" and ceiling["numbers"]["priority_near_top"] == []
 
 
 def test_real_aim_is_one_value_cell_and_requires_all_distances_for_domination():
@@ -511,7 +515,32 @@ def test_the_ci_labels_make_r1_the_ci_number():
     sig = json.dumps({x: w.cat._row(x) for x in ("charge_rifle", "assault_rifle")}, sort_keys=True)
     m = B.RecoilDuelModel.from_catalog(w.cat)
     ci = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 200, 7, "gate_rule1", m, float(B.CHARGE_TAP_CADENCE_MS))
-    assert R._run_rule("R1", "recoil", "standard", sig, 200) == ci.win_rate
+    assert R._run_rule("R1", "recoil", "standard", sig, 200, aim_factor=R.AIM)["value"] == ci.win_rate
+    real_model = B.RecoilDuelModel.from_catalog(w.cat, aim_factor=R.REAL_AIM)
+    real = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 200, 7, "gate_rule1",
+                               real_model, float(B.CHARGE_TAP_CADENCE_MS))
+    assert R._run_rule("R1", "recoil", "standard", sig, 200, aim_factor=R.REAL_AIM) == {
+        "value": real.win_rate, "draw_share": real.draw_rate}
+
+
+def test_rule_tables_gate_at_real_aim_and_report_the_ceiling():
+    world = R.shipped_world()
+    for heated in (False, True):
+        def cells(jobs, _n_jobs):
+            assert {job[-1] for job in jobs} == {R.REAL_AIM, R.AIM}
+            return [{"value": 0.60 if job[-1] == R.REAL_AIM else 0.90,
+                     "draw_share": 0.20 if job[-1] == R.REAL_AIM else 0.01}
+                    for job in jobs]
+
+        with mock.patch.object(R, "run_cells", side_effect=cells):
+            if heated:
+                result = R.run_heated_rules(world, 0.001, 1, "none", {"R1"})
+            else:
+                result = R.run_rules(world, 0.001, 1)
+        cell = result["standard|R1"]
+        assert cell["value"] == 0.60 and cell["draw_share"] == 0.20
+        assert cell["ceiling_value"] == 0.90 and cell["ceiling_draw_share"] == 0.01
+        assert not cell["pass"]
 
 
 def test_op_rule_gates_on_the_crit_pull_and_on_every_fieldable_perk():
@@ -886,7 +915,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 18
+    assert R.SCENARIO_VERSION == 19
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
