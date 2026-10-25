@@ -140,9 +140,8 @@ inline int clamp_lock_s(long v) {
 // tamper lock, and MC's next station_config replaces it outright once the Stick is back online. A Stick switched off
 // long after its match, then on with no MC in reach, comes back locked for the old remainder; A+B 7 s clears it.
 constexpr uint32_t MATCH_LOCK_SAVE_INTERVAL_MS = 60000;
-constexpr uint32_t MATCH_LOCK_RESTORE_MAX_S = contract::STATION_LOCK_MAX_S;
 inline uint32_t lock_restore_remaining_s(uint32_t saved_s) {
-  return saved_s > MATCH_LOCK_RESTORE_MAX_S ? MATCH_LOCK_RESTORE_MAX_S : saved_s;
+  return saved_s > contract::STATION_LOCK_MAX_S ? contract::STATION_LOCK_MAX_S : saved_s;
 }
 inline bool lock_save_due(uint32_t remaining_s, uint32_t last_saved_ms, uint32_t now_ms) {
   return remaining_s > 0 && (uint32_t)(now_ms - last_saved_ms) >= MATCH_LOCK_SAVE_INTERVAL_MS;

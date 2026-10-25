@@ -250,7 +250,7 @@ def test_f391_lock_restore_contract_matches_firmware():
     link = (CORE / "station_link.h").read_text(encoding="utf-8")
     interval_ms = int(re.search(r"MATCH_LOCK_SAVE_INTERVAL_MS = (\d+)", link).group(1))
     # F391 (Tony, 2026-10-24): a restart restores the saved lock in full, clamped only to the protocol ceiling
-    assert "MATCH_LOCK_RESTORE_MAX_S = contract::STATION_LOCK_MAX_S;" in link
+    assert "return saved_s > contract::STATION_LOCK_MAX_S ? contract::STATION_LOCK_MAX_S : saved_s;" in link
     assert interval_ms == 60000
     contracts = (ROOT / "docs/spec/contracts.md").read_text(encoding="utf-8")
     a58 = next(line for line in contracts.splitlines() if line.startswith("| A58 |"))
