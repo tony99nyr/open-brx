@@ -169,7 +169,8 @@ def routes(ctx) -> list[BaseRoute]:
             pol = _policy.merge(_policy.default_policy(b.get("mode") or s.config.get("mode", "tdm")), b.get("loadout_policy") or {})
             weapons = [w for w in s.compiler.weapon_catalog() if not w.get("hidden")]
             perks = list(s.compiler.perk_catalog())
-            return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks)})
+            # honest pickers: the perk pool also obeys the game's health preset (Shields refuses AP and Body Armor)
+            return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks, s._health_preset())})
         except ValueError as e:
             return _err(e)
 

@@ -168,7 +168,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
 
   // Computed client-side from the DRAFT policy, same rule engine as the DESIGNER (gameSummary.ts
   // mirrors mcp/brx_mcp/mc/policy.py `pool()`) -- every tap shows instantly and needs no round trip.
-  const pool = computePool(pol, weapons, perks);
+  const pool = computePool(pol, weapons, perks, healthPresetOf(shown.health));
   const poolOf = (slot: Slot) => (slot === 'primary' ? pool.primary : pool.secondary_weapons);
   const saveLabel = pushed ? 'SAVE AND LOAD ▸' : 'SAVE ▸';
 

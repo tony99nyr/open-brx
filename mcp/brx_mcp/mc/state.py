@@ -1222,9 +1222,14 @@ class Session:
         2026-09-12."""
         return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
 
+    def _health_preset(self) -> str | None:
+        """The game's `health.preset` (A50), or None for an older config without one."""
+        preset = (self.config.get("health") or {}).get("preset")
+        return preset if isinstance(preset, str) else None
+
     def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
-        return _policy.pool(self.policy(), weapons, perks)
+        return _policy.pool(self.policy(), weapons, perks, self._health_preset())
 
     def _primary_pool_refusal(self) -> str | None:
         """F146: why is there no legal primary weapon? `None` when there is one. See `_pool_refusal`."""
@@ -1954,7 +1959,7 @@ class Session:
             w1 = weapons[1]["weapon_id"] if len(weapons) > 1 else None
             # F551 (field 2026-10-17): a perk the compiler would refuse with these weapons blocked the whole push. Drop
             # it here instead (Tony's rule: fix the pick, no warning); the kit pickers hide it from `PerkView.blocked_*`.
-            if self.compiler.perk_block_reason(perk, w0, w1) is None:
+            if self.compiler.perk_block_reason(perk, w0, w1, self._health_preset()) is None:
                 out["perk"] = perk                    # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
@@ -6269,9 +6274,10 @@ class Session:
                 dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
                 if dropped:
                     reason = why
-                elif asked_perk and not new.get("perk"):
-                    # F551 (Codex review): `_check_loadout` dropped a perk these weapons cannot carry; say so, or the
-                    # phone shows a perk the player no longer has
+                elif slot == "perk" and asked_perk and not new.get("perk"):
+                    # F551 (Codex review): `_check_loadout` dropped the perk the player just asked for; say so, or the
+                    # phone shows a perk the player no longer has. A WEAPON pick that drops the held perk says nothing
+                    # (Tony 2026-10-25, the no-warnings rule): the assign carries the cleared perk.
                     ws = [w["weapon_id"] for w in new.get("weapons") or []]
                     # the weapon that clashes: the primary unless only the secondary does (Codex review)
                     w0 = ws[0] if ws and self.compiler.perk_block_reason(asked_perk, ws[0]) is not None \

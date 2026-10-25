@@ -53,6 +53,8 @@ export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: P
       : `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING: CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
     // F585: the fixed perk cannot ride with any weapon this slot allows (F551); there is no filter to clear
     case 'perk_blocked': return `THE FIXED PERK CANNOT RIDE WITH ANY ${slot} THIS GAME ALLOWS: PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER WEAPON.`;
+    // honest pickers (Tony 2026-10-25): the health preset refuses the perk (Shields: Armour Piercing, Body Armor)
+    case 'preset_blocked': return 'This health preset refuses the fixed perk, so players get no perk. Pick another perk, or another health preset.';
     case 'off': return '';   // never shown — an off slot is not a problem
   }
 }

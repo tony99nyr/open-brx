@@ -619,6 +619,12 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "blocked_presets": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "additionalProperties": false
@@ -841,6 +847,9 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "health_preset": {
+                "type": "string"
               }
             },
             "additionalProperties": false
@@ -1192,6 +1201,9 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "health_preset": {
+                "type": "string"
               }
             },
             "additionalProperties": false
