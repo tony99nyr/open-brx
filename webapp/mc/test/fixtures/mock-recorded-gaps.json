@@ -64,8 +64,8 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3054,
-      "sha1": "01999e0bb8e4649a"
+      "count": 3544,
+      "sha1": "db3290569b63640e"
     },
     {
       "group": "fixture",

@@ -1564,6 +1564,8 @@ export interface NodeView {
   log?: LogView | null;
   /** F309: the phone's own last `status.transport` claim; absent = never reported (older app). */
   transport?: 'wifi' | 'cellular' | 'none' | 'unknown';
+  /** F595: the phone's last `status.has_pub` claim (it holds the tunnel URL as a fallback); absent = an older app. */
+  has_pub?: boolean;
   reach?: 'lan' | 'backhaul';
   last_reach?: 'lan' | 'backhaul';
   /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
@@ -1707,6 +1709,8 @@ export interface Event {
    *  The node says `cellular` only when the network at bind time AND the current one are both cellular
    *  (a bound socket stays on the network it opened on); the full rule is contracts §5d. */
   transport?: 'wifi' | 'cellular' | 'none' | 'unknown';
+  /** F595: the phone holds `pub` (the tunnel URL) as a fallback. Always sent by a current app; absent = older. */
+  has_pub?: boolean;
 }
 
 export interface ScoreRow {

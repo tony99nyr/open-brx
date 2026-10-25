@@ -1080,6 +1080,11 @@ class Session:
                 self.net.broadcast("join", self.join_body())
             except Exception:
                 import logging; logging.getLogger("brx.mc").exception("join broadcast failed")
+            # F595: coverage can move here, so the frag warning (A6.1) is re-derived; never at the tunnel's expense.
+            try:
+                self._validate()
+            except Exception:
+                import logging; logging.getLogger("brx.mc").exception("revalidation after a tunnel change failed")
         self._changed()
 
     def _ws_port(self) -> int:
@@ -1167,14 +1172,16 @@ class Session:
         lan["public"] = pub
         return lan
 
-    def _independent_path(self, nv: dict) -> bool:
+    @staticmethod
+    def _independent_path(nv: dict) -> bool:
         """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale) and riding cellular by
         its own report (`transport`, the one fact only the phone has), with the tunnel as its path: it came
-        through it (`reach`, MC's own stamp from the socket), or (A28.3 LAN-first, F595) it is on the LAN while
-        MC's tunnel is up, so it holds `pub` as a working fallback. F256: `reach` alone named only the URL, so
-        two phones on one Wi-Fi behind one tunnel read as covered and were one point of failure."""
+        through it (`reach`, MC's own stamp from the socket), or (A28.3 LAN-first, F595) it is on a live LAN
+        socket and its last status said it holds `pub` (`has_pub`), so a phone that missed the join push says
+        so and an older app makes no claim. F256: `reach` alone named only the URL, so two phones on one Wi-Fi
+        behind one tunnel read as covered and were one point of failure."""
         return (not nv.get("stale") and nv.get("transport") == "cellular"
-                and (nv.get("reach") == "backhaul" or bool(self._pub_url())))
+                and (nv.get("reach") == "backhaul" or (nv.get("reach") == "lan" and nv.get("has_pub") is True)))
 
     def coverage(self) -> Coverage:
         """A28.4: coverage is DERIVED, not asserted. `on_backhaul` counts the bound player nodes that are
@@ -3741,6 +3748,10 @@ class Session:
         nv.pop("transport", None)
         if body.get("transport") in ("wifi", "cellular", "none", "unknown"):
             nv["transport"] = body["transport"]
+        # F595: the phone holds `pub` as a fallback, restated on every beat like `transport`; a bool or nothing.
+        nv.pop("has_pub", None)
+        if isinstance(body.get("has_pub"), bool):
+            nv["has_pub"] = body["has_pub"]
         # F595: the backstop. Android moves the default route to cellular when the field Wi-Fi has no
         # internet, and a phone that has lost the LAN can only learn `join.pub` while it still has a socket.
         # It trusts the phone's own `transport` claim; only a bound phone counts, and kit-start runs anyway.
@@ -7737,7 +7748,7 @@ class Session:
                 key: nv[key] for key in (
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
-                    "platform", "transport", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
+                    "platform", "transport", "has_pub", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
                     "gun_locked") if key in nv
             })
             if (lost := self._node_loss(nv, "outbox")) > 0:

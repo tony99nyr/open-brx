@@ -998,9 +998,9 @@ export class MockBackend implements Api {
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
    *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
-   *  _independent_path()`: a connected phone that reports cellular is covered on the tunnel, or on the LAN while the tunnel is up. */
+   *  _independent_path()`: a connected phone that reports cellular is covered on the tunnel, or on the LAN when it holds pub. */
   private coverage(nodes: NodeView[]): Coverage {
-    return sessionCoverage(this.players, nodes, this.tunnelStatus === 'up');
+    return sessionCoverage(this.players, nodes);
   }
   /** `?mock&fullcoverage=1` — F309: once the tunnel is up every phone joins through it on cellular and
    *  none is stale (the demo's 52 s link included), so the console's FULL coverage chip can be seen.
@@ -1036,13 +1036,14 @@ export class MockBackend implements Api {
         log: this.logFor(`node_${b.tail}`),            // A25
         ...(reach ? { reach } : {}), last_reach: this.lastReach[b.tail],
         ...(transport ? { transport } : {}),
+        ...(connected ? { has_pub: this.tunnelStatus === 'up' && !!this.tunnelWsUrl } : {}),   // F595: as `transport.js status()`
         ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });
     // The server retains the same node record after disconnect. Readiness can say "none" while
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
-    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes, this.tunnelStatus === 'up'), sessionReadinessRosterSize(this.players));
+    const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
     const holdWarning = holdTargetWarning(this.config, Object.values(this.stations).filter(st => st.assigned?.kind === 'control').length);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {

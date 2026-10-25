@@ -96,8 +96,9 @@ State {
          // a phone that dialled a second too early had the miss negative-cached for ~250 s.
   coverage: { level: "full"|"zones", on_backhaul: number, on_cellular: number, bound: number },
                                               // A28.4: on_backhaul = bound player nodes connected with reach == "backhaul".
-                                              // F309 (2026-09-23): on_cellular = those that also report status.transport ==
-                                              // "cellular" (and are not stale), an independent path. level is "full" iff every bound node is
+                                              // F309 (2026-09-23): on_cellular = bound nodes that report status.transport ==
+                                              // "cellular" (and are not stale) on the tunnel: reach == "backhaul", or (F595)
+                                              // reach == "lan" with status.has_pub true. level is "full" iff every bound node is
                                               // on_cellular. reach alone names only the URL a phone joined through (F256)
   nodes: NodeView[],                          // every node that ever said hello this session
                                               // F564 (A75): a node's `device` is its make and model, e.g. "Google Pixel 4" (absent before Device.getInfo)
@@ -250,9 +251,10 @@ State {
                                               // WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
                                               // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
-                                              // names. F309: a phone is off-grid unless it joined through the tunnel AND
-                                              // reports `transport: "cellular"` (`state.py _independent_path`, the
-                                              // same test as `coverage`); an older app is always off-grid.
+                                              // names. F309: a phone is off-grid unless it reports `transport: "cellular"`
+                                              // AND joined through the tunnel or (F595) sits on the LAN with
+                                              // `has_pub: true` (`state.py _independent_path`, the same test as
+                                              // `coverage`); an older app is always off-grid.
 }
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?,
            // --- additive 2026-09-12 (A25/A29); an older UI ignores them, an older server omits them ---
@@ -278,7 +280,8 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
            pool_stale?: "silent"|"no_fire"|"write_lost"|"pool_wrong", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4 / the gun's pools are not the armed ones after two repairs, F341) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
            outbox_lost?: number /* O6: facts the phone's outbox dropped from the match in play (the phone's own per-match `status.outbox_lost {match_id, n}`, shown only while match_id is the current/resumed/adopted match or the match in RECAP); absent = none */, claims_dropped?: number /* O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the CURRENT game (`status.actions_dropped` + `actions_dropped_game`, shown only while that game byte is the current one) */,
            gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
-           transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
+           transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */,
+           has_pub?: boolean /* F595: the last `status.has_pub` claim (holds the tunnel URL); absent = an older app */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */,
             possession?: RecapView.possession /* visual QA H2 2026-09-23: the same merged tally, live; absent until a node reports one */ }

@@ -297,11 +297,12 @@ export class Transport {
   }
   /** F595 review: with a pub held, a cold start off the Wi-Fi spends the whole LAN giveup before it dials
    *  pub, so the plain welcome window (10 s) would reject a connect() the loop binds a moment later.
-   *  Give that ladder its full length: the LAN giveup, the pub giveup and 2 s of slack. A verify dial
+   *  Give that ladder its full length: a LAN socket can open just inside the LAN giveup and then wait the
+   *  hello timeout for a welcome, and only then does pub get its giveup; plus 2 s of slack. A verify dial
    *  never dials pub, so it keeps the plain window. @returns {number} */
   _connectDeadlineMs() {
     if (!this.pub || this.verify) return this.welcomeTimeoutMs;
-    return Math.max(this.welcomeTimeoutMs, this.lanGiveupMs + this.backhaulGiveupMs + 2000);
+    return Math.max(this.welcomeTimeoutMs, this.lanGiveupMs + this.helloTimeoutMs + this.backhaulGiveupMs + 2000);
   }
   /** Arm (or re-arm, from `ms` NOW) the deadline that rejects the pending connect() when no welcome ever
    *  arrives. The reconnect loop keeps running either way — this only settles the promise the caller is
@@ -360,6 +361,7 @@ export class Transport {
                    app_ver: this.appVer, platform: this.platformName(), ...(deviceModel() ? { device: deviceModel() } : {}),   // F564
                    arm_state: 'connected', ...body, reach: this.reach,   // A28.3: the live socket's path, always ours to say
                    ...(this._claimedTransport() ? { transport: this._claimedTransport() } : {}),   // F309: restated every beat
+                   has_pub: !!this.pub,   // F595: holds a tunnel fallback; always sent, so absent means an older app
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
     // O6: `dropped` is the per-beat delta (MC overwrote it with the latest one, so a lost beat lost the count). `outbox_lost` names the

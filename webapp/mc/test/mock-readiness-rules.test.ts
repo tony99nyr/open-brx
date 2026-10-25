@@ -32,15 +32,33 @@ describe('server readiness rules in the mock', () => {
     expect(sessionCoverage(players, nodes)).toEqual({ level: 'zones', bound: 2, on_backhaul: 1, on_cellular: 1 });
   });
 
-  it('F595: a LAN phone on cellular counts only while the tunnel is up; Wi-Fi never does (state.py _independent_path)', () => {
+  it('F595: a LAN phone on cellular counts only when it says it holds pub (state.py _independent_path)', () => {
     const players = [{ player_id: 'a', display: 'ALPHA', node_id: 'node-a', ready: true }];
-    const cell = [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'cellular' as const }];
-    const wifi = [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'wifi' as const }];
-    expect(sessionCoverage(players, cell, true).level).toBe('full');
-    expect(sessionCoverage(players, cell, false).level).toBe('zones');
-    expect(sessionCoverage(players, wifi, true).level).toBe('zones');
-    expect(sessionOffGrid(players, cell, true)).toEqual([]);
-    expect(sessionOffGrid(players, cell, false)).toEqual(['ALPHA']);
+    const lan = (o: object) => [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'cellular' as const, ...o }];
+    expect(sessionCoverage(players, lan({ has_pub: true })).level).toBe('full');
+    expect(sessionCoverage(players, lan({ has_pub: false })).level).toBe('zones');
+    expect(sessionCoverage(players, lan({})).level).toBe('zones');                                  // an older phone
+    expect(sessionCoverage(players, lan({ has_pub: true, reach: null })).level).toBe('zones');      // just disconnected
+    expect(sessionCoverage(players, lan({ has_pub: true, stale: true })).level).toBe('zones');
+    expect(sessionCoverage(players, lan({ has_pub: true, transport: 'wifi' })).level).toBe('zones'); // Wi-Fi never does
+    expect(sessionCoverage(players, lan({ reach: 'backhaul' })).level).toBe('full');                // backhaul still counts
+    expect(sessionOffGrid(players, lan({ has_pub: true }))).toEqual([]);
+    expect(sessionOffGrid(players, lan({ has_pub: false }))).toEqual(['ALPHA']);
+  });
+
+  it('F595: the mock tells its phones about pub only while its tunnel is up with a URL', async () => {
+    const backend = new MockBackend();
+    try {
+      const before = (await backend.getState()).nodes.filter(n => n.reach);
+      expect(before.length).toBeGreaterThan(0);
+      expect(before.every(n => n.has_pub === false)).toBe(true);
+      await backend.setTunnel(true);
+      await vi.waitFor(async () => expect((await backend.getState()).lan.public?.status).toBe('up'), { timeout: 10000 });
+      const after = (await backend.getState()).nodes.filter(n => n.reach);
+      expect(after.every(n => n.has_pub === true)).toBe(true);
+    } finally {
+      backend.dispose();
+    }
   });
 
   it('shows a phoneless player as waiting, even when the demo gun is unpowered', async () => {

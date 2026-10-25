@@ -509,22 +509,66 @@ def test_coverage_is_full_only_when_every_phone_on_the_tunnel_rides_cellular():
     assert s.coverage() == {"level": "zones", "on_backhaul": 1, "on_cellular": 1, "bound": 2}, "stale is not connected"
 
 
-def test_cellular_on_the_lan_url_counts_only_while_the_tunnel_is_up():
+def _on_pub(s: Session, nid: str, transport: str | None, has_pub: bool | None):
+    """F595: a heartbeat that also says whether the phone holds `pub` (None = an older app that never says)."""
+    body = {"node_id": nid, "arm_state": "kitted", "synced": True}
+    if transport is not None:
+        body["transport"] = transport
+    if has_pub is not None:
+        body["has_pub"] = has_pub
+    s.net.simulate_status(nid, body, s.now_ms())
+
+
+def test_cellular_on_the_lan_url_counts_only_when_the_phone_says_it_holds_pub():
     """A28.4 with A28.3's LAN-first fallback (F595, brx1 2026-10-24): coverage means MC still hears the phone after it
-    leaves the Wi-Fi. A LAN phone that reports cellular while MC's tunnel is up holds `pub` as a working fallback, so it
-    counts. With the tunnel down it has nowhere to go. A phone that reports Wi-Fi proves no data plan."""
+    leaves the Wi-Fi. A LAN phone on cellular counts when its own status says it holds `pub` (`has_pub`), so a phone
+    that missed the join push says so. An older app sends no `has_pub` and does not count."""
     s = _sess()
     _two_players_on(s, "lan", "lan")
-    _on(s, "n-a", "cellular")
-    _on(s, "n-b", "cellular")
-    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 0, "bound": 2}, "tunnel down: no fallback"
-    s._tunnel_changed({"status": "up", "ws_url": "wss://t.example.com/ws"})
-    assert s.coverage() == {"level": "full", "on_backhaul": 0, "on_cellular": 2, "bound": 2}, "tunnel up: both hold a fallback"
+    _on_pub(s, "n-a", "cellular", True)
+    _on_pub(s, "n-b", "cellular", False)
+    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 1, "bound": 2}, "has_pub false: no fallback"
+    _on_pub(s, "n-b", "cellular", None)
+    assert s.coverage()["on_cellular"] == 1, "an older app makes no claim and does not count"
+    _on_pub(s, "n-b", "cellular", True)
+    assert s.coverage() == {"level": "full", "on_backhaul": 0, "on_cellular": 2, "bound": 2}
     assert s._off_grid() == [], "an MC-decided end reaches them through the fallback"
-    _on(s, "n-b", "wifi")
-    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "on_cellular": 1, "bound": 2}, "Wi-Fi proves no data plan"
     s._tunnel_changed({"status": "off"})
-    assert s.coverage()["on_cellular"] == 0, "the tunnel went down: no fallback again"
+    assert s.coverage()["on_cellular"] == 2, "MC's own tunnel status is not the test: the phone's claim is"
+    _on_pub(s, "n-b", "wifi", True)
+    assert s.coverage()["on_cellular"] == 1, "Wi-Fi proves no data plan"
+    s.net.simulate_disconnect("n-a")
+    assert s.coverage()["on_cellular"] == 0, "a just-closed LAN socket has no reach, so it no longer counts"
+
+
+def test_backhaul_cellular_counts_without_has_pub():
+    s = _sess()
+    _two_players_on(s, "backhaul", "backhaul")
+    _on_pub(s, "n-a", "cellular", None)
+    _on_pub(s, "n-b", "cellular", False)
+    assert s.coverage() == {"level": "full", "on_backhaul": 2, "on_cellular": 2, "bound": 2}
+
+
+def test_a_tunnel_change_revalidates_the_frag_warning():
+    """F595 (Codex P2): coverage can move at a tunnel change, so the A6.1 frag warning is re-derived then too."""
+    s = _sess()
+    s.set_config({"mode": "tdm", "time_limit_s": 600, "scoring": {"frag_limit": 25, "win_by": "kills"}})
+    _two_players_on(s, "lan", "lan")
+    assert any("frag_limit" in w for w in s.config_warnings), s.config_warnings
+    _on_pub(s, "n-a", "cellular", True)
+    _on_pub(s, "n-b", "cellular", True)
+    s._tunnel_changed({"status": "up", "ws_url": "wss://t.example.com/ws"})
+    assert not any("frag_limit" in w for w in s.config_warnings), "full coverage at the change clears it"
+    _on_pub(s, "n-b", "wifi", True)
+    s._tunnel_changed({"status": "off"})
+    assert any("frag_limit" in w for w in s.config_warnings), "no longer full at the change: it is back"
+
+
+def test_a_failing_revalidation_never_breaks_a_tunnel_change():
+    s = _sess()
+    s._validate = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+    s._tunnel_changed({"status": "up", "ws_url": "wss://t.example.com/ws"})
+    assert s.lan["public"]["status"] == "up"
 
 
 def test_every_phone_on_the_tunnel_keeps_the_frag_warning_until_each_rides_cellular():

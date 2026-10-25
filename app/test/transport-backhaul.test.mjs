@@ -135,6 +135,29 @@ test('A28.3 (F595): a cold start off the Wi-Fi resolves when pub welcomes after 
   t.close();
 });
 
+test('A28.3 (F595): a LAN socket that opens near the giveup and never welcomes still leaves pub its full giveup', async ctx => {
+  const advance = useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  // the real values: LAN giveup 8 s, hello timeout 5 s, tunnel giveup 8 s
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1000, capMs: 2000, jitter: 0 }, lanGiveupMs: 8000, helloTimeoutMs: 5000,
+    backhaulGiveupMs: 8000, welcomeTimeoutMs: 10000 });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  let settled = null;
+  p.then(() => { settled = 'resolved'; }, e => { settled = e.message; });
+  await advance(7900);
+  sockets[0].open();                    // the LAN upgrade completes at 7.9 s, then no welcome
+  await advance(5000);                  // 12.9 s: the welcome timeout drops it and pub is dialled
+  assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'wss://pub/ws');
+  await advance(7500);                  // 20.4 s: past the old 18 s deadline, inside pub's 8 s
+  sockets[1].open(); sockets[1].recv(welcome());
+  await flush();
+  assert.equal(settled, 'resolved', 'the deadline covers LAN giveup + hello timeout + pub giveup');
+  assert.equal(t.reach, 'backhaul');
+  t.close();
+});
+
 test('A28.3 (F595): dialNow() while bound on pub does nothing; the phone stays on pub until that socket drops', async ctx => {
   useClock(ctx);
   const { sockets, wsFactory } = factory();
@@ -299,6 +322,21 @@ test('A28.2/A28.3: hello carries via + secret only when held; status carries rea
   assert.equal(t.status({ arm_state: 'kitted' }), true);
   const st = sockets[0].sent.filter(e => e.kind === 'status').pop();
   assert.equal(st.body.reach, 'lan');
+  assert.equal(st.body.has_pub, true, 'F595: the phone says it holds a fallback');
+  t.close();
+});
+
+test('F595: status says has_pub false when no pub is held', async ctx => {
+  useClock(ctx);
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  const p = t.connect({ url: 'ws://lan/ws' });
+  sockets[0].open(); sockets[0].recv(welcome());
+  await p;
+  t.status({});
+  const st = sockets[0].sent.filter(e => e.kind === 'status').pop();
+  assert.equal(st.body.has_pub, false, 'always sent, so MC can tell "none" from an older app');
   t.close();
 });
 
