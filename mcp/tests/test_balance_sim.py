@@ -14,6 +14,7 @@ import shutil
 import sys
 import tempfile
 from contextlib import contextmanager
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -870,6 +871,25 @@ def _recoil_model(**kw) -> B.RecoilDuelModel:
     return B.RecoilDuelModel.from_catalog(CAT, **kw)
 
 
+def test_rule_batches_count_kills_losses_and_draws_separately():
+    outcomes = ["winner"] * 6 + ["loser"] * 2 + [None] * 2
+    recoil = B.recoil_duel_batch(lambda _rng: outcomes.pop(0), "winner", 10, SEED, "draw_split")
+    assert (recoil.wins, recoil.losses, recoil.draws) == (6, 2, 2)
+    assert recoil.win_rate == 0.6 and recoil.draw_rate == 0.2
+    assert recoil.win_rate < 0.65
+
+    for batch in ("range", "r10"):
+        with mock.patch.object(B, "run_range_duel", side_effect=["winner"] * 6 + ["loser"] * 2 + [None] * 2):
+            if batch == "range":
+                with mock.patch.dict(B.RANGE_RULES, {"draw_split": ("draw split", "winner", "a", "b", "mid")}):
+                    result = B.range_duel_batch(_recoil_model(), "draw_split", 10, SEED)
+            else:
+                result = B.r10_duel_batch(_recoil_model(), "winner", "loser", 10, SEED)
+        assert (result.wins, result.losses, result.draws) == (6, 2, 2)
+        assert result.win_rate == 0.6 and result.draw_rate == 0.2
+        assert result.win_rate < 0.65
+
+
 def test_recoil_duel_seeded_runs_land_in_band():
     """One seeded run per rule, at a rep count small enough to stay well under the suite's speed
     budget, pinned to a band around the value this exact model gives at SEED -- reproducible per the
@@ -1129,3 +1149,13 @@ def test_shields_preset_primaries_beat_sidearms_r10b():
              for p in B.R10_PRIMARIES for s in B.R10_SIDEARMS]
     low = _shields_low(cells)
     assert not low, f"Shields preset under the {B.SHIELDS_BAR:.0%} bar (F310): " + "; ".join(low)
+
+
+def test_race_at_the_cap_is_a_draw_whatever_health_is_left():
+    # F603 (Astra #7): `_race` ranked two survivors by the health left at the cap
+    def misses(dmg):
+        t = 0.0
+        while True:
+            yield (t, 0.0, dmg)
+            t += 100.0
+    assert B._race(random.Random(1), misses(10), misses(10), 200, 100, 1000.0) is None

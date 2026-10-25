@@ -41,7 +41,8 @@ Ammo stress alone lets a Shotgun fire between shells. Bolt kits have no ammo str
 the down time rule measures bolt exposure instead of ammunition.
 Semi fight rounds use t14 plus FIGHT_OVERSHOOT_MS. Compile's published ttk_ms uses the same field fit
 (F576). Heat cooling while firing is unproven (F575).
-The matrix reports REAL_AIM separately at close, mid and long range. Each matrix 1v1 column scores
+Domination priority uses the REAL_AIM close, mid and long columns. The 0.9 columns report a ceiling view.
+Each matrix 1v1 column scores
 the first kill within 10 s. Long contact uses 20 s. The field ratio
 uses a 150 s kill-count match. `assumptions()` names every other scoring horizon. The Shields preset
 regenerates its shield after 6.5 s without damage, in four grants one second apart.
@@ -107,7 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 17   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609); 17: the headset word at every range, 88 ms late (F602)
+SCENARIO_VERSION = 19   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -117,7 +119,7 @@ REPS = {"duel": 3000, "perk": 2000, "field": 600, "ambush": 3000, "peek": 3000, 
         "ttk": 2000, "finish": 3000, "rule": 10000}
 MIN_REPS = 4
 
-AIM = 0.9                     # aim factor: hit chance = recoil accuracy x AIM x BAND_FIT, capped at 1
+AIM = 0.9                     # ceiling view: hit chance = recoil accuracy x AIM x BAND_FIT, capped at 1
 REAL_AIM = 0.4                # field fight hits per round: about 0.38 for a mid rifle at mid range
 HAZE_BLIND_MS = 3000.0       # observed Haze blackout window
 HAZE_BLIND_SWEEP_MS = (1000, 1500, 2000, 3000)
@@ -132,7 +134,7 @@ REACTION_SD_MS = 80.0
 RETARGET_MS = 400.0           # after a kill, a trigger release before the next target
 BURST_LEN = (3, 5)            # a controlled burst on an automatic weapon: 3 to 5 rounds ...
 BURST_PAUSE_MS = (150.0, 300.0)   # ... then a 150 to 300 ms pause
-FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is decided on the remaining pool
+FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is a draw, never ranked by the pool left (F603)
 LONG_CONTACT_AIM = 0.5        # the "long contact" column: a 20 s fight at a poor aim, mid range
 LONG_CONTACT_CAP_MS = 20_000.0
 PEEK_WINDOW_MS = 750.0        # a peeking marksman is exposed only within 375 ms of its own shots
@@ -199,7 +201,7 @@ PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.62; leave about 0.6
 PICKUP_TTK_BAR_MS = 2500.0     # practical median against an undefended Standard target
 PICKUP_STOCK_CAP_MS = 120_000.0
 FIELD_RATIO_CEILING = 1.60      # Shipped max field ratio at full reps: 1.31946; no kit exceeded the ceiling.
-DOMINATION_PRIORITY = ("1v1 close", "1v1 mid", "1v1 long", "field")  # No shipped kit neared the top in all four.
+DOMINATION_PRIORITY = ("real aim close", "real aim mid", "real aim long", "field")
 NOISE_Z = 2.0
 R10_PRIMARY_BAR = 0.65        # a new sidearm: each of B.R10_PRIMARIES still beats it on Standard, as R10b (Shields: SHIELDS_BAR)
 RULE_BAR_STANDARD = 0.65      # mirrors mcp/tests/test_balance_sim.py (RANGE_BAR_OVERRIDES)
@@ -252,7 +254,7 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "domination": {"field_ratio_ceiling": FIELD_RATIO_CEILING,
                        "shipped_field_max_approx": 1.32, "shipped_margin_approx": 0.28,
                        "priority_columns": list(DOMINATION_PRIORITY),
-                       "priority_reason": "the three first-kill distance bands and 150 s field performance"},
+                       "priority_reason": "the three real-aim first-kill distance bands and 150 s field performance"},
         "near_top_noise_z": NOISE_Z,
         "near_top_noise": "a lost last cell counts only when its margin shortfall exceeds two standard errors; averaged binary cells use mean precision, field ratios use kill counts, and ambush and ammo use their own scales",
         "overall_value_requirement": "at least one of value_addition, viable or pickup_utility must pass",
@@ -294,7 +296,9 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
                           "rush_opponents": ["plain AR", "AR with Body Armor"]},
         "perk_exemption": "a row with reload_type 'bolt' ignores ammo_mult, ammo_mult_pistol and reload_mult",
         "rule_bars": {"standard": RULE_BAR_STANDARD, "overrides": dict(RULE_BAR_OVERRIDES),
-                      "shields": B.SHIELDS_BAR, "r10a_ms": B.R10_FINISH_BAR_MS},
+                      "shields": B.SHIELDS_BAR, "r10a_ms": B.R10_FINISH_BAR_MS,
+                      "gated_aim": REAL_AIM, "ceiling_aim": AIM,
+                      "duel_measure": "kill share; draws reported separately"},
         "op_gated_presets": list(OP_GATED_PRESETS),
     }
 
@@ -1093,16 +1097,28 @@ def _reaction(rng):
     return max(0.0, rng.gauss(REACTION_MEAN_MS, REACTION_SD_MS))
 
 
-def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
-              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> float:
-    """Win rate of a over b in a 1v1 (a draw on equal pools is half). `peek`: a marksman kit peeks with
-    PEEK_WINDOW_MS; a lone peeker opens at t=0 and the other side reacts from that shot."""
+class DuelRate(float):
+    """A duel win rate that also carries the share of fights still undecided at the cap (F603)."""
+    def __new__(cls, rate: float, censored: float = 0.0):
+        obj = float.__new__(cls, rate)
+        obj.censored = censored
+        return obj
+
+    def __reduce__(self):
+        return (DuelRate, (float(self), self.censored))
+
+
+def duel_outcomes(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
+              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> dict:
+    """1v1 outcomes of a against b: `win` and `loss` are kills, `trade` both died, `censored` both still alive at
+    the cap (F603: undecided, never ranked by the pool left, which credited unused starting armour). `peek`: a
+    marksman kit peeks with PEEK_WINDOW_MS; a lone peeker opens at t=0 and the other side reacts from that shot."""
     pa = PEEK_WINDOW_MS if (peek and kit_a.marksman) else None
     pb = PEEK_WINDOW_MS if (peek and kit_b.marksman) else None
     rng = B.cell_rng(SEED, "kduel", kit_a.name, kit_b.name, dist, preset, aim, cap_ms, pa, pb,
                      haze_blind_ms, _heat_seed(heat_cool_while_firing))
     d = DIST[dist]
-    wins = 0.0
+    out = {"win": 0, "loss": 0, "trade": 0, "censored": 0, "reps": reps}
     for _ in range(reps):
         a = Fighter(kit_a, kit_a.pool_parts(preset), aim, d, rng,
                     heat_cool_while_firing=heat_cool_while_firing)
@@ -1115,11 +1131,17 @@ def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, a
         elif pb and not pa:
             b.next_t = 0.0
         fight(rng, [a], [b], cap_ms, haze_blind_ms=haze_blind_ms)
-        if a.alive and not b.alive:
-            wins += 1
-        elif a.alive == b.alive:
-            wins += 0.5 if a.pool == b.pool else (1.0 if a.pool > b.pool else 0.0)
-    return wins / reps
+        out["win" if a.alive and not b.alive else "loss" if b.alive and not a.alive else
+            "censored" if a.alive else "trade"] += 1
+    return out
+
+
+def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
+              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> float:
+    """Win rate of a over b in a 1v1: a kill is 1, a trade or a fight undecided at the cap is half (F603). The
+    result also carries `.censored`, the undecided share."""
+    o = duel_outcomes(kit_a, kit_b, dist, preset, reps, aim, cap_ms, peek, haze_blind_ms, heat_cool_while_firing)
+    return DuelRate((o["win"] + 0.5 * (o["trade"] + o["censored"])) / reps, o["censored"] / reps)
 
 
 def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS,
@@ -2247,6 +2269,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     cells = [(key, job if carries_heat(job) else (*job[:-1], "throughout")) for key, job in cells]
     res = run_cells([j for _, j in cells], n_jobs)
     duel, field, field_counts, amb, hill, ammo, ammo_caps, ammo_reasons = {}, {}, {}, {}, {}, {}, {}, {}
+    censored = {}     # F603: the share of each duel cell's fights still undecided at the cap
     ammo_anchor_kills = 0.0
     ammo_anchor_caps = 0
     ammo_anchor_reasons = {}
@@ -2265,8 +2288,9 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
             hill.setdefault(key[2], []).append(r)
         else:
             mode, d, a, b = key
-            duel[f"{mode}|{d}|{a}|{b}"] = r
+            duel[f"{mode}|{d}|{a}|{b}"] = float(r)
             duel[f"{mode}|{d}|{b}|{a}"] = 1.0 - r
+            censored[f"{mode}|{d}|{a}|{b}"] = censored[f"{mode}|{d}|{b}|{a}"] = getattr(r, "censored", 0.0)
     for n in bolt_names:
         ammo[n], ammo_caps[n], ammo_reasons[n] = float("nan"), 0, {}
 
@@ -2291,7 +2315,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     return {"kits": names, "keys": keys, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
                                                "shields_perk": s.shield_perk,
                                                "combo": s.combo} for s in specs},
-            "columns": cols, "top": top, "near_top": near, "duels": duel,
+            "columns": cols, "top": top, "near_top": near, "duels": duel, "duel_censored": censored,
             "field_counts": field_counts,
             "reps": {"duel": dr, "field": fr, "ambush": ar, "ammo": ammo_reps},
             "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills,
@@ -2367,12 +2391,12 @@ def _rule_bar(rid: str, preset: str) -> float:
 
 
 def _run_rule(rid: str, kind: str, preset: str, rows_sig: str, reps: int,
-              heat_cool_while_firing=True):
+              heat_cool_while_firing=True, aim_factor: float = AIM):
     """One rule on one preset. `rows_sig` is the JSON of the rows the rule reads: the cache key, and the
     catalogue the rule runs on. Heated combatants use the selected cooling branch."""
     rows = json.loads(rows_sig)
     cat = WeaponCatalog(_complete_rows(rows))
-    m = B.RecoilDuelModel.from_catalog(cat, health_preset=preset,
+    m = B.RecoilDuelModel.from_catalog(cat, health_preset=preset, aim_factor=aim_factor,
                                        heat_cooling=B.normalise_heat_cooling(heat_cool_while_firing))
     if kind == "recoil":
         n = rid[1:]
@@ -2380,14 +2404,17 @@ def _run_rule(rid: str, kind: str, preset: str, rows_sig: str, reps: int,
         args = (m, float(CHARGE_TAP_CADENCE_MS)) if tap_dep else (m,)
         # the CI gate's own labels (test_balance_sim.py "gate_rule1".."gate_rule3"), so at the same reps the
         # numbers here are the CI numbers
-        return B.recoil_duel_batch(fn, expected, reps, SEED, f"gate_rule{n}", *args).win_rate
+        result = B.recoil_duel_batch(fn, expected, reps, SEED, f"gate_rule{n}", *args)
+        return {"value": result.win_rate, "draw_share": result.draw_rate}
     if kind == "range":
-        return B.range_duel_batch(m, rid[1:], reps, SEED).win_rate
+        result = B.range_duel_batch(m, rid[1:], reps, SEED)
+        return {"value": result.win_rate, "draw_share": result.draw_rate}
     if kind == "r10b":
         p, s = rid.split(" ", 1)[1].split("/")
-        return B.r10_duel_batch(m, p, s, reps, SEED).win_rate
+        result = B.r10_duel_batch(m, p, s, reps, SEED)
+        return {"value": result.win_rate, "draw_share": result.draw_rate}
     s = rid.split(" ", 1)[1]
-    return B.finish_time_batch(m, s, reps, SEED).median_ms
+    return {"value": B.finish_time_batch(m, s, reps, SEED).median_ms, "draw_share": None}
 
 
 _SHIPPED_ROWS = None
@@ -2408,13 +2435,20 @@ def run_rules(world: World, scale: float, n_jobs: int, heat_cool_while_firing=Tr
     for rid, ids, kind in rule_list():
         sig = json.dumps({w: world.cat._row(w) for w in ids}, sort_keys=True)
         for preset in (("standard",) if kind == "r10a" else ("standard", "shields")):
-            jobs.append(("rule", rid, kind, preset, sig, reps, heat_cool_while_firing))
-            keys.append((rid, preset))
+            for aim in (REAL_AIM, AIM):
+                jobs.append(("rule", rid, kind, preset, sig, reps, heat_cool_while_firing, aim))
+                keys.append((rid, preset, aim))
+    values = {(rid, preset, aim): result for (rid, preset, aim), result in zip(keys, run_cells(jobs, n_jobs))}
     out = {}
-    for (rid, preset), v in zip(keys, run_cells(jobs, n_jobs)):
+    for rid, preset, _aim in keys[::2]:
+        gated, ceiling = values[(rid, preset, REAL_AIM)], values[(rid, preset, AIM)]
+        v = gated["value"]
         bar = _rule_bar(rid, preset)
         ok = v < bar if rid.startswith("R10a") else v >= bar
-        out[f"{preset}|{rid}"] = {"value": v, "bar": bar, "pass": ok}
+        out[f"{preset}|{rid}"] = {"value": v, "bar": bar, "pass": ok,
+                                  "draw_share": gated["draw_share"],
+                                  "ceiling_value": ceiling["value"],
+                                  "ceiling_draw_share": ceiling["draw_share"]}
     return out
 
 
@@ -2427,13 +2461,20 @@ def run_heated_rules(world: World, scale: float, n_jobs: int, branch: str, heate
             continue
         sig = json.dumps({w: world.cat._row(w) for w in ids}, sort_keys=True)
         for preset in (("standard",) if kind == "r10a" else ("standard", "shields")):
-            jobs.append(("rule", rid, kind, preset, sig, reps, branch))
-            keys.append((rid, preset))
+            for aim in (REAL_AIM, AIM):
+                jobs.append(("rule", rid, kind, preset, sig, reps, branch, aim))
+                keys.append((rid, preset, aim))
+    values = {(rid, preset, aim): result for (rid, preset, aim), result in zip(keys, run_cells(jobs, n_jobs))}
     out = {}
-    for (rid, preset), value in zip(keys, run_cells(jobs, n_jobs)):
+    for rid, preset, _aim in keys[::2]:
+        gated, ceiling = values[(rid, preset, REAL_AIM)], values[(rid, preset, AIM)]
+        value = gated["value"]
         bar = _rule_bar(rid, preset)
         out[f"{preset}|{rid}"] = {"value": value, "bar": bar,
-                                  "pass": value < bar if rid.startswith("R10a") else value >= bar}
+                                  "pass": value < bar if rid.startswith("R10a") else value >= bar,
+                                  "draw_share": gated["draw_share"],
+                                  "ceiling_value": ceiling["value"],
+                                  "ceiling_draw_share": ceiling["draw_share"]}
     return out
 
 
@@ -2691,6 +2732,7 @@ def heat_rows(matrix: dict, weapon: str) -> dict | None:
     return {
         "columns": matrix["columns"][name],
         "duels": {k: v for k, v in matrix["duels"].items() if name in k.split("|")[2:]},
+        "duel_censored": {k: v for k, v in matrix.get("duel_censored", {}).items() if name in k.split("|")[2:]},
         "kits": {n: {"columns": matrix["columns"][n],
                      "duels": {k: v for k, v in matrix["duels"].items() if n in k.split("|")[2:]}}
                  for n in names}}
@@ -2963,9 +3005,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         for branch in B.HEAT_COOLING_BRANCHES:
             branch_mb, branch_mc = matrices[branch]
             branch_rules = rule_branches[branch]
-            flips = [key for key, values in verdict["heat_rules"].items()
+            cells = verdict["heat_rules"].items()
+            flips = [key for key, values in cells
                      if (values[branch]["shipped"]["pass"] or values[branch]["baseline"]["pass"])
                      and not values[branch]["candidate"]["pass"]]
+            flips += [key for key, values in cells if key not in flips   # F610: a flip at the ceiling counts too
+                      and (_ceiling_pass(values[branch]["shipped"], key) or _ceiling_pass(values[branch]["baseline"], key))
+                      and not _ceiling_pass(values[branch]["candidate"], key)]
             before_dom = domination_verdict(branch_mb, branch_mb)["numbers"]
             after_dom = domination_verdict(branch_mb, branch_mc)["numbers"]
             if _new_dominance_kits(before_dom, after_dom):
@@ -3053,13 +3099,27 @@ def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -
     return all(material)
 
 
+def _ceiling_pass(cell: dict, key: str) -> bool:
+    """A rule cell's pass at the 0.9 ceiling (F610); a cell without a ceiling value passes there."""
+    v, bar = cell.get("ceiling_value"), cell["bar"]
+    return True if v is None else (v < bar if key.split("|", 1)[1].startswith("R10a") else v >= bar)
+
+
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
                  side: dict | None = None, *, haze_failure: bool = False) -> dict:
-    """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
+    """Rule cells fail when, at either aim (real or the 0.9 ceiling), they pass in the shipped catalogue but fail in
+    either world (this judges a `with`
     entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
     (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
-    flips = [k for k in rules_c if (rules_b[k]["pass"] and not rules_c[k]["pass"])
-             or (rules_s[k]["pass"] and not (rules_b[k]["pass"] and rules_c[k]["pass"]))]
+    def flipped(passes):
+        return [k for k in rules_c if (passes(rules_b, k) and not passes(rules_c, k))
+                or (passes(rules_s, k) and not (passes(rules_b, k) and passes(rules_c, k)))]
+
+    flips = flipped(lambda rules, k: rules[k]["pass"])
+    ceiling_passes = lambda rules, k: _ceiling_pass(rules[k], k)  # noqa: E731
+    # F610: a cell the shipped catalogue already fails at real aim can still be broken at the 0.9 ceiling
+    ceiling_flips = [k for k in flipped(ceiling_passes) if k not in flips]
+    flips += ceiling_flips
     already = [k for k in rules_s if not rules_s[k]["pass"]]
     by_key_c = {key: name for name, key in mc["keys"].items()}
     candidates = [(name, key, by_key_c[key]) for name, key in mb["keys"].items()
@@ -3069,7 +3129,12 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     noise_excused = [key for name, key, new_name in candidates
                      if not _last_cell_material_loss(mb, mc, name, new_name)]
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
-                               "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
+                               "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"],
+                               **({"ceiling_shipped": rules_s[k].get("ceiling_value"),
+                                   "ceiling_baseline": rules_b[k].get("ceiling_value"),
+                                   "ceiling_candidate": rules_c[k].get("ceiling_value")} if k in ceiling_flips else {})}
+                           for k in flips},
+            "ceiling_rule_flips": ceiling_flips,
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
             "haze_flip_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
@@ -3080,7 +3145,7 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
         nums["r10b_primaries_beat_it"] = side["r10b"]
         nums["r10b_under_bar"] = low
         ok = ok and not low
-    return _test(ok, nums, "no Balance rule cell flips to fail (against the shipped catalogue too), "
+    return _test(ok, nums, "no Balance rule cell flips to fail at either aim (against the shipped catalogue too), "
                            "no other kit loses its last near-top cell, and no selectable Haze row "
                            "crosses the Haze win bar from a passing baseline")
 
@@ -3141,7 +3206,9 @@ def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_
 def sidearm_r10(world: World, wid: str, scale: float, duels: bool = True,
                 heat_cool_while_firing=True) -> dict:
     """R10 uses the CI duel engine for unheated pairs and the kit engine when either gun has heat.
-    R10a is the median finish time for 35 HP. R10b tests each primary on Standard and Shields."""
+    R10a is the median finish time for 35 HP. R10b tests each primary on Standard and Shields.
+    F610: this gate stays at aim 0.9. It is absolute, not a flip, and every shipped sidearm already fails it at
+    REAL_AIM, so a real-aim bar would refuse any sidearm; the rule table reports the real-aim R10b cells."""
     reps = _reps("rule", scale)
     sidearm_heated = bool(world.cat._row(wid).get("heat"))
     kind, temp = wid, None
@@ -3242,6 +3309,14 @@ def _num(v):
             return "n/a"
         return "inf" if math.isinf(v) else (round(v, 3) if abs(v) < 10 else round(v))
     return v
+
+
+def _rule_cell_text(cell: dict, *, ceiling: bool = False) -> str:
+    value_key = "ceiling_value" if ceiling else "value"
+    draw_key = "ceiling_draw_share" if ceiling else "draw_share"
+    draw = cell.get(draw_key)
+    value = _num(cell.get(value_key))
+    return str(value) if draw is None else f"{value} (draw {_num(draw)})"
 
 
 def _json_finite(v):
@@ -3468,14 +3543,19 @@ def report_markdown(v: dict) -> str:
             out.append("")
     if v.get("heat_rules"):
         out += ["## Heated Balance rule cells", "",
+                f"Real aim {REAL_AIM:g} gates. Aim {AIM:g} is the reported ceiling. "
+                "Duel values are kill shares, with draw shares beside them. R10a values are milliseconds.",
                 "Each cell uses its catalogue heat and all three cooling branches.", "",
-                "| rule | branch | shipped | baseline | candidate | bar | pass |",
-                "|---|---|---:|---:|---:|---:|---|"]
+                "| rule | branch | shipped real | baseline real | candidate real | shipped ceiling | baseline ceiling | candidate ceiling | bar | pass |",
+                "|---|---|---:|---:|---:|---:|---:|---:|---:|---|"]
         for key, branches in v["heat_rules"].items():
             for branch in B.HEAT_COOLING_BRANCHES:
                 cells = branches[branch]
-                out.append(f"| {key} | {branch} | {_num(cells['shipped']['value'])} | "
-                           f"{_num(cells['baseline']['value'])} | {_num(cells['candidate']['value'])} | "
+                out.append(f"| {key} | {branch} | {_rule_cell_text(cells['shipped'])} | "
+                           f"{_rule_cell_text(cells['baseline'])} | {_rule_cell_text(cells['candidate'])} | "
+                           f"{_rule_cell_text(cells['shipped'], ceiling=True)} | "
+                           f"{_rule_cell_text(cells['baseline'], ceiling=True)} | "
+                           f"{_rule_cell_text(cells['candidate'], ceiling=True)} | "
                            f"{_num(cells['candidate']['bar'])} | {cells['candidate']['pass']} |")
         for branch, keys in v.get("standing_heat_failures", {}).items():
             if keys:
@@ -3493,17 +3573,18 @@ def report_markdown(v: dict) -> str:
                        f"{_num(numbers['median_ttk_ms'])} | {result['pass']} |")
         out.append("")
     rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
-    moved = [k for k in rc if abs(rc[k]["value"] - rb[k]["value"]) > 1e-9 or abs(rc[k]["value"] - rs[k]["value"]) > 1e-9]
     out += ["## Balance rules", "",
+            f"Real aim {REAL_AIM:g} gates. Aim {AIM:g} is the reported ceiling. "
+            "Duel values are kill shares, with draw shares beside them. R10a values are milliseconds.",
             f"{sum(r['pass'] for r in rc.values())} of {len(rc)} rule cells pass in the candidate world "
-            f"({sum(r['pass'] for r in rb.values())} in the baseline, {sum(r['pass'] for r in rs.values())} as shipped)."]
-    if moved:
-        out += ["", "| rule | shipped | baseline | candidate | bar | pass |", "|---|---|---|---|---|---|"]
-        for k in moved:
-            out.append(f"| {k} | {_num(rs[k]['value'])} | {_num(rb[k]['value'])} | {_num(rc[k]['value'])} | "
-                       f"{_num(rc[k]['bar'])} | {rc[k]['pass']} |")
-    else:
-        out.append(" No rule cell moved: neither the candidate nor its context touches a weapon the rules read.")
+            f"({sum(r['pass'] for r in rb.values())} in the baseline, {sum(r['pass'] for r in rs.values())} as shipped).",
+            "", "| rule | shipped real | baseline real | candidate real | shipped ceiling | baseline ceiling | candidate ceiling | bar | pass |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    for k in rc:
+        out.append(f"| {k} | {_rule_cell_text(rs[k])} | {_rule_cell_text(rb[k])} | "
+                   f"{_rule_cell_text(rc[k])} | {_rule_cell_text(rs[k], ceiling=True)} | "
+                   f"{_rule_cell_text(rb[k], ceiling=True)} | {_rule_cell_text(rc[k], ceiling=True)} | "
+                   f"{_num(rc[k]['bar'])} | {rc[k]['pass']} |")
     out += ["", "## Time to kill (perfect aim, recoil model, crits)", "",
             "| weapon | pool | htk | perfect | no crit | expected crit | all crit | recoil bursts | recoil full auto |",
             "|---|---|---|---|---|---|---|---|---|"]
