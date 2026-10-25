@@ -38,7 +38,7 @@ export function emptyRequiredSlots(pool: LoadoutPool | null): { primary: boolean
  *  shown verbatim to a PLAYER — this is the OPERATOR's, and names the control to fix). `slot` picks
  *  the pronoun; `needs_secondary` only ever occurs on the perk slot but is worded generically in case
  *  a second swap-effect perk ever lands on another slot. */
-export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode, name?: string | null): string {
+export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode, name?: string | null, fixed = false): string {
   // F221 polish r1: one colon, not an em dash. These feed a RED alert (`designer-slot-empty-pool`,
   // `games-locked-banner`), and the wording rule is WHAT: DO, one separator.
   switch (code) {
@@ -48,7 +48,9 @@ export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: P
     // round-3 UX-2: NAMES the weapon. `name` is the catalogue row's name where the caller has it (the
     // rule only carries an id); without one the sentence still says the right thing about the slot.
     case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED: ITS HIT ROW DEALS NO DAMAGE (CATALOGUE), PICK ANOTHER WEAPON.`;
-    case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING: CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
+    // F594 review: a FIXED slot has no filters; `filtered` there means its weapon cannot go in the slot (state.py)
+    case 'filtered': return fixed ? `${slot}'S FIXED PICK CANNOT GO IN THAT SLOT: CHOOSE A DIFFERENT ONE, OR LET PLAYERS PICK.`
+      : `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING: CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
     // F585: the fixed perk cannot ride with any weapon this slot allows (F551); there is no filter to clear
     case 'perk_blocked': return `THE FIXED PERK CANNOT RIDE WITH ANY ${slot} THIS GAME ALLOWS: PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER WEAPON.`;
     case 'off': return '';   // never shown — an off slot is not a problem
