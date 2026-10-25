@@ -14,7 +14,7 @@ import {
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
 import { defaultModeParams, mergeModeParams } from '../rules/modeParams';
 import { perkEffectsResolved } from '../rules/perkEffects';
-import { mergePresentation, presentationView } from '../rules/presentation';
+import { mergePresentation } from '../rules/presentation';
 import { healthPresetOf } from '../rules/health';
 import { fmtServerAge } from '../tokens';
 import { GUN_FLAPPING_LINE, LOCAL_ONE_TEAM_FAULT, curedByPush } from '../api/derive';
@@ -2141,11 +2141,6 @@ export class MockBackend implements Api {
     this.gamePick = { pieces: ids, match };
     this.emit();
     return { ok: true, errors: [], config: r.config, pick: clone(this.gamePick), countdown_s: row.countdown_s, fallbacks };
-  }
-
-  /** The same resolved presentation catalogue the server serves for ADVANCED. */
-  async getPresentation() {
-    return { ...presentationView(this.config), mc_confidence: this.state().mc_confidence };
   }
 
   async previewPool(policy: Partial<LoadoutPolicy>, mode?: string) {

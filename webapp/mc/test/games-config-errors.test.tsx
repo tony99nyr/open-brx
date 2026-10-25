@@ -23,13 +23,16 @@ describe('the GAMES config_errors strip', () => {
     const state = { ...d.state, config_errors: [F88] };
     const m = await mountScreen(<Games />, { ...d, state });
 
-    const alert = m.find('[role="alert"]').find(el => /F88/.test(el.textContent ?? ''));
+    const alert = m.find('[data-alert="games-config-errors"]')[0];
     expect(alert, 'a config_errors alert is on screen').toBeTruthy();
-    const txt = (alert!.textContent ?? '').toUpperCase();
+    expect(alert.textContent).toContain('Game config error');
+    await m.click('Why?');
+    const txt = (alert.textContent ?? '').toUpperCase();
     expect(txt).toMatch(/NOT BUILDABLE/);          // the reason
     expect(txt).toMatch(/ONE POINT/);              // the remedy
 
-    const px = parseFloat(getComputedStyle(alert!).fontSize);
+    const detail = alert!.querySelector('[data-testid="fault-detail"]') as HTMLElement;
+    const px = parseFloat(getComputedStyle(detail).fontSize);
     expect(px, `the refusal is legible (${px}px)`).toBeGreaterThanOrEqual(11);
     m.unmount();
   });
@@ -38,9 +41,11 @@ describe('the GAMES config_errors strip', () => {
     const d = await demo();
     const state = { ...d.state, config_errors: ['first refusal here', 'second refusal here'] };
     const m = await mountScreen(<Games />, { ...d, state });
-    const alert = m.find('[role="alert"]').find(el => /REFUSAL/i.test(el.textContent ?? ''));
+    const alert = m.find('[data-alert="games-config-errors"]')[0];
     expect(alert, 'the alert is on screen').toBeTruthy();
-    const txt = (alert!.textContent ?? '').toUpperCase();
+    expect(alert.textContent).toContain('Game config error');
+    await m.click('Why?');
+    const txt = (alert.textContent ?? '').toUpperCase();
     expect(txt).toMatch(/FIRST REFUSAL HERE/);
     expect(txt).toMatch(/SECOND REFUSAL HERE/);
     m.unmount();
@@ -50,8 +55,8 @@ describe('the GAMES config_errors strip', () => {
     const d = await demo();
     const state = { ...d.state, config_errors: [] };
     const m = await mountScreen(<Games />, { ...d, state });
-    const alert = m.find('[role="alert"]').find(el => /REFUSAL|F88|NOT BUILDABLE/i.test(el.textContent ?? ''));
-    expect(alert, 'no refusal alert when config_errors is empty').toBeFalsy();
+    const alert = m.find('[data-alert="games-config-errors"]');
+    expect(alert, 'no refusal alert when config_errors is empty').toHaveLength(0);
     m.unmount();
   });
 });

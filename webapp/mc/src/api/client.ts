@@ -192,7 +192,6 @@ export function createHttpApi(): Api {
     deleteFavourite: async id => { await j(`/api/favourites/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     loadFavourite: id => post(`/api/favourites/${encodeURIComponent(id)}/load`, {}),
     previewPool: (loadout_policy, mode) => post('/api/loadout/pool', { loadout_policy, mode }),
-    getPresentation: () => j('/api/presentation'),
     putConfig: (partial: Partial<GameConfig>) => j('/api/config', { method: 'PUT', body: JSON.stringify(partial) }),
     addPlayer: p => post('/api/players', p),
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),

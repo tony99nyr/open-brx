@@ -212,7 +212,11 @@ try {
     const liveNotice = pg.locator('[data-testid="end-delivery"]');
     await liveNotice.waitFor({ state: 'visible', timeout: 10000 });
     if (expect(await liveNotice.count() === 1, 'the explicit real LIVE board carries the end-delivery notice too')) {
-      const text = (await liveNotice.innerText()).replace(/\s+/g, ' ').toUpperCase();
+      if (await liveNotice.evaluate(e => e.tagName === 'BUTTON')) await liveNotice.click();
+      else await liveNotice.locator('button', { hasText: 'Why?' }).click();
+      const text = (await (await liveNotice.evaluate(e => e.tagName === 'BUTTON')
+        ? liveNotice.locator('xpath=..').locator('[data-testid="chip-detail"]')
+        : liveNotice.locator('[data-testid="fault-detail"]')).innerText()).replace(/\s+/g, ' ').toUpperCase();
       expect(/NODES? (HAS|HAVE) NOT CONFIRMED THE END/.test(text), 'the LIVE notice says confirmation is missing');
       expect(/RE-DELIVERING/.test(text), 'the LIVE notice says MC is still re-delivering');
     }

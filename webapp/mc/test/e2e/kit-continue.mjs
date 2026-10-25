@@ -247,7 +247,7 @@ async function runMock(browser, viteBase, vp, tag) {
   expect(!(await onLobby(pg)), 'the first tap did NOT open the lobby');
   const warn = await pg.locator('[data-continue-warn]').innerText().catch(() => '');
   const warn1 = warn.replace(/\s+/g, ' ');
-  expect(/SABLE, DRIFT ARE STILL KITTING AND WILL LOSE THEIR SCREEN/.test(warn1),
+  expect(/SABLE and DRIFT still kitting, they lose their screen/.test(warn1),
     `the confirm names them AND says what the tap costs them (saw ${JSON.stringify(warn1)})`);
   expect((await gateBtn(pg).innerText()).replace(/\s+/g, ' ').includes('CONTINUE ANYWAY · 6/8 READY'),
     `the armed button keeps the ready count (saw ${JSON.stringify(await gateBtn(pg).innerText())})`);
@@ -320,7 +320,7 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
   await pg.waitForTimeout(400);
   expect(await phaseNow() === 'kit', `THE F127 REGRESSION: the first tap must not move the SERVER phase (saw ${await phaseNow()})`);
   const warn = (await pg.locator('[data-continue-warn]').innerText().catch(() => '')).replace(/\s+/g, ' ');
-  expect(/ROCCO IS STILL KITTING AND WILL LOSE THEIR SCREEN/.test(warn), `the confirm names ROCCO and the cost (saw ${JSON.stringify(warn)})`);
+  expect(/ROCCO still kitting, they lose their screen/.test(warn), `the confirm names ROCCO and the cost (saw ${JSON.stringify(warn)})`);
   expect((await gateBtn(pg).innerText()).replace(/\s+/g, ' ').includes('CONTINUE ANYWAY · 8/9 READY'),
     `the armed button keeps the count (saw ${JSON.stringify(await gateBtn(pg).innerText())})`);
   ok(`first tap: server still in kit, "${warn}"   ${await shot(pg, `12-${tag}-real-armed`)}`);
@@ -430,13 +430,16 @@ async function runLoadFail(browser, viteBase, vp, tag) {
   await until(() => onKit(pg), 15000, 'KIT');
   const strip = pg.locator('[data-alert="kit-load-error"]');
   await until(() => strip.count().then(n => n === 1), 6000, 'the gun-list load error');
-  const words = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ');
-  expect(/COULD NOT LOAD THE GUN LIST/.test(words), `the failure is shown, not read as "no guns" (saw ${JSON.stringify(words)})`);
-  expect(await strip.getByRole('button', { name: /RETRY/ }).isVisible(), 'the RETRY control is visible');
+  const label = (await strip.innerText().catch(() => '')).replace(/\s+/g, ' ');
+  expect(/COULD NOT LOAD THE GUN LIST/i.test(label), `the failure is shown, not read as "no guns" (saw ${JSON.stringify(label)})`);
+  await strip.getByRole('button', { name: /Why\?/i }).click();
+  const words = (await strip.locator('[data-testid="fault-detail"]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+  expect(/ARMORY READ FAILED \(forced\)/i.test(words), `the fault detail shows the server's reason (saw ${JSON.stringify(words)})`);
+  expect(await strip.getByRole('button', { name: /RETRY/i }).isVisible(), 'the RETRY control is visible');
   const shotFailed = await shot(pg, `40-${tag}-loadfail`);
   fail = false;
   const before = gets;
-  await strip.getByRole('button', { name: /RETRY/ }).click();
+  await strip.getByRole('button', { name: /RETRY/i }).click();
   await until(() => strip.count().then(n => n === 0), 6000, 'the load error clears after RETRY');
   expect(gets > before, `RETRY sent a GET /api/armory (saw ${gets - before})`);
   ok(`500 shown with RETRY, RETRY recovers   ${shotFailed}  ${await shot(pg, `41-${tag}-loadfail-retried`)}`);

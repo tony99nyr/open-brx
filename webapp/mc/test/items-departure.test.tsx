@@ -96,7 +96,9 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     const { m } = await armory(api);
     const lines = m.find('[data-testid="station-departure"]');
     expect(lines).toHaveLength(1);
-    expect(lines[0].textContent).toMatch(new RegExp(`HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT \\d\\d:\\d\\d`));
+    expect(lines[0].textContent).toContain(`Hill ${id} left`);
+    await m.click(`Hill ${id} left`);
+    expect(m.find('[data-testid="chip-detail"]')[0].textContent).toMatch(new RegExp(`Hill ${id} \\(phone util-a1b2c3\\) went back to hud at \\d\\d:\\d\\d`, 'i'));
     expect(m.find(`[data-station-card="${NODE}"]`)).toHaveLength(0);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(0);
     m.unmount();
@@ -107,7 +109,9 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     api.utilityHello(NODE);
     const { m, settle } = await armory(api);
     const card = m.find(`[data-station-card="${NODE}"]`)[0];
-    expect(card.querySelector('[data-testid="station-departure"]')?.textContent).toMatch(/IT IS BACK, SO TAP RESTORE/);
+    expect(card.querySelector('[data-testid="station-departure"]')?.textContent).toContain(`Hill ${id} left`);
+    await m.click(`Hill ${id} left`);
+    expect(m.find('[data-testid="chip-detail"]')[0].textContent).toMatch(/it is back, so tap restore/i);
     const btn = card.querySelector('[data-testid="station-restore"] button, button[data-testid="station-restore"]');
     expect(btn, 'RESTORE is on the returned node\'s card').toBeTruthy();
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(1);
@@ -125,7 +129,9 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     await api.releaseStation(NODE);   // accepted; the card stays until the HUD hello proves the role changed (F184)
     const { m } = await armory(api);
     const card = m.find(`[data-station-card="${NODE}"]`)[0];
-    expect(card.querySelector('[data-testid="station-departure"]')?.textContent).toMatch(/WAS RELEASED TO ITS HUD AT/);
+    expect(card.querySelector('[data-testid="station-departure"]')?.textContent).toContain('Respawn 1 left');
+    await m.click('Respawn 1 left');
+    expect(m.find('[data-testid="chip-detail"]')[0].textContent).toMatch(/was released to its hud at/i);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(0);
     m.unmount();
   });
@@ -137,7 +143,8 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     const { m, settle } = await armory(api);
     await m.click('RESTORE');
     await settle();
-    expect(m.find('[data-testid="station-apply-error"]')[0]?.textContent).toMatch(/item_preset is for a powerup station/);
+    await m.click('Station not armed');
+    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent).toMatch(/item_preset is for a powerup station/);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(1);
     m.unmount();
   });
@@ -145,13 +152,16 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
 
 describe('PLAY names the hill that left in its NO HILL block', () => {
   it('the block carries the departure line; CONTROL: a koth game with no departure does not', async () => {
-    const { api, id } = await departedHill();
+    const { api } = await departedHill();
     const [weapons, perks, modes] = [await api.getWeapons(), await api.getPerks(), await api.getModes()];
     const store = makeStore({ state: await api.getState(), weapons, perks, view: 'build' }, { api, modes });
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
-    const line = m.find('[data-testid="games-hill-departed"]');
-    expect(line).toHaveLength(1);
-    expect(line[0].textContent).toMatch(new RegExp(`^HILL ${id} \\(PHONE util-a1b2c3\\) WENT BACK TO HUD AT`));
+    expect(m.find('[data-testid="games-hill-departed"]')).toHaveLength(0);
+    expect(m.find('[data-testid="games-locked"]')[0].textContent).toContain('No hill assigned');
+    await m.click('No hill assigned');
+    const departure = (await api.getState()).station_departures![0];
+    expect(m.find('[data-testid="games-hill-departed"]')).toHaveLength(1);
+    expect(m.find('[data-testid="games-hill-departed"]')[0].textContent).toBe(departure.line);
     m.unmount();
     const plain = new MockBackend();
     await plain.putConfig({ mode: 'koth', station_source: 'phone' });

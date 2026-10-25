@@ -9,8 +9,10 @@
 // `npm run e2e:kit` (`checkSlotPlates`, which hard-fails when no plate has both). These are the
 // cheap guards for the two things that make that measurement come out right: the room is reserved,
 // and the line is allowed to wrap into it rather than being cut off.
-import { describe, expect, it } from 'vitest';
+import { act } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { Kit } from '../src/screens/Kit';
+import { SlotCard } from '../src/screens/kit/cards';
 import type { State } from '../src/api/types';
 import { StoreCtx } from '../src/store';
 import { demo, makeStore, mount } from './harness';
@@ -23,6 +25,20 @@ async function kitScreen() {
 }
 
 describe('KIT · a slot plate with a CLEAR control', () => {
+  it('Enter on nested Why? opens the detail without selecting the slot', async () => {
+    const select = vi.fn();
+    const m = await mount(<SlotCard label="Primary" slot="primary" active={false} onClick={select} kind="none" required />);
+    const why = m.find('button[aria-label="Why? Primary required"]')[0] as HTMLButtonElement;
+    expect(why).toBeTruthy();
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    await act(async () => { why.dispatchEvent(enter); });
+    expect(enter.defaultPrevented, 'the native button keeps its Enter action').toBe(false);
+    await act(async () => { why.click(); });
+    expect(m.find('[data-testid="fault-detail"]')[0]?.textContent).toContain('Pick a primary');
+    expect(select).not.toHaveBeenCalled();
+    m.unmount();
+  });
+
   it('reserves the corner the control sits in', async () => {
     const m = await kitScreen();
     const clears = m.find('[data-slot-clear]');

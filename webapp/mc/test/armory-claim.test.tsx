@@ -101,7 +101,8 @@ describe('ARMORY claim card', () => {
     const card = m.find('[data-node-card="node_91C2"]')[0];
     await typeAndSubmit(card, 'ROCCO');
     await vi.waitFor(() => expect(card.querySelector('[data-claim-error]'), 'the card renders its own error').toBeTruthy());
-    expect(card.textContent).toContain('ROSTER FULL');
+    await m.click('Claim refused');
+    expect(card.textContent).toContain('roster full');
     m.unmount();
   });
 });

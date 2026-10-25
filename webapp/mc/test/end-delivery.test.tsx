@@ -66,18 +66,23 @@ describe('A42 · LIVE tells the operator who has not confirmed the end', () => {
     const el = m.find('[data-testid="end-delivery"]')[0];
     expect(el, 'the notice is on the screen').toBeTruthy();
     const t = strip(el.textContent ?? '');
-    expect(t).toContain('BRAVO');
-    expect(t).toMatch(/1 OF 2 NODES HAS NOT CONFIRMED THE END/);
+    expect(t).toContain('END STILL REACHING PHONES');
+    await m.click('End still reaching phones');
+    const detail = strip(m.find('[data-testid="chip-detail"]')[0].textContent ?? '');
+    expect(detail).toContain('BRAVO');
+    expect(detail).toMatch(/1 OF 2 NODES HAS NOT CONFIRMED THE END/);
     expect(t, 'F318: one noun, NODES, as RECAP says').not.toMatch(/HUDS?\b/);
-    expect(t).toContain('RE-DELIVERING');
+    expect(detail).toContain('RE-DELIVERING');
   });
 
   it('says what the operator must DO once the re-delivery has given up', async () => {
     const m = await liveWith(SPENT);
-    const t = strip(m.find('[data-testid="end-delivery"]')[0].textContent ?? '');
-    expect(t).toContain('END IT ON THE GUN');
-    expect(t).toContain('TOLD 7 TIMES');
-    expect(t).not.toContain('RE-DELIVERING');
+    expect(strip(m.find('[data-testid="end-delivery"]')[0].textContent ?? '')).toContain('END DID NOT REACH PHONES');
+    await m.click('Why? ▾');
+    const detail = strip(m.find('[data-testid="fault-detail"]')[0].textContent ?? '');
+    expect(detail).toContain('END IT ON THE GUN');
+    expect(detail).toContain('TOLD 7 TIMES');
+    expect(detail).not.toContain('RE-DELIVERING');
   });
 
   it('says so when every HUD confirmed — the thing that was actually asked for', async () => {

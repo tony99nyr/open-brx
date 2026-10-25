@@ -106,7 +106,10 @@ describe('ITEMS — the powerup item picker', () => {
     const { m } = await muster({ getPowerups: async () => { throw e404; } });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/COULD NOT READ THE ITEM LIST: Not Found/);
+    const note = m.find('[data-testid="item-note"]')[0];
+    expect(note?.textContent).toContain('COULD NOT READ THE ITEM LIST: Not Found');
+    expect(note?.getAttribute('role')).toBeNull();
+    expect(note?.getAttribute('data-alert')).toBeNull();
     m.unmount();
   });
 
@@ -226,6 +229,7 @@ describe('ITEMS — per-station override steppers (S-powerup-overrides)', () => 
     expect(error()).toBeNull();
     await m.click('ASSIGN + ARM');
     expect(error()).toBe(REFUSAL);
+    await m.click('Station not armed');
     expect(card().textContent).toMatch(new RegExp(REFUSAL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     m.unmount();
   });
