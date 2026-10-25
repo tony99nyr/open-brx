@@ -2151,6 +2151,8 @@ export interface RecapSyncRow {
   name: string;
   team_id: string | null;
   stage: SyncStage;
+  /** phone socket link, separate from a latched receipt */
+  linked?: boolean;
   /** phones only, while linked: reach=backhaul, else status.transport */
   transport: SyncTransport | null;
   /** the phone's last reported unsent count (hello.pending or status.pending), > 0 */
@@ -2203,6 +2205,8 @@ export interface MatchHistoryRow {
   ended_t: number | null;
   recap: RecapView | null;
   config?: Record<string, unknown>;
+  /** F596: current match result is held until sync or FINALISE */
+  pending?: boolean;
 }
 
 export interface VoiceOption {

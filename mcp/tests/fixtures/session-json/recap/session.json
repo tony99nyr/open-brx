@@ -995,6 +995,11 @@
     "station_seen": {},
     "station_unverified": [],
     "store_path": "session.sqlite",
+    "sync_nodes": {
+      "hot-joined": {
+        "changed_t": 5036001
+      }
+    },
     "synced_at_lobby": {
       "node0": true,
       "node1": true

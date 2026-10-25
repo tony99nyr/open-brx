@@ -55,11 +55,11 @@ again once F574 has a cause.
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
-**State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
-- **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
-  session.json goldens), the mock built from recorded server states (slices 1-6), F524, F527 and the MC docs pass.
-  Fix log: `~/reviews-2026-10-10/mc.md`.
-- **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
+**State (2026-10-25):** F596/F597 and F599 are on main. MC polish round 1 is uncommitted on `brx3/mc-polish`.
+Receipts now survive a lost link and RECAP restart; a new batch reopens the wait. A restart does not repeat the
+whistle actions. History and both CSV routes hold the current result until sync or FINALISE. The console and mock
+match those rules, and the 1280×720 fold has a browser gate. The 2026-10 log records the tests and fixture changes.
+**Next:** review this worktree diff and land it through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
 
 ## Lane: brx4, the engine and the StickS3
 **State (2026-10-16):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525

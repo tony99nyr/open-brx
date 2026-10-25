@@ -661,8 +661,14 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
 - **Hot-swap shots [A6.2]:** `status.shots` is per node-session; MC keeps `shots_total = baseline + status.shots`,
   re-basing when a new `node_id` binds the player. Accuracy uses `shots_total`; `welcome.node.score.shots_total`
   seeds the swapped phone's display.
-- **Recap is provisional until every rostered node has flushed** [A5.11] (kills exist only in victims' reports): the
-  recap shows "N victims missing — kills provisional" and export is marked provisional until finalized.
+- **Recap results wait for sync** [A5.11/F596-F597]: after the whistle MC holds the winner and stats as
+  RESULTS PENDING until every rostered phone reports zero pending facts and every control hill reports, or the
+  operator chooses FINALISE.
+  `hello.pending` and post-whistle status counts keep the phone row in sync; a later batch can reopen a received
+  row. A lost link leaves a received row received and shows the link separately. FINALISE releases the held result
+  and marks it finalised. A late fact that changes the winner sets
+  `RESULT CHANGED` and updates the released result. While sync is pending, recap history marks the current match
+  pending without a winner, and both recap CSV routes return 409.
 - **Which player a fact scores for [F481-F487, 2026-10-05].** Each stored fact carries its node's holder at arrival, and a replay binds by that holder, so a replay repeats the live decision. At the whistle the node-to-player map freezes. A late fact stays on the player who held that phone then, through a handover, an evict and the roll. A player with no phone at the whistle takes their latest binding after it. The RECAP connection dots follow the live holder (F486). **Evict:** during a match an evicted node keeps its earlier facts' player. Facts it sends after the evict score for nobody, take no powerup and add no possession tally, live and in replay (F482). The node-map fallback never rebinds it: only a hello by its own gun does (F487). An evict in RECAP keeps its late facts and its pre-live sync record, so they still count (F483, Tony 2026-10-24: they happened in play).
 - **Medals [A11.4, A61]:** `feedback.medals: string[]` is a Halo-style stack: first_blood · ONE multi-kill medal, the
   highest of the ladder the chain has reached (double_kill 2 · triple_kill 3 · killtacular 4 · killtrocity 5 ·

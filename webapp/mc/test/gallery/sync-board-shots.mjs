@@ -24,7 +24,7 @@ const probe = p => p.evaluate(() => {
     unverified: document.querySelectorAll('[data-unverified="1"]').length, syncCol: !!document.querySelector('[data-col-head="sync"]') };
 });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
-const frames = [['b', 'b'], ['c', 'c'], ['d', 'd'], ['i', 'i'], ['48', 'i48'], ['finalised-without-1', 'fin1'], ['result-changed', 'chg']];
+const frames = [['b', 'b'], ['c', 'c'], ['d', 'd'], ['i', 'i'], ['32', 'i32'], ['32-stations', 'i32s'], ['48', 'i48'], ['finalised-without-1', 'fin1'], ['result-changed', 'chg']];
 for (const [name, fr] of frames) {
   const p = await open(fr, ctx);
   if (fr === 'fin1') await p.waitForSelector('[data-testid="final-without"]');
@@ -67,6 +67,17 @@ for (const [name, fr] of frames) {
   await p.click('[data-testid="finalise"]');
   await p.waitForTimeout(200);
   await p.screenshot({ path: `${out}/finalise-armed.png` });
+  await p.close();
+}
+{ // the FINALISE confirm with 32 phones and two stations: still above the fold, amber while a row is stuck
+  const p = await open('i32s', ctx);
+  await p.click('[data-testid="finalise"]');
+  await p.waitForTimeout(200);
+  await p.screenshot({ path: `${out}/finalise-armed-32.png` });
+  log.push(`finalise-armed-32: ${JSON.stringify(await p.evaluate(() => { const b = document.querySelector('[data-testid="finalise"]')?.getBoundingClientRect(); return { finaliseBottom: b ? Math.round(b.bottom) : null, text: document.querySelector('[data-testid="finalise"]')?.textContent }; }))}`);
+  await p.evaluate(() => window.scrollBy(0, 600));
+  await p.waitForTimeout(200);
+  await p.screenshot({ path: `${out}/greyed-rows-32.png` });
   await p.close();
 }
 { // prefers-reduced-motion: reduce

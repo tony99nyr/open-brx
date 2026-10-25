@@ -65,14 +65,14 @@ def test_a_later_event_in_the_same_millisecond_reopens_a_received_row():
     assert _row(s, pid)["stage"] == "linked"
 
 
-def test_a_status_without_pending_cannot_keep_a_received_claim():
+def test_a_status_without_pending_keeps_a_received_claim():
     s, net, clock, ps, _ = _ended()
     pid = ps[0]["player_id"]
     _status(net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     clock["t"] += 1
     net.simulate_status("node0", {"player_id": pid}, clock["t"])
-    assert _row(s, pid)["stage"] == "linked"
+    assert _row(s, pid)["stage"] == "received"
 
 
 def test_hello_pending_old_phone_disconnect_transport_and_loss():
@@ -89,7 +89,7 @@ def test_hello_pending_old_phone_disconnect_transport_and_loss():
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, via="backhaul")
     assert _row(s, pid)["transport"] == "backhaul"
-    assert _row(s, pid)["stage"] == "linked"
+    assert _row(s, pid)["stage"] == "received"
 
 
 def test_stuck_end_delivery_and_finalise_result():
@@ -147,6 +147,83 @@ def test_every_phone_received_ends_the_wait_and_records_the_winner():
     assert all(row["stage"] == "received" for row in s.recap()["sync"]["rows"])
 
 
+def test_received_stays_released_across_disconnect_stale_and_plain_hello():
+    s, net, clock, ps, info = _ended()
+    for i, p in enumerate(ps):
+        _status(net, clock, i, p["player_id"], 0)
+    pid = ps[0]["player_id"]
+    assert not s.recap()["sync"]["pending"]
+    net.simulate_disconnect("node0")
+    assert _row(s, pid)["stage"] == "received"
+    assert _row(s, pid)["linked"] is False
+    assert not s.recap()["sync"]["pending"]
+    net.nodes["node0"].stale = True
+    assert _row(s, pid)["stage"] == "received"
+    assert _row(s, pid)["linked"] is False
+    assert not s.recap()["sync"]["pending"]
+    net.nodes["node0"].stale = False
+    net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=0)
+    assert _row(s, pid)["stage"] == "received"
+    assert _row(s, pid)["linked"] is True
+    assert not s.recap()["sync"]["pending"]
+    net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=2)
+    assert _row(s, pid)["stage"] == "sending"
+    assert s.recap()["sync"]["pending"]
+
+
+def test_recap_resume_preserves_receipts_and_whistle_side_effects():
+    s, net, clock, ps, info = _ended(stored=True)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    _status(net, clock, 0, ps[0]["player_id"], 0)
+    before = _row(s, ps[1]["player_id"])["idle_s"]
+    ended_ms = s._ended[info["match_id"]]["ended_ms"]
+    archive = s.store.matches()[0]
+    s.persist_now()
+    clock["t"] += 2000
+    s2, net2 = restart_session(s, clock)
+    pushed = []
+    pulled = []
+    archived = []
+    s2._push_victory = lambda *args: pushed.append("victory")
+    s2._push_result = lambda *args: pushed.append("result")
+    s2._arm_end_delivery = lambda *args: pushed.append("END")
+    s2.pull_log = lambda *args: pulled.append(args)
+    s2._archive = lambda *args: archived.append(args)
+    assert s2.resume_match() == "recap"
+    assert pushed == [] and pulled == [] and archived == []
+    assert s2._ended[info["match_id"]]["ended_ms"] == ended_ms
+    assert s.store.matches()[0] == archive
+    assert _row(s2, ps[0]["player_id"])["stage"] == "received"
+    assert _row(s2, ps[1]["player_id"])["idle_s"] >= before
+    assert not _row(s2, ps[1]["player_id"])["stuck"]
+
+
+def test_sync_stuck_age_survives_a_backward_wall_clock_step():
+    s, net, clock, ps, _ = _ended()
+    mono = {"t": clock["t"]}
+    s.mono_ms = lambda: mono["t"]
+    s.recap()
+    mono["t"] += SYNC_STUCK_S * 1000
+    clock["t"] -= 30_000
+    assert _row(s, ps[0]["player_id"])["stuck"]
+
+
+def test_sync_progress_resets_monotonic_stuck_age():
+    s, net, clock, ps, _ = go_live(2)
+    mono = {"t": clock["t"]}
+    s.mono_ms = lambda: mono["t"]
+    s.control("end")
+    pid = ps[0]["player_id"]
+    _status(net, clock, 0, pid, 2)
+    assert _row(s, pid)["stage"] == "sending"
+    mono["t"] += SYNC_STUCK_S * 1000
+    clock["t"] += SYNC_STUCK_S * 1000
+    _status(net, clock, 0, pid, 1)
+    assert _row(s, pid)["stage"] == "sending"
+    assert _row(s, pid)["idle_s"] == 0
+    assert not _row(s, pid)["stuck"]
+
+
 def test_hill_station_rows_follow_the_station_receipt_and_socket():
     s, net, clock, ps, info = go_live_stored(2, "koth")
     s.control("end")
@@ -159,6 +236,21 @@ def test_hill_station_rows_follow_the_station_receipt_and_socket():
                                                   "hold_ms": {}}}, clock["t"])
     rows = [r for r in s.recap()["sync"]["rows"] if r["kind"] == "station"]
     assert rows[0]["stage"] == "received" and rows[0]["idle_s"] == 0
+
+
+def test_hill_receipt_survives_recap_restart():
+    s, net, clock, ps, _ = go_live_stored(2, "koth")
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.control("end")
+    clock["t"] += 3_000
+    sid = s.station_registry.stations["util-hill"]["assigned"]["id"]
+    net.simulate_status("util-hill", {"role": "utility", "kind": "control", "station_id": sid,
+                                      "control": {"owner": 0, "progress": 0, "contested": False,
+                                                  "hold_ms": {}}}, clock["t"])
+    assert next(r for r in s.recap()["sync"]["rows"] if r["kind"] == "station")["stage"] == "received"
+    s2, _ = restart_session(s, clock)
+    assert s2.resume_match() == "recap"
+    assert next(r for r in s2.recap()["sync"]["rows"] if r["kind"] == "station")["stage"] == "received"
 
 
 def test_hill_hello_waits_for_its_late_tally_before_recording_winner():
@@ -452,3 +544,23 @@ def test_the_recap_csv_waits_for_the_result_like_the_page():
     assert r.status_code == 409 and "PENDING" in r.json()["error"].upper(), (r.status_code, r.text)
     s.finalise_recap()
     assert c.get("/api/recap.csv").status_code == 200
+
+
+def test_pending_result_is_hidden_from_match_csv_and_history():
+    needs(HAVE, "starlette + httpx")
+    from starlette.testclient import TestClient
+    from brx_mcp.mc.api import create_app
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    c = TestClient(create_app(s))
+    s.control("end")
+    assert s.recap()["sync"]["pending"]
+    csv_response = c.get(f"/api/matches/{info['match_id']}.csv")
+    assert csv_response.status_code == 409 and "PENDING" in csv_response.json()["error"].upper()
+    history = c.get("/api/matches").json()
+    current = next(row for row in history if row["match_id"] == info["match_id"])
+    assert current["pending"] is True
+    assert "winner" not in current["recap"]
+    s.finalise_recap()
+    assert c.get(f"/api/matches/{info['match_id']}.csv").status_code == 200
+    released = next(row for row in c.get("/api/matches").json() if row["match_id"] == info["match_id"])
+    assert "pending" not in released and "winner" in released["recap"]

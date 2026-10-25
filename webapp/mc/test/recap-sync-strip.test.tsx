@@ -72,12 +72,13 @@ describe('F596 · results pending: nothing that names a winner', () => {
     const m = await recapOf(syncOf(pendingRows));
     expect(cell(m, 'p1', 'k')).toBe('4');
     expect(cell(m, 'p2', 'k'), 'the numbers of a phone still sending are shown too').toBe('9');
-    const dim = (id: string) => Number(m.find(`[data-sync-row="${id}"]`)[0].style.opacity || 1);
+    const dim = (id: string) => Number(getComputedStyle(m.find(`[data-sync-row="${id}"] [data-recap-name]`)[0]).opacity || 1);
     expect(m.find('[data-sync-row="p1"]')[0].dataset.unverified, 'a received player is normal').toBeUndefined();
     expect(dim('p1')).toBe(1);
     expect(m.find('[data-sync-row="p2"]')[0].dataset.unverified).toBe('1');
-    expect(dim('p2'), 'sending: dim').toBeLessThan(0.6);
-    expect(dim('p3'), 'unlinked: dim').toBeLessThan(0.6);
+    expect(dim('p2'), 'sending stays legible').toBeGreaterThanOrEqual(0.5);
+    expect(dim('p3'), 'unlinked stays legible').toBeGreaterThanOrEqual(0.5);
+    expect(getComputedStyle(m.find('[data-sync-row="p2"] [data-cell="sync"]')[0]).opacity || '1', 'SYNC remains full strength').toBe('1');
     expect(m.find('[data-cell][data-pending]').length, 'no all-dash cells').toBe(0);
     m.unmount();
   });
@@ -125,7 +126,7 @@ describe('F596 · FINALISE', () => {
     const btn = () => m.find('[data-testid="finalise"]')[0] as HTMLButtonElement;
     expect(btn().textContent).toBe('FINALISE');
     await m.click('FINALISE');
-    expect(btn().textContent).toBe('TAP AGAIN TO FINALISE');
+    expect(btn().textContent).toBe('TAP AGAIN: FINAL WITHOUT 1 PHONE');
     expect(finaliseRecap).not.toHaveBeenCalled();
     await m.click('TAP AGAIN');
     expect(finaliseRecap).toHaveBeenCalledTimes(1);
@@ -138,6 +139,13 @@ describe('F596 · FINALISE', () => {
     await m.click('FINALISE'); await m.click('TAP AGAIN');
     expect(m.find('[data-testid="finalise-error"]')[0]?.textContent).toBe('no match in RECAP to finalise');
     expect(m.find('[data-testid="finalise"]').length, 'the button is still there to try again').toBe(1);
+    m.unmount();
+  });
+
+  it('the armed confirm counts missing phones and hills', async () => {
+    const m = await recapOf(syncOf([...rows, STATION]));
+    await m.click('FINALISE');
+    expect(m.find('[data-testid="finalise"]')[0].textContent).toBe('TAP AGAIN: FINAL WITHOUT 1 PHONE AND 1 HILL');
     m.unmount();
   });
 
@@ -161,6 +169,17 @@ describe('F596 · FINALISE', () => {
     m.unmount();
   });
 
+  it('shortens twelve missing names and keeps the full list in the title', async () => {
+    const names = Array.from({ length: 12 }, (_, i) => `Agent ${i + 1}`);
+    const many = names.map((name, i) => phone(`p${i + 1}`, { name, stage: 'unlinked', stuck: true }));
+    const m = await recapOf(syncOf(many, { pending: false, finalised: true }));
+    const line = m.find('[data-testid="final-without"]')[0];
+    expect(line.textContent).toContain('Agent 1, Agent 2, Agent 3 +9 more');
+    expect(line.textContent).not.toContain('Agent 12');
+    expect(line.title).toContain('Agent 12');
+    m.unmount();
+  });
+
   it('RESULT CHANGED shows under the winner only when the server says so', async () => {
     const m = await recapOf(syncOf([phone('p1'), phone('p2')], { result_changed: true }));
     expect(m.find('[data-testid="result-changed"]')[0]?.textContent).toBe('RESULT CHANGED');
@@ -172,6 +191,39 @@ describe('F596 · FINALISE', () => {
 });
 
 describe('F597 · the strip', () => {
+  it('renders two station rows with the same displayed id without a React key warning', async () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const m = await recapOf(syncOf([phone('p1', { stage: 'unlinked' }), STATION, { ...STATION, name: 'HILL 1 RECEIVED', stage: 'received' }]));
+      expect(m.find('[data-strip-icon="1"]')).toHaveLength(2);
+      expect(errors.mock.calls.some(args => args.some(arg => String(arg).includes('same key')))).toBe(false);
+      m.unmount();
+    } finally { errors.mockRestore(); }
+  });
+
+  it('keeps a received phone green and shows its dropped link as a badge', async () => {
+    const received = phone('p1', { linked: false });
+    const pending = await recapOf(syncOf([received, phone('p2', { stage: 'unlinked' })]));
+    expect(pending.find('[data-strip-icon="p1"] [data-strip-tick]')).toHaveLength(1);
+    expect(pending.find('[data-strip-icon="p1"] [data-strip-unlinked]')).toHaveLength(1);
+    expect(pending.find('[data-sync-cell="p1"] [data-sync-link-lost]')).toHaveLength(1);
+    pending.unmount();
+    const released = await recapOf(syncOf([received]));
+    expect(released.find('[data-testid="all-synced"]')).toHaveLength(1);
+    expect(released.find('[data-testid="sync-kept"] [data-strip-unlinked]')).toHaveLength(1);
+    released.unmount();
+  });
+
+  it('shortens twelve stalled names and keeps the full list in the title', async () => {
+    const names = Array.from({ length: 12 }, (_, i) => `Agent ${i + 1}`);
+    const many = names.map((name, i) => phone(`p${i + 1}`, { name, stage: 'sending', pending: 2, stuck: true }));
+    const m = await recapOf(syncOf(many));
+    const line = m.find('[data-strip-stalled]')[0];
+    expect(line.textContent).toContain('No progress: Agent 1, Agent 2, Agent 3 +9 more');
+    expect(line.textContent).not.toContain('Agent 12');
+    expect(line.title).toContain('Agent 12');
+    m.unmount();
+  });
   it('draws one generic icon per phone with no names, a diamond for a station, and the stage on each', async () => {
     const m = await recapOf(syncOf([phone('p1'), phone('p2', { stage: 'sending', pending: 3, transport: 'cellular' }), phone('p3', { stage: 'linked', transport: 'wifi' }),
       phone('p4', { stage: 'unlinked' }), STATION]));

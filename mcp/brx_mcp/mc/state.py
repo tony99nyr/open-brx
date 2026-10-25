@@ -1257,6 +1257,7 @@ class Session:
         # to a legal primary, so the push is safe -- blocking it would strand the operator behind a
         # limitation of ours with nothing on screen to change. `_unplayable_primary_notice()` is what
         # they see instead. `off` is the operator's own choice of no secondary.
+        # The only unplayable id, energy_launcher, is hidden in the live catalogue, so a fixed secondary gets fixed_missing.
         if code in ("unplayable", "off"):
             return None
         if code == "fixed_missing":
@@ -3007,7 +3008,16 @@ class Session:
             return None
         if nid not in (match.whistle_base or {}):
             return None
-        return match.sync_nodes.setdefault(nid, {"changed_t": match.scorer.end_t or self.now_ms()})
+        end = match.scorer.end_t or self.now_ms()
+        return match.sync_nodes.setdefault(nid, {"changed_t": end,
+                                                 "changed_mono": self.mono_ms() - max(0, self.now_ms() - end)})
+
+    def _sync_idle_s(self, entry: dict, now: int) -> int:
+        # Keep the age on MC's monotonic clock after the first view. Wall time can step backwards in WSL.
+        mono = self.mono_ms()
+        if "changed_mono" not in entry:
+            entry["changed_mono"] = mono - max(0, now - entry["changed_t"])
+        return max(0, (mono - entry["changed_mono"]) // 1000)
 
     def _sync_linked(self, nid: str) -> bool:
         rec = self.net.nodes.get(nid)
@@ -3016,11 +3026,14 @@ class Session:
                     and not self.nodes.get(nid, {}).get("stale"))
 
     def _sync_stage(self, nid: str, entry: dict) -> str:
+        if entry.get("received"):
+            return "received"
         if not self._sync_linked(nid):
             return "unlinked"
         pending = entry.get("pending")
         if (pending == 0 and entry.get("status_t") is not None
                 and entry.get("status_rev") == entry.get("event_rev", 0)):
+            entry["received"] = True
             return "received"
         if isinstance(pending, int) and pending > 0:
             return "sending"
@@ -3034,22 +3047,26 @@ class Session:
         if stage != entry.get("stage"):
             if "stage" in entry:
                 entry["changed_t"] = at
+                entry["changed_mono"] = self.mono_ms()
             entry["stage"] = stage
 
     def _sync_hello(self, nid: str, pending: object) -> None:
         entry = self._sync_entry(nid)
         if entry is None:
             return
-        # A new socket starts with a fresh claim. The old zero cannot receive its later batch.
+        # A new socket starts with a fresh claim. A previous receipt survives a plain reconnect.
         old = entry.get("pending")
         entry.pop("status_t", None)
         entry.pop("status_rev", None)
         if _is_count(pending):
             entry["pending"] = pending
+            if pending > 0:
+                entry["received"] = False
         else:
             entry.pop("pending", None)
         if entry.get("pending") != old:
             entry["changed_t"] = self.now_ms()
+            entry["changed_mono"] = self.mono_ms()
         self._sync_update(nid, self.now_ms())
 
     def _sync_status(self, nid: str, pending: object, at: int) -> None:
@@ -3057,8 +3074,11 @@ class Session:
         if entry is None:
             return
         if _is_count(pending):
+            if pending > 0:
+                entry["received"] = False
             if entry.get("pending") != pending:
                 entry["changed_t"] = at
+                entry["changed_mono"] = self.mono_ms()
             entry["pending"] = pending
             entry["status_t"] = at
             entry["status_rev"] = entry.get("event_rev", 0)
@@ -3073,6 +3093,7 @@ class Session:
         if entry is None or sc is None:
             return
         if any(ev.get("match_id") == sc.match_id for ev in events):
+            entry["received"] = False
             entry["event_t"] = at
             entry["event_rev"] = entry.get("event_rev", 0) + 1
             self._sync_update(nid, at)
@@ -3093,15 +3114,16 @@ class Session:
                 continue
             self._sync_update(nid, now)
             stage = entry["stage"]
-            idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
+            idle = 0 if stage == "received" else self._sync_idle_s(entry, now)
             nv = self.nodes.get(nid, {})
+            linked = self._sync_linked(nid)
             transport = None
-            if stage != "unlinked":
+            if linked:
                 transport = ("backhaul" if nv.get("reach") == "backhaul" else
                              "cellular" if nv.get("transport") == "cellular" else
                              "wifi" if nv.get("transport") == "wifi" or nv.get("reach") == "lan" else None)
             row: RecapSyncRow = {"kind": "phone", "id": pid, "name": p["display"], "team_id": p.get("team_id"),
-                   "stage": stage, "transport": transport, "end_unconfirmed": pid in unconfirmed,
+                   "stage": stage, "linked": linked, "transport": transport, "end_unconfirmed": pid in unconfirmed,
                    "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
             if isinstance(entry.get("pending"), int) and entry["pending"] > 0:
                 row["pending"] = entry["pending"]
@@ -3113,14 +3135,17 @@ class Session:
                 continue
             nid = station["node_id"]
             key = "station:" + nid
-            entry = match.sync_nodes.setdefault(key, {"changed_t": match.scorer.end_t or now})
+            end = match.scorer.end_t or now
+            entry = match.sync_nodes.setdefault(key, {"changed_t": end,
+                                                     "changed_mono": self.mono_ms() - max(0, now - end)})
             stage = ("received" if entry.get("status_received") else
                      "linked" if self._sync_linked(nid) else "unlinked")
             if entry.get("stage") != stage:
                 if "stage" in entry:
                     entry["changed_t"] = now
+                    entry["changed_mono"] = self.mono_ms()
                 entry["stage"] = stage
-            idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
+            idle = 0 if stage == "received" else self._sync_idle_s(entry, now)
             label = f"{_STATION_KIND_LABEL.get(station['kind'], station['kind'].upper())} {station['id']}"
             row: RecapSyncRow = {"kind": "station", "id": str(station["id"]), "name": label, "team_id": None,
                                  "stage": stage, "transport": None, "end_unconfirmed": False,
@@ -4560,6 +4585,18 @@ class Session:
                             departed_stations=parsed.departed_stations)
         self.match = match
         if m.get("finished") is True:
+            raw_sync = m.get("sync_nodes")
+            saved_ms = m.get("_saved_ms")
+            age_at = max(self.now_ms(), saved_ms) if isinstance(saved_ms, int) else self.now_ms()
+            for nid, row in (raw_sync.items() if isinstance(raw_sync, dict) else ()):
+                if not isinstance(nid, str) or not isinstance(row, dict):
+                    continue
+                changed = row.get("changed_t")
+                if not isinstance(changed, int) or isinstance(changed, bool):
+                    continue
+                match.sync_nodes[nid] = {"received": row.get("received") is True,
+                                         "status_received": row.get("status_received") is True, "changed_t": changed,
+                                         "changed_mono": self.mono_ms() - max(0, age_at - changed)}
             match.finalised = m.get("finalised") is True
             winner = m.get("final_winner")
             match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
@@ -4571,7 +4608,7 @@ class Session:
             if isinstance(frozen, list):
                 match.frozen_stations = [row for raw in frozen
                                          if (row := snapshot_departed_station(raw)) is not None]
-            self._finish()
+            self._finish(resuming=True)
             match.played = played
             raw_whistle = m.get("whistle_base")
             whistle = ({nid: pid for nid, pid in raw_whistle.items()
@@ -7473,7 +7510,7 @@ class Session:
                 # feedback.player_id is required by the envelope contract (contracts §5)
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
-    def _finish(self):
+    def _finish(self, *, resuming: bool = False):
         # A24/M2: before the recap is taken, ask whether the cap was a DEAD HEAT — a second cap kill
         # inside the clock-sync band parks as post_end (A6.1) and would otherwise hand the match to
         # whichever of two indistinguishable kills MC happened to order first.
@@ -7492,27 +7529,31 @@ class Session:
         match = self.match
         if match is None:
             raise RuntimeError("_finish needs the match it ends")   # every caller runs with a Match (slice 4a review)
-        match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
-        match.played = {pid: p.copy() for pid, p in self.players.items()}
+        if not resuming:
+            match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
+            match.played = {pid: p.copy() for pid, p in self.players.items()}
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
-        for nid in list(self.station_registry.stations):   # F555: each hill's final word, before the rows freeze
-            self._station_possession(nid, None)
+        if not resuming:
+            for nid in list(self.station_registry.stations):   # F555: each hill's final word, before the rows freeze
+                self._station_possession(nid, None)
         if match.frozen_stations is None:
             match.frozen_stations = self._recap_stations() if match.scorer else None
         self._match_end_t = match.scorer.end_t if match.scorer else None   # F401
         self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
                               for r in match.frozen_stations or [] if r.get("node_id")}
         self.last_recap = self._scorer_recap(match.scorer, match.frozen_stations) if match.scorer else None
-        self._record_ended(self._log_match, self.last_recap, match.played)   # A34: what a late phone is told
+        if not resuming:
+            self._record_ended(self._log_match, self.last_recap, match.played)   # A34: what a late phone is told
         # A42: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
         # because the TIMED end pushes no `control` at all — every phone ends on its own clock — and that
         # is precisely the end where the operator has least to go on about the one phone that did not.
-        self._arm_end_delivery(self._log_match)
-        self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
-        self._push_result()                              # A24: EVERY node learns the outcome, losers included
-        if self.store and match.head and self.last_recap:
+        if not resuming:
+            self._arm_end_delivery(self._log_match)
+            self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
+            self._push_result()                              # A24: EVERY node learns the outcome, losers included
+        if not resuming and self.store and match.head and self.last_recap:
             # F560: the scorer's own end (a timed scorer is built with it); MC's clock, never the wall clock, if it has none
             end_t = match.scorer.end_t if match.scorer and match.scorer.end_t is not None else self.now_ms()
             self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)
@@ -7524,8 +7565,9 @@ class Session:
         self._set_phase("recap")
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.
-        for _nid in list(self.nodes):
-            self.pull_log(_nid, "recap")        # A25: gated by `log_sync`; utility nodes refused inside
+        if not resuming:
+            for _nid in list(self.nodes):
+                self.pull_log(_nid, "recap")        # A25: gated by `log_sync`; utility nodes refused inside
         self.lobby_pushed = False
         # ...and the ANNOUNCED game goes with the pushed one. A finished match is not a loaded game:
         # the GAMES tab keys its ACTIVE GAME CONFIG state on `game_loaded`, so leaving it true would
@@ -7544,7 +7586,8 @@ class Session:
             _nv.pop("headset", None)
         for p in self.players.values():
             p["ready"] = False
-        self.station_registry.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
+        if not resuming:
+            self.station_registry.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
         self._validate()                  # F401: config_warnings must carry the fresh sync warning at once
         self._changed()
         self.persist_now()                # the snapshot must stop naming a match that ended

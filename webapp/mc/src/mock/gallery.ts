@@ -23,6 +23,8 @@ export const GALLERY_FRAMES: Record<string, Frame> = {
   d: F8('R R R R R R W2 W3!'),                                 // one stuck
   i: F8('R R R R R R R W3 W5 C2 C8 B1 B4 U U W6!'),            // 16
   i48: F8(rep(48)),
+  i32: F8(rep(32)),                                            // 32, mixed, one stuck in every 16
+  i32s: F8(rep(32) + ' ST SR'),                                // 32 with two hill stations, one not synced
   g: F8('R R R R R R R R'),                                    // all received (the strip holds, then collapses)
   lost: F8('R RL12 R R R R R R^'),                             // all received, one lost and one END open: they keep a badge
   fin1: F8('R R R R R R R U', 'blue', { finalised: true }),    // finalised without one phone

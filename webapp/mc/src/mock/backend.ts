@@ -1198,6 +1198,7 @@ export class MockBackend implements Api {
   // finalised. `syncDemo` (`?mock` in a browser) spreads the phones' arrivals over the first half-minute so the strip
   // MOVES; without it every connected phone has delivered at the whistle, as a phone that was in range does.
   private syncBase: { player_id: string; node_id: string }[] = [];
+  private syncReported = new Set<string>();
   private syncFinalised = false;
   private syncFinalWinner: string | undefined;
   private syncResultChanged = false;
@@ -1210,14 +1211,19 @@ export class MockBackend implements Api {
       const pl = this.players.find(p => p.player_id === b.player_id);
       const never = demo && i === this.syncBase.length - 1;   // the demo's last phone is out of range for good, so FINALISE can be tried
       const linked = this.nodeConnected(b.node_id) && b.node_id !== this.demoQuietNodeId && !never;
-      const arrive = demo ? 6000 + i * 2500 : 0;   // when this phone's last fact lands
+      const arrive = demo ? 6000 + i * 2500 : 1000;   // the zero-pending status follows the whistle
       const sendFrom = arrive - 4000;
-      const stage: RecapSyncStage = !linked ? 'unlinked' : elapsed >= arrive ? 'received' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
-      const pending = stage === 'sending' ? Math.max(1, Math.ceil((arrive - elapsed) / 1000)) : 0;
-      const idle = stage === 'received' || stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
+      const stalled = demo && i === this.syncBase.length - 2 && linked;
+      if (linked && !stalled && elapsed >= arrive && !this.syncReported.has(b.node_id)) {
+        this.reportNode(b.node_id, now(), { pending: 0, arm_state: 'kitted', match_id: this.live_?.match_id });
+        this.syncReported.add(b.node_id);
+      }
+      const stage: RecapSyncStage = this.syncReported.has(b.node_id) ? 'received' : !linked ? 'unlinked' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
+      const pending = stage === 'sending' ? Math.max(1, stalled ? 2 : Math.ceil((arrive - elapsed) / 1000)) : 0;
+      const idle = stage === 'received' ? 0 : stalled && stage === 'sending' ? Math.max(0, Math.floor((elapsed - sendFrom) / 1000)) : stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
       const lost = demo && i === 2 ? 3 : 0;
-      return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage,
-        transport: stage === 'unlinked' ? null : demo && i % 4 === 1 ? 'cellular' : demo && i % 4 === 3 ? 'backhaul' : 'wifi',
+      return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage, linked,
+        transport: !linked ? null : demo && i % 4 === 1 ? 'cellular' : demo && i % 4 === 3 ? 'backhaul' : 'wifi',
         ...(pending ? { pending } : {}), ...(lost ? { lost } : {}),
         end_unconfirmed: unconfirmed.has(b.player_id),
         idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S };
@@ -1533,6 +1539,7 @@ export class MockBackend implements Api {
     this.endedAt = now();
     const bound = this.players.filter(p => p.node_id);
     this.syncBase = bound.map(p => ({ player_id: p.player_id, node_id: p.node_id! }));
+    this.syncReported.clear();
     this.syncFinalised = false; this.syncFinalWinner = undefined; this.syncResultChanged = false;
     const knownNodes = new Set(Object.keys(this.nodeReports));
     const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
@@ -1550,6 +1557,7 @@ export class MockBackend implements Api {
         report.end = sessionEndDeliveryTried(report.end, l.match_id, this.endedAt, connected);
       }
     }
+    // The HUD confirms END and the scorer's last known tally. A later status confirms the recap receipt.
     for (const player of bound) {
       if (!player.node_id || player.node_id === this.demoQuietNodeId || !this.nodeConnected(player.node_id)) continue;
       this.reportNode(player.node_id, this.endedAt, { pending: 0, arm_state: 'kitted', match_id: l.match_id });

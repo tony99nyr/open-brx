@@ -283,7 +283,7 @@ function report(rows: Gap[]): string {
     '- The recorder phones ack a push and report START at once, so pending acks and slow phones are not compared.',
     '- At LIVE, the fake phones report at the same instant as the last demo tick. NOMAD restates its pool claim.',
     '- At go-live, every bound phone reports. The alive, bound player with the lowest player number then reports protection owed and goes silent for 20 seconds.',
-    '- Before END, that phone reports again. Every bound phone then reports kitted with pending zero. A separate Python test ends during silence and checks the missing receipt.',
+    '- Before END, that phone reports again. The END snapshot precedes the zero-pending statuses. The next-match step follows those statuses.',
     '- The recorder assigns the extraction station seen in the mock and back-dates its report by 20 minutes.',
     '- The seeded demo app versions are too old for server start. Both backends receive a new phone hello at that step.',
     '- Both backends use the pinned 0.4.99 fixture release. The fake phones report it before START.',
@@ -379,7 +379,9 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
             await b.control(step.cmd, step.cmd === 'panic'); break;
           case 'abort': await b.abort(); break;
           case 'new': await b.newSession(step.keep_roster); break;
-          case 'next': await b.nextMatch(); break;
+          case 'next':
+            if (step.ms_before) vi.advanceTimersByTime(step.ms_before);
+            await b.nextMatch(); break;
           default: throw new Error(`unknown action ${step.action}`);
         }
         const wanted = snapshots.find(row => row.script === script && row.step === step.name);

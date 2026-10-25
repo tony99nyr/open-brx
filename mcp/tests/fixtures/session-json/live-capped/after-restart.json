@@ -750,6 +750,14 @@
     "station_seen": {},
     "station_unverified": [],
     "store_path": "session.sqlite",
+    "sync_nodes": {
+      "node0": {
+        "changed_t": 5015001
+      },
+      "node1": {
+        "changed_t": 5015001
+      }
+    },
     "synced_at_lobby": {
       "node0": true,
       "node1": true

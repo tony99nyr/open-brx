@@ -92,7 +92,7 @@ export function ItemChip({ id, short, detail, testid, icon = 'warn', children, i
     font: F.chk(600, size), cursor: detail && !alwaysOpen ? 'pointer' : 'default', minHeight: 36, whiteSpace: 'nowrap' };
   const inner = (
     <>
-      {alwaysOpen
+      {alwaysOpen || !detail
         ? <span data-testid={testid} data-alert={id} data-sev={sev} style={chipStyle}><Icon kind={icon} size={14} color={colour} />{short}</span>
         : <button type="button" data-testid={testid} data-alert={id} data-sev={sev} aria-expanded={detail ? reveal.open : undefined}
             onClick={detail ? reveal.onClick : undefined}

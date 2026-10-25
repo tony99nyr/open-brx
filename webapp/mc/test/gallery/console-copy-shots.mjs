@@ -3,6 +3,7 @@
 //   node test/gallery/console-copy-shots.mjs <outDir> <baseUrl>
 import { chromium } from 'playwright';
 import fs from 'node:fs';
+import { shotFailed } from './shot-status.mjs';
 const out = process.argv[2];
 const base = process.argv[3];
 fs.mkdirSync(out, { recursive: true });
@@ -86,4 +87,4 @@ for (const f of FRAMES) {
 fs.writeFileSync(`${out}/captions.json`, JSON.stringify(FRAMES.map(({ id, cap }) => ({ id, cap })), null, 1));
 await browser.close();
 console.log(log.join('\n'));
-if (log.some(l => l.startsWith('PAGEERROR'))) process.exit(1);
+if (shotFailed(log)) process.exit(1);

@@ -1939,6 +1939,7 @@ class RecapSyncRow(TypedDict):
     name: str
     team_id: str | None
     stage: SyncStage
+    linked: NotRequired[bool]          # phone socket link, separate from a latched receipt
     transport: SyncTransport | None  # phones only, while linked: reach=backhaul, else status.transport
     pending: NotRequired[int]        # the phone's last reported unsent count (hello.pending or status.pending), > 0
     lost: NotRequired[int]           # facts the phone's outbox dropped for this match (status.outbox_lost), > 0
@@ -1984,6 +1985,7 @@ class MatchHistoryRow(TypedDict):
     ended_t: int | None
     recap: RecapView | None
     config: NotRequired[dict[str, Any]]
+    pending: NotRequired[bool]                 # F596: current match result is held until sync or FINALISE
 
 
 class VoiceOption(TypedDict):

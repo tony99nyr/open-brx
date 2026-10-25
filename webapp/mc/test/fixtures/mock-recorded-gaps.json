@@ -64,14 +64,14 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3054,
-      "sha1": "01999e0bb8e4649a"
+      "count": 3055,
+      "sha1": "75f71d1cf4829ab9"
     },
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 13011,
-      "sha1": "3be49d833cc79ae7"
+      "count": 13023,
+      "sha1": "e144b2069658667d"
     },
     {
       "group": "fixture",
@@ -137,7 +137,13 @@
       "group": "fixture",
       "path": "$.stations[*]",
       "count": 1242,
-      "sha1": "0c55bf9115639b88"
+      "sha1": "36ba75986e1e2144"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.missing[*]",
+      "count": 7,
+      "sha1": "5e3b667cbcdbad7f"
     },
     {
       "group": "the mock shows it wrong",

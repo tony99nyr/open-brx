@@ -12,7 +12,7 @@ import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.ge
 import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
-import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, useSyncPhase, waitingLine } from './SyncStrip';
+import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, shortNames, useSyncPhase, waitingLine } from './SyncStrip';
 import type { RecapSyncRow } from '../api/recapSync';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
@@ -94,7 +94,7 @@ export function Recap() {
   }, []);
   const live = state?.recap ?? null;
   // F596/F597: the strip is driven by the server's `recap.sync`. The collapse timer is a hook, so it sits above the early returns.
-  const [liveSyncRows] = [recapSync(live)?.rows ?? []];
+  const liveSyncRows = recapSync(live)?.rows ?? [];
   const phase = useSyncPhase(liveSyncRows.length > 0 && liveSyncRows.every(r => r.stage === 'received'));
   // Keyed on the match id, NOT the recap object: `live` is a fresh object on every poll, which
   // refetched the history several times a second (review 2026-08-31).
@@ -168,8 +168,9 @@ export function Recap() {
   const stuckAny = unsynced.some(r => r.stuck);
   const allIn = syncRows.length > 0 && unsynced.length === 0;
   const missPhones = unsynced.filter(r => r.kind === 'phone'), missHills = unsynced.filter(r => r.kind === 'station');
-  const finalWithout = [missPhones.length ? `${plural(missPhones.length, 'PHONE')} (${missPhones.map(r => r.name).join(', ')})` : '',
-    missHills.length ? `${plural(missHills.length, 'HILL')} (${missHills.map(r => r.name).join(', ')})` : ''].filter(Boolean).join(' AND ');
+  const without = (rows: RecapSyncRow[], noun: string, full = false) => rows.length ? `${plural(rows.length, noun)} (${full ? rows.map(r => r.name).join(', ') : shortNames(rows.map(r => r.name))})` : '';
+  const finalWithout = [without(missPhones, 'PHONE'), without(missHills, 'HILL')].filter(Boolean).join(' AND ');
+  const finalWithoutFull = [without(missPhones, 'PHONE', true), without(missHills, 'HILL', true)].filter(Boolean).join(' AND ');
   const syncById = new Map(syncRows.filter(r => r.kind === 'phone').map(r => [r.id, r]));
   const syncCol = syncRows.length > 0 && !(allIn && phase === 'line');   // the column collapses with the strip
   const rosterIx = new Map(state.players.map((p, i) => [p.player_id, i]));
@@ -231,7 +232,7 @@ export function Recap() {
           {waitingLine(syncRows) && <span aria-hidden="true" style={{ color: T.micro }}>·</span>}
           {waitingLine(syncRows) && <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(syncRows)}</div>}
           <span style={{ flex: 1 }} />
-          <FinaliseButton prominent={stuckAny} onFinalise={async () => { await api.finaliseRecap(); }} />
+          <FinaliseButton prominent={stuckAny} missingPhones={missPhones.length} missingHills={missHills.length} onFinalise={async () => { await api.finaliseRecap(); }} />
         </Brackets>
       ) : (
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: syncRows.length ? 10 : 18 }}>
@@ -240,7 +241,7 @@ export function Recap() {
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
           {sync?.finalised && unsynced.length > 0 && (
-            <div data-testid="final-without" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
+            <div data-testid="final-without" title={`FINAL WITHOUT ${finalWithoutFull}`} style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
               FINAL WITHOUT {finalWithout}
             </div>
           )}
@@ -396,7 +397,7 @@ function Row({ r, mvp, sync = null, syncCol = false, pending = false }: { r: Sco
   const unverified = pending && !!sync && sync.stage !== 'received';
   return (
     <div data-sync-row={sync ? r.player_id : undefined} data-stage={sync?.stage} data-stuck={sync?.stuck ? '1' : undefined} data-unverified={unverified ? '1' : undefined}
-      style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: pending ? '0 14px' : '10px 14px', ...(pending ? { height: 22, boxSizing: 'border-box' as const, overflow: 'hidden' } : {}), opacity: unverified ? (sync?.stuck ? 0.3 : 0.42) : 1, background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+      style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: pending ? '0 14px' : '10px 14px', ...(pending ? { height: 22, boxSizing: 'border-box' as const, overflow: 'hidden' } : {}), background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       {/* M8 (visual QA 2026-09-24): at 900 px a 24-character name ran over the K number */}
       <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, pending ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display}</span>

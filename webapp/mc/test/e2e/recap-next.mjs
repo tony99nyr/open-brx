@@ -60,6 +60,20 @@ try {
     30000, 'the demo match to play six seconds and produce feed events');
 
   if (!ONLY || ONLY === 'real') {
+    c.step = 'mock/fold-1280x720';
+    console.log(`\n[${c.step}] RESULTS PENDING and FINALISE at the 1280x720 fold`);
+    const fold = await H.newPage(browser, { width: 1280, height: 720 }, errors, () => c.step);
+    await fold.goto(`${vite.base}/?mock&norandom=1&gallery=i32s#recap`, { waitUntil: 'domcontentloaded' });
+    const pending = fold.locator('[data-testid="results-pending"]');
+    const confirm = fold.locator('[data-testid="finalise"]');
+    await pending.waitFor({ state: 'visible', timeout: 15000 });
+    const pendingBox = await pending.boundingBox(), finaliseBox = await confirm.boundingBox();
+    c.expect(!!pendingBox && pendingBox.y + pendingBox.height <= 720, 'RESULTS PENDING ends within 720 px');
+    c.expect(!!finaliseBox && finaliseBox.y + finaliseBox.height <= 720, 'the FINALISE button ends within 720 px');
+    await confirm.click();
+    c.expect(/^TAP AGAIN: FINAL WITHOUT \d+ PHONES AND 1 HILL$/.test((await confirm.innerText()).trim()), 'the confirm counts the missing phones and hill');
+    await fold.context().close();
+
     c.step = 'real/end';
     console.log(`\n[${c.step}] END MATCH EARLY, clicked`);
     const pg = await H.newPage(browser, { width: 1440, height: 900 }, errors, () => c.step);
@@ -109,7 +123,7 @@ try {
     c.expect(await pg.locator('[data-testid="finalise"]').count() === 1, 'and offers FINALISE');
     c.expect(await btn.count() === 0, 'while results are pending there is NO PLAY AGAIN ▸');
     await pg.locator('[data-testid="finalise"]').click();
-    c.expect((await pg.locator('[data-testid="finalise"]').innerText()).includes('TAP AGAIN'), 'the first tap only arms FINALISE');
+    c.expect(/^TAP AGAIN: FINAL WITHOUT \d+ PHONES?(?: AND \d+ HILLS?)?$/.test((await pg.locator('[data-testid="finalise"]').innerText()).trim()), 'the first tap names the missing phones');
     await pg.locator('[data-testid="finalise"]').click();
     await c.until(async () => (await btn.count()) === 1, 10000, 'FINALISE to release the result (PLAY AGAIN ▸ appears)');
     c.expect(await btn.count() === 1, 'RECAP shows one PLAY AGAIN ▸ button');

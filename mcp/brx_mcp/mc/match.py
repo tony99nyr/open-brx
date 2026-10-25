@@ -185,6 +185,9 @@ class Match:
                 **({"finished": True, "end_t": self.scorer.end_t,
                     "finalised": self.finalised, "final_winner": self.final_winner,
                     "result_changed": self.result_changed,
+                    "sync_nodes": {nid: {key: entry[key] for key in ("received", "status_received", "changed_t")
+                                         if key in entry}
+                                   for nid, entry in self.sync_nodes.items()},
                     "whistle_base": self.whistle_base,
                     "frozen_stations": self.frozen_stations} if self.head is None else {}),
                 "config": config, "players": {pid: dict(p) for pid, p in players.items()},

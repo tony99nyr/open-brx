@@ -87,8 +87,8 @@ HAPPY = [
     {'name': 'repush', 'action': 'push', 'force': True},
     {'name': 'start', 'action': 'start', 'runway_s': 10, 'force': True},
     {'name': 'go live', 'action': 'advance', 'ms': 20_000},
-    {'name': 'end', 'action': 'control', 'cmd': 'end', 'ms_before': 10_000},
-    {'name': 'next match', 'action': 'next'},
+    {'name': 'end', 'action': 'control', 'cmd': 'end', 'ms_before': 10_000, 'defer_sync': True},
+    {'name': 'next match', 'action': 'next', 'ms_before': 1_100},
 ]
 PREFIX = [HAPPY[i] for i in (1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13)]
 SCRIPTS = {
@@ -435,10 +435,12 @@ def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_
             for node_id, player_id in list(session.node_player.items()):
                 if node_id == quiet_node and (script, node_id) not in reported_nodes:
                     continue
-                session.net.simulate_status(node_id, {
+                body = {
                     'player_id': player_id, 'arm_state': 'kitted', 'match_id': match_id,
-                    'pending': 0,
-                }, clock['t'])
+                }
+                if not step.get('defer_sync'):
+                    body['pending'] = 0
+                session.net.simulate_status(node_id, body, clock['t'])
     elif action == 'abort':
         session.abort_start()
     elif action == 'new':
@@ -447,6 +449,14 @@ def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_
         if DEMO_STALE_PHONE is not None:
             session._touch(f'node_{DEMO_STALE_PHONE[3]}', stale=True)
     elif action == 'next':
+        if step.get('ms_before'):
+            clock['t'] += step['ms_before']
+            match_id = next(iter(session._end_delivery.values()))['match_id']
+            for node_id, player_id in list(session.node_player.items()):
+                session.net.simulate_status(node_id, {
+                    'player_id': player_id, 'arm_state': 'kitted', 'match_id': match_id,
+                    'pending': 0,
+                }, clock['t'])
         session.next_match()
     # A timed end needs no push; a frag-limit end does push. In both cases the
     # demo phones report kitted on their next status to confirm the end.

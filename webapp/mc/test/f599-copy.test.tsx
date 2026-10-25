@@ -1,6 +1,7 @@
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { CommandBar } from '../src/frame/CommandBar';
+import { shotFailed } from './gallery/shot-status.mjs';
 import { panicReceipt } from '../src/frame/frameText';
 import { sevOf } from '../src/alerts';
 import type { State } from '../src/api/types';
@@ -44,6 +45,18 @@ async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: strin
 }
 
 describe('F599 console copy', () => {
+  it('a chip with no detail is a label, not an inert button', async () => {
+    const m = await mount(<ItemChip id="kit-slot-note-locked" short="Kit locked" />);
+    expect(m.find('[data-alert="kit-slot-note-locked"]')[0].tagName).toBe('SPAN');
+    expect(m.find('button')).toHaveLength(0);
+    m.unmount();
+  });
+
+  it('the copy shot command fails when a detail cannot open', () => {
+    expect(shotFailed(['OPEN-MISS frame-tunnel-down: no detail'])).toBe(true);
+    expect(shotFailed(['PAGEERROR live/current: crash'])).toBe(true);
+    expect(shotFailed(['live/current: text<11px elements 0'])).toBe(false);
+  });
   it('opens FaultPill detail on hover and pins it with a tap', async () => {
     const m = await mount(<FaultPill id="frame-mc-offline" short="MC offline" why="Check the server." />);
     expect(m.find('button')[0].getAttribute('aria-label')).toBe('Why? MC offline');
