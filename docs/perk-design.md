@@ -125,6 +125,7 @@ These are designed, not deferred for lack of interest. Each names the one thing 
 | **Threat Direction** | after you are hit, a short cue shows where it came from | F228: the sensor field read differently covered and uncovered at close range, so the direction is not trustworthy yet |
 | **Overcharge Shield** | your shield returns faster | a per-player knob on the node's S29 recharge (the Shields preset ships) |
 | **Adrenaline Rush** | a kill speeds you up for a few seconds | it needs MC to tell the node about the kill, so it is the one pick that quietly does nothing out of coverage. Ship it only if we accept that |
+| **EMP** (hidden) | press LEFT to jam every enemy gun in range for a few seconds; melee still works. On a match-clock cooldown | `docs/bench-0426.md` P2.5-P2.11, then Tony sets the numbers (`perks.json` `emp`: `cooldown_s` 45 and `stun_duration_s` 6 are placeholders; the victim's phone never holds the jam shorter than the gun's own 6 s fn-23 blind). Built 2026-10-24 in place of the Haze weapon: `compile.py` ships `$SIR,8,1,,23` and `FrameBundle.emp` when a player holds it; `engine.js _empThrow` writes the `$IRTX` |
 | **EMP Resistance** | you recover from a stun faster than most | one new effect key and one new per-player bundle field, the same pattern the accessibility overrides already use |
 
 **A charge must announce itself.** This is the one rule the research sweep agreed on across thirty
@@ -290,7 +291,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Engineer buildings (sentry, dispenser, teleporter) | Needs new hardware beyond the planned stations; out of scope for a software perk. | report-04 |
 | Bandit / Mute (disable another player's equipment) | No player-carried equipment concept exists to disable. | report-04 |
 | Ash's breaching rounds (destroy a wall) | No geometry or wall model exists on this platform. | report-04 |
-| Smoke grenade (block enemy vision) | Impossible: software cannot affect real-world visibility or IR line of sight. | report-04 |
+| Smoke grenade (block enemy vision) | Blocking vision stays impossible: software cannot touch real-world sight. The buildable form is the **EMP** throw (§3, 2026-10-24): the holder presses LEFT, the phone writes a host `$IRTX` on cell `<8,1>`, every gun in the match carries a fn-23 row there, and the victim's phone holds the gun disarmed. It recharges on the match clock and stays hidden until benched. | report-04; bench-0426.md P2.5-P2.11 |
 | Charged headshot / any headshot bonus | Rejected by design: the headset carries 4 of 5 hit sensors and is the intended aim point; the headset damage multiplier is shipped at t7=0 (no bonus) by deliberate choice. | S50-perk-balance-report §1, report-09 (t7=0, 2026-09-17) |
 | Maestro's Evil Eye (remote turret) | Needs new hardware and a remote-fire mechanism that does not exist. | report-04 |
 | Mine (area hazard that disables nearby players) | Impossible: no station-to-gun control channel exists; only a player's own phone can write to their own gun. | report-10 §8 |

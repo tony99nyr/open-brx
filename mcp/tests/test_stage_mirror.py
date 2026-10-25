@@ -1351,6 +1351,41 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
     asyncio.run(go())
 
 
+def test_an_emp_perk_word_on_8_1_stuns_for_the_bundles_emp_length_with_no_config_stun():
+    """engine.js `_empWord` / `_stun(empMs)` (the EMP perk, 2026-10-24): a `$HIR` on <8,1> in a match whose bundle carries
+    `emp` stuns for `emp.duration_s`, whatever `config.stun` says. CONTROL: the same word with no `emp` block, and a
+    `<8,0>` word without `config.stun`, stun nobody."""
+    async def go():
+        st, mgr, clock = mk_stun(stun=None)
+        await live(st)
+        st.bundle["emp"] = {"cooldown_s": 45, "duration_s": 3}
+        st._on_rx("$HIR,0,8,42,2,15,0,0,*"); st.poll(); await settle(st)
+        assert st.stunned is None, "CONTROL: <8,0> without config.stun is the Charge Rifle's plain damage"
+        tid = int(st.profile["tid"])
+        st._on_rx(f"$HIR,0,8,42,{tid},1,0,1,*"); st.poll(); await settle(st)
+        assert st.stunned is None, "a teammate's EMP word does not jam (engine.js `_empFriendly`)"
+        st._arm_pending = {"at": clock.t, "until": 2000, "shot_ends": False, "off": True, "shield": True}
+        st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
+        assert st.stunned is None, "spawn protection: no jam"
+        st._arm_pending = None
+        st._os_protect_until = clock.t + 2.0     # engine.js `pu.protectUntil`: an overshield grant's protection is owed too
+        st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
+        assert st.stunned is None, "overshield protection: no jam (engine.js `_protectOwedMs`)"
+        st._os_protect_until = 0.0
+        n = mark(mgr)
+        st._on_rx("$HIR,0,8,42,2,1,0,1,*"); st.poll(); await settle(st)
+        # 3 s asked, but never shorter than the gun's own fn-23 blind (engine.js `_empStunMs`, SMOKE_MS)
+        assert st.stunned and st.stunned["until"] == clock.t + S.SMOKE_MS / 1000, st.stunned
+        assert ammo_writes(mgr, n) == ["$AMMO,0,0,0,1,*", "$AMMO,1,0,0,1,*"], ammo_writes(mgr, n)
+        clock.advance(S.SMOKE_MS / 1000); st.poll(); await settle(st)
+        assert st.stunned is None
+        c, _cm, _cc = mk_stun(stun=None)
+        await live(c)
+        c._on_rx("$HIR,0,8,42,2,1,0,1,*"); c.poll(); await settle(c)
+        assert c.stunned is None, "CONTROL: no emp block, no <8,1> row on the guns, no stun"
+    asyncio.run(go())
+
+
 def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_not_the_last_ones():
     """Polish review 2026-09-11 (engine.js had the same defect, fixed together): the spawn reset cleared the
     per-slot MAG map but not the RESERVE map, so a stun before any $ALCD of life 2 snapshotted the frame's
@@ -2200,6 +2235,9 @@ def test_every_powerup_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # The EMP perk's THROW (2026-10-24): a LEFT press on the holder's own phone writes a host `$IRTX`. The stage plays a
+    # victim gun, which never throws; the victim half (`_empSpec`, `_empWord`, `_stun(empMs)`) is mirrored.
+    "_empThrow", "_empHeld", "_empLeftMs", "_empView", "_empPicked",
     # AMMO pickup (2026-10-18): the claim's range test; the stage has no pickup claim or presence (its `_ammo_short` and
     # `grant_ammo` twins are a hand-driven grant, pinned with the phone by app/test/fixtures/ammo-grant-cases.json)
     "pu._inRangeOf",
@@ -2235,8 +2273,6 @@ KNOWN_UNMIRRORED = {
     "_restoredClock", "_clockRebase", "pu.clockItems",
     # (ARCH-3, 2026-10-10: `_drainPlayWrites`, `_playSendAt` and `_dropWaitingPlays` left this set and the Engine for
     # app/src/play-queue.js, which this scan does not read. The stage is to run app/test/fixtures/play-queue-cases.json.)
-    # F289: what the node tells MC about owed spawn protection (respawn fact + statusBody); no game rule reads it
-    "_protectOwedMs",
     # F272: node/BrxLink liveness and locked-head recovery. The stage is itself the deterministic gun driver,
     # has no phone BLE connection to diagnose, and never models a batch resolving false after a radio-only link.
     "_sendGunProbe", "_gunLockTick", "_beginGunRecovery", "_gunRecoveryWrite", "_gunRecoveryTick",

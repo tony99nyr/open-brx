@@ -908,6 +908,7 @@ class GunStage:
         # A56: engine.js `_overshield` ({amount, base, ...}). The stage models no powerup station, so nothing sets
         # it yet (the grant is pinned in test_stage_mirror's KNOWN_UNMIRRORED); `_readout_max` reads it the phone's way.
         self._overshield: dict | None = None
+        self._os_protect_until: float = 0.0   # engine.js `pu.protectUntil`: when an overshield grant's protection ends (0 = none owed)
         self.max_hp = 45
         self.max_armor = 70
         self.max_shield = 0        # S45 (engine.js `maxShield`): the `$PSET` t5 ceiling, read back off the compiled head
@@ -3075,6 +3076,16 @@ class GunStage:
         rows = [f for f in self.bundle.get("revive") or [] if f.startswith("$SIR,")]
         return "twin" if rows and all(len(_toks(f)) > 4 and _toks(f)[4] == "28" for f in rows) else None
 
+    def _protect_owed_ms(self) -> int:
+        """engine.js `_protectOwedMs`: the ms of protection still owed (an overshield grant's, then a spawn's), or 0. The
+        stage's `ArmPending` carries no infection `flip`, so only a living player is owed spawn protection here."""
+        osp = self._os_protect_until
+        os_ms = max(1, int((osp - self.now()) * 1000)) if osp and self.alive else 0
+        p, mode = self._arm_pending, self._protect_mode()
+        if not p or not self.alive or not (mode == "twin" or (mode == "tmp" and p.get("off") is not False)):
+            return os_ms
+        return max(os_ms, 1, int(p["until"] * 1000))
+
     def _protects_spawn(self) -> bool:
         return self._protect_mode() is not None
 
@@ -4261,7 +4272,15 @@ class GunStage:
                     self._shield_reassert()      # 2026-09-19 (engine.js: a registered hit, shooter team parsed)
                 own = _tok_int(t, 4) is not None and self._own_shot(self._hir_word)   # F438: our own word never stuns or poisons
                 if len(t) > 2 and t[2] == "8" and not own:
-                    self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
+                    if self._emp_word(8, _tok_int(t, 7)):   # the EMP perk's <8,1> throw (engine.js `_empWord`)
+                        if self._emp_friendly(_tok_int(t, 4)):
+                            self._log("EMP word from a teammate: ignored", "info")
+                        elif self._protect_owed_ms() > 0:
+                            self._log("EMP word inside spawn protection: no jam", "info")
+                        else:
+                            self._stun(self._emp_stun_ms() / 1000)
+                    else:
+                        self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
                 # S16 (engine.js `feedFrame` HIR): a readable team is a real hit word -- stamp the clock the
                 # poison echo/kill windows both read, and let `_dot_spec` decide whether this protocol poisons.
                 team = _tok_int(t, 4)
@@ -5722,7 +5741,30 @@ class GunStage:
         if fns is not None:
             fn = fns.get(f"{proto}:{subtype}")
             return fn is not None and (fn in _SIR_NO_POOL or fn in _SIR_GRANT)
-        return proto == 8 and self.stun_enabled
+        return proto == 8 and (self.stun_enabled or self._emp_word(proto, subtype))
+
+    def _emp_spec(self) -> dict | None:
+        """engine.js `_empSpec`: the bundle's `emp` block ({cooldown_s, duration_s}) when a player holds the EMP perk."""
+        e = (getattr(self, "bundle", None) or {}).get("emp")
+        return e if isinstance(e, dict) and (e.get("cooldown_s") or 0) > 0 and (e.get("duration_s") or 0) > 0 else None
+
+    def _emp_stun_ms(self) -> int:
+        """engine.js `_empStunMs`: `emp.duration_s`, never shorter than the gun's own fn-23 blind (SMOKE_MS)."""
+        e = self._emp_spec()
+        return max(int(e["duration_s"]) * 1000 if e else 0, SMOKE_MS)
+
+    def _emp_friendly(self, team: int | None) -> bool:
+        """engine.js `_empFriendly`: an EMP word from my own team in a team match. The stage has no roster, so it reads the
+        word's team field; FFA (and one-team LMS or extraction) has no teammates."""
+        c = getattr(self, "config", None) or {}
+        mode = c.get("mode") or self.profile.get("mode")
+        if mode == "ffa" or (mode in ("lms", "extraction") and len({int(t.get("tid", -1)) for t in c.get("teams") or []}) < 2):
+            return False
+        return team is not None and team == int(self.profile.get("tid", -1))
+
+    def _emp_word(self, proto: int | None, subtype: int | None) -> bool:
+        """engine.js `_empWord`: a `$HIR` on the EMP perk's <8,1> cell, in a match whose guns carry its row."""
+        return proto == 8 and subtype == 1 and self._emp_spec() is not None
 
     # ---- F15 / A20: the host-driven STUN (EMP), a faithful port of engine.js `_stun` / `_stunRestore` ------------
     @property
@@ -5828,17 +5870,17 @@ class GunStage:
             live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
         return live
 
-    def _stun(self) -> None:
+    def _stun(self, emp_s: float | None = None) -> None:
         """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot,
         plus `STUN_PLAY` (engine.js `_stun`, polish review: the disarm carried no cue here), and snapshot the
         LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second word EXTENDS
         `until` and writes nothing. Nothing else moves: fn 24 is a status row, no `$HP` follows."""
-        if not self.stun_enabled or not (self.spawned and self.alive):
-            if not self.stun_enabled:
+        if (emp_s is None and not self.stun_enabled) or not (self.spawned and self.alive):
+            if emp_s is None and not self.stun_enabled:
                 self._log("EMP word (proto 8): no stun -- this game has no config.stun (the $SIR row is the stock plain-damage cell)", "info")
             return
         now = self.now()
-        s = self.stun_s
+        s = self.stun_s if emp_s is None else emp_s   # an EMP perk word carries the perk's own length
         self._native_accuracy_hold("EMP fn-23", self._now_ms() + SMOKE_MS)   # S55 (engine.js `_stun`): the EMP's fn 23 owns t4
         if self.stunned:
             self.stunned["until"] = max(self.stunned["until"], now + s)

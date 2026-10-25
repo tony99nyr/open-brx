@@ -82,7 +82,7 @@ export function _live(st) {
         ${belowCharge && st.ammo > 0 && !starved ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         ${st.bolt && st.alive ? `<div class="bolt" role="status"><span class="bk">BOLT</span><span class="bt"><i style="animation-duration:${Math.max(1, st.reloadTotalMs || 0)}ms;animation-delay:-${Math.max(0, st.reloadMs || 0)}ms"></i></span></div>` : ''}<div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
-        ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}
+        ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}${empShown(st) ? `<div class="empchip" id="empchip">${this._empChip(st)}</div>` : ''}
         <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab${st.powerup && this._puHint(st) ? ' pu' : ''}">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
@@ -164,6 +164,18 @@ export function _centreIdle(st) {
   return st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>';
 }
 
+/** The EMP chip shows only on a living, unstunned holder: a down player gets no HUD alerts, and STUNNED owns a jammed gun. */
+export const empShown = st => !!(st.emp && st.alive && !st.stunned);
+/** The EMP perk's chip by the ammo (2026-10-24, hidden until benched): lit with a full ring while the throw is ready;
+ *  dimmed, with the ring filling and the seconds left, while it cools down on the match clock; OFF for a late joiner whose
+ *  match carries no EMP. Patched every render. */
+export function _empChip(st) {
+  const e = st.emp; if (!e) return '';
+  const p = e.ready ? 1 : Math.max(0, Math.min(1, 1 - (Number(e.leftMs) || 0) / (Number(e.cooldownMs) || 1)));
+  const tail = e.off ? '<b>OFF</b>' : e.ready ? '' : `<b class="tab">${secsLeft(e.leftMs)}<small>SEC</small></b>`;
+  return `<span class="emp${e.ready ? ' lit' : ''}" style="--p:${e.off ? 0 : p.toFixed(3)}"><i class="ring" aria-hidden="true"></i><span class="nm">EMP</span>${tail}</span>`;
+}
+
 export function _stunFx(st) {
     const s = st.stunned; if (!s) return '';
     return `<span class="k">STUNNED</span><span class="s">YOUR GUN IS DISARMED</span><span class="t tab" id="stunleft">${secsLeft(s.leftMs)}<small>SEC</small></span>`;
@@ -179,4 +191,4 @@ export function _atCapMinusOne(st) {
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
 
-export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _centreIdle, _atCapMinusOne };
+export const methods = { _live, _puHint, _puHeld, _gunHealthActive, _gunHealthWarning, _fx, _aimFx, _stunFx, _empChip, _centreIdle, _atCapMinusOne };
