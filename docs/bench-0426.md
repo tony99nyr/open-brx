@@ -82,7 +82,8 @@ alone.* Push a kit from MC with the USP and the Shotgun (gun word 19, headset wo
 this step reads damage, not reach. Shoot the target headset at 2 m.
 1. Shotgun: the target's `$HIR` reads 19, then 20 about 88 ms later, per pull. Three pulls kill a full Standard
    target.
-2. USP: each `$HIR` reads 10. A full magazine (12 rounds) kills a full Standard target only if every round hits.
+2. USP: each `$HIR` reads 10. A full magazine (12 rounds) kills a full Standard target only if every round hits. The
+   magazine stays 12 (Tony, 2026-10-24).
 3. Tap each weapon as fast as you can for 5 s. Log each round's time: no two rounds closer than t14 (USP 190 ms,
    Shotgun 400 ms). This replaces 1017 P2.4, whose numbers predate F579.
 4. Ask Tony how each one feels. Does the USP feel weaker than the rifles? Does the Shotgun still win up close?

@@ -3308,6 +3308,32 @@ await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar,
   await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
   await pg.close();
 });
+// ---------- F547 (Tony 2026-10-24, option C): "i only like the pips when it represents the shots 1:1. I think I prefer
+// the bar otherwise". AMMO_PIP_MAX is 20, so the 30-round Toxin Rifle gets the bar and the 14-round AMR keeps its pips.
+// The low-magazine amber must reach the bar too. ----------
+await step('ammo gauge se F547: the 30-round Toxin Rifle renders the bar with the low-mag amber; the 14-round AMR keeps 14 pips', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 30);
+  let r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `a 30-round Toxin mag must render the bar, not 30 pips: ${JSON.stringify(r)}`);
+  // review (Codex): the fill must be the HUD's own amber, `--warn`, read through a probe element so both sides are rgb()
+  const fill = () => pg.evaluate(() => {
+    const i = document.querySelector('#pips > .bar.ammobar > i'); if (!i) return null;
+    const probe = document.createElement('i'); probe.style.background = 'var(--warn)'; i.parentElement.appendChild(probe);
+    const warnBg = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { warn: i.parentElement.classList.contains('warn'), bg: getComputedStyle(i).backgroundColor, warnBg };
+  });
+  const full = await fill();
+  await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 4);
+  const low = await fill();
+  must(low && low.warn && !full.warn && low.bg === low.warnBg && full.bg !== full.warnBg, `4 of 30 must turn the bar the HUD amber (--warn): full ${JSON.stringify(full)} low ${JSON.stringify(low)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-toxin-bar-low.png` });
+  await setAmmo(pg, 'amr', 0, 14, 84, 7);
+  r = await gaugeState(pg);
+  must(r.pips === 14 && r.lit === 7 && !r.bar, `a 14-round AMR mag keeps one pip per round: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-amr-pips.png` });
+  await pg.close();
+});
 // ---------- item 1 (bench 2026-09-17): the big-mag bar shared the class name `ammo` with the ammo
 // COLUMN's own `position:absolute;right:36px;bottom:32px` rule. Since `.pips` is `position:relative`
 // (63278ea4), that pulled the bar out of flow, over the mag digits, and collapsed `.pips` to 0x0. ----------
@@ -3326,7 +3352,7 @@ await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the 
   await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-bar.png` });
   await pg.close();
 });
-await step('ammo gauge se: the ready shine still shows on a big (>30) mag now the pips box no longer collapses', async () => {
+await step('ammo gauge se: the ready shine still shows on a big (>AMMO_PIP_MAX) mag now the pips box no longer collapses', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32);
   const r = await pg.evaluate(() => {

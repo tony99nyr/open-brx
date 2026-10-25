@@ -106,6 +106,12 @@ describe('UX-2 — a slot FIXED to an unplayable weapon', () => {
     expect(msg).not.toMatch(/FILTER|EXCLUSION/);
   });
 
+  it('F594: a FIXED slot that reads filtered says its pick cannot go there, not to clear a filter', () => {
+    expect(poolEmptyMessage('SECONDARY', 'filtered', null, true)).toContain('FIXED PICK CANNOT GO IN THAT SLOT');
+    expect(poolEmptyMessage('SECONDARY', 'filtered', null, true)).not.toMatch(/FILTER/);
+    expect(poolEmptyMessage('SECONDARY', 'filtered'), 'a player-pick slot keeps the filter line').toContain('FILTERS');
+  });
+
   it('an allow-list naming nothing but the launcher is the same fact', async () => {
     const d = await demo();
     const weapons = withSyntheticLauncher(d.weapons);

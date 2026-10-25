@@ -1372,12 +1372,18 @@ def test_f146_a_primary_rule_that_admits_no_kind_of_weapon_is_healed_not_refused
 
 
 def test_f146_a_healthy_ruleset_is_never_refused():
-    """The guard must stay quiet for every shipped preset — it is an ERROR and it blocks the whistle."""
+    """The guard must stay quiet for every shipped preset and every mode's default -- it is an ERROR and it blocks the
+    whistle. F594 review: the secondary is refused too now, so it is checked too."""
     for preset in P.PRESET_NAMES:
         s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
         s.set_config({"loadout_policy": {"preset": preset}})
         s._validate()
-        assert not any("PRIMARY" in e for e in s.config_errors), (preset, s.config_errors)
+        assert not any("PRIMARY" in e or "SECONDARY" in e for e in s.config_errors), (preset, s.config_errors)
+    for mode in sorted(set(P.MODE_DEFAULT_PRESET) | {"tdm", "koth"}):
+        s, _net, _clock, _ps = mk_loadout_session(1, compiler=Compiler())
+        s.set_config({"mode": mode, "loadout_policy": P.default_policy(mode)})
+        s._validate()
+        assert not any("PRIMARY" in e or "SECONDARY" in e for e in s.config_errors), (mode, s.config_errors)
 
 
 def test_policy_is_a_read_and_never_writes_the_config():
