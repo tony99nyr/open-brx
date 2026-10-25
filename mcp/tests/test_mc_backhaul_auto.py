@@ -421,8 +421,10 @@ def test_post_api_tunnel_answers_with_public_auto_like_the_state_does():
     try:
         from starlette.testclient import TestClient
         import httpx  # noqa: F401
+        HAVE = True
     except Exception:
-        needs(False, "starlette + httpx")
+        HAVE = False
+    needs(HAVE, "starlette + httpx")
     from brx_mcp.mc.api import create_app
     s, net, clock, ps, t = _kit(fail="cloudflared is not installed")
     for i, p in enumerate(ps):
