@@ -363,15 +363,31 @@ try {
     expect(await until(inView, 4000, 'the menu in view'), `the last row's operator menu is fully on screen (${JSON.stringify(await box(menu))})`);
     // F615: under load a line can land above the board after the menu opened (the lander's failures had the menu
     // revealed, then pushed about 55 px below the fold). The open menu must come back into view.
-    await pg.evaluate(() => {
-      const late = document.createElement('div');
-      late.setAttribute('data-e2e-late-line', '1');
-      late.style.height = '60px';
-      document.querySelector('[data-testid="station-alerts"]')?.before(late);
-    });
-    expect(await until(inView, 4000, 'the menu back in view'),
-      `a line that lands above the board after the menu opened does not leave it off screen (${JSON.stringify(await box(menu))})`);
-    await pg.evaluate(() => document.querySelector('[data-e2e-late-line]')?.remove());
+    try {
+      const landed = await pg.evaluate(() => {
+        const strip = document.querySelector('[data-testid="station-alerts"]');
+        if (!strip) return false;
+        const late = document.createElement('div');
+        late.setAttribute('data-e2e-late-line', '1');
+        late.style.height = '60px';
+        strip.before(late);
+        return true;
+      });
+      expect(landed, 'control: the late line lands above the board');
+      expect(await until(inView, 4000, 'the menu back in view'),
+        `a line that lands above the board after the menu opened does not leave it off screen (${JSON.stringify(await box(menu))})`);
+      // once the operator scrolls the page, a later line moves the menu with the board and does not pull the page back
+      await pg.mouse.move(700, 300);
+      await pg.mouse.wheel(0, -120);
+      await until(async () => ((await box(menu))?.y ?? 0) > 774 + 60, 3000, 'the wheel to scroll the page');
+      const before = (await box(menu))?.y ?? 0;
+      await pg.evaluate(() => { const late = document.querySelector('[data-e2e-late-line]'); if (late) late.style.height = '120px'; });
+      await pg.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));   // a reveal runs before this paint
+      const after = (await box(menu))?.y ?? 0;
+      expect(Math.round(after - before) === 60, `after the operator scrolled, the menu moves with the board (moved ${Math.round(after - before)} px, want 60)`);
+    } finally {
+      await pg.evaluate(() => document.querySelector('[data-e2e-late-line]')?.remove());
+    }
     await shot(pg, 'menu-fold-1440');
     // polish r1: the compact strips must not scroll sideways at phone width
     await pg.setViewportSize({ width: 393, height: 852 });
