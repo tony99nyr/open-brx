@@ -32,7 +32,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
 //   services    now() · log(line, cls) · changed() · event(kind) · fireIntervalMs(slot) · recoilStep(n) · recoilArm(why) ·
 //               reloadGlance()
-//   lookups     weaponRow(id) · perkRow(id) · slotCount() · easyReload() · switchWindowMs() (the Engine's public
+//   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · switchWindowMs() (the Engine's public
 //               `switchWindowMs`, which asks this module back: the swap's own clock reads it there, so a test that
 //               stubs the Engine's window is still honoured)
 //   read-only   activeSlot · frames · phase · alive · tutorial · resync · stunned · player · ammo · mag · reserve ·
@@ -523,8 +523,8 @@ export class Ammo {
     const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
     // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
     // takeover must shrink with it too: fast_hands halves the reload (Tony, 2026-10-25).
-    const pk = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkRow(this.host.player.loadout.perk) : null;
-    const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
+    const fx = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkEffects(this.host.player.loadout.perk) : null;   // the Shields variant included
+    const rm = fx && fx.reload_mult ? +fx.reload_mult : 1;
     // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods), and never to a bolt (`_ammo`, F573 review)
     if (rm > 0 && rm !== 1 && this.host.activeSlot === 0 && !(row && row.reload_type === 'bolt')) secs *= rm;
     const now = this.host.now();
@@ -672,8 +672,8 @@ export class Ammo {
    *  an older MC without it falls back to the stock 850 scaled by an equipped `switch_mult` perk. */
   switchWindowMs() {
     if (this.host.frames && Number(this.host.frames.swap_ms) > 0) return Number(this.host.frames.swap_ms);
-    const pk = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkRow(this.host.player.loadout.perk) : null;
-    const sm = pk && pk.effects && pk.effects.switch_mult ? +pk.effects.switch_mult : 1;
+    const fx = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkEffects(this.host.player.loadout.perk) : null;
+    const sm = fx && fx.switch_mult ? +fx.switch_mult : 1;
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
   /** tick(): an ALT swap the gun never confirmed with a shot. Past the window the swap is TAKEN as done; the next shot's

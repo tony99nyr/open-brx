@@ -5,6 +5,7 @@ import { apply } from '../src/mock/policy';
 import { mergeModeParams } from '../src/rules/modeParams';
 import { defaultPresentation, mergePresentation, profileFromPreset } from '../src/rules/presentation';
 import { perkEffectsResolved, roundHalfEven } from '../src/rules/perkEffects';
+import { isShieldsHealth } from '../src/rules/health';
 import { perkForHealth } from '../src/screens/kit/art';
 
 describe('generated server rule inputs', () => {
@@ -14,6 +15,17 @@ describe('generated server rule inputs', () => {
 
     expect(perkForHealth(extendedMags, { max_armor: 70, max_shield: 0 }).gain).toContain('×2 MAG');
     expect(perkForHealth(extendedMags, { max_armor: 0, max_shield: 105 }).gain).toContain('×1.5 MAG');
+  });
+
+  it('applies the Extended Mags Shields override only when the numbers ARE the Shields preset, as the server does', async () => {
+    const perks = await new MockBackend().getPerks();
+    const extendedMags = perks.find(perk => perk.perk_id === 'extended_mags')!;
+    const gain = (h: { max_hp: number; max_armor: number; max_shield: number }) => perkForHealth(extendedMags, h).gain;
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 105 })).toContain('×1.5 MAG');
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 50 })).toContain('×2 MAG');   // custom, not Shields
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 0 })).toContain('×2 MAG');    // Hardcore
+    expect(isShieldsHealth({ max_hp: 45, max_armor: 0 })).toBe(false);                // legacy: no max_shield
+    expect(isShieldsHealth(undefined)).toBe(false);
   });
 
   it('keeps an unchanged headset and gun preset, and merges a nested readout', () => {

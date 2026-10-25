@@ -14,7 +14,7 @@ import { Lock, WeaponArt, PerkGlyph, PerkTrade, perkForHealth } from './art';
 
 export function SlotCard({ label, slot, active, onClick, rule, item, kind, required, onClear, overridden, onReapply, matchLocked, health }:
   { matchLocked?: boolean; label: string; slot: Slot; active: boolean; onClick: () => void; rule?: { choice: string } | null; item?: WeaponView | PerkView; kind: 'weapon' | 'perk' | 'none'; required?: boolean; onClear?: () => void;
-    overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void; health?: { max_armor?: number; max_shield?: number } }) {
+    overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
   const choice = rule?.choice ?? 'player';
   const locked = matchLocked || choice === 'fixed' || choice === 'off';
   const empty = kind === 'none';
@@ -173,7 +173,7 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
   );
 }
 
-export function PerkHero({ k, health }: { k: PerkView; health?: { max_armor?: number; max_shield?: number } }) {
+export function PerkHero({ k, health }: { k: PerkView; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
   k = perkForHealth(k, health);
   const gain = k.gain ?? [], cost = k.cost ?? [];
   return (

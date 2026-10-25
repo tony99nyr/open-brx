@@ -96,3 +96,24 @@ def test_shields_is_read_from_the_numbers_not_the_stored_preset_string():
     assert "armor_piercing" not in s.loadout_pool()["perks"], "45/0/105 is Shields"
     s.config["health"] = {"max_hp": 60, "max_armor": 0, "max_shield": 105, "preset": "shields"}   # edited numbers
     assert "armor_piercing" in s.loadout_pool()["perks"], "edited numbers are custom, whatever the string says"
+
+
+def test_extended_mags_override_and_the_armour_refusal_read_the_same_derived_preset():
+    """Review 2026-10-25: the EM Shields override used `max_armor == 0 and max_shield > 0` while the Body Armor / AP refusal
+    used the derived preset, so a custom 0-armour 50-shield game got one rule and not the other. Both ask
+    `compile.derived_health_preset` now, so they agree for Shields, a custom pool, Hardcore and a config with no health."""
+    from brx_mcp.mc.compile import Compiler as C
+    c = C()
+    player = {"player_id": "p1", "player_num": 1, "display": "A", "team_id": "blue", "node_id": None, "gun_id": None,
+              "voice": "male", "ready": True, "loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}}
+    for health, shields in (({"max_hp": 45, "max_armor": 0, "max_shield": 105}, True),
+                            ({"max_hp": 45, "max_armor": 0, "max_shield": 50}, False),     # custom: no refusal, no override
+                            ({"max_hp": 45, "max_armor": 0, "max_shield": 0}, False),      # Hardcore stays x2.0
+                            ({"max_hp": 45, "max_armor": 70, "max_shield": 0}, False)):
+        s, *_ = _real()
+        s.config["health"] = dict(health)
+        refused = "armor_piercing" not in s.loadout_pool()["perks"]
+        cfg = {"health": dict(health)}
+        mult = c._perk_effects_for(cfg, player)["ammo_mult"]
+        assert refused is shields and mult == (1.5 if shields else 2), (health, refused, mult)
+    assert c._perk_effects_for({}, player)["ammo_mult"] == 2, "a config without health is Standard"

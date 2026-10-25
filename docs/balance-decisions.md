@@ -203,7 +203,8 @@ The log is append-only, so these corrections do not edit the sections they name.
      chance is zero, which keeps the "no AP with crit chance" rule; this only matters once F618 lifts the guard for
      the AMR (30% crit) and the Burst Rifle (40% crit).
   5. Fast Hands: Quick Hands and Quick Switch merge into one perk, reload ×0.5, swap ×0.5, ammo ×1.0, no armour
-     cost. Stored loadouts move both old ids to `fast_hands`.
+     cost. Stored loadouts move both old ids to `fast_hands`. A stored `exclude_ids: ["quick_switch"]` now excludes
+     Fast Hands as a whole.
   6. Extended Mags: ammo ×1.5 on Shields; ×2.0 on Standard; swap ×1.3 on both.
   7. Rejected: raising AP damage on the SMG and Shotgun to price in the headset word AP loses (the shipped gun
      drops it, `compile.py` AP path). Close-range AP against the plain gun stays SMG 35.2%, Shotgun 49.7%.

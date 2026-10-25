@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from 'react';
 import type { PerkView } from '../../api/types';
 import { PERK_COLOR, T } from '../../tokens';
+import { isShieldsHealth } from '../../rules/health';
 
 // F221 polish r2 (Low): a lock icon is not inherently a warning -- every call site passes its own
 // colour (amber only for a real fault); the default is the ordinary data colour, not T.warn.
@@ -49,7 +50,7 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
  *  so the two kinds of fact read as different at a glance, not just by word order. Renders 'PASSIVE'
  *  plain when a perk (a node-local one with nothing compiled, or a stale server that has not shipped
  *  the two lists yet) carries neither. */
-export function PerkTrade({ k, style, health }: { k: PerkView; style?: CSSProperties; health?: { max_armor?: number; max_shield?: number } }) {
+export function PerkTrade({ k, style, health }: { k: PerkView; style?: CSSProperties; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
   k = perkForHealth(k, health);
   const gain = k.gain ?? [], cost = k.cost ?? [];
   if (!gain.length && !cost.length) return <span style={style}>PASSIVE</span>;
@@ -62,8 +63,8 @@ export function PerkTrade({ k, style, health }: { k: PerkView; style?: CSSProper
   );
 }
 
-export function perkForHealth(k: PerkView, health?: { max_armor?: number; max_shield?: number }): PerkView {
-  return health?.max_armor === 0 && (health.max_shield ?? 0) > 0 && k.variants?.shields
+export function perkForHealth(k: PerkView, health?: { max_hp?: number; max_armor?: number; max_shield?: number }): PerkView {
+  return isShieldsHealth(health) && k.variants?.shields
     ? { ...k, ...k.variants.shields }
     : k;
 }

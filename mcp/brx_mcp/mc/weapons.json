@@ -460,7 +460,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 450ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it."
+   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 450ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it. 2026-10-25 (Tony's balance sign-off, 0.4.31): fire interval t14 350 -> 450ms."
   },
   {
    "weapon_id": "suppressor",

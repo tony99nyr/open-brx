@@ -367,6 +367,24 @@ def test_extended_mags_shields_override_reaches_the_frame_and_effect_report():
         assert int(_tok(frame, 16)) == mag
         assert bundle["perk_effects"]["mag"] == {"base": 32, "resolved": mag}
 
+def test_old_perk_ids_from_live_clients_are_fast_hands_not_refused():
+    """Review 2026-10-25: `_check_loadout` and `check_request` tested the raw id, so a live client's quick_hands /
+    quick_switch was refused as unknown after the merge."""
+    for old_id in ("quick_hands", "quick_switch"):
+        s, net, clock, ps = mk_loadout_session(1, compiler=Compiler())
+        online(s, net, clock, ps[0], 0)
+        pid = ps[0]["player_id"]
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": old_id})
+        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
+        _req(net, 0, "perk", "perk", old_id)
+        ack = _last_ack(net, 0)
+        assert ack["ok"] is True, (old_id, ack)
+        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
+    ok, why = P.check_request(P.effective(None, "tdm"), s.loadout_pool(), "perk", "perk", "quick_hands", s._catalog_rows()[0], s._catalog_rows()[1])
+    assert ok, why
+
+
 def test_extended_mags_doubles_a_reserve_below_the_ceiling_and_stops_at_it():
     """Reserves x2 (2026-10-17): `compile.RESERVE_PROVEN_MAX` (384) caps any compiled reserve at
     max(384, the row's own reserve). Extended Mags doubles the Charge Rifle (160 -> 320), but the

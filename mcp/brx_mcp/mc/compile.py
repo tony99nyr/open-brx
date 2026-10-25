@@ -387,6 +387,15 @@ def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> Healt
     return "custom"
 
 
+def derived_health_preset(health: object) -> HealthPreset:
+    """The preset a `health` blob's NUMBERS are (`resolve_health_preset`), never its stored `preset` string, and
+    "standard" numbers for a config with no `health` at all. The one rule for "is this game on Shields": the Body Armor /
+    Armour Piercing refusal (`preset_block`) and the Extended Mags override (`_perk_effects_for`) both ask it, so a custom
+    0-armour 50-shield game gets neither or both."""
+    h = normalize_health(health if isinstance(health, dict) else None)
+    return resolve_health_preset(h["max_hp"], h["max_armor"], h["max_shield"])
+
+
 def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
     floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
@@ -2053,8 +2062,9 @@ class Compiler:
         return self.perks.effects(pid) if pid else {}
 
     def _perk_effects_for(self, config: GameConfig, player: Player | None) -> dict:
-        """Use the Shields override only when the game has a shield pool."""
-        preset = "shields" if is_shields_preset(config) and config["health"].get("max_shield", 0) > 0 else None
+        """Use the Shields override only when the game's health IS the Shields preset (`derived_health_preset`, the
+        same rule the Body Armor / Armour Piercing refusal uses)."""
+        preset = "shields" if derived_health_preset(config.get("health")) == "shields" else None
         return self.perks.effects(self._perk_id(player), preset)
 
     @staticmethod

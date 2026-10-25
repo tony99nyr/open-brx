@@ -31,6 +31,32 @@ def test_ap_rekey_zeroes_a_crit_primary_without_changing_plain_crit():
         assert ap.split(",")[4:6] == list(compile_mod._AP_CELL)
 
 
+def test_compile_zeroes_the_crit_chance_of_an_armour_piercing_primary():
+    """Review 2026-10-25: the test above calls `_rekey` directly. This one goes through `compile()`: the AP guard is
+    lifted on this instance only (AMR and Burst stay refused until the F618 bench row), so a crit primary reaches the
+    AP rekey, and the compiled $WEAP slot 0 must carry crit 0 where the plain compile of the same weapon does not."""
+    from _session import TEAMS
+    crit = WeaponCatalog._T["crit"] + 1
+    compiler = Compiler()
+    compiler._ap_block = lambda weapon_id: None
+    pairs = {"amr": (10, 399), "burst_rifle": (7, 430)}   # the approved but unbenched pairs, on a test-only row copy
+    for weapon_id, (dmg, fire_ms) in pairs.items():
+        row = compiler.catalog._row(weapon_id)
+        compiler.catalog._by_id[weapon_id] = {**row, "ap_dmg": dmg, "ap_fire_ms": fire_ms}
+    for weapon_id in pairs:
+        def head(perk):
+            lo = {"weapons": [{"weapon_id": weapon_id}]}
+            if perk:
+                lo["perk"] = perk
+            player = {"player_id": "p1", "player_num": 1, "display": "A", "team_id": "blue", "node_id": None, "gun_id": None,
+                      "voice": "male", "ready": True, "loadout": lo}
+            return next(f for f in compiler.compile(_cfg(), player, TEAMS)["head"] if f.startswith("$WEAP,0")).split(",")
+        plain, ap = head(None), head("armor_piercing")
+        assert int(plain[crit]) > 0, weapon_id
+        assert ap[crit] == "0", (weapon_id, ap)
+        assert ap[4:6] == list(compile_mod._AP_CELL), "the AP cell is on the frame, so this IS the AP path"
+
+
 def test_validate_rejects_an_untyped_win_by_typo():
     cfg = _cfg()
     cfg["scoring"]["win_by"] = "kils"

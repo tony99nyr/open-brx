@@ -1320,28 +1320,33 @@ what your gun IS rather than just weakening it.
 
 | weapon | plain | with Armour Piercing | against a bare target |
 |---|---|---|---|
-| Assault Rifle | 9 at 100 ms | 4 at 131 ms | fraction arithmetic; see the 2026-10-25 decision |
-| SMG | 7+2 at 100 ms | 4 at 131 ms | fraction arithmetic; the headset word is not carried by AP |
-| Shotgun | 19+20 at 400 ms | 15 at 467 ms | 0.20 s slower; priced against the gun word alone |
-| Suppressor | 8 at 140 ms | 6 at 314 ms | 0.21 s slower |
-| Energy Rifle | 9 at 150 ms | 4 at 170 ms | 0.23 s slower |
+| Assault Rifle | 9 at 100 ms | 4 at 131 ms | 0.24 s slower |
+| SMG | 7+2 at 100 ms | 4 at 131 ms | 0.24 s slower; the headset word is not carried by AP |
+| Shotgun | 19+20 at 400 ms | 15 at 467 ms | 0.13 s slower; priced against the gun word alone |
+| Suppressor | 8 at 140 ms | 6 at 314 ms | 0.24 s slower |
+| Energy Rifle | 9 at 150 ms | 4 at 170 ms | 0.07 s slower |
 
-Tony approved these integer damage and cycle pairs after the fraction-arithmetic review.
-The compiler writes the listed values directly. Burst Rifle, USP and AMR remain blocked until
-their AP prices pass the same proof. The AMR's ordinary fire interval is 450 ms on both presets.
+The last column is the Armour Piercing time to kill minus the plain time to kill, against a standard 45 HP + 70 armour
+target (a 115 pool). Plain uses `WeaponCatalog.hits_to_kill(wid, 115)` minus one, times `cycle_ms`. Armour Piercing uses
+`ceil(45 / ap_dmg)` minus one, times `ap_fire_ms`. This is the same method as `test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it`.
+Tony approved these integer damage and cycle pairs after the fraction-arithmetic review. The compiler writes the listed values directly.
 
-**What is still refused.** The 2026-10-25 decision lifts the AP guard for AMR, Burst Rifle and USP only
-when fraction arithmetic proves a fair price for each. Keep those additions pending that proof. A weapon
+Tony also approved three more pairs on 2026-10-25: AMR 10 at 399 ms, Burst Rifle 7 at 430 ms and USP 5 at 277 ms.
+They are not in the catalogue yet. The guard stays for those three weapons until the F618 bench row passes.
+The AMR's ordinary fire interval is 450 ms on both presets.
+
+**What is still refused.** The AMR, Burst Rifle and USP stay refused until the F618 bench row passes, even though their
+pairs are approved. A weapon
 whose cell is already a headset-multiplier row (fn 36/37) otherwise remains refused, because re-keying it
 would change what the weapon does rather than where its damage goes. A charge weapon remains refused
 because its hits-to-kill is release-and-tap maths. A **one-shot weapon has no window at all**: the Rocket
 Launcher kills a standard target in one hit, a time to kill of zero, and a bypass cannot be sold to a
 weapon that already kills outright.
 
-**2026-10-25 AP guard decision.** Lift the guard for AMR, Burst Rifle and USP only after fraction arithmetic
-proves each price. AP damage/cycle pairs: Assault Rifle 4/131; SMG 4/131; Shotgun 15/467;
-Suppressor 6/314; Energy Rifle 4/170. AMR, Burst Rifle and USP have no AP pair in part A and remain
-pending provability. The AMR's ordinary fire interval is 450 ms on both presets. The proposed higher AP damage for SMG and Shotgun was rejected because it would erase the price
+**2026-10-25 AP guard decision.** AP damage/cycle pairs in the catalogue: Assault Rifle 4/131; SMG 4/131; Shotgun 15/467;
+Suppressor 6/314; Energy Rifle 4/170. Approved but not yet in the catalogue: AMR 10/399, Burst Rifle 7/430, USP 5/277.
+The guard stays for those three until the F618 bench row, and crit chance is zero under Armour Piercing (Tony, 2026-10-25).
+The AMR's ordinary fire interval is 450 ms on both presets. The proposed higher AP damage for SMG and Shotgun was rejected because it would erase the price
 of the lost headset word. Recharge Shields was also rejected.
 
 Two guards hold all of this: `test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it`

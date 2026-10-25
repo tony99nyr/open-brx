@@ -631,6 +631,8 @@ def check_request(policy: LoadoutPolicy, lp: LoadoutPool, slot: str, kind: str, 
         return True, None
     if kind not in ("weapon", "perk") or not rid:       # a pistol is requested as kind "weapon" (contracts §2: WeaponSel)
         return False, "Unknown pick"
+    if slot == "perk" and kind == "perk":
+        rid = canonical_perk_id(rid)                    # a live client may still say quick_hands / quick_switch
     if slot == "perk":
         if kind != "perk":
             return False, _R_ONLY_PERKS
