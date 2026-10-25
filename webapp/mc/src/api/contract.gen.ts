@@ -429,7 +429,7 @@ export const SIR_ARMOR_PIERCING_FNS: readonly number[] = [2,6];
 /** Ordered spare $SIR cells (hitaudio.py). */
 export const HIT_AUDIO_FREE_CELLS: readonly (readonly string[])[] = [["4","0"],["5","0"],["7","0"],["12","0"],["14","0"],["4","1"],["5","1"],["7","1"],["12","1"],["14","1"],["0","2"],["8","1"],["10","1"],["6","1"]];
 /** Reserved $SIR cells (hitaudio.py). */
-export const HIT_AUDIO_RESERVED_CELLS: readonly (readonly string[])[] = [["1","0"],["11","0"],["15","0"],["2","1"],["3","0"],["4","0"],["5","0"],["7","0"]];
+export const HIT_AUDIO_RESERVED_CELLS: readonly (readonly string[])[] = [["1","0"],["11","0"],["15","0"],["2","1"],["3","0"],["4","0"],["5","0"],["7","0"],["8","1"]];
 /** Community $SIR row ceiling (hitaudio.py). */
 export const HIT_AUDIO_MAX_SIR_ROWS: number = 14;
 /** Sound pools by weapon class (hitaudio.py). */
@@ -776,6 +776,12 @@ export interface PerkEffects {
   /** cell, damage cut to `compile._AP_DAMAGE_MULT`. PRIMARY ONLY.
    *  F278 (2026-09-18): no row declares this yet -- filed and refused before it */
   crit_pct_add?: number;
+  /** ships. `compile._refuse_if_crit_perk_ineligible` refuses it at runtime on
+   *  any equipped weapon declaring `wire.headset_dmg`.
+   *  2026-10-24, the hidden EMP: seconds between throws, on the match clock (a placeholder) */
+  cooldown_s?: number;
+  /** the EMP: seconds a victim's gun stays jammed (a placeholder) */
+  stun_duration_s?: number;
 }
 
 export interface PerkView {
@@ -1089,6 +1095,14 @@ export interface ConfigView {
   loadout_policy: LoadoutPolicy;
 }
 
+/** The EMP perk's numbers for one match (perks.json `emp` effects). Placeholders until benched. */
+export interface EmpSpec {
+  /** the holder's throw recharge, on the match clock */
+  cooldown_s: number;
+  /** how long a victim's gun stays jammed */
+  duration_s: number;
+}
+
 export interface FrameBundle {
   config_id: string;
   player_id: string;
@@ -1154,6 +1168,9 @@ export interface FrameBundle {
    *  absent when they carry no perk. Persisted here (not a
    *  one-shot message) so it survives an app restart. */
   perk_effects?: PerkEffectsResolved;
+  /** 2026-10-24: present when a player in this match holds the EMP perk (every bundle, so a
+   *  victim's phone knows the <8,1> word is a stun); absent otherwise. */
+  emp?: EmpSpec;
   /** S57 (docs/ir-callouts.md): the smallest team id in 0..3 that
    *  no player in this match holds, or None when all four are in use.
    *  Every player's dead-man IR callout word (protocol 15) carries this

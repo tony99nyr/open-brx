@@ -23,7 +23,7 @@ export type {
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, RestoreFailedView, FeedEntry, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
-  TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, HirCell,
+  TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, EmpSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
   FailureView, NotSavingView, JoinErrorView, OutboxLostReport,
   StationItem, PowerupSlot, StationUpdate, StationAction, PowerupPreset, PowerupsView, StationConfig,   // A56 (S58); the four above: O6/O7/O8; StationConfig: the station_config wire body

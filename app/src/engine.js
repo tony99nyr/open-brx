@@ -313,7 +313,11 @@ const SHOT_CUE_MIN_MS = 400;
 // t21 (accuracy ceiling) / t22 (accuracy floor), doc-token convention (frame.split(',')[tokN + 1]).
 const ACC_FLOOR_IDX = 23;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
-const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3;
+const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3, BTN_LEFT = 4;
+/** The EMP perk's throw (2026-10-24): a host `$IRTX` on the free cell <8,1>, from every dome. Every gun in a match with a
+ *  holder carries `$SIR,8,1,,23` (compile.py `_EMP_SIR_ROW`). MAGNITUDE 1: every proven host `$IRTX` carried a non-zero
+ *  damage token, and fn 23 moves no pool whatever it says. */
+export const EMP_THROW = { DIRECTION: 100, PROTO: 8, SUBTYPE: 1, MAGNITUDE: 1 };
 const TEAM_KEY = Object.fromEntries(TEAM_KEYS.map((key, tid) => [tid, key]));
 // A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
@@ -629,6 +633,7 @@ export const PERSIST_AS = Object.freeze({
   _noMatchEnd: Object.freeze(['noMatchEnd']),         // F529: a late result for a no-result end still shows
   _headCleared: Object.freeze(['headCleared']),       // F529 HIGH: the gun's head was $CLEARed by a teardown
   _abortedMatch: Object.freeze(['abortedMatch']),     // F529: the start this phone aborted
+  _emp: Object.freeze(['emp']),                       // the EMP perk's cooldown, as the time LEFT (`_loadTimed`)
   // `start` persists under its own name, and with it `start.session`, the MC session it arrived under (review round 2 L5)
 });
 // PERSIST_TRANSIENT: a field a restart may lose, and why. DERIVED: `_load` rebuilds it from a persisted field (the round-trip
@@ -987,6 +992,7 @@ export class Engine {
     this.gunAcc = null;             // S53: the live accuracy the gun last reported on `$ALCD` token 2 (active slot), null until one this life
     this._accZeroAt = null; this._smokeHirAt = null;   // S53: the two halves of a smoke landing, paired in `_smokeCheck`
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
+    this._emp = null;               // the EMP perk: {match, readyAt} after a throw; a new match id reads as ready
     this._recoil = null;            // S42: {weaponId, ceiling, floor, perShot, recoverMs, value, ...} for the ACTIVE weapon's live accuracy model, or null (no profile / recoil off)
     this._accuracyOffset = 0;        // S55: the t4 modifier this node last wrote; unlike recoil, t4 survives a $WEAP/swap
     this._nativeAccUntil = 0;        // S55: fn-23 owns t4 until this clock; the node must not cancel smoke/EMP
@@ -1100,6 +1106,7 @@ export class Engine {
         clockOffset: this.clockOffset(),
         stunned: this.stunned ? { at: this.stunned.at, leftMs: this.stunned.until - now, ammo: this.stunned.ammo } : null,
         poison: this.poison ? { ...this.poison, until: undefined, nextAt: undefined, leftMs: this.poison.until - now, nextInMs: this.poison.nextAt - now } : null,
+        emp: this._emp ? { match: this._emp.match, leftMs: this._emp.readyAt - now } : null,   // a restart must not hand the throw back early
       });
       // EFF-1 (review 2026-10-10): every live tick reaches here, and the whole state is about 16.6 KB, so writing it each
       // time was about 70 KB/s into the WebView's storage. Write only when the state changed, or once a heartbeat so the
@@ -1188,7 +1195,10 @@ export class Engine {
     const poison = poisonLeft > 0 && p.per > 0 && p.tickMs > 0 && Number.isFinite(p.nextInMs)
       ? { proto: p.proto, per: p.per, tickMs: p.tickMs, durMs: Number(p.durMs) || p.tickMs, at: now, until: now + poisonLeft, nextAt: now + Math.max(0, p.nextInMs - gone),
           by: { num: Number(p.by && p.by.num) || 0, team: Number(p.by && p.by.team) || 0 }, ticks: Number(p.ticks) || 0, cuePending: !!p.cuePending } : null;
-    return { stunned, poison };
+    // The EMP cooldown runs on the match clock, so it keeps running dead or alive; only its match id has to match.
+    const e = s.emp, empLeft = e && typeof e === 'object' ? Number(e.leftMs) - gone : 0;
+    const emp = empLeft > 0 && e.match ? { match: e.match, readyAt: now + empLeft } : null;
+    return { stunned, poison, _emp: emp };
   }
   /** Cross-lane review #4. `_load` runs in the constructor, before app.js has a transport, so `now()` is the raw clock there; the
    *  transport then installs its MC offset and `now()` steps by it. Every local absolute time `_load` restored is put on the
@@ -1209,7 +1219,7 @@ export class Engine {
       if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
-    obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']);
+    obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']); obj(() => this._emp, ['readyAt']);
     return items.length && Number.isFinite(offset) ? { offset, items } : null;
   }
   /** Cross-lane review #4: when the MC offset `now()` carries has changed since the last pass, move every time `_load` restored
@@ -1890,7 +1900,7 @@ export class Engine {
   _nonDamaging(latch) {
     const fns = this._sirFns();
     if (fns) { const fn = fns.get(`${latch.ir_proto}:${latch.ir_subtype}`); return fn != null && (SIR_NO_POOL_FNS.has(fn) || SIR_GRANT_FNS.has(fn)); }
-    return latch.ir_proto === 8 && this.stunEnabled;
+    return latch.ir_proto === 8 && (this.stunEnabled || this._empWord(latch.ir_proto, latch.ir_subtype));
   }
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
   get stunMs() { const s = this.config && this.config.stun && +this.config.stun.duration_s; return (s > 0 ? s : STUN_DEFAULT_S) * 1000; }
@@ -4201,9 +4211,9 @@ export class Engine {
    *    the relink's reconcile re-arms it.
    *  - Persisted (O9, `_save`/`_loadTimed`): a restart mid-stun keeps the time that is still left; the relink's
    *    reconcile then holds the gun disarmed and the stun's own expiry re-arms it. */
-  _stun() {
-    if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
-    const now = this.now(), ms = this.stunMs;
+  _stun(empMs = null) {
+    if ((empMs == null && !this.stunEnabled) || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
+    const now = this.now(), ms = empMs == null ? this.stunMs : empMs;   // an EMP perk word carries the perk's own length
     this._nativeAccuracyHold('EMP fn-23', now + SMOKE_MS);
     if (this.stunned) {
       this.stunned.until = Math.max(this.stunned.until, now + ms);
@@ -4220,6 +4230,68 @@ export class Engine {
     this._event('stunned');   // A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
     this.log(`⚡ stunned ${ms} ms — by ${this.latch ? this.nameOf(this.latch.shooter_num) || TEAM_NAME[this.latch.shooter_team] || 'UNKNOWN' : 'UNKNOWN'}`, 'le');
     this._changed();
+  }
+  // ---------- The EMP perk (2026-10-24, Tony via brx1: in place of the Haze weapon) ----------
+  /** `frames.emp` ({cooldown_s, duration_s}), present when a player in this match holds the perk, else null. */
+  _empSpec() {
+    const e = this.frames && this.frames.emp;
+    return e && typeof e === 'object' && e.cooldown_s > 0 && e.duration_s > 0 ? e : null;
+  }
+  /** A `$HIR` on the EMP perk's cell, in a match whose guns carry its row. */
+  _empWord(proto, subtype) { return proto === EMP_THROW.PROTO && subtype === EMP_THROW.SUBTYPE && !!this._empSpec(); }
+  /** This player picked the EMP. A late joiner can hold the pick in a match whose guns carry no <8,1> row (no `frames.emp`). */
+  _empPicked() { const lo = this.player && this.player.loadout; return !!(lo && lo.perk === 'emp'); }
+  /** This player holds the EMP and the bundle says the match carries it. */
+  _empHeld() { return this._empPicked() && !!this._empSpec(); }
+  /** The jam a victim's phone holds: `emp.duration_s`, but never shorter than the gun's own fn-23 blind (SMOKE_MS, about 6 s
+   *  on the bench), or the trigger would come back while every shot still misses. */
+  _empStunMs() { const e = this._empSpec(); return Math.max(e ? e.duration_s * 1000 : 0, SMOKE_MS); }
+  /** An EMP word from my own team in a team match. The wire decides: `$HIR` t4 is the thrower's immune team (its own tid),
+   *  so a roster gone stale after a team flip cannot override it. Only a missing t4 falls back to the roster row for t3, the
+   *  player id. FFA, and LMS or extraction with one team, have no teammates (`_onIrCallout`'s `solo`). */
+  _empFriendly(num, team) {
+    const c = this.config;
+    if (!c || c.mode === 'ffa' || (['lms', 'extraction'].includes(c.mode) && new Set((c.teams || []).map(t => Number(t.tid))).size < 2)) return false;
+    if (Number.isFinite(team)) return this.teamTid != null && team === this.teamTid;
+    const r = this.roster.find(x => x.player_num === num), mine = this.player && this.player.team_id;
+    return !!(r && r.team_id != null && mine != null && r.team_id === mine);
+  }
+  /** Ms until the next throw; 0 = ready. The cooldown runs on the match clock (perk-design.md §1): a death never resets it. */
+  _empLeftMs(now = this.now()) { const e = this._emp; return e && e.match === this.matchId ? Math.max(0, e.readyAt - now) : 0; }
+  /** LEFT pressed. A live, spawned, unstunned holder with the throw ready writes one `$IRTX` (protocol/brx-protocol.md
+   *  §3.2 `$IRTX`: Direction, BulletType, PlayerId, ImmuneTeamColor, Damage, IsCriticalShot, PowerLevel = the subtype,
+   *  IrRange, ToggleIRLoop 1 = once, TimeFireLoop, FlashLED). Field 4 is our own tid: with friendly fire off a teammate's
+   *  gun ignores it. Anything else writes nothing and logs why. */
+  _empThrow() {
+    if (!this._empPicked()) return;
+    const now = this.now(), left = this._empLeftMs(now), num = this.player.player_num, tid = this.teamTid;
+    const why = !this._empSpec() ? 'not in this match' : this.phase !== 'live' ? 'not live' : (!this.alive || !this.spawned) ? 'down' : this.stunned ? 'stunned'
+      : this.tutorial ? 'try-out' : !this.bleUp ? 'no gun link' : left > 0 ? `recharging, ${Math.ceil(left / 1000)} s left`
+      : (num == null || tid == null) ? 'no player id or team' : null;
+    if (why) { this.log(`EMP not thrown: ${why}`, 'li'); return; }
+    const T = EMP_THROW;
+    // The cooldown starts with the write, so a second press while it is in flight sends nothing. A failed write gives it back
+    // only when the frame never left the phone: BrxLink can resolve false after sending it (lost chunk acks), and then the
+    // word may have landed. Never into another match.
+    const spent = this._emp = { match: this.matchId, readyAt: now + this._empSpec().cooldown_s * 1000 };
+    let sent = false;
+    const refund = () => {
+      if (sent || this._emp !== spent || spent.match !== this.matchId) return;
+      this._emp = null; this.log('EMP throw failed on the link; the throw is back', 'le'); this._changed();
+    };
+    const r = this._write([`$IRTX,${T.DIRECTION},${T.PROTO},${num},${tid},${T.MAGNITUDE},0,${T.SUBTYPE},100,1,,0,*`], 'EMP throw',
+      { onFrameSent: () => { sent = true; } });
+    if (r && typeof r.then === 'function') r.then(ok => { if (ok === false || ok === null) refund(); }, refund);
+    else if (r === false || r === null) { refund(); return; }   // a writer that returns nothing (the demo gun) delivered
+    this.log(`⚡ EMP thrown; next in ${this._empSpec().cooldown_s} s`, 'le');
+    this._changed();
+  }
+  /** The HUD's EMP chip: null when this player does not hold the perk. */
+  _empView(now) {
+    if (!this._empPicked()) return null;
+    if (!this._empSpec()) return { off: true, ready: false, leftMs: 0, cooldownMs: 0 };   // a late joiner: this match's guns carry no EMP row
+    const left = this._empLeftMs(now);
+    return { ready: left === 0, leftMs: left, cooldownMs: this._empSpec().cooldown_s * 1000 };
   }
   /** End the stun. Only an EXPIRY on a live, linked gun writes the restore; every other reason (death, reconcile)
    *  leaves the re-arm to the path that owns it. */
@@ -4464,7 +4536,7 @@ export class Engine {
     if (a == null || h == null || Math.abs(a - h) > SMOKE_PAIR_MS) return;
     this._accZeroAt = null; this._smokeHirAt = null;   // one pair, one smoke
     if (this._standDown(['phase', 'spawned', 'alive', 'tutorial', 'stunned'])) return;
-    if (this.latch && this.latch.ir_proto === 8 && this.stunEnabled) return;
+    if (this.latch && this.latch.ir_proto === 8 && (this.stunEnabled || this._empWord(8, this.latch.ir_subtype))) return;
     const now = this.now();
     this._nativeAccuracyHold('smoke', now + SMOKE_MS);
     if (this.smoke) { this.smoke.until = now + SMOKE_MS; this._changed(); return; }
@@ -5668,7 +5740,13 @@ export class Engine {
         // `_shieldReassert` still runs: the gun's native hit flash wiped the protection light whoever fired.
         if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), ir_subtype: parseInt(t[7], 10), crit: parseInt(t[6], 10), sensor: parseInt(t[1], 10), mag: parseInt(t[5], 10) }; if (!this._nonDamaging(this.latch)) { this._dmgLatch = this.latch; if (!this._ownShot(this.latch)) this._foreignDmgAt = this.now(); } if (!this._ownShot(this.latch)) this.lastHitAt = this.now(); this._shieldReassert(); }
         const own = !Number.isNaN(team) && this._ownShot(this.latch);
-        if (t[2] === '8' && !own) this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
+        if (t[2] === '8' && !own) {   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
+          if (this._empWord(8, parseInt(t[7], 10))) {   // the EMP perk's <8,1> throw: never a teammate's, never inside spawn protection
+            if (this._empFriendly(num, team)) this.log('EMP word from a teammate: ignored', 'li');
+            else if (this._protectOwedMs() > 0) this.log('EMP word inside spawn protection: no jam', 'li');
+            else this._stun(this._empStunMs());
+          } else this._stun();
+        }
         if (t[2] === '7') {               // S55: the Haze's fn-23 cell; repeated hits arrive while accuracy is already 0
           const until = this.now() + SMOKE_MS;
           this._nativeAccuracyHold('smoke', until);
@@ -6287,6 +6365,7 @@ export class Engine {
         this._pull = { at: this.now(), slot: this.activeSlot }; if (!queued) this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
       }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this.pu.onSelect();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
+      else if (id === BTN_LEFT) this._empThrow();       // the EMP perk; the head maps LEFT to 98, so the gun does nothing itself
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
     }
     if (state !== 0) return;
@@ -7561,6 +7640,7 @@ export class Engine {
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       reconciling: this.rc.active,
       stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,
+      emp: this._empView(now),   // the EMP perk's chip: {ready, leftMs, cooldownMs}, or null without the perk
       // S16: the poison pill's input. `by` names the applier, who gets the kill if a tick finishes the player.
       poison: this.poison ? { leftMs: Math.max(0, this.poison.until - now), durMs: this.poison.durMs, perTick: this.poison.per, tickMs: this.poison.tickMs, ticks: this.poison.ticks,
         by: { num: this.poison.by.num, team: this.poison.by.team, name: this.nameOf(this.poison.by.num), teamKey: TEAM_KEY[this.poison.by.team] || null } } : null,

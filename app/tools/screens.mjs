@@ -3308,6 +3308,32 @@ await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar,
   await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
   await pg.close();
 });
+// ---------- F547 (Tony 2026-10-24, option C): "i only like the pips when it represents the shots 1:1. I think I prefer
+// the bar otherwise". AMMO_PIP_MAX is 20, so the 30-round Toxin Rifle gets the bar and the 14-round AMR keeps its pips.
+// The low-magazine amber must reach the bar too. ----------
+await step('ammo gauge se F547: the 30-round Toxin Rifle renders the bar with the low-mag amber; the 14-round AMR keeps 14 pips', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 30);
+  let r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `a 30-round Toxin mag must render the bar, not 30 pips: ${JSON.stringify(r)}`);
+  // review (Codex): the fill must be the HUD's own amber, `--warn`, read through a probe element so both sides are rgb()
+  const fill = () => pg.evaluate(() => {
+    const i = document.querySelector('#pips > .bar.ammobar > i'); if (!i) return null;
+    const probe = document.createElement('i'); probe.style.background = 'var(--warn)'; i.parentElement.appendChild(probe);
+    const warnBg = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { warn: i.parentElement.classList.contains('warn'), bg: getComputedStyle(i).backgroundColor, warnBg };
+  });
+  const full = await fill();
+  await setAmmo(pg, 'toxin_rifle', 0, 30, 180, 4);
+  const low = await fill();
+  must(low && low.warn && !full.warn && low.bg === low.warnBg && full.bg !== full.warnBg, `4 of 30 must turn the bar the HUD amber (--warn): full ${JSON.stringify(full)} low ${JSON.stringify(low)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-toxin-bar-low.png` });
+  await setAmmo(pg, 'amr', 0, 14, 84, 7);
+  r = await gaugeState(pg);
+  must(r.pips === 14 && r.lit === 7 && !r.bar, `a 14-round AMR mag keeps one pip per round: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-amr-pips.png` });
+  await pg.close();
+});
 // ---------- item 1 (bench 2026-09-17): the big-mag bar shared the class name `ammo` with the ammo
 // COLUMN's own `position:absolute;right:36px;bottom:32px` rule. Since `.pips` is `position:relative`
 // (63278ea4), that pulled the bar out of flow, over the mag digits, and collapsed `.pips` to 0x0. ----------
@@ -3326,7 +3352,7 @@ await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the 
   await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-bar.png` });
   await pg.close();
 });
-await step('ammo gauge se: the ready shine still shows on a big (>30) mag now the pips box no longer collapses', async () => {
+await step('ammo gauge se: the ready shine still shows on a big (>AMMO_PIP_MAX) mag now the pips box no longer collapses', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32);
   const r = await pg.evaluate(() => {
@@ -5042,6 +5068,33 @@ for (const view of VIEWS) for (const night of [false, true]) {
       must(s && s.leftMs > 0, `pre-condition: the engine is stunned: ${JSON.stringify(s)}`);
       must(r && r.shown && /STUNNED/.test(r.text) && /DISARMED/.test(r.text) && /\d+\s*SEC/.test(r.text), `the stun must show with its countdown: ${JSON.stringify(r)}`);
       if (night) must(!green(r.color) && r.anim === 'none', `night: no green, no motion: ${JSON.stringify(r)}`);
+      must(bad.length === 0, bad.join(' ; '));
+    });
+    // The EMP perk (2026-10-24, hidden until benched): one chip by the ammo, lit with a full ring when the throw is ready,
+    // dimmed with the seconds left while it recharges, gone while down or stunned, and absent without the perk.
+    await step(`${view.name} EMP perk ${skin}: lit when ready, dim with the seconds while it recharges, gone while down or stunned`, async () => {
+      const pg = await open(view, 'live-emp', N);
+      const ready = await look(pg, '#empchip .emp');
+      await pg.evaluate(() => window.brx.engine.feedFrame('$BUT,4,1,*')); await settled(pg);
+      const st = await pg.evaluate(() => window.brx.engine.state().emp);
+      const cool = await look(pg, '#empchip .emp');
+      await pg.screenshot({ path: `${OUT}/${view.name}-emp-${skin}.png` });
+      const bad = await invariants(pg);
+      await pg.evaluate(() => window.brx.engine.feedFrame(`$HIR,4,8,19,${window.brx.engine.teamTid === 2 ? 1 : 2},1,0,1,*`)); await settled(pg);
+      const stunned = { on: await pg.evaluate(() => !!window.brx.engine.state().stunned), chip: await look(pg, '#empchip') };
+      await pg.close();
+      const pd = await open(view, 'live-emp', N);
+      await pd.evaluate(() => window.brxDemo.die()); await settled(pd);
+      const down = { alive: await pd.evaluate(() => window.brx.engine.alive), chip: await look(pd, '#empchip') }; await pd.close();
+      const pg2 = await open(view, 'live', N);
+      const none = await look(pg2, '#empchip'); await pg2.close();
+      must(ready && ready.shown && ready.text === 'EMP' && ready.op === 1 && ready.font >= 11, `a ready EMP must be lit, the word alone: ${JSON.stringify(ready)}`);
+      must(st && !st.ready && st.leftMs > 0, `pre-condition: LEFT threw, the cooldown runs: ${JSON.stringify(st)}`);
+      must(cool && cool.shown && /^EMP \d+\s*SEC$/.test(cool.text) && cool.op <= 0.7, `a recharging EMP must dim and count its seconds: ${JSON.stringify(cool)}`);
+      if (night) must(!green(ready.color) && !green(cool.color), `night: no green: ${ready.color} ${cool.color}`);
+      must(stunned.on && !stunned.chip, `stunned: STUNNED owns the screen, no EMP chip: ${JSON.stringify(stunned)}`);
+      must(!down.alive && !down.chip, `down: no HUD alerts, no EMP chip: ${JSON.stringify(down)}`);
+      must(!none, `no perk, no EMP chip: ${JSON.stringify(none)}`);
       must(bad.length === 0, bad.join(' ; '));
     });
   }

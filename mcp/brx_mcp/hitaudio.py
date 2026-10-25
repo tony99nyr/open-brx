@@ -248,6 +248,9 @@ RESERVED_CELLS: frozenset[tuple[str, str]] = frozenset({
     # `(11,0)` is the poison cell: protocol 11 is the stock "gas" type and the victim's node keys its
     # tick clock off that protocol arriving, so the cell must never be re-pointed at another family.
     ("11", "0"),
+    # `(8,1)` (2026-10-24) is the EMP perk's throw cell (`mc/compile.py` `_EMP_CELL`): a family handed it would jam
+    # every target in a match with an EMP holder.
+    ("8", "1"),
 })
 
 
@@ -268,6 +271,7 @@ class Plan:
     cells: dict[str, tuple[str, str]] = field(default_factory=dict)          # weapon_id -> cell
     groups: dict[tuple[str, str], tuple[str, int]] = field(default_factory=dict)  # cell -> (class, fn)
     shared: list[str] = field(default_factory=list)   # classes that ran out of budget and share a cell
+    emp: bool = False   # 2026-10-24: a player in this match holds the EMP perk, so every table carries the <8,1> row
 
     def cell_for(self, weapon_id: str) -> tuple[str, str] | None:
         return self.cells.get(weapon_id)
