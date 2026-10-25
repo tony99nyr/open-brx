@@ -1030,9 +1030,7 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
     alert = alert or {}
     for f in alert:
         f.next_t = math.inf
-    for f in allf:
-        f.words = []
-    first_hit = None
+    first_hit = None      # queued words carry over (hill hold chains fights); land_word drops a stale one
     while True:
         if stop_when and stop_when():
             due = [word_due(f) for f in allf if word_due(f) <= cap_ms]
