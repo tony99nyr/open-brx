@@ -886,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 17
+    assert R.SCENARIO_VERSION == 18
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1508,6 +1508,18 @@ def test_a_lapsed_melee_back_to_a_spent_gun_still_draws_the_secondary():
     assert f.act(f.next_t) is None and not f.melee_in_hand
     f.act(f.next_t)
     assert f.active == 1
+
+
+def test_a_duel_undecided_at_the_cap_is_a_draw_not_a_pool_ranking():
+    # F603 (Astra #7): two survivors at the cap were ranked by the pool left, so unused Body Armor counted as a win
+    w = R.shipped_world()
+    armoured = R.make_kit(w, "AR + BA", R.ANCHOR, R.SECONDARY, "body_armor")
+    plain = R.make_kit(w, "AR", R.ANCHOR, R.SECONDARY)
+    assert armoured.pool("standard") > plain.pool("standard")
+    out = R.duel_outcomes(armoured, plain, "long", reps=20, aim=0.0, cap_ms=2000)
+    assert out == {"win": 0, "loss": 0, "trade": 0, "censored": 20, "reps": 20}
+    rate = R.duel_rate(armoured, plain, "long", reps=20, aim=0.0, cap_ms=2000)
+    assert rate == 0.5 and rate.censored == 1.0
 
 
 def test_melee_finishes_at_close_only():

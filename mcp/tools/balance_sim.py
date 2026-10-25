@@ -1264,8 +1264,8 @@ def _burst3_shots(first_time: float, dmg: int, fire_ms: float, gap_ms: float, ma
 
 def _race(rng: random.Random, gen_a, gen_b, hp_a: int, hp_b: int, time_cap_ms: float) -> str | None:
     """Runs two shot generators against each other's health pool in time order, rolling a hit for every
-    round. Returns `"a"`/`"b"` for the first to die, or `None` for a draw (both alive, or tied health,
-    at `time_cap_ms`)."""
+    round. Returns `"a"`/`"b"` for the first to die, or `None` for a draw: both alive at `time_cap_ms` is
+    undecided, never ranked by the health left (F603, Astra sim review #7)."""
     hp = [hp_a, hp_b]
     gens = [gen_a, gen_b]
     nxt = [next(g, None) for g in gens]
@@ -1281,9 +1281,7 @@ def _race(rng: random.Random, gen_a, gen_b, hp_a: int, hp_b: int, time_cap_ms: f
             if hp[j] <= 0:
                 return "a" if i == 0 else "b"
         nxt[i] = next(gens[i], None)
-    if hp[0] == hp[1]:
-        return None
-    return "a" if hp[0] > hp[1] else "b"
+    return None
 
 
 @dataclass(frozen=True)

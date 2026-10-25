@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 17   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609); 17: the headset word at every range, 88 ms late (F602)
+SCENARIO_VERSION = 18   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609); 17: the headset word at every range, 88 ms late (F602); 18: a duel undecided at the cap is a draw (F603)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -1093,16 +1093,28 @@ def _reaction(rng):
     return max(0.0, rng.gauss(REACTION_MEAN_MS, REACTION_SD_MS))
 
 
-def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
-              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> float:
-    """Win rate of a over b in a 1v1 (a draw on equal pools is half). `peek`: a marksman kit peeks with
-    PEEK_WINDOW_MS; a lone peeker opens at t=0 and the other side reacts from that shot."""
+class DuelRate(float):
+    """A duel win rate that also carries the share of fights still undecided at the cap (F603)."""
+    def __new__(cls, rate: float, censored: float = 0.0):
+        obj = float.__new__(cls, rate)
+        obj.censored = censored
+        return obj
+
+    def __reduce__(self):
+        return (DuelRate, (float(self), self.censored))
+
+
+def duel_outcomes(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
+              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> dict:
+    """1v1 outcomes of a against b: `win` and `loss` are kills, `trade` both died, `censored` both still alive at
+    the cap (F603: undecided, never ranked by the pool left, which credited unused starting armour). `peek`: a
+    marksman kit peeks with PEEK_WINDOW_MS; a lone peeker opens at t=0 and the other side reacts from that shot."""
     pa = PEEK_WINDOW_MS if (peek and kit_a.marksman) else None
     pb = PEEK_WINDOW_MS if (peek and kit_b.marksman) else None
     rng = B.cell_rng(SEED, "kduel", kit_a.name, kit_b.name, dist, preset, aim, cap_ms, pa, pb,
                      haze_blind_ms, _heat_seed(heat_cool_while_firing))
     d = DIST[dist]
-    wins = 0.0
+    out = {"win": 0, "loss": 0, "trade": 0, "censored": 0, "reps": reps}
     for _ in range(reps):
         a = Fighter(kit_a, kit_a.pool_parts(preset), aim, d, rng,
                     heat_cool_while_firing=heat_cool_while_firing)
@@ -1115,11 +1127,17 @@ def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, a
         elif pb and not pa:
             b.next_t = 0.0
         fight(rng, [a], [b], cap_ms, haze_blind_ms=haze_blind_ms)
-        if a.alive and not b.alive:
-            wins += 1
-        elif a.alive == b.alive:
-            wins += 0.5 if a.pool == b.pool else (1.0 if a.pool > b.pool else 0.0)
-    return wins / reps
+        out["win" if a.alive and not b.alive else "loss" if b.alive and not a.alive else
+            "censored" if a.alive else "trade"] += 1
+    return out
+
+
+def duel_rate(kit_a: Kit, kit_b: Kit, dist: str, preset="standard", reps=3000, aim=AIM, cap_ms=FIGHT_CAP_MS,
+              peek=False, haze_blind_ms=HAZE_BLIND_MS, heat_cool_while_firing=True) -> float:
+    """Win rate of a over b in a 1v1: a kill is 1, a trade or a fight undecided at the cap is half (F603). The
+    result also carries `.censored`, the undecided share."""
+    o = duel_outcomes(kit_a, kit_b, dist, preset, reps, aim, cap_ms, peek, haze_blind_ms, heat_cool_while_firing)
+    return DuelRate((o["win"] + 0.5 * (o["trade"] + o["censored"])) / reps, o["censored"] / reps)
 
 
 def haze_report(world: World, reps: int, blind_ms: float = HAZE_BLIND_MS,
@@ -2247,6 +2265,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     cells = [(key, job if carries_heat(job) else (*job[:-1], "throughout")) for key, job in cells]
     res = run_cells([j for _, j in cells], n_jobs)
     duel, field, field_counts, amb, hill, ammo, ammo_caps, ammo_reasons = {}, {}, {}, {}, {}, {}, {}, {}
+    censored = {}     # F603: the share of each duel cell's fights still undecided at the cap
     ammo_anchor_kills = 0.0
     ammo_anchor_caps = 0
     ammo_anchor_reasons = {}
@@ -2265,8 +2284,9 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
             hill.setdefault(key[2], []).append(r)
         else:
             mode, d, a, b = key
-            duel[f"{mode}|{d}|{a}|{b}"] = r
+            duel[f"{mode}|{d}|{a}|{b}"] = float(r)
             duel[f"{mode}|{d}|{b}|{a}"] = 1.0 - r
+            censored[f"{mode}|{d}|{a}|{b}"] = censored[f"{mode}|{d}|{b}|{a}"] = getattr(r, "censored", 0.0)
     for n in bolt_names:
         ammo[n], ammo_caps[n], ammo_reasons[n] = float("nan"), 0, {}
 
@@ -2291,7 +2311,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     return {"kits": names, "keys": keys, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
                                                "shields_perk": s.shield_perk,
                                                "combo": s.combo} for s in specs},
-            "columns": cols, "top": top, "near_top": near, "duels": duel,
+            "columns": cols, "top": top, "near_top": near, "duels": duel, "duel_censored": censored,
             "field_counts": field_counts,
             "reps": {"duel": dr, "field": fr, "ambush": ar, "ammo": ammo_reps},
             "ammo_stress_kills": ammo, "ammo_stress_anchor_kills": ammo_anchor_kills,

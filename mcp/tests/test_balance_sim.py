@@ -1129,3 +1129,13 @@ def test_shields_preset_primaries_beat_sidearms_r10b():
              for p in B.R10_PRIMARIES for s in B.R10_SIDEARMS]
     low = _shields_low(cells)
     assert not low, f"Shields preset under the {B.SHIELDS_BAR:.0%} bar (F310): " + "; ".join(low)
+
+
+def test_race_at_the_cap_is_a_draw_whatever_health_is_left():
+    # F603 (Astra #7): `_race` ranked two survivors by the health left at the cap
+    def misses(dmg):
+        t = 0.0
+        while True:
+            yield (t, 0.0, dmg)
+            t += 100.0
+    assert B._race(random.Random(1), misses(10), misses(10), 200, 100, 1000.0) is None
