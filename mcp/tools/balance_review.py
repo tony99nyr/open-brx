@@ -132,7 +132,7 @@ REACTION_SD_MS = 80.0
 RETARGET_MS = 400.0           # after a kill, a trigger release before the next target
 BURST_LEN = (3, 5)            # a controlled burst on an automatic weapon: 3 to 5 rounds ...
 BURST_PAUSE_MS = (150.0, 300.0)   # ... then a 150 to 300 ms pause
-FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is decided on the remaining pool
+FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is a draw, never ranked by the pool left (F603)
 LONG_CONTACT_AIM = 0.5        # the "long contact" column: a 20 s fight at a poor aim, mid range
 LONG_CONTACT_CAP_MS = 20_000.0
 PEEK_WINDOW_MS = 750.0        # a peeking marksman is exposed only within 375 ms of its own shots
@@ -2711,6 +2711,7 @@ def heat_rows(matrix: dict, weapon: str) -> dict | None:
     return {
         "columns": matrix["columns"][name],
         "duels": {k: v for k, v in matrix["duels"].items() if name in k.split("|")[2:]},
+        "duel_censored": {k: v for k, v in matrix.get("duel_censored", {}).items() if name in k.split("|")[2:]},
         "kits": {n: {"columns": matrix["columns"][n],
                      "duels": {k: v for k, v in matrix["duels"].items() if n in k.split("|")[2:]}}
                  for n in names}}
