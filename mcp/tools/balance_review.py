@@ -354,6 +354,20 @@ def pool_parts(preset: str, fx: dict) -> tuple[int, int, int]:
     return hp, max(0, min(255, arm + add)), max(0, min(255, sh))
 
 
+def compiled_pools(world: "World") -> dict:
+    """{perk or "none": {preset: [health, armour, shield]}} through compile's own armed_armor/armed_shield, with
+    the world's grant for each perk (F604)."""
+    grants = _compile_mod.max_armor_grants(world.perks)
+    out = {}
+    for pid in [None] + fieldable_perks(world.perks):
+        out[str(pid or "none")] = {}
+        for preset in ("standard", "shields"):
+            hp, arm, sh = HEALTH_PRESETS[preset]
+            out[str(pid or "none")][preset] = [hp, _compile_mod.armed_armor(arm, pid, arm == 0, grants),
+                                               _compile_mod.armed_shield(sh, pid, arm == 0, grants)]
+    return out
+
+
 def pool_total(preset: str, fx: dict) -> int:
     return sum(pool_parts(preset, fx))
 
@@ -2958,6 +2972,9 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         "tests": tests, "pass": _overall_pass(tests),
         "matrix": {"baseline": mb, "candidate": mc}, "perks": {"baseline": perks_b, "candidate": perks_c},
         "rules": {"shipped": rules_s, "baseline": rules_b, "candidate": rules_c}, "sidearm_r10": side,
+        # F604 (Astra #11): the pools the compiler arms for each fieldable perk in the candidate world. The compiler
+        # reads perks.json's max_armor_add, so these equal pool_parts by construction; the report states them.
+        "compiled_pools": compiled_pools(world),
         "marksman_watch": watch,
         "rush_speed_sweep": {"rows": rush_sweep, "verdict_flips": rush_flip} if rush_sweep else None,
         "aim_sweep": subject_aim_sweep(world, mc, subject_kit, _reps("aim_sweep", reps_scale),

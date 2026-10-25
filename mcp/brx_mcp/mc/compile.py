@@ -304,12 +304,17 @@ def play_volume(environment: str | None) -> int:
 
 # S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
 # `max_armor_add` perk carries. Body Armor +25 (was +50 -- "maybe 50 is too much armor and it should
-# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). Kept as
-# a compiler-side table, keyed by perk_id, rather than trusting `perks.json`'s own `effects.
-# max_armor_add` at compile time: the two must obviously agree (perks.json is the wire-visible
-# documentation of the same number), but this is the one place the ARITHMETIC runs, matching every
-# other shared-formula table in this module (`_POOL_GRANT_PCT`'s S50-draft predecessor, `_SIR_*`).
-_MAX_ARMOR_ADD: dict[str, int] = {"body_armor": 25, "quick_switch": -20}
+# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). The number
+# lives once, in `perks.json`'s `effects.max_armor_add`; the arithmetic runs here (`armed_armor`,
+# `armed_shield`). F604 (Astra sim review #11): this used to be a second, hand-kept table, so a
+# perks.json-only change was simulated by the balance review but never reached the gun.
+def max_armor_grants(perks: PerkCatalog) -> dict[str, int]:
+    """{perk_id: flat armour grant} from a perk catalogue's `effects.max_armor_add` (F604)."""
+    return {r["perk_id"]: int(r["effects"]["max_armor_add"]) for r in perks._rows
+            if (r.get("effects") or {}).get("max_armor_add")}
+
+
+_MAX_ARMOR_ADD: dict[str, int] = max_armor_grants(PerkCatalog())
 
 
 # §7.3: the health the Shields preset carries, and the floor the warning below measures against. It
@@ -382,7 +387,7 @@ def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> Healt
     return "custom"
 
 
-def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -> int:
+def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
     floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
     `_to_gc()`; both bounds are our own policy choice). The floor matters now that a cost perk
@@ -399,18 +404,18 @@ def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -
     §2) -- so this returns `armor` (0, by construction of that branch) untouched."""
     if shields:
         return max(0, min(255, int(armor)))
-    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    grant = (_MAX_ARMOR_ADD if grants is None else grants).get(perk_id or "", 0)   # `grants`: a candidate catalogue's
     return max(0, min(255, int(armor) + grant))
 
 
-def armed_shield(shield: int, perk_id: str | None = None, shields: bool = False) -> int:
+def armed_shield(shield: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET shield after a `max_armor_add` perk's grant, ONLY when `shields` (`is_shields_preset()`)
     -- the branch `armed_armor()` defers to. Same 255 cap / 0 floor as armour; outside a shields
     preset this is the shield pool untouched (still clamped, for consistency, though nothing writes
     it that high today)."""
     if not shields:
         return max(0, min(255, int(shield)))
-    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    grant = (_MAX_ARMOR_ADD if grants is None else grants).get(perk_id or "", 0)
     return max(0, min(255, int(shield) + grant))
 
 

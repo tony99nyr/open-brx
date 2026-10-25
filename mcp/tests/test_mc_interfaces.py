@@ -131,7 +131,7 @@ def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
         assert rows and all("dmg" in row["stats"] and "damage" not in row["stats"] for row in rows)
         player = {"loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}}
         # S50 (docs/perk-design.md §2): perks.json's `max_armor_add` is now a flat +25 (was a flat
-        # +50) -- `compile._MAX_ARMOR_ADD` is the table the compiled arithmetic actually reads.
+        # +50); `compile._MAX_ARMOR_ADD` is built from it (F604).
         assert adapter.perk_effects(player)["max_armor_add"] == 25
 
 

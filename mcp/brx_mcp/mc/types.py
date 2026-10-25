@@ -533,8 +533,8 @@ class PerkEffects(TypedDict, total=False):
     refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
 
     S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
-    +25, quick_switch -20) -- `compile._MAX_ARMOR_ADD` is the one table the compiled arithmetic reads,
-    keyed by perk_id; this field is its wire-visible documentation, kept an integer because
+    +25, quick_switch -20). This field is the one source of the number: `compile._MAX_ARMOR_ADD` is built
+    from it, keyed by perk_id, and the compiled arithmetic reads that (F604). Kept an integer because
     `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally."""
     max_armor_add: int      # added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255,
                             # floored at 0 (`compile.armed_armor`/`armed_shield`)
