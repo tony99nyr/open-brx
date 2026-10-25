@@ -30,7 +30,8 @@ def _skips(flags: list[str]) -> list[str]:
 
 
 def test_a_changed_gate_on_pyright_checked_code_refuses_a_pyright_skip():
-    for p in ("mcp/brx_mcp/mc/state.py", "mcp/brx_mcp/mc/routes/recap_history.py", "mcp/pyproject.toml"):
+    for p in ("mcp/brx_mcp/mc/state.py", "mcp/brx_mcp/mc/routes/recap_history.py", "mcp/pyproject.toml",
+              "mcp/tests/test_pyright.py", "mcp/constraints.txt"):
         assert "pyright" in _skips(_no_skip(foundVenv=True, changedPaths=["docs/x.md", p])), p
 
 
@@ -45,11 +46,14 @@ def test_a_change_pyright_does_not_check_and_a_plain_run_still_allow_the_skip():
     assert _skips(_no_skip(foundVenv=True)) == ["websockets", "uvicorn"], "a newcomer's plain test:all: no pyright there"
 
 
-def test_mc_py_and_system_python_refuse_nothing():
-    assert _no_skip(foundVenv=False, landGate=True, changedPaths=["mcp/brx_mcp/mc/state.py"]) == []
+def test_mc_py_and_system_python_keep_their_skips_except_at_a_lander_gate():
+    assert _no_skip(foundVenv=False, changedPaths=["mcp/brx_mcp/mc/state.py"]) == []
+    assert _skips(_no_skip(foundVenv=False, landGate=True)) == ["pyright"], "the lander stands in for CI's pyright pass"
 
 
 def test_test_all_reads_its_no_skip_set_from_the_helper():
     src = (REPO / "scripts" / "test-all.mjs").read_text()
-    assert "noSkipFor(" in src and "landGate: process.env.BRX_LAND_GATE" in src, \
-        "test-all must build NO_SKIP from noSkipFor, with the lander flag and the --changed paths"
+    call = src[src.index("const NO_SKIP = noSkipFor("):].split("\n", 1)[0]
+    assert "BRX_LAND_GATE" in call, call
+    assert "changedPaths: CHANGED_PATHS" in call, "the --changed paths are the whole fix for a local gate (review)"
+    assert "CHANGED_PATHS = changedPaths(ROOT, CHANGED_BASE)" in src
