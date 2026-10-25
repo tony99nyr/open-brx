@@ -33,7 +33,7 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
 
 Scenario version 12 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
-ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
+ticks, aim-scaled melee finishes inside the rush reach (with the slot-4 swap), field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
 finishers after a dry primary. Haze runs in a separate optional report.
@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 15   # 15: a dry primary draws the secondary only when it finishes first (F601)
+SCENARIO_VERSION = 16   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -626,7 +626,7 @@ class Fighter:
     capped at 1. Damage = the gun word, plus the headset word at close. Shields refill after a quiet window."""
 
     def __init__(self, kit: Kit, pool: int, aim: float, dist: int, rng, fit=True, pull_ms=PULL_MS,
-                 allow_melee=True, heat_cool_while_firing=True, persistent_reload=False):
+                 allow_melee=False, heat_cool_while_firing=True, persistent_reload=False):
         self.kit, self.aim, self.dist, self.rng, self.fit, self.pull_ms = kit, aim, dist, rng, fit, pull_ms
         self.allow_melee, self.heat_cool_while_firing = allow_melee, heat_cool_while_firing
         self.persistent_reload = persistent_reload
@@ -637,7 +637,8 @@ class Fighter:
         self.blind_until = 0.0
         self.dot_next, self.dot_left, self.dot_dmg, self.dot_ms, self.dot_src = math.inf, 0, 0, 0.0, None
         self.last_effect = None
-        self.melee_ready, self.melee_winding = 0.0, False
+        # F609: melee only where the rush tracks the distance (`dist_m`); a plain close duel never swings.
+        self.melee_ready, self.melee_winding, self.melee_in_hand = 0.0, False, False
         self.dist_m = None
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
@@ -827,13 +828,18 @@ class Fighter:
                 (self.dist_m is None or self.dist_m <= MELEE_REACH_M) and t >= self.melee_ready:
             if not self.melee_winding:
                 self.melee_winding = True
-                self.next_t = t + MELEE_SWING_MS
+                # the slot-4 draw: the gun takes the larger of the two slots' delays, so the kit's own swap
+                self.next_t = t + (0.0 if self.melee_in_hand else self.kit.swap_ms) + MELEE_SWING_MS
                 return None
-            self.melee_winding = False
+            self.melee_winding, self.melee_in_hand = False, True
             self.melee_ready = t + self.kit.melee_ms
             self.next_t = self.melee_ready
             self.last_effect = "melee"
             return self.kit.melee_dmg, MELEE_HIT_P * self.aim * (0.0 if t < self.blind_until else 1.0), False
+        if self.melee_in_hand:
+            self.melee_in_hand = False                  # swap back to the gun before it fires (F609)
+            self.next_t = t + self.kit.swap_ms
+            return None
         if self.committed:
             self.committed = False
         elif self._maybe_swap(t):
@@ -1290,9 +1296,9 @@ def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_fir
                      start_m, _heat_seed(heat_cool_while_firing))
     mk = rs = 0
     for _ in range(reps):
-        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
+        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng, allow_melee=True,
                     heat_cool_while_firing=heat_cool_while_firing)
-        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
+        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng, allow_melee=True,
                     heat_cool_while_firing=heat_cool_while_firing)
         a, b = rush_encounter(rng, m, v, start_m, speed_m_s)
         mk += a; rs += b  # noqa: E702
