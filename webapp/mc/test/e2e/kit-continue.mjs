@@ -247,7 +247,7 @@ async function runMock(browser, viteBase, vp, tag) {
   expect(!(await onLobby(pg)), 'the first tap did NOT open the lobby');
   const warn = await pg.locator('[data-continue-warn]').innerText().catch(() => '');
   const warn1 = warn.replace(/\s+/g, ' ');
-  expect(/SABLE, DRIFT ARE STILL KITTING AND WILL LOSE THEIR SCREEN/.test(warn1),
+  expect(/2 still kitting, they lose their screen/.test(warn1),
     `the confirm names them AND says what the tap costs them (saw ${JSON.stringify(warn1)})`);
   expect((await gateBtn(pg).innerText()).replace(/\s+/g, ' ').includes('CONTINUE ANYWAY · 6/8 READY'),
     `the armed button keeps the ready count (saw ${JSON.stringify(await gateBtn(pg).innerText())})`);
@@ -320,7 +320,7 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
   await pg.waitForTimeout(400);
   expect(await phaseNow() === 'kit', `THE F127 REGRESSION: the first tap must not move the SERVER phase (saw ${await phaseNow()})`);
   const warn = (await pg.locator('[data-continue-warn]').innerText().catch(() => '')).replace(/\s+/g, ' ');
-  expect(/ROCCO IS STILL KITTING AND WILL LOSE THEIR SCREEN/.test(warn), `the confirm names ROCCO and the cost (saw ${JSON.stringify(warn)})`);
+  expect(/1 still kitting, they lose their screen/.test(warn), `the confirm names ROCCO and the cost (saw ${JSON.stringify(warn)})`);
   expect((await gateBtn(pg).innerText()).replace(/\s+/g, ' ').includes('CONTINUE ANYWAY · 8/9 READY'),
     `the armed button keeps the count (saw ${JSON.stringify(await gateBtn(pg).innerText())})`);
   ok(`first tap: server still in kit, "${warn}"   ${await shot(pg, `12-${tag}-real-armed`)}`);

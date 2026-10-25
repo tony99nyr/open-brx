@@ -74,7 +74,7 @@ describe('the grenade step follows the operator to the screens where it is actio
     const m = await mountScreen(<Lobby />, { state: withWarnings(d.state, [OFFLINE]), view: 'lobby' });
     const conflict = m.find('[data-testid="setup-conflict"]');
     expect(conflict.length).toBe(1);
-    expect(conflict[0].textContent).toMatch(/THE HILL IS OFFLINE/);
+    expect(conflict[0].textContent).toContain('Station setup needed');
     expect(conflict[0].querySelector('[data-sev="amber"]'), 'amber, never red -- it warns, it does not block').toBeTruthy();
     expect(conflict[0].querySelector('[data-sev="red"]')).toBeFalsy();
     // it must not ALSO land in the neutral "Match reminders" panel -- one line, one place, one colour

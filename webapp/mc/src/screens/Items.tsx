@@ -6,6 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
+import { FaultPill, ItemChip } from '../ui/Compact';
 import { HillReadout } from '../ui/HillReadout';
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
@@ -20,7 +21,7 @@ import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups
 import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val, ValueBox } from '../ui';
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
-import { Alert, AlertTag } from '../ui/Alert';
+import { AlertTag } from '../ui/Alert';
 import { GLYPH, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
 
@@ -33,6 +34,8 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
 const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: the label and the edit's starting point for threshold 0 (the rule itself is `defaultThreshold`). */
+const cap = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();   // F599 prototype: sentence case
+
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
   const start = defaultThreshold(kind, stick);
   return stick ? { label: "DEFAULT (the Stick's own)", start } : { label: `DEFAULT (${start}, phone)`, start };
@@ -68,7 +71,7 @@ export function Items() {
     <div data-testid="items-departures" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
       {away.map(d => (
         <div key={d.node_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Alert id="items-station-departed" testid="station-departure">{d.line}</Alert>
+          <ItemChip id="items-station-departed" testid="station-departure" inline short={`${cap(STATION_KIND_SHORT[d.kind])} ${d.id} left`} detail={d.line.charAt(0) + d.line.slice(1).toLowerCase()} />
           {/* polish r1 M2(b): a phone that stays a player would otherwise leave this line up every match */}
           <DismissDeparture node_id={d.node_id} />
         </div>
@@ -215,7 +218,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
   // walked out of Wi-Fi range (utility.md §5c: "a station needs no Wi-Fi once armed") keeps its
   // ARM PENDING / MC-ARMED wording -- that is a real, expected field state, not the ghost this fix is
   // about -- and the LINK row below still says OUT OF WI-FI either way.
-  const status = !a ? (s.online ? 'NOT ASSIGNED' : 'OFFLINE') : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
+  const status = !a ? (s.online ? 'NOT ASSIGNED' : 'OFFLINE') : s.arm_pending ? 'Arm pending' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   // H2 (visual QA 2026-09-24): a CONTROL station under a grenade or IR-station objective is ignored by every
   // phone. The server says so in `config_warnings`; the card carries the same line and is not green.
   const setupConflict = a?.kind === 'control'
@@ -333,12 +336,12 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             `conflictWords()`) — this card used to hand-draw the glyph and keep sentence case, so the
             one fact read differently on three screens. */}
         {setupConflict && (
-          <Alert id="items-setup-conflict" variant="row" testid="station-setup-conflict">{conflictWords(setupConflict)}</Alert>
+          <FaultPill id="items-setup-conflict" testid="station-setup-conflict" short="Station setup conflict" why={conflictWords(setupConflict)} />
         )}
       </div>
       {departure && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Alert id="items-station-departed" testid="station-departure">{departure.line}</Alert>
+          <ItemChip id="items-station-departed" testid="station-departure" short={`${cap(STATION_KIND_SHORT[departure.kind])} ${departure.id} left`} detail={departure.line.charAt(0) + departure.line.slice(1).toLowerCase()} />
           {/* L7 (overnight review): DISMISS sits beside RESTORE here too, not only on the away block above */}
           <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {canRestore && (
@@ -357,9 +360,13 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
       )}
       {s.attention.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} data-testid="station-attention">
-          {s.attention.map(t => (
-            <Alert key={t} {...serverLine(t, 'amber')}>{t}</Alert>
-          ))}
+          {s.attention.map(t => {
+            const line = serverLine(t, 'amber');
+            const short = line.id === 'station-attention-bring-back' ? 'Station out of range' : line.id.includes('battery') ? 'Station battery low' : 'Station needs attention';
+            return line.sev === 'red'
+              ? <FaultPill key={t} id={line.id} short={short} why={t} />
+              : <ItemChip key={t} id={line.id} short={short} detail={t} />;
+          })}
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
@@ -386,7 +393,6 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
           {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
-          {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL: TAKEN BY PRESENCE</span>}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}><Micro>BUBBLE</Micro>
             {threshold === 0
               ? <GhostButton data-bubble-edit={s.node_id} size={11} onClick={() => setThreshold(bubbleDefault(kind, stick).start)}
@@ -403,7 +409,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
         {rep.tx_power != null && <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <Micro>STRENGTH</Micro>
           <Seg label={`strength for ${s.node_id}`} value={(tx ?? '') as TxPower} size={11} pad="5px 8px" wrap options={TX_POWER_OPTIONS} onChange={setTx} />
-          <span data-strength-note={s.node_id} style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>strength changes range too</span>
+
         </div>}
         {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
             under a card it's about to switch away from -- read there before it's acted on, not buried

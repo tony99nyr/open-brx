@@ -4,6 +4,7 @@ import type { LiveRow, OperatorCmd } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { colourOf, glyphed } from '../alerts';
+import { FaultPill } from '../ui/Compact';
 
 /** A47 (bench 2026-09-17): the operator's cures for ONE player in a bad state, e.g. a gun that cannot fire.
  *  Each goes to that player's phone only (`POST /api/players/{pid}/operator`), and the phone does the work.
@@ -83,11 +84,8 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
       ) : outOfReach ? (
         // F221 (2026-09-25): a gun/phone link lost DURING a match is RED — the boxed row, per Tony's
         // rule for a gun card. Was a quiet T.dim line; a live-match link loss is act-now, not status.
-        <div data-op-unavailable="reach" data-alert="frame-op-out-of-reach" data-sev="red" role="alert"
-          style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-out-of-reach'), lineHeight: 1.5,
-            padding: '4px 8px', border: `1px solid ${colourOf('frame-op-out-of-reach')}`, background: 'rgba(255,82,82,.08)' }}>
-          {glyphed('red', `${who}'S PHONE IS OUT OF REACH (LAST HEARD ${fmtAge(r.sync_age_ms)} AGO). NOTHING CAN BE SENT UNTIL IT CHECKS IN AGAIN.`)}
-        </div>
+        <FaultPill id="frame-op-out-of-reach" short={`${who} is out of reach`}
+          why={`${who}'s phone was last heard from ${fmtAge(r.sync_age_ms)} ago. Nothing can be sent until it checks in again.`} />
       ) : <>{!live && (
         <div data-op-unavailable="armed" data-alert="frame-op-wait-t0" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-wait-t0'), lineHeight: 1.5 }}>
           RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.

@@ -59,7 +59,7 @@ try {
   c.step = 'down';
   console.log(`\n[${c.step}] the MC process is stopped (pid ${mc.proc.pid})`);
   await mc.stop(); mc = null;
-  c.expect(!!await c.until(async () => /MC OFFLINE/.test(await H.bodyText(op)), 15000, 'the MC OFFLINE banner'),
+  c.expect(!!await c.until(async () => /MC offline, board frozen/.test(await H.bodyText(op)), 15000, 'the MC offline pill'),
     'the open console says MC is offline');
 
   c.step = 'resume';
@@ -75,8 +75,8 @@ try {
   for (const [name, pg] of [['operator', op], ['spectator', sp]]) {
     c.step = `open-tab/${name}`;
     console.log(`\n[${c.step}] the tab left open across the restart`);
-    c.expect(!!await c.until(async () => !/MC OFFLINE/.test(await H.bodyText(pg)), 20000, 'the tab to reconnect'),
-      'the tab reconnected on its own (no MC OFFLINE banner)');
+    c.expect(!!await c.until(async () => !/MC offline, board frozen/.test(await H.bodyText(pg)), 20000, 'the tab to reconnect'),
+      'the tab reconnected on its own (no MC offline pill)');
     c.expect(!!await c.until(async () => /MC RESTARTED/.test(await H.bodyText(pg)), 10000, "the new process's feed line"),
       'the tab shows the new process feed, not the dead one (no stale snapshot)');
     const st = await srv.get('/api/state');

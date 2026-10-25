@@ -7,6 +7,7 @@ import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, InfoIcon, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
 import { Alert } from '../ui/Alert';
+import { FaultPill } from '../ui/Compact';
 import { GLYPH, alertWords, colourOf, glyphed, sevOf, serverLine } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
@@ -37,9 +38,8 @@ export function InPlayBanner({ screen, phase, headline, why, onGo }:
       background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
-          {phase === 'live' ? 'THE MATCH IS LIVE.' : 'THE COUNTDOWN IS RUNNING.'} {headline}
+          <span title={why}>{phase === 'live' ? 'The match is live.' : 'The countdown is running.'} {headline.charAt(0) + headline.slice(1).toLowerCase()}</span>
         </span>
-        <span style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.5 }}>{why}</span>
       </span>
       <button type="button" {...{ [`data-${screen}-goto`]: phase }} className="hov-acc" onClick={onGo}
         style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.16em', color: T.acc, border: `1px solid ${T.acc}`, padding: '10px 16px', minHeight: 44 }}>
@@ -311,14 +311,14 @@ export function Lobby() {
       )}
       <HillReadout config={state.config} style={{ marginBottom: 12 }} />
       {rosterFault && (
-        <Alert id="lobby-roster-fault-tag" testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5 }}>{alertWords(rosterFault)}</span>
+        <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+          <FaultPill id="lobby-roster-fault-tag" testid="roster-fault" short="Roster cannot play" why={rosterFault} fix="Fix the roster first." />
           {/* F-8 (2026-09-13): HOST OVERRIDE (below, in the rail) never renders while a roster fault
               stands — `one_team_fault` refuses `force` on the server, so there is nothing an override
               tap could do here. It used to just vanish with no reason on screen, which read as a bug
               rather than as "this one isn't optional". */}
-          <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: colourOf('lobby-roster-no-override') }}>CANNOT BE OVERRIDDEN: FIX THE ROSTER FIRST</span>
-        </Alert>
+          <span data-no-override-reason style={{ font: F.chk(600, 11), color: colourOf('lobby-roster-no-override') }}>Cannot override this. Fix the roster first.</span>
+        </div>
       )}
       {/* Match reminders: the field steps (power-cycle the grenade, place it) plus A31's standing
           "this win is settled at MC" line, naming the phones with no backhaul — see ui/SetupSteps */}

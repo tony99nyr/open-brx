@@ -1,7 +1,7 @@
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { colourOf, serverLine } from '../alerts';
-import { Alert } from './Alert';
+import { FaultPill, ItemChip } from './Compact';
 import { friendlyMcVerifyLine } from './McVerify';
 
 /** Known `SETUP: ` bodies, rewritten as short, sentence-case, id-free lines for the operator.
@@ -98,12 +98,10 @@ export function SetupConflicts({ style }: { style?: React.CSSProperties }) {
           style={{ display: 'flex', flexDirection: 'column', gap: 6,
                    ...(anyRed ? { background: 'rgba(255,82,82,.08)', border: `1px solid ${boxColor}`, borderLeft: `3px solid ${boxColor}`, padding: '10px 14px' } : {}),
                    ...style }}>
-          {/* the glyph lives on each line below (via `<Alert>`), never doubled on this heading too */}
           <span style={{ font: F.chk(700, 11), letterSpacing: '.16em', color: boxColor }}>{title}</span>
-          {/* `role="status"` on every row: this whole region is a standing fact, always mounted, never
-              an interruption. `<Alert>` defaults red/amber to `role="alert"`, which this box must not
-              carry (H2, polish r1). */}
-          {rows.map((r, i) => <Alert key={i} id={r.id} sev={r.sev} variant="line" role="status">{conflictWords(r.w)}</Alert>)}
+          {rows.map((r, i) => r.sev === 'red'
+            ? <FaultPill key={i} id={r.id} role="status" short="Station conflict" why={friendlySetupLine(r.w)} />
+            : <ItemChip key={i} id={r.id} short="Station setup needed" detail={friendlySetupLine(r.w)} />)}
         </div>
       )}
     </div>

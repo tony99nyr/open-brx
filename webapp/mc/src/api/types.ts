@@ -17,7 +17,7 @@ export type {
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
   WeaponView, GamePiece, GamePick, MatchSettings, LastMatch, PieceKind, ModePiece, LifePiece, MiscLoadoutsPiece, GameplayPiece, Favourite,
   LiveRow, EndDeliveryRow, WeaponBars, Coverage,
-  LanPublic, TunnelAuto, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
+  LanPublic, TunnelAuto, PresentationRow, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
@@ -41,7 +41,7 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, NEVER_SEEN_MS, STALE_AFTER_MS, STAT
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, TxPower, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, GamePiece, GamePick, MatchSettings, PieceKind, Favourite, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
+  WeaponView, GamePiece, GamePick, MatchSettings, PieceKind, Favourite, LanPublic, MatchHistoryRow, RecapView, State,
   OperatorActionResult, OperatorCmd, PowerupsView, FeedEntry } from './contract.gen';
 
 
@@ -112,8 +112,6 @@ export interface Api {
   loadFavourite(id: string): Promise<{ ok: boolean; errors: string[]; config: ConfigView; pick: GamePick; countdown_s: number; fallbacks: PieceKind[] }>;
   /** preview the pool a DRAFT policy would allow (designer) — same rule engine, nothing applied */
   previewPool(policy: Partial<LoadoutPolicy>, mode?: string): Promise<{ policy: LoadoutPolicy; pool: LoadoutPool }>;
-  /** A11: tonight's presentation profile, resolved, for the read-only ADVANCED view. Rejects with status 404 on an older server. */
-  getPresentation(): Promise<PresentationView>;
   putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: ConfigView }>;
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string; voice_slots?: Record<string, string> }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;

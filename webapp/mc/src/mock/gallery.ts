@@ -1,4 +1,5 @@
 import type { Player, RecapView, ScoreRow, State } from '../api/types';
+import { copyState } from './copyGallery';
 import type { RecapSyncRow, RecapSyncStage, RecapSyncView } from '../api/recapSync';
 
 // F596/F597 render hook: `?mock&gallery=<frame>` freezes the console on RECAP with an injected roster and an
@@ -29,6 +30,7 @@ export const GALLERY_FRAMES: Record<string, Frame> = {
 };
 
 export function galleryState(base: State, frame: string): State {
+  if (frame.startsWith('copy:')) return copyState(base, frame.slice(5));   // F599: faults laid over the live mock
   const f = GALLERY_FRAMES[frame];
   if (!f) return base;
   const toks = f.spec.split(' ');

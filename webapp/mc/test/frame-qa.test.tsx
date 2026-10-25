@@ -114,7 +114,7 @@ describe('M11 · JOIN THE NET only promises an automatic find when MC believes i
   it('says NOT beside the reachability note', async () => {
     const t = await hint({ warning: WSL, ip: '172.28.1.5' });
     expect(t).not.toMatch(/AUTOMATICALLY/);
-    expect(t).toMatch(/NOT FIND MC/);
+    expect(t).toMatch(/Phones cannot find MC/i);
   });
   it('says NOT when MC has no routable address', async () => {
     const t = await hint({ warning: null, ip: '127.0.0.1' });
@@ -128,10 +128,11 @@ describe('M13 · the tunnel banner is worded for the state it is in', () => {
   it('a tunnel this tab never saw up does not claim phones fell back from it', async () => {
     const d = await demo();
     const m = await bar({ ...d.state, lan: { ...d.state.lan, public: pub('error') } });
-    const t = m.find('[role="alert"]').map(a => a.textContent).join(' ');
-    expect(t).toContain('INTERNET TUNNEL DOWN');
-    expect(t).not.toContain('FELL BACK');
-    expect(t).toContain('PHONES CAN JOIN OVER WI-FI ONLY');
+    const pill = m.find('[data-alert="frame-tunnel-down"]')[0];
+    expect(pill?.textContent).toContain('Internet tunnel down');
+    expect(pill?.textContent).not.toContain('FELL BACK');
+    await m.click('Why? ▾');
+    expect(m.find('[data-testid="fault-detail"]')[0]?.textContent).toContain('phones can join over Wi-Fi only');
     m.unmount();
   });
   it('a tunnel that was up and then failed says phones fell back', async () => {
@@ -139,7 +140,10 @@ describe('M13 · the tunnel banner is worded for the state it is in', () => {
     const m = await bar({ ...d.state, lan: { ...d.state.lan, public: pub('up') } });
     expect(m.find('[role="alert"]').some(a => /TUNNEL DOWN/.test(a.textContent ?? ''))).toBe(false);
     await m.to({ ...d.state, lan: { ...d.state.lan, public: pub('error') } });
-    expect(m.find('[role="alert"]').map(a => a.textContent).join(' ')).toContain('PHONES FELL BACK TO WI-FI');
+    const pill = m.find('[data-alert="frame-tunnel-down"]')[0];
+    expect(pill?.textContent).toContain('Internet tunnel down');
+    await m.click('Why? ▾');
+    expect(m.find('[data-testid="fault-detail"]')[0]?.textContent).toContain('Phones fell back to Wi-Fi');
     m.unmount();
   });
 });
@@ -164,8 +168,8 @@ describe('M21 · PANIC warns about the re-arm, and its receipt counts and uses a
     await m.click('Panic');
     await m.click('CONFIRM');
     const t = toasts(m);
-    expect(t).toContain('PANIC REACHED 7 OF 8 NODES');
-    expect(t).toMatch(/\(\d\d:\d\d:\d\d\)/);
+    expect(t).toContain('Panic reached 7 of 8');
+    expect(t).toMatch(/\d\d:\d\d:\d\d/);
     expect(t).not.toMatch(/[AP]M/);
     m.unmount();
   });
@@ -174,9 +178,9 @@ describe('M21 · PANIC warns about the re-arm, and its receipt counts and uses a
     expect(clock24(new Date(2026, 8, 23, 21, 36, 7))).toBe('21:36:07');
     expect(clock24(new Date(2026, 8, 23, 9, 5, 0))).toBe('09:05:00');
     const at = new Date(2026, 8, 23, 21, 36, 7);
-    expect(panicReceipt({ ok: true, reached: 8, nodes: 8 }, at).text).toBe('FLEET SAFED, 8 OF 8 NODES (21:36:07): RE-ARM BEFORE PLAY');
-    expect(panicReceipt({ ok: true }, at).text, 'an older MC sends no count, so none is invented').toBe('FLEET SAFED (21:36:07): RE-ARM BEFORE PLAY');
-    expect(panicReceipt(undefined, at).text).toMatch(/PANIC FAILED/);
+    expect(panicReceipt({ ok: true, reached: 8, nodes: 8 }, at)).toEqual({ text: 'Fleet safed, 8 of 8', detail: 'Re-arm before play.', time: '21:36:07', bad: true });
+    expect(panicReceipt({ ok: true }, at).text, 'an older MC sends no count, so none is invented').toBe('Fleet safed');
+    expect(panicReceipt(undefined, at).text).toBe('Panic failed');
   });
 
   it('a PANIC receipt clears when the next match arms', async () => {
@@ -184,10 +188,10 @@ describe('M21 · PANIC warns about the re-arm, and its receipt counts and uses a
     const api = fixtureApi({ control: async () => ({ ok: true, reached: 8, nodes: 8 }) }, d.api);
     const m = await bar({ ...d.state, phase: 'kit' }, { api, run: async fn => fn() });
     await m.click('☰'); await m.click('Panic'); await m.click('CONFIRM');
-    expect(toasts(m)).toContain('FLEET SAFED');
+    expect(toasts(m)).toContain('Fleet safed');
     await m.to({ ...d.state, phase: 'lobby' });
     await m.to({ ...d.state, phase: 'armed' });
-    expect(toasts(m)).not.toContain('FLEET SAFED');
+    expect(toasts(m)).not.toContain('Fleet safed');
     m.unmount();
   });
 });

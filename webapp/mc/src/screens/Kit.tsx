@@ -1,3 +1,4 @@
+import { ItemChip, HelpNote } from '../ui/Compact';
 import { useEffect, useState, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
 import type { Loadout, LoadoutOverrides, PerkView, PhaseRefusal, Player, WeaponSel, WeaponView } from '../api/types';
@@ -9,7 +10,7 @@ import { UNPLAYABLE_IDS, takesAlt } from '../rules/loadoutPolicy';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, PanelHeader, Progress, ScreenHeader, ScrollX, Seg, StripedSlot, onKey } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
-import { GLYPH, colourOf, glyphed } from '../alerts';
+import { GLYPH, colourOf } from '../alerts';
 import { LoadError } from '../ui/LoadError';
 import { useResource } from '../ui/useResource';
 import { GameEditPanel } from '../ui/GameEditPanel';
@@ -457,11 +458,9 @@ export function Kit() {
                   easy={!!lo.overrides?.easy_reload} onEasy={setEasyReload} easyAsk={confirmFor('easy_reload')} />
                 {/* F221: THE KIT LOCKED is a real constraint right now (AMBER); the other two just state the
                     loadout policy's mode of operation (NEUTRAL) — same render site, different facts, different colours. */}
-                <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: locked ? colourOf('kit-slot-note-locked') : colourOf(pol?.hud_select ? 'kit-slot-note-phone-picks' : 'kit-slot-note-phone-off'), padding: '2px 4px' }}>
-                  {locked ? glyphed('amber', 'THE KIT LOCKED AT THE START OF THE MATCH. CHANGE IT AFTER THE WHISTLE.')
-                    : pol?.hud_select ? 'PLAYERS PICK ON THEIR PHONE: ANYTHING YOU SET HERE OVERRIDES IT AND SHOWS ON THEIR SCREEN'
-                    : 'PHONE PICKS ARE OFF: YOU KIT EVERY PLAYER HERE'}
-                </div>
+                {locked
+                  ? <div style={{ padding: '2px 4px' }}><ItemChip id="kit-slot-note-locked" short="Kit locked" icon="lock" detail="The kit locked at the start of the match. Change it after the whistle." /></div>
+                  : <div style={{ padding: '2px 4px' }}><HelpNote label="Phone picks" keep={pol?.hud_select ? 'Players pick on their phone. Anything you set here overrides it and shows on their screen.' : 'Phone picks are off: you kit every player here.'} /></div>}
               </div>
 
               {/* hero: the focused slot's item */}

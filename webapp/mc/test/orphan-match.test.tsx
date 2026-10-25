@@ -30,7 +30,10 @@ describe('bench 2026-09-17 · phones in a match this MC did not start', () => {
     const el = m.find('[data-testid="orphan-match"]');
     expect(el.length).toBe(1);
     const t = strip(el[0].textContent ?? '');
-    expect(t).toContain('2 PHONES ARE IN A MATCH THIS MC DID NOT START');
+    expect(t).toContain('MATCH STARTED ON ANOTHER MC');
+    const { act } = await import('react');
+    await act(async () => { (el[0].querySelector('button') as HTMLButtonElement).click(); });
+    expect(strip(el[0].textContent ?? '')).toContain('IN A MATCH THIS MC DID NOT START');
     expect(t).toContain('ALPHA, BRAVO');
     expect(btn(m, 'RESUME MATCH'), 'the primary action').toBeTruthy();
     expect(btn(m, 'END THEIR MATCH')).toBeTruthy();
@@ -76,7 +79,7 @@ describe('bench 2026-09-17 · phones in a match this MC did not start', () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP, orphan_match: { ...ORPHAN, phones: 1, players: ['BRAVO'], can_resume: false } };
     const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
-    expect(strip(m.find('[data-testid="orphan-match"]')[0].textContent ?? '')).toContain('1 PHONE IS IN A MATCH');
+    expect(strip(m.find('[data-testid="orphan-match"]')[0].textContent ?? '')).toContain('MATCH STARTED ON ANOTHER MC');
     expect(btn(m, 'RESUME MATCH')).toBeUndefined();
     expect(btn(m, 'END THEIR MATCH')).toBeTruthy();
     m.unmount();

@@ -818,7 +818,7 @@ async function runOffline(browser, viteBase, mcBase, vp, tag) {
       rows: document.querySelectorAll('[data-spectate="row"]').length,
     };
   });
-  expect(/MC OFFLINE, THE BOARD IS FROZEN AT THE LAST SNAPSHOT/.test(frozen.says), `the board says why it has stopped (saw ${JSON.stringify(frozen.says)})`);
+  expect(/Board frozen, MC offline/.test(frozen.says), `the board says why it has stopped (saw ${JSON.stringify(frozen.says)})`);
   expect(frozen.tagFs >= 16, `and says it large enough to read across a room (${frozen.tagFs}px)`);
   expect(frozen.boardOpacity < 0.75, `the WHOLE board is dimmed, not just the clock (opacity ${frozen.boardOpacity})`);
   expect(frozen.tagOpacity > 0.9, `the explanation itself is NOT dimmed (opacity ${frozen.tagOpacity})`);

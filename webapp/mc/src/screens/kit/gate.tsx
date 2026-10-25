@@ -24,7 +24,7 @@ export function kitGate(players: Player[] | null | undefined) {
   const waiting = known ? roster.filter(p => !p.ready) : [];
   return {
     known, total: roster.length, ready: known ? roster.length - waiting.length : 0,
-    waiting: waiting.map(p => (p.display || `#${p.player_num}`).toUpperCase()),
+    waiting: waiting.map(p => p.display || `#${p.player_num}`),
     // WHAT THE ROSTER IS RIGHT NOW — every player and whether they are ready, not just the unready
     // names. A server refusal describes the roster it was raised against; when ANY of this changes it
     // is describing something else and has to go. The unready NAMES alone were not enough: a refusal
@@ -37,7 +37,9 @@ export function kitGate(players: Player[] | null | undefined) {
 }
 
 /** Three names, then a count: a squad of 12 must not wrap the header to three lines. */
-const waitingNames = (names: string[]) => (names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} +${names.length - 3} MORE`);
+const waitingNames = (names: string[]) => (names.length <= 3
+  ? names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  : `${names.slice(0, 3).join(', ')} +${names.length - 3} more`);
 
 /** The refusal, as one line the operator can act on.
  *
@@ -181,7 +183,9 @@ export function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGat
         // never going to hover, and which a touch console has no way to show at all — so the visible
         // line said only that someone was "waiting", not that a tap takes their screen away (F127).
         <span role="alert" data-continue-warn="1" style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: colourOf('kit-continue-warn'), maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
-          {glyphed('amber', `${waitingNames(gate.waiting)} ${gate.waiting.length === 1 ? 'IS' : 'ARE'} STILL KITTING AND WILL LOSE THEIR SCREEN: CONTINUE ANYWAY?`)}
+          <span title={`${gate.waiting.join(', ')} still kitting and will lose their screen.`}>
+            {glyphed('amber', `${gate.waiting.length <= 3 ? waitingNames(gate.waiting) : gate.waiting.length} still kitting, they lose their screen. Continue anyway?`)}
+          </span>
         </span>
       )}
       {refusal && (() => {

@@ -4,8 +4,8 @@
 // reads HARDWARE READY ▸ when the board allows. The gate itself did not move (only a red a push cannot
 // cure disables it). Beside it, ENABLE BACKHAUL starts the internet link once every phone is green,
 // and never stands between the operator and GAMES.
-import { describe, expect, it } from 'vitest';
 import { act } from 'react';
+import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { armoryGate, backhaulOffer } from '../src/api/derive';
 import type { LanPublic, ReadinessRow, State } from '../src/api/types';
@@ -151,9 +151,10 @@ describe('ARMORY · ENABLE BACKHAUL', () => {
     await m.click('ENABLE BACKHAUL');
     const line = m.find('[data-backhaul-error]');
     expect(line.length).toBe(1);
+    expect(line[0].textContent).toContain('Backhaul failed');
+    expect(line[0].querySelector('button')?.getAttribute('title')).toBe('cloudflared was not found on PATH');
+    await act(async () => { line[0].querySelector('button')?.click(); });
     expect(line[0].textContent).toContain('cloudflared was not found on PATH');
-    // the line is clamped to two lines, so the whole reason must stay reachable on hover
-    expect(line[0].getAttribute('title')).toBe('cloudflared was not found on PATH');
     expect(gateBtn(m).disabled).toBe(false);
     expect(gateBtn(m).textContent).toBe('HARDWARE READY ▸');
     await act(async () => { gateBtn(m).click(); });

@@ -276,7 +276,7 @@ step('lastmatch', async ({ browser, base }) => {
 step('koth', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280);
   await pickMode(pg, 'KING OF THE HILL');
-  await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
+  await until(() => pg.locator('text=No hill assigned').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
   // Bench 2026-09-28 (Tony, F402): returning to PLAY is the NEXT step, so it points forward; it stays

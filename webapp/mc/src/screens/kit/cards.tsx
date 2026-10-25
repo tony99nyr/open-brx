@@ -104,12 +104,6 @@ export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBu
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
-          <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
-            {/* S50: Easy Reload left this slot for the per-player accessibility card, so the perk line
-                no longer advertises it — nothing in this rack can take the ALT button today. */}
-            {slot === 'perk' ? <>A PERK RIDES BESIDE BOTH WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> IS ON THE POOL CARD NOW</>
-              : <>SLOT 2 IS A {sidearms ? 'SIDEARM' : 'WEAPON'} · PERKS HAVE THEIR OWN SLOT</>}
-          </span>
         </div>
       )}
     </div>
@@ -265,7 +259,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
 }) {
   const on = pool.set;
   const mult = pool.mult.toFixed(pool.mult % 1 === 0 ? 0 : 1);
-  const who = name.toUpperCase();
   return (
     // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
     // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
@@ -284,11 +277,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
       {/* F221: a two-tap confirm (drops the second weapon) — UNCHANGED per Tony's rule. */}
       {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
       {/* F221: explanatory copy, always shown — NEUTRAL, no glyph (matches kit-easy-note-off/on). */}
-      <div data-easy-note style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(easy ? 'kit-easy-note-on' : 'kit-easy-note-off'), lineHeight: 1.6 }}>
-        {easy
-          ? `ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
-          : 'THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
-      </div>
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? colourOf('kit-pool-note-on') : T.dim }}>POOL</span>
@@ -310,11 +298,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
         );
       })}
       {/* F221: a deliberate, host-set difference either way \u2014 NEUTRAL, no glyph (kit-pool-note-off/on). */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(on ? 'kit-pool-note-on' : 'kit-pool-note-off'), lineHeight: 1.6 }}>
-        {on
-          ? `ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
-          : 'SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2V1).'}
-      </div>
       {on && !locked && <GhostButton onClick={onClear} color={colourOf('kit-pool-note-on')} border={colourOf('kit-pool-note-on')} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </fieldset>
   );

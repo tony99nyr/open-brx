@@ -226,7 +226,9 @@ describe('M7 · MC offline', () => {
     expect(btn('END MATCH EARLY').disabled).toBe(true);
     expect(btn('RECALL').disabled).toBe(true);
     expect(btn('RECALL').title).toContain('MC is offline');
-    expect(m.find('[data-testid="controls-offline"]')[0].textContent).toContain('MC IS OFFLINE');
+    expect(m.find('[data-testid="controls-offline"]')[0].textContent).toContain('Controls offline');
+    await m.click('Why? ▾');
+    expect(m.find('[data-testid="fault-detail"]')[0].textContent).toContain('MC is offline');
     m.unmount();
   });
 

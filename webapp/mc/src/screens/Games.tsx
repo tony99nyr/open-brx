@@ -9,6 +9,7 @@
 // below follows the storyboard directly — pickers in one wrapping row (a label above a Seg group, not
 // a full-width bar each), the MATCH SETTINGS strip as one bordered row with no per-control caption
 // (each control's own value already names it), LOAD under the strip, right-aligned.
+import { FaultPill, ItemChip, HelpNote } from '../ui/Compact';
 import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
 import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
@@ -17,11 +18,10 @@ import type { Favourite, GamePick, GamePiece, HillSettings, MatchSettings, Piece
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
-import { BTN_RESET, GhostButton, InfoIcon, PrimaryButton, Seg, SEG_PAD_44, useFlashOnChange } from '../ui';
-import { Alert } from '../ui/Alert';
+import { BTN_RESET, GhostButton, PrimaryButton, Seg, SEG_PAD_44, useFlashOnChange } from '../ui';
 import { LoadError } from '../ui/LoadError';
 import { useResource } from '../ui/useResource';
-import { alertWords, serverLine } from '../alerts';
+import { serverLine } from '../alerts';
 import { emptyRequiredSlots, poolEmptyMessage } from './gameSummary';
 import { hillCount, operatorNote } from './operatorNote';
 import { kindLabel } from './presets/kinds';
@@ -218,11 +218,13 @@ export function Games() {
       {(state.config_warnings?.length ?? 0) > 0 && (
         <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => (
-            <Alert key={i} id="games-loadouts-reset" what={w} style={{ alignSelf: 'flex-start' }} />
+            <ItemChip key={i} id="games-loadouts-reset" short="Loadouts reset" detail={w} />
           ))}
           {[...state.config_warnings!].filter(w => /HAS NOT SYNCED THE LAST MATCH/.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
-            return <Alert key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" style={{ alignSelf: 'flex-start' }}>{w}</Alert>;
+            return line.sev === 'red'
+              ? <FaultPill key={`sync-${i}`} id={line.id} testid="games-station-not-synced" short="Station not synced" why={w} />
+              : <ItemChip key={`sync-${i}`} id={line.id} testid="games-station-not-synced" short="Station not synced" detail={w} />;
           })}
           {setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
@@ -236,7 +238,9 @@ export function Games() {
               : conflictWords(w);
             return (
               <div key={`setup-conflict-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <Alert id={line.id} sev={line.sev} testid="games-setup-line" style={{ alignSelf: 'flex-start', flex: '1 1 auto' }}>{words}</Alert>
+                {line.sev === 'red'
+                  ? <FaultPill id={line.id} testid="games-setup-line" short="Station conflict" why={words.charAt(0) + words.slice(1).toLowerCase()} />
+                  : <ItemChip id={line.id} testid="games-setup-line" inline short={isRespawnSetup ? 'Respawn station missing' : 'Station conflict'} detail={isRespawnSetup ? 'Respawn is set to a station, but none is assigned, so a downed player can only come back at a station. Assign a station as respawn in ITEMS and arm it.' : words.charAt(0) + words.slice(1).toLowerCase()} />}
                 {isRespawnSetup && (
                   <span data-testid="assign-a-respawn-station">
                     <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView('muster')}>ASSIGN A RESPAWN STATION ▸</GhostButton>
@@ -255,7 +259,7 @@ export function Games() {
           ))}
         </div>
       )}
-      {state.config_errors.length > 0 && <Alert id={CONFIG_ERRORS_ALERT_ID} what={state.config_errors.join(', ')} size={11.5} />}
+      {state.config_errors.length > 0 && <FaultPill id={CONFIG_ERRORS_ALERT_ID} short="Game config error" why={state.config_errors.join(', ')} />}
     </>
   );
 
@@ -285,24 +289,21 @@ export function Games() {
       )}
 
       {!missingPick && realFault && (
-        <Alert id="games-locked-banner" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ lineHeight: 1.5 }}>{alertWords(realFaultReason ?? '')}</span>
+        <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <FaultPill id="games-locked-banner" testid="games-locked" short="Game settings locked" why={realFaultReason ?? ''} />
           {(state.phase === 'armed' || state.phase === 'live') && (
             <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
           )}
-        </Alert>
+        </div>
       )}
       {!missingPick && !realFault && kothNoHill && (
-        <Alert id="games-koth-no-hill" testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ lineHeight: 1.5 }}>NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.</span>
-          {/* bench 2026-10-02: the hill that LEFT (BACK TO HUD, RELEASE), in MC's own words, so the block says why */}
-          {(state.station_departures ?? []).filter(d => d.kind === 'control').map(d => (
-            <span key={d.node_id} data-testid="games-hill-departed" style={{ flexBasis: '100%', lineHeight: 1.5 }}>{d.line}</span>
-          ))}
+        <div data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <ItemChip id="games-koth-no-hill" inline short="No hill assigned"
+            detail="King of the Hill needs one phone or Stick set as the hill, in ARMORY." />
           <span data-testid="assign-a-hill">
             <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={assignAHill}>ASSIGN A HILL ▸</GhostButton>
           </span>
-        </Alert>
+        </div>
       )}
 
       {pick && (
@@ -393,15 +394,7 @@ export function Games() {
                       onChange={id => pickPiece(kind, id)} />
                   )}
                   {kind === 'mode' && note.length > 0 && (
-                    <div data-testid="operator-note" role="status"
-                      style={{ marginTop: 2, display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(600, 12.5), lineHeight: 1.5, color: T.dim,
-                               border: `1px solid ${T.line2}`, padding: '8px 12px', maxWidth: 420 }}>
-                      {note.map((l, i) => (
-                        <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <InfoIcon size={13} color={T.acc} /> {l}
-                        </span>
-                      ))}
-                    </div>
+                    <HelpNote label="Mode notes" keep={note.map((l, i) => <span key={i} style={{ display: 'block' }}>{l.charAt(0) + l.slice(1).toLowerCase()}</span>)} />
                   )}
                 </div>
               );
@@ -500,7 +493,7 @@ pickTeams={pickTeams} />
             ) : (
               <span data-testid="game-load">
                 <PrimaryButton size={14} disabled={blocked || busy}
-                  title={blocked ? (realFaultReason || 'NO HILL STATION ASSIGNED: KING OF THE HILL NEEDS ONE PHONE OR STICK SET AS THE HILL, IN ARMORY.') : 'Sends this game to every connected phone. Weapons go with the arm, at the lobby push after kitting.'}
+                  title={blocked ? (realFaultReason || 'No hill assigned. King of the Hill needs a phone or Stick set as the hill in Armory.') : 'Sends this game to every connected phone. Weapons go with the arm, at the lobby push after kitting.'}
                   onClick={() => load()}>{busy ? 'LOADING…' : 'LOAD ▸'}</PrimaryButton>
               </span>
             )}

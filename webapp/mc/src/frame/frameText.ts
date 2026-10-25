@@ -7,13 +7,13 @@ export const clock24 = (d: Date) => [d.getHours(), d.getMinutes(), d.getSeconds(
 /** PANIC's receipt. `reached`/`nodes` are the server's own count of nodes that took the control
  *  frame (API.md `POST /api/control`); an older MC answers without them, and then no count is shown
  *  rather than an invented one. A partial reach is not "safed", so it says how far it got instead. */
-export function panicReceipt(r: { ok?: boolean; reached?: number; nodes?: number; error?: string } | null | undefined, at: Date): { text: string; bad: boolean } {
-  if (!r) return { text: 'PANIC FAILED: CHECK THE SERVER', bad: true };
-  if (r.ok === false) return { text: `PANIC REFUSED: ${r.error || 'no reason given'}`, bad: true };
+export function panicReceipt(r: { ok?: boolean; reached?: number; nodes?: number; error?: string } | null | undefined, at: Date): { text: string; detail: string; time: string; bad: boolean } {
   const t = clock24(at);
-  if (r.nodes == null || r.reached == null) return { text: `FLEET SAFED (${t}): RE-ARM BEFORE PLAY`, bad: true };
-  if (r.reached >= r.nodes) return { text: `FLEET SAFED, ${r.reached} OF ${r.nodes} NODES (${t}): RE-ARM BEFORE PLAY`, bad: true };
-  return { text: `PANIC REACHED ${r.reached} OF ${r.nodes} NODES (${t}): THE REST ARE STILL LIVE`, bad: true };
+  if (!r) return { text: 'Panic failed', detail: 'Check the server.', time: t, bad: true };
+  if (r.ok === false) return { text: 'Panic refused', detail: r.error || 'No reason given.', time: t, bad: true };
+  if (r.nodes == null || r.reached == null) return { text: 'Fleet safed', detail: 'Re-arm before play.', time: t, bad: true };
+  if (r.reached >= r.nodes) return { text: `Fleet safed, ${r.reached} of ${r.nodes}`, detail: 'Re-arm before play.', time: t, bad: true };
+  return { text: `Panic reached ${r.reached} of ${r.nodes}`, detail: 'The rest are still live. Re-arm before play.', time: t, bad: true };
 }
 
 /** M10: the server's LAN warning is one string (`netinfo.py WSL_UNREACHABLE_WARNING`): a headline, an

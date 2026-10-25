@@ -1,3 +1,4 @@
+import { FaultPill, ItemChip, BackhaulStatus, autoOf } from '../ui/Compact';
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { armoryGate, backhaulOffer, cureAlertId, cureLabel, GUN_LOCKED_ALERT_ID, poolStaleAlertId, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
@@ -12,7 +13,7 @@ import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, 
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
 import { Alert, AlertTag, alertStyle } from '../ui/Alert';
-import { batteryColour, colourOf, glyphed, serverLine, sevOf, MC_OLDER, MC_RESTART_CMD } from '../alerts';
+import { batteryColour, colourOf, glyphed, serverLine, sevOf, MC_RESTART_CMD } from '../alerts';
 import { Items } from './Items';
 import { PlayButton, standDownLocked } from '../ui/Standby';
 
@@ -92,7 +93,7 @@ const PULL_LOG_REFUSAL: Record<string, string> = {
 
 function OutboxLost({ n }: { n?: number | null }) {
   if (!n || n <= 0) return null;
-  return <Alert id="armory-nodecard-outbox-lost" testid="outbox-lost" what={`${n} ${n === 1 ? 'FACT' : 'FACTS'} LOST FROM THE PHONE OUTBOX`} act="CHECK THIS PLAYER'S RECAP BY HAND" />;
+  return <ItemChip id="armory-nodecard-outbox-lost" testid="outbox-lost" short={`${n} ${n === 1 ? 'fact' : 'facts'} lost`} detail="The phone's outbox dropped facts this match. Check this player's recap by hand." />;
 }
 
 function LogCell({ log }: { log?: LogView }) {
@@ -225,14 +226,14 @@ export function Armory() {
                 station nobody assigned says so here, beside HARDWARE READY, not only on GAMES. */}
             {setupNeeds.length > 0 && (
               <div data-testid="armory-setup" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 460, textAlign: 'right' }}>
-                {/* F221 polish (2026-09-25): draw MC's own SETUP words, not a sentence-cased retelling
-                    (`friendlySetupLine`): that hid the RED control-vs-grenade conflict under the same
-                    amber this row always used. `serverLine` reads the id and severity off the line MC sent. */}
-                {setupNeeds.map((w, i) => (
-                  <Alert key={i} {...serverLine(w, 'amber')} variant="line" size={12} style={{ lineHeight: 1.45 }}>
-                    {conflictWords(w)}
-                  </Alert>
-                ))}
+                {/* `serverLine` keeps the server line's id and severity. The full reason opens from the chip. */}
+                {setupNeeds.map((w, i) => {
+                  const line = serverLine(w, 'amber');
+                  const detail = conflictWords(w);
+                  return line.sev === 'red'
+                    ? <FaultPill key={i} id={line.id} short="Station conflict" why={detail} />
+                    : <ItemChip key={i} id={line.id} short="Station setup needed" detail={detail} />;
+                })}
               </div>
             )}
           </div>
@@ -289,7 +290,7 @@ export function Armory() {
                 <Micro color={T.dim}>{u.rssi} dBm</Micro>
                 {/* armory-unclaimed-identity-tag: one amber for any non-ok identity scan on an unclaimed
                     gun, REVERTED included (F221, Tony 2026-09-25) — not a live emergency. */}
-                {u.identity !== 'ok' && <AlertTag id="armory-unclaimed-identity-tag">{u.identity.toUpperCase()}</AlertTag>}
+                {u.identity !== 'ok' && <AlertTag id="armory-unclaimed-identity-tag">{u.identity.charAt(0).toUpperCase() + u.identity.slice(1).toLowerCase()}</AlertTag>}
               </span>
             ))}
           </div>
@@ -320,14 +321,10 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
     api.setTunnel(true).catch(e => { setErr((e as Error).message || 'the link did not start'); setSending(false); });
   };
   const linkErr = status === 'up' ? null : err ?? (pressed && status === 'error' ? (state?.lan.public?.error || 'the link did not start') : null);
-  // one quiet line under the button row, so the row itself keeps its alignment
+  // Keep the fault by the button row so the operator sees the reason before trying again.
   const errLine = linkErr ? (
-    // 'armory-backhaul-error': AMBER, one quiet line with the glyph the audit found missing (F221,
-    // Tony 2026-09-25). Kept as a plain div (not <Alert>) so `data-backhaul-error` survives for the tests.
-    <div data-backhaul-error="1" data-alert="armory-backhaul-error" data-sev="amber" role="alert" title={linkErr}
-      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: colourOf('armory-backhaul-error'), maxWidth: 'min(420px, calc(100vw - 32px))',
-               minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-      {glyphed('amber', `BACKHAUL FAILED: ${linkErr}`)}
+    <div data-backhaul-error="1">
+      <ItemChip id="armory-backhaul-error" short="Backhaul failed" detail={linkErr} />
     </div>
   ) : null;
   let control: ReactNode = null;
@@ -354,15 +351,13 @@ function RestoreFailedBanner() {
   const { state } = useStore();
   const f = state?.restore_failed;
   if (!f) return null;
-  const detail = `${f.reason} · ${f.kept ? `KEPT AT ${f.kept}` : 'THE FILE COULD NOT BE MOVED ASIDE'}`;
   return (
     <div style={{ marginBottom: 16 }}>
-      <Alert id="armory-restore-failed-banner" testid="restore-failed-banner" size={12}
-        what={f.kept ? 'SESSION FILE COULD NOT BE RESTORED, THE ROSTER STARTED EMPTY' : 'SESSION FILE COULD NOT BE RESTORED OR MOVED ASIDE, THE ROSTER STARTED EMPTY'}
-        act="REBUILD THE ROSTER" />
-      <div data-testid="restore-failed-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{detail}</div>
+      <FaultPill id="armory-restore-failed-banner" testid="restore-failed-banner" short="Session not restored"
+        why={<>The roster started empty. {f.kept ? <>The old file is kept at <code>{f.kept}</code>.</> : 'The file could not be moved aside.'} Reason: {f.reason}.</>} fix="Rebuild the roster." />
     </div>
   );
+
 }
 
 /** O2: armory.json is corrupt. MC leaves it in place (backup copy beside it) and shows whatever guns it can still find, which is
@@ -372,19 +367,16 @@ function ArmoryCorruptBanner() {
   const c = state?.armory_corrupt;
   if (!c) return null;
   return (
-    <div style={{ marginBottom: 16 }}>
-      {/* children, not what/act: the helper upper-cases words and the path must stay copyable as it is */}
-      <Alert id="armory-corrupt-banner" testid="armory-corrupt-banner" size={12}>
-        {c.unreadable ? 'ARMORY FILE COULD NOT BE READ: GUNS BELOW MAY NOT BE YOUR FULL ARMORY' : null}
-        {c.unreadable ? null : <>ARMORY FILE IS CORRUPT: {c.kept ? <>BACKUP AT <span style={{ textTransform: 'none' }}>{c.kept}</span></> : 'NO BACKUP COULD BE MADE'}: GUNS BELOW ARE NOT YOUR FULL ARMORY AND NO GUN CAN BE SAVED UNTIL YOU DISMISS. DISMISS MOVES THE CORRUPT FILE ASIDE AND STARTS A FRESH ARMORY</>}
-      </Alert>
-      <div data-testid="armory-corrupt-detail" style={{ font: F.mono(500, 11), color: T.dim, marginTop: 4, overflowWrap: 'anywhere' }}>{c.error}</div>
+    <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+      <FaultPill id="armory-corrupt-banner" testid="armory-corrupt-banner" short={c.unreadable ? 'Armory file unreadable' : 'Armory file corrupt'}
+        why={<>{c.unreadable ? 'The armory file could not be read.' : 'The armory file is corrupt.'} The guns below may not be your full armory{c.unreadable ? '' : ', and no gun can be saved until you dismiss this'}. {c.kept ? <>Backup at <code>{c.kept}</code>. </> : null}Error: {c.error}</>}
+        fix="Dismiss moves the corrupt file aside and starts a fresh armory." />
       <span data-testid="armory-corrupt-dismiss">
-        <GhostButton size={11} pad="6px 12px" onClick={async () => { await run(() => api.dismissArmoryCorrupt()); }}
-          title="moves the corrupt file aside and starts a fresh armory; the warning stays until you dismiss it">DISMISS</GhostButton>
+        <GhostButton size={12} pad="6px 12px" onClick={async () => { await run(() => api.dismissArmoryCorrupt()); }}>Dismiss</GhostButton>
       </span>
     </div>
   );
+
 }
 
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was
@@ -402,21 +394,16 @@ function RestoredBanner() {
   const stamp = Number.isFinite(when.getTime())
     ? when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : '—';
-  const bannerColor = colourOf('armory-restored-banner');
   return (
-    <div role="alert" data-testid="restored-banner" data-alert="armory-restored-banner" data-sev="amber"
-      style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-      <span style={{ ...alertStyle('amber', 'line', 12) }}>
-        {glyphed('amber', `SESSION RESTORED FROM ${stamp.toUpperCase()}, ${r.players} PLAYER${r.players === 1 ? '' : 'S'} CARRIED OVER: CHECK THE ROSTER BEFORE YOU KIT OUT`)}
-      </span>
-      <button type="button" disabled={busy} className={busy ? undefined : 'hov-warnbg'}
-        onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
-        style={{ font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
-                 background: 'transparent', border: `1px solid ${bannerColor}`, color: busy ? T.micro : bannerColor, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-        {busy ? 'STARTING…' : 'NEW SESSION, CLEAR ROSTER ▸'}
-      </button>
+    <div data-testid="restored-banner" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <ItemChip id="armory-restored-banner" short={`Session restored · ${r.players} player${r.players === 1 ? '' : 's'}`}
+        detail={`Restored from ${stamp}. Check the roster before you kit out.`}>
+        <button type="button" disabled={busy} onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
+          style={{ font: F.chk(600, 12), padding: '3px 10px', minHeight: 26, background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, cursor: 'pointer' }}>{busy ? 'Starting…' : 'New session ▸'}</button>
+      </ItemChip>
     </div>
   );
+
 }
 
 function GunCard({ g }: { g: ReadinessRow }) {
@@ -492,9 +479,9 @@ function GunCard({ g }: { g: ReadinessRow }) {
               from the catalogue, not from the card's border-left `color`; a RED blocker is the boxed row
               below, this tag is a lobby-time summary. READY is the one positive status, so it alone keeps
               the filled <Tag>. */}
-          {red ? <AlertTag id="armory-guncard-blocked-tag">BLOCKED</AlertTag>
-            : g.status === 'waiting' ? (g.node === 'none' ? <AlertTag id="armory-guncard-no-phone-yet-tag">NO PHONE YET</AlertTag> : <AlertTag id="armory-guncard-offline-tag">OFFLINE</AlertTag>)
-            : g.status === 'amber' ? <AlertTag id="armory-guncard-check-tag">CHECK</AlertTag>
+          {red ? <AlertTag id="armory-guncard-blocked-tag">Blocked</AlertTag>
+            : g.status === 'waiting' ? (g.node === 'none' ? <AlertTag id="armory-guncard-no-phone-yet-tag">No phone yet</AlertTag> : <AlertTag id="armory-guncard-offline-tag">Offline</AlertTag>)
+            : g.status === 'amber' ? <AlertTag id="armory-guncard-check-tag">Check</AlertTag>
             : <Tag color={T.ok} style={{ whiteSpace: 'nowrap' }}>READY</Tag>}
         </div>
       </div>
@@ -583,9 +570,11 @@ function GunCard({ g }: { g: ReadinessRow }) {
         return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {items.map(([b, blocking], i) => {
-            // F221: MC words the line, the catalogue colours it (`serverLine`), one line each.
+            // MC words the detail, and `serverLine` keeps its catalogue id and severity.
             const line = b;
             const { id, sev } = serverLine(line, blocking ? 'blocker' : 'amber');
+            if (sev === 'red') return <FaultPill key={`${i}-${b}`} id={id} short="Check this gun" why={line} />;
+            if (sev === 'amber') return <ItemChip key={`${i}-${b}`} id={id} short={id === 'armory-amber-app-older-field' ? 'App update needed' : 'Gun needs attention'} detail={line} />;
             return <Alert key={`${i}-${b}`} id={id} sev={sev} variant="row">{line}</Alert>;
           })}
         </div>
@@ -808,9 +797,9 @@ function JoinPanel() {
         {/* armory-joinpanel-lanwarn: AMBER, not neutral — phones cannot join automatically, though the
             internet QR still works so it is fix-before-match, not act-now (F221, Tony 2026-09-25). */}
         {state?.lan.warning
-          ? <Alert id="armory-joinpanel-lanwarn" variant="line" style={{ textAlign: 'center' }}>
-              PHONES WILL NOT FIND MC ON THIS WI-FI UNTIL THE ADDRESS NOTE AT THE TOP IS FIXED{pub?.status === 'up' ? ': THE INTERNET JOIN IN THE QR STILL WORKS' : ''}
-            </Alert>
+          ? <ItemChip id="armory-joinpanel-lanwarn" short="Phones cannot find MC" icon="wifi"
+                detail={`Phones will not find MC on this Wi-Fi until the address note at the top is fixed.${pub?.status === 'up' ? ' The internet join in the QR still works.' : ''}`} />
+
           : !isRoutableLanIp(state?.lan.ip)
             ? <>MC IS NOT ON A NETWORK PHONES CAN REACH, SO PHONES WILL <span style={{ color: T.ink }}>NOT</span> FIND IT ON THEIR OWN</>
             : <>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span>: OPEN BRX COMPANION AND WAIT A BEAT</>}
@@ -852,11 +841,8 @@ function JoinPanel() {
             <div style={{ font: F.mono(500, 11), letterSpacing: '.02em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
           </div>
         ) : (
-          <Alert id="armory-joinpanel-no-lan-address" variant="line"
-            style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, textAlign: 'center' }}>
-            NO LAN ADDRESS ({state?.lan.ip || '—'}): MC IS NOT ON A NETWORK PHONES CAN REACH.
-            {' '}JOIN THE FIELD WI-FI AND RESTART MC; SIDELOAD THE APK BY CABLE MEANWHILE.
-          </Alert>
+          <ItemChip id="armory-joinpanel-no-lan-address" short="No LAN address" icon="wifi"
+            detail={`MC is not on a network phones can reach (${state?.lan.ip || '—'}). Join the field Wi-Fi and restart MC. Sideload the APK by cable meanwhile.`} />
         )}
       </>}
       <ReachBlock />
@@ -918,10 +904,12 @@ function ReachBlock() {
       </div>
       {/* armory-reach-predates-backhaul: MC_OLDER's one fact, one sentence, with the restart command in
           <code> (F221, Tony 2026-09-25). */}
+      {autoOf(pub) && (
+        <BackhaulStatus auto={autoOf(pub)!.on} onCellular={autoOf(pub)!.cellular} error={autoOf(pub)!.error} />
+      )}
       {!supported && (
-        <Alert id="armory-reach-predates-backhaul" variant="line" style={{ lineHeight: 1.6 }}>
-          {MC_OLDER.what}: {MC_OLDER.act} (<code>{MC_RESTART_CMD}</code>) TO GET AN INTERNET JOIN OPTION
-        </Alert>
+        <ItemChip id="armory-reach-predates-backhaul" short="MC older than console" icon="warn"
+          detail={<>Restart MC (<code>{MC_RESTART_CMD}</code>) to get an internet join option.</>} />
       )}
       {supported && !available && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { setNotice } from '../notice';
 import { F, T } from '../tokens';
-import { Alert } from './Alert';
+import { ItemChip } from './Compact';
 import { GhostButton, PrimaryButton } from './index';
 
 export function OrphanMatch({ compact = false }: { compact?: boolean } = {}) {
@@ -23,7 +23,7 @@ export function OrphanMatch({ compact = false }: { compact?: boolean } = {}) {
           never a banner — this used to keep the bordered, left-ruled box even after the words moved
           onto their own line (F221 round 1); now it is one plain <Alert> line, nothing else. */}
       <span style={{ flex: '1 1 260px' }}>
-        <Alert id="frame-orphan-match" variant="line" what={`${phones} IN A MATCH THIS MC DID NOT START`} />
+        <ItemChip id="frame-orphan-match" short="Match started on another MC" detail={`${phones} are in a match this MC did not start.`} />
         {/* RECAP (F596) wants ONE short line: the names are the hover there */}
         {!compact && <span style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim }}>
           {om.players.join(', ')} · {om.arm_state.toUpperCase()}

@@ -151,7 +151,7 @@ step('panic', async ({ browser, base }) => {
   const warn = await pg.locator('[data-testid="panic-warning"]').innerText().catch(() => '');
   expect(/no gun can be hit until you re-arm it/i.test(warn), `the confirm warns about the re-arm (saw ${JSON.stringify(warn)})`);
   await pg.locator('header [role="menu"] button', { hasText: 'CONFIRM' }).click();
-  await until(() => pg.locator('header', { hasText: 'FLEET SAFED' }).count().then(n => n > 0), 4000, 'the PANIC receipt');
+  await until(() => pg.locator('header', { hasText: 'Fleet safed' }).count().then(n => n > 0), 4000, 'the PANIC receipt');
   const t = await pg.locator('[data-testid="cb-notices"]').innerText().catch(() => '');
   expect(/\d+ OF \d+ NODES/.test(t), `the receipt counts the nodes (saw ${JSON.stringify(t)})`);
   expect(/\(\d\d:\d\d:\d\d\)/.test(t) && !/[AP]M/.test(t), `the receipt uses a 24-hour clock (saw ${JSON.stringify(t)})`);

@@ -1,3 +1,4 @@
+import { FaultPill, HelpNote, ItemChip } from '../ui/Compact';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { setNotice } from '../notice';
 import { boardHeader, cureLabel, endDeliveryLine, gunLockedLabel, poolStaleLabel, possiblyProtectedLabel } from '../api/derive';
@@ -231,10 +232,8 @@ export function Live() {
           {lv.phones_ended && (
             // A47 review: an ADOPTED match that every phone has already ended. MC never ends an adopted match
             // on its own guess (it holds no config for it), so the operator is told once, in one line.
-            <div data-testid="phones-ended" role="status" data-alert="live-phones-ended" data-sev="amber"
-              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${colourOf('live-phones-ended')}`,
-                font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf('live-phones-ended'), lineHeight: 1.5 }}>
-              {glyphed('amber', 'PHONES HAVE ENDED THIS MATCH: PRESS END')}
+            <div role="status" style={{ marginBottom: 12 }}>
+              <ItemChip id="live-phones-ended" testid="phones-ended" short="Phones ended this match" detail="Press End to finish the adopted match." />
             </div>
           )}
           {edLine && (() => {
@@ -244,6 +243,13 @@ export function Live() {
             const edSev = edLine.ok ? null : ed?.retrying ? 'amber' : 'red';
             const edId = edLine.ok ? 'live-end-delivery-ok' : ed?.retrying ? 'live-end-delivery-retrying' : 'live-end-delivery-spent';
             const c = edLine.ok ? T.ok : colourOf(edId);
+            if (!edLine.ok) return (
+              <div style={{ marginBottom: 12 }}>
+                {edSev === 'red'
+                  ? <FaultPill id={edId} testid="end-delivery" short="End did not reach phones" why={edLine.text} />
+                  : <ItemChip id={edId} testid="end-delivery" short="End still reaching phones" detail={edLine.text} />}
+              </div>
+            );
             return (
               <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'} data-alert={edId} data-sev={edSev ?? 'neutral'}
                 style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : c}`,
@@ -286,7 +292,7 @@ export function Live() {
                 K BELOW ZERO: {TEAM_KILL_NOTE}
               </div>
             )}
-            <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>TAP A PLAYER FOR RESYNC, RESPAWN OR RELINK. K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". NOT HEARD = NO WORD FROM THAT PHONE SINCE MC STARTED. STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
+            <HelpNote label="Tap a player for more" keep="Tap a player for resync, respawn or relink." />
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -307,7 +313,7 @@ export function Live() {
               )}
               {/* F540 review: a refused token also leaves the socket down; that is not "MC IS OFFLINE" */}
               {offline && authRequired && <span data-testid="controls-token" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('frame-token-required-app') }}>{operatorTokenLine()}</span>}
-              {offline && !authRequired && <span data-testid="controls-offline" data-alert="live-controls-offline" data-sev="red" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('live-controls-offline') }}>{glyphed('red', OFFLINE_WHY.toUpperCase())}</span>}
+              {offline && !authRequired && <FaultPill id="live-controls-offline" testid="controls-offline" short="Controls offline" why={OFFLINE_WHY} />}
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { FaultPill, ItemChip, BackhaulStatus, galleryHas, autoOf } from '../ui/Compact';
 import { useEffect, useRef, useState } from 'react';
 import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
@@ -7,7 +8,7 @@ import { HazardButton, GhostButton, InfoIcon } from '../ui';
 import { ReportPanel } from '../ui/ReportPanel';
 import { ServerFailures } from '../ui/ServerFailures';
 import { panicReceipt, splitWarning } from './frameText';
-import { MC_OFFLINE, MC_OLDER, OPERATOR_TOKEN, alertWords, colourOf, glyphed, operatorTokenLine, tokenRefusedLine } from '../alerts';
+import { MC_OLDER, OPERATOR_TOKEN, colourOf, glyphed, operatorTokenLine, tokenRefusedLine } from '../alerts';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -41,10 +42,10 @@ export function CommandBar() {
   const [menu, setMenu] = useState(false);
   const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, catalogueDown } = useStore();
   const [panic, setPanic] = useState(false);
-  const [panicked, setPanicked] = useState<string | null>(null);
+  const [panicked, setPanicked] = useState<ReturnType<typeof panicReceipt> | null>(null);
   const [report, setReport] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
-  const offline = !mock && !connected && !authRequired;   // the token prompt owns the copy while auth is pending
+  const offline = (!mock && !connected && !authRequired) || galleryHas('offline');   // the token prompt owns the copy while auth is pending
   const cur = viewIdx(view);
   const [lanDetails, setLanDetails] = useState(false);
 
@@ -77,33 +78,25 @@ export function CommandBar() {
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
-      {offline && (
-        <div role="status" aria-live="polite" data-alert="frame-mc-offline" data-sev="red"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${colourOf('frame-mc-offline')}`, font: F.chk(700, 12), letterSpacing: '.22em', color: colourOf('frame-mc-offline') }}>
-          <span style={{ width: 8, height: 8, background: colourOf('frame-mc-offline'), animation: 'linkBlink 1.2s infinite' }} />
-          {glyphed('red', MC_OFFLINE.what)}
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state ? MC_OFFLINE.act.toUpperCase() : 'NO SNAPSHOT YET: IS THE SERVER RUNNING?'}</span>
+      {(offline || state?.lan.public?.status === 'error') && (
+        <div data-testid="frame-faults" style={{ padding: '8px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8 }}>
+          {offline && (
+          <FaultPill id="frame-mc-offline" short="MC offline, board frozen" icon="stop"
+            why={state ? 'The board is frozen at the last snapshot.' : 'No snapshot yet. Is the server running?'} fix="Check that MC is running." />
+          )}
+          {state?.lan.public?.status === 'error' && (
+            <FaultPill id="frame-tunnel-down" short="Internet tunnel down" icon="stop"
+              why={<>{tunnelSeenUp ? 'Phones fell back to Wi-Fi.' : 'The tunnel is not running, so phones can join over Wi-Fi only.'} Tunnel says: {state.lan.public.error || 'no reason given'}</>} fix="Open ARMORY and turn the tunnel on again." />
+          )}
         </div>
       )}
       {catalogueDown && (
-        <div role="alert" data-alert="frame-catalogue-unavailable" data-sev="amber"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-catalogue-unavailable') }}>
-          {glyphed('amber', alertWords('weapon, mode or perk list not loaded', 'retrying, restart MC if this stays'))}
+        <div style={{ display: 'flex', padding: '8px 20px' }}>
+          <ItemChip id="frame-catalogue-unavailable" short="Catalogue unavailable" detail="The weapon, mode or perk list did not load. Retrying. Restart MC if this continues." />
         </div>
       )}
       {/* O7/O8: MC cannot save, its match clock is failing, or its join QR has no address: stands on every screen. */}
       <ServerFailures />
-      {/* A28: a tunnel that dies mid-match is invisible past the ARMORY screen unless it rides in the
-          shared frame — every screen reads this, not just the one with the TURN ON/OFF control. The
-          ▲ glyph carries the same meaning as the colour, so this still reads on a colour-blind or
-          greyscale screen (never colour-only). */}
-      {state?.lan.public?.status === 'error' && (
-        <div role="alert" data-alert="frame-tunnel-down" data-sev="red"
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${colourOf('frame-tunnel-down')}`, font: F.chk(700, 12), letterSpacing: '.14em', color: colourOf('frame-tunnel-down') }}>
-          {glyphed('red', alertWords('INTERNET TUNNEL DOWN', tunnelSeenUp ? 'PHONES FELL BACK TO WI-FI' : 'NOT RUNNING, SO PHONES CAN JOIN OVER WI-FI ONLY'))}
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state.lan.public.error || 'no reason given by the tunnel process'}</span>
-        </div>
-      )}
       {/* T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS, so every phone
           failed to connect and the console never said why -- it looked like the phones were broken.
           Same shared-frame reasoning as the tunnel banner above: every screen (including LOBBY's
@@ -186,6 +179,7 @@ export function CommandBar() {
               F221 round 2: ARMED used ▲ in T.warn, the glyph and colour every amber ALERT uses, on a
               plain phase readout. A phase is NOT-ALERT (data, never T.warn/T.bad): ◆ is its own glyph,
               shared with no alert, in T.ink. */}
+          {autoOf(state?.lan.public) && <BackhaulStatus compact auto={autoOf(state?.lan.public)!.on} onCellular={autoOf(state?.lan.public)!.cellular} error={autoOf(state?.lan.public)!.error} />}
           <span data-testid="phase-chip" title={offline ? 'MC is offline: this is the phase in the last snapshot' : undefined}
                 style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
                          color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.ink : state?.phase === 'recap' ? T.ok : T.dim }}>
@@ -224,7 +218,7 @@ export function CommandBar() {
                     {/* M21 + CLAUDE.md's panic rule: `$CLEAR` leaves a gun with no `$SIR` table, so nothing can hit it until it is re-armed. */}
                     <span data-testid="panic-warning" style={{ font: F.chk(600, 12), color: T.ink, lineHeight: 1.4 }}>Afterwards no gun can be hit until you re-arm it with PUSH CONFIG in LOBBY.</span>
                     <span style={{ display: 'flex', gap: 8 }}>
-                      <HazardButton size={11} onClick={async () => { setPanic(false); setMenu(false); const r = await run(() => api.control('panic', true)); setPanicked(panicReceipt(r, new Date()).text); }}>CONFIRM</HazardButton>
+                      <HazardButton size={11} onClick={async () => { setPanic(false); setMenu(false); const r = await run(() => api.control('panic', true)); setPanicked(panicReceipt(r, new Date())); }}>CONFIRM</HazardButton>
                       <GhostButton onClick={() => setPanic(false)}>Cancel</GhostButton>
                     </span>
                   </div>
@@ -262,6 +256,10 @@ export function CommandBar() {
           const sev = skew ? 'amber' : 'red';
           const c = colourOf(id);
           const refused = id === 'frame-token-refused';   // F540 review: the tap is the cure, the token form; not a dismiss
+          if (refused) return (
+            <FaultPill id="frame-token-refused" short="MC refused the change" icon="stop" onTap={() => setView('debug')} tapHint="Paste token ▸"
+              why="This tab's operator token is old or wrong (did MC restart?). Open the #tok= link MC printed, or paste the new token." />
+          );
           return (
             <button type="button" role="alert" onClick={refused ? () => setView('debug') : clearError} title={error} data-alert={id} data-sev={sev}
               style={{ background: skew ? 'rgba(255,176,32,.12)' : 'rgba(255,82,82,.12)', border: `1px solid ${c}`, color: c,
@@ -278,8 +276,8 @@ export function CommandBar() {
           </button>
         )}
         {panicked && (
-          <button type="button" onClick={() => setPanicked(null)} title="dismiss" data-alert="frame-panicked-toast" data-sev="red"
-            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${colourOf('frame-panicked-toast')}`, color: colourOf('frame-panicked-toast'), font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>{glyphed('red', panicked)} ✕</button>
+          <button type="button" onClick={() => setPanicked(null)} title={panicked.time} data-alert="frame-panicked-toast" data-sev="red"
+            style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${colourOf('frame-panicked-toast')}`, color: colourOf('frame-panicked-toast'), font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>{glyphed('red', panicked.text)} <small style={{ marginLeft: 8, fontWeight: 400 }}>{panicked.detail} {panicked.time}</small> ✕</button>
         )}
       </div>
       {report && <ReportPanel onClose={() => { setReport(false); menuBtnRef.current?.focus(); }} />}

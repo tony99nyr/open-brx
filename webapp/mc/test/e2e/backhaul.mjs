@@ -173,7 +173,7 @@ step('tunnel-error-banner-persists-across-screens', async ({ browser, base }) =>
   await pg.locator('button', { hasText: 'TURN ON' }).click();
   await until(() => pg.locator(bannerSel).count().then(n => n > 0), 6000, 'the persistent tunnel-down banner after the simulated failure');
   const txt = await pg.locator(bannerSel).first().textContent();
-  expect(/INTERNET TUNNEL DOWN/.test(txt ?? ''), `the banner names the outage (saw ${JSON.stringify(txt)})`);
+  expect(/Internet tunnel down/.test(txt ?? ''), `the banner names the outage (saw ${JSON.stringify(txt)})`);
   // M13: this tunnel never came up, so there was nothing to fall back FROM; the banner says so
   expect(!/FELL BACK/.test(txt ?? ''), `a tunnel that never started does not claim a fallback (saw ${JSON.stringify(txt)})`);
   expect(/PHONES CAN JOIN OVER WI-FI ONLY/.test(txt ?? ''), 'the banner says what phones can do now');

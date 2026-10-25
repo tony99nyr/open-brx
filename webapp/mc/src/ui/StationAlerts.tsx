@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { serverLine } from '../alerts';
-import { Alert } from './Alert';
+import { FaultPill, ItemChip } from './Compact';
 import { GhostButton, SectionRule } from './index';
 
 const STATION_PREFIX = 'STATION #';
@@ -45,15 +45,13 @@ function UnlockStations() {
         </GhostButton>
         {confirm && <GhostButton size={11} onClick={() => setConfirm(false)} title="back out: nothing was sent">CANCEL</GhostButton>}
       </span>
-      {err && <Alert id="frame-station-unlock-error" testid="station-unlock-error">UNLOCK REFUSED: {err}</Alert>}
+      {err && <FaultPill id="frame-station-unlock-error" testid="station-unlock-error" short="Station unlock refused" why={err} />}
     </div>
   );
 }
 
-// F221: each attention line MC writes already reads `WHAT IS WRONG: WHAT TO DO` (state.py `_station_view`
-// and `_station_tamper_flags`), so the strip shows the server's line as it is, through `<Alert>`. The
-// catalogue (`src/alerts/server.ts` SERVER_LINES) gives each line its severity; the step that used to sit
-// under each line is now the line's own action.
+// MC sends each attention line with a reason and action. The compact label opens that line on tap or hover.
+// The catalogue (`src/alerts/server.ts` SERVER_LINES) gives each line its severity.
 
 const KIND_WORD: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 
@@ -77,7 +75,7 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
       <div role="status" data-unlock-region="1">
         {on && (
           <div data-testid="station-unlock-only" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 14px', margin: '0 0 12px' }}>
-            <Alert id="armory-stations-locked-banner" what="STATIONS LOCKED FOR THE LOADED GAME" size={11.5} style={{ letterSpacing: '.12em' }} />
+            <ItemChip id="armory-stations-locked-banner" short="Stations locked" detail="The loaded game locked the stations. Unlock them before changing their buttons." />
             <UnlockStations />
           </div>
         )}
@@ -102,9 +100,13 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
           // A held station going offline is RED (act now) only while the match it is held for is LIVE;
           // in LOBBY or ARMED it is AMBER (fix before the next match), same as every other attention line.
           if (id === 'station-attention-offline' && state?.phase === 'live') { id = 'frame-station-offline'; sev = 'red'; }
+          const short = id === 'station-attention-bring-back' ? 'Station out of range'
+            : id === 'station-attention-offline' || id === 'frame-station-offline' ? 'Station offline'
+            : id.includes('battery') ? 'Station battery low' : 'Station needs attention';
+          const detail = `${who ? `${who} · ` : ''}${t}`;
           return (
             <div key={key} data-station-alert={t} style={{ padding: compact ? '2px 0' : '3px 0' }}>
-              <Alert id={id} sev={sev} role="status" size={11.5}>{who ? `${who} · ` : ''}{t}</Alert>
+              {sev === 'red' ? <FaultPill id={id} short={short} why={detail} /> : <ItemChip id={id} short={short} detail={detail} />}
             </div>
           );
         })}
