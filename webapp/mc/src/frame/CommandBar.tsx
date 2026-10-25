@@ -186,10 +186,9 @@ export function CommandBar() {
             {offline && state ? 'LAST KNOWN: ' : ''}
             {state?.phase === 'live' ? (offline ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '◆ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
-          {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
+          {/* The bench volume label stays visible while the override is active. */}
           {state?.bench_volume != null && (
             <span data-testid="bench-volume" data-alert="frame-bench-vol" data-sev="neutral"
-              title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
               style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: colourOf('frame-bench-vol'), border: `1px solid ${T.line2}`, padding: '5px 10px', whiteSpace: 'nowrap' }}>
               BENCH VOL {state.bench_volume}
             </span>

@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { OPERATOR_TOKEN, colourOf } from './alerts';
+import { colourOf } from './alerts';
 import { CommandBar } from './frame/CommandBar';
 import { Armed } from './screens/Armed';
 import { Armory } from './screens/Armory';
@@ -36,9 +36,9 @@ function Screen() {
   if (!state) {
     return authRequired
       ? <div data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: colourOf('frame-token-required-app'), padding: 40 }}>
-          {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}…</code> {OPERATOR_TOKEN.actPost}, OR PASTE THE TOKEN ABOVE.
+          Open MC's token link or paste the token.
         </div>
-      : <div data-alert="frame-connecting" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: colourOf('frame-connecting'), padding: 40 }}>CONNECTING TO MISSION CONTROL… IF THIS DOES NOT CLEAR, CHECK THAT THE MC SERVER IS RUNNING.</div>;
+      : <div data-alert="frame-connecting" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.2em', color: colourOf('frame-connecting'), padding: 40 }}>Connecting. Check the MC server if stalled.</div>;
   }
   switch (view) {
     case 'muster': return <Armory />;

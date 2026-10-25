@@ -3,7 +3,7 @@ import { STALE_AFTER_MS } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { GhostButton, ScreenHeader, SectionRule } from '../ui';
-import { OPERATOR_TOKEN, colourOf } from '../alerts';
+import { colourOf } from '../alerts';
 
 // Everything the header used to shout at you, plus what was never shown at all.
 // Tony, 2026-09-02: "the header should be cleaner and simpler. less intimidating and less confusing.
@@ -49,7 +49,7 @@ export function Debug() {
           data-alert="frame-token-required-app" data-sev="neutral"
           style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 14, border: `1px solid ${T.line2}` }}>
           <label htmlFor="dbg-tok" style={{ font: F.chk(700, 13), color: colourOf('frame-token-required-app') }}>
-            {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}
+            Open MC's token link or paste the token.
           </label>
           <input id="dbg-tok" className="textbox" value={tok} onChange={e => setTok(e.target.value)} placeholder="paste from the MC console"
             autoComplete="off" spellCheck={false} style={{ flex: '0 1 24ch', borderBottom: `1px solid ${T.line2}`, color: T.ink, minHeight: 36 }} />

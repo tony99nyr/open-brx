@@ -5,6 +5,7 @@ import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag, chip } 
 import { Alert, AlertTag } from '../ui/Alert';
 import { colourOf } from '../alerts';
 import { UNPLAYABLE_IDS } from '../rules/loadoutPolicy';
+import { HelpNote } from '../ui/Compact';
 
 // Field 2026-08-31, Tony: "on the kit page is there a way to review the weapons myself without
 // setting the kit? like an armory page?" — there was not. KIT is the only place weapon stats were
@@ -72,12 +73,8 @@ export function Catalog() {
     <div className="screen">
       <ScreenHeader kicker="[ ARSENAL // REFERENCE · READ ONLY ]" title="Arsenal"
         right={<GhostButton onClick={() => setView('kit')}>◂ BACK TO KIT</GhostButton>} />
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro, marginBottom: 12 }}>
-        {weapons.length} WEAPONS · NOTHING HERE CHANGES A LOADOUT — BROWSE FREELY.
-        {' '}METERS RANK EACH WEAPON AGAINST THE WHOLE ARSENAL; THE NUMBERS BESIDE THEM ARE REAL.
-        {pool != null && <> {' · '}HITS AND TIME TO KILL ARE AT THIS GAME'S {pool} POOL (HP + ARMOUR).</>}
-        {weapons.some(w => w.dual_emitter) && <> {' · '}* DUAL EMITTER TOTAL PER TRIGGER WHEN BOTH WORDS LAND.</>}
-      </div>
+      <div style={{ marginBottom: 12 }}><HelpNote label="Arsenal info" testid="catalogue-info-note" infoTestid="help2-catalogue-info"
+        keep="Browsing does not change a loadout. Bars compare weapons across the arsenal." /></div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
         <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>ROLE ▸</span>

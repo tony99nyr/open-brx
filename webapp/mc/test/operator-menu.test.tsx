@@ -179,7 +179,11 @@ describe('A47 · LIVE operator menu', () => {
     expect(op(m, 'resync')).toBeUndefined();
     expect(op(m, 'respawn')).toBeUndefined();
     expect(op(m, 'relink')).toBeTruthy();
-    expect(menu(m, 'p1').querySelector('[data-op-unavailable="armed"]')?.textContent).toContain('WAIT FOR T-0');
+    const info = menu(m, 'p1').querySelector('[data-testid="help2-operator-info"]') as HTMLButtonElement;
+    expect(info).toBeTruthy();
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    await tap(info);
+    expect(menu(m, 'p1').textContent).toContain('Resync and respawn work at T-0. Relink works now.');
     m.unmount();
   });
 

@@ -470,13 +470,6 @@ export function Kit() {
                     <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', color: T.dim }}>
                       {slot === 'perk' ? (perkRule?.choice === 'off' ? 'PERKS ARE OFF FOR THIS GAME' : 'NO PERK') : secRule?.choice === 'off' ? 'SECONDARY IS OFF FOR THIS GAME' : 'NO SECONDARY'}
                     </div>
-                    <div style={{ font: F.chk(500, 13), color: T.dim, maxWidth: '54ch', lineHeight: 1.5 }}>
-                      {slot === 'perk'
-                        // S50: Easy Reload is no longer a perk, so it no longer belongs in the perk copy —
-                        // it is a per-player accessibility switch on the POOL card above.
-                        ? (perkRule?.choice === 'off' ? 'The ruleset switched perks off for everyone. Change it in GAMES.' : 'A perk rides beside the weapons — pick one below, or leave it empty; that is a valid kit.')
-                        : secRule?.choice === 'off' ? 'The ruleset switched slot 2 off for everyone. Change it in BUILD.' : 'The alt-fire button does nothing. Pick a second weapon from the arsenal below — or leave it empty; that is a valid kit.'}
-                    </div>
                   </div>
                 ) : 'weapon_id' in focusItem ? (
                   <WeaponHero w={focusItem} slot={slot} sp={sp} tryingId={locked ? undefined : trying[sp.player_id]} pushed={state.lobby.pushed} verdicts={verdicts} setVerdicts={setVerdicts} />

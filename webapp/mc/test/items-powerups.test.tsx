@@ -91,7 +91,11 @@ describe('ITEMS — the powerup item picker', () => {
     const { m, api, card } = await muster({ getPowerups: async () => off });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    expect(m.find('[data-testid="item-note"]')[0]?.textContent).toMatch(/POWERUPS ARE OFF/);
+    const info = m.find('[data-testid="help2-items-picker-info"]')[0] as HTMLButtonElement;
+    expect(info).toBeTruthy();
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    await m.click('Items unavailable');
+    expect(m.text()).toContain('Power-ups are disabled for this MC. Restart MC with power-ups enabled to assign an item.');
     const sent: Record<string, unknown>[] = [];
     const orig = api.putStation.bind(api);
     api.putStation = (async (n, a) => { sent.push(a); return orig(n, a); }) as Api['putStation'];
@@ -130,7 +134,7 @@ describe('ITEMS — the powerup item picker', () => {
       await m.click('POWERUP');
       expect(m.find('[data-testid="item-picker"]').length, phase).toBe(1);
       for (const p of ['rockets', 'rail_gun', 'overshield', 'ammo']) expect(pick(m, p)!.disabled, `${phase} ${p}`).toBe(true);
-      expect(m.find('[data-testid="item-picker"]')[0].textContent).toMatch(/LOCKED FOR THE MATCH/);
+      expect(m.find('[data-testid="item-picker"]')[0].textContent).toContain('Recall or end to change items.');
       m.unmount();
     }
   });
@@ -583,7 +587,10 @@ describe('polish round 1: the lows on the ITEMS card', () => {
   it('the powerups-off note gives the one restart hint', async () => {
     const { m } = await muster({ getPowerups: async () => ({ enabled: false, presets: [] }) });
     await m.click('POWERUP');
-    expect(m.find('[data-testid="item-note"]')[0].textContent).toContain('./start.sh (no --no-powerups flag)');
+    const info = m.find('[data-testid="help2-items-picker-info"]')[0] as HTMLButtonElement;
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    await m.click('Items unavailable');
+    expect(m.text()).toContain('Power-ups are disabled for this MC. Restart MC with power-ups enabled to assign an item.');
     m.unmount();
   });
 });

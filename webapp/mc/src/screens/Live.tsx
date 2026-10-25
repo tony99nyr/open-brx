@@ -118,7 +118,6 @@ export function Live() {
     return (
       <div className="screen" data-alert="live-no-match" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: colourOf('live-no-match') }}>
         <OrphanMatch />
-        NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
       </div>
     );
   }
@@ -284,12 +283,10 @@ export function Live() {
             </div>
             {held && (
               <div data-testid="order-held" data-alert="live-order-held" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-order-held'), marginTop: 8 }}>
-                ORDER HELD WHILE THE POINTER IS ON THE BOARD OR A MENU IS OPEN. IT RE-SORTS WHEN YOU MOVE AWAY.
               </div>
             )}
             {anyTeamKill && (
               <div data-testid="team-kill-note" data-alert="live-team-kill-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-team-kill-note'), marginTop: 8 }}>
-                K BELOW ZERO: {TEAM_KILL_NOTE}
               </div>
             )}
             <HelpNote label="Tap a player for more" keep="Tap a player for resync, respawn or relink." />
@@ -324,7 +321,6 @@ export function Live() {
             <span style={{ font: F.chk(700, 11), letterSpacing: '.24em', color: T.dim }}>EVENT FEED // LIVE</span>
           </div>
           <div role="status" aria-live="polite" aria-relevant="additions" style={{ border: `1px solid ${T.line}`, background: T.panelDeep, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {feed.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.faint, padding: 6 }}>WAITING FOR THE FIRST SYNC POINT…</div>}
             {feed.map((ev, i) => {
               // F118: an `alert` is MC's own global-state call, in the OPERATOR's third-person copy —
               // a different KIND of line from a kill, and it has to look like one. WITHHELD is the
@@ -361,12 +357,11 @@ export function Live() {
                 rather than train the operator to read a dashed row as noise. */}
             {feed.some(e => e.tag === 'WITHHELD') && (
               <div data-alert="live-feed-withheld-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-feed-withheld-note'), padding: '6px 10px', lineHeight: 1.5 }}>
-                WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.
+                <HelpNote label="Feed notes" infoTestid="help2-live-feed-info" keep="Withheld means MC recorded the event but did not call it to players." />
               </div>
             )}
             {feed.some(e => e.tag === 'AFTER WHISTLE') && (
               <div data-testid="feed-after-whistle-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
-                AFTER WHISTLE = A KILL AFTER THE END. IT IS NOT IN THE SCORE, THE RESULTS, THE AWARDS OR THE MEDALS.
               </div>
             )}
           </div>
@@ -432,7 +427,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
           );
         }) : (
           <div data-hill-none="1" data-alert="live-hill-none" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-hill-none'), lineHeight: 1.5 }}>
-            NO PHONE HAS REPORTED POSSESSION YET. THE {word} TIME SHOWS HERE WHEN ONE DOES; UNTIL THEN THE WINNER IS THE HOST'S CALL.
+            <HelpNote label="Possession" infoTestid="help2-live-hill-info" keep="No phone has reported possession. The host decides the winner until one does." />
           </div>
         )}
         {p && (

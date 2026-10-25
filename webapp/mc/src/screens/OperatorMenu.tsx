@@ -4,7 +4,7 @@ import type { LiveRow, OperatorCmd } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { colourOf, glyphed } from '../alerts';
-import { FaultPill } from '../ui/Compact';
+import { FaultPill, HelpNote } from '../ui/Compact';
 
 /** A47 (bench 2026-09-17): the operator's cures for ONE player in a bad state, e.g. a gun that cannot fire.
  *  Each goes to that player's phone only (`POST /api/players/{pid}/operator`), and the phone does the work.
@@ -82,7 +82,6 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
       </div>
       {!inPlay ? (
         <div data-op-unavailable="phase" data-alert="frame-op-not-in-play" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-not-in-play'), lineHeight: 1.5 }}>
-          THE MATCH IS NOT IN PLAY. NOTHING CAN BE SENT.
         </div>
       ) : outOfReach ? (
         // F221 (2026-09-25): a gun/phone link lost DURING a match is RED — the boxed row, per Tony's
@@ -92,7 +91,7 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
         </div>
       ) : <>{!live && (
         <div data-op-unavailable="armed" data-alert="frame-op-wait-t0" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-wait-t0'), lineHeight: 1.5 }}>
-          RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.
+          <HelpNote label="Action timing" infoTestid="help2-operator-info" keep="Resync and respawn work at T-0. Relink works now." />
         </div>
       )}{offered.map(a => {
         const downResync = a.cmd === 'resync' && r.status === 'down';

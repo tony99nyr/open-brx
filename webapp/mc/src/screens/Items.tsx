@@ -6,7 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { FaultPill, ItemChip } from '../ui/Compact';
+import { FaultPill, ItemChip, HelpNote } from '../ui/Compact';
 import { HillReadout } from '../ui/HillReadout';
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
@@ -17,7 +17,7 @@ import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
-import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
+import { type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val, ValueBox } from '../ui';
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, setupLines } from '../ui/SetupSteps';
@@ -89,7 +89,7 @@ export function Items() {
         {awayBlock}
         {focusHill && <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px' }}>
-          <span>NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.</span>
+          <HelpNote label="Add a station" infoTestid="help2-items-hill-info" keep="No station is available yet. Switch an idle phone to utility station mode, or power on a StickS3." />
           {backToPlay}
         </div>}
       </div>
@@ -105,12 +105,12 @@ export function Items() {
       {focusHill && (
         <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px', marginBottom: 10 }}>
-          <span>ASSIGN A PHONE OR STICK AS CONTROL BELOW: THAT IS YOUR HILL FOR KING OF THE HILL.</span>
+          <span>Assign a station as Control below.</span>
           {backToPlay}
         </div>
       )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
-        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? '—'}</>} />
       <HillReadout config={state.config} style={{ marginBottom: 10 }} />
       {awayBlock}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
@@ -485,9 +485,9 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
     effective?: StationItem | null }) {
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
-  if (pu.s === 'loading') return note('READING THE ITEM LIST…');
+  if (pu.s === 'loading') return note(null);
   if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
-  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
+  if (!pu.v.enabled) return note(<HelpNote label="Items unavailable" infoTestid="help2-items-picker-info" keep="Power-ups are disabled for this MC. Restart MC with power-ups enabled to assign an item." />, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
@@ -511,7 +511,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
           );
         })}
       </div>
-      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
+      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>Recall or end to change items.</div>}
     </div>
   );
 }

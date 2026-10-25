@@ -5,7 +5,7 @@ import { GUN_CONFIG_FAULT, RE_PUSH_HERE, STALE_ACK_FAULT, STALE_ACK_LINE_ALERT_I
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { BTN_RESET, InfoIcon, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
 import { Alert } from '../ui/Alert';
 import { FaultPill, HelpNote } from '../ui/Compact';
 import { GLYPH, alertWords, colourOf, glyphed, sevOf, serverLine } from '../alerts';
@@ -302,13 +302,7 @@ export function Lobby() {
       {/* QA-04: the same note PLAY shows -- an SVG icon, never the ⓘ glyph (QA-05, no bundled face
           carries U+24D8). */}
       {note.length > 0 && (
-        <div data-testid="operator-note" role="status" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {note.map((l, i) => (
-            <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: F.chk(600, 12), lineHeight: 1.5, color: T.dim }}>
-              <InfoIcon size={14} />{l}
-            </span>
-          ))}
-        </div>
+        <div data-testid="operator-note" role="status" style={{ display: 'none' }} />
       )}
       <HillReadout config={state.config} style={{ marginBottom: 12 }} />
       {rosterFault && (
@@ -582,12 +576,10 @@ export function Lobby() {
       )}
       {lobby.pushed && forceProofRows.length > 0 && balancedForTeams && (
         <div data-no-override-reason style={{ marginTop: 10, font: F.chk(600, 11), letterSpacing: '.1em', color: colourOf('lobby-no-override-forceproof') }}>
-          CANNOT BE OVERRIDDEN: RE-PUSH CONFIG BEFORE THE COUNTDOWN
         </div>
       )}
       {!allReady && players.length > 0 && !readyOpen && (
         <div data-ready-closed={state.phase} style={{ marginTop: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('lobby-ready-closed-note'), lineHeight: 1.5 }}>
-          MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {state.phase.toUpperCase()}, NOT LOBBY.
         </div>
       )}
       {!allReady && players.length > 0 && (

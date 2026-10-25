@@ -390,7 +390,7 @@ const step = (name, fn) => steps.push({ name, fn });
 // changing PLAY's kicker from `[ A2 // PLAY ]` to `[ 02 // PLAY ]` (kit-continue.mjs does the same).
 step('boot', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'build');
-  expect(await pg.locator('text=Pick Game').count() > 0, 'the header title reads PICK GAME');
+  expect(await until(() => pg.getByText('Pick Game', { exact: true }).first().isVisible(), 8000, 'the Pick Game title'), 'the header title reads PICK GAME');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'no error-boundary crash on first paint');
   expect(await pg.locator('nav button:has-text("PLAY")').count() > 0, 'the PLAY nav tab is present');
   ok(`PLAY renders  ${await shot(pg, '01-play')}`);

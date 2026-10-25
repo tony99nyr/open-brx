@@ -53,12 +53,11 @@ describe('Report a problem', () => {
     const m = await openPanel(async () => RESULT);
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('idle');
-    const t = p.textContent ?? '';
-    expect(t.toLowerCase()).toMatch(/names, tagger ids, ip addresses and the access code are removed/);
-    expect(t.toLowerCase()).toMatch(/github issues are public/);
-    // the scrub is not total: team/game names typed by the operator survive, and the panel says so
-    expect(t.toLowerCase()).toMatch(/short names, numbers and text you typed/);
-    expect(t.toLowerCase()).toMatch(/team and game names/);
+    const info = p.querySelector('[data-testid="help2-report-info"]') as HTMLButtonElement;
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    await m.click('Report privacy');
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    expect((p.textContent ?? '').toLowerCase()).toContain('reports may contain names you typed. check the file before posting it publicly.');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('MAKE REPORT'))).toBe(true);
     m.unmount();
   });

@@ -48,7 +48,7 @@ describe('F221 alert severity table', () => {
     // server-worded lines are drawn through SERVER_LINES, not by id at a call site
     const viaServer = new Set(SERVER_LINES.map(l => l.id));
     // F599 hides these neutral explainers. Their catalogue entries retain the approved severity.
-    const hiddenNotes = new Set(['kit-easy-note-off', 'kit-easy-note-on', 'kit-pool-note-off', 'kit-slot-note-phone-off', 'kit-slot-note-phone-picks', 'armed-reminder-line']);
+    const hiddenNotes = new Set(['kit-easy-note-off', 'kit-easy-note-on', 'kit-pool-note-off', 'kit-slot-note-phone-off', 'kit-slot-note-phone-picks', 'armed-reminder-line', 'armed-no-schedule', 'frame-bench-volume-override']);
     expect(unused.filter(id => !viaServer.has(id) && !hiddenNotes.has(id))).toEqual([]);
   });
 

@@ -5,6 +5,7 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Api, GameConfig, Phase } from '../src/api/types';
 import { Kit } from '../src/screens/Kit';
+import { CommandBar } from '../src/frame/CommandBar';
 import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
@@ -24,10 +25,10 @@ async function kit(opts: { phase?: Phase; config?: Partial<GameConfig>; bench?: 
   const calls: Partial<GameConfig>[] = [];
   const api = fixtureApi({ putConfig: async (p: Partial<GameConfig>) => { calls.push(p); return d.api.putConfig(p); }, ...opts.api }, d.api);
   const view = 'kit' as const;
-  const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, view }, { api, modes })}><Kit /></StoreCtx.Provider>);
+  const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, view }, { api, modes })}><><CommandBar /><Kit /></></StoreCtx.Provider>);
   const resync = async () => {
     const state = await d.api.getState();
-    await m.update(<StoreCtx.Provider value={makeStore({ ...d, state, view }, { api, modes })}><Kit /></StoreCtx.Provider>);
+    await m.update(<StoreCtx.Provider value={makeStore({ ...d, state, view }, { api, modes })}><><CommandBar /><Kit /></></StoreCtx.Provider>);
     return state;
   };
   const panel = () => m.el.querySelector('[data-testid="game-edit-panel"]')!;
@@ -48,7 +49,8 @@ describe('GameEditPanel VOLUME (K8)', () => {
     expect(btn('venue')!.textContent).toBe(`VENUE DEFAULT (${venue})`);
     expect(btn('venue')!.getAttribute('aria-pressed')).toBe('true');
     for (const v of [60, 70, 80, 90, 100]) expect(btn(v)!.getAttribute('aria-pressed'), `${v}`).toBe('false');
-    expect(note()).toContain(`PLAYS AT ${venue}`);
+    expect(note()).not.toContain('PLAYS AT');
+    expect(m.find('[data-testid="help2-game-settings-info"]')[0]?.getAttribute('aria-expanded')).toBe('false');
     m.unmount();
   });
 
@@ -66,7 +68,8 @@ describe('GameEditPanel VOLUME (K8)', () => {
     expect(calls, 'a tap edits the draft, it sends nothing').toEqual([]);
     expect(btn(70)!.getAttribute('aria-pressed')).toBe('true');
     expect(btn('venue')!.getAttribute('aria-pressed')).toBe('false');
-    expect(note()).toContain('PLAYS AT 70');
+    expect(note()).not.toContain('PLAYS AT');
+    expect(btn(70)!.textContent).toBe('70');
     expect(m.text()).toContain('UNSAVED: VOLUME');
     await click(save());
     expect(calls).toEqual([{ volume: 70 }]);
@@ -113,18 +116,17 @@ describe('GameEditPanel VOLUME (K8)', () => {
   it('says when --bench-volume overrides the knob on this run', async () => {
     const { m, note, open } = await kit({ bench: 55 });
     await open();
-    expect(note()).toContain('BENCH VOLUME 55 OVERRIDES THIS');
-    // compile.tryout_volume: the bench volume reaches try-outs too, so the note must not promise 69
-    expect(note()).toContain('every gun plays at 55, try-outs too');
-    expect(note()).not.toContain('69');
+    expect(note()).not.toContain('BENCH VOLUME');
+    expect(m.find('[data-testid="bench-volume"]')[0]?.textContent).toContain('BENCH VOL 55');
     m.unmount();
   });
 
   it('without --bench-volume a try-out plays at 69 whatever the game volume', async () => {
     const { m, note, open } = await kit({ config: { volume: 90 } });
     await open();
-    expect(note()).toContain('Try-outs play at 69.');
-    expect(note()).not.toContain('try-outs too');
+    expect(note()).not.toContain('Try-outs play at 69.');
+    expect(m.find('[data-testid="bench-volume"]').length).toBe(0);
+    expect(m.find('[data-testid="help2-game-settings-info"]')[0]?.getAttribute('aria-expanded')).toBe('false');
     m.unmount();
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pushGate } from '../api/derive';
-import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
+import { VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
@@ -11,6 +11,7 @@ import { healthPresetOf } from '../rules/health';
 import { HealthPresetEditor } from '../screens/HealthPresetEditor';
 import { GhostButton, PrimaryButton, Seg, Toggle } from './index';
 import { LoadStatus } from './LoadedGame';
+import { HelpNote } from './Compact';
 
 type Slot = 'primary' | 'secondary';
 const toggleId = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
@@ -223,7 +224,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modeOptions.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modeOptions.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>
               ) : (
                 <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
@@ -311,7 +311,7 @@ const VOLUME_STEPS = [60, 70, 80, 90, 100] as const;
 function venueVolume(environment: string | undefined): number {
   return environment === 'outdoor' ? VENUE_VOLUME_OUTDOOR : VENUE_VOLUME_INDOOR;   // unknown = the quieter, as the server
 }
-function VolumeEditor({ volume, environment, benchVolume, onChange }:
+function VolumeEditor({ volume, environment, onChange }:
   { volume: number | null | undefined; environment: string | undefined; benchVolume?: number; onChange: (v: number | null) => void }) {
   const venue = venueVolume(environment);
   const set = volume ?? null;
@@ -322,7 +322,6 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
     font: F.chk(on ? 700 : 600, 12), letterSpacing: '.06em', padding: '6px 12px', minHeight: 36, minWidth: 44, cursor: 'pointer',
     background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.acc : T.micro, border: `1px solid ${on ? T.acc : T.line}`,
   });
-  const plays = benchVolume ?? set ?? venue;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div role="group" aria-label="volume" data-testid="game-edit-volume" style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -338,16 +337,8 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
         ))}
       </div>
       <div data-testid="game-edit-volume-note" style={{ font: F.chk(500, 11.5), color: T.micro, lineHeight: 1.45 }}>
-        {set == null
-          ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
-          : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
-        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest.`}
-        {benchVolume == null && ' Try-outs play at 69.'}
-        {/* F221: Tony's rule names BENCH VOL itself NEUTRAL; this inline note states the same fact and
-            now matches, instead of a third amber rendering of it (the audit's own issue note). */}
-        {benchVolume != null && (
-          <span style={{ color: colourOf('frame-bench-volume-override') }}>{` BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}, try-outs too.`}</span>
-        )}
+        <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
+          keep="Changing mode replaces game rules and teams; venue and volume stay. Save sends changes and applies the selected volume to every gun." />
       </div>
     </div>
   );

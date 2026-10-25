@@ -50,7 +50,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
           <span style={{ width: 64, height: 44, flex: 'none', border: `1px dashed ${T.line2}`, display: 'grid', placeItems: 'center', font: F.osw(700, 20), color: T.faint }}>—</span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : slot === 'perk' ? 'NO PERK' : 'EMPTY'}</span>
-            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? (slot === 'perk' ? 'This game has no perks — change it in GAMES' : 'This game has no slot 2 — change it in GAMES') : matchLocked ? (slot === 'perk' ? 'Rides beside the weapons' : 'Alt-fire does nothing') : slot === 'perk' ? 'Rides beside the weapons · tap to pick' : 'Alt-fire does nothing · tap to pick'}</span>
+            <span style={{ font: F.chk(500, 11), color: T.micro }}>{!locked ? 'Tap to pick.' : null}</span>
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
@@ -155,7 +155,6 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
-        {w.dual_emitter && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
         {tryingId && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-tryout-banner') }}>
             {GLYPH} TRYING OUT ON {sp.display}'S GUN: HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
@@ -175,7 +174,6 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
 }
 
 export function PerkHero({ k }: { k: PerkView }) {
-  const fx = k.effects ?? {};
   const gain = k.gain ?? [], cost = k.cost ?? [];
   return (
     <>
@@ -205,7 +203,6 @@ export function PerkHero({ k }: { k: PerkView }) {
           </div>
         )}
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
-        <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
       </div>
     </>
   );

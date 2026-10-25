@@ -14,6 +14,7 @@ import { BTN_RESET, ValueBox } from '../ui';
 import { colourOf } from '../alerts';
 import { HEALTH_PRESET_COPY } from './gameSummary';
 import { HEALTH_PRESETS, healthPresetOf } from '../rules/health';
+import { HelpNote } from '../ui/Compact';
 
 export function HealthPresetEditor({ health, onChange }: { health: Health; onChange: (h: Health) => void }) {
   const preset = healthPresetOf(health);
@@ -57,9 +58,8 @@ export function HealthPresetEditor({ health, onChange }: { health: Health; onCha
           <ValueBox value={health.max_hp} unit="HP" min={1} max={255} label="health" onChange={v => editNumber({ max_hp: v })} />
           <ValueBox value={health.max_armor} unit="AR" min={0} max={255} label="armor" onChange={v => editNumber({ max_armor: v })} />
           <ValueBox value={health.max_shield} unit="SH" min={0} max={255} label="shield" onChange={v => editNumber({ max_shield: v })} />
-          <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: 340 }}>
-            the shield recharges only in a game with no armour · a player's own POOL override (on KIT) still wins over HP/armour
-          </span>
+          <HelpNote label="Health info" testid="health-preset-info-note" infoTestid="help2-health-info"
+            keep="The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour." />
         </span>
       )}
     </div>

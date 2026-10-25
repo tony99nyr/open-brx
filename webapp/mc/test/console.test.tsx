@@ -271,7 +271,8 @@ describe('the ARSENAL quotes the game that is actually set up', () => {
     // whatever the host had set health to (docs/weapon-design.md §2.5).
     const d = await demo();
     const m = await mountScreen(<Catalog />, { ...d, weapons: arsenal(200), view: 'catalog' });
-    expect(m.text()).toContain('200 POOL');
+    const info = m.find('[data-testid="help2-catalogue-info"]')[0] as HTMLButtonElement;
+    expect(info).toBeTruthy();
     expect(m.text()).toContain('23');
     m.unmount();
   });

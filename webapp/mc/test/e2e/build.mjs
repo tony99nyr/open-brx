@@ -63,7 +63,7 @@ async function open(browser, base, width) {
   await pg.evaluate(() => { location.hash = '#build'; });   // the PLAY step (its phase is named `build`)
   await until(() => pg.locator('main button', { hasText: 'BUILD ▸' }).count().then(n => n > 0), 10000, 'PLAY and its BUILD link');
   await pg.locator('main button', { hasText: 'BUILD ▸' }).first().click();
-  await until(() => pg.locator('text=BUILD CREATES PRESETS').count().then(n => n > 0), 10000, 'the BUILD screen');
+  await until(() => pg.locator('main').getByText('BUILD', { exact: true }).first().isVisible(), 10000, 'the BUILD screen title');
   return pg;
 }
 const shot = async (pg, name) => {
@@ -198,7 +198,10 @@ step('spawn', async ({ browser, base }) => {
   ok('switching to STATION shows the 10s delay from its own builtin');
   // QA-15: the 1-2s wedge guard is a typed value with no direction — a typed 1 (or 2) always snaps UP
   // to 3 (a fast respawn), never down to 0 (no respawn), and the box explains why beside it.
-  expect((await pg.locator('text=1S OR 2S IS NOT ALLOWED').count()) > 0, 'the DELAY box explains the 1-2s guard');
+  const spawnInfo = pg.getByTestId('help2-spawn-info');
+  expect(await spawnInfo.getAttribute('aria-expanded') === 'false', 'the spawn explanation starts closed');
+  await spawnInfo.click();
+  expect((await pg.getByTestId('spawn-info-note').innerText()).includes('One or two seconds can wedge the headset.'), 'the opened detail explains the 1-2s guard');
   const delay = pg.getByLabel('respawn delay seconds');
   await delay.fill('1'); await delay.blur();
   await until(() => delay.inputValue().then(v => v === '3'), 3000, 'a typed 1s to snap UP to 3s, never down to 0');
@@ -326,7 +329,7 @@ step('in-use-when-editing', async ({ browser, base }) => {
   await until(() => pg.getByRole('group', { name: 'primary' }).getByRole('button', { name: 'MY CUSTOM PRIMARY' }).getAttribute('aria-pressed').then(v => v === 'true'), 4000, 'PLAY to mark it picked');
 
   await pg.locator('main button', { hasText: 'BUILD ▸' }).first().click();
-  await until(() => pg.locator('text=BUILD CREATES PRESETS').count().then(n => n > 0), 4000, 'BUILD, reopened');
+  await until(() => pg.locator('main').getByText('BUILD', { exact: true }).first().isVisible(), 4000, 'BUILD, reopened');
   await tab(pg, 'primary').click();
   await pg.locator('[data-testid^="piece-card-"]:not([data-testid^="piece-card-builtin:"])', { hasText: 'MY CUSTOM PRIMARY' }).click();
   await until(() => pg.locator('text=IN USE').count().then(n => n > 0), 4000, 'IN USE to show for the piece PLAY actually picked');

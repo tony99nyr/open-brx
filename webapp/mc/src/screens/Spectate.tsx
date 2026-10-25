@@ -219,7 +219,7 @@ function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNod
       {wanted && (
         <div data-spectate="escape" data-alert="spectate-escape-line" data-sev="neutral" role="status"
           style={{ ...chk(600, SZ.label), letterSpacing: '.18em', color: colourOf('spectate-escape-line'), marginTop: 12, flex: 'none' }}>
-          {wanted.toUpperCase()} IS A CONSOLE SCREEN: THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted.toUpperCase()}.
+          {`Reload this tab to open ${wanted}.`}
         </div>
       )}
     </div>

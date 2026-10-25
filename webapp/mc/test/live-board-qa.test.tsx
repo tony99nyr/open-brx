@@ -254,7 +254,8 @@ describe('M24 · a team-kill penalty is explained', () => {
     const k = m.find('[data-cell="k"]').find(e => e.textContent === '-1')!;
     expect(k.title).toContain('TEAM KILL');
     expect(m.find('[data-cell="kd"]').find(e => e.textContent === '-1.0')!.title).toContain('TEAM KILL');
-    expect(m.find('[data-testid="team-kill-note"]')[0]?.textContent).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(m.find('[data-testid="team-kill-note"]')[0]?.textContent).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(m.text()).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
     expect(m.find('[data-col-head="k"]')[0].title).toContain('TEAM KILL');
     m.unmount();
   });

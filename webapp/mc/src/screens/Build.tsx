@@ -177,9 +177,6 @@ export function Build() {
     // all -- one screen looked narrow next to the other for no reason. Match PLAY: no cap here either.
     <div style={{ padding: '24px 28px 60px' }}>
       <ScreenHeader kicker="[ BUILD ]" title="BUILD" right={<GhostButton onClick={backToPlay}>◂ BACK TO PLAY</GhostButton>} />
-      <p style={{ font: F.chk(500, 12), color: T.dim, margin: '0 0 20px', maxWidth: 640 }}>
-        BUILD CREATES PRESETS. PLAY PICKS THEM.
-      </p>
 
       {/* Review Low: gated on `connected` the same way Games.tsx's own sibling banner is now -- a
           stale piecesError must not flash on every reconnect blip while the console is already saying

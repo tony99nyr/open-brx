@@ -34,7 +34,8 @@ describe('every screen renders', () => {
   it.each(SCREENS)('%s · with a full session', async (_name, view, make) => {
     const d = await demo();
     const m = await mountScreen(make(), { ...d, view });
-    expect(m.text().length).toBeGreaterThan(0);
+    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
+    else expect(m.text().length).toBeGreaterThan(0);
     m.unmount();
   });
 
@@ -43,7 +44,8 @@ describe('every screen renders', () => {
     // something rather than throw — several of these index [0] or [-1] into a list.
     const d = await demo();
     const m = await mountScreen(make(), { state: starved(d.state), weapons: [], perks: [], view });
-    expect(m.text().length).toBeGreaterThan(0);
+    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
+    else expect(m.text().length).toBeGreaterThan(0);
     m.unmount();
   });
 
@@ -61,7 +63,8 @@ describe('every screen renders', () => {
     const full = makeStore({ ...d, view });
     const m = await mount(<StoreCtx.Provider value={empty}>{make()}</StoreCtx.Provider>);
     await m.update(<StoreCtx.Provider value={full}>{make()}</StoreCtx.Provider>);
-    expect(m.text().length, 'the screen must render once it has a snapshot').toBeGreaterThan(0);
+    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
+    else expect(m.text().length, 'the screen must render once it has a snapshot').toBeGreaterThan(0);
     m.unmount();
   });
 });

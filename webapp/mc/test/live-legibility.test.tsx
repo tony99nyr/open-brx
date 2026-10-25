@@ -150,7 +150,8 @@ describe('S24 · the LIVE board is readable', () => {
     expect(late, 'the after-whistle line is in the feed').toBeTruthy();
     expect(late.textContent).toContain('AFTER WHISTLE');
     expect(late.style.borderTop).toContain('dashed');
-    expect(m.find('[data-testid="feed-after-whistle-note"]')[0]?.textContent).toMatch(/NOT IN THE SCORE/);
+    expect(m.find('[data-testid="feed-after-whistle-note"]')[0]?.textContent).not.toContain('AFTER WHISTLE =');
+    expect(m.text()).not.toContain('NOT IN THE SCORE');
     m.unmount();
   });
 });

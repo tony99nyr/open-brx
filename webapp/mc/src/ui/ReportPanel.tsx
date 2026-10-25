@@ -4,7 +4,7 @@ import type { ReportResult } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton } from './index';
-import { FaultPill, ItemChip } from './Compact';
+import { FaultPill, ItemChip, HelpNote } from './Compact';
 import { OPERATOR_TOKEN, colourOf, tokenRefusedLine } from '../alerts';
 
 type Phase = 'idle' | 'busy' | 'done' | 'error' | 'auth';
@@ -108,13 +108,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
           {phase === 'idle' || phase === 'error' ? (
             <>
               <p data-alert="frame-report-idle" data-sev="neutral" style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
-                This makes a report from this session. Names, tagger ids, IP addresses and the access code are removed.
-              </p>
-              <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
-                GitHub issues are public, so open the file and check it before you post it.
-              </p>
-              <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
-                Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.
+                <HelpNote label="Report privacy" infoTestid="help2-report-info" keep="Reports may contain names you typed. Check the file before posting it publicly." />
               </p>
               {phase === 'error' && <FaultPill id="frame-report-error" short="Report failed" why={error ?? ''} />}
               <span>
