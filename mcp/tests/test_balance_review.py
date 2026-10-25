@@ -1050,8 +1050,8 @@ def test_plain_shotgun_against_ar_close_duel_uses_the_full_reload_path():
     world = R.shipped_world()
     shotgun = R.make_kit(world, "Shotgun plain", "shotgun")
     ar = R.make_kit(world, "AR plain", R.ANCHOR)
-    # F609: without the melee lottery the Shotgun wins every close duel at aim 0.9, which pins nothing; at real aim a
-    # kill takes about 7.5 shells, so the duel passes through the 6-shell tube's reload
+    # F609: without the melee lottery the Shotgun wins every close duel at aim 0.9, which pins nothing; the pin moves to
+    # real aim, where a kill takes about 7.5 shells on average, so most duels reach the 6-shell tube's reload
     rate = R.duel_rate(shotgun, ar, "close", reps=200, aim=R.REAL_AIM)
     assert rate == 0.81, rate
 
@@ -1439,11 +1439,16 @@ def test_melee_finishes_at_close_only():
     a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
     b = R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))
     b.next_t = math.inf
-    R.fight(random.Random(1), [a], [b], cap_ms=500 + kit.swap_ms)
+    R.fight(random.Random(1), [a], [b], cap_ms=500 + kit.melee_swap_ms)
     assert not b.alive and a.shots == 1 and a.last_effect == "melee"
     wind = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
     wind.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
-    assert wind.act(0) is None and wind.next_t == kit.swap_ms + R.MELEE_SWING_MS   # the slot-4 draw, then the swing
+    assert kit.swap_ms == 0 and kit.melee_swap_ms == w.cat.swap_ms("glock")   # a one-gun kit still draws slot 4
+    assert wind.act(0) is None and wind.next_t == kit.melee_swap_ms + R.MELEE_SWING_MS   # the draw, then the swing
+    drawn = wind.next_t
+    wind.targets[0].health = 200                     # the swing no longer finishes: drop it and pay the swap back
+    assert wind.act(drawn) is None and not wind.melee_winding and not wind.melee_in_hand
+    assert wind.next_t == drawn + kit.melee_swap_ms
     plain = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)     # F609: no melee outside the rush
     plain.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
     assert plain.act(0) is not None and plain.last_effect != "melee"
