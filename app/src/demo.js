@@ -253,6 +253,8 @@ export function startDemo({ engine, log }) {
       h.setScan(rows.map(r => (inUse[r.deviceId] ? { ...r, inUse: true } : r)));
       h.render(engine.state());
     };
+    // Phone sync track: a stage's sync reading, read by app.js's 1 s sync poll instead of the demo's own bound/delivered one
+    const syncAs = o => { if (typeof window !== 'undefined') window.brxDemoSync = o; };
     const ev = {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
@@ -795,6 +797,12 @@ export function startDemo({ engine, log }) {
       // ---- A24 FINAL RESULTS. `ended` is the local fact; the OUTCOME only ever arrives as a `result` push. ----
       'result-pending':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'mcLost']],            // ended, no result, MC gone: PENDING — never "lost"
       'result-unreached':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'unreached']],         // ... and still nothing 30 s later: MC NOT REACHED
+      // Phone sync track (hud/synctrack.js): the result with each sync state app.js's poll can report (window.brxDemoSync)
+      'result-sync-sending': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan' })], [2500, () => ev.result('win')]],
+      'result-sync-cell':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'cellular', reach: 'backhaul' })], [2500, () => ev.result('win')]],
+      'result-sync-stuck': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 125_000; syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan', pendingChangedAt: Date.now() - 125_000, boundAt: 1 }); /* the whistle 125 s ago */ }], [2500, () => ev.result('win')]],
+      'result-sync-mc-silent': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 40_000; syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'wifi', unboundAt: 1 }); /* off the link for 40 s */ }], [2500, () => ev.result('win')]],
+      'over-sync-unlinked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'cellular' })], [2600, 'endOk']],
       'result-win-team':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')]],
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
