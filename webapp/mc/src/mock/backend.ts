@@ -1036,7 +1036,6 @@ export class MockBackend implements Api {
         log: this.logFor(`node_${b.tail}`),            // A25
         ...(reach ? { reach } : {}), last_reach: this.lastReach[b.tail],
         ...(transport ? { transport } : {}),
-        ...(connected ? { has_pub: this.tunnelStatus === 'up' && !!this.tunnelWsUrl } : {}),   // F595: as `transport.js status()`
         ...(this.demoObs.has('outbox') && b.sticker === 'GUN-A' ? { outbox_lost: 12 } : {}),   // O6
       };
     });

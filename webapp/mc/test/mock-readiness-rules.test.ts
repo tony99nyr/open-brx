@@ -46,16 +46,12 @@ describe('server readiness rules in the mock', () => {
     expect(sessionOffGrid(players, lan({ has_pub: false }))).toEqual(['ALPHA']);
   });
 
-  it('F595: the mock tells its phones about pub only while its tunnel is up with a URL', async () => {
+  it('F595: the mock\'s nodes carry no has_pub, as MC\'s own fake phones send none (the recorded states stay the reference)', async () => {
     const backend = new MockBackend();
     try {
-      const before = (await backend.getState()).nodes.filter(n => n.reach);
-      expect(before.length).toBeGreaterThan(0);
-      expect(before.every(n => n.has_pub === false)).toBe(true);
-      await backend.setTunnel(true);
-      await vi.waitFor(async () => expect((await backend.getState()).lan.public?.status).toBe('up'), { timeout: 10000 });
-      const after = (await backend.getState()).nodes.filter(n => n.reach);
-      expect(after.every(n => n.has_pub === true)).toBe(true);
+      const nodes = (await backend.getState()).nodes;
+      expect(nodes.length).toBeGreaterThan(0);
+      expect(nodes.every(n => n.has_pub === undefined)).toBe(true);
     } finally {
       backend.dispose();
     }
