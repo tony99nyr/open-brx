@@ -886,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 15
+    assert R.SCENARIO_VERSION == 16
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1050,8 +1050,10 @@ def test_plain_shotgun_against_ar_close_duel_uses_the_full_reload_path():
     world = R.shipped_world()
     shotgun = R.make_kit(world, "Shotgun plain", "shotgun")
     ar = R.make_kit(world, "AR plain", R.ANCHOR)
-    rate = R.duel_rate(shotgun, ar, "close", reps=200)
-    assert rate == 0.47, rate
+    # F609: without the melee lottery the Shotgun wins every close duel at aim 0.9, which pins nothing; at real aim a
+    # kill takes about 7.5 shells, so the duel passes through the 6-shell tube's reload
+    rate = R.duel_rate(shotgun, ar, "close", reps=200, aim=R.REAL_AIM)
+    assert rate == 0.81, rate
 
 
 def test_swap_applies_a_deferred_ammo_pickup_after_cancelling_reload():
@@ -1434,11 +1436,14 @@ def test_melee_finishes_at_close_only():
     w = R.shipped_world()
     kit = R.make_kit(w, "Glock", "glock")
     assert kit.melee_dmg == w.cat.damage("melee") and kit.melee_ms == w.cat.fire_ms("melee")
-    a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
     b = R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))
     b.next_t = math.inf
-    R.fight(random.Random(1), [a], [b], cap_ms=500)
+    R.fight(random.Random(1), [a], [b], cap_ms=500 + kit.swap_ms)
     assert not b.alive and a.shots == 1 and a.last_effect == "melee"
+    plain = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)     # F609: no melee outside the rush
+    plain.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
+    assert plain.act(0) is not None and plain.last_effect != "melee"
     c = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0)
     d = R.Fighter(kit, (30, 0, 0), 0, 1, random.Random(2))
     c.targets = [d]
@@ -1516,10 +1521,10 @@ def test_haze_row_blinds_without_damage_and_swing_scales_with_aim():
     shot = attacker.act(0)
     victim.receive(shot[0], src=attacker, gun=attacker.last_effect)
     assert shot[0] == 0 and victim.pool == before and victim.blind_until == R.HAZE_BLIND_MS
-    weak = R.Fighter(R.make_kit(w, "g", "glock"), 115, 0.4, 0, random.Random(2), pull_ms=0)
+    weak = R.Fighter(R.make_kit(w, "g", "glock"), 115, 0.4, 0, random.Random(2), pull_ms=0, allow_melee=True)
     weak.targets = [R.Fighter(haze, 30, 0, 0, random.Random(2))]
     weak.act(0)
-    assert weak.act(R.MELEE_SWING_MS)[1] == R.MELEE_HIT_P * 0.4
+    assert weak.act(weak.next_t)[1] == R.MELEE_HIT_P * 0.4
 
 
 def test_charge_secondary_starts_charging_at_draw_and_reload_cancels_on_swap():
