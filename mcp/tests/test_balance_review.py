@@ -574,6 +574,14 @@ def test_a_kit_carrying_the_changed_perk_is_not_judged_as_a_bystander():
     assert kept["pass"] and kept["numbers"]["kits_losing_last_near_top"] == []
 
 
+def test_an_over_nerfed_subject_still_fails_balance_kept():
+    # F611 (brx1): the kits carrying the change are not judged as bystanders, so a nerf into a trap fails here
+    empty = {"keys": {}, "near_top": {}}
+    trap = R.balance_kept({}, {}, {}, empty, empty, None, subject_trap=True)
+    assert not trap["pass"] and trap["numbers"]["subject_is_a_trap"]
+    assert R.balance_kept({}, {}, {}, empty, empty, None)["pass"]
+
+
 def test_ceiling_only_near_top_cells_do_not_define_a_niche():
     baseline = _m({"Top": ("top", ["1v1 close"]), "Other": ("other", ["1v1 close"])})
     baseline.update(columns={"Top": {"1v1 close": 0.85}, "Other": {"1v1 close": 0.80}},

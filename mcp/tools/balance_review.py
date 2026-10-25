@@ -2908,8 +2908,10 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     haze_failure = bool(haze_check and haze_check["fail"])
     # the candidate's own weapon or perk; a `with` entry is in both worlds, so a kit carrying it is a bystander
     involved = {wid} if wid else {entry.get("perk_id")} - {None}
+    gains = tests["viable"]["numbers"].get("score_minus_no_perk") or {}
+    subject_trap = tests["viable"]["pass"] is False or bool(is_perk and gains and sum(gains.values()) / len(gains) < 0)
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
-                                         haze_failure=haze_failure, involved=involved)
+                                         haze_failure=haze_failure, involved=involved, subject_trap=subject_trap)
 
     # op_rule -------------------------------------------------------------------------------------------
     perk_in_play = is_perk or any(e["kind"].startswith("perk") for e in cand["with"])
@@ -3112,7 +3114,8 @@ def _ceiling_pass(cell: dict, key: str) -> bool:
 
 
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
-                 side: dict | None = None, *, haze_failure: bool = False, involved=()) -> dict:
+                 side: dict | None = None, *, haze_failure: bool = False, involved=(),
+                 subject_trap: bool = False) -> dict:
     """Rule cells fail when, at either aim (real or the 0.9 ceiling), they pass in the shipped catalogue but fail in
     either world (this judges a `with`
     entry too), or pass in the baseline and fail in the candidate. A kit fails when its own score
@@ -3164,7 +3167,10 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
             "kits_carrying_the_change_not_judged": skipped,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
             "haze_flip_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
-    ok = not flips and not lost and not haze_failure
+    # F611: the kits that carry the change are not judged above, so an over-nerf must fail here: the subject
+    # itself is not viable, or (a perk) worse than no perk on average across primaries
+    nums["subject_is_a_trap"] = subject_trap
+    ok = not flips and not lost and not haze_failure and not subject_trap
     if side is not None:
         low = {k: v for k, v in side["r10b"].items()
                if v < (R10_PRIMARY_BAR if k.startswith("standard") else B.SHIELDS_BAR)}
