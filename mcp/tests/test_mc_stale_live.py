@@ -23,10 +23,11 @@ def _reconciled(s):
 
 def _ended_by_cap_and_moved_on(cap_scorer_i=0, victim_i=1):
     """Two phones, a frag-cap end, then RECALL (the RECAP screen's way back to KIT). node1 was silent
-    through the whistle -- exactly the phone that never took the end."""
+    through the whistle -- exactly the phone that never took the end. The operator releases the result."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, cap_scorer_i, victim_i, info, seq=1)
     assert s.phase == "recap"
+    s.finalise_recap()
     n_before = len(controls_to(net, "node1"))
     s.control("recall")
     assert s.phase == "kit" and head_of(s) is None and scorer_of(s) is None
@@ -295,6 +296,7 @@ def test_the_existing_result_paths_are_unchanged():
     """`_result_body` grew keyword-only knobs; every existing caller must produce the same body as before."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.finalise_recap()
     got = results(net)
     assert got["node0"]["outcome"] == "win" and got["node1"]["outcome"] == "lose"
     assert got["node0"]["match_id"] == info["match_id"]

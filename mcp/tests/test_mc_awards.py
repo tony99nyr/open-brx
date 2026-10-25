@@ -406,6 +406,7 @@ def test_the_result_push_carries_each_honor_key():
     s_kill(s, net, clock, ps, 0, 1, info, seq=1)
     s_kill(s, net, clock, ps, 0, 2, info, seq=2)
     s.control("end")
+    s.finalise_recap()
     bodies = [b for _n, _k, b in net.pushes("result")]
     assert bodies and all(b["honors"] for b in bodies), bodies
     keys = {a["key"] for a in AWARDS}
