@@ -371,7 +371,7 @@ export class Transport {
     return this._sendKind('status', full);
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered
-   *  only when it reached MC through the tunnel AND reports `cellular`; anything unrecognised is 'unknown'.
+   *  only when it reports `cellular` AND reached MC through the tunnel, or is on the LAN with `has_pub` (F595); anything unrecognised is 'unknown'.
    *  @param {unknown} t */
   setConnectionType(t) {
     this.connectionType = t === 'wifi' || t === 'cellular' || t === 'none' ? t : 'unknown';
@@ -441,7 +441,7 @@ export class Transport {
   dropLink() { const ws = this._ws; if (ws) { try { ws.close(4002, 'drop'); } catch (_) { /* ignore */ } } }
 
   // ---------- internals ----------
-  /** Tear down the dial/probe in flight WITHOUT touching the held {url, pub, secret}, the ring or the
+  /** Tear down the dial in flight WITHOUT touching the held {url, pub, secret}, the ring or the
    *  clock. Handlers are detached before close so a dying socket's onclose cannot schedule a reconnect
    *  behind the caller's back. `rejectReason` also settles a pending connect() promise (F153b: a new
    *  connect() supersedes the old one) -- pass null when the caller is about to re-dial for that same
@@ -639,7 +639,7 @@ export class Transport {
       ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
       seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
-      pending: this.ring.pending().length,   // F595: the unsent count, so MC's sync board shows SENDING before the batch lands
+      pending: this.ring.size,   // F595: the unsent count, so MC's sync board shows SENDING before the batch lands
       ...((pu => pu ? { prior_utility: pu } : {})(this._priorUtilityHello())),
     };
   }
@@ -662,7 +662,7 @@ export class Transport {
     if (this.pub && !this.verify) { this._dialVia('backhaul', this.pub); return; }
     this._setState('offline'); this._scheduleReconnect();
   }
-  /** Dial one URL as the primary/live socket. `via` is 'lan' or 'backhaul' — A28.3 policy (F595): a
+  /** Dial one URL as the primary/live socket. `via` is 'lan' or 'backhaul'. A28.3 policy (F595): a
    *  'lan' attempt that fails before welcoming (giveup timeout, factory throw, any close other than an
    *  outright refusal) falls straight to pub via `_lanFailed`; a 'backhaul' attempt that fails before
    *  welcoming ends the pass, and a post-welcome drop of either goes through the normal reconnect loop,
@@ -691,8 +691,8 @@ export class Transport {
       if (this._ws !== ws || this.state !== 'connecting') return;
       this._helloTimer = null; this._ws = null;
       try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
-      if (via === 'lan') { this._log(this.pub && !this.verify ? 'lan giveup — falling back to pub' : 'lan giveup'); this._lanFailed(); return; }
-      this._log('backhaul giveup — the next pass dials the LAN');
+      if (via === 'lan') { this._log(this.pub && !this.verify ? 'lan giveup: falling back to pub' : 'lan giveup'); this._lanFailed(); return; }
+      this._log('backhaul giveup: the next pass dials the LAN');
       this._setState('offline'); this._scheduleReconnect();
     }, via === 'backhaul' ? this.backhaulGiveupMs : this.lanGiveupMs);
     ws.onopen = () => {

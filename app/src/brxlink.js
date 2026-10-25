@@ -794,11 +794,10 @@ export class BrxLink {
     if (this._reconnecting && this._reconnectGen === this._gen) return;   // one loop per gun; a second
     this._reconnectGen = this._gen;                  // would double-subscribe notifications
     this._reconnecting = true;
-    // FOREVER, in every phase. It used to stop after 6 tries (~25 s) outside armed/live, which is
-    // exactly how long a gun that is simply switched OFF takes to burn them — so a gun powered on a
-    // minute later was never retried, the HUD blinked GUN DISCONNECTED indefinitely and the MC board
-    // stayed blocked until someone found RECONNECT GUN in the debug panel (field 2026-09-01).
-    // A gun that is off fails cheaply and the backoff caps at 10 s, so this costs ~6 attempts/min.
+    // In a match it keeps trying at up to RECONNECT_MATCH_CAP_MS. Outside a match it stops after
+    // RECONNECT_GIVE_UP tries (about 16 min, the reconnectCapMs ladder) into TAP TO RECONNECT, and a match
+    // arm, a resume or Bluetooth on wakes it (F563). It once stopped after 6 tries (~25 s), so a gun
+    // switched on a minute later was never retried (field 2026-09-01).
     const gen = this._gen;
     try {
       if (await this._connectWithRetry(this.deviceId, 0, true, gen) === true && gen === this._gen) {

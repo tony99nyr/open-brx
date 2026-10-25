@@ -83,7 +83,7 @@ def test_a_grant_to_a_down_player_writes_nothing():
     asyncio.run(go())
 
 
-def test_a_failed_grant_write_is_sent_again_while_the_life_lasts():
+def test_a_failed_grant_write_is_granted_once_more():
     """powerup-player.js `grantAmmo` (F589): a write the link refuses is granted once more from the counts held then."""
     async def go():
         st, _mgr = mk_stage()
