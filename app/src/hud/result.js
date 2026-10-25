@@ -137,7 +137,7 @@ export function _result(st) {
       // a dashed box that filled the body with nothing. It now says only what the footer does not: who has the result.
       body = `<div class="rwait"><div class="wl">${wait === 'unreached'
         ? 'Your phone never reached Mission Control after the whistle. The host has the scores: read the result there.'
-        : 'Mission Control sends the result here once every phone has sent its scores.'}</div>
+        : 'Mission Control sends the result here when every phone is in, or when the host finalises it.'}</div>
         <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
     } else if (tab === 'awards') {
       body = this._awards(awards, rows, myId, !!st.night);

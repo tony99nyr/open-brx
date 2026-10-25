@@ -1950,7 +1950,7 @@ for (const view of VIEWS) {
     const OUTCOME = /\b(WIN|WON|LOSE|LOST|DEFEAT|VICTORY|DRAW)\b/;
     const before = await text(pg);
     must(/RESULT PENDING/.test(before), 'the screen does not say the result is pending: ' + before.slice(0, 200));
-    must(/every phone has sent its scores/.test(before), 'it does not say when the result comes (A81: MC releases it once every phone is in)');
+    must(/when every phone is in, or when the host finalises it/.test(before), 'it does not say when the result comes (A81: every phone in, or FINALISE)');
     must(!OUTCOME.test(before), 'an outcome word is on screen with NO result pushed: ' + (before.match(OUTCOME) || [])[0] + ' — ' + before.slice(0, 260));
     must(await pg.evaluate(() => window.brx.engine.state().result === null), 'the engine invented a result');
     // the same assertion, against a screen that SHOULD carry the word — proves the regex can fail this step

@@ -6903,6 +6903,15 @@ test('A24 result: a STALE match_id is dropped, not rendered over this match', ()
   assert.equal(h.eng.state().result, null);
 });
 
+test('A81: a phone that reached MC after the whistle waits on RESULT PENDING, even out of range later', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.eng.setWsState('bound');                            // delivered its scores (MC now holds the result for the others)
+  assert.equal(h.eng.state().resultWait, 'pending');
+  h.eng.setWsState('closed'); h.adv(31000);             // then walked out of range
+  assert.equal(h.eng.state().resultWait, 'pending', 'it reached MC, so MC NOT REACHED ("never reached") would be false');
+});
+
 test('A24 result: no match_id, and no current match, are both dropped', () => {
   const h = harness().kit().config_(); h.echo();
   assert.equal(h.eng.onMcMessage({ kind: 'result', body: { outcome: 'win' } }).reason, 'no_match_id');
@@ -6912,11 +6921,7 @@ test('A24 result: no match_id, and no current match, are both dropped', () => {
 test('A24: the node NEVER infers win or lose — no message, no outcome, ever', () => {
   const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-  // in coverage, right after the whistle
-  h.eng.setWsState('bound');
-  assert.equal(h.eng.state().result, null);
-  assert.equal(h.eng.state().resultWait, 'pending');
-  // out of coverage, long past the settle window — still not a loss
+  // out of coverage since the whistle, long past the settle window — still not a loss
   h.eng.setWsState('closed'); h.adv(31000);
   assert.equal(h.eng.state().resultWait, 'unreached');
   assert.equal(h.eng.state().result, null);
