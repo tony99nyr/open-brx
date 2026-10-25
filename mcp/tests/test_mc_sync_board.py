@@ -1,4 +1,12 @@
 """F596: post-whistle sync facts and the operator's final result."""
+from _skip import needs
+try:
+    import starlette  # noqa: F401
+    import httpx  # noqa: F401
+    HAVE = True
+except ImportError:
+    HAVE = False
+
 import pathlib
 import tempfile
 import json
@@ -386,12 +394,8 @@ def test_old_finished_snapshot_defaults_to_not_finalised():
 
 
 def test_finalise_route_requires_the_operator_token_and_recap():
-    from _skip import needs
-    try:
-        from starlette.testclient import TestClient
-        import httpx  # noqa: F401
-    except ImportError:
-        needs(False, "starlette + httpx")
+    needs(HAVE, "starlette + httpx")
+    from starlette.testclient import TestClient
     from brx_mcp.mc.api import create_app
     s, net, clock, ps, _ = go_live(2)
     c = TestClient(create_app(s, token="operator"))
@@ -437,12 +441,8 @@ def test_resumed_match_keeps_the_whistle_bindings_without_new_hellos():
 def test_the_recap_csv_waits_for_the_result_like_the_page():
     """F596 review (Codex): the console hides EXPORT CSV while the result is pending, but a saved /api/recap.csv link still
     downloaded the provisional table. It answers 409 until every row is received or the operator finalises."""
-    from _skip import needs
-    try:
-        from starlette.testclient import TestClient
-        import httpx  # noqa: F401
-    except ImportError:
-        needs(False, "starlette + httpx")
+    needs(HAVE, "starlette + httpx")
+    from starlette.testclient import TestClient
     from brx_mcp.mc.api import create_app
     s, net, clock, ps, _ = go_live(2)
     c = TestClient(create_app(s))

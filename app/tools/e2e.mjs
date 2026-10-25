@@ -1024,12 +1024,15 @@ await step('HUDs show the FINAL RESULTS screen with stats; OK → the next-match
   const hist = await hudA.evaluate(() => JSON.parse(localStorage.getItem('brx.history') || '[]'));
   expect(hist.length === 1 && hist[0].deaths === 1, 'history entry wrong: ' + JSON.stringify(hist));
 });
-await step('recap is FINAL with connected empty nodes; honors hidden; DATA SYNC board shows ✓', async () => {
+await step('recap is FINAL with connected empty nodes; every phone received; the sync strip collapses to 2 OF 2 PHONES SYNCED', async () => {
   await until(async () => { const s = await st(); return s.recap && s.recap.provisional === false; }, 15000, 'recap finality (zero pending, nodes connected)');
+  // F596: the result shows only once every phone has sent a fresh pending == 0 status after the whistle
+  await until(async () => { const s = await st(); return !!s.recap?.sync && s.recap.sync.pending === false
+    && s.recap.sync.rows.filter(r => r.kind === 'phone').every(r => r.stage === 'received'); }, 15000, 'every phone received (recap.sync)');
   await mc.click('text=RECAP').catch(() => {});
   expect((await mc.locator('text=PROVISIONAL —').count()) === 0, 'provisional banner must be gone');
-  expect((await mc.locator('text=DATA SYNC').count()) > 0, 'DATA SYNC board missing');
-  await until(async () => (await mc.locator('text=SYNCED ✓').count()) >= 2, 8000, 'both players synced');
+  await until(async () => (await mc.locator('text=2 OF 2 PHONES SYNCED').count()) > 0, 8000, 'the strip collapses to 2 OF 2 PHONES SYNCED');
+  expect((await mc.locator('text=RESULTS PENDING').count()) === 0, 'RESULTS PENDING must be gone once every phone is received');
   const ovr = await overlapAudit(mc, 'recap', ['text=/MATCH COMPLETE ·/', 'text=EXPORT CSV', 'text=FULL STATS']);
   expect(ovr.length === 0, 'recap overlaps: ' + ovr.join('; '));
   await shot(mc, 'recap-final');

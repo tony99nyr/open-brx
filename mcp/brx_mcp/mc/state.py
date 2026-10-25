@@ -47,7 +47,7 @@ from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
-                    LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
+                    LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapSyncRow, RecapSyncView, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView, RestoreFailedView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
@@ -2980,18 +2980,20 @@ class Session:
             entry["event_rev"] = entry.get("event_rev", 0) + 1
             self._sync_update(nid, at)
 
-    def _recap_sync(self, winner: dict, stations: list[RecapStationRow]) -> dict:
+    def _recap_sync(self, winner: WinnerView, stations: list[RecapStationRow]) -> RecapSyncView:
         match = self.match
         if match is None or match.scorer is None:
             return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
         now = self.now_ms()
         unconfirmed = {r["player_id"] for r in (self._end_delivery_view() or {}).get("unconfirmed", [])}
-        rows = []
+        rows: list[RecapSyncRow] = []
         for nid, pid in (match.whistle_base or {}).items():
             p = (match.played or {}).get(pid)
             if p is None:
                 continue
             entry = self._sync_entry(nid)
+            if entry is None:
+                continue
             self._sync_update(nid, now)
             stage = entry["stage"]
             idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
@@ -3001,7 +3003,7 @@ class Session:
                 transport = ("backhaul" if nv.get("reach") == "backhaul" else
                              "cellular" if nv.get("transport") == "cellular" else
                              "wifi" if nv.get("transport") == "wifi" or nv.get("reach") == "lan" else None)
-            row = {"kind": "phone", "id": pid, "name": p["display"], "team_id": p.get("team_id"),
+            row: RecapSyncRow = {"kind": "phone", "id": pid, "name": p["display"], "team_id": p.get("team_id"),
                    "stage": stage, "transport": transport, "end_unconfirmed": pid in unconfirmed,
                    "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
             if isinstance(entry.get("pending"), int) and entry["pending"] > 0:
@@ -3023,13 +3025,14 @@ class Session:
                 entry["stage"] = stage
             idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
             label = f"{_STATION_KIND_LABEL.get(station['kind'], station['kind'].upper())} {station['id']}"
-            rows.append({"kind": "station", "id": str(station["id"]), "name": label, "team_id": None,
-                         "stage": stage, "transport": None, "end_unconfirmed": False,
-                         "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"})
+            row: RecapSyncRow = {"kind": "station", "id": str(station["id"]), "name": label, "team_id": None,
+                                 "stage": stage, "transport": None, "end_unconfirmed": False,
+                                 "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
+            rows.append(row)
         pending = not (match.finalised or match.restored_final) and any(
             row["stage"] != "received" for row in rows)
         if not pending and match.final_winner is None:
-            match.final_winner = copy.deepcopy(winner)
+            match.final_winner = copy.deepcopy(dict(winner))
         elif match.final_winner is not None and winner != match.final_winner:
             match.result_changed = True
         return {"rows": rows, "pending": pending, "finalised": match.finalised,
@@ -3130,7 +3133,7 @@ class Session:
                 and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte())
                 and tally.get("key") == [self._game_byte(), "control", frozen["id"]]
                 and tally.get("at") == t_recv):
-            self.match.sync_nodes.setdefault("station:" + nid, {"changed_t": self.now_ms()})["status_received"] = True
+            match.sync_nodes.setdefault("station:" + nid, {"changed_t": self.now_ms()})["status_received"] = True
         self._restore_recap()
 
     # ---------- nodes ----------
@@ -4445,29 +4448,30 @@ class Session:
                                     station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
                                     station_unverified=m.get("station_unverified") if isinstance(m.get("station_unverified"), list) else None,
                                     saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
-        self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
-                                 evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
-                                 departed_stations=parsed.departed_stations)
+        match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
+                            evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
+                            departed_stations=parsed.departed_stations)
+        self.match = match
         if m.get("finished") is True:
-            self.match.finalised = m.get("finalised") is True
+            match.finalised = m.get("finalised") is True
             winner = m.get("final_winner")
-            self.match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
-            self.match.restored_final = self.match.final_winner is not None
-            self.match.result_changed = m.get("result_changed") is True
+            match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
+            match.restored_final = match.final_winner is not None
+            match.result_changed = m.get("result_changed") is True
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
             frozen = m.get("frozen_stations")
             if isinstance(frozen, list):
-                self.match.frozen_stations = [row for raw in frozen
-                                              if (row := snapshot_departed_station(raw)) is not None]
+                match.frozen_stations = [row for raw in frozen
+                                         if (row := snapshot_departed_station(raw)) is not None]
             self._finish()
-            self.match.played = played
+            match.played = played
             raw_whistle = m.get("whistle_base")
             whistle = ({nid: pid for nid, pid in raw_whistle.items()
                         if isinstance(nid, str) and isinstance(pid, str) and pid in played}
                        if isinstance(raw_whistle, dict) else dict(node_player))
-            self.match.scorer.node_player = dict(whistle)
-            self.match.whistle(whistle)
+            scorer.node_player = dict(whistle)
+            match.whistle(whistle)
             if mid in self._ended:
                 self._ended[mid]["players"] = dict(played)
             self._changed()

@@ -175,9 +175,9 @@ class Match:
                     bundles: dict[str, FrameBundle], acks: dict[str, dict],
                     store_path: str | None) -> dict:
         """Write the running match block for session.json."""
-        if (self.head or self.ended_head) is None or self.scorer is None:
-            raise ValueError("only a match in hand has a snapshot block")
         si = self.head or self.ended_head
+        if si is None or self.scorer is None:
+            raise ValueError("only a match in hand has a snapshot block")
         players = self.played if self.played is not None else roster
         return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
                 "countdown_s": si.get("countdown_s", 0), "adopted": adopted,
