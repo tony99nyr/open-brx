@@ -539,13 +539,25 @@ def test_own_score_drop_in_every_baseline_niche_column_fails_even_when_still_nea
 def test_paired_sampling_uses_one_standard_error_for_a_niche_score_drop():
     baseline = _m({"Top": ("top", ["peek mid"]), "Other": ("other", ["peek mid"])})
     baseline.update(columns={"Top": {"peek mid": 0.85}, "Other": {"peek mid": 0.80}},
-                    top={"peek mid": 0.85}, reps={"duel": 1000})
+                    top={"peek mid": 0.85}, reps={"duel": 400})
     candidate = copy.deepcopy(baseline)
-    candidate["columns"]["Other"]["peek mid"] = 0.77
+    # 0.055 clears one sample's 2 SE (about 0.044) and the 0.05 margin floor, but not the two-sample 2 SE (0.059)
+    candidate["columns"]["Other"]["peek mid"] = 0.745
     candidate["near_top"]["Other"] = []
     verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
     assert verdict["status"] == "fail", verdict
     assert verdict["numbers"]["kits_losing_last_near_top"] == ["other"]
+
+
+def test_a_drop_beyond_noise_but_under_the_near_top_margin_is_not_a_lost_niche():
+    # F611 (Opus review): with many reps a tiny real drop (one new counter in the mean) cleared 2 SE and failed
+    baseline = _m({"Top": ("top", ["peek mid"]), "Other": ("other", ["peek mid"])})
+    baseline.update(columns={"Top": {"peek mid": 0.85}, "Other": {"peek mid": 0.80}},
+                    top={"peek mid": 0.85}, reps={"duel": 100000})
+    candidate = copy.deepcopy(baseline)
+    candidate["columns"]["Other"]["peek mid"] = 0.77      # 0.03: far beyond 2 SE at 100000 reps, under 0.05
+    verdict = R.balance_kept({}, {}, {}, baseline, candidate, None)
+    assert verdict["pass"] and verdict["numbers"]["kits_losing_last_near_top"] == []
 
 
 def test_a_kit_carrying_the_changed_perk_is_not_judged_as_a_bystander():

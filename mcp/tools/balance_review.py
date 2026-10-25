@@ -2906,7 +2906,8 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     haze_check = (haze_gate(base, world, _reps("haze_sweep", reps_scale), heat_cool_while_firing)
                   if haze_section else None)
     haze_failure = bool(haze_check and haze_check["fail"])
-    involved = ({wid} if wid else set()) | changed_perks | {e["weapon_id"] for e in cand["with"] if e.get("weapon_id")}
+    # the candidate's own weapon or perk; a `with` entry is in both worlds, so a kit carrying it is a bystander
+    involved = {wid} if wid else {entry.get("perk_id")} - {None}
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
                                          haze_failure=haze_failure, involved=involved)
 
@@ -3017,7 +3018,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             after_dom = domination_verdict(branch_mb, branch_mc)["numbers"]
             if _new_dominance_kits(before_dom, after_dom):
                 flips.append("no_domination")
-            kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid)
+            kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid, involved=involved)
             last_cell_losses[branch] = kept["numbers"]["kits_losing_last_near_top"]
             flips.extend(f"balance_kept:{kit}" for kit in last_cell_losses[branch])
             if pickup and not verdict["heat_pickup_utility"][branch]["pass"]:
@@ -3092,9 +3093,16 @@ def _niche_score_material_loss(mb: dict, mc: dict, old_name: str, new_name: str,
     kind = "ammo" if column == "ammo stress" else ("field" if column == "field" else
             ("ambush" if column == "ambush" else "duel"))
     reps = min(mb.get("reps", {}).get(kind, REPS[kind]), mc.get("reps", {}).get(kind, REPS[kind]))
-    # cell_rng uses kit names in both matrices, so common random numbers need one sample's error.
-    se = _column_standard_error(mc, new_name, column, after, reps)
-    return before - after > NOISE_Z * se
+    se_before = _column_standard_error(mb, old_name, column, before, reps)
+    se_after = _column_standard_error(mc, new_name, column, after, reps)
+    # cell_rng keys on kit names, so a kit that keeps its name shares random numbers across the two matrices and
+    # the paired difference needs about one sample's error (the larger of the two, as a changed fight path draws
+    # differently); a renamed kit draws an independent stream, so both errors add.
+    se = math.hypot(se_before, se_after) if old_name != new_name else max(se_before, se_after)
+    # and a niche is lost only by a drop at least the near-top margin: a real but tiny drop (one new counter in
+    # the mean, many reps) is not a lost niche (Opus review)
+    floor = NEAR_TOP_MARGIN[column] * before if column == "ammo stress" else NEAR_TOP_MARGIN[column]
+    return before - after > max(NOISE_Z * se, floor)
 
 
 def _ceiling_pass(cell: dict, key: str) -> bool:
@@ -3123,11 +3131,18 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     already = [k for k in rules_s if not rules_s[k]["pass"]]
     by_key_c = {key: name for name, key in mc["keys"].items()}
     ceiling = {"1v1 close", "1v1 mid", "1v1 long"}
-    lost, noise_excused = [], []
+    lost, noise_excused, skipped = [], [], {}
     for name, key in mb["keys"].items():
-        spec = mb.get("specs", {}).get(name, {})
-        carried = {spec.get("primary"), spec.get("secondary"), spec.get("perk"), spec.get("shields_perk")}
-        if key == subject or key not in by_key_c or carried & set(involved):
+        if key == subject or key not in by_key_c:
+            continue
+        carried = {spec.get(field) for spec in (mb.get("specs", {}).get(name, {}),
+                                                mc.get("specs", {}).get(by_key_c[key], {}))
+                   for field in ("primary", "secondary", "perk", "shields_perk")}
+        if carried & set(involved):
+            drops = {c: [mb["columns"][name].get(c), mc["columns"][by_key_c[key]].get(c)]
+                     for c in mb["near_top"][name] if c not in ceiling}
+            if drops:
+                skipped[key] = drops        # listed, not judged: the kit carries the change
             continue
         new_name = by_key_c[key]
         niche = [column for column in mb["near_top"][name] if column not in ceiling]
@@ -3146,6 +3161,7 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
                            for k in flips},
             "ceiling_rule_flips": ceiling_flips,
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
+            "kits_carrying_the_change_not_judged": skipped,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
             "haze_flip_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
     ok = not flips and not lost and not haze_failure
