@@ -17,7 +17,7 @@ def load() -> dict:
 
 
 def run_pool(doc: dict, case: dict) -> dict:
-    return dict(P.pool(case["policy"], doc["weapons"], doc["perks"]))
+    return dict(P.pool(case["policy"], doc["weapons"], doc["perks"], case.get("health_preset")))
 
 
 def run_easy_reload(doc: dict, case: dict) -> dict:
@@ -25,7 +25,7 @@ def run_easy_reload(doc: dict, case: dict) -> dict:
 
 
 def run_apply(doc: dict, case: dict) -> dict:
-    lp = P.pool(case["policy"], doc["weapons"], doc["perks"])
+    lp = P.pool(case["policy"], doc["weapons"], doc["perks"], case.get("health_preset"))
     return dict(P.apply(case["policy"], lp, case["loadout"], doc["weapons"], doc["perks"]))
 
 

@@ -887,7 +887,10 @@ export const PERKS: PerkView[] = [
     "verified": true,
     "hidden": false,
     "blocked_primary": [],
-    "blocked_secondary": []
+    "blocked_secondary": [],
+    "blocked_presets": [
+      "shields"
+    ]
   },
   {
     "perk_id": "extended_mags",
@@ -912,7 +915,8 @@ export const PERKS: PerkView[] = [
     "verified": true,
     "hidden": false,
     "blocked_primary": [],
-    "blocked_secondary": []
+    "blocked_secondary": [],
+    "blocked_presets": []
   },
   {
     "perk_id": "quick_hands",
@@ -936,7 +940,8 @@ export const PERKS: PerkView[] = [
     "verified": false,
     "hidden": false,
     "blocked_primary": [],
-    "blocked_secondary": []
+    "blocked_secondary": [],
+    "blocked_presets": []
   },
   {
     "perk_id": "quick_switch",
@@ -960,7 +965,8 @@ export const PERKS: PerkView[] = [
     "verified": true,
     "hidden": false,
     "blocked_primary": [],
-    "blocked_secondary": []
+    "blocked_secondary": [],
+    "blocked_presets": []
   },
   {
     "perk_id": "armor_piercing",
@@ -994,7 +1000,10 @@ export const PERKS: PerkView[] = [
       "stripper",
       "toxin_rifle"
     ],
-    "blocked_secondary": []
+    "blocked_secondary": [],
+    "blocked_presets": [
+      "shields"
+    ]
   }
 ];
 // GENERATED-END perks

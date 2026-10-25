@@ -15,8 +15,8 @@ describe('server policy shared cases', () => {
   });
 
   it('matches the server loadout pool for every policy case', () => {
-    for (const testCase of cases.pool) {
-      expect(computePool(testCase.policy as LoadoutPolicy, weapons, perks), testCase.name).toEqual(testCase.expect);
+    for (const testCase of cases.pool as unknown as { name: string; policy: LoadoutPolicy; health_preset?: string; expect: unknown }[]) {
+      expect(computePool(testCase.policy, weapons, perks, testCase.health_preset), testCase.name).toEqual(testCase.expect);
     }
   });
 
@@ -27,8 +27,8 @@ describe('server policy shared cases', () => {
       if (lo.overrides && Object.keys(lo.overrides).length) out.overrides = lo.overrides;
       return out;
     };
-    for (const testCase of (cases as unknown as { apply: { name: string; policy: LoadoutPolicy; loadout: Loadout; expect: unknown }[] }).apply) {
-      const pool = computePool(testCase.policy, weapons, perks);
+    for (const testCase of (cases as unknown as { apply: { name: string; policy: LoadoutPolicy; health_preset?: string; loadout: Loadout; expect: unknown }[] }).apply) {
+      const pool = computePool(testCase.policy, weapons, perks, testCase.health_preset);
       expect(shape(mockApply(testCase.policy, testCase.loadout, pool, weapons, perks)), testCase.name).toEqual(testCase.expect);
     }
   });

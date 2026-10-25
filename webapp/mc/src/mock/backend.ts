@@ -1338,7 +1338,7 @@ export class MockBackend implements Api {
       after_end_kills: 0, after_end_deaths: 0,
       ...scorerLiveRow(now(), p.node_id ? this.nodeReports[p.node_id]?.lastSeen : undefined, true) };
   }
-  private pool() { return poolOf(this.config.loadout_policy, POLICY_WEAPONS, PERKS); }
+  private pool() { return poolOf(this.config.loadout_policy, POLICY_WEAPONS, PERKS, healthPresetOf(this.config.health)); }
   /** server `apply_policy()` — every player's kit brought into compliance with the current rules */
   private applyPolicy() {
     const pl = this.pool();
@@ -2147,7 +2147,7 @@ export class MockBackend implements Api {
     const base = policy.preset && policy.preset !== 'custom' ? clone(PRESETS[policy.preset]) : clone(defaultPolicy(mode ?? this.config.mode));
     const merged: LoadoutPolicy = { ...base, ...policy, primary: { ...base.primary, ...(policy.primary ?? {}) }, secondary: { ...base.secondary, ...(policy.secondary ?? {}) }, perk: { ...base.perk, ...(policy.perk ?? {}) } };
     merged.preset = policy.preset === 'custom' ? 'custom' : presetOf(merged);
-    return { policy: merged, pool: poolOf(merged, POLICY_WEAPONS, PERKS) };
+    return { policy: merged, pool: poolOf(merged, POLICY_WEAPONS, PERKS, healthPresetOf(this.config.health)) };
   }
   async putConfig(partial: Partial<GameConfig>) {
     // F151 (field 2026-09-12, ISSUE 25): the mock used to accept `PUT /api/config` in ANY phase, which
@@ -2390,6 +2390,18 @@ export class MockBackend implements Api {
       if (patch.player_num < 1 || patch.player_num > 63) throw new Error('player_num must be 1–63');
       if (this.players.some(x => x !== p && x.player_num === patch.player_num)) throw new Error('player_num in use');
     }
+    if (patch.loadout?.perk) {
+      // F551, as state.py `_check_loadout` (which runs before the pool check): a perk the push would refuse with these
+      // weapons, or under this game's health preset (honest pickers: Shields refuses AP and Body Armor), is dropped,
+      // not kept and not refused
+      const k = PERKS.find(x => x.perk_id === patch.loadout!.perk);
+      const w0 = patch.loadout.weapons?.[0]?.weapon_id, w1 = patch.loadout.weapons?.[1]?.weapon_id;
+      if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1))
+                || (k.blocked_presets ?? []).includes(healthPresetOf(this.config.health)))) {
+        const { perk: _dropped, ...rest } = patch.loadout;
+        patch = { ...patch, loadout: rest };
+      }
+    }
     if (patch.loadout) {
       const lo = patch.loadout, pol = this.config.loadout_policy, pl = this.pool();
       if (!lo.weapons?.length) throw new Error('A primary weapon is required');
@@ -2404,15 +2416,6 @@ export class MockBackend implements Api {
       if (conflict(lo)) throw new Error("Easy Reload takes the ALT button, so it can't ride with a second weapon");
       const cc = chainConflict(lo, WEAPONS);   // Codex r1: MC refuses Easy Reload on a chain-reload weapon (policy.py)
       if (cc) throw new Error(`${WEAPONS.find(w => w.weapon_id === cc.weapon)?.name ?? cc.weapon} loads shell by shell — Easy Reload only taps the button once, so it can't reload it`);
-    }
-    if (patch.loadout?.perk) {
-      // F551, as state.py `_check_loadout`: a perk the push would refuse with these weapons is dropped, not kept
-      const k = PERKS.find(x => x.perk_id === patch.loadout!.perk);
-      const w0 = patch.loadout.weapons[0]?.weapon_id, w1 = patch.loadout.weapons[1]?.weapon_id;
-      if (k && ((w0 && (k.blocked_primary ?? []).includes(w0)) || (w1 && (k.blocked_secondary ?? []).includes(w1)))) {
-        const { perk: _dropped, ...rest } = patch.loadout;
-        patch = { ...patch, loadout: rest };
-      }
     }
     Object.assign(p, patch);
     if (patch.loadout) delete this.trying[id];

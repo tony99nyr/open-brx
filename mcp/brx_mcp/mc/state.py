@@ -1222,9 +1222,16 @@ class Session:
         2026-09-12."""
         return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
 
+    def _health_preset(self, health: object = None) -> str:
+        """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:
+        a config with 45/0/105 and no preset key is Shields, and edited numbers are custom. The console's
+        `healthPresetOf` derives it the same way (brx3 review). `health` defaults to the game's own."""
+        h = _compile.normalize_health(health if isinstance(health, dict) else self.config.get("health"))
+        return _compile.resolve_health_preset(h["max_hp"], h["max_armor"], h["max_shield"])
+
     def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
-        return _policy.pool(self.policy(), weapons, perks)
+        return _policy.pool(self.policy(), weapons, perks, self._health_preset())
 
     def _primary_pool_refusal(self) -> str | None:
         """F146: why is there no legal primary weapon? `None` when there is one. See `_pool_refusal`."""
@@ -1692,24 +1699,28 @@ class Session:
         weapons, perks = self._catalog_rows()
         lp = self.loadout_pool()
         changed: list[str] = []
+        noticed = 0       # honest pickers (Tony 2026-10-25, no warnings): a perk-only clear is silent, not "RESET"
         for pl in self.players.values():
-            new = _policy.apply(self.policy(), lp, pl.get("loadout") or {"weapons": []}, weapons, perks)
+            old = pl.get("loadout") or {"weapons": []}
+            new = _policy.apply(self.policy(), lp, old, weapons, perks)
             if new != pl.get("loadout"):
                 pl["loadout"] = new
                 changed.append(pl["player_id"])
+                if {k: v for k, v in new.items() if k != "perk"} != {k: v for k, v in old.items() if k != "perk"}:
+                    noticed += 1
         for pid in changed:
             pl = self.players[pid]
             if pid in self.trying:                       # an in-flight try-out of a weapon the ruleset just took away
                 self.tryout(pid, None)                   # → tutorial {end} teardown on the node
             self._resend(pl)
-        if changed:
+        if noticed:
             # F411: the whole-game "saved game" this used to override with is gone (the old branch
             # read `self.presets.get(self.active_preset_id)["name"]`) — a named loadout_policy preset
             # (no_heavies/snipers/open/custom) always has its own label, so the mode's own name is
             # only ever the defensive fallback below, same as before.
             mode_row = next((m for m in MODES if m["mode"] == self.config.get("mode")), None)
             label = _policy.PRESET_LABELS.get(self.policy().get("preset") or "", (mode_row or {}).get("name") or "THE LOADOUT RULES")
-            self._policy_notice = f"{len(changed)} LOADOUT{'S' if len(changed) != 1 else ''} RESET BY {label}"
+            self._policy_notice = f"{noticed} LOADOUT{'S' if noticed != 1 else ''} RESET BY {label}"
         return changed
 
     def _prune_browsing(self) -> None:
@@ -1954,7 +1965,7 @@ class Session:
             w1 = weapons[1]["weapon_id"] if len(weapons) > 1 else None
             # F551 (field 2026-10-17): a perk the compiler would refuse with these weapons blocked the whole push. Drop
             # it here instead (Tony's rule: fix the pick, no warning); the kit pickers hide it from `PerkView.blocked_*`.
-            if self.compiler.perk_block_reason(perk, w0, w1) is None:
+            if self.compiler.perk_block_reason(perk, w0, w1, self._health_preset()) is None:
                 out["perk"] = perk                    # A14: a perk is its own slot — it rides beside a secondary weapon
         ov = lo.get("overrides")
         if ov is not None:
@@ -6269,9 +6280,10 @@ class Session:
                 dropped, why = _policy.dropped_by(before, new, weapons, perks)   # A14: Easy Reload vs a second weapon
                 if dropped:
                     reason = why
-                elif asked_perk and not new.get("perk"):
-                    # F551 (Codex review): `_check_loadout` dropped a perk these weapons cannot carry; say so, or the
-                    # phone shows a perk the player no longer has
+                elif slot == "perk" and asked_perk and not new.get("perk"):
+                    # F551 (Codex review): `_check_loadout` dropped the perk the player just asked for; say so, or the
+                    # phone shows a perk the player no longer has. A WEAPON pick that drops the held perk says nothing
+                    # (Tony 2026-10-25, the no-warnings rule): the assign carries the cleared perk.
                     ws = [w["weapon_id"] for w in new.get("weapons") or []]
                     # the weapon that clashes: the primary unless only the secondary does (Codex review)
                     w0 = ws[0] if ws and self.compiler.perk_block_reason(asked_perk, ws[0]) is not None \
