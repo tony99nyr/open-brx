@@ -20,6 +20,7 @@ function cleanRow(raw: unknown): RecapSyncRow | null {
     kind: r.kind === 'station' ? 'station' : 'phone', id: r.id, name: typeof r.name === 'string' && r.name ? r.name : r.id,
     team_id: typeof r.team_id === 'string' ? r.team_id : null,
     stage: (STAGES.includes(r.stage) ? r.stage : 'unlinked') as RecapSyncRow['stage'],
+    ...(typeof r.linked === 'boolean' ? { linked: r.linked } : {}),
     transport: (typeof r.transport === 'string' && TRANSPORTS.includes(r.transport) ? r.transport : null) as RecapSyncRow['transport'],
     ...(pending ? { pending } : {}), ...(lost ? { lost } : {}),
     end_unconfirmed: r.end_unconfirmed === true, idle_s: num(r.idle_s) ?? 0, stuck: r.stuck === true,

@@ -886,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 15
+    assert R.SCENARIO_VERSION == 17
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1050,8 +1050,10 @@ def test_plain_shotgun_against_ar_close_duel_uses_the_full_reload_path():
     world = R.shipped_world()
     shotgun = R.make_kit(world, "Shotgun plain", "shotgun")
     ar = R.make_kit(world, "AR plain", R.ANCHOR)
-    rate = R.duel_rate(shotgun, ar, "close", reps=200)
-    assert rate == 0.47, rate
+    # F609: without the melee lottery the Shotgun wins every close duel at aim 0.9, which pins nothing; the pin moves to
+    # real aim, where a kill takes about 7.5 shells on average, so most duels reach the 6-shell tube's reload
+    rate = R.duel_rate(shotgun, ar, "close", reps=200, aim=R.REAL_AIM)
+    assert rate == 0.79, rate   # F602: the headset word lands 88 ms after the gun word
 
 
 def test_swap_applies_a_deferred_ammo_pickup_after_cancelling_reload():
@@ -1430,15 +1432,104 @@ def test_haze_blinds_then_swaps_and_zero_blind_cannot_improve_the_kit():
     assert R.duel_rate(haze, plain, "close", reps=40, haze_blind_ms=0) <= R.duel_rate(plain, plain, "close", reps=40)
 
 
+def test_the_headset_word_reaches_every_range_and_lands_88_ms_later():
+    # F602: the review dropped the headset word past close; compile ships it at every range, about 88 ms behind
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    g = kit.guns[0]
+    assert g.head_dmg > 0
+    f = R.Fighter(kit, 115, 1, R.DIST["mid"], random.Random(2), pull_ms=0)
+    tgt = R.Fighter(kit, (500, 0, 0), 0, R.DIST["mid"], random.Random(3))
+    tgt.next_t = math.inf
+    hits = []
+    receive = tgt.receive
+    tgt.receive = lambda dmg, **kw: (hits.append((kw["t"], dmg)), receive(dmg, **kw))[1]
+    R.fight(random.Random(1), [f], [tgt], cap_ms=150)
+    assert hits[:2] == [(0.0, g.gun_dmg), (R.HEADSET_WORD_DELAY_MS, g.head_dmg)], hits
+    est = R.finish_estimate(g, pool=g.gun_dmg + g.head_dmg, chance=1.0, ammo=g.mag, reserve=0, reload_amount=0,
+                            ready_at=0.0, locked_until=-1.0, t=0.0, pull_ms=0, overshoot_ms=0.0, charged=True,
+                            count=0, dist=R.DIST["mid"], heat=0.0, heat_t=0.0, heat_cool_while_firing=True,
+                            cooling_started=False)
+    assert est == 0.0, est
+
+
+def test_headset_words_queue_and_a_dead_shooters_word_is_dropped():
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    f = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    tgt = R.Fighter(kit, (500, 0, 0), 0, 0, random.Random(3))
+    f.pending_head = 20
+    R.queue_word(f, tgt, 0.0)
+    R.queue_word(f, tgt, 50.0)          # a second word inside 88 ms queues, it does not overwrite the first
+    assert len(f.words) == 2 and R.word_due(f) == R.HEADSET_WORD_DELAY_MS
+    R.land_word(f)
+    assert tgt.health == 480 and R.word_due(f) == 50.0 + R.HEADSET_WORD_DELAY_MS
+    f.alive = False                     # the shooter died since the pull: its headset no longer fires
+    assert not R.land_word(f) and tgt.health == 480 and not f.words
+
+
+def test_a_stop_lets_words_in_flight_land_in_order_with_the_other_events():
+    # F602 (Codex re-review): a stop_when exit landed the words at once, before a shot that killed their shooter
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    holder = R.Fighter(kit, (1, 0, 0), 1, 0, random.Random(2), pull_ms=0)
+    enemy = R.Fighter(kit, (500, 0, 0), 1, 0, random.Random(3), pull_ms=0)
+    holder.next_t, enemy.next_t = 0.0, 40.0          # the enemy fires inside the holder's 88 ms
+    holder.gs[0].ammo, holder.gs[0].reserve = 1, 0
+    R.fight(random.Random(1), [holder], [enemy], stop_when=lambda: holder.gs[0].ammo == 0 and holder.gs[0].reserve == 0)
+    assert not holder.alive and enemy.health == 500 - kit.guns[0].gun_dmg
+
+
+def test_a_stated_headset_reach_keeps_the_word_inside_it_only():
+    old = R.HEADSET_WORD_REACH_M
+    R.HEADSET_WORD_REACH_M = 10.0      # the U002 proxy's physical reach, a sensitivity line
+    try:
+        assert R.headset_word_reaches(R.DIST["close"]) and not R.headset_word_reaches(R.DIST["mid"])
+        assert R.headset_word_reaches(R.DIST["mid"], 8.0) and not R.headset_word_reaches(R.DIST["close"], 12.0)
+        w = R.shipped_world()
+        kit = R.make_kit(w, "Shotgun", "shotgun")
+        f = R.Fighter(kit, 115, 1, R.DIST["mid"], random.Random(2), pull_ms=0)
+        f.targets = [R.Fighter(kit, (500, 0, 0), 0, R.DIST["mid"], random.Random(3))]
+        assert f.act(0) is not None and f.pending_head == 0
+    finally:
+        R.HEADSET_WORD_REACH_M = old
+    assert R.headset_word_reaches(R.DIST["long"])
+
+
+def test_a_lapsed_melee_back_to_a_spent_gun_still_draws_the_secondary():
+    # F609 (Opus re-review): the swap back committed the gun, and a spent gun then idled for ever
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun + Deagle", "shotgun", "deagle")
+    f = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
+    f.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(3))]
+    f.gs[0].ammo = f.gs[0].reserve = 0
+    assert f.act(0) is None and f.melee_in_hand
+    f.targets[0].health = 200
+    assert f.act(f.next_t) is None and not f.melee_in_hand
+    f.act(f.next_t)
+    assert f.active == 1
+
+
 def test_melee_finishes_at_close_only():
     w = R.shipped_world()
     kit = R.make_kit(w, "Glock", "glock")
     assert kit.melee_dmg == w.cat.damage("melee") and kit.melee_ms == w.cat.fire_ms("melee")
-    a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)
+    a = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
     b = R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))
     b.next_t = math.inf
-    R.fight(random.Random(1), [a], [b], cap_ms=500)
+    R.fight(random.Random(1), [a], [b], cap_ms=500 + kit.melee_swap_ms)
     assert not b.alive and a.shots == 1 and a.last_effect == "melee"
+    wind = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
+    wind.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
+    assert kit.swap_ms == 0 and kit.melee_swap_ms == w.cat.swap_ms("glock")   # a one-gun kit still draws slot 4
+    assert wind.act(0) is None and wind.next_t == kit.melee_swap_ms + R.MELEE_SWING_MS   # the draw, then the swing
+    drawn = wind.next_t
+    wind.targets[0].health = 200                     # the swing no longer finishes: drop it and pay the swap back
+    assert wind.act(drawn) is None and not wind.melee_winding and not wind.melee_in_hand
+    assert wind.next_t == drawn + kit.melee_swap_ms
+    plain = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)     # F609: no melee outside the rush
+    plain.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
+    assert plain.act(0) is not None and plain.last_effect != "melee"
     c = R.Fighter(kit, 115, 1, 1, random.Random(2), pull_ms=0)
     d = R.Fighter(kit, (30, 0, 0), 0, 1, random.Random(2))
     c.targets = [d]
@@ -1516,10 +1607,10 @@ def test_haze_row_blinds_without_damage_and_swing_scales_with_aim():
     shot = attacker.act(0)
     victim.receive(shot[0], src=attacker, gun=attacker.last_effect)
     assert shot[0] == 0 and victim.pool == before and victim.blind_until == R.HAZE_BLIND_MS
-    weak = R.Fighter(R.make_kit(w, "g", "glock"), 115, 0.4, 0, random.Random(2), pull_ms=0)
+    weak = R.Fighter(R.make_kit(w, "g", "glock"), 115, 0.4, 0, random.Random(2), pull_ms=0, allow_melee=True)
     weak.targets = [R.Fighter(haze, 30, 0, 0, random.Random(2))]
     weak.act(0)
-    assert weak.act(R.MELEE_SWING_MS)[1] == R.MELEE_HIT_P * 0.4
+    assert weak.act(weak.next_t)[1] == R.MELEE_HIT_P * 0.4
 
 
 def test_charge_secondary_starts_charging_at_draw_and_reload_cancels_on_swap():

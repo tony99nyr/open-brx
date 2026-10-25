@@ -91,6 +91,7 @@ def test_a_second_match_bumps_the_byte_on_both_sides_together():
     s.start(runway_s=3, force=True)
     live = _assert_same(s, "match 1")
     s.control("end")
+    s.finalise_recap()
     s.next_match()                     # the operator's NEXT MATCH: roll forward, then LOAD
     s.push_config(force=True)          # the muster push for match 2
     second = _assert_same(s, "match 2")
@@ -98,6 +99,7 @@ def test_a_second_match_bumps_the_byte_on_both_sides_together():
     # and the direct path (END, then a push from RECAP) agrees too
     s.start(runway_s=3, force=True)
     s.control("end")
+    s.finalise_recap()
     s.push_config(force=True)
     assert _assert_same(s, "match 3") == second + 1
 
@@ -108,6 +110,7 @@ def test_a_restart_restores_the_byte_for_phones_and_stations_alike():
     s.push_config(force=True)
     s.start(runway_s=3, force=True)
     s.control("end")
+    s.finalise_recap()
     s.push_config(force=True)                      # match 2's byte is on the field
     armed = _assert_same(s, "before restart")
     s._persist_last = 0.0

@@ -108,7 +108,10 @@ def routes(ctx) -> list[BaseRoute]:
 
     async def new_session(req):
         b = await body(req)
-        s.new_session(keep_roster=bool(b.get("keep_roster", True)))
+        try:
+            s.new_session(keep_roster=bool(b.get("keep_roster", True)))
+        except ValueError as e:
+            return _err(e)
         return JSONResponse(s.snapshot())
 
 

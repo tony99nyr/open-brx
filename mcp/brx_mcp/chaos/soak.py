@@ -64,6 +64,13 @@ def growth_verdict(samples: list[float], max_growth_mb: float) -> tuple[bool, st
 async def _next_match(world: World) -> None:
     """RECAP's NEXT MATCH on the same MC: push, start, wait for LIVE."""
     s = world.session
+    def held() -> bool:
+        recap = s.recap()
+        return bool(recap and (recap.get("sync") or {}).get("pending"))
+
+    await until(lambda: not held(), 4.0)
+    if held():
+        s.finalise_recap()
     s.next_match()
     s.push_config()
     assert await until(s.all_acked, 8.0), "not every node acked the next match's config"

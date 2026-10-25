@@ -1943,6 +1943,7 @@ class RecapSyncRow(TypedDict):
     name: str
     team_id: str | None
     stage: SyncStage
+    linked: NotRequired[bool]          # phone socket link, separate from a latched receipt
     transport: SyncTransport | None  # phones only, while linked: reach=backhaul, else status.transport
     pending: NotRequired[int]        # the phone's last reported unsent count (hello.pending or status.pending), > 0
     lost: NotRequired[int]           # facts the phone's outbox dropped for this match (status.outbox_lost), > 0
@@ -1961,7 +1962,7 @@ class RecapSyncView(TypedDict):
 
 
 class RecapView(TypedDict):
-    winner: WinnerView
+    winner: WinnerView | None  # null while this RECAP result waits for its bound phones and hills
     score: dict[str, int]
     rows: list[ScoreRow]
     honors: list[Honor]
@@ -1986,8 +1987,9 @@ class MatchHistoryRow(TypedDict):
     mode: str
     go_live_t: int | None
     ended_t: int | None
-    recap: RecapView | None
+    recap: NotRequired[RecapView | None]  # omitted for the current pending match
     config: NotRequired[dict[str, Any]]
+    pending: NotRequired[bool]                 # F596: current match result is held until sync or FINALISE
 
 
 class VoiceOption(TypedDict):

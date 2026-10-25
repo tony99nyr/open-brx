@@ -57,6 +57,7 @@ async function reset() {
   let s = await get('/api/state');
   if (['armed', 'live'].includes(s.phase)) await must('POST', '/api/control', { cmd: 'end' });
   s = await get('/api/state');
+  if (s.phase === 'recap') await must('POST', '/api/recap/finalise');
   if (s.phase !== 'muster') await must('POST', '/api/phase', { phase: 'muster', force: true });
   for (const st of (await get('/api/stations')).stations) if (st.assigned) await must('DELETE', `/api/stations/${st.node_id}`);
   if ((await get('/api/state')).config.mode !== 'tdm') await must('PUT', '/api/config', { mode: 'tdm' });

@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 110.** Desk 14 · bench 92 · decision 4.
+**MVP open: 108.** Desk 12 · bench 92 · decision 4.
 
-**MVP DESK (14),** a keyboard is enough:
-- 🟠 **F595** · **F602** · **F603** · **F604** · **F605** · **F609** · **F610** · **F611**
+**MVP DESK (12),** a keyboard is enough:
+- 🟠 **F595** · **F603** · **F604** · **F605** · **F610** · **F611**
 - 🟡 **F547**
 - 🟢 **F512** · **F544** · **F574** · **F598** · **F608**
 
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F612 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F613 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -49,12 +49,10 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F602 🟠 SIM: THE HEADSET WORD IS DROPPED OUTSIDE CLOSE RANGE.** brx2, 2026-10-25 (Astra sim review #2, brx1). `balance_sim.py` `_pull_dmg` and `balance_review.py` (the finish estimate and `Fighter._act`) add the second word only at close; compile ships it at every range, and both engines land the two words as one hit, not about 88 ms apart. How far the word reaches is a bench fact (`bench-0426.md` P3.1), so model its reach as a stated assumption until P3.1 reads. Owner brx2. `build`.
 - **F603 🟠 SIM: A DUEL THAT REACHES THE CAP SCORES THE BIGGER POOL AS THE WINNER.** brx2, 2026-10-25 (Astra #7, brx1). `duel_rate` and `balance_sim` rank two survivors by remaining pool, which credits unused starting armour to Body Armor. Record kills, draws and censored fights apart; two survivors are a draw. Owner brx2. `build`.
 - **F604 🟠 SIM: A CANDIDATE'S ARMOUR CAN DIFFER FROM THE COMPILED POOL.** brx2, 2026-10-25 (Astra #11, brx1). The review reads `effects.max_armor_add`; compile uses its own `_MAX_ARMOR_ADD` table, so a JSON-only armour change is simulated but never shipped. Share one grant calculation or refuse such a candidate, and print the compiled pools in every report. Owner brx2. `build`.
 - **F605 🟠 SIM: THE FIELD MODEL NEVER REGENERATES SHIELDS.** brx2, 2026-10-25 (phase C pass 5, brx1). Only the duel `Fighter` has `advance_shield`; `balance_sim.Match` and `KitMatch` do not, so Shields team and field numbers ignore regen, and a regen perk (pass 7's Recharge) cannot be measured. Add regen with a per-kit delay. Owner brx2. `build`.
 - **F608 🟢 SIM: A FIGHTER STALLS WHEN ITS SECONDARY IS EMPTY BUT HAS RESERVE.** brx2, 2026-10-25 (Codex sol review of F601). `Fighter._maybe_swap` draws only a secondary with rounds in the magazine, so a fighter whose primary is spent and whose secondary is empty with reserve stops firing (`next_t` infinite). Older than F601; rare in the shipped kits. The field's combo kit stalls the same way: the alpha path draws a spent finisher (the Sniper) unconditionally, and the base shot schedules nothing, though the Charge Rifle can still fire (Codex sol review of the field half). Owner brx2. `build`.
-- **F609 🟠 SIM: EVERY CLOSE DUEL IS DECIDED BY A MELEE SWING.** brx2, 2026-10-25 (Fable sim review #3, brx1). At distance 0, `Fighter._act` swings melee once the target is at or under 90, and the 6 m reach never applies in a plain duel, so close kills are all melee. Default `allow_melee` to False; keep it only in `rush_encounter`, charged the slot-4 swap. Owner brx2. `build`.
 - **F610 🟠 SIM: THE GATES JUDGE AT AIM 0.9.** brx2, 2026-10-25 (Fable #6 and #15, brx1). The field showed most players between 13% and 46%. Gate at `REAL_AIM` and keep 0.9 as a reported ceiling view; report which of R1-R12 then need re-tuning, and do not re-tune them in this row. Owner brx2. `build`.
 - **F611 🟠 SIM: `balance_kept` FAILS ANY NERF THAT WORKS.** brx2, 2026-10-25 (Fable #8, brx1). Its "last near-top cell" clause fails a kit that stops being top, and under common random numbers it overstates noise. Judge a kit by its own absolute score dropping beyond noise. Owner brx2. `build`.
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.

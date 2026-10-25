@@ -111,6 +111,7 @@ describe('ITEMS — utility phones at muster', () => {
     expect(state().game_byte).toBe(1);
     await api.start(60, true);
     await api.control('end');
+    await api.finaliseRecap();
     await api.pushLobby(true);                          // muster for match 2
     await settle();
     expect(state().game_byte).toBe(2);

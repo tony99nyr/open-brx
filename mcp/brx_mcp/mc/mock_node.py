@@ -45,9 +45,10 @@ class MockNode:
                  app_ver: str = _DEFAULT_MOCK_APP_VER, gun_echo: str | None = "$LCD,0,0,0,0,0,0,*",
                  heartbeat_ms: int = STATUS_HEARTBEAT_MS, max_hp: int = 45, max_armor: int = 70,
                  backoff_cap_s: float = 10.0, prior_utility: dict[str, str] | None = None,
-                 sync_ms: int = 5000, no_config: bool = False):
+                 sync_ms: int = 5000, no_config: bool = False, report_pending: bool = True):
         self.url = url
         self.no_config = no_config   # F549: ack a push `err: "no_config"`, as the phone does when the gun loaded nothing
+        self.report_pending = report_pending   # False models an older phone that omits the count
         self.node_id = node_id or f"mock-{uuid.uuid4().hex[:6]}"
         self.gun_name, self.gun_tail, self.gun_fw = gun_name, gun_tail, gun_fw
         self.node_type, self.app_ver = node_type, app_ver
@@ -248,6 +249,8 @@ class MockNode:
             **({"config_id": self.config_id} if self.config_id else {}),     # A36
             **self.extra_status,
         }
+        if self.report_pending and self.arm_state == "kitted" and self.match_id:
+            body["pending"] = len(self.ring)
         if self.arm_state == "armed" and self.go_live_t:
             body["t_minus_ms"] = max(0, self.go_live_t - self.synced_now())
         return body

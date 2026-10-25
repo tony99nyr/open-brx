@@ -142,8 +142,9 @@ export function createHttpApi(): Api {
         let opened = false, live = false;
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
         const tok = getToken();
-        ws = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
-        ws.onmessage = ev => {
+        const socket = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
+        ws = socket;
+        socket.onmessage = ev => {
           try {
             const m = JSON.parse(ev.data);
             // F540: a socket is up when MC SENDS on it. MC accepts a socket whose token it refuses and then closes it
@@ -158,8 +159,9 @@ export function createHttpApi(): Api {
             else if (m.kind === 'error' && m.code === 401) notifyAuth(true);
           } catch { /* malformed frame: ignore */ }
         };
-        ws.onopen = () => { opened = true; };
-        ws.onclose = ev => {
+        socket.onopen = () => { opened = true; };
+        socket.onclose = ev => {
+          if (closed || ws !== socket) return;
           if (live && !closed) onLink?.(false);   // F586 review: a closed subscription's socket closing late (a redial for a new token) must not mark the new link down
           if (ev.code === 4401 || ev.code === 1008) notifyAuth(true);     // server refused the token
           else if (!opened && !closed) {
@@ -169,7 +171,7 @@ export function createHttpApi(): Api {
           }
           if (!closed) { setTimeout(open, delay); delay = Math.min(delay * 2, 10000); }
         };
-        ws.onerror = () => ws?.close();
+        socket.onerror = () => socket.close();
       };
       open();
       return () => { closed = true; ws?.close(); };

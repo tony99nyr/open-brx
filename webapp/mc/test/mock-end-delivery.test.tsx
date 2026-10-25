@@ -207,7 +207,9 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
       expect(state.start).toBeNull();
       expect(state.recap?.played_s).toBe(0);
       expect(state.recap?.rows.every(row => row.kills === 0 && row.best_streak === 0)).toBe(true);
-      expect(state.recap?.winner).toEqual({ team_id: null, tie: ['blue', 'yellow'] });
+      expect(state.recap?.winner).toBeNull();
+      await b.finaliseRecap();
+      expect((await b.getState()).recap?.winner).toEqual({ team_id: null, tie: ['blue', 'yellow'] });
       expect(state.end_delivery?.match_id).toBe(started.match_id);
     } finally { b.dispose(); vi.useRealTimers(); }
   });
@@ -271,6 +273,7 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     try {
       await b.pushLobby(true); await b.start(0, true);
       await vi.advanceTimersByTimeAsync(2000); await b.control('end');
+      await b.finaliseRecap();
       await b.nextMatch();
       await vi.advanceTimersByTimeAsync(140_000);
       const state = await b.getState();

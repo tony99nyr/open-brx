@@ -178,7 +178,10 @@ const stateOf = async mcBase => (await (await fetch(`${mcBase}/api/state`)).json
 async function realToKit(mcBase) {
   const s = await stateOf(mcBase);
   if (s.phase === 'armed' || s.phase === 'live') await post(mcBase, '/api/start/abort');
-  if (s.phase === 'recap') await post(mcBase, '/api/session/new', { keep_roster: true });
+  if (s.phase === 'recap') {
+    await post(mcBase, '/api/recap/finalise');
+    await post(mcBase, '/api/session/new', { keep_roster: true });
+  }
   await post(mcBase, '/api/phase', { phase: 'kit' });
   return (await stateOf(mcBase)).phase;
 }
@@ -188,7 +191,10 @@ async function realGoLive(mcBase) {
   const s0 = await stateOf(mcBase);
   if (s0.phase === 'live') return true;
   if (s0.phase === 'armed') await post(mcBase, '/api/start/abort');
-  if (s0.phase === 'recap') await post(mcBase, '/api/session/new', { keep_roster: true });
+  if (s0.phase === 'recap') {
+    await post(mcBase, '/api/recap/finalise');
+    await post(mcBase, '/api/session/new', { keep_roster: true });
+  }
   await post(mcBase, '/api/phase', { phase: 'lobby' });
   await post(mcBase, '/api/lobby/push', { force: true });
   let r = await post(mcBase, '/api/start', { runway_s: 1, force: true });
@@ -392,6 +398,7 @@ async function runMock(browser, viteBase, vp, tag) {
   // the roster can never see it (review 2026-09-12).
   await pg.evaluate(async () => {
     const a = window.__MC_MOCK__;
+    await a.finaliseRecap();
     await a.newSession(true);
     let s = await a.getState();
     const teams = (s.config.teams || []).map(t => t.team_id);
