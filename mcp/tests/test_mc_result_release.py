@@ -98,10 +98,12 @@ def test_restart_released_pushes_result_once_and_welcome_carries_it():
     s.control("end")
     s.finalise_recap()
     s2, net2 = restart_session(s, clock)
-    _welcome(net2, 0)   # the phone rebinds before MC resumes the stored match
     assert s2.resume_match() == "recap"
-    assert [p[0] for p in net2.pushes("result")] == ["node0"] and _victories(net2) == []
+    assert net2.pushes("result") == [] and _victories(net2) == []
+    welcome0 = _welcome(net2, 0)
+    assert "result" in welcome0
     assert "result" in _welcome(net2, 1)
+    assert _victories(net2) == []
     assert len(net2.pushes("result")) == 2
     s2.tick()
     assert len(net2.pushes("result")) == 2
@@ -117,7 +119,7 @@ def test_restart_pending_stays_quiet_until_release():
     _welcome(net2, 0)
     assert "result" not in _welcome(net2, 1)
     s2.finalise_recap()
-    assert len(net2.pushes("result")) == 2 and len(_victories(net2)) == 1
+    assert len(net2.pushes("result")) == 2 and _victories(net2) == []
 
     s3, net3, clock3, ps3, info3 = persisting_live()
     kill(s3, net3, clock3, ps3, 0, 1, info3, seq=1)
@@ -183,13 +185,26 @@ def test_stale_live_return_after_late_winner_change_gets_current_result_only():
             "shooter_team": 1, "seq": seq}]}, clock["t"])
     assert s.last_recap["winner"] != initial
     s.finalise_recap()
+    current_winner = s.last_recap["winner"]
+    s._roll_forward_from_recap()  # retire the match before the phone reports stale-live
     net.pushed.clear()
-    welcome = _welcome(net, 1)
-    assert welcome["result"]["winner"] == s.last_recap["winner"]
     net.simulate_status("node1", {"player_id": ps[1]["player_id"], "arm_state": "live",
                                   "match_id": info["match_id"], "pending": 1}, clock["t"])
     pushed = net.pushes("result", "node1")
-    assert pushed and all(row[2]["winner"] == s.last_recap["winner"] for row in pushed)
+    assert pushed and all(row[2]["winner"] == current_winner for row in pushed)
+    assert all(row[2]["winner"] != initial for row in pushed)
+
+
+def test_retired_unreleased_match_sends_no_stale_live_result():
+    s, net, clock, ps, info = _end_pending()
+    assert s._ended[info["match_id"]]["released"] is False
+    # The operator route forbids a pending roll. Exercise the retired ledger path directly.
+    s.match = None
+    s.phase = "kit"
+    net.pushed.clear()
+    s._reconcile_stale_live("node1", info["match_id"])
+    assert net.pushes("control", "node1")
+    assert net.pushes("result", "node1") == []
 
 
 def test_getter_release_flushes_result_score_and_victory_on_tick_once():
@@ -208,7 +223,7 @@ def test_getter_release_flushes_result_score_and_victory_on_tick_once():
     assert len(_victories(net)) == 1
 
 
-def test_mc_clock_step_back_does_not_cancel_instant_victory():
+def test_mc_clock_step_back_blocks_victory_even_when_monotonic_age_is_short():
     s, net, clock, ps, info = go_live_stored(2, "ffa")
     mono = {"t": clock["t"]}
     s.mono_ms = lambda: mono["t"]
@@ -217,7 +232,54 @@ def test_mc_clock_step_back_does_not_cancel_instant_victory():
     s.control("end")
     clock["t"] -= 60_000  # mc_clock_step: the wall clock moves, the monotonic clock does not
     s.finalise_recap()
-    assert [p[0] for p in _victories(net)] == ["node0"]
+    assert _victories(net) == []
+
+
+def test_lid_sleep_wall_age_blocks_victory_when_monotonic_age_is_short():
+    s, net, clock, ps, info = _end_pending()
+    mono = s.mono_ms()
+    s.mono_ms = lambda: mono
+    clock["t"] += 31_000
+    s.finalise_recap()
+    assert len(net.pushes("result")) == 2
+    assert _victories(net) == []
+
+
+def test_final_heartbeat_refreshes_recap_before_release_pushes():
+    s, net, clock, ps, info = _end_pending()
+    _status(net, clock, ps, 0)
+    net.simulate_status("node1", {"player_id": ps[1]["player_id"], "shots": 17,
+                                  "alive": True, "synced": True, "pending": 0}, clock["t"])
+    assert s.match.released
+    result = net.pushes("result")
+    scores = net.pushes("score")
+    assert len(result) == len(scores) == 2
+    assert result[0][2]["rows"] == scores[0][2]["rows"]
+    assert result[0][2]["my"]["accuracy"] == scores[0][2]["accuracy"]
+
+
+def test_result_dedupe_allows_same_player_on_a_new_node():
+    s, net, clock, ps, info = _end_pending()
+    s.finalise_recap()
+    net.evict("node0")
+    net.simulate_hello("replacement", f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+    assert s.players[ps[0]["player_id"]]["node_id"] == "replacement"
+    s._push_result()
+    assert len(net.pushes("result", "replacement")) == 1
+
+
+def test_failed_score_push_stays_eligible_until_socket_returns():
+    s, net, clock, ps, info = _end_pending()
+    s.finalise_recap()
+    net.evict("node0")
+    s._score_pushed.clear()
+    s._push_scores(release_flush=True)
+    assert any(p[0] == "node0" for p in net.pushes("score"))
+    assert ps[0]["player_id"] not in s._score_pushed
+    net.simulate_hello("node0", f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+    s._push_scores(release_flush=True)
+    successful = [p for p in net.pushes("score", "node0") if id(p[2]) not in net.undelivered]
+    assert successful
 
 
 def test_frag_cap_kill_timestamp_ahead_of_mc_still_plays_victory():
@@ -245,7 +307,7 @@ def test_recap_team_edit_does_not_move_victory_to_loser():
     assert [p[0] for p in _victories(net)] == ["replacement"]
 
 
-def test_crash_after_release_latch_replays_unsent_result_score_and_timed_victory():
+def test_crash_after_release_latch_delivers_on_reconnect_without_victory():
     s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
@@ -255,28 +317,34 @@ def test_crash_after_release_latch_replays_unsent_result_score_and_timed_victory
     saved = json.loads(s._persist_path.read_text())
     assert saved["match"]["released"] is True and saved["match"]["release_pending"] is True
     s2, net2 = restart_no_repersist(s, clock)
-    _welcome(net2, 0)
-    _welcome(net2, 1)
+    for i, player in enumerate(ps):
+        # A restored logical binding can exist before the socket server accepts a phone.
+        s2.players[player["player_id"]]["node_id"] = f"node{i}"
     s2.resume_match()
-    assert len(net2.pushes("result")) == 2 and len(net2.pushes("score")) == 2
-    assert [p[0] for p in _victories(net2)] == ["node0"]
+    # Resume precedes socket startup. Hello carries the result and triggers score delivery.
+    assert net2.pushes("result") == [] and net2.pushes("score") == []
+    assert _victories(net2) == []
+    welcome0 = _welcome(net2, 0)
+    welcome1 = _welcome(net2, 1)
+    assert "result" in welcome0 and "result" in welcome1
+    delivered = lambda kind: [p[0] for p in net2.pushes(kind) if id(p[2]) not in net2.undelivered]
+    assert delivered("result") == ["node0", "node1"]
+    assert delivered("score") == ["node0", "node1"]
     s2.tick()
-    assert len(net2.pushes("result")) == 2 and len(_victories(net2)) == 1
+    assert _victories(net2) == []
 
 
-def test_restart_downtime_counts_against_victory_window():
+def test_restart_never_plays_victory_and_reconnect_gets_result():
     s, net, clock, ps, info = persisting_live()
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
-    saved = json.loads(s._persist_path.read_text())
-    assert saved["match"]["whistle_elapsed_ms"] >= 0
-    clock["t"] += 31_000
+    s.finalise_recap()
     s2, net2 = restart_no_repersist(s, clock)
     s2.resume_match()
-    _welcome(net2, 0)
-    _welcome(net2, 1)
-    s2.finalise_recap()
-    assert len(net2.pushes("result")) == 2 and _victories(net2) == []
+    assert _victories(net2) == []
+    assert "result" in _welcome(net2, 0)
+    assert "result" in _welcome(net2, 1)
+    assert net2.pushes("score")
 
 
 def test_resuming_recap_flag_clears_if_finish_raises():

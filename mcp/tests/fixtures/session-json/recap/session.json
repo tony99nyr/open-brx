@@ -1041,9 +1041,7 @@
     ],
     "whistle_base": {
       "hot-joined": "00000009"
-    },
-    "whistle_elapsed_ms": 0,
-    "whistle_saved_mono_ms": 5036001
+    }
   },
   "players": [
     {

@@ -624,8 +624,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   never reads it, so that push is what stops the field). The feed carries one line:
   `FRAG LIMIT N REACHED · MATCH OVER · END REACHED x OF y NODE(S)`.
 - **The match RESULT reaches every node (A24, 2026-09-11).** MC sends `result` when it releases the result (A81), including on FINALISE. `welcome.node.result` exists only after release.
-  A restart re-pushes a released `result` without `victory` when release delivery was marked complete. If delivery was still pending at the crash, the restart sends `result`, `score` and timely `victory`.
-  MC sends `victory` at release only when release is within 30 seconds of its whistle (A81).
+  After a restart, each phone gets the released `result` and `score` when it reconnects, even if release delivery was pending at the crash. MC never sends `victory` after a restart.
+  In one process, MC sends `victory` at release only when both clocks place it within 30 seconds of the whistle (A81).
   MC pushes `result` to every
   BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
   RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),

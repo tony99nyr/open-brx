@@ -648,7 +648,7 @@ class Session:
         self._batch_depth = 0
         self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
-        self._result_pushed: dict[str, dict] = {}  # A24: last `result` body pushed per player (minus `t`)
+        self._result_pushed: dict[tuple[str, str], dict] = {}  # A24: last `result` body per player and node (minus `t`)
         self._resuming_recap = False
         # A34 (field 2026-09-12): the matches this MC has RETIRED, newest last -- match_id -> {recap, players,
         # ended_ms}. A phone that was off the network at the whistle comes back still LIVE in one of these
@@ -3186,6 +3186,8 @@ class Session:
                 match.release_pending = True
                 changed = True
             match.released = True
+            if match.scorer.match_id in self._ended:
+                self._ended[match.scorer.match_id]["released"] = True
         if changed:
             self._persist_dirty = True
             self.persist_now()
@@ -3750,6 +3752,7 @@ class Session:
         self._changed()
         if p and self.phase == "recap" and self.match is not None and self.match.released:
             self._push_result()   # a restarted MC has no prior delivery record for this returning socket
+            self._push_scores()   # welcome carries the score; this also retries a failed release push
         return self.node_player.get(nid)
 
     def _hydrate(self, hello: dict) -> dict | None:
@@ -4060,7 +4063,10 @@ class Session:
         if sc and sc.node_player.get(nid) == self.node_player.get(nid):
             # after the whistle the scorer's map is frozen; a status names no player, so a phone handed over in the debrief
             # only speaks for the row it still holds (0.4.19 polish r3)
+            old_rows = sc.rows() if self.phase == "recap" else None
             sc.ingest_status(nid, body, t_recv)
+            if old_rows is not None and sc.rows() != old_rows:
+                self._restore_recap()  # the final shot count belongs in result.rows before release
             self._push_scores()       # F265: misses change shots/accuracy only through this heartbeat
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
@@ -4263,7 +4269,10 @@ class Session:
         self._ended.pop(match_id, None)
         si = self._m().head or {}
         # F471: the match's own config and go-live time, so a late recreate of its archive row never takes the next game's
-        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms(),
+        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None,
+                                 "released": bool(self.match and self.match.scorer
+                                                  and self.match.scorer.match_id == match_id and self.match.released),
+                                 "ended_ms": self.now_ms(),
                                  "config": copy.deepcopy(self.config),
                                  "go_live_t": si.get("go_live_t", 0) if si.get("match_id") == match_id else 0,
                                  "aborted_seq": aborted_seq}
@@ -4336,7 +4345,8 @@ class Session:
         p = self.players.get(pid) if pid else None
         current_match = (self.match if self.phase == "recap" and self.match is not None
                          and self.match.scorer is not None and self.match.scorer.match_id == mid else None)
-        recap = (self.last_recap if current_match.released else None) if current_match else (ended.get("recap") if ended else None)
+        recap = ((self.last_recap if current_match.released else None) if current_match else
+                 (ended.get("recap") if ended and ended.get("released") else None))
         told_result = False
         current_pending = current_match is not None and not current_match.released
         roster = (current_match.played if current_match else ended.get("players") if ended else None) or self.players
@@ -4641,15 +4651,9 @@ class Session:
             winner = m.get("final_winner")
             match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
             match.released = (m.get("released") is True or match.finalised or match.final_winner is not None)
-            match.release_pending = m.get("release_pending") is True
-            elapsed = m.get("whistle_elapsed_ms")
-            saved_mono = m.get("whistle_saved_mono_ms")
-            if isinstance(elapsed, int) and not isinstance(elapsed, bool) and elapsed >= 0:
-                mono = self.mono_ms()
-                # A monotonic epoch change cannot prove the cue is still timely.
-                age = elapsed + (mono - saved_mono if isinstance(saved_mono, int) and mono >= saved_mono
-                                 else VICTORY_STING_MAX_S * 1000 + 1)
-                match.whistle_mono_ms = mono - age
+            # A persisted release awaits reconnects. The socket server starts after resume_match.
+            # Never replay the in-process victory cue after a restart.
+            match.release_pending = False
             match.result_changed = m.get("result_changed") is True
             match.end_reason = m.get("end_reason") if isinstance(m.get("end_reason"), str) else None
             self.end_reason = match.end_reason
@@ -4667,10 +4671,11 @@ class Session:
             match.whistle(whistle)
             self._finish(resuming=True)
             match.played = played
-            if match.release_pending:
-                self._flush_result_release()
-            elif match.released:
-                self._push_result()   # the in-memory dedupe is empty after a restart
+            if mid not in self._ended:
+                self._record_ended(mid, self.last_recap, played)
+            else:
+                self._ended[mid]["recap"] = self.last_recap
+                self._ended[mid]["released"] = match.released
             self._resume_end_delivery(mid, whistle, m.get("_end_delivery_saved", m.get("end_delivery")),
                                       m.get("_end_delivery_told"))
             if mid in self._ended:
@@ -5375,6 +5380,8 @@ class Session:
             return
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
+            if sc.match_id in self._ended:
+                self._ended[sc.match_id]["recap"] = self.last_recap
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
             if self._m().released:
@@ -5401,8 +5408,8 @@ class Session:
             body["rows"] = rows                     # A24: EVERY player's row, all modes — the phone's mid-match leaderboard
             if self._score_pushed.get(pid) == body:
                 continue
-            self._score_pushed[pid] = body
-            self.net.push(p["node_id"], "score", body)
+            if self.net.push(p["node_id"], "score", body) is not False:
+                self._score_pushed[pid] = body
 
     # ---------- A24: the match result reaches EVERY node, losers included ----------
     def _as_played(self, p: Player, roster: dict[str, Player] | None = None) -> Player:
@@ -5514,15 +5521,17 @@ class Session:
         roster = played if played is not None else self.players
         for pid in roster:
             p = self.players.get(pid)
-            if not p or not p.get("node_id"):
+            node_id = p.get("node_id") if p else None
+            if p is None or not node_id:
                 continue
             body = self._result_body(self.last_recap, p)
             key = {k: v for k, v in body.items() if k != "t"}
-            if self._result_pushed.get(p["player_id"]) == key:
+            delivery = (pid, node_id)
+            if self._result_pushed.get(delivery) == key:
                 continue
-            if self.net.push(p["node_id"], "result", body) is False:   # no socket or would not encode: stay unrecorded, so the next call retries
+            if self.net.push(node_id, "result", body) is False:   # no socket or would not encode: stay unrecorded, so the next call retries
                 continue
-            self._result_pushed[p["player_id"]] = key
+            self._result_pushed[delivery] = key
             sent += 1
         return sent
 
@@ -5534,8 +5543,9 @@ class Session:
         self._push_result()
         self._score_pushed.clear()
         self._push_scores(release_flush=True)
-        if match.whistle_mono_ms is not None \
-                and 0 <= self.mono_ms() - match.whistle_mono_ms <= VICTORY_STING_MAX_S * 1000:
+        if (match.whistle_mono_ms is not None and match.whistle_wall_ms is not None
+                and 0 <= self.mono_ms() - match.whistle_mono_ms <= VICTORY_STING_MAX_S * 1000
+                and 0 <= self.now_ms() - match.whistle_wall_ms <= VICTORY_STING_MAX_S * 1000):
             self._push_victory(self.last_recap)
         match.release_pending = False
         self._persist_dirty = True
@@ -7063,7 +7073,6 @@ class Session:
         self._log_inflight = set()
         self._pending_limit_t = None           # a new match owes nothing to the last one's cap
         self._result_pushed = {}               # A24: nor to the last one's result
-        self._result_release_pending = False
         self.end_reason = None
         self.feed = []
         # The delivery loop below must restate any WITHHELD phone after this feed reset. Keeping the
@@ -7646,6 +7655,7 @@ class Session:
         if not resuming:
             match.end_reason = self.end_reason
             match.whistle_mono_ms = self.mono_ms()
+            match.whistle_wall_ms = self.now_ms()
         if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}
