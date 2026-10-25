@@ -790,15 +790,34 @@ setInterval(refreshPreflight, 5000);
 // transitions are deterministic and screen-truth asserts against them land within a couple of seconds,
 // which the debounce would otherwise blow straight through.
 let _boundRun = null;
+// Phone sync track (hud/synctrack.js): the facts it needs beyond bound/pending. `pendingChangedAt` moves whenever the
+// unsent count changes, so a count that sits still for SYNC_STUCK_MS reads as stuck.
+let _syncPending = null, _syncChangedAt = Date.now(), _syncBound = false, _syncBoundAt = 0, _syncUnboundAt = 0;
+// The whistle on THIS clock (Date.now, as drainedAt, pendingChangedAt and boundAt are): engine.endedAt is on MC's synced
+// clock, so it is moved across once, by the offset at the first poll that sees the end, and a later resync cannot move it.
+let _syncEndKey = null, _syncWhistleAt = 0;
 setInterval(() => { try {
-  let bound, pending;
-  if (DEMO && !transport) { bound = engine.state().wsState === 'bound'; pending = 0; }
-  else {
+  let bound, pending, drainedAt = 0, connType = null, reach = null;
+  if (DEMO && !transport) {
+    bound = engine.state().wsState === 'bound'; pending = 0; drainedAt = bound ? Date.now() : 0;   // a bound stage has delivered
+    const o = typeof window !== 'undefined' && window.brxDemoSync;   // a stage that shows another sync state (demo.js)
+    if (o) ({ bound = bound, pending = pending, drainedAt = drainedAt, connType = connType, reach = reach } = o);
+  } else {
     _boundRun = debounceBound(_boundRun, !!transport && transport.state === 'bound');
     bound = _boundRun.committed;
-    pending = transport && transport.ring ? transport.ring.pending().length : 0;
+    pending = transport && transport.ring ? transport.ring.size : 0;
+    if (transport) ({ drainedAt, connectionType: connType, reach } = transport);
   }
-  hud.sync = { bound, pending };
+  if (pending !== _syncPending) { _syncPending = pending; _syncChangedAt = Date.now(); }
+  if (bound && !_syncBound) _syncBoundAt = Date.now();
+  if (!bound && _syncBound) _syncUnboundAt = Date.now();
+  const es = engine.state(), endKey = es.ended ? `${es.matchId}/${es.endedAt}` : null;
+  if (endKey !== _syncEndKey) { _syncEndKey = endKey; _syncWhistleAt = es.ended ? Date.now() - Math.max(0, engine.now() - es.endedAt) : 0; }
+  _syncBound = bound;
+  const o = DEMO && typeof window !== 'undefined' && window.brxDemoSync;
+  hud.sync = { bound, pending, drainedAt, connType, reach, pendingChangedAt: o && o.pendingChangedAt != null ? o.pendingChangedAt : _syncChangedAt,
+    boundAt: o && o.boundAt != null ? o.boundAt : _syncBoundAt,
+    unboundAt: o && o.unboundAt != null ? o.unboundAt : _syncUnboundAt, whistleAt: _syncWhistleAt };
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 

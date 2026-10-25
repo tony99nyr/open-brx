@@ -1,6 +1,7 @@
 // Result rendering for the phone HUD.
 import { AWARDS, MEDALS } from '../transport/contract.gen.js';
 import { medalChip, medalIcon } from './medalicons.js';
+import { syncTrack, trackHtml } from './synctrack.js';
 import { TEAM_COLOR, TEAM_INK, TEAM_TID, teamChip, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL } from './shared.js';
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
@@ -214,18 +215,16 @@ export function _result(st) {
     const hist = sid ? all.filter(g => g.session === sid) : all;
     const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
     const sess = tot.g > 1 ? `<div class="sess">${sid ? 'THIS SESSION' : 'OVERALL'} · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
-    const sync = this.sync && this.sync.bound && this.sync.pending === 0
-      ? '<div class="syncline ok">SCORES SENT TO THE HOST ✓</div>'
-      : this.sync && this.sync.bound
-        ? `<div class="syncline warn">SENDING SCORES… ${this.sync.pending} LEFT</div>`
-        : '<div class="syncline warn">OUT OF RANGE — SCORES SEND WHEN YOU ARE BACK</div>';
+    // Phone sync track (Tony 2026-10-25, gallery option A): MC's own stages, so a player can see why MC says not synced.
+    // It replaces the one-line SCORES SENT / SENDING / OUT OF RANGE line and, while unlinked, RETURN TO MISSION CONTROL
+    // (the track's own action says where to go).
+    const track = trackHtml(syncTrack(this.sync, st, Date.now()), { blink: !R });
     // The sheet's ask (D3): blink it while the result is not in — that is exactly when walking back matters.
     // It sat a pixel off the OUT OF RANGE line under it, a stack too tight to read (design-result-pending.png);
     // the room comes from `.fl`'s gap, so no line has to lose its own wording to make space.
     const ret = R ? '' : '<div class="retmc">RETURN TO MISSION CONTROL</div>';
-    // QA-14: with no result and no link, RETURN TO MISSION CONTROL is the one status line; OUT OF RANGE under it said
-    // the same thing again (and the MC pill a third time: `.pill.mcr` steps aside on this screen, index.html).
-    const syncShown = (!R && !(this.sync && this.sync.bound)) ? '' : sync;
+    // QA-14: one status line, never two saying the same thing (the MC pill steps aside on this screen, index.html). The
+    // track is that line now; RETURN TO MISSION CONTROL shows only with no sync reading to draw a track from.
     const mcv = (!R && st.game && st.game.mc_verify) ? `<div class="mcvline">${esc(String(st.game.mc_verify).toUpperCase())}</div>` : '';
 
     return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
@@ -233,7 +232,7 @@ export function _result(st) {
       <div class="rbody">${body}</div>
       ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
       <div class="rstats"${tilesHidden ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
-      <div class="rfoot foot"><div class="fl">${ret}${mcv}${syncShown}${sess}</div>
+      <div class="rfoot foot"><div class="fl">${track || ret}${mcv}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }
 
