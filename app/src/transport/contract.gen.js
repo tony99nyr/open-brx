@@ -323,6 +323,8 @@ export const TEAM_COLOUR_HEX = Object.freeze(['#f43f5e', '#3a86ff', '#ffd23f', '
 export const TEAM_INK_HEX = Object.freeze(['#1a0404', '#04121e', '#1a1400', '#140a1c']);
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export const ROLE_LABELS = Object.freeze({ assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' });
+/** F596 (Tony 2026-10-24): a row with no progress this long is stuck, and FINALISE turns prominent */
+export const SYNC_STUCK_S = 120;
 /** F264: one 8-byte ask for the MAGAZINE; the gun answers with a `$LCD` status array. Never send it to a gun that might be dead. */
 export const QUERY_FRAME = '$QUERY,*';
 /** F264 ⚠ THE DEAD-GUN PROBE, and it is a CONSTANT on purpose. `$LIFE` with a NON-ZERO token 1 is the revive

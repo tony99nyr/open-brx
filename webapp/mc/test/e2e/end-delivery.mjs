@@ -166,7 +166,8 @@ try {
     'the real LIVE board exposes the guarded END control');
   await endButton.click();
   await operator.getByRole('button', { name: 'CONFIRM END' }).click();
-  await operator.locator('[data-testid="end-delivery-recap"]').waitFor({ state: 'visible', timeout: 10000 });
+  // F596: RECAP has no END sentence any more; the whistle is seen as the header, and the END is a flag on a strip icon
+  await operator.locator('[data-testid="recap-status"]').waitFor({ state: 'visible', timeout: 10000 });
   expect(new URL(operator.url()).hash === '#recap', 'the server whistle advances the open LIVE board to #recap');
   expect(await operator.getByText('■ MATCH OVER', { exact: true }).count() === 1,
     'the command bar says MATCH OVER after the browser-driven END');
@@ -193,14 +194,12 @@ try {
     // is the number AND the label ("05 MATCH"), and the phase tag beside it reads "■ MATCH OVER" once the
     // match ends, so the matcher has to be the whole normalised label rather than a loose /MATCH/.
     await goTo(pg, /^\d+ MATCH$/);
-    const rec = pg.locator('[data-testid="end-delivery-recap"]');
-    await rec.waitFor({ state: 'visible', timeout: 10000 });
-    if (expect(await rec.count() === 1, 'the MATCH tab shows the recap, carrying the end-delivery block')) {
-      const t = (await rec.innerText()).replace(/\s+/g, ' ').toUpperCase();
-      console.log(`      "${t.slice(0, 160)}"`);
-      expect(/CONFIRMED THE END/.test(t), 'it says whether the HUDs confirmed the end');
-      expect(!/KILL|ACCURACY|MEDAL/.test(t), 'and says nothing about how anyone played');
-    }
+    await pg.locator('[data-testid="recap-status"]').waitFor({ state: 'visible', timeout: 10000 });
+    expect(await pg.locator('[data-testid="end-delivery-recap"]').count() === 0, 'F596: the MATCH tab shows the recap with NO end-delivery sentence');
+    expect(!/CONFIRMED THE END/.test((await pg.locator('main').innerText()).toUpperCase()), 'and no END sentence anywhere on it');
+    // the same fact, as a flag on each unconfirmed phone's strip icon (the server's `sync.rows[].end_unconfirmed`)
+    const flags = await pg.locator('[data-strip-end]').count();
+    expect(flags === ed.unconfirmed.length, `one END flag per unconfirmed HUD (${flags} of ${ed.unconfirmed.length})`);
     await shot(pg, `a41-recap-${vp.tag}`);
 
     const recapOverflow = await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);

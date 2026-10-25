@@ -283,7 +283,7 @@ describe('S38 — Armory gun card shows the bound player\'s gamertag', () => {
   });
 });
 
-describe('S41 — Recap hides AFTER THE WHISTLE when it has nothing to show', () => {
+describe('S41 / F596 — Recap never prints an AFTER THE WHISTLE box', () => {
   const base = async (): Promise<{ d: Awaited<ReturnType<typeof demo>>; recap: RecapView }> => {
     const d = await demo();
     const recap: RecapView = { winner: { player_id: d.state.players[0].player_id }, score: {},
@@ -310,21 +310,23 @@ describe('S41 — Recap hides AFTER THE WHISTLE when it has nothing to show', ()
     m.unmount();
   });
 
-  it('shown when there is a real per-player breakdown', async () => {
+  it('a real per-player breakdown prints no AFTER THE WHISTLE box either: RESULT CHANGED covers a flipped winner', async () => {
     const { d, recap } = await base();
     const pid = d.state.players[0].player_id;
     const state: State = { ...d.state, phase: 'recap', recap: { ...recap, after_end: { facts: 1, by_player: { [pid]: { kills: 1, deaths: 0 } } } } };
     const m = await mountScreen(<Recap />, { ...d, state });
-    expect(m.text()).toContain('AFTER THE WHISTLE');
+    expect(m.text()).not.toContain('AFTER THE WHISTLE');
+    expect(m.find('[data-testid="after-end"]').length).toBe(0);
     m.unmount();
   });
 
-  it('shown as a bare count when an older MC sends only post_end_facts (no breakdown at all)', async () => {
+  it('a bare post_end_facts count from an older MC prints no box either', async () => {
     const { d, recap } = await base();
     const state: State = { ...d.state, phase: 'recap', recap: { ...recap, post_end_facts: 3 } };
     const m = await mountScreen(<Recap />, { ...d, state });
-    expect(m.text()).toContain('AFTER THE WHISTLE');
-    expect(m.text()).toContain('WITHOUT THE PER-PLAYER SPLIT');
+    expect(m.text()).not.toContain('AFTER THE WHISTLE');
+    expect(m.text()).not.toContain('WITHOUT THE PER-PLAYER SPLIT');
+    expect(m.find('[data-testid="after-end-count"]').length).toBe(0);
     m.unmount();
   });
 });

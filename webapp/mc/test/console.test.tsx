@@ -161,7 +161,9 @@ describe('the RECAP history picker', () => {
     const href = () => (m.find('a[download]')[0] as HTMLAnchorElement | undefined)?.getAttribute('href');
     expect(href()).toBe('/api/recap.csv');            // THIS MATCH → the live scorer
     await m.click('· FFA');                            // the archived chip
-    expect(m.text()).toContain('ARCHIVED MATCH');
+    // F596: the full-width ARCHIVED MATCH banner is a small chip beside the title now
+    expect(m.find('[data-testid="recap-archived"]')[0]?.textContent, 'the ARCHIVED chip').toBe('ARCHIVED');
+    expect(m.text(), 'no banner sentence').not.toContain('ARCHIVED MATCH');
     expect(href()).toBe('/api/matches/m7.csv');        // that match, by id
     expect(m.text()).not.toContain('NEW MATCH');       // a record is not a place to start a game from
     m.unmount();
@@ -211,7 +213,12 @@ describe('the RECAP history picker', () => {
     expect(txt, "the header must name the archived match's mode").toContain('TDM');
     expect(txt, 'DATA SYNC reads the LIVE roster — meaningless here').not.toContain('DATA SYNC');
     expect(txt, 'the live CTA must not appear on an archived match').not.toContain('BRING THEM INTO RANGE');
-    expect(txt).toContain('AS RECORDED WHEN THE MATCH WAS ARCHIVED');
+    // F596: a provisional archived recap no longer carries a NOT FLUSHED sentence at all, and has no sync strip or pending state
+    expect(txt, 'no NOT FLUSHED banner').not.toContain('NOT FLUSHED');
+    expect(txt).not.toContain('AS RECORDED WHEN THE MATCH WAS ARCHIVED');
+    expect(m.find('[data-testid="sync-strip"]').length, 'an archived recap has no strip').toBe(0);
+    expect(m.find('[data-testid="results-pending"]').length, 'and is never pending').toBe(0);
+    expect(m.find('[data-testid="recap-archived"]').length, 'the ARCHIVED chip').toBe(1);
     expect(txt, "the archived recap's own name must win over the live roster").toContain('OLD NAME');
     m.unmount();
   });
@@ -452,13 +459,13 @@ describe('the RECAP selection and its export error', () => {
       <StoreCtx.Provider value={{ ...base, state: { ...state, phase } }}><Recap /></StoreCtx.Provider>;
     const m = await mount(render());
     await m.click('· FFA');
-    expect(m.text()).toContain('ARCHIVED MATCH');
+    expect(m.find('[data-testid="recap-archived"]').length).toBe(1);
 
     // NEW SESSION: the session is rebuilt, the history is empty, and the phase moves — which is what
     // re-runs the fetch. The selection now points at a match the server no longer lists.
     rows = [archived('m8', 'tdm')];        // m7 is gone; m8 remains so the picker still shows
     await m.update(render('muster'));
-    expect(m.text(), 'a vanished selection must not still render as archived').not.toContain('ARCHIVED MATCH');
+    expect(m.find('[data-testid="recap-archived"]').length, 'a vanished selection must not still render as archived').toBe(0);
     expect(m.text(), 'the live match must be fully in charge again').toContain('PLAY AGAIN');
 
     // The real symptom: the screen shows the LIVE recap while the picker highlights NOTHING, so the

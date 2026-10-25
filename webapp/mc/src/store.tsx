@@ -158,7 +158,7 @@ const ENTER_CONFIRM_MS = 8000;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
-  const api = useMemo<Api>(() => (mock ? new MockBackend() : createHttpApi()), [mock]);
+  const api = useMemo<Api>(() => (mock ? new MockBackend({ syncDemo: true }) : createHttpApi()), [mock]);
   const [state, setState] = useState<State | null>(null);
   const [feed, setFeed] = useState<FeedEntry[]>([]);
   const [modes, setModes] = useState<ModeInfo[]>([]);

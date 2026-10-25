@@ -127,9 +127,10 @@ describe('a possession game reads as possession', () => {
     const t = block[0].textContent ?? '';
     expect(t).toMatch(/4:05/);                    // 245 s held, as a clock and not as "245"
     expect(t).toMatch(/1:40/);
-    expect(t).toMatch(/NEUTRAL 0:55/);            // nobody's time is shown as nobody's
-    expect(t).toMatch(/BEST COVERAGE 6:40 OF 6:40/);
-    expect(t).toMatch(/FLOOR, NOT A FULL ACCOUNT/);
+    // F596: the NEUTRAL and BEST COVERAGE caveat lines are gone from RECAP
+    expect(t).not.toMatch(/NEUTRAL/);
+    expect(t).not.toMatch(/BEST COVERAGE|FLOOR, NOT A FULL ACCOUNT/);
+    expect(m.find('[data-alert^="recap-possession"]').length, 'no possession alert line at all').toBe(0);
     // the winner block still comes from the server, which named blue on possession despite green's kills
     expect(m.text()).toMatch(/BLUE TEAM WINS/i);
     m.unmount();
@@ -142,7 +143,8 @@ describe('a possession game reads as possession', () => {
     const t = m.find('[data-testid="possession"]')[0].textContent ?? '';
     // F221 (Tony, 2026-09-25): a coverage caveat is a measurement fact, not a fault, so it is NEUTRAL
     // now — no glyph, whatever the coverage. The line still says it is a floor either way.
-    expect(t).toMatch(/BEST COVERAGE 1:00 OF 10:00/);
+    expect(t).toMatch(/0:30/);
+    expect(t, 'F596: the thin-coverage caveat sentence is gone').not.toMatch(/BEST COVERAGE/);
     m.unmount();
   });
 
@@ -156,7 +158,7 @@ describe('a possession game reads as possession', () => {
     }));
     const t = m.find('[data-testid="possession"]')[0].textContent ?? '';
     expect(t).toMatch(/2:00/);                    // 119.7 rounds to a whole 120 s, not "1:60"
-    expect(t).toMatch(/NEUTRAL 1:00/);            // 59.6 rounds to a whole 60 s, not "0:60"
+    expect(t, 'F596: no NEUTRAL line, and so no "0:60" either').not.toMatch(/NEUTRAL|0:60/);
     m.unmount();
   });
 
@@ -175,17 +177,18 @@ describe('a recap that is still moving says so', () => {
     const d = await demo();
     const someone = d.state.players[0];
     const m = await recapScreen(RECAP({ settling: true, awaiting: [someone.player_id], since_end_ms: 42_000 }));
-    const banner = m.find('[data-testid="settling"]');
-    expect(banner.length).toBe(1);
-    expect(banner[0].textContent).toMatch(/STILL SETTLING/);
-    expect(banner[0].textContent).toMatch(new RegExp(someone.display, 'i'));
-    // the strip is all caps and nothing uppercases it, so the seconds are written in caps at source
-    expect(banner[0].textContent).toMatch(/42S AGO/);
-    expect(banner[0].textContent).not.toMatch(/\ds AGO/);
-    expect(banner[0].textContent).toMatch(/1 NODE HAS NOT REPORTED/);   // not "1 NODE HAVE"
-
-    expect(banner[0].textContent).toMatch(/CAN STILL CHANGE/);
+    // F596: no STILL SETTLING sentence. The server's `sync` carries it: a row that is not received, and a pending result.
+    expect(m.find('[data-testid="settling"]').length, 'the settling banner is gone').toBe(0);
+    expect(m.text()).not.toMatch(/STILL SETTLING|CAN STILL CHANGE/);
     m.unmount();
+    // ...and what carries the meaning instead: the server says pending, the page says so
+    const rc = RECAP({ settling: true, awaiting: [someone.player_id], since_end_ms: 42_000 });
+    const rows = [{ kind: 'phone', id: someone.player_id, name: someone.display, team_id: someone.team_id, stage: 'linked', transport: 'wifi', end_unconfirmed: false, idle_s: 42, stuck: false }];
+    const p = await recapScreen({ ...rc, sync: { pending: true, finalised: false, result_changed: false, rows } } as unknown as RecapView);
+    expect(p.find('[data-testid="results-pending"]').length).toBe(1);
+    expect(p.find(`[data-strip-icon="${someone.player_id}"]`).length).toBe(1);
+    expect(p.text()).toMatch(/WAITING FOR 1 PHONE/);
+    p.unmount();
   });
 
   it('says nothing once every node has reported', async () => {

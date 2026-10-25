@@ -11,7 +11,7 @@
 //          - the match's real length, which the server's own clock gives, not the 10:00 limit (M23);
 //          then PLAY AGAIN ▸ is CLICKED: the console lands on PLAY with the same game shown loaded
 //          (CONTINUE TO KIT ▸, F411), and the server has left RECAP.
-//   stale  the same RECAP with `since_end_ms` and `end_delivery` stripped over REST AND the WebSocket
+//   stale  the same RECAP with `since_end_ms`, `end_delivery` and `sync` stripped over REST AND the WebSocket
 //          (an MC that predates them): the header says LIMIT, not a length, and nothing crashes.
 import path from 'node:path';
 import * as H from './lib/mc-harness.mjs';
@@ -44,7 +44,7 @@ async function endFromLive(pg) {
   await end.waitFor({ state: 'visible', timeout: 15000 });
   await end.click();
   await pg.getByRole('button', { name: 'CONFIRM END' }).click();
-  await pg.locator('[data-testid="end-delivery-recap"]').waitFor({ state: 'visible', timeout: 15000 });
+  await pg.locator('[data-testid="recap-status"]').waitFor({ state: 'visible', timeout: 15000 });
 }
 
 try {
@@ -71,21 +71,14 @@ try {
     const s = await srv.get('/api/state');
     const ed = s.end_delivery;
     console.log(`      end_delivery: retrying=${ed?.retrying} unconfirmed=${ed?.unconfirmed?.length} of ${ed?.total}`);
-    const block = pg.locator('[data-testid="end-delivery-recap"]');
-    const t = ((await block.innerText()) || '').replace(/\s+/g, ' ').toUpperCase();
-    console.log(`      "${t.slice(0, 200)}"`);
-    if (c.expect(ed && ed.retrying, 'the server is still re-delivering the END (the case the QA saw)')) {
-      c.expect(!/NEVER/.test(t), 'RECAP does not say NEVER while MC is still re-delivering');
-      c.expect(/NOT CONFIRMED THE END YET/.test(t), 'it says the END is not confirmed YET');
-      c.expect(/STILL RE-DELIVERING/.test(t), 'it says MC is still re-delivering');
-      c.expect(await block.getAttribute('data-end-state') === 'retrying', 'the block is in its retrying (amber) state');
-    }
-    c.expect(/REACHING A NODE IS NOT A CONFIRMATION/.test(t), 'it keeps REACHED apart from CONFIRMED');
+    // F596: no END sentence and no DATA SYNC chips on RECAP any more: the END is a flag on the phone's strip icon
+    c.expect(await pg.locator('[data-testid="end-delivery-recap"]').count() === 0, 'no END block on RECAP');
+    c.expect(await pg.locator('[data-sync-chip]').count() === 0, 'no DATA SYNC chips on RECAP');
+    const body = (await H.bodyText(pg)).toUpperCase();
+    c.expect(!/NOT CONFIRMED THE END|REACHING A NODE IS NOT A CONFIRMATION|STILL RE-DELIVERING/.test(body), 'RECAP prints no END sentence');
     const unconfirmed = new Set((ed?.unconfirmed ?? []).map(u => u.player_id));
-    const chips = await pg.locator('[data-sync-chip]').evaluateAll(els => els.map(e => [e.getAttribute('data-sync-chip'), (e.textContent || '').toUpperCase()]));
-    c.expect(chips.length > 0, `the DATA SYNC chips render (${chips.length})`);
-    const bare = chips.filter(([pid, txt]) => unconfirmed.has(pid) && /SYNCED/.test(txt) && !/END NOT CONFIRMED/.test(txt));
-    c.expect(bare.length === 0, `no chip calls an unconfirmed HUD bare "SYNCED" (${bare.length} did)`);
+    const flagged = await pg.locator('[data-strip-icon] [data-strip-end]').evaluateAll(els => els.map(e => e.closest('[data-strip-icon]').getAttribute('data-strip-icon')));
+    c.expect(flagged.length === unconfirmed.size && flagged.every(id => unconfirmed.has(id)), `the END flag sits on exactly the unconfirmed phones (${flagged.length} of ${unconfirmed.size})`);
 
     c.step = 'real/m23';
     console.log(`\n[${c.step}] the header shows the real length`);
@@ -110,6 +103,15 @@ try {
     console.log(`\n[${c.step}] PLAY AGAIN ▸, clicked`);
     const before = await srv.get('/api/state');
     const btn = pg.getByRole('button', { name: 'PLAY AGAIN ▸' });
+    // F596: the demo phones are not in range, so the result MUST be pending and PLAY AGAIN hidden until FINALISE (two taps).
+    // A hard check: if the pending header is absent this step fails, it does not skip.
+    c.expect(await pg.locator('[data-testid="results-pending"]').count() === 1, 'RECAP shows RESULTS PENDING while a phone is unsynced');
+    c.expect(await pg.locator('[data-testid="finalise"]').count() === 1, 'and offers FINALISE');
+    c.expect(await btn.count() === 0, 'while results are pending there is NO PLAY AGAIN ▸');
+    await pg.locator('[data-testid="finalise"]').click();
+    c.expect((await pg.locator('[data-testid="finalise"]').innerText()).includes('TAP AGAIN'), 'the first tap only arms FINALISE');
+    await pg.locator('[data-testid="finalise"]').click();
+    await c.until(async () => (await btn.count()) === 1, 10000, 'FINALISE to release the result (PLAY AGAIN ▸ appears)');
     c.expect(await btn.count() === 1, 'RECAP shows one PLAY AGAIN ▸ button');
     await btn.click();
     await c.until(async () => new URL(pg.url()).hash === '#build', 10000, 'the console to land on PLAY (#build)');
@@ -144,7 +146,7 @@ try {
     const strip = st => {
       if (st && typeof st === 'object') {
         delete st.end_delivery;
-        if (st.recap) { delete st.recap.since_end_ms; delete st.recap.settling; delete st.recap.awaiting; delete st.recap.played_s; }
+        if (st.recap) { delete st.recap.since_end_ms; delete st.recap.settling; delete st.recap.awaiting; delete st.recap.played_s; delete st.recap.sync; }
       }
       return st;
     };

@@ -109,6 +109,12 @@ class Match:
     whistle_base: dict[str, str] | None = None
     # The retired match (H2): late facts and the whistle add-back still reach its scorer; evict, unbind and whistle refuse.
     frozen: bool = False
+    sync_nodes: dict[str, dict] = field(default_factory=dict)  # F596: only the match in hand
+    finalised: bool = False
+    final_winner: dict | None = None
+    restored_final: bool = False  # the recorded wait already ended before this MC process started
+    result_changed: bool = False
+    ended_head: dict | None = None
 
     @classmethod
     def begin(cls, head: dict, scorer: Scorer, played: dict[str, Player], nodes: dict[str, str], *,
@@ -169,13 +175,18 @@ class Match:
                     bundles: dict[str, FrameBundle], acks: dict[str, dict],
                     store_path: str | None) -> dict:
         """Write the running match block for session.json."""
-        if self.head is None or self.scorer is None:
-            raise ValueError("only a match in play has a snapshot block")
-        si = self.head
+        si = self.head or self.ended_head
+        if si is None or self.scorer is None:
+            raise ValueError("only a match in hand has a snapshot block")
         players = self.played if self.played is not None else roster
         return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
                 "countdown_s": si.get("countdown_s", 0), "adopted": adopted,
                 "live": live,   # F451: a resume after a backward clock step must not re-arm it
+                **({"finished": True, "end_t": self.scorer.end_t,
+                    "finalised": self.finalised, "final_winner": self.final_winner,
+                    "result_changed": self.result_changed,
+                    "whistle_base": self.whistle_base,
+                    "frozen_stations": self.frozen_stations} if self.head is None else {}),
                 "config": config, "players": {pid: dict(p) for pid, p in players.items()},
                 "node_player": {nid: pid for nid, pid in {**self.nodes, **node_player}.items()
                                 if pid in players},

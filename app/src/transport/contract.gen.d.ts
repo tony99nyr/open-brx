@@ -323,6 +323,8 @@ export declare const TEAM_COLOUR_HEX: readonly ['#f43f5e', '#3a86ff', '#ffd23f',
 export declare const TEAM_INK_HEX: readonly ['#1a0404', '#04121e', '#1a1400', '#140a1c'];
 /** A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag). */
 export declare const ROLE_LABELS: { readonly assault: 'ASSAULT'; readonly cqb: 'CLOSE RANGE'; readonly marksman: 'SNIPER'; readonly support: 'SUPPORT'; readonly power: 'HEAVY'; readonly melee: 'MELEE'; readonly sidearm: 'SIDEARM' };
+/** F596 (Tony 2026-10-24): a row with no progress this long is stuck, and FINALISE turns prominent */
+export declare const SYNC_STUCK_S: 120;
 /** F264: one 8-byte ask for the MAGAZINE; the gun answers with a `$LCD` status array. Never send it to a gun that might be dead. */
 export declare const QUERY_FRAME: '$QUERY,*';
 /** F264 ⚠ THE DEAD-GUN PROBE, and it is a CONSTANT on purpose. `$LIFE` with a NON-ZERO token 1 is the revive
@@ -631,6 +633,8 @@ export type MatchItemKey = 'time' | 'kills' | 'countdown' | 'daynight' | 'silenc
 export type StationDepartureReason = 'back_to_hud' | 'released';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
+export type SyncStage = 'unlinked' | 'linked' | 'sending' | 'received';
+export type SyncTransport = 'wifi' | 'cellular' | 'backhaul';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
@@ -2281,6 +2285,38 @@ export interface AfterEndView {
   by_player: Record<string, AfterEndPlayer>;
 }
 
+/** F596: one phone (or one hill station) on the RECAP sync board. Every field is a fact MC holds; nothing is a
+ *  guess at a transfer the wire cannot prove. `pending`/`lost` are present only when above 0. */
+export interface RecapSyncRow {
+  kind: 'phone' | 'station';
+  /** player_id for a phone, station_id for a station */
+  id: string;
+  name: string;
+  team_id: string | null;
+  stage: SyncStage;
+  /** phones only, while linked: reach=backhaul, else status.transport */
+  transport: SyncTransport | null;
+  /** the phone's last reported unsent count (hello.pending or status.pending), > 0 */
+  pending?: number;
+  /** facts the phone's outbox dropped for this match (status.outbox_lost), > 0 */
+  lost?: number;
+  /** A42: the END has not been confirmed by this phone yet */
+  end_unconfirmed: boolean;
+  /** seconds since the row's stage or pending last changed; 0 once received */
+  idle_s: number;
+  /** idle_s >= SYNC_STUCK_S and not received */
+  stuck: boolean;
+}
+
+/** F596: whether the result can be shown. `pending` while any row is not received and the operator has not
+ *  finalised. `result_changed` once the winner differs from the one first shown as final. */
+export interface RecapSyncView {
+  pending: boolean;
+  finalised: boolean;
+  result_changed: boolean;
+  rows: RecapSyncRow[];
+}
+
 export interface RecapView {
   winner: WinnerView;
   score: Record<string, number>;
@@ -2299,6 +2335,8 @@ export interface RecapView {
   post_end?: number;
   parked?: number;
   stations?: RecapStationRow[];
+  /** F596: the live match in hand only; an archived recap never carries it */
+  sync?: RecapSyncView;
 }
 
 export interface MatchHistoryRow {

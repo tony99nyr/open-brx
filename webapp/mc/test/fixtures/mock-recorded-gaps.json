@@ -138,6 +138,24 @@
       "path": "$.stations[*]",
       "count": 1242,
       "sha1": "0c55bf9115639b88"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].id",
+      "count": 2,
+      "sha1": "c8b34ae70d2386c0"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].name",
+      "count": 2,
+      "sha1": "b6f9c4d1410dce7a"
+    },
+    {
+      "group": "the mock shows it wrong",
+      "path": "$.recap.sync.rows[*].team_id",
+      "count": 2,
+      "sha1": "7d73f5c549afb0ba"
     }
   ]
 }

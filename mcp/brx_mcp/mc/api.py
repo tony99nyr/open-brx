@@ -343,6 +343,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         "abort",
         "control",
         "recap",
+        "finalise_recap",
         "match_history",
         "diag_matches",
         "report_build",

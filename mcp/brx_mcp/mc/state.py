@@ -31,7 +31,7 @@ from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
 from .scoring import STATION_HISTORY_MAX, Scorer
-from .match import Match, parse_snapshot
+from .match import Match, parse_snapshot, snapshot_departed_station
 from .stations import StationRegistry, BATTERY_LOW_PCT
 # STATION_* re-exports remain for tests that import them from state.py.
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
@@ -42,12 +42,12 @@ from .types import ROSTER_PHASES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, Event, FeedEntry,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, Event, FeedEntry,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, TunnelAuto, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
-                    LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
+                    LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapSyncRow, RecapSyncView, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView, RestoreFailedView,
                     StartNodeView, StartView, Stun, OrphanMatchView, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
@@ -814,6 +814,8 @@ class Session:
 
     def _changed(self):
         self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
+        if self.phase == "recap" and self.match is not None and self.match.scorer is not None:
+            self._recap_sync(self.match.scorer.winner(), self.match.frozen_stations or [])
         for cb in self._listeners:
             cb()
         self._persist()
@@ -2998,6 +3000,141 @@ class Session:
                 row["synced"] = self.nodes.get(row["node_id"], {}).get("last_seen_ms", 0) >= end_t
         return recap
 
+    # F596: the post-whistle receive ledger belongs to the match, never to a node's old status.
+    def _sync_entry(self, nid: str) -> dict | None:
+        match = self.match
+        if self.phase != "recap" or match is None or match.scorer is None:
+            return None
+        if nid not in (match.whistle_base or {}):
+            return None
+        return match.sync_nodes.setdefault(nid, {"changed_t": match.scorer.end_t or self.now_ms()})
+
+    def _sync_linked(self, nid: str) -> bool:
+        rec = self.net.nodes.get(nid)
+        return bool(rec is not None and getattr(rec, "ws", None) is not None
+                    and not getattr(rec, "stale", False)
+                    and not self.nodes.get(nid, {}).get("stale"))
+
+    def _sync_stage(self, nid: str, entry: dict) -> str:
+        if not self._sync_linked(nid):
+            return "unlinked"
+        pending = entry.get("pending")
+        if (pending == 0 and entry.get("status_t") is not None
+                and entry.get("status_rev") == entry.get("event_rev", 0)):
+            return "received"
+        if isinstance(pending, int) and pending > 0:
+            return "sending"
+        return "linked"
+
+    def _sync_update(self, nid: str, at: int) -> None:
+        entry = self._sync_entry(nid)
+        if entry is None:
+            return
+        stage = self._sync_stage(nid, entry)
+        if stage != entry.get("stage"):
+            if "stage" in entry:
+                entry["changed_t"] = at
+            entry["stage"] = stage
+
+    def _sync_hello(self, nid: str, pending: object) -> None:
+        entry = self._sync_entry(nid)
+        if entry is None:
+            return
+        # A new socket starts with a fresh claim. The old zero cannot receive its later batch.
+        old = entry.get("pending")
+        entry.pop("status_t", None)
+        entry.pop("status_rev", None)
+        if _is_count(pending):
+            entry["pending"] = pending
+        else:
+            entry.pop("pending", None)
+        if entry.get("pending") != old:
+            entry["changed_t"] = self.now_ms()
+        self._sync_update(nid, self.now_ms())
+
+    def _sync_status(self, nid: str, pending: object, at: int) -> None:
+        entry = self._sync_entry(nid)
+        if entry is None:
+            return
+        if _is_count(pending):
+            if entry.get("pending") != pending:
+                entry["changed_t"] = at
+            entry["pending"] = pending
+            entry["status_t"] = at
+            entry["status_rev"] = entry.get("event_rev", 0)
+        else:
+            entry.pop("status_t", None)
+            entry.pop("status_rev", None)
+        self._sync_update(nid, at)
+
+    def _sync_events(self, nid: str, events: list[Event], at: int) -> None:
+        entry = self._sync_entry(nid)
+        sc = self._m().scorer
+        if entry is None or sc is None:
+            return
+        if any(ev.get("match_id") == sc.match_id for ev in events):
+            entry["event_t"] = at
+            entry["event_rev"] = entry.get("event_rev", 0) + 1
+            self._sync_update(nid, at)
+
+    def _recap_sync(self, winner: WinnerView, stations: list[RecapStationRow]) -> RecapSyncView:
+        match = self.match
+        if match is None or match.scorer is None:
+            return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
+        now = self.now_ms()
+        unconfirmed = {r["player_id"] for r in (self._end_delivery_view() or {}).get("unconfirmed", [])}
+        rows: list[RecapSyncRow] = []
+        for nid, pid in (match.whistle_base or {}).items():
+            p = (match.played or {}).get(pid)
+            if p is None:
+                continue
+            entry = self._sync_entry(nid)
+            if entry is None:
+                continue
+            self._sync_update(nid, now)
+            stage = entry["stage"]
+            idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
+            nv = self.nodes.get(nid, {})
+            transport = None
+            if stage != "unlinked":
+                transport = ("backhaul" if nv.get("reach") == "backhaul" else
+                             "cellular" if nv.get("transport") == "cellular" else
+                             "wifi" if nv.get("transport") == "wifi" or nv.get("reach") == "lan" else None)
+            row: RecapSyncRow = {"kind": "phone", "id": pid, "name": p["display"], "team_id": p.get("team_id"),
+                   "stage": stage, "transport": transport, "end_unconfirmed": pid in unconfirmed,
+                   "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
+            if isinstance(entry.get("pending"), int) and entry["pending"] > 0:
+                row["pending"] = entry["pending"]
+            if (lost := self._node_loss(nv, "outbox")) > 0:
+                row["lost"] = lost
+            rows.append(row)
+        for station in stations:
+            if station["kind"] != "control":
+                continue
+            nid = station["node_id"]
+            key = "station:" + nid
+            entry = match.sync_nodes.setdefault(key, {"changed_t": match.scorer.end_t or now})
+            stage = ("received" if entry.get("status_received") else
+                     "linked" if self._sync_linked(nid) else "unlinked")
+            if entry.get("stage") != stage:
+                if "stage" in entry:
+                    entry["changed_t"] = now
+                entry["stage"] = stage
+            idle = 0 if stage == "received" else max(0, (now - entry["changed_t"]) // 1000)
+            label = f"{_STATION_KIND_LABEL.get(station['kind'], station['kind'].upper())} {station['id']}"
+            row: RecapSyncRow = {"kind": "station", "id": str(station["id"]), "name": label, "team_id": None,
+                                 "stage": stage, "transport": None, "end_unconfirmed": False,
+                                 "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
+            rows.append(row)
+        pending = not (match.finalised or match.restored_final) and any(
+            row["stage"] != "received" for row in rows)
+        if not pending and match.final_winner is None:
+            match.final_winner = copy.deepcopy(dict(winner))
+        elif match.final_winner is not None and winner != match.final_winner:
+            match.result_changed = True
+        return {"rows": rows, "pending": pending, "finalised": match.finalised,
+                "result_changed": match.result_changed}
+
     def _station_hold(self, nid: str) -> tuple[str, dict, int | None] | None:
         """F555: (site, hold_ms) of a control station's tally for THIS match, else None. Only the tally `_keep_tally` keyed
         to the station's current arming counts: its game must be this match's game byte and its id the assigned id, and
@@ -3058,7 +3195,7 @@ class Session:
     def _merge_station_recap_report(row: RecapStationRow, report: StationReport) -> None:
         return StationRegistry._merge_station_recap_report(row, report)
 
-    def _late_station_report(self, nid: str) -> None:
+    def _late_station_report(self, nid: str, body: dict, t_recv: int) -> None:
         """utility.md §5c/§5d.6: a station is self-authoritative and "reports ... to MC when it is next
         in Wi-Fi range" -- so a station out of coverage at the whistle must still be able to land its
         tally once it re-joins, while still in RECAP and before any roll (F206 addendum, 2026-09-17).
@@ -3085,6 +3222,15 @@ class Session:
         rep = self.station_registry.station_view(nid)["report"]
         self._merge_station_recap_report(frozen, rep)
         self._station_possession(nid, None)   # F555: the station's late final tally is the authority for its point
+        tally = live.get("tally") or {}
+        control = body.get("control")
+        game_claim = control.get("game") if isinstance(control, dict) else None
+        if (frozen["kind"] == "control" and body.get("station_id") == frozen["id"]
+                and isinstance(control, dict) and isinstance(control.get("hold_ms"), dict)
+                and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte())
+                and tally.get("key") == [self._game_byte(), "control", frozen["id"]]
+                and tally.get("at") == t_recv):
+            match.sync_nodes.setdefault("station:" + nid, {"changed_t": self.now_ms()})["status_received"] = True
         self._restore_recap()
 
     # ---------- nodes ----------
@@ -3108,11 +3254,13 @@ class Session:
             if gone is not None:
                 nv["last_reach"] = gone      # F155: the PATH it was last heard over outlives the socket
                 self._changed()
+        self._sync_update(nid, self.now_ms())
 
     def _touch(self, nid: str, stale: bool | None = None):
         nv = self._node_view(nid)
         if stale is not None:
             nv["stale"] = stale
+        self._sync_update(nid, self.now_ms())
         self._changed()
 
     def _find_player_for_gun(self, gun_name: str | None, gun_tail: str | None,
@@ -3474,6 +3622,8 @@ class Session:
             nv["last_reach"] = nv["reach"]
         self._note_version(nid, n.get("app_ver"), n.get("platform"), n.get("device"))   # A29, F564
         nv["last_seen_ms"] = self.now_ms()
+        nv["stale"] = False
+        self._sync_update(nid, self.now_ms())
         self._release_stale_gun_claim(nid, nv.get("gun_name"), nv.get("gun_tail"))
         if n.get("node_type") == "utility":
             # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
@@ -3549,6 +3699,7 @@ class Session:
         # so a utility phone and an unbound player node are covered too.
         if hello.get("node_id"):
             self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"), hello.get("device"))
+            self._sync_hello(str(hello["node_id"]), hello.get("pending"))
         if hello.get("node_type") == "utility":
             return None                        # A13.5: a station is never a player, whatever it remembers
         gun = hello.get("gun") or {}
@@ -3720,6 +3871,7 @@ class Session:
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
+        self._sync_status(nid, body.get("pending"), t_recv)
         # O6/O10: the loss counts are scoped AT THE SOURCE: the phone names the match its count belongs to
         # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
         # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
@@ -3832,7 +3984,7 @@ class Session:
                 report = self.station_registry.station_view(nid)["report"]
                 self._merge_station_recap_report(departed, report)
             if not ended_here:
-                self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
+                self._late_station_report(nid, body, t_recv)   # F206 addendum: a station back in range during RECAP
             # F401: this heartbeat is what proves the node itself is back in Wi-Fi range, whichever match
             # it is now assigned to -- `_late_station_report`'s own guard (RECAP only, same assignment)
             # must not also gate LOAD's sync warning, which has to clear after a roll forward too.
@@ -4403,9 +4555,35 @@ class Session:
                                     station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
                                     station_unverified=m.get("station_unverified") if isinstance(m.get("station_unverified"), list) else None,
                                     saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
-        self.match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
-                                 evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
-                                 departed_stations=parsed.departed_stations)
+        match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
+                            evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
+                            departed_stations=parsed.departed_stations)
+        self.match = match
+        if m.get("finished") is True:
+            match.finalised = m.get("finalised") is True
+            winner = m.get("final_winner")
+            match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
+            match.restored_final = match.final_winner is not None
+            match.result_changed = m.get("result_changed") is True
+            end_t = m.get("end_t")
+            scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
+            frozen = m.get("frozen_stations")
+            if isinstance(frozen, list):
+                match.frozen_stations = [row for raw in frozen
+                                         if (row := snapshot_departed_station(raw)) is not None]
+            self._finish()
+            match.played = played
+            raw_whistle = m.get("whistle_base")
+            whistle = ({nid: pid for nid, pid in raw_whistle.items()
+                        if isinstance(nid, str) and isinstance(pid, str) and pid in played}
+                       if isinstance(raw_whistle, dict) else dict(node_player))
+            scorer.node_player = dict(whistle)
+            match.whistle(whistle)
+            if mid in self._ended:
+                self._ended[mid]["players"] = dict(played)
+            self._changed()
+            self.persist_now()
+            return "recap"
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
@@ -5001,6 +5179,7 @@ class Session:
         fact is stored (parked when it is not for the live match). Returns the facts left to score, or None when
         nothing is (a single result or pickup ends here; a batch goes on with its other facts)."""
         self._node_view(nid)["last_seen_ms"] = t_recv
+        self._sync_events(nid, events, t_recv)
         # `seq` is stamped onto each fact by `net.py` (`ev["seq"] = seq`) before it reaches here.
 
         def parked(ev: Event) -> bool:
@@ -5286,7 +5465,11 @@ class Session:
         judged against these bindings, not against a debrief handover, a RECAP evict (F483) or the next match's. A node
         unbound before the whistle (a utility hello, an evict, a superseded phone) is not in it, as it was not live; a
         player's own phone that rebinds by its gun after the whistle is added back (`_bind`)."""
-        return dict(self.node_player)
+        match = self.match
+        saved = ({nid: pid for nid, pid in match.nodes.items()
+                  if nid not in match.evicted and nid not in match.unbound
+                  and match.current.get(pid, nid) == nid} if match is not None else {})
+        return {**saved, **self.node_player}
 
     def _whistle_add_back(self, match: Match, nid: str, pid: str) -> None:
         """A finished match's map after its whistle: the bindings the whistle saw never move, and a player who had no phone
@@ -7309,13 +7492,15 @@ class Session:
         match = self.match
         if match is None:
             raise RuntimeError("_finish needs the match it ends")   # every caller runs with a Match (slice 4a review)
+        match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
         match.played = {pid: p.copy() for pid, p in self.players.items()}
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
         # against what the stations reported at end of match, not whatever the NEXT match's stations
         # say by the time that late fact lands (`_ingest_retired`).
         for nid in list(self.station_registry.stations):   # F555: each hill's final word, before the rows freeze
             self._station_possession(nid, None)
-        match.frozen_stations = self._recap_stations() if match.scorer else None
+        if match.frozen_stations is None:
+            match.frozen_stations = self._recap_stations() if match.scorer else None
         self._match_end_t = match.scorer.end_t if match.scorer else None   # F401
         self._sync_pending = {r["node_id"]: f"{_STATION_KIND_LABEL.get(r['kind'], r['kind'].upper())} {r['id']}"
                               for r in match.frozen_stations or [] if r.get("node_id")}
@@ -7331,6 +7516,7 @@ class Session:
             # F560: the scorer's own end (a timed scorer is built with it); MC's clock, never the wall clock, if it has none
             end_t = match.scorer.end_t if match.scorer and match.scorer.end_t is not None else self.now_ms()
             self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)
+        match.ended_head = dict(match.head) if match.head else None
         match.head = None            # no re-hydrating a finished match's `start`
         if match.scorer:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
@@ -7402,8 +7588,21 @@ class Session:
             if self.phase != "recap":
                 r["provisional"] = True
             r.update(self.settling())     # advisory only — never gates, see settling()
+            if self.phase == "recap":
+                r["sync"] = self._recap_sync(r["winner"], r.get("stations") or [])
             return r
         return self.last_recap
+
+    def finalise_recap(self) -> dict:
+        """F596: the operator releases the result despite missing phones."""
+        if self.phase != "recap" or self.match is None or self.match.scorer is None:
+            raise ValueError("no match in RECAP to finalise")
+        if not self.match.finalised:
+            self.match.finalised = True
+            self.recap()  # capture the winner shown when the wait first ends
+            self._changed()
+            self.persist_now()
+        return {"ok": True}
 
     @staticmethod
     def _human_age(ms: int) -> str:

@@ -9,7 +9,7 @@ import { F, T } from '../tokens';
 import { Alert } from './Alert';
 import { GhostButton, PrimaryButton } from './index';
 
-export function OrphanMatch() {
+export function OrphanMatch({ compact = false }: { compact?: boolean } = {}) {
   const { state, run, api } = useStore();
   const [confirmEnd, setConfirmEnd] = useState(false);
   const om = state?.orphan_match;
@@ -17,16 +17,17 @@ export function OrphanMatch() {
   const n = om.phones;
   const phones = `${n} PHONE${n === 1 ? ' IS' : 'S ARE'}`;
   return (
-    <div data-testid="orphan-match" role="status"
+    <div data-testid="orphan-match" role="status" title={compact ? `${om.players.join(', ')} · ${om.arm_state.toUpperCase()}` : undefined}
       style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 14px', marginBottom: 12 }}>
       {/* F221 polish r2: `frame-orphan-match` is amber-only, and Tony's rule is explicit that AMBER is
           never a banner — this used to keep the bordered, left-ruled box even after the words moved
           onto their own line (F221 round 1); now it is one plain <Alert> line, nothing else. */}
       <span style={{ flex: '1 1 260px' }}>
         <Alert id="frame-orphan-match" variant="line" what={`${phones} IN A MATCH THIS MC DID NOT START`} />
-        <span style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim }}>
+        {/* RECAP (F596) wants ONE short line: the names are the hover there */}
+        {!compact && <span style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim }}>
           {om.players.join(', ')} · {om.arm_state.toUpperCase()}
-        </span>
+        </span>}
       </span>
       {om.can_resume && (
         <PrimaryButton size={12} pad="10px 18px"
