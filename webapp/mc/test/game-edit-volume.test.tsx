@@ -21,7 +21,7 @@ async function kit(opts: { phase?: Phase; config?: Partial<GameConfig>; bench?: 
   if (opts.config) d.state = { ...d.state, config: { ...d.state.config, ...opts.config } };
   if (opts.phase) d.state = { ...d.state, phase: opts.phase };
   if (opts.bench != null) d.state = { ...d.state, bench_volume: opts.bench };
-  const modes = await d.api.getModes();
+  const modes = opts.api?.getModes ? await opts.api.getModes() : await d.api.getModes();
   const calls: Partial<GameConfig>[] = [];
   const api = fixtureApi({ putConfig: async (p: Partial<GameConfig>) => { calls.push(p); return d.api.putConfig(p); }, ...opts.api }, d.api);
   const view = 'kit' as const;
@@ -51,15 +51,13 @@ describe('GameEditPanel VOLUME (K8)', () => {
     expect(btn('venue')!.getAttribute('aria-pressed')).toBe('true');
     for (const v of [60, 70, 80, 90, 100]) expect(btn(v)!.getAttribute('aria-pressed'), `${v}`).toBe('false');
     expect(m.find('[data-testid="help2-game-settings-info"]').length).toBe(1);
-    const modeLabel = [...m.el.querySelectorAll('span')].find(s => s.textContent === 'MODE');
-    expect(modeLabel?.parentElement?.contains(settingsInfo())).toBe(true);
     expect(m.find('[data-testid="help2-health-info"]').length).toBe(0);
     await click(settingsInfo());
     expect(note()).toContain('Changing mode resets the time limit, respawn, health and weapon rules');
     expect(note()).toContain('moves players onto its teams');
     expect(note()).toContain('Day/night and volume stay.');
     expect(note()).toContain('Nothing is sent until SAVE.');
-    expect(note()).toContain('guns get the config when it is pushed');
+    expect(note()).toContain('SAVE re-pushes it to every gun at once; otherwise guns get it at the next push.');
     expect(note()).toContain('The shield recharges only when the game has no armour.');
     expect(note()).not.toContain('--bench-volume');
     m.unmount();
@@ -128,8 +126,31 @@ describe('GameEditPanel VOLUME (K8)', () => {
     const { m, note, settingsInfo, open } = await kit({ bench: 55 });
     await open();
     await click(settingsInfo());
-    expect(note()).toContain('When MC runs with --bench-volume, guns play at the bench value 55 instead, try-outs included.');
+    expect(note()).toContain('This MC runs with --bench-volume 55: guns play at 55, try-outs included.');
     expect(m.find('[data-testid="bench-volume"]')[0]?.textContent).toContain('BENCH VOL 55');
+    m.unmount();
+  });
+
+  it('states push timing exactly for pushed and unpushed games', async () => {
+    const a = await kit();
+    await a.open(); await click(a.settingsInfo());
+    expect(a.note()).toContain('SAVE updates MC. If the game is already pushed, SAVE re-pushes it to every gun at once; otherwise guns get it at the next push.');
+    a.m.unmount();
+    const b = await kit({ api: { getModes: async () => [] } });
+    await b.open();
+    expect(b.settingsInfo()).not.toBeNull();
+    await click(b.settingsInfo());
+    expect(b.note()).toContain('SAVE updates MC.');
+    expect(b.note()).toContain('The shield recharges only when the game has no armour.');
+    b.m.unmount();
+  });
+
+  it('keeps the game settings INFO usable while the match is locked', async () => {
+    const { m, settingsInfo, open, note } = await kit({ phase: 'live' });
+    await open();
+    expect(settingsInfo()?.disabled).toBe(false);
+    await click(settingsInfo());
+    expect(note()).toContain('SAVE updates MC.');
     m.unmount();
   });
 
@@ -148,6 +169,21 @@ describe('GameEditPanel VOLUME (K8)', () => {
     await d.api.setPhase('kit', true);
     await expect(d.api.putConfig({ volume: 30 })).rejects.toThrow(/60-100/);
     await expect(d.api.putConfig({ volume: 80 })).resolves.toBeTruthy();
+  });
+
+  it('shows an OFF-slot explanation in body text and omits BUILD guidance while the kit is locked', async () => {
+    const { m, d } = await kit({ phase: 'live' });
+    const policy = d.state.config.loadout_policy!;
+    d.state = { ...d.state, config: { ...d.state.config, loadout_policy: { ...policy, secondary: { ...policy.secondary, choice: 'off' } } } };
+    await m.update(<StoreCtx.Provider value={makeStore({ ...d, view: 'kit' }, { selPlayer: 'p3' })}><><CommandBar /><Kit /></></StoreCtx.Provider>);
+    const secondaryCard = [...m.el.querySelectorAll('[role="button"]')].find(el => el.textContent?.startsWith('SECONDARY')) as HTMLElement;
+    await click(secondaryCard);
+    const off = [...m.el.querySelectorAll('*')].filter(el => el.textContent?.trim().startsWith('Secondary is off for this game.'))
+      .sort((a, b) => a.textContent!.length - b.textContent!.length)[0] as HTMLElement;
+    expect(off, m.text()).toBeTruthy();
+    expect(off.style.font).not.toContain('26px');
+    expect(m.text()).not.toContain('Change it in BUILD.');
+    m.unmount();
   });
 
   it('mc.md #1 review: VENUE DEFAULT survives a mode change in the same save (the patch sends volume: null)', async () => {

@@ -163,8 +163,8 @@ export function Kit() {
   const pickSecondary = (w: WeaponView) => {
     const dropsPerk = takesAlt(perk) ? perk : undefined;
     const dropsEasy = !dropsPerk && !!lo.overrides?.easy_reload;
-    const ask = dropsPerk ? `DROPS ${dropsPerk.name.toUpperCase()} — TAP AGAIN`
-      : dropsEasy ? 'DROPS EASY RELOAD — TAP AGAIN' : null;
+    const ask = dropsPerk ? `DROPS ${dropsPerk.name.toUpperCase()}: TAP AGAIN`
+      : dropsEasy ? 'DROPS EASY RELOAD: TAP AGAIN' : null;
     if (ask && needsConfirm(`weapon:${w.weapon_id}`, ask)) return;
     return setLoadout({
       weapons: [prim0, { weapon_id: w.weapon_id }],
@@ -177,7 +177,7 @@ export function Kit() {
   // A14: a perk rides beside the weapons — Easy Reload is the one that takes the second weapon with it (after a confirm)
   const pickPerk = async (k: PerkView) => {
     const drops = takesAlt(k) ? secondaryW : undefined;
-    if (drops && needsConfirm(`perk:${k.perk_id}`, `DROPS THEIR ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
+    if (drops && needsConfirm(`perk:${k.perk_id}`, `DROPS THEIR ${drops.name.toUpperCase()}: TAP AGAIN`)) return;
     await setLoadout({ weapons: drops ? [prim0] : (lo.weapons ?? [prim0]), perk: k.perk_id }, undefined, { slot: 'perk', id: k.perk_id, label: k.name });
     if (drops && sp && trying[sp.player_id] === drops.weapon_id) await run(() => api.endTryout(sp.player_id));   // the dropped secondary was being tried out: quiet the gun (e2e lane finding)
   };
@@ -202,7 +202,7 @@ export function Kit() {
   const setEasyReload = async (on: boolean) => {
     if (!sp || !!lo.overrides?.easy_reload === on) return;                 // a tap on the current state writes nothing
     const drops = on ? secondaryW : undefined;
-    if (drops && needsConfirm('easy_reload', `DROPS THEIR ${drops.name.toUpperCase()} — TAP AGAIN`)) return;
+    if (drops && needsConfirm('easy_reload', `DROPS THEIR ${drops.name.toUpperCase()}: TAP AGAIN`)) return;
     const rest = withoutKeys(lo.overrides, 'easy_reload');
     await setOverrides(on ? { ...(rest ?? {}), easy_reload: true } : rest, drops ? [prim0] : undefined);
     // the dropped secondary was being tried out: quiet the gun (the same tidy-up pickPerk does)
@@ -389,7 +389,7 @@ export function Kit() {
               </div>
               {/* Pull this operator out of the lobby without losing what was just typed. */}
               {!standDownLocked(state.phase) && (
-                <GhostButton size={11} pad="6px 12px" title={`Pull ${sp.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
+                <GhostButton size={11} pad="6px 12px" title={`Pull ${sp.display} out of the lobby, kept on STANDBY, PLAY puts them back`}
                   onClick={() => guardedOnce(sp.player_id, () => run(() => api.standbyPlayer(sp.player_id)))}>
                   <span data-stand-down={sp.player_id}>▸ STAND DOWN</span>
                 </GhostButton>
@@ -467,8 +467,8 @@ export function Kit() {
               <Brackets color={slot === 'perk' ? PERK_COLOR : T.acc} style={{ flex: '2 1 420px', minWidth: 0, padding: 18, display: 'flex', flexWrap: 'wrap', gap: 20 }}>
                 {!focusItem ? (
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, minHeight: 150 }}>
-                    <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', color: T.dim }}>
-                      {slot === 'perk' ? (perkRule?.choice === 'off' ? 'Perks are off for this game. Change it in BUILD.' : 'NO PERK') : secRule?.choice === 'off' ? 'Secondary is off for this game. Change it in BUILD.' : 'NO SECONDARY'}
+                    <div style={{ font: F.chk(500, 14), lineHeight: 1.5, color: T.dim }}>
+                      {slot === 'perk' ? (perkRule?.choice === 'off' ? `Perks are off for this game.${locked ? '' : ' Change it in BUILD.'}` : 'NO PERK') : secRule?.choice === 'off' ? `Secondary is off for this game.${locked ? '' : ' Change it in BUILD.'}` : 'NO SECONDARY'}
                     </div>
                   </div>
                 ) : 'weapon_id' in focusItem ? (
@@ -541,7 +541,7 @@ export function Kit() {
                     const ask = confirmFor(`perk:${k.perk_id}`);
                     return (
                       <div key={k.perk_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${k.name} perk${locked ? ', locked while the match is in play' : clash && !on ? `, does not work with the ${clash.name}` : dis ? ', not allowed by the rules' : ''}`} title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : clash ? `Does not work with the ${clash.name}` : takesAlt(k) && secondaryW ? `Takes the ALT button — drops their ${secondaryW.name}` : undefined}
+                        aria-label={`${k.name} perk${locked ? ', locked while the match is in play' : clash && !on ? `, does not work with the ${clash.name}` : dis ? ', not allowed by the rules' : ''}`} title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : clash ? `Does not work with the ${clash.name}` : takesAlt(k) && secondaryW ? `Takes the ALT button: drops their ${secondaryW.name}` : undefined}
                         onClick={() => { if (!dis) pickPerk(k); }} onKeyDown={onKey(() => { if (!dis) pickPerk(k); })}
                         style={{ background: on ? 'rgba(196,139,255,.08)' : T.panel, border: `1px solid ${ask ? T.warn : on ? PERK_COLOR : T.line}`, padding: 10, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', gap: 12, alignItems: 'center', minHeight: 44, opacity: dis ? .32 : 1, flexWrap: 'wrap' }}>
                         {ask && <span role="alert" style={{ flex: '1 0 100%', font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}

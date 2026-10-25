@@ -290,7 +290,7 @@ export function Lobby() {
               )}
             </span>
           )}
-          {!allReady && players.length > 0 && !readyOpen && state.phase === 'build' && !lobby.pushed && (
+          {!allReady && players.length > 0 && !readyOpen && ['build', 'kit', 'muster'].includes(state.phase) && !lobby.pushed && (
             <span data-mark-all-ready-reason="1" role="status" style={{ font: F.chk(600, 11), color: T.micro }}>Push config first.</span>
           )}
         </>

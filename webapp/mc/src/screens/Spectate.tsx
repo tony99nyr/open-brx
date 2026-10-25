@@ -464,7 +464,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
   // frag-cap dead heat with) and TEAM ids everywhere else — `label` on a player id fell through to
   // the raw hex id.
   const tieLabel = (id: string) => (state?.config.mode === 'ffa' ? name(id) : label(id));
-  const headline = w.tie?.length ? `TIE — ${w.tie.map(tieLabel).join(' / ')}`
+  const headline = w.tie?.length ? `TIE: ${w.tie.map(tieLabel).join(' / ')}`
     : w.player_id ? `${name(w.player_id)} WINS`
     : w.team_id ? `${label(w.team_id)} WINS`
     : 'MATCH OVER';

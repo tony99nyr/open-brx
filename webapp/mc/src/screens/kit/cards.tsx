@@ -107,7 +107,7 @@ export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBu
       <SectionRule label={`ARSENAL // ${slot.toUpperCase()} · ${summary}`} hint={hint} style={{ marginBottom: 0 }} />
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
+          {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty: alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
         </div>
       )}
     </div>
@@ -128,7 +128,7 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{w.name}</span>
           <Tag color={role.color} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>{role.label}</Tag>
-          {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
+          {!w.verified && <span title="Retuned from the captured Callsign frame for balance, not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
           {/* F221: briefing information (a known hardware quirk), not a live fault — amber, not red. */}
           {w.caution && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('kit-weapon-caution-hero') }}>{GLYPH} {w.caution.toUpperCase()}</span>}
         </div>

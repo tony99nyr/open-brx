@@ -130,6 +130,7 @@ describe('S24 · the LIVE board is readable', () => {
     expect(link.getAttribute('target')).toBe('_blank');
     // a new tab reached through an anchor must not hand the opener over
     expect(link.getAttribute('rel')).toContain('noopener');
+    expect(link.title).toBe('Open the read-only spectator board in a new tab. There are no controls, so it is safe on a projector.');
     m.unmount();
   });
 
@@ -150,8 +151,14 @@ describe('S24 · the LIVE board is readable', () => {
     expect(late, 'the after-whistle line is in the feed').toBeTruthy();
     expect(late.textContent).toContain('AFTER WHISTLE');
     expect(late.style.borderTop).toContain('dashed');
-    expect(m.find('[data-testid="feed-after-whistle-note"]').length).toBe(0);
+    expect(m.text()).not.toContain('AFTER WHISTLE = A KILL AFTER THE END.');
     expect(m.text()).not.toContain('NOT IN THE SCORE');
+    m.unmount();
+  });
+
+  it('uses plain punctuation in the provisional accuracy tooltip', async () => {
+    const m = await liveScreen([row({ accuracy: 80, acc_provisional: true })]);
+    expect(m.find('[data-cell="acc"]')[0].title).toBe('Still settling: hits arrive per event, shots only on the ~2s heartbeat');
     m.unmount();
   });
 });

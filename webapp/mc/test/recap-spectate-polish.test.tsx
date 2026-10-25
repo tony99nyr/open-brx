@@ -129,7 +129,7 @@ describe('2 · RECAP during LIVE is not a finished match', () => {
 describe('4 · a negative K carries a team-kill icon (F596: no note line)', () => {
   it('RECAP puts a small icon beside the negative K, with the reason as its hover', async () => {
     const m = await recap();
-    expect(m.find('[data-testid="team-kill-note"]').length, 'the full-width note is gone').toBe(0);
+    expect(strip(m.text())).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
     const icons = m.find('[data-testid="team-kill-icon"]');
     expect(icons.length).toBe(1);
     expect(strip(icons[0].getAttribute('title') ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');

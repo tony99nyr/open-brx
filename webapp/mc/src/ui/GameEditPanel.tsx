@@ -224,8 +224,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modeOptions.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modeOptions.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
-                  <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
-                    keep={`Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC; guns get the config when it is pushed. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.${state.bench_volume != null ? ` When MC runs with --bench-volume, guns play at the bench value ${state.bench_volume} instead, try-outs included.` : ''}`} />
                 </>
               ) : (
                 <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} · Mode list unavailable (server predates this UI?)</span>
@@ -253,6 +251,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               </div>
             </Row>
           </fieldset>
+
+          <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
+            keep={`${modes.length ? `Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. ` : ''}Nothing is sent until SAVE. SAVE updates MC. If the game is already pushed, SAVE re-pushes it to every gun at once; otherwise guns get it at the next push. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.${state.bench_volume != null ? ` This MC runs with --bench-volume ${state.bench_volume}: guns play at ${state.bench_volume}, try-outs included.` : ''}`} />
 
           {/* The one place anything leaves this panel. */}
           {confirmCancel && (
@@ -283,8 +284,8 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                 <PrimaryButton onClick={save} disabled={locked || saving || !dirty}
                   title={locked ? `THE MATCH IS ${state.phase.toUpperCase()}. RECALL FIRST, THEN EDIT.`
                     : !dirty ? 'Nothing has changed yet'
-                    : pushed ? 'Sends the whole change to MC in one go, then re-pushes it to every gun. The count on the left drops to 0 and climbs as each one answers.'
-                    : 'Applies the change. The guns get the config when you push it.'}>
+                    : pushed ? 'SAVE updates MC. It re-pushes the config to every gun at once.'
+                    : 'SAVE updates MC. Guns get the config at the next push.'}>
                   {saving ? 'SAVING…' : saveLabel}
                 </PrimaryButton>
               </span>

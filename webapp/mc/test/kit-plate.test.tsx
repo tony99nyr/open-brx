@@ -12,7 +12,7 @@
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Kit } from '../src/screens/Kit';
-import { SlotCard } from '../src/screens/kit/cards';
+import { ArsenalHeader, SlotCard } from '../src/screens/kit/cards';
 import type { State } from '../src/api/types';
 import { StoreCtx } from '../src/store';
 import { demo, makeStore, mount } from './harness';
@@ -23,6 +23,13 @@ async function kitScreen() {
   const store = makeStore({ ...d, state, view: 'kit', selPlayer: state.players[0]?.player_id ?? null });
   return mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
 }
+
+it('explains the empty secondary slot without an em dash', async () => {
+  const m = await mount(<ArsenalHeader slot="secondary" pool={{ primary: [], secondary_weapons: [], perks: [] }} weapons={[]} onBuild={() => {}} onClear={() => {}} />);
+  const clear = m.find('button').find(b => b.textContent?.includes('NONE · LEAVE EMPTY'));
+  expect(clear?.title).toBe('Leave slot 2 empty: alt-fire does nothing');
+  m.unmount();
+});
 
 describe('KIT · a slot plate with a CLEAR control', () => {
   it('Enter on nested Why? opens the detail without selecting the slot', async () => {

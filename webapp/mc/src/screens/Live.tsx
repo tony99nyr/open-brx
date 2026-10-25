@@ -62,7 +62,7 @@ export function holdOrder<R extends { player_id: string }>(ranked: R[], prev: st
 
 /** Visual QA M24 (2026-09-23): a team kill costs the shooter one kill (scoring.py), so K and K/D can go
  *  below zero. Said where the number is, not left for the operator to guess. */
-export const TEAM_KILL_NOTE = 'A TEAM KILL COSTS THE SHOOTER ONE KILL, SO K AND K/D CAN GO BELOW ZERO.';
+export const TEAM_KILL_NOTE = 'A team kill costs the shooter one kill, so K and K/D can go below zero.';
 
 /** F119: `accuracy` is computed from hits that arrive per EVENT against a shot count that arrives on a
  *  ~2 s heartbeat, so a young row can spike and even exceed 100 %. `acc_provisional` says it has not
@@ -71,7 +71,7 @@ function Acc({ r }: { r: { accuracy: number | null; acc_provisional?: boolean } 
   const prov = !!r.acc_provisional;
   return (
     <span data-cell="acc" data-provisional={prov ? '1' : '0'}
-      title={prov ? 'Still settling — hits arrive per event, shots only on the ~2s heartbeat' : undefined}
+      title={prov ? 'Still settling: hits arrive per event, shots only on the ~2s heartbeat' : undefined}
       style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...edge('acc') }}>
       {/* the mark LEADS the number: "35%~" reads as a unit nobody uses, "~35%" is how an approximate
           value is written everywhere else (review 2026-09-12) */}
@@ -185,7 +185,7 @@ export function Live() {
             laptop and drags the other window to the projector; navigating this one away would take END and RECALL
             with it. `search` is carried so `?mock` opens a mock spectator board. */}
         <a data-spectate-link="1" href={`${location.pathname}${location.search}#spectate`} target="_blank" rel="noopener"
-          className="hov-acc" title="Open the read-only spectator board in a new tab — no controls, safe on a projector"
+          className="hov-acc" title="Open the read-only spectator board in a new tab. There are no controls, so it is safe on a projector."
           style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.dim, textDecoration: 'none',
                    border: `1px solid ${T.line2}`, padding: '9px 16px', minHeight: 40, display: 'inline-flex', alignItems: 'center' }}>
           SPECTATE ↗
@@ -295,7 +295,7 @@ export function Live() {
                   title={offline ? OFFLINE_WHY : 'Early end: reaches only nodes in range; the rest end at the time limit (confirm step)'}>END MATCH EARLY</GhostButton>
               )}
               {recallConfirm ? (<>
-                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => control('recall')); if (r) setNotice(`RECALLED${reachTxt(r)}`, short(r)); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
+                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => control('recall')); if (r) setNotice(`RECALLED${reachTxt(r)}`, short(r)); }}>CONFIRM RECALL: REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
                 <GhostButton onClick={() => setRecallConfirm(false)}>CANCEL</GhostButton>
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} disabled={offline}
@@ -539,7 +539,7 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
           : poolsWrong ? 'live-row-status-poolswrong' : stale ? 'live-row-status-last-known' : dead ? 'live-row-status-respawn' : undefined}
         data-sev={offline ? 'neutral' : endUnconfirmed ? 'amber' : poolsWrong ? 'red' : stale ? 'amber' : dead ? 'neutral' : undefined}
         title={offline ? 'MC is offline: this is the last snapshot, not the current state'
-          : endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match'
+          : endUnconfirmed ? 'This HUD has not confirmed the end. That tagger may still be in the match.'
           : never ? 'MC has not heard from this phone since MC started' : undefined}
         style={{ font: F.chk(700, 11), letterSpacing: '.12em',
           color: offline ? colourOf('live-row-status-unknown') : endUnconfirmed ? colourOf('live-row-status-end-not-confirmed')

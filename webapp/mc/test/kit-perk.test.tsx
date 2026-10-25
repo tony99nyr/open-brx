@@ -2,7 +2,7 @@
 // exception (Easy Reload takes the ALT button) is a two-tap confirm that drops the other thing, never a silent 400.
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
-import type { Loadout, Player } from '../src/api/types';
+import type { Loadout, PerkView, Player } from '../src/api/types';
 import { Kit } from '../src/screens/Kit';
 import { demo, mountScreen } from './harness';
 
@@ -30,6 +30,18 @@ describe('KIT · perk slot (A14)', () => {
     const t = m.text();
     for (const s of ['PRIMARY', 'SECONDARY', 'PERK', 'ASSAULT RIFLE', 'DESERT EAGLE', 'QUICK SWITCH']) expect(t).toContain(s);
     expect(m.find('[aria-label="clear perk"]').length, 'the perk card has its own ✕ CLEAR').toBe(1);
+    expect(m.el.querySelector('[title^="Pull REAPER out of the lobby"]')?.getAttribute('title')).toBe('Pull REAPER out of the lobby, kept on STANDBY, PLAY puts them back');
+    m.unmount();
+  });
+
+  it('uses sentence punctuation in the ALT conflict tooltip', async () => {
+    const d = await demo();
+    const perks: PerkView[] = d.perks.map(k => k.perk_id === 'quick_switch'
+      ? { ...k, effects: { ...k.effects, alt_reload: true } }
+      : k);
+    const m = await mountScreen(<Kit />, { ...d, view: 'kit', selPlayer: 'p1', perks });
+    await m.click('PERK');
+    expect(m.el.querySelector('[aria-label^="Quick Switch perk"]')?.getAttribute('title')).toBe('Takes the ALT button: drops their Desert Eagle');
     m.unmount();
   });
 
@@ -75,6 +87,8 @@ describe('KIT · perk slot (A14)', () => {
     await tile('SMG,');
     expect(patches.length, 'the first tap sends nothing').toBe(0);
     expect(m.text()).toContain('DROPS EASY RELOAD');
+    expect(m.text()).toContain('DROPS EASY RELOAD: TAP AGAIN');
+    expect(m.text()).not.toContain('DROPS EASY RELOAD — TAP AGAIN');
     await tile('SMG,');
     expect(patches.length, 'the second tap sends').toBe(1);
     expect(patches[0].weapons).toEqual([{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }]);

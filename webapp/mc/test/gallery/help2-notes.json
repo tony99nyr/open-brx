@@ -386,7 +386,7 @@
     "screen": "Game editor",
     "current": "Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until Save.",
     "proposal": "INFO",
-    "wording": "Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC; guns get the config when it is pushed. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.",
+    "wording": "Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC. If the game is already pushed, SAVE re-pushes it to every gun at once; otherwise guns get it at the next push. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.",
     "reason": "The one editor INFO covers mode, push timing, volume and health rules."
   },
   {
@@ -406,7 +406,7 @@
     "screen": "Report panel",
     "current": "This makes a report from this session. Names, tagger ids, IP addresses and the access code are removed. GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.",
     "proposal": "INFO",
-    "wording": "Anything you type here goes into a public GitHub issue.",
+    "wording": "Names you typed in the console stay in the report, and it goes to a public GitHub issue.",
     "reason": "Privacy details affect the posting decision"
   },
   {

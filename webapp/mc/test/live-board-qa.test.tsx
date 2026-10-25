@@ -251,10 +251,11 @@ describe('M7 · MC offline', () => {
 describe('M24 · a team-kill penalty is explained', () => {
   it('a negative K carries the note on both score cells', async () => {
     const { m } = await board('live', {}, [row({ kills: -1, kd: -1 }), row({ player_id: 'p2', display: 'GHOST' })]);
+    expect(TEAM_KILL_NOTE).toBe('A team kill costs the shooter one kill, so K and K/D can go below zero.');
     const k = m.find('[data-cell="k"]').find(e => e.textContent === '-1')!;
     expect(k.title).toBe(TEAM_KILL_NOTE);
     expect(m.find('[data-cell="kd"]').find(e => e.textContent === '-1.0')!.title).toBe(TEAM_KILL_NOTE);
-    expect(m.text()).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(m.text()).not.toContain(TEAM_KILL_NOTE);
     expect(m.find('[data-col-head="k"]')[0].title).toBe(TEAM_KILL_NOTE);
     expect(m.find('[data-col-head="kd"]')[0].title).toBe(TEAM_KILL_NOTE);
     m.unmount();
@@ -262,7 +263,14 @@ describe('M24 · a team-kill penalty is explained', () => {
 
   it('no legend line when nobody is below zero', async () => {
     const { m } = await board('live', {}, [row()]);
-    expect(m.find('[data-testid="team-kill-note"]').length).toBe(0);
+    const k = m.find('[data-cell="k"]')[0];
+    expect(k.textContent).toBe('9');
+    expect(k.title).toBe('');
+    expect(m.text()).not.toContain(TEAM_KILL_NOTE);
     m.unmount();
+    const negative = await board('live', {}, [row({ kills: -1, kd: -1 })]);
+    expect(negative.m.find('[data-cell="k"]')[0].title).toBe(TEAM_KILL_NOTE);
+    expect(negative.m.text()).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    negative.m.unmount();
   });
 });

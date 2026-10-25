@@ -36,10 +36,13 @@ function cut(m: Mounted, id: string, anchor: string) {
   expect(m.text().toLowerCase(), `${id}: old note remains`).not.toContain(old.toLowerCase());
 }
 
-function absent(m: Mounted, id: string) {
+function absent(m: Mounted, id: string, successor: string, text: string) {
   const old = note(id).current.split('{')[0].trim();
   expect(old.length, `${id}: no stable old wording`).toBeGreaterThan(5);
   expect(m.text().toLowerCase(), `${id}: old note remains`).not.toContain(old.toLowerCase());
+  const next = m.find(successor)[0];
+  expect(next, `${id}: replacement did not render`).toBeTruthy();
+  expect(next.textContent, `${id}: replacement wording`).toContain(text);
 }
 
 function inline(m: Mounted, id: string, anchor: string) {
@@ -74,7 +77,7 @@ describe('F599 phase 2 approved help copy', () => {
     const d = await demo();
     const m = await mountScreen(<Live />, { ...d, state: starved(d.state), view: 'live' });
     expect(m.text()).toContain('No match is live.');
-    absent(m, 'live-no-match');
+    absent(m, 'live-no-match', '.screen p', 'No match is live.');
     m.unmount();
   });
 
@@ -90,9 +93,9 @@ describe('F599 phase 2 approved help copy', () => {
     const m = await mount(<StoreCtx.Provider value={store}><Live /></StoreCtx.Provider>);
     expect(m.find('[data-live-row="p1"]').length).toBe(1);
     expect(m.find('[data-feed-kind]').length).toBeGreaterThan(0);
-    absent(m, 'live-team-kill');
+    absent(m, 'live-team-kill', '[data-cell="k"]', '-1');
     expect(m.find('[data-feed-tag="AFTER WHISTLE"]').length).toBe(1);
-    absent(m, 'live-after-whistle');
+    absent(m, 'live-after-whistle', '[data-feed-tag="AFTER WHISTLE"]', 'AFTER WHISTLE');
     await info(m, 'live-withheld', 'help2-live-feed-info');
     m.unmount();
     const empty = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'live' })}><Live /></StoreCtx.Provider>);
@@ -110,7 +113,7 @@ describe('F599 phase 2 approved help copy', () => {
     const second = { ...first, live: liveView({ rows: [liveRow({ kills: 1 }), liveRow({ player_id: 'p2', display: 'GHOST', kills: 9 })] }) };
     await m.update(render(second));
     expect(m.find('[data-live-rows="1"][data-order-held="1"]').length).toBe(1);
-    absent(m, 'live-order-held');
+    absent(m, 'live-order-held', '[data-live-row="p1"]', 'VIPER');
     m.unmount();
   });
 
@@ -152,9 +155,10 @@ describe('F599 phase 2 approved help copy', () => {
 
   it('KIT weapon and perk heroes omit the old card notes', async () => {
     const d = await demo();
-    const weapon = { ...d.weapons[0], dual_emitter: true, dmg_per_hit: d.weapons[0].dmg_per_hit ?? 10 };
+    const weapon = { ...d.weapons[0], verified: false, dual_emitter: true, dmg_per_hit: d.weapons[0].dmg_per_hit ?? 10 };
     const w = await mount(<StoreCtx.Provider value={makeStore(d)}><WeaponHero w={weapon} slot="primary" sp={d.state.players[0]} pushed={false} verdicts={{}} setVerdicts={() => {}} /></StoreCtx.Provider>);
     expect(w.text()).toContain('DAMAGE / PULL');
+    expect(w.find('span[title]').find(e => e.textContent === 'TUNED · NOT STOCK')?.title).toBe('Retuned from the captured Callsign frame for balance, not the stock numbers');
     cut(w, 'kit-dual-emitter', 'div');
     w.unmount();
     const p = await mount(<PerkHero k={d.perks[0]} />);
@@ -293,7 +297,7 @@ describe('F599 phase 2 approved help copy', () => {
     const reason = m.find('[data-mark-all-ready-reason="1"]')[0];
     expect(reason?.textContent).toBe('Push config first.');
     expect(reason?.parentElement?.parentElement?.textContent).toContain('Team Assignment');
-    absent(m, 'lobby-ready-closed');
+    absent(m, 'lobby-ready-closed', '[data-mark-all-ready-reason="1"]', 'Push config first.');
     m.unmount();
   });
 
@@ -304,7 +308,9 @@ describe('F599 phase 2 approved help copy', () => {
       <OperatorMenu r={row} matchId="m1" onClose={() => {}} />
     </StoreCtx.Provider>;
     const closed = await mount(render('lobby'));
-    expect(closed.find('[data-op-unavailable="phase"]').length).toBe(0);
+    expect(closed.find('[data-operator-menu="p1"]')[0]?.textContent).toContain('OPERATOR · VIPER');
+    expect(closed.find('[data-op-close="1"]')[0]?.textContent).toBe('CLOSE');
+    expect(closed.text()).not.toContain(note('operator-not-in-play').current);
     closed.unmount();
     const armed = await mount(render('armed'));
     expect(armed.find('[data-op="relink"]').length).toBe(1);
@@ -359,7 +365,7 @@ describe('F599 phase 2 approved help copy', () => {
     expect(m.find('[data-testid="report-panel"][data-report-phase="idle"]').length).toBe(1);
     cut(m, 'report-idle', '[data-testid="report-panel"]');
     await info(m, 'report-privacy-summary', 'help2-report-info');
-    expect(m.text()).toContain('Anything you type here goes into a public GitHub issue.');
+    expect(m.text()).toContain('Names you typed in the console stay in the report, and it goes to a public GitHub issue.');
     m.unmount();
   });
 
