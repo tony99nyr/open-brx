@@ -1117,10 +1117,10 @@ static void mcSetup() {
     haveTypedMc = pendingTypedMc.valid;
   }
   mcPrefs.begin("brxmc", true);
-  uint32_t restoredLock = 0;
-  if (link.assignment().present && mcPrefs.isKey("lock_game") &&
-      mcPrefs.getUChar("lock_game", 255) == (uint8_t)link.assignment().game)
-    restoredLock = lock_restore_remaining_s(mcPrefs.getUInt("lock_s", 0));
+  // F391: the saved lock in full, for the restored station's game only (boot_lock_restore_s, host-tested)
+  const uint32_t restoredLock = boot_lock_restore_s(link.assignment().present, mcPrefs.isKey("lock_game"),
+                                                    mcPrefs.getUChar("lock_game", 255), link.assignment().game,
+                                                    mcPrefs.getUInt("lock_s", 0));
   mcPrefs.end();
   link.restore_lock(restoredLock, millis());
   pmicSync(restoredLock > 0, millis(), "boot lock restore");
