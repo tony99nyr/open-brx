@@ -112,8 +112,9 @@ class Match:
     sync_nodes: dict[str, dict] = field(default_factory=dict)  # F596: only the match in hand
     finalised: bool = False
     final_winner: dict | None = None
-    restored_final: bool = False  # the recorded wait already ended before this MC process started
+    released: bool = False  # once the result is released, later facts cannot restore the wait
     result_changed: bool = False
+    end_reason: str | None = None
     ended_head: dict | None = None
 
     @classmethod
@@ -173,7 +174,7 @@ class Match:
                     roster: dict[str, Player], node_player: dict[str, str],
                     synced_at_lobby: dict[str, bool], clock_suspect: Any,
                     bundles: dict[str, FrameBundle], acks: dict[str, dict],
-                    store_path: str | None) -> dict:
+                    store_path: str | None, sync_mono_ms: int) -> dict:
         """Write the running match block for session.json."""
         si = self.head or self.ended_head
         if si is None or self.scorer is None:
@@ -184,7 +185,12 @@ class Match:
                 "live": live,   # F451: a resume after a backward clock step must not re-arm it
                 **({"finished": True, "end_t": self.scorer.end_t,
                     "finalised": self.finalised, "final_winner": self.final_winner,
+                    "released": self.released, "end_reason": self.end_reason,
                     "result_changed": self.result_changed,
+                    "sync_nodes": {nid: {**{key: entry[key] for key in ("received", "status_received", "changed_t")
+                                             if key in entry},
+                                         "idle_ms": max(0, sync_mono_ms - entry.get("changed_mono", sync_mono_ms))}
+                                   for nid, entry in self.sync_nodes.items()},
                     "whistle_base": self.whistle_base,
                     "frozen_stations": self.frozen_stations} if self.head is None else {}),
                 "config": config, "players": {pid: dict(p) for pid, p in players.items()},

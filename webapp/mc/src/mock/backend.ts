@@ -33,6 +33,8 @@ import { sessionStartView } from '../rules/start';
 import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView, sessionNoteEndConfirm,
   sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
 import { galleryState } from './gallery';
+import { recapSync } from '../api/recapSync';
+import { PENDING_CSV_URL } from './csv';
 import type { RecapSyncRow, RecapSyncStage } from '../api/recapSync';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { sessionVersions } from '../rules/versions';
@@ -1198,9 +1200,12 @@ export class MockBackend implements Api {
   // finalised. `syncDemo` (`?mock` in a browser) spreads the phones' arrivals over the first half-minute so the strip
   // MOVES; without it every connected phone has delivered at the whistle, as a phone that was in range does.
   private syncBase: { player_id: string; node_id: string }[] = [];
+  private syncReported = new Set<string>();
   private syncFinalised = false;
+  private syncReleased = false;
   private syncFinalWinner: string | undefined;
   private syncResultChanged = false;
+  private syncReopenedUntil = new Map<string, number>();
   private syncView(recap: RecapView): NonNullable<RecapView['sync']> | undefined {
     if (this.phase !== 'recap' || this.endedAt === undefined) return undefined;
     const elapsed = now() - this.endedAt;
@@ -1210,14 +1215,20 @@ export class MockBackend implements Api {
       const pl = this.players.find(p => p.player_id === b.player_id);
       const never = demo && i === this.syncBase.length - 1;   // the demo's last phone is out of range for good, so FINALISE can be tried
       const linked = this.nodeConnected(b.node_id) && b.node_id !== this.demoQuietNodeId && !never;
-      const arrive = demo ? 6000 + i * 2500 : 0;   // when this phone's last fact lands
+      const arrive = demo ? 6000 + i * 2500 : 1000;   // the zero-pending status follows the whistle
       const sendFrom = arrive - 4000;
-      const stage: RecapSyncStage = !linked ? 'unlinked' : elapsed >= arrive ? 'received' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
-      const pending = stage === 'sending' ? Math.max(1, Math.ceil((arrive - elapsed) / 1000)) : 0;
-      const idle = stage === 'received' || stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
+      const stalled = demo && i === this.syncBase.length - 2 && linked;
+      if (linked && !stalled && elapsed >= arrive && !this.syncReported.has(b.node_id)) {
+        this.reportNode(b.node_id, now(), { pending: 0, arm_state: 'kitted', match_id: this.live_?.match_id });
+        this.syncReported.add(b.node_id);
+      }
+      const reopened = (this.syncReopenedUntil.get(b.node_id) ?? 0) > now();
+      const stage: RecapSyncStage = reopened ? 'sending' : this.syncReported.has(b.node_id) ? 'received' : !linked ? 'unlinked' : demo && elapsed >= sendFrom ? 'sending' : 'linked';
+      const pending = stage === 'sending' ? Math.max(1, stalled ? 2 : Math.ceil((arrive - elapsed) / 1000)) : 0;
+      const idle = stage === 'received' ? 0 : stalled && stage === 'sending' ? Math.max(0, Math.floor((elapsed - sendFrom) / 1000)) : stage === 'sending' ? 0 : Math.floor(elapsed / 1000);
       const lost = demo && i === 2 ? 3 : 0;
-      return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage,
-        transport: stage === 'unlinked' ? null : demo && i % 4 === 1 ? 'cellular' : demo && i % 4 === 3 ? 'backhaul' : 'wifi',
+      return { kind: 'phone' as const, id: b.player_id, name: pl?.display ?? b.player_id, team_id: pl?.team_id ?? null, stage, linked,
+        transport: !linked ? null : demo && i % 4 === 1 ? 'cellular' : demo && i % 4 === 3 ? 'backhaul' : 'wifi',
         ...(pending ? { pending } : {}), ...(lost ? { lost } : {}),
         end_unconfirmed: unconfirmed.has(b.player_id),
         idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S };
@@ -1231,7 +1242,8 @@ export class MockBackend implements Api {
       rows.push({ kind: 'station', id: String(st.id), name: `${(STATION_KIND_LABEL as Record<string, string>)[st.kind] ?? st.kind.toUpperCase()} ${st.id}`,
         team_id: null, stage, transport: null, end_unconfirmed: false, idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S });
     }
-    const pending = !this.syncFinalised && rows.some(r => r.stage !== 'received');
+    if (this.syncFinalised || rows.every(r => r.stage === 'received')) this.syncReleased = true;
+    const pending = !this.syncReleased;
     const key = JSON.stringify(recap.winner);
     if (!pending && this.syncFinalWinner === undefined) this.syncFinalWinner = key;
     else if (this.syncFinalWinner !== undefined && key !== this.syncFinalWinner) this.syncResultChanged = true;
@@ -1247,9 +1259,26 @@ export class MockBackend implements Api {
     }
     return { ok: true };
   }
+  /** Mock-only late batch: a received phone sends again while the released result remains available. */
+  demoLateBatch(player_id: string, winner: RecapView['winner']) {
+    if (this.phase !== 'recap' || !this.syncReleased) throw Object.assign(new Error('no released result'), { status: 409 });
+    const bound = this.syncBase.find(b => b.player_id === player_id);
+    if (!bound || !this.syncReported.has(bound.node_id)) throw Object.assign(new Error('phone has not delivered'), { status: 409 });
+    this.syncReopenedUntil.set(bound.node_id, now() + 5000);
+    if (this.recap_) this.recap_.winner = winner;
+    const archived = this.history_.find(h => h.match_id === this.live_?.match_id);
+    if (archived?.recap) archived.recap.winner = winner;
+    this.emit();
+  }
   private recapView(): RecapView | null {
     const r = this.recapViewBase();
-    if (r && this.phase === 'recap') { const sync = this.syncView(r); if (sync) (r as { sync?: unknown }).sync = sync; }
+    if (r && this.phase === 'recap') {
+      const sync = this.syncView(r);
+      if (sync) {
+        (r as { sync?: unknown }).sync = sync;
+        if (sync.pending) r.winner = null as unknown as RecapView['winner'];
+      }
+    }
     return r;
   }
   private recapViewBase(): RecapView | null {
@@ -1533,7 +1562,8 @@ export class MockBackend implements Api {
     this.endedAt = now();
     const bound = this.players.filter(p => p.node_id);
     this.syncBase = bound.map(p => ({ player_id: p.player_id, node_id: p.node_id! }));
-    this.syncFinalised = false; this.syncFinalWinner = undefined; this.syncResultChanged = false;
+    this.syncReported.clear();
+    this.syncFinalised = false; this.syncReleased = false; this.syncFinalWinner = undefined; this.syncResultChanged = false; this.syncReopenedUntil.clear();
     const knownNodes = new Set(Object.keys(this.nodeReports));
     const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
     if (faultNode) this.disconnectedNodes.add(faultNode);
@@ -1550,6 +1580,7 @@ export class MockBackend implements Api {
         report.end = sessionEndDeliveryTried(report.end, l.match_id, this.endedAt, connected);
       }
     }
+    // The HUD confirms END and the scorer's last known tally. A later status confirms the recap receipt.
     for (const player of bound) {
       if (!player.node_id || player.node_id === this.demoQuietNodeId || !this.nodeConnected(player.node_id)) continue;
       this.reportNode(player.node_id, this.endedAt, { pending: 0, arm_state: 'kitted', match_id: l.match_id });
@@ -2580,6 +2611,7 @@ export class MockBackend implements Api {
   /** `state.py _roll_forward_from_recap` — in RECAP only: roster and game kept, back to muster. */
   private async rollFromRecap() {
     if (this.phase !== 'recap') return false;
+    if (recapSync(this.recapView())?.pending) throw Object.assign(new Error('Finalise the result first.'), { status: 409 });
     await this.newSession(true);
     return true;
   }
@@ -2838,10 +2870,22 @@ export class MockBackend implements Api {
     this.emit();
     return this.state();
   }
-  async matchHistory() { return clone(this.history_); }
+  async matchHistory() {
+    const pendingId = this.phase === 'recap' && recapSync(this.recapView())?.pending ? this.live_?.match_id : undefined;
+    return clone(this.history_.map(h => h.match_id === pendingId
+      ? { match_id: h.match_id, mode: h.mode, go_live_t: h.go_live_t, ended_t: h.ended_t, pending: true } as MatchHistoryRow
+      : h));
+  }
   async getRecap() { const recap = this.recapView(); if (!recap) throw new Error('no recap yet'); return recap; }
-  recapCsvUrl() { return this.csvOf(this.recap_); }
-  matchCsvUrl(match_id: string) { return this.csvOf(this.history_.find(h => h.match_id === match_id)?.recap ?? undefined); }
+  recapCsvUrl() {
+    if (recapSync(this.recapView())?.pending) return PENDING_CSV_URL;
+    return this.csvOf(this.recap_);
+  }
+  matchCsvUrl(match_id: string) {
+    if (this.phase === 'recap' && this.live_?.match_id === match_id && recapSync(this.recapView())?.pending)
+      return PENDING_CSV_URL;
+    return this.csvOf(this.history_.find(h => h.match_id === match_id)?.recap ?? undefined);
+  }
   private csvOf(r?: RecapView) {
     if (!r) return '#';
     const lines = ['operator,team,kills,deaths,assists,kd,accuracy,streak,medals',
@@ -2849,9 +2893,11 @@ export class MockBackend implements Api {
     return 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
   }
   async newSession(keep_roster: boolean) {
+    if (this.phase === 'recap' && recapSync(this.recapView())?.pending)
+      throw Object.assign(new Error('Finalise the result first.'), { status: 409 });
     const rolling = keep_roster && this.phase === 'recap';
     if (this.phase === 'armed' || this.phase === 'live') this.recordRetired(this.start_?.match_id ?? this.live_?.match_id);
-    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined; this.syncBase = [];
+    this.setPhaseField('muster'); this.pushed = false; this.acks = {}; this.echoedGuns.clear(); this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined; this.syncBase = []; this.syncReopenedUntil.clear(); this.syncReleased = false;
     if (!rolling) for (const report of Object.values(this.nodeReports)) delete report.end;
     if (!rolling) this.endDeliveryTold = undefined;
     if (!rolling) this.staleTold.clear();

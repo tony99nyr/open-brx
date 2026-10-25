@@ -89,7 +89,8 @@ describe('F318 items 5, 9 and 10: KIT', () => {
 describe('F318 item 10: RECAP history chips', () => {
   it('are at least 36 px tall', async () => {
     const d = await demo();
-    const rows = [{ match_id: 'old1', mode: 'tdm', go_live_t: 1, ended_t: Date.now() - 60_000, recap: null, config: null }] as unknown as MatchHistoryRow[];
+    const rows = [{ match_id: 'old1', mode: 'tdm', go_live_t: 1, ended_t: Date.now() - 60_000,
+      recap: { winner: { team_id: 'blue' }, score: {}, rows: [], honors: [], provisional: false, missing: [] } }] as MatchHistoryRow[];
     const state: State = { ...d.state, phase: 'recap' };
     const m = await mountScreen(<Recap />, { ...d, state, api: { matchHistory: async () => rows } });
     await act(async () => { await new Promise(r => setTimeout(r, 5)); });

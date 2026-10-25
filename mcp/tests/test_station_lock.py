@@ -307,6 +307,7 @@ def test_a_station_restart_cannot_shrink_its_tally_within_one_game():
     assert rep["control"]["hold_ms"] == {"0": 90_000, "1": 25_000}, rep
     assert rep["revives"] == 5, rep
     s.control("end")
+    s.finalise_recap()
     s.push_config(force=True)                                # a NEW game: the station resets, and so does MC
     clock.t += 5_000
     _ctl_beat(s, clock, {"0": 1_000})

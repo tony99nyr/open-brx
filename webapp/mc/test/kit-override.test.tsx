@@ -20,7 +20,7 @@ import { StoreCtx } from '../src/store';
 import { demo, fixtureApi, makeStore, mount } from './harness';
 
 /** Mount KIT against a server that refuses `kit -> lobby`. `always` refuses the forced tap too. */
-async function kitScreen(refusal: PhaseRefusal, { always = false } = {}) {
+async function kitScreen(refusal: PhaseRefusal, { always = false, ready = true } = {}) {
   const d = await demo();
   const calls: (boolean | undefined)[] = [];
   const errors: string[] = [];
@@ -36,7 +36,7 @@ async function kitScreen(refusal: PhaseRefusal, { always = false } = {}) {
     },
   });
   // the console's OWN roster looks green: every disagreement here is the server's to win
-  const state: State = { ...d.state, players: d.state.players.map(p => ({ ...p, ready: true })) };
+  const state: State = { ...d.state, players: d.state.players.map(p => ({ ...p, ready })) };
   const render = (s: State) => {
     const store = makeStore({ ...d, state: s, view: 'kit' }, {
       api,
@@ -86,6 +86,27 @@ describe("A27 · the button's count while the server is refusing", () => {
 });
 
 describe('A27 · a refused OVERRIDE', () => {
+  it('shows a pending result as a plain refusal with no override', async () => {
+    const m = await kitScreen({ error: 'Finalise the result first.' }, { always: true });
+    await act(async () => { m.btn().click(); });
+    expect(m.find('[data-continue-refusal]')[0]?.textContent).toBe('▲ Finalise the result first.');
+    expect(m.btn().textContent).toBe('CONTINUE · 8/8 READY ▸');
+    expect(m.find('[data-continue="kit"]')[0]?.getAttribute('data-armed')).toBe('0');
+    expect(m.text()).not.toContain('CONTINUE ANYWAY');
+    expect(m.calls).toEqual([undefined]);
+    m.unmount();
+  });
+
+  it('shows the same plain refusal when the roster warning already sent force', async () => {
+    const m = await kitScreen({ error: 'Finalise the result first.' }, { always: true, ready: false });
+    await act(async () => { m.btn().click(); });
+    await act(async () => { m.btn().click(); });
+    expect(m.calls).toEqual([true]);
+    expect(m.find('[data-continue-refusal]')[0]?.textContent).toBe('▲ Finalise the result first.');
+    expect(m.find('[data-continue="kit"]')[0]?.getAttribute('data-armed')).toBe('0');
+    expect(m.btn().hasAttribute('disabled')).toBe(true);
+    m.unmount();
+  });
   it('says the override itself was refused, not the same sentence again', async () => {
     const m = await kitScreen({ error: 'THE LOBBY IS CLOSED', greens: 8, roster_size: 8 }, { always: true });
     await act(async () => { m.btn().click(); });                     // refused, unforced

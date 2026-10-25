@@ -96,6 +96,20 @@
     "time_limit_s": 600
   },
   "demo": false,
+  "end_delivery": {
+    "hot-joined": {
+      "confirmed": false,
+      "confirmed_t": null,
+      "exhausted": false,
+      "last_ok": true,
+      "match_id": "0000000800",
+      "next_t": 5038001,
+      "player_id": "00000009",
+      "since": 5036001,
+      "tries": 1
+    }
+  },
+  "end_delivery_told": null,
   "ended": [
     {
       "config": {
@@ -905,6 +919,20 @@
         "team": 1
       }
     ],
+    "end_delivery": {
+      "hot-joined": {
+        "confirmed": false,
+        "confirmed_t": null,
+        "exhausted": false,
+        "last_ok": true,
+        "match_id": "0000000800",
+        "next_t": 5038001,
+        "player_id": "00000009",
+        "since": 5036001,
+        "tries": 1
+      }
+    },
+    "end_reason": "host",
     "end_t": 5036001,
     "evicted_nodes": [
       "node0"
@@ -987,6 +1015,7 @@
         "voice": "male"
       }
     },
+    "released": false,
     "result_changed": false,
     "seq": 1,
     "station_history": {},
@@ -995,6 +1024,12 @@
     "station_seen": {},
     "station_unverified": [],
     "store_path": "session.sqlite",
+    "sync_nodes": {
+      "hot-joined": {
+        "changed_t": 5036001,
+        "idle_ms": 0
+      }
+    },
     "synced_at_lobby": {
       "node0": true,
       "node1": true

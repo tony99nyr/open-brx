@@ -9,6 +9,9 @@ Run the soak:
 from __future__ import annotations
 
 import os
+import asyncio
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from _skip import needs
 
@@ -29,6 +32,41 @@ def test_flat_memory_passes_and_steady_growth_fails():
 
 def test_rss_is_a_positive_number():
     assert rss_mb() > 0
+
+
+def test_old_phone_soak_finalises_a_held_recap_before_rolling():
+    from brx_mcp.chaos import soak
+
+    class Session:
+        phase = "recap"
+        finalised = False
+
+        def recap(self):
+            return {"sync": {"pending": not self.finalised}}
+
+        def finalise_recap(self):
+            self.finalised = True
+
+        def next_match(self):
+            assert self.finalised, "the held recap must be finalised before NEXT MATCH"
+
+        def push_config(self):
+            pass
+
+        def all_acked(self):
+            return True
+
+        def start(self, runway_s):
+            self.phase = "live"
+            return {"match_id": "next"}
+
+    async def ready(predicate, timeout):
+        return predicate()
+
+    world = SimpleNamespace(session=Session(), nodes=[SimpleNamespace(arm_state="live")], match_id=None)
+    with patch.object(soak, "until", ready):
+        asyncio.run(soak._next_match(world))
+    assert world.match_id == "next"
 
 
 def test_the_soak_itself():

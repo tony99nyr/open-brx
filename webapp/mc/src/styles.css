@@ -133,3 +133,4 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 .sb-dot,.sb-ring{animation:none}
 .sb-dot{opacity:1}.sb-dot:nth-child(1){transform:translateY(5px)}.sb-dot:nth-child(3){transform:translateY(-5px)}
 .sb-ring{opacity:0}}
+.screen [data-sync-row][data-unverified="1"] > :not([data-cell="sync"]) { opacity: .5; }

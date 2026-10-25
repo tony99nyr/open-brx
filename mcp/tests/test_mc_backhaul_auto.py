@@ -389,6 +389,7 @@ def test_next_match_rearms_the_triggers_but_keeps_the_operator_off():
     _to_recap(s, net, clock, ps)
     assert t.starts == [8766]
     t.status = "error"                            # the tunnel died after match 1
+    s.finalise_recap()
     s.next_match()
     s.set_phase("kit")
     for i, p in enumerate(ps):
@@ -397,6 +398,7 @@ def test_next_match_rearms_the_triggers_but_keeps_the_operator_off():
     assert t.starts == [8766, 8766], "a new match gets a fresh kit trigger"
     run(s.set_tunnel(False))
     _to_recap(s, net, clock, ps)
+    s.finalise_recap()
     s.next_match()
     s.set_phase("kit")
     for i, p in enumerate(ps):

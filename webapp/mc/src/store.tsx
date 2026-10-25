@@ -41,6 +41,7 @@ function writeHash(v: View, want?: View | null) {
 import { loadWithRetry } from './api/retry';
 import { createHttpApi, getToken, onAuthRequired, onTokenPicked, setToken as saveToken } from './api/client';
 import { MockBackend } from './mock/backend';
+import { installMockCsvFetch } from './mock/csv';
 
 export const isMock = () => import.meta.env.VITE_MOCK === '1' || import.meta.env.MODE === 'mock' || new URLSearchParams(location.search).has('mock');
 
@@ -160,6 +161,7 @@ const ENTER_CONFIRM_MS = 8000;
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const mock = useMemo(isMock, []);
+  useEffect(() => mock ? installMockCsvFetch() : undefined, [mock]);
   const api = useMemo<Api>(() => (mock ? new MockBackend({ syncDemo: true }) : createHttpApi()), [mock]);
   const [state, setState] = useState<State | null>(null);
   const [feed, setFeed] = useState<FeedEntry[]>([]);

@@ -209,7 +209,9 @@ def test_timed_end_mirror_and_recap_kitted():
     assert live_view["score"]["red"] == 1
     assert live_view["ends_t"] == info["go_live_t"] + live_view["time_limit_s"] * 1000
     clock["t"] = info["go_live_t"] + 60_000 + 6000
-    s.tick(); assert s.phase == "recap" and s.recap()["winner"] == {"team_id": "red"}
+    s.tick(); assert s.phase == "recap"
+    s.finalise_recap()
+    assert s.recap()["winner"] == {"team_id": "red"}
     # late flush after the end is recorded but not scored (A6.1)
     net.simulate_event("node0", {"type": "death", "t": info["go_live_t"] + 65_000, "match_id": mid, "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"], "shooter_team": 1}, clock["t"], seq=2)
     assert s.recap()["score"]["blue"] == 0 and s.recap()["post_end"] == 1

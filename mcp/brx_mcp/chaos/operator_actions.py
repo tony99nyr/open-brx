@@ -51,6 +51,13 @@ async def field_join(world: World) -> None:
     await world.join_field()
 
 
+@action("old_phone_pending", pick=_never)
+async def old_phone_pending(world: World) -> None:
+    """Model phones from before the status pending count was added."""
+    for node in world.nodes:
+        node.report_pending = False
+
+
 @action("operator_phase", pick=_never)
 async def operator_phase(world: World, *, phase: str) -> None:
     """Move the operator to a pre-match screen through the Session phase API."""
@@ -162,6 +169,9 @@ async def archive_late_retired(world: World, *, node: int) -> None:
     retired = world.match_id
     assert world.archive_original_start is not None, "archive_fail_start did not run first"
     s.store.match_started = world.archive_original_start
+    recap = s.recap()
+    if recap and (recap.get("sync") or {}).get("pending"):
+        s.finalise_recap()
     s.next_match()
     result = s.set_config({"mode": "ffa"})
     if not result["ok"]:

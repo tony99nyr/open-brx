@@ -149,6 +149,7 @@ def test_a_live_station_heartbeat_ends_the_match_on_the_hold_target():
     net.simulate_status("util-hill", body, clock["t"])
     assert s.phase == "recap", s.phase
     assert s.end_reason == "hold_target", s.end_reason
+    s.finalise_recap()
     assert s.recap()["winner"] == {"team_id": red["team_id"]}, s.recap()["winner"]
 
 
