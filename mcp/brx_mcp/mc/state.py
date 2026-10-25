@@ -1146,48 +1146,64 @@ class Session:
         return _policy.pool(self.policy(), weapons, perks)
 
     def _primary_pool_refusal(self) -> str | None:
-        """F146: why is there no legal primary weapon? `None` when there is one.
+        """F146: why is there no legal primary weapon? `None` when there is one. See `_pool_refusal`."""
+        return self._pool_refusal("primary")
 
-        An empty primary pool blocks the push either way, but the operator has to be sent to the
-        control that is actually wrong. A single "clear a class or id exclusion" line sent them to the
-        class chips no matter what emptied the pool — including a `fixed_id` naming a weapon this
-        game's catalog does not contain, where there are no exclusions to clear at all (round-2 review
-        2026-09-12). The `kinds` case never reaches here: `policy()` heals it.
+    def _pool_refusal(self, slot: str) -> str | None:
+        """F146 / F594: why is there no legal weapon in `slot` ("primary" or "secondary")? `None` when there is one,
+        or when the slot is empty by choice (`off`) or by our build's limit (`unplayable`).
+
+        An empty pool blocks the push either way, but the operator has to be sent to the control that is actually
+        wrong. A single "clear a class or id exclusion" line sent them to the class chips no matter what emptied the
+        pool, including a `fixed_id` naming a weapon this game's catalog does not contain, where there are no
+        exclusions to clear at all (round-2 review 2026-09-12). The primary's `kinds` case never reaches here: `policy()`
+        heals it. F594 (brx1 2026-10-24): the secondary is refused the same way. The console already greys CONTINUE for it
+        (`gameSummary.ts emptyRequiredSlots`); any other push path went through and `policy.apply` dropped the
+        secondary silently.
         """
         lp = self.loadout_pool()
-        if lp["primary"]:
+        key = "primary" if slot == "primary" else "secondary_weapons"
+        if lp[key]:
             return None
-        rule = self.policy()["primary"]
+        rule = self.policy()[slot]
+        name = slot.upper()
         # One classifier, two vocabularies: `policy.pool()` hands out a CODE (its own copy is the HUD's,
         # shown verbatim to a player) and the console writes the operator's line for it.
-        code = (lp.get("reasons") or {}).get("primary", "filtered")
+        code = (lp.get("reasons") or {}).get(key, "filtered")
         # Round-3 MERGE-4 (2026-09-13): `unplayable` is NOT a refusal. Every other code here is a rule
         # the operator wrote and can rewrite; this one says the weapon they asked for cannot be shipped
         # by THIS build (`policy.UNPLAYABLE_IDS`). `policy.apply()` has already re-fitted every loadout
-        # to a legal primary, so the push is safe — blocking it would strand the operator behind a
+        # to a legal primary, so the push is safe -- blocking it would strand the operator behind a
         # limitation of ours with nothing on screen to change. `_unplayable_primary_notice()` is what
-        # they see instead.
-        if code == "unplayable":
+        # they see instead. `off` is the operator's own choice of no secondary.
+        if code in ("unplayable", "off"):
             return None
         if code == "fixed_missing":
-            return (f"PRIMARY FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A WEAPON IN THIS GAME: "
-                    "PICK THE FIXED PRIMARY AGAIN IN THE PRIMARY SLOT, OR SET THE SLOT BACK TO A PLAYER PICK")
+            return (f"{name} FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A WEAPON IN THIS GAME: "
+                    f"PICK THE FIXED {name} AGAIN IN THE {name} SLOT, OR SET THE SLOT BACK TO A PLAYER PICK")
         if code == "only_ids_missing":
-            return ("PRIMARY LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
-                    f"({', '.join(sorted(rule.get('only_ids') or []))}): CLEAR THE PRIMARY SLOT'S "
+            return (f"{name} LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
+                    f"({', '.join(sorted(rule.get('only_ids') or []))}): CLEAR THE {name} SLOT'S "
                     "ALLOW LIST, OR NAME WEAPONS THAT ARE IN THE CATALOGUE")
+        weapons, perks = self._catalog_rows()
+        def wname(wid: object) -> str:
+            return str(next((w.get("name") for w in weapons if w.get("weapon_id") == wid), wid)).upper()
         if code == "perk_blocked":
-            # F585: the fixed perk cannot ride with any primary the slot allows (the F551 prune); no exclusion exists
-            weapons, perks = self._catalog_rows()
+            # F585: the fixed perk cannot ride with any weapon the slot allows (the F551 prune); no exclusion exists
             perk_id = self.policy()["perk"].get("fixed_id")
             perk = next((p.get("name") for p in perks if p.get("perk_id") == perk_id), perk_id)
             allowed = _policy.pool({**self.policy(), "perk": {**self.policy()["perk"], "choice": "player", "fixed_id": None}},
-                                   weapons, perks)["primary"]
-            names = ", ".join(next((w.get("name") for w in weapons if w.get("weapon_id") == wid), wid) for wid in allowed)
-            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH ANY PRIMARY THIS GAME ALLOWS ({names.upper()}): "
-                    "PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER PRIMARY")
-        return ("PRIMARY FILTER EXCLUDES EVERY WEAPON (NO LEGAL PRIMARY IS LEFT): CLEAR A CLASS OR ID "
-                "EXCLUSION IN THE PRIMARY SLOT, OR PICK A PRESET")
+                                   weapons, perks)[key]
+            return (f"THE FIXED PERK {str(perk).upper()} CANNOT RIDE WITH ANY {name} THIS GAME ALLOWS "
+                    f"({', '.join(wname(w) for w in allowed)}): "
+                    f"PICK ANOTHER FIXED PERK, LET PLAYERS PICK THE PERK, OR ALLOW ANOTHER {name}")
+        if rule.get("choice") == "fixed":
+            # F594: a fixed id that IS in the game but cannot go in this slot (a support weapon as primary, a
+            # pickup-only weapon) reads `filtered`; the slot has no class or id exclusion to clear
+            return (f"{name} FIXED TO {wname(rule.get('fixed_id'))}, WHICH CANNOT GO IN THE {name} SLOT: "
+                    f"PICK ANOTHER FIXED {name}, OR SET THE SLOT BACK TO A PLAYER PICK")
+        return (f"{name} FILTER EXCLUDES EVERY WEAPON (NO LEGAL {name} IS LEFT): CLEAR A CLASS OR ID "
+                f"EXCLUSION IN THE {name} SLOT, OR PICK A PRESET")
 
     def _unplayable_primary_notice(self) -> str | None:
         """MERGE-4's other half: the WARNING that replaces the refusal above, naming the weapon.
@@ -2595,9 +2611,9 @@ class Session:
         # act on. A ruleset that excludes every weapon is the operator's mistake to fix, and this is the
         # sentence that tells them which control to touch.
         try:
-            bad = self._primary_pool_refusal()
+            bad = [r for r in (self._pool_refusal("primary"), self._pool_refusal("secondary")) if r]   # F594: both slots
             if bad:
-                self.config_errors.append(bad)
+                self.config_errors.extend(bad)
                 # Mutated in place, never rebound: `res` carries the compiler's shape and a fresh
                 # `dict(res, ...)` widened it enough to break the `warnings` read two lines down.
                 res["ok"] = False

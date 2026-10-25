@@ -167,7 +167,7 @@ class StationController {
     return true;
   }
 
-  // Every loop(): the lock running out, a clear still owed, and the five-minute snapshot refresh.
+  // Every loop(): the lock running out, a clear still owed, and the once-a-minute snapshot refresh (F391).
   void tick_lock(StationLink& link, uint32_t now_ms, StationEffects& fx) {
     if (link.poll_lock(now_ms)) {
       clear_lock(fx);

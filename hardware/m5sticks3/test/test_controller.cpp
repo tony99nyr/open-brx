@@ -243,6 +243,33 @@ static void test_a_config_with_a_new_lock_then_a_rearm() {
   CHECK(!fx.has_lock() && c.lock.last_saved_game == 255 && c.lock.last_saved_seconds == 0);
 }
 
+// F391 (Tony 2026-10-24): a Stick restarted offline mid-match comes back locked as it was, not unlocked and not cut to
+// 120 s. It is armed with a 30 min lock, runs 10 min (the loop snapshots the time left), loses Wi-Fi and restarts.
+static void test_an_offline_restart_comes_back_with_the_lock_as_it_was() {
+  StationController c;
+  FakeStation fx;
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  welcome(c, link, fx, "s1");
+  c.on_message(link, "station_config", body(control_body(3, 1800)), 1000, fx);
+  for (uint32_t t = 1000; t <= 601000; t += 1000) c.tick_lock(link, t, fx);
+  link.wifi_down();
+  CHECK(link.lock().remaining_s(601000) == 1200);
+  // The restart: a fresh link from what flash holds, with no Wi-Fi and no MC to re-send the lock.
+  SavedStationConfig saved;
+  saved.loaded(fx.p.getString("station_cfg", ""), fx.p.getString("station_sid", ""));
+  StationLink rebooted;
+  rebooted.set_mode(AssocMode::HELD);
+  CHECK(rebooted.restore_station_config(saved.restore()));
+  const uint32_t restored = boot_lock_restore_s(rebooted.assignment().present, fx.p.isKey("lock_game"),
+                                                fx.p.getUChar("lock_game", 255), rebooted.assignment().game,
+                                                (uint32_t)fx.p.num["lock_s"]);
+  rebooted.restore_lock(restored, 0);
+  CHECK(rebooted.lock().locked(0));
+  const uint32_t left = rebooted.lock().remaining_s(0);
+  CHECK(left >= 1200 && left <= 1260);   // as it was, give or take one snapshot
+}
+
 // A lock write that fails stays owed; the next loop writes the time left, regardless of the interval.
 static void test_a_failed_lock_write_is_retried_by_the_loop() {
   StationController c;
@@ -583,6 +610,7 @@ static void test_the_boot_restore_records_the_lock_game() {
 
 int main() {
   test_a_welcome_from_a_new_session_erases_the_old_match();
+  test_an_offline_restart_comes_back_with_the_lock_as_it_was();
   test_a_welcome_from_the_same_session_keeps_everything();
   test_a_new_session_welcome_erases_a_live_config_from_flash_only();
   test_a_welcome_without_a_session_erases_nothing();
