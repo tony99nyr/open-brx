@@ -33,7 +33,7 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
 
 Scenario version 12 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
-ticks, aim-scaled close melee finishes, field aim and density. It also reports 20 m and 30 m rushes,
+ticks, aim-scaled melee finishes inside the rush reach (with the slot-4 swap), field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
 finishers after a dry primary. Haze runs in a separate optional report.
@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 14
+SCENARIO_VERSION = 16   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -437,6 +437,7 @@ class Kit:
     parts: tuple
     melee_dmg: int
     melee_ms: float
+    melee_swap_ms: float         # F609: the slot-4 draw, the larger t15 of the gun and the melee slot
 
     def pool(self, preset: str) -> int:
         return dict(self.pools)[preset]
@@ -483,8 +484,9 @@ def make_kit(world: World, name: str, primary: str, secondary: str | None = None
     pools = tuple((p, sum(v)) for p, v in parts)
     marks = cat._row(primary).get("role") == "marksman" or plan == "combo"
     melee_cat = cat if "melee" in cat._by_id else WeaponCatalog()
+    melee_swap = float(max(swap, cat.swap_ms(primary, sw), melee_cat.swap_ms("melee", sw)))
     return Kit(name, guns, swap, perk, plan, world.style(primary), pools, marks, parts,
-               melee_cat.damage("melee"), float(melee_cat.fire_ms("melee")))
+               melee_cat.damage("melee"), float(melee_cat.fire_ms("melee")), melee_swap)
 
 
 # --------------------------------------------------------------------------- #
@@ -626,7 +628,7 @@ class Fighter:
     capped at 1. Damage = the gun word, plus the headset word at close. Shields refill after a quiet window."""
 
     def __init__(self, kit: Kit, pool: int, aim: float, dist: int, rng, fit=True, pull_ms=PULL_MS,
-                 allow_melee=True, heat_cool_while_firing=True, persistent_reload=False):
+                 allow_melee=False, heat_cool_while_firing=True, persistent_reload=False):
         self.kit, self.aim, self.dist, self.rng, self.fit, self.pull_ms = kit, aim, dist, rng, fit, pull_ms
         self.allow_melee, self.heat_cool_while_firing = allow_melee, heat_cool_while_firing
         self.persistent_reload = persistent_reload
@@ -637,11 +639,13 @@ class Fighter:
         self.blind_until = 0.0
         self.dot_next, self.dot_left, self.dot_dmg, self.dot_ms, self.dot_src = math.inf, 0, 0, 0.0, None
         self.last_effect = None
-        self.melee_ready, self.melee_winding = 0.0, False
+        # F609: melee only where the rush tracks the distance (`dist_m`); a plain close duel never swings.
+        self.melee_ready, self.melee_winding, self.melee_in_hand = 0.0, False, False
         self.dist_m = None
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
         self.swap_until = 0.0
+        self.committed = False   # a drawn slot acts once (fires, reloads or waits) before the slot is reconsidered (F601)
         self.gs = [_GunState(g, charged=(i == 0)) for i, g in enumerate(kit.guns)]  # a slot not in hand holds no charge
         self.active, self.phase, self.next_t, self.alive = (1 if kit.plan == "haze" else 0), "open", 0.0, True
         self.targets: list = []
@@ -720,7 +724,8 @@ class Fighter:
             self.shots += 1
         return r
 
-    def _swap(self, idx, t):
+    def _holster(self, t):
+        """The gun in hand leaves it: a reload or a lever vent stops, and a deferred pickup applies."""
         old = self.gs[self.active]
         self._credit_reload(old, t)
         if old.reload_amount or old.venting:
@@ -731,10 +736,14 @@ class Fighter:
             if old.pending_pickup:
                 old.reserve = max(old.reserve, old.pending_pickup)
                 old.pending_pickup = 0
+
+    def _swap(self, idx, t):
+        self._holster(t)
         self.active = idx
         chosen = self.gs[idx]
         draw = t + self.kit.swap_ms
         self.swap_until = draw
+        self.committed = True
         if self.kit.guns[idx].mode == "charge" and not chosen.charged:
             chosen.charged = True
             chosen.ready_at = max(chosen.ready_at, draw + self.kit.guns[idx].fire_ms)
@@ -801,14 +810,16 @@ class Fighter:
         if self.kit.plan != "single":
             return False
         if self.active == 0:
+            # A dry, reloading or locked primary draws the secondary only when the secondary still finishes
+            # first after the swap (the same test as the way back), or when the primary cannot finish at all.
+            # An unconditional draw ping-ponged: the way back counts the primary's reload, so a fast reload
+            # (the Shotgun's chain, Quick Hands) swapped back to an empty primary, drew again at once, and fired
+            # nothing all fight (F601).
             blocked = ps.ammo == 0 or ps.locked_until > t or ps.ready_at > t
-            if blocked and ss.ammo:
+            own = self._finish_ms(0, target, t)
+            if ss.ammo and ((blocked and own == math.inf) or self.kit.swap_ms + self._finish_ms(1, target, t) < own):
                 self._swap(1, t)
                 return True
-            if ss.ammo and not blocked:
-                if self.kit.swap_ms + self._finish_ms(1, target, t) < self._finish_ms(0, target, t):
-                    self._swap(1, t)
-                    return True
         elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)) or \
                 (ps.ready_at <= t and ps.locked_until <= t and
                  self.kit.swap_ms + self._finish_ms(0, target, t) < self._finish_ms(1, target, t)):
@@ -823,14 +834,29 @@ class Fighter:
                 (self.dist_m is None or self.dist_m <= MELEE_REACH_M) and t >= self.melee_ready:
             if not self.melee_winding:
                 self.melee_winding = True
-                self.next_t = t + MELEE_SWING_MS
+                if not self.melee_in_hand:
+                    # the slot-4 draw: the gun takes the larger of the two slots' delays, and holsters as a swap does
+                    self._holster(t)
+                    self.melee_in_hand = True
+                    self.next_t = t + self.kit.melee_swap_ms + MELEE_SWING_MS
+                else:
+                    self.next_t = t + MELEE_SWING_MS
                 return None
             self.melee_winding = False
             self.melee_ready = t + self.kit.melee_ms
             self.next_t = self.melee_ready
             self.last_effect = "melee"
             return self.kit.melee_dmg, MELEE_HIT_P * self.aim * (0.0 if t < self.blind_until else 1.0), False
-        if self._maybe_swap(t):
+        self.melee_winding = False                      # a wind-up whose condition lapsed is dropped
+        if self.melee_in_hand:
+            self.melee_in_hand = False                  # swap back to the gun before it fires (F609)
+            g = self.gs[self.active]
+            self.committed = bool(g.ammo or g.reserve)   # the gun acts before a further swap, unless it is spent
+            self.next_t = t + self.kit.melee_swap_ms
+            return None
+        if self.committed:
+            self.committed = False
+        elif self._maybe_swap(t):
             return None
         g, s = self.kit.guns[self.active], self.gs[self.active]
         heat = dict(g.heat)
@@ -1284,9 +1310,9 @@ def marksman_rush_counter(kit_m: Kit, kit_v: Kit, reps: int, heat_cool_while_fir
                      start_m, _heat_seed(heat_cool_while_firing))
     mk = rs = 0
     for _ in range(reps):
-        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng,
+        m = Fighter(kit_m, kit_m.pool_parts("standard"), AIM, 2, rng, allow_melee=True,
                     heat_cool_while_firing=heat_cool_while_firing)
-        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng,
+        v = Fighter(kit_v, kit_v.pool_parts("standard"), AIM, 2, rng, allow_melee=True,
                     heat_cool_while_firing=heat_cool_while_firing)
         a, b = rush_encounter(rng, m, v, start_m, speed_m_s)
         mk += a; rs += b  # noqa: E702
@@ -1645,7 +1671,7 @@ def pickup_utility(world: World, wid: str, scale: float,
 # --------------------------------------------------------------------------- #
 
 class KitPlayer(B.Player):
-    __slots__ = ("kit", "models", "stash", "active", "phase", "swap_until", "kpool", "dist", "combo", "ap")
+    __slots__ = ("kit", "models", "stash", "active", "phase", "swap_until", "kpool", "dist", "combo", "ap", "committed")
 
 
 @dataclass(frozen=True)
@@ -1688,6 +1714,7 @@ class KitMatch(B.Match):
     def _seek(self, p, t, _gen=0):
         if not p.alive or p.target is not None:
             return
+        p.committed = False          # a draw made for the last engagement does not bind the next one (F601)
         enemies = [q for q in self.players if q.team != p.team and q.alive]
         if not enemies:
             self.push(t + 200.0, self.SEEK, p.pid)
@@ -1732,6 +1759,7 @@ class KitMatch(B.Match):
          p.next_ready, p.last_pull, p.burst_i, p.reload_amount, p.heat_has_locked) = p.stash[idx]
         p.w = p.models[idx]
         p.swap_until = t_end
+        p.committed = True       # the drawn slot acts once before the slot is reconsidered (F601)
         if p.w.charge_and_tap:
             p.last_pull = t_end
             p.next_ready = max(p.next_ready, t_end + p.w.fire_ms)
@@ -1768,11 +1796,13 @@ class KitMatch(B.Match):
         other = 1 - p.active
         if not p.models[other].lethal:
             return p.active
-        if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t):
-            if p.stash[1][0] > 0:
-                return 1
         current = self._finish_ms(p, p.active, t, pool)
         alternative = self._finish_ms(p, other, t, pool) + p.kit.swap_ms
+        # F601, as in Fighter._maybe_swap: a dry or locked primary draws the secondary only when the secondary
+        # finishes first, or when the primary cannot finish; an unconditional draw ping-ponged with the way back.
+        if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t) and p.stash[1][0] > 0 and \
+                current == math.inf:
+            return 1
         if p.active == 1 and p.ammo <= 0 and alternative < math.inf:
             return 0
         return other if alternative < current else p.active
@@ -1807,7 +1837,12 @@ class KitMatch(B.Match):
             lever = t + pull_gap(self.rng, self.cfg.pull_ms)
             self._start_reload(p, lever)
             p.heat_lock_until = max(lever + p.w.reload_ms, p.reload_until)
-        idx = self._choose_slot(p, t)
+        if p.committed:
+            p.committed = False
+            self._finish_reload(p, t)
+            idx = p.active
+        else:
+            idx = self._choose_slot(p, t)
         if idx != p.active:
             self._swap_to(p, idx, t + p.kit.swap_ms)
             first = max(p.swap_until, p.next_ready, p.reload_until)
@@ -1815,8 +1850,12 @@ class KitMatch(B.Match):
                 self.push(first, self.SHOT, p.pid, gen)
             return
         if not p.combo:
+            fired = p.shots
             super()._shot(p, t, gen)
-            if p.alive and p.engage_id == gen and p.target is not None and self.players[p.target].alive:
+            # reconsider only after a round left the gun: a reload or a heat-lock reschedule is the slot's action,
+            # and swapping away from it cancelled it, so two dry slots could still ping-pong (F601, Opus review)
+            if p.shots > fired and p.alive and p.engage_id == gen and p.target is not None and \
+                    self.players[p.target].alive:
                 idx = self._choose_slot(p, t)
                 if idx != p.active:
                     self.heap = [e for e in self.heap if not (e[2] == self.SHOT and e[3] == p.pid and
@@ -1848,6 +1887,7 @@ class KitMatch(B.Match):
     def _respawn(self, p, t, _gen=0):
         pool = p.kpool
         p.alive = True
+        p.committed = False
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
         if len(p.models) > 1:
             p.stash = [(m.mag, m.reserve, -1.0, 0.0, t, -1.0, 0.0, -1e9, 0, 0, False) for m in p.models]
@@ -1870,7 +1910,7 @@ def _kit_player(pid, team, fk: FieldKit):
     p = KitPlayer(pid, team, fk.models[0], fk.pool)
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
-    p.active, p.phase, p.swap_until, p.dist = 0, "open", 0.0, 1
+    p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
     return p
 
 

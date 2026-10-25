@@ -1,5 +1,5 @@
 {
-  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. Every weapon states its reload_type (chain or magazine), so no case falls back to weapons.json. Note: the live compiled catalogue sends neither reload_type nor unplayable today (the server falls back to weapons.json and UNPLAYABLE_IDS), so a console check must not rely on the row alone. `unplayable: true` marks the policy.py UNPLAYABLE_IDS row: no policy may offer it, and the test checks the flag against that set. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. An apply case gives a policy and a loadout; `expect` is the loadout policy.py apply() auto-fixes it to (the chain-reload check runs before the two-weapon check). Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3).",
+  "_comment": "Seams Batch C (review 2026-10-10, mc.md #4): the loadout pool rules (policy.py pool(), with its empty-slot reason codes) and the Easy Reload checks (policy.py conflict() and chain_conflict()). `weapons` and `perks` are a small catalogue made for these cases, not weapons.json: a pickup_only heavy, an unplayable energy_launcher, a lethal:false support weapon, a sidearm, a chain-reload shotgun, a swap perk (switch_mult < 1) and a perk whose switch_mult > 1 is only a cost. Every weapon states its reload_type (chain or magazine), so no case falls back to weapons.json. Note: the live compiled catalogue sends neither reload_type nor unplayable today (the server falls back to weapons.json and UNPLAYABLE_IDS), so a console check must not rely on the row alone. `unplayable: true` marks the policy.py UNPLAYABLE_IDS row: no policy may offer it, and the test checks the flag against that set. A pool case gives a whole LoadoutPolicy; `expect` is the pool, with `reasons` only when a slot is empty. An easy_reload case gives a loadout; `expect` names the conflicting weapon or null. An apply case gives a policy and a loadout; `expect` is the loadout policy.py apply() auto-fixes it to (the chain-reload check runs before the two-weapon check). Read by mcp/tests/test_policy_cases.py; the console's computePool reads it too (brx3). Honest pickers (Tony 2026-10-25): a case may give `health_preset` (the game's `health.preset`); a perk whose `blocked_presets` names it leaves the pool, and a fixed one empties the slot as `preset_blocked`.",
   "weapons": [
     {
       "weapon_id": "assault_rifle",
@@ -93,7 +93,10 @@
       "perk_id": "armour",
       "name": "Armour",
       "tags": [],
-      "effects": {}
+      "effects": {},
+      "blocked_presets": [
+        "shields"
+      ]
     },
     {
       "perk_id": "stealth",
@@ -1384,6 +1387,192 @@
           "secondary_weapons": "perk_blocked"
         }
       }
+    },
+    {
+      "name": "Honest pickers: the Shields health preset drops a perk it blocks (PerkView.blocked_presets), with no reason while others remain",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "stealth"
+        ]
+      },
+      "health_preset": "shields"
+    },
+    {
+      "name": "Honest pickers: a fixed perk the Shields health preset blocks empties the perk slot as preset_blocked",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "fixed",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": "armour"
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [],
+        "reasons": {
+          "perks": "preset_blocked"
+        }
+      },
+      "health_preset": "shields"
+    },
+    {
+      "name": "Honest pickers: another health preset blocks nothing",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "expect": {
+        "primary": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun"
+        ],
+        "secondary_weapons": [
+          "assault_rifle",
+          "smg",
+          "sniper_rifle",
+          "lmg",
+          "glock",
+          "shotgun",
+          "stripper"
+        ],
+        "perks": [
+          "quick_switch",
+          "extended_mags",
+          "armour",
+          "stealth"
+        ]
+      },
+      "health_preset": "standard"
     }
   ],
   "easy_reload": [
@@ -2004,6 +2193,59 @@
           "easy_reload": true
         }
       }
+    },
+    {
+      "name": "Honest pickers: apply clears a perk the Shields health preset blocks, silently, and keeps the weapons",
+      "policy": {
+        "preset": "open",
+        "hud_select": true,
+        "primary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "secondary": {
+          "choice": "player",
+          "kinds": [
+            "weapon"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        },
+        "perk": {
+          "choice": "player",
+          "kinds": [
+            "perk"
+          ],
+          "exclude_tags": [],
+          "exclude_ids": [],
+          "only_ids": [],
+          "fixed_id": null
+        }
+      },
+      "loadout": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ],
+        "perk": "armour"
+      },
+      "expect": {
+        "weapons": [
+          {
+            "weapon_id": "assault_rifle"
+          }
+        ]
+      },
+      "health_preset": "shields"
     }
   ]
 }

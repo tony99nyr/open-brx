@@ -375,9 +375,12 @@ def unplayable_pick(rule: SlotRule) -> str | None:
     return sorted(only)[0] if only and only <= UNPLAYABLE_IDS else None
 
 
-def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkView]) -> LoadoutPool:
+def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkView],
+         health_preset: str | None = None) -> LoadoutPool:
     """Allowed ids per slot (catalog order) — `State.loadout_pool` (§3.2). `weapons`/`perks` are the
-    VISIBLE catalog rows (each with `tags`).
+    VISIBLE catalog rows (each with `tags`). `health_preset` is the game's `health.preset`: a perk whose
+    `blocked_presets` names it is not offered, so `apply` clears it from a stored loadout with no warning
+    (Tony 2026-10-25: Armour Piercing and Body Armor are refused on the Shields preset).
 
     An empty slot also gets an entry in `reasons` (absent when every slot has something), so a UI can
     say WHICH control emptied it instead of guessing at the nearest one."""
@@ -408,6 +411,10 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         sp = [pr_fid] if pr_fid and any(p["perk_id"] == pr_fid for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
+    preset_emptied = False
+    if health_preset:
+        keep = [rid for rid in sp if health_preset not in ((_perk_row(perks, rid) or {}).get("blocked_presets") or [])]
+        preset_emptied, sp = bool(sp) and not keep, keep
     perk_emptied: set[str] = set()   # F585: the slots the fixed-perk prune below emptied (no rule of the slot's own did)
     if pr["choice"] == "fixed" and sp:
         # F551 (Codex review): a FIXED perk that cannot ride with a weapon (`PerkView.blocked_*`, the compile guards'
@@ -433,7 +440,8 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     if not sp:
         # The S37 prune first: it is the only cause that is NOT about this slot's own rule, and blaming
         # the perk filters for it sends the operator to the wrong control entirely.
-        reasons["perks"] = "needs_secondary" if pruned_swap else _empty_code(pr, perks, "perk_id")
+        reasons["perks"] = ("needs_secondary" if pruned_swap else "preset_blocked" if preset_emptied
+                            else _empty_code(pr, perks, "perk_id"))
     if reasons:
         out["reasons"] = reasons
     return out

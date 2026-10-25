@@ -502,13 +502,16 @@ export function Kit() {
                     const allowed = (slot === 'primary' ? pool.primary : pool.secondary_weapons).includes(w.weapon_id);
                     const on = slot === 'primary' ? w.weapon_id === primary?.weapon_id : w.weapon_id === secondaryW?.weapon_id;
                     const fixed = ruleOf(slot)?.choice === 'fixed';
-                    const dis = locked || !allowed || (fixed && !on);
+                    // honest pickers (Tony 2026-10-25): a weapon the held perk cannot ride with (`PerkView.blocked_*`)
+                    // is not offered; change the perk first
+                    const perkClash = !on && !!perk && ((slot === 'primary' ? perk.blocked_primary : perk.blocked_secondary) ?? []).includes(w.weapon_id);
+                    const dis = locked || !allowed || (fixed && !on) || perkClash;
                     const role = roleOf(w.role, w.cls);
                     const ask = slot === 'secondary' ? confirmFor(`weapon:${w.weapon_id}`) : null;
                     return (
                       <div key={w.weapon_id} className={dis ? undefined : 'hov-acc'} role="button" tabIndex={dis ? -1 : 0} aria-pressed={on} aria-disabled={dis || undefined}
-                        aria-label={`${w.name}, ${role.label}, magazine ${w.clip}${locked ? ', locked while the match is in play' : dis ? ', not allowed by the rules' : ''}`}
-                        title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : fixed ? 'Fixed by the ruleset' : undefined}
+                        aria-label={`${w.name}, ${role.label}, magazine ${w.clip}${locked ? ', locked while the match is in play' : perkClash && allowed ? `, does not work with ${perk!.name}` : dis ? ', not allowed by the rules' : ''}`}
+                        title={locked ? 'The kit is locked while the match is in play' : !allowed ? 'Not allowed by this game’s rules' : perkClash ? `Does not work with ${perk!.name}` : fixed ? 'Fixed by the ruleset' : undefined}
                         onClick={() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); }} onKeyDown={onKey(() => { if (!dis) (slot === 'primary' ? pickPrimary : pickSecondary)(w); })}
                         style={{ background: on ? 'rgba(57,180,255,.08)' : dis ? T.panelDeep : T.panel, border: `1px solid ${ask ? T.warn : on ? T.acc : T.line}`, padding: 8, cursor: dis ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', gap: 7, minHeight: 44 }}>
                         {ask && <span role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {ask}</span>}

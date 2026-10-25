@@ -89,7 +89,13 @@ export function _slotPlate(st, slot, mode, ammoLine) {
   /** Rows for a tab: [{key, kind, id, row, allowed}] in catalog order, filtered to the player's pool. */
 export function _loRows(st, tab) {
     const cat = st.catalog || { weapons: [], perks: [] }; const rule = st.policy ? st.policy[tab] : null;
-    if (tab === 'primary') { const ok = new Set((rule && rule.allowed_ids) || []); return (cat.weapons || []).filter(w => ok.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })); }
+    // Honest pickers (Tony 2026-10-25): a held perk (or one still waiting for MC's ack) takes the weapons it cannot ride
+    // with out of the weapon tabs, from MC's own lists, so a player never picks a pair MC would clear. Change the perk first.
+    const pp = st.pendingPick && st.pendingPick.slot === 'perk' ? st.pendingPick : null;
+    const heldPerk = pp ? (pp.kind === 'perk' ? pp.id : null) : (st.loadout && st.loadout.perk && st.loadout.perk.perk_id) || null;
+    const perkRow = heldPerk ? (cat.perks || []).find(p => p.perk_id === heldPerk) : null;
+    const perkBlocks = list => w => !(perkRow && Array.isArray(perkRow[list]) && perkRow[list].includes(w.weapon_id));
+    if (tab === 'primary') { const ok = new Set((rule && rule.allowed_ids) || []); return (cat.weapons || []).filter(w => ok.has(w.weapon_id)).filter(perkBlocks('blocked_primary')).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })); }
     if (tab === 'perk') {   // A14: its own tab
       // F551 (field 2026-10-17): MC names the weapons a perk cannot ride with; such a perk is not offered beside them (MC
       // drops it from a stored loadout too). An absent field hides nothing.
@@ -103,7 +109,7 @@ export function _loRows(st, tab) {
     }
     const okW = new Set((rule && rule.allowed_weapon_ids) || []);
     const kinds = (rule && rule.kinds) || ['weapon'];
-    return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
+    return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).filter(perkBlocks('blocked_secondary')).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
   }
 export function _loadout(st) {
     const tab = this.lo.tab === 'secondary' ? 'secondary' : this.lo.tab === 'perk' ? 'perk' : 'primary';

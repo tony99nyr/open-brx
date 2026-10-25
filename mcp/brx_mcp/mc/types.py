@@ -512,7 +512,8 @@ class LoadoutPolicy(TypedDict):
     perk: SlotRule                        # A14: perks are their own slot (choice may be "off")
 
 
-PoolEmptyCode = Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered", "perk_blocked"]
+PoolEmptyCode = Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered", "perk_blocked",
+                        "preset_blocked"]
 
 
 class LoadoutPool(TypedDict):
@@ -571,6 +572,9 @@ class PerkView(TypedDict):
     # Absent from an older MC: hide nothing.
     blocked_primary: NotRequired[list[str]]
     blocked_secondary: NotRequired[list[str]]
+    # Honest pickers (Tony 2026-10-25): the `health.preset` values this perk is refused under (`Compiler.preset_block`).
+    # The loadout pool drops it there, so no picker offers it and a preset switch clears it. Absent: refused under none.
+    blocked_presets: NotRequired[list[str]]
 
 
 class ValuePair(TypedDict):

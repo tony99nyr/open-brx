@@ -91,7 +91,10 @@ doubling still applies. Tony kept the perk as it is with the cap in view (2026-1
 **Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
 compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
 the preset was designed not to have. Under Shields, Body Armor grants **shield**, not armour. That is a
-branch in `armed_armor()`, and it is on the list below.
+branch in `armed_armor()`, and it is on the list below. **Superseded 2026-10-25 (Tony via brx1):** the
+Shields preset refuses Body Armor and Armour Piercing outright (`Compiler.preset_block`, from the perk's
+effects). No picker offers them there, and a switch to Shields clears them from every loadout with no warning.
+The `armed_armor()` branch stays for Hardcore and custom zero-armour games.
 
 **Second Wind needs no new mechanism.** The node already tracks the player's pools from `$HIR` and
 `$HP`, and a miss sends nothing at all, so there is no noise to filter. The grant is one `$LIFE` write

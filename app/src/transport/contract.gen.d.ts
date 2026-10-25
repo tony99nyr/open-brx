@@ -617,7 +617,7 @@ export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
 export type ItemKind = 'weapon' | 'perk' | 'sidearm';
 /** `policy.PRESET_NAMES` -- the named rulesets, plus "custom" for a hand-edited one. */
 export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
-export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered' | 'perk_blocked';
+export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered' | 'perk_blocked' | 'preset_blocked';
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
@@ -952,6 +952,9 @@ export interface PerkView {
    *  Absent from an older MC: hide nothing. */
   blocked_primary?: string[];
   blocked_secondary?: string[];
+  /** Honest pickers (Tony 2026-10-25): the `health.preset` values this perk is refused under (`Compiler.preset_block`).
+   *  The loadout pool drops it there, so no picker offers it and a preset switch clears it. Absent: refused under none. */
+  blocked_presets?: string[];
 }
 
 /** S50 build 4: a wire number before and after a perk touched it. Integers, always both present
