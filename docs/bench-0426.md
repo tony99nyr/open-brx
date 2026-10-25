@@ -116,11 +116,12 @@ Extended Mags adds nothing to the reserve of five rifles.* Procedure: 1017 P1.0.
 reserve sent and counts down normally. Then raise `RESERVE_PROVEN_MAX` in `compile.py` to the proven value (desk,
 after the bench).
 
-**P2.3. The reconnect's battery cost (15 min, runs beside P2.1 and P2.2).** *Impact: a phone showing GUN LINK LOST
+**P2.3. The reconnect's battery cost (20 min, runs beside P2.1 and P2.2).** *Impact: a phone showing GUN LINK LOST
 drained fast in the field.* The grey Pixel, the app open on the lobby, outside a match, its gun off. Note the battery
-percentage and the time. After 15 min, note them again and count the connect attempts in the app log. **Pass:** the
-attempts are 10 s apart for 12 tries, then 30 s and 60 s, and the link rests at TAP TO RECONNECT after 30 tries.
-**Read:** the battery drop. **Control:** the same phone for 15 min with its gun on and linked. Row: F563.
+percentage and the time. After 20 min, note them again and count the connect attempts in the app log. **Pass:** the
+attempts are about 10 s apart for the first 12 tries (the first few shorter), then 30 s and 60 s, and the link rests
+at TAP TO RECONNECT after 30 tries (about 16 to 19 min). **Read:** the battery drop. **Control:** the same phone for
+20 min with its gun on and linked. Row: F563.
 
 **P2.4. The backhaul is a fallback, not a pull (15 min).** *Impact: a kit-started tunnel must not move every phone
 off the LAN inside the config-ack window, and a phone that leaves the Wi-Fi must still reach MC.* MC on main with its

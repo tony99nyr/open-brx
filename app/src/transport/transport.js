@@ -371,7 +371,7 @@ export class Transport {
     return this._sendKind('status', full);
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered
-   *  only when it reached MC through the tunnel AND reports `cellular`; anything unrecognised is 'unknown'.
+   *  only when it reports `cellular` AND reached MC through the tunnel, or is on the LAN with `has_pub` (F595); anything unrecognised is 'unknown'.
    *  @param {unknown} t */
   setConnectionType(t) {
     this.connectionType = t === 'wifi' || t === 'cellular' || t === 'none' ? t : 'unknown';

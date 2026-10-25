@@ -5815,7 +5815,7 @@ class GunStage:
             return None
         # milestone review (powerup-player.js `_claimTick`): the phone holds a claim while the gun is stunned (its $AMMO 0,0
         # would be undone), reloading (the write would undo the gun's refill) or mid ALT swap; so does the stage
-        held = "stunned" if self.stunned else "reloading" if self.reloading else "swapping" if self.switching else None
+        held = "stunned" if self.stunned else "reloading" if self.reloading else "swapping" if self.switching and not self.switching.get("pu") else None
         if held:
             self._log(f"powerup: {name} grant held: the gun is {held}", "info")
             return None
