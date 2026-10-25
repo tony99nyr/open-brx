@@ -58,6 +58,7 @@ def test_the_cap_end_goes_down_the_same_path_a_manual_end_does():
     assert s.phase == "recap" and head_of(s) is None
     ends = [p for p in net.pushes("control") if p[2].get("cmd") == "end"]
     assert {p[0] for p in ends} == {"node0", "node1"}, f"every node is told, in coverage or not: {ends}"
+    s.finalise_recap()
     assert [p for p in net.pushes("feedback") if p[2].get("kind") == "victory"], "winners still get the sting"
     assert any("FRAG LIMIT 1 REACHED" in e["text"] for e in s.feed), s.feed[:4]
     # A6.1: the freeze is at the winning kill, so a later fact is recorded and not scored
@@ -496,6 +497,7 @@ def test_a_cap_reached_mid_batch_finishes_on_the_WHOLE_batch():
     won = {p[0] for p in net.pushes("feedback") if p[2].get("kind") == "victory"}
     assert won == set(), f"a dead heat has no winner to sting: {won}"
     # A24: and both of them are told it was a draw, rather than being left to guess from silence.
+    s.finalise_recap()
     res = {p[0]: p[2] for p in net.pushes("result")}
     assert res["node0"]["outcome"] == "draw" and res["node1"]["outcome"] == "draw"
     assert res["node2"]["outcome"] == "lose"

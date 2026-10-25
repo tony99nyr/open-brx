@@ -34,6 +34,7 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     s, net, clock, ps, info = go_live_stored(4, "tdm")          # F413: ps[0]/ps[2] red, ps[1]/ps[3] blue
     kill(s, net, clock, ps, 0, 1, info, seq=1)           # red 1 - 0 blue
     s.control("end")
+    s.finalise_recap()
     got = results(net)
     assert set(got) == {"node0", "node1", "node2", "node3"}, f"a node was left out: {sorted(got)}"
     assert [got[f"node{i}"]["outcome"] for i in range(4)] == ["win", "lose", "win", "lose"]
@@ -69,17 +70,20 @@ def test_result_says_undecided_rather_than_inventing_a_winner():
     s, net, clock, ps, info = go_live_stored(2, "koth", {"scoring": {"win_by": "objective"}, "station_source": "phone"})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
+    s.finalise_recap()
     got = results(net)
     assert [got[f"node{i}"]["outcome"] for i in range(2)] == ["undecided", "undecided"]
     assert got["node0"]["winner"].get("undecided") == "objective" and got["node0"]["win_by"] == "objective"
 
 
 def test_welcome_carries_the_result_while_the_session_is_in_recap():
-    """A phone that was out of coverage at the whistle learns the result on its next hello — the only
-    route there is for a node MC could not push to."""
+    """A returning phone gets the result in welcome after MC releases it."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "recap"
+    node = net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}")
+    assert node and "result" not in node
+    s.finalise_recap()
     node = net.simulate_hello("node1", f"GUN-B-{demo_armory()[1]['ble']['tail']}")
     assert node and node["result"]["outcome"] == "lose", node.get("result")
     assert node["result"]["winner"]["player_id"] == ps[0]["player_id"]
@@ -493,7 +497,9 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
         net.simulate_event("node1", {"type": "death", "t": t, "match_id": info["match_id"],
                                      "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                      "shooter_team": 1}, t, seq=n)
-    assert s.phase == "recap" and results(net)["node1"]["outcome"] == "lose"
+    assert s.phase == "recap"
+    s.finalise_recap()
+    assert results(net)["node1"]["outcome"] == "lose"
 
     s.patch_player(ps[1]["player_id"], team_id=blue)          # the DEBRIEF re-team, for the next match
     clock["t"] = g + 300_000
@@ -520,6 +526,7 @@ def test_a_player_added_during_the_debrief_is_told_no_result_at_all():
     s, net, clock, ps, info = go_live_stored(2, "tdm")
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     s.control("end")
+    s.finalise_recap()
     rows_before = sorted(r["player_id"] for r in s.recap()["rows"])
 
     late = s.add_player("LATECOMER", gun_id="GUN-C")
