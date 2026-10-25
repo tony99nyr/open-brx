@@ -39,6 +39,7 @@ def _rows(s):
 def test_next_match_keeps_the_roster_and_the_game_and_loads_it():
     s, net, clock, ps, info = go_live_stored(2, "tdm", {"time_limit_s": 420})
     s.control("end")
+    s.finalise_recap()
     assert s.phase == "recap"
     mode, limit, teams = s.config["mode"], s.config["time_limit_s"], {p["player_id"]: p["team_id"] for p in ps}
     s.next_match()
@@ -54,6 +55,7 @@ def test_any_config_edit_after_the_whistle_rolls_forward_instead_of_refusing():
     """The old rule took a MODE pick only and refused the rest with "match is over"."""
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     s.set_config({"night": True})
     assert s.phase == "build" and s.config["night"] is True and scorer_of(s) is None
 
@@ -61,6 +63,7 @@ def test_any_config_edit_after_the_whistle_rolls_forward_instead_of_refusing():
 def test_load_after_the_whistle_loads_the_next_match():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     s.load_game()
     assert s.phase == "build" and s.game_loaded and scorer_of(s) is None and s.last_recap is None
 
@@ -75,6 +78,7 @@ def test_a_late_kill_after_the_roll_lands_in_the_finished_match_recap():
     t_kill = clock["t"]                       # the kill happened DURING the match...
     clock["t"] += 5_000
     s.control("end")
+    s.finalise_recap()
     assert _kills(s._ended[mid]["recap"], ps[0]["player_id"]) == 0
     s.next_match()
     clock["t"] += 30_000                      # ...and the phone flushed it after the operator moved on
@@ -100,8 +104,10 @@ def test_a_late_kill_after_the_roll_lands_in_the_finished_match_recap():
 def test_the_end_delivery_keeps_re_telling_a_straggler_after_the_roll():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     clock["t"] += 500
     node_heartbeat(net, clock, "node0", ps[0]["player_id"], "kitted", info["match_id"], alive=False)
+    s.finalise_recap()
     s.next_match()
     assert unconfirmed(s) == ["OP1"], "the operator still sees who has not confirmed"
     n1 = len(ends_to(net, "node1"))
@@ -116,6 +122,7 @@ def test_the_end_delivery_keeps_re_telling_a_straggler_after_the_roll():
 def test_a_fresh_session_still_ends_the_watch():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     s.new_session(keep_roster=False)
     assert end_view(s) is None and s.retired is None
 
@@ -127,6 +134,7 @@ def test_a34_still_reconciles_a_phone_live_in_the_match_rolled_past():
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
     assert s.phase == "recap"
+    s.finalise_recap()
     s.next_match()
     clock["t"] += 60_000
     before = len(controls_to(net, "node1"))
@@ -139,6 +147,7 @@ def test_a34_still_reconciles_a_phone_live_in_the_match_rolled_past():
 def test_the_recap_log_ask_survives_the_roll():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     assert s._log_match == info["match_id"]
     s._on_node_message("node0", "log_data", {"node_id": "node0", "seq": 0, "chunk": "x", "last": True}, clock["t"])
     s.next_match()
@@ -153,6 +162,7 @@ def test_game_no_counts_matches_not_rolls():
     s, net, clock, ps, info = go_live_stored(2)
     g = s.game_no
     s.control("end")
+    s.finalise_recap()
     s.next_match()
     assert s.game_no == g, "a roll is not a match"
     s.push_config()
@@ -168,6 +178,7 @@ def test_the_pre_arm_gun_columns_do_not_carry_over_from_the_last_match():
     """Bench 2026-09-16: RECAP, phones re-joined, and the check read PUSHED 2/2 from the match before."""
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     rows = _rows(s)
     assert not any(r["gun_sent"] or r["gun_acked"] for r in rows.values()), rows
     assert {r["ack_state"] for r in rows.values()} == {"none"}
@@ -178,6 +189,7 @@ def test_the_pre_arm_gun_columns_do_not_carry_over_from_the_last_match():
 def test_ack_state_is_waiting_then_acked_or_failed():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     s.next_match()
     s.push_config(force=True)
     assert {r["ack_state"] for r in _rows(s).values()} == {"waiting"}, "a fresh push is not a fault"
@@ -191,6 +203,7 @@ def test_ack_state_is_waiting_then_acked_or_failed():
 def test_ack_state_fails_on_timeout_but_not_before():
     s, net, clock, ps, info = go_live_stored(2)
     s.control("end")
+    s.finalise_recap()
     s.next_match()
     s.push_config(force=True)
     clock["t"] += SYNC_ACK_TIMEOUT_MS - 1_000

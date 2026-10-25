@@ -41,6 +41,8 @@ def test_the_frag_limit_ends_an_ffa_match_on_the_leader_s_kills():
     assert s.phase == "live", "two kills of three is not the cap"
     kill(s, net, clock, ps, 0, 1, info, seq=3)
     assert s.phase == "recap", "the third kill reached the cap and the match must be over"
+    s.finalise_recap()
+    s.finalise_recap()
     r = s.recap()
     assert r["winner"]["player_id"] == ps[0]["player_id"]
     assert max(row["kills"] for row in r["rows"]) == 3
@@ -73,6 +75,7 @@ def test_in_a_team_mode_the_cap_is_the_TEAM_score_not_one_player_s():
     assert s.phase == "live", "one kill of two"
     kill(s, net, clock, ps, 2, 3, info, seq=2)      # a DIFFERENT player on the same team
     assert s.phase == "recap", "the team reached the cap even though neither player did"
+    s.finalise_recap()
     assert s.recap()["winner"]["team_id"] == ps[0]["team_id"]
 
 
@@ -99,6 +102,7 @@ def test_a_late_team_kill_before_the_capping_kill_cannot_take_the_winner_below_t
     scores = scorer_of(s).team_scores()
     assert scores[team_a] == 2, f"the late team kill took the winner below the cap it won on: {scores}"
     assert scores[ps[1]["team_id"]] == 1, f"a late enemy kill inside the window still scores: {scores}"
+    s.finalise_recap()
     r = s.recap()
     assert r["winner"]["team_id"] == team_a, r
     # Integration review 2: only the killer's -1 is frozen. The death happened to the victim, so it counts

@@ -26,7 +26,7 @@ const PENDING = syncOf([phone('p1'), phone('p2', { stage: 'sending', pending: 3,
 async function stateWith(sync: unknown, rc: Partial<RecapView> = {}, over: Partial<State> = {}) {
   const d = await demo();
   const players = NAMES.map((display, i) => ({ ...d.state.players[0], player_id: `p${i + 1}`, player_num: i + 1, display, team_id: i % 2 ? 'yellow' : 'blue', node_id: `n${i + 1}` }));
-  const recap = { winner: { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [{ award: 'MVP', key: 'mvp', player_id: 'p2', stat: '9 K' }],
+  const recap = { winner: (sync as { pending?: boolean } | null)?.pending ? null : { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [{ award: 'MVP', key: 'mvp', player_id: 'p2', stat: '9 K' }],
     provisional: false, missing: [], played_s: 300, ...(sync ? { sync } : {}), ...rc } as unknown as RecapView;
   const state: State = { ...d.state, phase: 'recap', players, recap, config: { ...d.state.config, time_limit_s: 300 }, ...over };
   return { d, state };
@@ -81,10 +81,36 @@ describe('2 · LIVE during RECAP', () => {
 });
 
 describe('3 · the mock mirrors the SERVER station rule (compared with the recorded server fixture)', () => {
+  it('waits for a post-whistle zero-pending status before receiving connected phones', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend();
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      await b.control('end');
+      const rows = async () => (recapSync((await b.getState()).recap)?.rows ?? []).filter(r => r.kind === 'phone');
+      const first = await rows();
+      expect(first.some(r => r.stage === 'linked'), 'the whistle itself does not receive a phone').toBe(true);
+      await vi.advanceTimersByTimeAsync(1100);
+      expect((await rows()).some(r => r.stage === 'received'), 'a later zero-pending status receives it').toBe(true);
+    } finally { b.dispose(); }
+  });
+  it('a stalled sending demo phone becomes stuck after the mock threshold', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend({ syncDemo: true });
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(2000);
+      await b.control('end');
+      const rows = async () => (recapSync((await b.getState()).recap)?.rows ?? []).filter(r => r.kind === 'phone');
+      await vi.advanceTimersByTimeAsync(150_000);
+      expect((await rows()).some(r => r.stage === 'sending' && r.stuck && r.idle_s >= 120), 'stalled sending is visible').toBe(true);
+    } finally { b.dispose(); }
+  });
   it('the recorded server gives an extraction station NO sync row (only control stations hold the wait)', () => {
     const raw = readFileSync(`${process.cwd()}/test/fixtures/mock-recorded.json`, 'utf8');
     expect(raw, 'the recorded recap lists a non-control station').toMatch(/"kind":"extraction"/);
-    expect(raw, 'and the recorded sync.rows carry a phone row').toMatch(/"kind":"phone","id":"[^"]+","name":"[^"]+","team_id":"[^"]*","stage":"received"/);
+    expect(raw, 'and the whistle snapshot starts with a linked phone').toMatch(/"kind":"phone","id":"[^"]+","name":"[^"]+","team_id":"[^"]*","stage":"linked"/);
     expect(raw.match(/"kind":"station","id"/g) ?? [], 'but no station row').toEqual([]);
   });
   it('the recorded gap list has no structural gap on sync.pending or sync.rows[*]', () => {

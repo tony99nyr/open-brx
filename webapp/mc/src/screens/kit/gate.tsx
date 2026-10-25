@@ -46,9 +46,10 @@ const waitingNames = (names: string[]) => (names.length <= 3
  *  The server's sentence is rendered VERBATIM and first — it is the one that decided. The names are
  *  appended only when that sentence does not already carry them, because MC's own copy usually does
  *  ("1 of 9 are not READY: ROCCO") and printing them twice reads as two different facts. The
- *  "CONTINUE ANYWAY?" prompt is always last: it is what the next tap will do. */
+ *  "CONTINUE ANYWAY?" ends readiness refusals. A pending result cannot be overridden. */
 function refusalLine(r: PhaseRefusal): string {
   const said = (r.error || '').trim() || 'MISSION CONTROL REFUSED THE ADVANCE';
+  if (said === 'Finalise the result first.') return said;
   const names = (r.not_ready ?? []).map(n => n.toUpperCase()).filter(Boolean);
   // F221 polish (2026-09-25): MC's own sentence for this one refusal is "N of M are not READY: names",
   // mixed case with its own colon — appending ": CONTINUE ANYWAY?" doubled the colon and left half the
@@ -92,9 +93,8 @@ function readyCount(gate: ReturnType<typeof kitGate>, refusal: PhaseRefusal | nu
   return gate.known ? ` · ${gate.ready}/${gate.total} READY` : '';
 }
 
-/** What a tap on CONTINUE came back with. `refusal` is A27's 409: the SERVER would not advance, and
- *  it said who is not ready. It is not an error — the operator can force it — so it never goes to the
- *  red strip, which is for things that went wrong. */
+/** What a tap on CONTINUE came back with. A readiness refusal permits an override.
+ *  A pending-result refusal stays on KIT until the result is finalised. */
 type GoResult = { ok: boolean; refusal?: PhaseRefusal };
 
 /** The KIT -> LOBBY button: the ready count IS the status, and a short roster is a two-tap confirm. */
@@ -115,7 +115,8 @@ export function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGat
   // ...and whether the tap it refused had already carried `force`. That is a different event with a
   // different next step, and it must not expire back into an unforced tap.
   const [refusedForce, setRefusedForce] = useState(false);
-  const armed = (blocked && armedFor === who) || refusal != null;
+  const pendingResult = refusal?.error?.trim() === 'Finalise the result first.';
+  const armed = !pendingResult && ((blocked && armedFor === who) || refusal != null);
   // Deriving `armed` HIDES the confirm the moment the roster stops matching — but the armed-for set
   // also has to be FORGOTTEN, and the trigger is the SET CHANGING, not the roster unblocking. Clearing
   // only on `!blocked` left the old set behind through a roster that was still blocked by somebody
@@ -137,9 +138,10 @@ export function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGat
   useEffect(() => { if (!armed || refusedForce) return; const h = setTimeout(() => { setArmedFor(null); setRefusal(null); setRefusedAt(null); }, 12_000); return () => clearTimeout(h); }, [armed, refusedForce]);
   // The count rides on BOTH labels. Dropping it while armed left the strip's only number as the
   // KITTED tally — a different count, of a different thing, at the moment the operator is deciding.
-  const count = readyCount(gate, refusal);
+  const count = readyCount(gate, pendingResult ? null : refusal);
   const label = `${armed ? 'CONTINUE ANYWAY' : 'CONTINUE'}${count} ▸`;
   const go = async () => {
+    if (pendingResult) return;
     if (blocked && !armed) { setArmedFor(who); return; }   // first tap: arm on THIS set of names, send nothing
     // `force` rides on any tap the operator makes AFTER seeing a named warning — the console's own
     // F127 confirm counts, not just the server's refusal. Without that the two guards stack and
@@ -151,7 +153,12 @@ export function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGat
     const forced = armed;
     const r = await onGo(forced);
     // the server said no, and said who — and whether it was the OVERRIDE it turned down
-    if (r.refusal) { setRefusal(r.refusal); setRefusedAt(gate.sig); setRefusedForce(forced); return; }
+    if (r.refusal) {
+      const pending = r.refusal.error?.trim() === 'Finalise the result first.';
+      setRefusal(r.refusal); setRefusedAt(gate.sig); setRefusedForce(forced && !pending);
+      if (pending) setArmedFor(null);
+      return;
+    }
     if (r.ok) { setArmedFor(null); setRefusal(null); setRefusedAt(null); setRefusedForce(false); }  // otherwise it threw: the red strip says why, stay put
   };
   return (
@@ -165,14 +172,14 @@ export function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGat
             roster blocks threw the focused element away mid-decision, so a keyboard operator lost the
             gate at the exact moment it started asking a question (review 2026-09-12). The transparent
             border keeps the box the same size in both looks, so nothing jumps either. */}
-        <button type="button" className={blocked ? 'hov-warnbg' : 'hov-accbg'} onClick={go}
+        <button type="button" className={blocked ? 'hov-warnbg' : 'hov-accbg'} onClick={go} disabled={pendingResult}
           title={armed ? `Move ${waitingNames(gate.waiting)} to the lobby before they have finished kitting`
                        : blocked ? `${gate.waiting.length} player${gate.waiting.length === 1 ? ' is' : 's are'} still kitting`
                        : undefined}
           style={{ font: F.chk(700, 12), letterSpacing: '.2em', padding: '9px 18px', whiteSpace: 'nowrap', ...TAB,
                    background: blocked ? 'transparent' : T.acc, color: blocked ? T.warn : T.accInk,
                    border: `1px solid ${blocked ? T.warn : 'transparent'}`, clipPath: CHAMFER.tl10,
-                   cursor: 'pointer', minHeight: 44 }}>
+                   cursor: pendingResult ? 'not-allowed' : 'pointer', minHeight: 44 }}>
           {label}
         </button>
       </span>

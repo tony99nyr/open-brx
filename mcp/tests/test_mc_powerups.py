@@ -678,6 +678,7 @@ def test_a_station_reconnecting_after_the_match_gets_no_update():
     s.net.simulate_utility_hello("u1")
     assert _pushed(s, "station_update", "u1") == [], f"phase {s.phase}"
     assert "item_available" not in s._station_view("u1")
+    s.finalise_recap()
     s.set_phase("lobby", force=True)
     assert s.phase == "lobby"
     s.net.pushed.clear()

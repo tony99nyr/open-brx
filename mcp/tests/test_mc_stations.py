@@ -603,6 +603,7 @@ def test_the_game_byte_changes_on_the_first_push_after_a_match_started_and_reach
     assert games and set(games) == {1}, games
     s.start(runway_s=3, force=True)
     s.control("end")                                     # match 1 ran
+    s.finalise_recap()
     s.push_config(force=True)                            # muster for match 2
     assert _pushed(s, "station_config", "util-1")[-1]["game"] == 2, "the station is told it is a NEW match"
     # a station that missed that push (out of Wi-Fi) gets the new number on its next hello
@@ -623,6 +624,7 @@ def test_a_station_armed_for_an_older_game_is_flagged_on_the_items_panel():
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3})
     s.push_config(force=True); s.start(runway_s=3, force=True); s.control("end")
+    s.finalise_recap()
     s.net.push = lambda nid, kind, body: False           # out of range for the match-2 muster push
     s.push_config(force=True)
     v = s._station_view("util-1")
@@ -1024,6 +1026,7 @@ def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
     t_kill = s.now_ms()
     s.control("end")
     assert s.last_recap["stations"][0]["revives"] == 2, "CONTROL: match 1 ended on 2 revives"
+    s.finalise_recap()
     s.next_match()   # roll forward, roster + game kept, match 1 retired
     # match 2's station heartbeat moves on to a different count
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
@@ -1504,6 +1507,7 @@ def test_a_hill_assignment_survives_end_and_next_match_like_a_powerup_one():
     (the station's socket dropping and coming back, as at 11:48 that day) keeps it too."""
     s = _koth_played_to_recap("brxu-grey")
     s.net.simulate_utility_hello("brxu-grey")           # a plain reconnect: the same utility identity
+    s.finalise_recap()
     s.next_match()                                       # raises if the hill were gone (F402 LOAD refusal)
     a = s.stations["brxu-grey"]["assigned"]
     assert a and a["kind"] == "control" and a["id"] == 2, a
@@ -1514,6 +1518,7 @@ def test_a_hill_assignment_survives_end_and_next_match_like_a_powerup_one():
     p.set_station("brxu-pu", {"kind": "powerup", "team": "any", "id": 1})
     p.push_config(force=True); p.start(runway_s=3, force=True); p.phase = "live"
     p.control("end")
+    p.finalise_recap()
     p.next_match()
     assert (p.stations["brxu-pu"]["assigned"] or {}).get("kind") == "powerup"
 
@@ -1532,6 +1537,7 @@ def test_back_to_hud_in_recap_clears_the_hill_and_the_way_back_is_a_fresh_statio
     s.net.simulate_utility_hello("brxu-grey")           # the seven-tap way back into utility mode
     assert s.stations["brxu-grey"]["assigned"] is None, "a returning utility phone is a fresh, unassigned station"
     try:
+        s.finalise_recap()
         s.next_match()
         raise AssertionError("LOAD accepted a koth game with no hill")
     except ValueError as e:
@@ -1578,6 +1584,7 @@ def test_the_load_refusal_names_the_hill_that_went_back_to_hud():
     s = _departed_hill()
     at = _departures(s)[0]["at_ms"]
     try:
+        s.finalise_recap()
         s.next_match()
         raise AssertionError("LOAD accepted a koth game with no hill")
     except ValueError as e:
@@ -1609,6 +1616,7 @@ def test_restore_reapplies_the_assignment_through_set_station_and_clears_the_rec
     v = s.set_station("brxu-grey", d["restore"])        # the normal station PUT path
     assert v["assigned"]["kind"] == "control" and v["assigned"]["id"] == 2, v["assigned"]   # its old id, free again
     assert _departures(s) == [], "an assigned node has no departure"
+    s.finalise_recap()
     s.next_match()                                       # the same NEXT MATCH now loads
     assert s.game_loaded and s._koth_hill_fault() is None
 
@@ -1666,6 +1674,7 @@ def test_restore_of_an_assignment_no_longer_valid_is_refused_by_the_normal_path(
 
 def test_the_departure_survives_next_match_and_an_mc_restart_but_not_a_fresh_session():
     s = _departed_hill()
+    s.finalise_recap()
     s._roll_forward_from_recap()                         # NEXT MATCH's roll keeps it (the bench case)
     assert len(_departures(s)) == 1
     s2 = _restart_mc(s)                                  # a restart within the session keeps it

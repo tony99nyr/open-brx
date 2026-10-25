@@ -398,6 +398,23 @@ scenario(Scenario(
     ], ci_seeds=(1,),
 ))
 
+scenario(Scenario(
+    name="retired-archive-old-phone", mode="tdm", nodes=4,
+    doc="An older phone omits pending; the operator finalises before retiring the recap.",
+    roll_after_end=True,
+    setup_script=[
+        {"name": "archive_fail_start", "params": {}},
+        {"name": "field_join", "params": {}},
+        {"name": "old_phone_pending", "params": {}},
+    ],
+    script=[
+        {"name": "drop", "params": {"node": 1}},
+        {"name": "kill", "params": {"victim": 1, "shooter": 0}},
+        {"name": "end", "params": {}},
+        {"name": "archive_late_retired", "params": {"node": 1}},
+    ], ci_seeds=(1,),
+))
+
 
 def stepped_facts_scored_at_arrival(world: World) -> None:
     """F474: no credited kill is dated after MC's own clock (a phone whose clock stepped forward by a minute

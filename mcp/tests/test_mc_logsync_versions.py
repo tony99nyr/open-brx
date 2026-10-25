@@ -57,6 +57,7 @@ def test_pull_at_recap_and_the_log_sync_gate():
     # …and with the option off, the whistle asks nobody. (Same session: a new match, no new nodes.)
     s.options["log_sync"] = "manual"
     net.pushed.clear()
+    s.finalise_recap()
     s.new_session(keep_roster=True)
     run_match(s, net, clock, ps)
     assert pulls(net) == [], "log_sync: manual must silence the automatic recap ask"
@@ -750,6 +751,7 @@ def test_the_1mb_log_budget_is_per_match_not_per_session():
     s._on_node_message("node0", "log_data",
                        {"node_id": "node0", "seq": 0, "chunk": "x" * 1_000_001, "last": True}, clock["t"])
     assert s.pull_log("node0", "manual") is False, "the cap still holds inside one match"
+    s.finalise_recap()
     s.new_session(keep_roster=True)
     net.pushed.clear()
     run_match(s, net, clock, ps)
@@ -825,4 +827,5 @@ def test_set_phase_refuses_to_leave_a_running_match():
     # the whistle is the way out, and then the setup phases are open again
     s.control("end", confirm=True)
     assert s.phase == "recap"
+    s.finalise_recap()
     assert s.set_phase("build") == "build"

@@ -158,4 +158,22 @@ describe('F586 review: a redial for a new token is not undone by the old socket 
     now.onclose?.({ code: 1006 });
     expect(link.at(-1)).toBe(false);
   });
+
+  it('a late token refusal from a replaced socket leaves accepted authentication intact', () => {
+    globalThis.WebSocket = FakeWs as unknown as typeof WebSocket;
+    const asks: boolean[] = [];
+    const un = onAuthRequired(required => asks.push(required));
+    vi.useFakeTimers();
+    const stop = createHttpApi().subscribe(() => {}, () => {}, () => {});
+    const old = FakeWs.made.at(-1)!;
+    old.onopen?.(); old.onclose?.({ code: 1006 });
+    vi.advanceTimersByTime(500);
+    const current = FakeWs.made.at(-1)!;
+    current.onopen?.();
+    current.onmessage?.({ data: JSON.stringify({ kind: 'snapshot', state: {} }) });
+    expect(asks.at(-1)).toBe(false);
+    old.onclose?.({ code: 4401 });
+    expect(asks.at(-1)).toBe(false);
+    stop(); un(); vi.useRealTimers();
+  });
 });

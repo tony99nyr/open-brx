@@ -251,6 +251,7 @@ def test_next_match_clears_every_proof_and_demands_a_fresh_full_push():
     s.tick()
     assert s.phase == "recap"
 
+    s.finalise_recap()
     s.new_session(keep_roster=True)
     assert s.acks == {} and s.bundles == {} and not s.lobby_pushed
     assert s._pinned_hit_plan is None, "the next match re-derives its own hit-audio plan (A17)"
@@ -374,6 +375,7 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
     _live_status(net, clock, 1, ps[1], 120, 70, mid)
     assert s._pool_faults, "control: there is a fault to clear"
     s.control("end", confirm=True)                              # back out of play so a push is allowed
+    s.finalise_recap()
     s.push_config(force=True)
     for i, p in enumerate(ps):
         ack_head(net, s, i, p["player_id"])
@@ -800,6 +802,7 @@ def test_a_pool_fault_earned_in_play_is_gone_by_the_next_lobby():
     _live_status_src(net, clock, 1, ps[1], 60, 70, info["match_id"])
     assert s._pool_faults, "control: there is a fault to clear"
     s.control("end", confirm=True)
+    s.finalise_recap()
     s.new_session()
     assert s._pool_faults == {} and s._pool_ambers == {}
     s.push_config()
@@ -1058,5 +1061,6 @@ def test_a_half_made_amber_claim_does_not_survive_a_fresh_head():
     nv = s.nodes["node1"]
     assert nv.get("pool_amber_pending") == [20, 0], "control: a claim is half made"
     s.control("end", confirm=True)
+    s.finalise_recap()
     s.new_session()
     assert s.nodes["node1"].get("pool_amber_pending") is None

@@ -55,11 +55,14 @@ again once F574 has a cause.
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
-**State as of 2026-10-13.** Nothing is queued or gating. The 2026-10-12/13 work is in the 2026-10 log entry.
-- **Landed:** architecture round 2 candidates 1 and 2 (`Session.match`, `Session.retired`, the phase funnel, the
-  session.json goldens), the mock built from recorded server states (slices 1-6), F524, F527 and the MC docs pass.
-  Fix log: `~/reviews-2026-10-10/mc.md`.
-- **Bench rows, owner brx3:** see [`FOLLOWUPS.md`](FOLLOWUPS.md) (bench).
+**State (2026-10-25):** F596/F597 and F599 are on main. MC polish rounds 1 and 2 are `f758421ac` and `02755adba`.
+Round 3 is uncommitted on `brx3/mc-polish`. A persisted release latch keeps a result available after a late batch or restart. The late phone
+shows sending until its next zero-pending status. Pending results block every new-match path with 409 and expose no
+winner, team score or honours on the console or in API winner fields. `/api/recap` and the snapshot retain per-player
+rows for the sync table. RECAP resume restores the end reason, A42 watch and saved idle age without a second END.
+The console and mock follow those rules. Round 3 passed pyright, chaos and soak tests, 4,317 system Python tests,
+4,565 venv Python tests, 1,758 Vitest tests, TypeScript and four named browser jobs. The 2026-10 log records the evidence.
+**Next:** review this worktree diff and land it through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
 
 ## Lane: brx4, the engine and the StickS3
 **State (2026-10-16):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525

@@ -46,6 +46,7 @@ export function waitingLine(rows: RecapSyncRow[]): string {
 export const EndAlertCtx = createContext<'recap-end-delivery-retrying' | 'recap-end-delivery-spent'>('recap-end-delivery-retrying');
 
 export const plural = (n: number, one: string, many = `${one}S`) => `${n} ${n === 1 ? one : many}`;
+export const shortNames = (names: string[]) => names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} +${names.length - 3} more`;
 
 /** ONE display model per row. The strip icon and the SYNC cell both render from it, so they cannot disagree. */
 export interface RowView {
@@ -54,15 +55,17 @@ export interface RowView {
   transport: 'wifi' | 'cellular' | 'backhaul' | null;   // only a known transport, and only where the stage shows one
   count: number | null;                // the facts left to send, shown for a sending row (a stuck one too, dim)
   stuck: boolean;
+  linkLost: boolean;                  // receipt stays green when its socket drops
   motion: boolean;                     // only a live (not stuck) sending row moves
   lost: number;
   end: boolean;
 }
 export function rowView(r: RecapSyncRow): RowView {
   const stuck = r.stuck && r.stage !== 'received';
+  const linkLost = r.stage === 'received' && r.kind === 'phone' && r.linked === false;
   const transport = (r.stage === 'linked' || r.stage === 'sending') && r.transport && r.transport in TRANSPORT_ICON ? r.transport : null;
   return { state: stuck ? `${r.stage}-stuck` : r.stage, stage: r.stage, transport, count: r.stage === 'sending' && r.pending ? r.pending : null,
-    stuck, motion: r.stage === 'sending' && !stuck, lost: r.lost ?? 0, end: r.end_unconfirmed };
+    stuck, linkLost, motion: r.stage === 'sending' && !stuck, lost: r.lost ?? 0, end: r.end_unconfirmed };
 }
 
 /** The row's words, for the aria-label and the hover title. */
@@ -73,7 +76,7 @@ export function wordOf(r: RecapSyncRow): string {
     : r.stage === 'unlinked' ? 'not linked'
     : r.stage === 'sending' ? `sending${transportWord(r.transport) ? ` over ${transportWord(r.transport)}` : ''}${r.pending ? `, ${r.pending} left to send` : ''}`
     : `linked${transportWord(r.transport) ? ` over ${transportWord(r.transport)}` : ''}, data not in yet`;
-  return `${r.name}: ${body}${lost}${end}${r.stuck ? ', no progress for a while' : ''}`;
+  return `${r.name}: ${body}${r.stage === 'received' && r.linked === false ? ', phone not linked' : ''}${lost}${end}${r.stuck ? ', no progress for a while' : ''}`;
 }
 
 // ---- the strip: one generic phone icon per phone, no names. Only a stage the server reported may move:
@@ -115,7 +118,7 @@ function StationShape({ r, w }: { r: RecapSyncRow; w: number }) {
   );
 }
 
-function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; labelRow: boolean; crowded: boolean }) {
+function StripIcon({ r, w, labelRow, crowded, hideLinkLost = false }: { r: RecapSyncRow; w: number; labelRow: boolean; crowded: boolean; hideLinkLost?: boolean }) {
   const endId = useContext(EndAlertCtx);
   const b = w >= 40 ? 16 : w >= 32 ? 14 : 12;
   const badge = (pos: CSSProperties, color: string, kids: ReactNode, key: string, attr: Record<string, string>) =>
@@ -130,7 +133,7 @@ function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; la
       <div style={{ position: 'relative', opacity: r.stuck ? 0.5 : 1 }}>
         {phone ? <PhoneShape r={r} w={w} /> : <StationShape r={r} w={w} />}
         {v.transport && badge({ right: -4, bottom: 0 }, T.body, transportIcon(v.transport, b - 2), 't', { 'data-strip-transport': v.transport })}
-        {r.stage === 'unlinked' && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
+        {(r.stage === 'unlinked' || (v.linkLost && !hideLinkLost)) && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
         {v.end && badge({ left: -4, top: 0 }, colourOf(endId), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
         {!!v.lost && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
       </div>
@@ -175,28 +178,28 @@ export function SyncStrip({ rows, phase }: { rows: RecapSyncRow[]; phase: SyncPh
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{Icon.check(16)}<span>{phones.length} OF {phones.length} PHONES SYNCED</span></span>
         {keep.length > 0 && (
           <span data-testid="sync-kept" style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 10 }}>
-            {keep.map(r => <StripIcon key={r.id} r={r} w={30} labelRow={false} crowded />)}
+            {keep.map((r, i) => <StripIcon key={`${r.kind}:${r.id}:${i}`} r={r} w={30} labelRow={false} crowded hideLinkLost />)}
           </span>
         )}
       </div>
     );
   }
   const w = stripIconW(rows.length);
-  // Up to 16 icons the stalled one wears its own name. Past that the names would collide, so they go in ONE line.
-  const crowded = rows.length > 16;
+  // With fewer than 12 icons a stalled row wears its own name. Longer lists use one compact line.
+  const crowded = rows.length >= 12;
   const stalled = rows.filter(r => r.stuck);
   const labelRow = rows.some(r => (r.stuck && !crowded) || rowView(r).count != null);
   return (
     <div data-testid="sync-strip" data-icon-w={w} data-still={allIn ? '1' : undefined}
       style={{ padding: '8px 12px 6px', background: T.panel, border: `1px solid ${T.line}`, marginBottom: 8 }}>
       <div role="list" aria-label="Phone sync" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '8px 10px' }}>
-      {phones.map(r => <StripIcon key={r.id} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
+      {phones.map(r => <StripIcon key={`phone:${r.id}`} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
       {stations.length > 0 && <span aria-hidden="true" style={{ alignSelf: 'stretch', width: 1, background: T.line2, margin: '0 4px' }} />}
-      {stations.map(r => <StripIcon key={r.id} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
+      {stations.map((r, i) => <StripIcon key={`station:${r.id}:${i}`} r={r} w={w} labelRow={labelRow} crowded={crowded} />)}
       </div>
       {crowded && stalled.length > 0 && (
-        <div data-strip-stalled style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, color: T.warn, font: F.mono(700, 11), letterSpacing: '.06em' }}>
-          {Icon.clock(14)}<span>NO PROGRESS: {stalled.map(r => r.name).join(', ')}</span>
+        <div data-strip-stalled title={stalled.map(r => r.name).join(', ')} style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, color: T.warn, font: F.mono(700, 11), letterSpacing: '.06em' }}>
+          {Icon.clock(14)}<span>No progress: {shortNames(stalled.map(r => r.name))}</span>
         </div>
       )}
     </div>
@@ -213,6 +216,7 @@ export function SyncCell({ r }: { r: RecapSyncRow }) {
   return (
     <span data-sync-cell={r.id} data-stage={r.stage} data-state={v.state} data-motion={v.motion ? '1' : '0'} title={wordOf(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       {r.stage === 'unlinked' && c(colourOf('recap-sync-outofrange'), Icon.unlinked(16), 'u')}
+      {v.linkLost && c(colourOf('recap-sync-outofrange'), <span data-sync-link-lost>{Icon.unlinked(16)}</span>, 'link')}
       {v.transport && c(T.body, <span data-sync-transport={v.transport} style={{ display: 'inline-flex' }}>{transportIcon(v.transport, 16)}</span>, 't', dim)}
       {r.stage === 'sending' && c(send, <>{Icon.sending(16)}{v.count != null && <span data-sync-num style={{ font: F.mono(700, 12) }}>{v.count}</span>}</>, 's', dim)}
       {r.stage === 'received' && c(T.ok, Icon.check(16), 'c')}
@@ -223,7 +227,7 @@ export function SyncCell({ r }: { r: RecapSyncRow }) {
 }
 
 /** FINALISE: an inline two-tap confirm. The first tap arms it for a few seconds; the second posts. A failure shows. */
-export function FinaliseButton({ prominent, onFinalise }: { prominent: boolean; onFinalise: () => Promise<void> }) {
+export function FinaliseButton({ prominent, missingPhones, missingHills, onFinalise }: { prominent: boolean; missingPhones: number; missingHills: number; onFinalise: () => Promise<void> }) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -248,7 +252,7 @@ export function FinaliseButton({ prominent, onFinalise }: { prominent: boolean; 
         onClick={tap}
         style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '10px 18px', minHeight: 44, cursor: busy ? 'default' : 'pointer',
           background: hot ? T.warn : 'transparent', color: hot ? T.accInk : T.dim, border: `1px solid ${hot ? T.warn : T.line2}` }}>
-        {busy ? 'FINALISING…' : armed ? 'TAP AGAIN TO FINALISE' : 'FINALISE'}
+        {busy ? 'FINALISING…' : armed ? `TAP AGAIN: FINAL WITHOUT ${[missingPhones ? plural(missingPhones, 'PHONE') : '', missingHills ? plural(missingHills, 'HILL') : ''].filter(Boolean).join(' AND ')}` : 'FINALISE'}
       </button>
     </span>
   );

@@ -23,9 +23,12 @@ export const GALLERY_FRAMES: Record<string, Frame> = {
   d: F8('R R R R R R W2 W3!'),                                 // one stuck
   i: F8('R R R R R R R W3 W5 C2 C8 B1 B4 U U W6!'),            // 16
   i48: F8(rep(48)),
+  i32: F8(rep(32)),                                            // 32, mixed, one stuck in every 16
+  i32s: F8(rep(32) + ' ST SR'),                                // 32 with two hill stations, one not synced
   g: F8('R R R R R R R R'),                                    // all received (the strip holds, then collapses)
   lost: F8('R RL12 R R R R R R^'),                             // all received, one lost and one END open: they keep a badge
   fin1: F8('R R R R R R R U', 'blue', { finalised: true }),    // finalised without one phone
+  late: F8('R R R W3 R R R U', 'red', { finalised: true, changed: true }), // a released result, one row sending again
   chg: F8('R R R R R R R R', 'red', { changed: true }),        // the winner flipped after the first final
 };
 
@@ -63,7 +66,7 @@ export function galleryState(base: State, frame: string): State {
   const score = f.winner === 'blue' ? { blue: 23, red: 19 } : { blue: 21, red: 22 };
   const open = sync.filter(r => r.stage !== 'received').length > 0;
   const view: RecapSyncView = { rows: sync, pending: open && !f.finalised, finalised: !!f.finalised, result_changed: !!f.changed };
-  const recap = { winner: { team_id: f.winner }, score, rows, honors: [], provisional: false, missing: [], played_s: 300,
+  const recap = { winner: view.pending ? null : { team_id: f.winner }, score, rows, honors: [], provisional: false, missing: [], played_s: 300,
     settling: false, awaiting: [], since_end_ms: 60_000, post_end: 0, post_end_facts: 0, parked: 0, sync: view } as unknown as RecapView;
   return { ...base, phase: 'recap', players, nodes: [], recap, end_delivery: undefined, orphan_match: undefined, warnings: [],
     config: { ...base.config, mode: 'tdm', time_limit_s: 300 }, t: (base.t ?? Date.now()) } as State;

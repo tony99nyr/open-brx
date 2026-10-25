@@ -48,11 +48,23 @@ def routes(ctx) -> list[BaseRoute]:
             # the FULL config (and the compiled head under `_heads`), not just the mode — debugging a
             # field report needs every setting the game actually ran with, not a summary of it
             rows: list[MatchHistoryRow] = []
+            current = s.match
+            scorer = current.scorer if current is not None else None
+            current_id = scorer.match_id if s.phase == "recap" and scorer is not None else None
+            sync = (s.recap().get("sync") or {}) if current_id else {}
+            pending = bool(sync.get("pending"))
             for m in s.store.matches():
                 config = m["config"] or {}
-                rows.append({"match_id": m["match_id"], "go_live_t": m["go_live_t"],
-                             "ended_t": m["ended_t"], "recap": m["recap"], "config": config,
-                             "mode": config.get("mode", "")})
+                is_pending = pending and m["match_id"] == current_id
+                row: MatchHistoryRow = {"match_id": m["match_id"], "go_live_t": m["go_live_t"],
+                                        "ended_t": m["ended_t"],
+                                        "mode": config.get("mode", "")}
+                if is_pending:
+                    row["pending"] = True
+                else:
+                    row["recap"] = m["recap"]
+                    row["config"] = config
+                rows.append(row)
             return JSONResponse(rows)
         except Exception:                            # history is a convenience; never 500 the console
             # NOT a header: Starlette encodes header values as latin-1, so an error message carrying a
@@ -135,6 +147,11 @@ def routes(ctx) -> list[BaseRoute]:
             return _err("match history unavailable", 503)
         if not m:
             return _err("unknown match", 404)
+        current = s.match
+        scorer = current.scorer if current is not None else None
+        current_id = scorer.match_id if s.phase == "recap" and scorer is not None else None
+        if mid == current_id and (s.recap().get("sync") or {}).get("pending"):
+            return _err("results pending: wait for every phone to sync, or FINALISE", 409)
         rows = (m.get("recap") or {}).get("rows")
         # A recap with no rows is a real match that scored nobody. Serve the header row: an empty
         # download is a truthful answer, and a 404 here reads as "that match is gone".

@@ -632,6 +632,8 @@ def test_koth_session_ends_live_the_moment_the_hold_target_is_reached():
                                  "hold_ms": {str(red["tid"]): 60_000}, "observed_ms": 60_000}, clock["t"], seq=1)
     assert s.phase == "recap", s.phase
     assert s.end_reason == "hold_target", s.end_reason
+    assert s.recap()["winner"] is None, "the pending result stays hidden until release"
+    s.finalise_recap()
     assert s.recap()["winner"] == {"team_id": red["team_id"]}, s.recap()["winner"]
 
 
@@ -769,6 +771,7 @@ def test_f482_after_the_roll_an_evicted_phones_late_tally_never_reaches_the_fini
     assert s.evict_node("node0")
     clock["t"] += 1_000
     s.control("end")
+    s.finalise_recap()
     s.next_match()
     assert s.retired is not None and s.retired.scorer is not None, "control: rolled past RECAP"
     seen = []
