@@ -39,9 +39,10 @@ FOLLOWUPS row.
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Log the banner and the token.
 3. **Reflash EVERY Stick from current `main` before the session:** `python3 hardware/m5sticks3/tools/stick.py flash`.
-   MC refuses older firmware: its floor is `STATION_MIN_FW` "h8-0.2", and a Stick still on h8-0.1 shows the station
-   line "STICK FIRMWARE TOO OLD: REFLASH IT" until it is reflashed. The firmware reports `h8-0.2+<git sha>`, with
-   `_dirty` added when built from a dirty tree: log that string, and reflash from a clean tree if it says `_dirty`.
+   MC flags older firmware: its floor is `STATION_MIN_FW` "h8-0.3", and a Stick still on h8-0.2 or older shows the
+   station line "STICK FIRMWARE TOO OLD: REFLASH IT" until it is reflashed. The firmware reports `h8-0.3+<git sha>`,
+   with `_dirty` added when built from a dirty tree: log that string, and reflash from a clean tree if it says
+   `_dirty`.
    Other new lines can appear. On the console: "STICK CANNOT SAVE TO FLASH [N FAILED WRITE(S)], A RESTART LOSES ITS
    SETTINGS: REPLACE IT". On the Stick's serial port: "ERR MC url refused: <why> (saved url unchanged)" and
    "ERR NVS <key> write failed (<got> of <want> bytes)". Log any of them with its full text.
@@ -138,8 +139,10 @@ Stick rejoins MC with no re-type. Row: F397.
 
 **12. F391, the lock across an offline restart (5 min).** Tony's call (2026-10-24): the lock comes back as it was
 before the restart. Load a timed match at MC (MC locks the Stick for the time limit plus about 32 min), wait at least
-2 min, note `STATUS lock_s`, take the Stick off Wi-Fi and restart it. **Pass:** `STATUS lock_s` after the boot is within about a minute of its value before the restart (not
-0, not 120), and the side button stays locked. **Control:** A+B held 7 s, then the next boot is unlocked. Row: F391.
+2 min, note `lock_s` on the `LINK` line of `python3 hardware/m5sticks3/tools/stick.py cmd 2 STATUS` (`stick.py
+status` does not show it), take the Stick off Wi-Fi and restart it. **Pass:** `lock_s` on the same line after the
+boot is within about a minute of its value before the restart (not 0, not 120), and the side button stays locked.
+**Control:** A+B held 7 s, then the next boot is unlocked. Row: F391.
 
 ## Close
 

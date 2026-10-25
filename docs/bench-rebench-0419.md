@@ -75,13 +75,13 @@ The index is [`bench-plan.md`](bench-plan.md).
    run after the pins reinstalls. The update question now defaults to no: answer no (main is already pulled).
    **Pass:** the run prints "Mission Control package is installed". **Fail:** "could not update Python packages,
    starting with the installed ones": fix the network and run it again before the session.
-4. **Reflash every Stick from main, and see the firmware floor.** MC's floor is `STATION_MIN_FW` "h8-0.2"
+4. **Reflash every Stick from main, and see the firmware floor.** MC's floor is `STATION_MIN_FW` "h8-0.3"
    (`mcp/brx_mcp/mc/types.py`). **Control first, for any Stick still on older firmware:** start MC (step 5), point
    that Stick at it (`python3 hardware/m5sticks3/tools/stick.py cmd 10 "MC ws://<laptop LAN address>:8766/ws"`)
    and read its station card, or `GET /api/stations` → `attention`. **Pass:** "STICK FIRMWARE TOO OLD: REFLASH IT".
    Then flash it: `python3 hardware/m5sticks3/tools/stick.py flash`. Read its `app_ver` from `GET /api/stations`:
-   it must be `h8-0.2+<sha>` and match main's sha. Reflash from a clean tree if it ends in `_dirty`. **Pass:** the
-   TOO OLD line is gone. A Stick already on h8-0.2 is still reflashed from main; log its string. Log any other new
+   it must be `h8-0.3+<sha>` and match main's sha. Reflash from a clean tree if it ends in `_dirty`. **Pass:** the
+   TOO OLD line is gone. A Stick already on h8-0.3 is still reflashed from main; log its string. Log any other new
    line with its full text: "STICK CANNOT SAVE TO FLASH [N FAILED WRITE(S)], A RESTART LOSES ITS SETTINGS: REPLACE
    IT" on the console, "ERR MC url refused: <why> (saved url unchanged)" and "ERR NVS <key> write failed (<got> of
    <want> bytes)" on the Stick's serial port ([`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) step 3).

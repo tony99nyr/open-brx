@@ -29,7 +29,7 @@ the brx MCP tools run current code too.
    `python3 hardware/m5sticks3/tools/stick.py ports`, then `python3 hardware/m5sticks3/tools/stick.py flash --port COMn`
    once per Stick (with two plugged in, auto-detect refuses and asks for `--port`). The build: Windows `arduino-cli`,
    FQBN `m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc`, the default build
-   (`BRX_REVIVE_FEEDBACK` off). The stamp is `app_ver` `h8-0.2+<the first 10 characters of the bench sha>`, with no
+   (`BRX_REVIVE_FEEDBACK` off). The stamp is `app_ver` `h8-0.3+<the first 10 characters of the bench sha>`, with no
    `_dirty` (an uncommitted change under `hardware/m5sticks3` adds it). A toolchain that differs from
    `hardware/m5sticks3/toolchain.json` stops the flash with exit 2. The flash keeps NVS, so the Wi-Fi and the typed MC
    address survive.
@@ -591,7 +591,7 @@ were in Sitting C.
 
 **B.0. Reflash both Sticks from the main checkout (15 min).** *Before you start* step 5:
 `python3 hardware/m5sticks3/tools/stick.py flash --port COMn` in `~/gitrepos/battlecompany`, once per Stick. Read each
-Stick's `app_ver` from `GET /api/stations`: it must be `h8-0.2+` and the first 10 characters of the bench sha, and
+Stick's `app_ver` from `GET /api/stations`: it must be `h8-0.3+` and the first 10 characters of the bench sha, and
 not end in `_dirty`. This one flash carries every Stick Min below (`5c51eed7`, `0b8dc2ea`, `16a41771`,
 `25aab005`, `60a52f03`, `da74ad23`, `c332b662`, `01050e27`, `214ef234`, `2504d9b0`). **Control first, for any Stick still on
 older firmware:** point it at MC (`python3 hardware/m5sticks3/tools/stick.py cmd --port COMn 10 "MC ws://<laptop LAN address>:8766/ws"`)
