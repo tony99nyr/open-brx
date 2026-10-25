@@ -4,10 +4,10 @@ import { useState } from 'react';
 import type { PerkView, Player, WeaponView } from '../../api/types';
 import { F, PERK_COLOR, T, roleOf } from '../../tokens';
 import { GLYPH, colourOf } from '../../alerts';
-import { BTN_RESET, GhostButton, NumberCell, Seg, SegBar, StripedSlot, SectionRule, Tag, ValueBox, onKey } from '../../ui';
+import { BTN_RESET, GhostButton, NumberCell, Seg, SegBar, StripedSlot, SectionRule, Tag, ValueBox } from '../../ui';
 import { useStore } from '../../store';
 import { PRESET_LABELS } from '../../api/contract.gen';
-import { Alert } from '../../ui/Alert';
+import { FaultPill } from '../../ui/Compact';
 import { useDraftCommit } from '../../ui/useDraftCommit';
 import { poolOf, type Slot } from './helpers';
 import { Lock, WeaponArt, PerkGlyph, PerkTrade } from './art';
@@ -17,13 +17,13 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
     overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void }) {
   const choice = rule?.choice ?? 'player';
   const locked = matchLocked || choice === 'fixed' || choice === 'off';
-  const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
+  const empty = kind === 'none';
+  const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : empty ? '' : 'PLAYER PICKS · YOU CAN OVERRIDE';
   // F221 polish r2 (Low): FIXED/OFF are configuration facts, not a fault — only a match already LOCKED
   // (`kit-slot-note-locked`) is a real constraint on the operator right now, so only that one is amber.
   const lockColor = matchLocked ? colourOf('kit-slot-note-locked') : T.micro;
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
-  const empty = kind === 'none';
   // `✕ CLEAR` is absolutely positioned in the card's bottom-right corner, and the line it lands on is
   // the weapon's `ROLE · MAG 12 · RES 24` — which ran straight under it on every SECONDARY plate in
   // every Kit screenshot we have (review 2026-09-12). Absolute position takes an element out of flow,
@@ -32,13 +32,18 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
   // trades one unreadable reserve count for a missing one.
   const clearW = onClear ? 96 : 0;
   return (
-    <div role="button" tabIndex={0} aria-pressed={active} onClick={onClick} onKeyDown={onKey(onClick)} className="hov-acc"
+    <div role="button" tabIndex={0} aria-pressed={active} onClick={e => {
+      if (!(e.target as Element).closest('button')) onClick();
+    }} onKeyDown={e => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+    }} className="hov-acc"
       style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', minHeight: 96, cursor: 'pointer',
         background: active ? (isPerk ? 'rgba(196,139,255,.07)' : 'rgba(57,180,255,.07)') : T.panel,
         borderTop: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderRight: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderBottom: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderLeft: `3px solid ${active ? color : T.line2}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '2px 8px', flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.22em', color: active ? color : T.dim }}>{active ? '▸ ' : ''}{label}</span>
-        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? lockColor : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={lockColor} />}{right}</span>
+        {right && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? lockColor : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={lockColor} />}{right}</span>}
       </div>
       {empty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
@@ -52,7 +57,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, paddingRight: clearW }}>
           <span style={{ width: 84, height: 48, flex: 'none', background: T.inset, border: `1px solid ${T.line}` }}><WeaponArt key={item.weapon_id} id={item.weapon_id} size={20} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
+            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', overflowWrap: 'anywhere' }}>{item.name.toUpperCase()}</span>
             <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
           </span>
         </div>
@@ -69,12 +74,11 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
         <button type="button" data-slot-clear={slot} onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
           style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 11), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
-      {/* F221 polish r2: this was plain mono text colouring itself off the catalogue — RED goes through
-          <Alert>, the boxed row a gun card uses (Tony's rule), like every other RED on this card. */}
-      {required && !item && <Alert id="kit-primary-required" variant="row" what="a primary is required" />}
+      {/* A required primary blocks the player until the host picks one. */}
+      {required && !item && <FaultPill id="kit-primary-required" role="status" short="Primary required" why="Pick a primary before continuing." />}
       {overridden && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('kit-changed-from-phone') }}>
-          {GLYPH} CHANGED FROM THEIR PHONE: YOURS WAS {overridden.label.toUpperCase()}
+        <div data-alert="kit-changed-from-phone" data-sev="amber" role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.chk(600, 12), color: colourOf('kit-changed-from-phone') }}>
+          {GLYPH} Changed from their phone. Yours was {overridden.label}.
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
             style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
         </div>
@@ -104,12 +108,6 @@ export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBu
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
-          <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, marginLeft: 'auto' }}>
-            {/* S50: Easy Reload left this slot for the per-player accessibility card, so the perk line
-                no longer advertises it — nothing in this rack can take the ALT button today. */}
-            {slot === 'perk' ? <>A PERK RIDES BESIDE BOTH WEAPONS · <b style={{ color: T.dim }}>EASY RELOAD</b> IS ON THE POOL CARD NOW</>
-              : <>SLOT 2 IS A {sidearms ? 'SIDEARM' : 'WEAPON'} · PERKS HAVE THEIR OWN SLOT</>}
-          </span>
         </div>
       )}
     </div>
@@ -265,7 +263,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
 }) {
   const on = pool.set;
   const mult = pool.mult.toFixed(pool.mult % 1 === 0 ? 0 : 1);
-  const who = name.toUpperCase();
   return (
     // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
     // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
@@ -284,11 +281,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
       {/* F221: a two-tap confirm (drops the second weapon) — UNCHANGED per Tony's rule. */}
       {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
       {/* F221: explanatory copy, always shown — NEUTRAL, no glyph (matches kit-easy-note-off/on). */}
-      <div data-easy-note style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(easy ? 'kit-easy-note-on' : 'kit-easy-note-off'), lineHeight: 1.6 }}>
-        {easy
-          ? `ON PURPOSE: ${who} RELOADS WITH THE ALT BUTTON, NOT THE LEVER. NO SECOND WEAPON, BECAUSE ALT CANNOT DO BOTH.`
-          : 'THE ALT BUTTON RELOADS, FOR A PLAYER WHO CANNOT WORK THE RELOAD LEVER. IT WINS NO FIGHTS: IT COSTS THE SECOND WEAPON.'}
-      </div>
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? colourOf('kit-pool-note-on') : T.dim }}>POOL</span>
@@ -310,11 +302,6 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
         );
       })}
       {/* F221: a deliberate, host-set difference either way \u2014 NEUTRAL, no glyph (kit-pool-note-off/on). */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: colourOf(on ? 'kit-pool-note-on' : 'kit-pool-note-off'), lineHeight: 1.6 }}>
-        {on
-          ? `ON PURPOSE: ${name.toUpperCase()} IS ARMED AT ${pool.hp} HP / ${pool.armor} AR. EVERY OTHER PLAYER USES THE GAME POOL.`
-          : 'SET A DIFFERENT POOL FOR THIS ONE PLAYER (A HANDICAP: A YOUNGER PLAYER, OR THE SOLO SIDE OF A 2V1).'}
-      </div>
       {on && !locked && <GhostButton onClick={onClear} color={colourOf('kit-pool-note-on')} border={colourOf('kit-pool-note-on')} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </fieldset>
   );

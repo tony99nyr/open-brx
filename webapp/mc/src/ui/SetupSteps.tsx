@@ -1,7 +1,7 @@
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { colourOf, serverLine } from '../alerts';
-import { Alert } from './Alert';
+import { FaultPill, ItemChip } from './Compact';
 import { friendlyMcVerifyLine } from './McVerify';
 
 /** Known `SETUP: ` bodies, rewritten as short, sentence-case, id-free lines for the operator.
@@ -46,10 +46,9 @@ export function friendlySetupLine(raw: string): string {
     const m = body.match(known.test);
     return known.line.replace('$1', m?.[1] ?? 'this team');
   }
-  // Fallback for a `SETUP:` body not yet on the list above: drop a trailing internal id like
-  // "(F88: ...)", stop shouting, and turn the em dash into a full stop rather than showing it raw.
+  // Keep unknown server words intact so a node label or screen name keeps its exact case.
   const stripped = body.replace(/\s*\([A-Z]\d+:[^)]*\)\s*$/, '').replace(/\s*—\s*/g, '. ');
-  return stripped.charAt(0).toUpperCase() + stripped.slice(1).toLowerCase();
+  return stripped;
 }
 
 /** H2 (visual QA 2026-09-24): the SETUP lines where the game and the ITEMS assignments disagree. They are
@@ -98,12 +97,10 @@ export function SetupConflicts({ style }: { style?: React.CSSProperties }) {
           style={{ display: 'flex', flexDirection: 'column', gap: 6,
                    ...(anyRed ? { background: 'rgba(255,82,82,.08)', border: `1px solid ${boxColor}`, borderLeft: `3px solid ${boxColor}`, padding: '10px 14px' } : {}),
                    ...style }}>
-          {/* the glyph lives on each line below (via `<Alert>`), never doubled on this heading too */}
           <span style={{ font: F.chk(700, 11), letterSpacing: '.16em', color: boxColor }}>{title}</span>
-          {/* `role="status"` on every row: this whole region is a standing fact, always mounted, never
-              an interruption. `<Alert>` defaults red/amber to `role="alert"`, which this box must not
-              carry (H2, polish r1). */}
-          {rows.map((r, i) => <Alert key={i} id={r.id} sev={r.sev} variant="line" role="status">{conflictWords(r.w)}</Alert>)}
+          {rows.map((r, i) => r.sev === 'red'
+            ? <FaultPill key={i} id={r.id} role="status" short="Station conflict" why={friendlySetupLine(r.w)} />
+            : <ItemChip key={i} id={r.id} short="Station setup needed" detail={friendlySetupLine(r.w)} />)}
         </div>
       )}
     </div>

@@ -209,7 +209,7 @@ step('koth-no-stations', async ({ browser, base }) => {
   // on the net at all, so this reaches into the mock's own record the way `deleteStation` cannot.
   await pg.evaluate(() => { window.__MC_MOCK__.stations = {}; window.__MC_MOCK__.emit(); });
   await pickKoth(pg);
-  await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
+  await until(() => pg.locator('text=No hill assigned').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
   const focus = pg.getByTestId('items-hill-focus');
@@ -237,7 +237,7 @@ step('koth-with-stations', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#build', 1280, 700);
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'PLAY');
   await pickKoth(pg);
-  await until(() => pg.locator('text=NO HILL STATION ASSIGNED').count().then(n => n > 0), 4000, 'the no-hill block');
+  await until(() => pg.locator('text=No hill assigned').count().then(n => n > 0), 4000, 'the no-hill block');
   await pg.getByTestId('assign-a-hill').getByRole('button').click();
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
   const focus = pg.getByTestId('items-hill-focus');

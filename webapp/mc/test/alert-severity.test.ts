@@ -43,11 +43,13 @@ describe('F221 alert severity table', () => {
     }
   });
 
-  it('every catalogue id is drawn by a call site', () => {
+  it('every active catalogue id is drawn by a call site', () => {
     const unused = Object.keys(ALERTS).filter(id => !callSites.includes(`'${id}'`) && !callSites.includes(`"${id}"`));
     // server-worded lines are drawn through SERVER_LINES, not by id at a call site
     const viaServer = new Set(SERVER_LINES.map(l => l.id));
-    expect(unused.filter(id => !viaServer.has(id))).toEqual([]);
+    // F599 hides these neutral explainers. Their catalogue entries retain the approved severity.
+    const hiddenNotes = new Set(['kit-easy-note-off', 'kit-easy-note-on', 'kit-pool-note-off', 'kit-slot-note-phone-off', 'kit-slot-note-phone-picks', 'armed-reminder-line']);
+    expect(unused.filter(id => !viaServer.has(id) && !hiddenNotes.has(id))).toEqual([]);
   });
 
   it('every catalogue row follows the wording rule', () => {

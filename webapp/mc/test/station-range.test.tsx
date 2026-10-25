@@ -28,7 +28,7 @@ describe('ITEMS — a station range edited on the station (A67)', () => {
     expect(range.textContent).toMatch(/^-60 dBm · EDITED ON STATION .+ AGO$/);
     // CONTROL: MC's own value carries no EDITED mark
     expect(strength.textContent).toBe('MEDIUM');
-    expect(card(m).textContent).toMatch(/strength changes range too/);
+    expect(card(m).textContent).not.toMatch(/strength changes range too/);
     m.unmount();
   });
 

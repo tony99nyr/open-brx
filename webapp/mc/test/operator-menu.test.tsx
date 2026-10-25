@@ -57,9 +57,6 @@ const op = (m: Mounted, cmd: OperatorCmd) => m.find(`[data-op="${cmd}"]`)[0] as 
 const errStrip = (m: Mounted) => (m.find('header [role="alert"]')[0]?.textContent ?? '').replace(/\s+/g, ' ').trim();
 const tap = async (el: HTMLElement) => { const { act } = await import('react'); await act(async () => { el.click(); }); };
 
-/** what jsdom writes back for a token colour set as an inline style */
-function styleColor(c: string) { const d = document.createElement('div'); d.style.color = c; return d.style.color.replace(/\s/g, ''); }
-
 describe('A47 · LIVE operator menu', () => {
   beforeEach(() => clearNotice());
   afterEach(() => vi.useRealTimers());
@@ -98,7 +95,10 @@ describe('A47 · LIVE operator menu', () => {
     const m = await board();
     await tap(rowEl(m, 'p2'));
     const el = menu(m, 'p2');
-    expect(el.querySelector('[data-op-unavailable="reach"]')?.textContent).toContain("GHOST'S PHONE IS OUT OF REACH");
+    const fault = el.querySelector('[data-alert="frame-op-out-of-reach"]') as HTMLElement;
+    expect(fault.textContent).toContain('GHOST is out of reach');
+    await tap(fault.querySelector('button')!);
+    expect(el.textContent).toContain("GHOST's phone was last heard from");
     expect(el.querySelectorAll('[data-op]').length).toBe(0);
     m.unmount();
   });
@@ -198,16 +198,16 @@ describe('A47 · LIVE operator menu', () => {
   it('F221 (2026-09-25): the out-of-reach sentence is RED — a gun/phone link lost DURING a match', async () => {
     const m = await board();
     await tap(rowEl(m, 'p2'));
-    const el = menu(m, 'p2').querySelector('[data-op-unavailable="reach"]') as HTMLElement;
-    const { T } = await import('../src/tokens');
-    expect(el.style.color.replace(/\s/g, '')).toBe(styleColor(T.bad));
+    const el = menu(m, 'p2').querySelector('[data-alert="frame-op-out-of-reach"]') as HTMLElement;
+    expect(el.getAttribute('data-sev')).toBe('red');
     m.unmount();
   });
 
   it('an adopted match every phone has ended shows one line on the MATCH screen', async () => {
     const m = await board(undefined, { live: { ...LIVE, phones_ended: true } });
-    // F221 (2026-09-25): AMBER, with the ▲ glyph.
-    expect(m.find('[data-testid="phones-ended"]')[0]?.textContent).toBe('▲ PHONES HAVE ENDED THIS MATCH: PRESS END');
+    expect(m.find('[data-testid="phones-ended"]')[0]?.textContent).toContain('Phones ended this match');
+    await m.click('Phones ended this match');
+    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent).toContain('Press End to finish the adopted match.');
     expect(m.find('[role="dialog"]').length, 'not a popup').toBe(0);
     m.unmount();
     const m2 = await board();

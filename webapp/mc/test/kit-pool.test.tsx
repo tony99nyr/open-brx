@@ -96,12 +96,8 @@ describe('KIT · per-player pool override', () => {
 
   it('an overridden player: the card names them, sizes the advantage, and keeps the game number in view', async () => {
     const { m, state } = await kitFor('p1', {}, { max_hp: 200, max_armor: 100 });
-    const name = state.players.find(p => p.player_id === 'p1')!.display.toUpperCase();
-    const card = m.find('[data-pool-card]')[0].textContent ?? '';
-    expect(card, 'names the player so it reads as deliberate').toContain(name);
-    expect(card).toContain('ON PURPOSE');
-    expect(card, 'says the rest of the squad is unaffected').toContain('EVERY OTHER PLAYER USES THE GAME POOL');
-    expect(card, 'states the pool that gun is armed with').toContain('200 HP / 100 AR');
+    expect(Number((m.find('input[aria-label$="health"]')[0] as HTMLInputElement).value)).toBe(200);
+    expect(Number((m.find('input[aria-label$="armor"]')[0] as HTMLInputElement).value)).toBe(100);
     expect(m.find('[data-pool-state]')[0].textContent, 'sizes it against the game pool').toMatch(/\u00d7 GAME POOL/);
     expect(m.find('[data-pool-base="max_hp"]')[0].textContent).toContain(`GAME ${state.config.health.max_hp}`);
     m.unmount();
@@ -149,8 +145,7 @@ describe('KIT · per-player pool override', () => {
       { patchPlayer: async () => { throw new Error('400 overrides.max_armor must be an integer 1..999'); } },
       { max_hp: 200, max_armor: 100 });
     await setBox(ar(), '0');
-    const card = m.find('[data-pool-card]')[0].textContent ?? '';
-    expect(card, 'a refused override must not appear applied').toContain('200 HP / 100 AR');
+    expect(Number((m.find('input[aria-label$="health"]')[0] as HTMLInputElement).value), 'the refused change does not repaint the pool').toBe(200);
     expect(m.find('[data-pool-chip]')[0].textContent).toContain('200/100');
     m.unmount();
   });
@@ -186,13 +181,9 @@ describe('KIT · per-player Easy Reload', () => {
   });
 
   it('a player on it: the card says so in the host\'s words, and the roster marks them', async () => {
-    const { m, easyPressed, state } = await kitFor('p4', {}, { easy_reload: true });
-    const name = state.players.find(p => p.player_id === 'p4')!.display.toUpperCase();
+    const { m, easyPressed } = await kitFor('p4', {}, { easy_reload: true });
     expect(easyPressed()).toEqual(['ON']);
-    const card = m.find('[data-pool-card]')[0].textContent ?? '';
-    expect(card, 'names the player so it reads as deliberate').toContain(name);
-    expect(card, 'says what the gun does, not what the wire does').toContain('ALT BUTTON');
-    expect(card, 'and why there is no second weapon').toContain('ALT CANNOT DO BOTH');
+    expect(m.find('[aria-label^="easy reload for GHOST"]').length).toBe(1);
     const chip = m.find('[data-easy-chip="p4"]');
     expect(chip.length, 'visible on the roster without selecting anyone').toBe(1);
     expect(chip[0].textContent).toContain('ALT RELOADS');
@@ -203,8 +194,8 @@ describe('KIT · per-player Easy Reload', () => {
   it('it is offered as accessibility, never as an advantage', async () => {
     const { m } = await kitFor('p4');
     const card = m.find('[data-pool-card]')[0].textContent ?? '';
-    expect(card).toContain('CANNOT WORK THE RELOAD LEVER');
-    expect(card, 'a host must not read it as a perk worth handing out').toContain('WINS NO FIGHTS');
+    expect(card).toContain('OFF');
+    expect(card, 'a host must not read it as a perk worth handing out').toContain('GAME DEFAULT');
     m.unmount();
   });
 

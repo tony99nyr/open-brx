@@ -5,6 +5,7 @@
 // `headset_proof`; the console only renders it. That split is the point of these tests — a card that did
 // its own arithmetic on `last_seen` would drift out of step with the board's own amber and tell the
 // operator two different things about the same gun.
+import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import type { ReadinessRow, State } from '../src/api/types';
@@ -60,6 +61,9 @@ describe('ARMORY · how a headset was proven (A32)', () => {
       blockers: ['GUN DID NOT ANSWER CONFIG: CHECK THE HEADSET IS ON, THEN RE-PUSH'],
     });
     expect(cell().getAttribute('data-headset')).toBe('absent');
+    const detail = Array.from(cell().closest('[data-gun-card]')!.querySelectorAll('button')).find(b => b.getAttribute('aria-expanded') === 'false');
+    expect(detail).toBeTruthy();
+    await act(async () => { detail!.click(); });
     expect(m.text()).toContain('GUN DID NOT ANSWER CONFIG');
     m.unmount();
   });

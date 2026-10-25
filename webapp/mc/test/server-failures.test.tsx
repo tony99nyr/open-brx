@@ -11,7 +11,10 @@ async function chips(patch: Partial<State>) {
   const api = fixtureApi({}, d.api);
   const state = { ...d.state, t: 5000, ...patch } as State;
   const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'muster' }, { api })}><ServerFailures /></StoreCtx.Provider>);
-  const out = [...m.find('[data-alert]')].map(e => ({ id: e.getAttribute('data-alert')!, sev: e.getAttribute('data-sev')!, text: (e.textContent ?? '').replace(/\s+/g, ' ').trim(), title: e.getAttribute('title') ?? '' }));
+  for (const b of m.find('[data-alert]')) {
+    if (b.querySelector('button')) await m.click('Why? ▾');
+  }
+  const out = [...m.find('[data-alert]')].map(e => ({ id: e.getAttribute('data-alert')!, sev: e.getAttribute('data-sev')!, text: (e.textContent ?? '').replace(/\s+/g, ' ').trim(), title: e.getAttribute('title') ?? e.querySelector('button')?.getAttribute('title') ?? '' }));
   m.unmount();
   return out;
 }
@@ -22,14 +25,18 @@ describe('O7/O8 server failure chips', () => {
   it('the store failing is red and keeps the raw error in the title, not in the words', async () => {
     const [c] = await chips({ not_saving: { store: F } });
     expect(c).toMatchObject({ id: 'server-not-saving-store', sev: 'red' });
-    expect(c.text).toBe('▲ NOT SAVING GAME DATA, A RESULT CAN BE LOST: CHECK THE DISK AND THE MC LOG');
-    expect(c.title).toContain('No space left');
+    expect(c.text).toContain('Not saving game data');
+    expect(c.text).toContain('A result can be lost.');
+    expect(c.text).toContain('Check the disk and the MC log.');
+    expect(c.text).toContain('No space left');
   });
 
   it('the archive failing is its own red chip', async () => {
     const [c] = await chips({ not_saving: { archive: F } });
     expect(c).toMatchObject({ id: 'server-not-saving-archive', sev: 'red' });
-    expect(c.text).toBe("▲ NOT SAVING THIS MATCH'S RESULT, IT CAN BE LOST: CHECK THE DISK AND THE MC LOG");
+    expect(c.text).toContain('Not saving this result');
+    expect(c.text).toContain('The result can be lost.');
+    expect(c.text).toContain('Check the disk and the MC log.');
   });
 
   it('the snapshot alone is amber before a match, and red while ARMED or LIVE', async () => {
@@ -40,14 +47,15 @@ describe('O7/O8 server failure chips', () => {
 
   it('the ticker chip does not advise a restart while MC is not saving', async () => {
     const ok = (await chips({ ticker_failing: F }))[0];
-    expect(ok.text).toMatch(/: RESTART MC$/);
+    expect(ok.text).toContain('Match clock failing');
+    expect(ok.text).toContain('Restart MC.');
     const bad = (await chips({ ticker_failing: F, not_saving: { snapshot: F } })).find(c => c.id === 'server-ticker-failing')!;
-    expect(bad.text).not.toMatch(/RESTART MC$/);
-    expect(bad.text).toContain('CHECK THE MC LOG');
+    expect(bad.text).not.toContain('Restart MC.');
+    expect(bad.text).toContain('Do not restart while MC is not saving.');
   });
 
   it('a join error that still holds an earlier address says the QR may be out of date', async () => {
-    expect((await chips({ join_error: { error: 'x', ws_url: '' } }))[0].text).toContain('JOIN QR HAS NO ADDRESS');
-    expect((await chips({ join_error: { error: 'x', ws_url: 'ws://10.0.0.5:8766/ws' } }))[0].text).toContain('NOT REFRESHED');
+    expect((await chips({ join_error: { error: 'x', ws_url: '' } }))[0].text).toContain('Join QR has no address');
+    expect((await chips({ join_error: { error: 'x', ws_url: 'ws://10.0.0.5:8766/ws' } }))[0].text).toContain('Join address out of date');
   });
 });

@@ -1,3 +1,4 @@
+import { HelpNote } from '../ui/Compact';
 import { useState } from 'react';
 import { STALE_AFTER_MS } from '../api/types';
 import { useRunway } from '../runway';
@@ -100,8 +101,8 @@ export function Armed() {
           {/* F221: this is a standing instructional reminder, not a fault, so it is NEUTRAL, plain
               text throughout — the mid-sentence amber "BEFORE" the audit flagged (an emphasis style
               used nowhere else on these two screens) is gone, and the em dash reads as a full stop. */}
-          <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: colourOf('armed-reminder-line'), marginTop: 4 }}>GUNS COUNT DOWN ON THEIR OWN. PLAYERS MAY SCATTER OUT OF RANGE. ALL GO LIVE AT T-0. RESCHEDULE FURTHER OUT BEFORE THE WALK. AN ABORT REACHES ONLY NODES IN RANGE.</div>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.faint, marginTop: 4 }}>MATCH {st.match_id.toUpperCase()} · SEQ {st.seq}</div>
+          <HelpNote label="Abort" keep="An abort reaches only nodes in range. Reschedule further out before the walk." />
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.faint, marginTop: 4 }}>MATCH {st.match_id.toUpperCase()} · SEQ {st.seq}</div>
         </div>
       </Brackets>
       {/* QA-04: an SVG icon, never the ⓘ glyph (QA-05, no bundled face carries U+24D8). */}
