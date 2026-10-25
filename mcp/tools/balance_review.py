@@ -572,6 +572,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         # down a pool rounded up to whole shots: a 5-health target is not killed by 26 x 0.20 = 5.2 expected Deagle
         # damage, and a 30-health one needs two landed hits (about 10 shots at 0.20), not 30 / 5.2 = 6.
         pool = math.ceil(pool / damage) * damage
+    hits_needed = round(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -595,14 +596,17 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         got = min(mag - ammo, reserve)
         ammo += got
         reserve -= got
-    fired_at, last_dmg = None, 0.0
+    fired_at, fired = None, 0
 
     def run_dry():
-        # F617: a gun that runs dry on a round that kills IF it lands still finishes on that round. Whole landed
-        # shots leave one round's miss share, `damage * (1 - chance)`, unspent, and that must not read as never.
-        if fired_at is not None and pool <= last_dmg * (1 - chance) + 1e-9:
-            return fired_at
-        return math.inf
+        # F617: a gun that runs dry still finishes on its last round when the rounds it fired more likely than not
+        # land the whole hits the kill needs (2 rounds at 0.9 for two hits: 81%). A low-chance last round does not
+        # (1 round at 0.05). Charge mode mixes opener and tap damage, so it has no whole-hit count and stays never.
+        if fired_at is None or not hits_needed or fired < hits_needed:
+            return math.inf
+        p = min(1.0, chance)
+        kill = sum(math.comb(fired, j) * p ** j * (1 - p) ** (fired - j) for j in range(hits_needed, fired + 1))
+        return fired_at if kill >= 0.5 else math.inf
 
     while ammo > 0 or reserve > 0:
         cost = rpc if mode == "charge" and charged else 1
@@ -627,7 +631,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         was_charged = mode == "charge" and charged
         ammo -= cost
         pool -= dmg * chance
-        last_dmg = dmg
+        fired += 1
         if pool <= 0:
             return elapsed
         if mode == "bolt":
@@ -874,7 +878,10 @@ class Fighter:
                     or (blocked and own == math.inf and ss.reserve > 0):
                 self._swap(1, t)
                 return True
-        elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)) or \
+        elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)
+              # F617: the mirror of F608. An empty secondary with reserve reloads rather than return to a primary
+              # that cannot finish; it went back at once and the pair swapped to and fro.
+              and not (ss.reserve > 0 and self._finish_ms(0, target, t) == math.inf)) or \
                 (ps.ready_at <= t and ps.locked_until <= t and
                  self.kit.swap_ms + self._finish_ms(0, target, t) < self._finish_ms(1, target, t)):
             self._swap(0, t)

@@ -83,6 +83,23 @@ def test_a_zero_success_cell_is_never_near_top():
     assert R._near_top("hill hold", 0.01, 0.011)
 
 
+def _dry_deagle_estimate(pool, chance, rounds):
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    return R.finish_estimate(deagle, pool=pool, chance=chance, ammo=rounds, reserve=0, reload_amount=0,
+                             ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
+                             overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=True, count=0, dist=R.DIST["mid"],
+                             heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+
+
+def test_a_dry_gun_finishes_only_when_its_rounds_likely_land_the_kill():
+    # Two 26-damage rounds at 0.9 against 30 health: two hits are needed and land 81% of the time.
+    assert _dry_deagle_estimate(30, 0.9, 2) < float("inf")
+    # One round at 0.05 against 5 health: a likely miss is not a finish.
+    assert _dry_deagle_estimate(5, 0.05, 1) == float("inf")
+    # One round, two hits needed: never.
+    assert _dry_deagle_estimate(30, 0.9, 1) == float("inf")
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
