@@ -20,6 +20,9 @@ submitted branches onto `main`, gates the batch once, and pushes it.
 It needs **git 2.38 or later** (`git --version`), because its conflict check uses `git merge-tree --write-tree`.
 It refuses to start on an older git. On a Mac, `brew install git` and check that `which git` is the Homebrew one.
 
+Its Python needs **pyright** (`pip install pyright`; the WSL `.venv` has it). Every gate refuses a pyright skip (F613),
+because the lander stands in for CI's pyright pass, so a venv without it fails every candidate.
+
 ### The flow
 
 1. Commit your work on a branch. Run the gate that fits your change (`CONTRIBUTING.md` → *Running things*).

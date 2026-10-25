@@ -54,7 +54,7 @@ import { resolveJobs, selectFiltered } from './lib/jobs.mjs';
 import { createJobRunner } from './lib/job-runner.mjs';
 import { pruneRunLogs } from './lib/prune.mjs';
 import { stripDebugEnv } from './lib/jobenv.mjs';
-import { findPython } from './lib/python.mjs';
+import { findPython, noSkipFor } from './lib/python.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = parseArgs(process.argv.slice(2));   // lib/test-all-cli.mjs
@@ -86,8 +86,17 @@ const { python: PY, foundVenv } = findPython(ROOT);   // T7: foundVenv = a repo 
 if (!foundVenv && !process.env.MC_PY) console.error('test-all: no .venv found; using system python3, so the tests that need the MC extras will skip');
 // T7: a repo .venv has mcp's `mc` extra (start.mjs installs it), so a test that skips for want of websockets or uvicorn
 // (with starlette, "uvicorn/starlette") means a broken venv, not a pass. httpx is not in that extra, so its skips are
-// allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md).
-const NO_SKIP = foundVenv ? ['websockets', 'uvicorn'].flatMap(s => ['--no-skip', s]) : [];
+// allowed here; CI's extras pass forbids them. System python and MC_PY skip by design (CLAUDE.md). F613: a gate on code
+// pyright checks (a --changed diff that touches it, or a lander gate) refuses a pyright skip too (lib/python.mjs noSkipFor).
+// The --changed paths are read here, before any job is sized, and reused by the --changed plan below.
+const CHANGED_BASE = CHANGED ? (args.changedBase || defaultBase(ROOT)) : null;
+let CHANGED_PATHS = null;
+if (CHANGED) {
+  try { CHANGED_PATHS = changedPaths(ROOT, CHANGED_BASE); }
+  catch (e) { console.error(`test-all: --changed could not diff against ${CHANGED_BASE}: ${e.message}`); process.exit(2); }
+}
+const NO_SKIP = noSkipFor({ foundVenv, landGate: process.env.BRX_LAND_GATE !== undefined, changedPaths: CHANGED_PATHS });
+if (NO_SKIP.includes('pyright')) console.error('test-all: this run gates code pyright checks, so a pyright skip fails it (F613)');
 // A lander gate (land.mjs sets BRX_LAND_PRIORITY on the test-all it runs) has pool priority. Read it, then remove it
 // before jobEnv copies the environment, so the jobs this run starts (and any test-all a test starts) never inherit it
 // (they did until the A10 stage 2 review). BRX_LAND_GATE stays: the reaper needs it.
@@ -131,11 +140,7 @@ let { budgetMb: BUDGET_MB, all: ALL_JOBS } = buildJobs();
 // `test:all -- mcp app` above -- fail safe (CLAUDE.md's re-gate rule): an unmapped path, or a path that trips
 // scripts/lib/changed.mjs's full-suite triggers, runs everything, never a narrower guess.
 if (CHANGED) {
-  const base = args.changedBase || defaultBase(ROOT);
-  let paths;
-  try { paths = changedPaths(ROOT, base); }
-  catch (e) { console.error(`test-all: --changed could not diff against ${base}: ${e.message}`); process.exit(2); }
-  ({ filters, ui: UI } = planChanged({ base, paths, named: filters, ui: UI, allJobs: ALL_JOBS, log: line => console.log(line) }));
+  ({ filters, ui: UI } = planChanged({ base: CHANGED_BASE, paths: CHANGED_PATHS, named: filters, ui: UI, allJobs: ALL_JOBS, log: line => console.log(line) }));
 }
 
 let JOBS = selectFiltered(ALL_JOBS, UI, filters);
