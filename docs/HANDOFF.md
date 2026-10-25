@@ -64,6 +64,14 @@ The console and mock follow those rules. Round 3 passed pyright, chaos and soak 
 4,565 venv Python tests, 1,758 Vitest tests, TypeScript and four named browser jobs. The 2026-10 log records the evidence.
 **Next:** review this worktree diff and land it through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
 
+**A81 result release (uncommitted on `brx3/result-release`, 2026-10-25):** MC withholds `result`, `score`,
+`victory` and welcome result/score while RECAP waits. Release flushes result and score together. Late facts and
+final heartbeats refresh the recap and retired ledger. The cue uses the frozen roster and both MC clocks; a restart
+never plays it. A released result and score reach each phone on reconnect after a restart. The 22 release cases,
+touched Python tests, pyright, the full system suite (4,374 passed, 195 optional skips), one-minute chaos soak
+(31 matches), and four named browser jobs pass. The log holds the review evidence.
+**Next:** review and land this worktree. Brx4 owns the A81 row in `docs/spec/contracts.md`.
+
 ## Lane: brx4, the engine and the StickS3
 **State (2026-10-16):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525
 and F526 (a silent hill point yields after 2 s; a taken pickup station hides no claimable one), and F528 (a station

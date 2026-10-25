@@ -1015,6 +1015,7 @@
         "voice": "male"
       }
     },
+    "release_pending": false,
     "released": false,
     "result_changed": false,
     "seq": 1,

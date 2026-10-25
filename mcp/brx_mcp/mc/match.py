@@ -113,6 +113,9 @@ class Match:
     finalised: bool = False
     final_winner: dict | None = None
     released: bool = False  # once the result is released, later facts cannot restore the wait
+    release_pending: bool = False  # in-process flush pending; after restart delivery waits for reconnect
+    whistle_mono_ms: int | None = None
+    whistle_wall_ms: int | None = None
     result_changed: bool = False
     end_reason: str | None = None
     ended_head: dict | None = None
@@ -186,6 +189,7 @@ class Match:
                 **({"finished": True, "end_t": self.scorer.end_t,
                     "finalised": self.finalised, "final_winner": self.final_winner,
                     "released": self.released, "end_reason": self.end_reason,
+                    "release_pending": self.release_pending,
                     "result_changed": self.result_changed,
                     "sync_nodes": {nid: {**{key: entry[key] for key in ("received", "status_received", "changed_t")
                                              if key in entry},
