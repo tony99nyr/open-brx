@@ -567,12 +567,12 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
-    if mode != "charge" and damage > 0 and pool > 0:
-        # F617: a kill needs whole LANDED shots. The loop below spends `damage * chance` a shot, so it must spend
-        # down a pool rounded up to whole shots: a 5-health target is not killed by 26 x 0.20 = 5.2 expected Deagle
-        # damage, and a 30-health one needs two landed hits (about 10 shots at 0.20), not 30 / 5.2 = 6.
-        pool = math.ceil(pool / damage) * damage
-    hits_needed = round(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
+    # F617: a fixed-damage kill needs whole LANDED hits, and the finish is the round by which they have landed with
+    # even odds (the median, as time_to_kill and the finish batches report). Spending `damage * chance` a round
+    # undercounted them: a 5-health target read as killed by 26 x 0.20 = 5.2 expected Deagle damage. `landed[j]` is
+    # the chance that exactly j of the hits needed have landed so far; `done` is the chance that all have.
+    hits_needed = math.ceil(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
+    landed, done = ([1.0] + [0.0] * (hits_needed - 1), 0.0) if hits_needed else (None, 0.0)
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -596,18 +596,6 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         got = min(mag - ammo, reserve)
         ammo += got
         reserve -= got
-    fired_at, fired = None, 0
-
-    def run_dry():
-        # F617: a gun that runs dry still finishes on its last round when the rounds it fired more likely than not
-        # land the whole hits the kill needs (2 rounds at 0.9 for two hits: 81%). A low-chance last round does not
-        # (1 round at 0.05). Charge mode mixes opener and tap damage, so it has no whole-hit count and stays never.
-        if fired_at is None or not hits_needed or fired < hits_needed:
-            return math.inf
-        p = min(1.0, chance)
-        kill = sum(math.comb(fired, j) * p ** j * (1 - p) ** (fired - j) for j in range(hits_needed, fired + 1))
-        return fired_at if kill >= 0.5 else math.inf
-
     while ammo > 0 or reserve > 0:
         cost = rpc if mode == "charge" and charged else 1
         if ammo < cost:
@@ -616,7 +604,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
                 continue
             got = min(mag - ammo, reserve)
             if got <= 0:
-                return run_dry()
+                return math.inf
             ammo += got
             reserve -= got
             elapsed += reload_ms * got if chain else reload_ms
@@ -630,13 +618,19 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         fired_at = elapsed
         was_charged = mode == "charge" and charged
         ammo -= cost
-        pool -= dmg * chance
-        fired += 1
-        if pool <= 0:
-            return elapsed
+        if landed:
+            p = min(1.0, chance)
+            done += landed[-1] * p
+            landed = [landed[0] * (1 - p)] + [landed[j] * (1 - p) + landed[j - 1] * p for j in range(1, hits_needed)]
+            if done >= 0.5:
+                return elapsed
+        else:
+            pool -= dmg * chance
+            if pool <= 0:
+                return elapsed
         if mode == "bolt":
             if reserve <= 0:
-                return run_dry()
+                return math.inf
             ammo += 1
             reserve -= 1
             # F581: compile's bolt cycle (`paced_cycle_ms`): one lever pull, the bolt, then the mean renewal
@@ -670,7 +664,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
                     reserve -= got
                 cooling_started = True
                 heat_t = t + elapsed
-    return run_dry()
+    return math.inf
 
 
 class Fighter:
@@ -1949,7 +1943,9 @@ class KitMatch(B.Match):
         if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t) and p.stash[1][0] > 0 and \
                 current == math.inf:
             return 1
-        if p.active == 1 and p.ammo <= 0 and alternative < math.inf:
+        if p.active == 1 and p.ammo <= 0 and (alternative < math.inf or p.reserve <= 0 and
+                                               (p.stash[0][0] > 0 or p.stash[0][1] > 0)):
+            # F617: a spent secondary goes back to a primary that can still fire, even one that may not finish
             return 0
         return other if alternative < current else p.active
 

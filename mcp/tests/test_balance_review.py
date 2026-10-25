@@ -100,6 +100,18 @@ def test_a_dry_gun_finishes_only_when_its_rounds_likely_land_the_kill():
     assert _dry_deagle_estimate(30, 0.9, 1) == float("inf")
 
 
+def test_the_dry_estimate_is_monotonic_in_reserve_and_never_overflows():
+    # Two hits at 0.2 land with even odds by round 9, with or without a reserve behind them.
+    dry = _dry_deagle_estimate(30, 0.2, 9)
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    stocked = R.finish_estimate(deagle, pool=30, chance=0.2, ammo=9, reserve=96, reload_amount=0, ready_at=0.0,
+                                locked_until=0.0, t=0.0, pull_ms=R.PULL_MS, overshoot_ms=R.FIGHT_OVERSHOOT_MS,
+                                charged=True, count=0, dist=R.DIST["mid"], heat=0.0, heat_t=0.0,
+                                heat_cool_while_firing=True)
+    assert dry == stocked < float("inf")
+    assert _dry_deagle_estimate(30 * 26, 0.02, 1200) == float("inf")
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
@@ -171,7 +183,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
 
 def test_field_score_is_zero_when_one_team_size_gets_no_kills():
     shipped = R.shipped_world()
-    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=1)   # F601: at 3 the fixed swap lets its Deagle finish in every team size
+    # F601: at 3 the fixed swap let its Deagle finish in every team size. F617: whole-hit estimates moved the seed-7
+    # draws, so at 1 it now scores in every size; 2 keeps one size with no kills
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=2)
     world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
              R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
