@@ -49,10 +49,14 @@ run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session
 ## P1: what changes a match (about 1 h 45 min)
 
 **P1.0. Every Stick from main (10 min).** *Impact: an old Stick runs an old hill and station.* For each Stick, from a
-checkout at `origin/main`: `python3 hardware/m5sticks3/tools/stick.py flash`, then `stick.py status`. **Pass:**
-`app_ver` reads `h8-0.2+<short sha of that checkout>` with no `_dirty`, and MC's station list shows no STICK FIRMWARE
-TOO OLD line. **Control:** `stick.py ports` lists the Stick before the flash. Unplug each Stick when it is done: an
-unassigned Stick on USB moved a presence reading on 2026-10-16.
+checkout at `origin/main`: `python3 hardware/m5sticks3/tools/stick.py flash`, then `python3
+hardware/m5sticks3/tools/stick.py status`. Once the Stick joins MC, read its `app_ver` in the `stations` list of MC's
+`GET /api/state` (the serial `STATUS` line does not carry it). **Pass:** `app_ver` reads `h8-0.3+` and the first 10
+characters of that checkout's sha (`git rev-parse --short=10 HEAD`), with no `_dirty`, and MC's station list shows no
+STICK FIRMWARE TOO OLD line. **Control:** `python3 hardware/m5sticks3/tools/stick.py ports` lists the Stick before
+the flash, and a Stick still on an h8-0.2 build shows STICK FIRMWARE TOO OLD: REFLASH IT in MC's station list until
+it is reflashed (MC's floor is h8-0.3). Unplug each Stick when it is done: an unassigned Stick on USB moved a
+presence reading on 2026-10-16.
 
 **P1.1. The SMG frame with its terminator (5 min).** *Impact: an SMG primary never loaded, and the push retried for
 17 minutes.* Procedure: 1017 P1.1, then 1017 L1 (an MC push with the SMG as PRIMARY). **Pass:** the raw frame echoes

@@ -208,16 +208,20 @@ def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_nev
 
 def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_version_in_the_view():
     from brx_mcp.mc.types import STATION_MIN_FW, parse_station_fw, station_fw_too_old
-    assert STATION_MIN_FW == "h8-0.2" and parse_station_fw("h8-0.2+a1b2c3d") == (8, 0, 2)
+    assert STATION_MIN_FW == "h8-0.3" and parse_station_fw("h8-0.2+a1b2c3d") == (8, 0, 2)
     assert parse_station_fw("0.4.1") is None and parse_station_fw(None) is None
-    assert not station_fw_too_old("h8-0.2+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
+    assert not station_fw_too_old("h8-0.3+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
     assert station_fw_too_old("h8-0.1") and station_fw_too_old("garbage") and not station_fw_too_old(None)
+    # 2026-10-25: a Stick on an h8-0.2 build predates the hill gap fix, F391 and F591, so it is flagged too
+    assert station_fw_too_old("h8-0.2+a1b2c3d")
     s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "platform": "esp32"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.1"}, clock["t"])
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"]
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.2+a1b2c3d"}, clock["t"])
+    assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"], "an h8-0.2 Stick must be reflashed"
+    net.simulate_status("stick-1", {**base, "app_ver": "h8-0.3+a1b2c3d"}, clock["t"])
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" not in stick()["attention"]
     net.simulate_status("phone-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 5,
                                     "platform": "android", "app_ver": "0.4.1"}, clock["t"])
