@@ -254,7 +254,7 @@
    "range_band": "close",
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
-   "ttk_ms": 886,
+   "ttk_ms": 974,
    "recoil": {
     "ceiling": 100,
     "floor": 100,

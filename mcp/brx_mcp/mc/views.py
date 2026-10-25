@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, hir_from_weap
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, headset_lag_ms, hir_from_weap
 from .policy import chain_reload
 from .types import Weapon, WeaponView
 
@@ -107,6 +107,10 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         ttk_ms = (htk - 1) * CHARGE_TAP_CADENCE_MS
     elif htk and cycle and "charged" in st:
         ttk_ms = int(round(cycle * (htk if st["charged"] else htk - 1)))
+        # F614: the kill waits for the headset word when the last gun word does not finish it, as `time_to_kill()`
+        gun_hit = _num(st.get("gun_hit"))
+        if real_hit and gun_hit is not None:
+            ttk_ms += headset_lag_ms(pool, htk, real_hit, gun_hit)
     else:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was
         # published for, and is a lie at any other. Show nothing rather than the wrong number.

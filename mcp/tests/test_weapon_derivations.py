@@ -219,6 +219,32 @@ def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), f"{wid}: gained a headset word it never declared"
 
 
+
+def test_time_to_kill_waits_for_the_headset_word_when_the_kill_needs_it():
+    """F614: a dual-emitter pull lands its headset word about 88 ms after the gun word. When the last
+    pull's gun word alone does not finish the target, the kill lands on the headset word, so the
+    published time-to-kill carries that lag (the Shotgun against 115 always does). A kill the gun
+    word finishes keeps the old number, and the views redo the same rule at the host's pool."""
+    from brx_mcp.mc.compile import HEADSET_WORD_LAG_MS
+    assert HEADSET_WORD_LAG_MS == 88
+    shotgun = CAT.paced_cycle_ms("shotgun")
+    assert CAT.hits_to_kill("shotgun", DEFAULT_POOL) == 3
+    assert CAT.time_to_kill("shotgun", DEFAULT_POOL) == int(round(shotgun * 2)) + HEADSET_WORD_LAG_MS
+    sniper = CAT.paced_cycle_ms("plasma_sniper")
+    # 115 = 3 x 35 + 10, and the gun word (25) covers the last 10: no lag
+    assert CAT.time_to_kill("plasma_sniper", DEFAULT_POOL) == int(round(sniper * 3))
+    # 100 = 2 x 35 + 30, and the gun word (25) leaves 5 for the headset word
+    assert CAT.time_to_kill("plasma_sniper", 100) == int(round(sniper * 2)) + HEADSET_WORD_LAG_MS
+    for pool in range(20, 205, 5):
+        views = {v["weapon_id"]: v for v in weapon_views(CAT.all(), pool)}
+        for w in ROWS:
+            wid = w["weapon_id"]
+            if wid not in views or not CAT.hits_to_kill(wid, pool):
+                continue
+            assert views[wid]["ttk_ms"] == CAT.time_to_kill(wid, pool), (
+                f"{wid} at {pool}: the view's ttk {views[wid]['ttk_ms']} is not the catalogue's "
+                f"{CAT.time_to_kill(wid, pool)}")
+
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier
     frequency, not its power (2026-09-18, protocol/brx-protocol.md), so these values are a shipped

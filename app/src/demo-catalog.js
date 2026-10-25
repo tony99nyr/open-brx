@@ -478,7 +478,7 @@ export const DEMO_WEAPONS = [
       "close"
     ],
     "htk": 3,
-    "ttk_ms": 886,
+    "ttk_ms": 974,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
