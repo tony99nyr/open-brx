@@ -86,6 +86,7 @@ import copy
 import datetime
 import hashlib
 import json
+import functools
 import math
 import os
 import subprocess
@@ -551,6 +552,23 @@ def _heat_seed(mode):
     return "after_lockout" if branch == "after_lockout" else branch == "throughout"
 
 
+@functools.lru_cache(maxsize=None)
+def _median_rounds(hits: int, chance: float) -> int | None:
+    """F617: the round by which `hits` landed hits at `chance` a round have arrived with even odds, or None past any
+    magazine and reserve. Cached: a fight asks the same few (hits, chance) pairs on every shot (F620)."""
+    landed, done = [1.0] + [0.0] * (hits - 1), 0.0     # landed[j]: exactly j hits so far; done: all of them
+    for n in range(1, MEDIAN_ROUNDS_CAP + 1):
+        done += landed[-1] * chance
+        landed = [landed[0] * (1 - chance)] + [landed[j] * (1 - chance) + landed[j - 1] * chance
+                                               for j in range(1, hits)]
+        if done >= 0.5:
+            return n
+    return None
+
+
+MEDIAN_ROUNDS_CAP = 5000   # more rounds than any magazine and reserve hold
+
+
 def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
                     t, pull_ms, overshoot_ms, charged, count, dist, heat, heat_t,
                     heat_cool_while_firing, cooling_started=False):
@@ -569,10 +587,10 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
     # F617: a fixed-damage kill needs whole LANDED hits, and the finish is the round by which they have landed with
     # even odds (the median, as time_to_kill and the finish batches report). Spending `damage * chance` a round
-    # undercounted them: a 5-health target read as killed by 26 x 0.20 = 5.2 expected Deagle damage. `landed[j]` is
-    # the chance that exactly j of the hits needed have landed so far; `done` is the chance that all have.
+    # undercounted them: a 5-health target read as killed by 26 x 0.20 = 5.2 expected Deagle damage.
     hits_needed = math.ceil(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
-    landed, done = ([1.0] + [0.0] * (hits_needed - 1), 0.0) if hits_needed else (None, 0.0)
+    median = _median_rounds(hits_needed, min(1.0, chance)) if hits_needed else None
+    fired = 0
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -618,11 +636,9 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         fired_at = elapsed
         was_charged = mode == "charge" and charged
         ammo -= cost
-        if landed:
-            p = min(1.0, chance)
-            done += landed[-1] * p
-            landed = [landed[0] * (1 - p)] + [landed[j] * (1 - p) + landed[j - 1] * p for j in range(1, hits_needed)]
-            if done >= 0.5:
+        if hits_needed:
+            fired += 1
+            if median is not None and fired >= median:
                 return elapsed
         else:
             pool -= dmg * chance
