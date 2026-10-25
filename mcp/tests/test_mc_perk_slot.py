@@ -177,7 +177,7 @@ def test_node_view_and_brief_carry_the_perk_rule():
 def test_every_effect_key_is_handled_by_gain_cost_lines():
     """A new key in `EFFECT_KEYS` with no matching branch in `gain_cost_lines` must fail here, not ship
     a perk whose gain/cost line is silently blank."""
-    sample = {"max_armor_add": 25, "ammo_mult": 2.0, "ammo_mult_pistol": 1.5, "reload_mult": 0.5,
+    sample = {"max_armor_add": 20, "ammo_mult": 2.0, "ammo_mult_pistol": 1.5, "reload_mult": 0.5,
               "alt_reload": True, "switch_mult": 0.5, "armor_piercing": True, "crit_pct_add": 10,
               "cooldown_s": 45, "stun_duration_s": 3}
     assert set(sample) == EFFECT_KEYS, "this test's sample has drifted from perks.EFFECT_KEYS"
@@ -200,8 +200,8 @@ def test_gain_cost_lines_reads_the_sign_not_just_the_key():
     """The bug this replaces: a multiplier over 1 always printed as a gain ('faster'), because the old
     code never checked which side of 1 it fell on. body_armor's `reload_mult: 1.25` (heavier rig, slower
     reload) must land in `cost`, and quick_hands' `reload_mult: 0.5` in `gain`."""
-    gain, cost = gain_cost_lines("body_armor", {"max_armor_add": 25, "reload_mult": 1.25})
-    assert gain == ["+25 ARMOR"]
+    gain, cost = gain_cost_lines("body_armor", {"max_armor_add": 20, "reload_mult": 1.25})
+    assert gain == ["+20 ARMOR"]
     assert cost == ["RELOADS 1.2× SLOWER"]
 
     gain, cost = gain_cost_lines("quick_hands", {"reload_mult": 0.5, "ammo_mult": 0.8})
@@ -236,3 +236,32 @@ def test_perk_view_ships_gain_and_cost_on_the_catalog():
     quick_switch = next(k for k in pk if k["perk_id"] == "quick_switch")
     assert quick_switch["gain"] == ["SWAPS 2× FASTER"]
     assert quick_switch["cost"] == ["-20 ARMOR"]
+
+
+def test_extended_mags_resolves_preset_override_and_compiles_it():
+    """The Shields preset uses its own magazine effect, and the compiler passes it to the frame."""
+    from brx_mcp.mc.compile import Compiler, WeaponCatalog
+
+    perks = default_perks()
+    assert perks.effects("extended_mags") == {
+        "ammo_mult": 2, "ammo_mult_pistol": 1.5, "switch_mult": 1.3,
+    }
+    assert perks.effects("extended_mags", "shields") == {
+        "ammo_mult": 1.5, "ammo_mult_pistol": 1.5, "switch_mult": 1.3,
+    }
+    extended = next(p for p in perks.all() if p["perk_id"] == "extended_mags")
+    assert extended["gain"] == ["×2 MAG"]
+    assert extended["variants"]["shields"]["gain"] == ["×1.5 MAG"]
+    assert extended["variants"]["shields"]["cost"] == extended["cost"]
+
+    cat = WeaponCatalog()
+    for wid, mods, expected in (
+        ("assault_rifle", perks.effects("extended_mags"), 64),
+        ("assault_rifle", perks.effects("extended_mags", "shields"), 48),
+        ("usp", perks.effects("extended_mags"), 18),
+    ):
+        frame = cat.resolve(wid, 0, mods).split(",")
+        assert int(frame[WeaponCatalog._T["mag"] + 1]) == expected, (wid, mods, frame)
+
+    compiler = Compiler()
+    assert compiler.perks.effects("extended_mags", "shields") == perks.effects("extended_mags", "shields")

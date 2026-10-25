@@ -900,7 +900,7 @@ export interface LoadoutPool {
  *  refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
  *
  *  S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
- *  +25, quick_switch -20). This field is the one source of the number: `compile._MAX_ARMOR_ADD` is built
+ *  +20, quick_switch -20). This field is the one source of the number: `compile._MAX_ARMOR_ADD` is built
  *  from it, keyed by perk_id, and the compiled arithmetic reads that (F604). Kept an integer because
  *  `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally. */
 export interface PerkEffects {
@@ -933,6 +933,12 @@ export interface PerkEffects {
   stun_duration_s?: number;
 }
 
+export interface PerkVariant {
+  effects: PerkEffects;
+  gain: string[];
+  cost: string[];
+}
+
 export interface PerkView {
   perk_id: string;
   name: string;
@@ -940,11 +946,13 @@ export interface PerkView {
   tags: string[];
   mechanism: 'passive' | 'slot_frame';
   effects: PerkEffects;
-  /** S50 (2026-09-19): player-facing GAIN lines, e.g. "+25 ARMOR" -- `perks.gain_cost_lines` */
+  /** S50 (2026-09-19): player-facing GAIN lines, e.g. "+20 ARMOR" -- `perks.gain_cost_lines` */
   gain: string[];
   /** is the one place either UI reads this from (app/src/hud/hud.js, webapp/mc/src/screens/Kit.tsx)
    *  the same perk's COST lines, e.g. "RELOADS 1.3× SLOWER" -- empty when the perk carries none */
   cost: string[];
+  /** full resolved effects and copy; absent from older servers */
+  variants?: Record<string, PerkVariant>;
   verified: boolean;
   hidden: boolean;
   /** F551 (field 2026-10-17): the weapon ids this perk cannot ride with as the primary / the secondary -- the same rule

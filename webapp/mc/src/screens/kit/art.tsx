@@ -50,7 +50,8 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
  *  so the two kinds of fact read as different at a glance, not just by word order. Renders 'PASSIVE'
  *  plain when a perk (a node-local one with nothing compiled, or a stale server that has not shipped
  *  the two lists yet) carries neither. */
-export function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
+export function PerkTrade({ k, style, health }: { k: PerkView; style?: CSSProperties; health?: { max_armor?: number; max_shield?: number } }) {
+  k = perkForHealth(k, health);
   const gain = k.gain ?? [], cost = k.cost ?? [];
   if (!gain.length && !cost.length) return <span style={style}>PASSIVE</span>;
   return (
@@ -60,4 +61,10 @@ export function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) 
       {cost.length > 0 && <span style={{ color: T.body }}>{cost.join(' · ')}</span>}
     </span>
   );
+}
+
+export function perkForHealth(k: PerkView, health?: { max_armor?: number; max_shield?: number }): PerkView {
+  return health?.max_armor === 0 && (health.max_shield ?? 0) > 0 && k.variants?.shields
+    ? { ...k, ...k.variants.shields }
+    : k;
 }

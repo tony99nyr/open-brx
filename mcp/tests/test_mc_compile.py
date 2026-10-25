@@ -1448,15 +1448,15 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
         t = next(f for f in head if f.startswith("$PSET")).split(",")
         return int(t[3]) + int(t[4])
 
-    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now a flat +25, not a flat +50.
-    assert armed_pool(None) == 115 and armed_pool("body_armor") == 140
+    # Part A: body_armor adds 20 to the armed pool.
+    assert armed_pool(None) == 115 and armed_pool("body_armor") == 135
 
     # F146 (field 2026-09-12): the one-magazine GUARD no longer reads the armed pool — see
     # `test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon` for why one
     # player's perk must not re-grade a weapon for the whole field. The two ARMING arithmetics above
     # are unchanged and still pinned to each other; what the guard quotes is the BASE pool, clamped
     # the same way.
-    hi = dict(cfg, health={"max_hp": 45, "max_armor": 254})       # a 299 base; +25 perk -> capped 255 armed
+    hi = dict(cfg, health={"max_hp": 45, "max_armor": 254})       # a 299 base; +20 perk -> capped 255 armed
     head = c.compile(hi, roster("body_armor")[0], hi["teams"])["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     assert int(t[4]) == 255, "armour is capped at the policy ceiling"

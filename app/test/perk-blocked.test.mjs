@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Hud } from '../src/hud/hud.js';
+import { DEMO_PERKS } from '../src/demo-catalog.js';
 
 const perks = [
   { perk_id: 'armor_piercing', name: 'ARMOR PIERCING', blocked_primary: ['sniper_rifle'], blocked_secondary: ['deagle'] },
@@ -48,4 +49,13 @@ test('honest pickers: a held perk takes the weapons it cannot ride with out of t
     'a perk pick still waiting for its ack counts');
   assert.deepEqual(wids(wst('armor_piercing', { pendingPick: { slot: 'perk', kind: 'none', id: null } }), 'primary'), weapons.map(w => w.weapon_id),
     'a pending NONE on the perk frees the weapons');
+});
+
+test('Extended Mags shows the resolved gain for each health preset', () => {
+  const perk = DEMO_PERKS.find(p => p.perk_id === 'extended_mags');
+  const state = { catalog: { perks: [perk] }, policy: { perk: { allowed_perk_ids: ['extended_mags'] } }, loadout: {} };
+  const gain = health => Hud.prototype._loRows.call({}, { ...state, config: { health } }, 'perk')[0].row.gain[0];
+  assert.equal(gain({ max_armor: 75, max_shield: 0 }), '×2 MAG');
+  assert.equal(gain({ max_armor: 0, max_shield: 100 }), '×1.5 MAG');
+  assert.equal(gain({ max_armor: 0, max_shield: 0 }), '×2 MAG');
 });

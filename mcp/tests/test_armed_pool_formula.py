@@ -60,13 +60,13 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
     # (max_hp, max_armor, perk, expected pool = hp + max(0, min(255, armor + flat grant)))
     cases = [
         (45, 70, None, 115),
-        (45, 70, "body_armor", 140),       # 70 + 25
+        (45, 70, "body_armor", 135),       # 70 + 20
         (100, 100, None, 200),
         # base armour 0 => is_shields_preset(): body_armor's grant redirects to SHIELD instead
         # (S50), and this formula (armed_pool) deliberately excludes shield -- so the pool is
         # UNCHANGED by the perk here, same as if it carried no perk at all.
         (50, 0, "body_armor", 50),
-        (45, 250, "body_armor", 300),      # 250 + 25 = 275, over the 255 ceiling -> clamps to 255
+        (45, 250, "body_armor", 300),      # 250 + 20 = 270, over the 255 ceiling -> clamps to 255
         (45, 255, None, 300),
     ]
     for hp, armor, perk, want in cases:
@@ -139,16 +139,16 @@ def test_body_armor_grants_shield_not_armour_when_base_armour_is_zero():
     assert _pset_pool(C, cfg, armoured) == 30 + 0
 
     # shield: unperked keeps the game's OWN `health.max_shield` (S45 -- a host field now, not a fixed
-    # compiler constant); the perk's flat +25 grant lands on top of that.
+    # compiler constant); the perk's flat +20 grant lands on top of that.
     base_shield = _pset_shield(C, cfg, unperked)
     assert base_shield == 120
-    assert _pset_shield(C, cfg, armoured) == base_shield + 25
+    assert _pset_shield(C, cfg, armoured) == base_shield + 20
 
     # ...and a NORMAL game (base armour > 0) is the control: the grant lands on armour, shield never
     # moves off whatever the host set it to (70 here, exercising a non-zero shield beside armour too).
     normal = dict(_cfg(45, 70, max_shield=70))
     assert _pset_shield(C, normal, unperked) == _pset_shield(C, normal, armoured) == 70
-    assert _pset_pool(C, normal, armoured) == 45 + 70 + 25
+    assert _pset_pool(C, normal, armoured) == 45 + 70 + 20
 
 
 def test_a_negative_grant_floors_at_zero_not_underflow():
@@ -182,4 +182,4 @@ def test_the_armour_grant_has_one_source_perks_json():
     # a Compiler built on that catalogue writes its grant on the literal $PSET frame, not the module's
     config, player = _cfg(45, 70), _player("assault_rifle", "body_armor")
     assert _pset_pool(C.Compiler(perks=PerkCatalog(rows)), config, player) == 45 + 70 + 40
-    assert _pset_pool(C.Compiler(), config, player) == 45 + 70 + 25
+    assert _pset_pool(C.Compiler(), config, player) == 45 + 70 + 20

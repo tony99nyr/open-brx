@@ -303,8 +303,8 @@ def play_volume(environment: str | None) -> int:
 
 
 # S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
-# `max_armor_add` perk carries. Body Armor +25 (was +50 -- "maybe 50 is too much armor and it should
-# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). The number
+# `max_armor_add` perk carries. Body Armor is +20 (down from S50's +25 on 2026-10-25);
+# Quick Switch is -20 (its cost for the swap-speed grant). The number
 # lives once, in `perks.json`'s `effects.max_armor_add`; the arithmetic runs here (`armed_armor`,
 # `armed_shield`). F604 (Astra sim review #11): this used to be a second, hand-kept table, so a
 # perks.json-only change was simulated by the balance review but never reached the gun.
@@ -2054,6 +2054,11 @@ class Compiler:
         pid = ((player or {}).get("loadout") or {}).get("perk")
         return self.perks.effects(pid) if pid else {}
 
+    def _perk_effects_for(self, config: GameConfig, player: Player | None) -> dict:
+        """Use the Shields override only when the game has a shield pool."""
+        preset = "shields" if is_shields_preset(config) and config["health"].get("max_shield", 0) > 0 else None
+        return self.perks.effects(self._perk_id(player), preset)
+
     @staticmethod
     def _perk_id(player: Player | None) -> str | None:
         return ((player or {}).get("loadout") or {}).get("perk")
@@ -2189,7 +2194,7 @@ class Compiler:
         pid = self._perk_id(player)
         if not pid or player is None:
             return None
-        fx = self.perk_effects(player)
+        fx = self._perk_effects_for(config, player)
         w0, w1 = self._weapon_ids(player)
         _hp, armor_base, shield_base = self._base_health(config, player)
         shields = is_shields_preset(config)
@@ -2680,7 +2685,7 @@ class Compiler:
                 "broadcasts, so this gun would read every uncaptured point as its own and take no hill "
                 "damage. Move the player to tid 0, 1 or 3.")
         w0, w1 = self._weapon_ids(player)
-        fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
+        fx = self._perk_effects_for(config, player)      # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
         if prof.get("silent_weapons"):

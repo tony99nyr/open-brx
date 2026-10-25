@@ -1,17 +1,17 @@
 {
- "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md \u00a71.2, docs/perk-design.md). A perk is the third slot of a player's kit (A14, 2026-09-04: beside the weapons; the ALT-button accessibility switch moved OUT of this slot in S50 -- see `easy_reload` below). v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor/shield, $AMMO + $WEAP ammo/reload tokens, a $SIR key swap) or, for `motion_tracker`/`second_wind`, entirely NODE-LOCAL (the phone's own logic against its own gun; `effects: {}` on purpose -- do not invent a wire lever for either). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) \u2014 they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon. S50 (2026-09-17, perk balance pass, decided in docs/perk-design.md \u00a72): every perk now trades on the SAME lever its opposite buys, so the set is rock/paper/scissors instead of a ladder. `effects.max_armor_add` is a FLAT armour grant/cost, this field is the one source of the number (`compile.py` builds `_MAX_ARMOR_ADD` from it and runs the arithmetic; F604), kept a plain integer because `app/src/hud/hud.js` and `webapp/mc/src/screens/Kit.tsx` both render it literally as '+N ARMOR'. body_armor is +25 (was a flat +50, S50's 'straight upgrade' finding -- 'maybe 50 is too much armor and it should be 25', Tony 2026-09-17); quick_switch is -20, floored at 0 and capped at 255 by `compile.armed_armor`/`armed_shield`. In a game whose base armour is 0 (the Shields preset), body_armor's grant compiles into the SHIELD ceiling instead of armour (`compile.is_shields_preset`). `hidden` (2026-09-18): `motion_tracker` and `second_wind` are the two NODE-LOCAL perks of the S50 set (docs/perk-design.md \u00a72). The compiler has nothing to write for either, and the phone half is not built, so they are hidden until it is. A visible perk that does nothing is worse than a missing one: a player picks it, gets nothing, and reports a bug in something else. `effects.ammo_mult_pistol` (D5, 2026-09-25, docs/perk-design.md \u00a72): extended_mags' per-class override -- a pistol primary (role `sidearm` or the `pistol` tag) takes this value instead of `ammo_mult`, rounded DOWN (`compile.py` `WeaponCatalog._ammo` is the one place either multiplier is read, so the compiled frame and the phone's own $AMMO report can never disagree). Every other weapon keeps the plain `ammo_mult`. `emp` (2026-10-24, Tony via brx1: the EMP perk in place of the Haze weapon): the holder's phone throws a host `$IRTX` on cell <8,1> on LEFT, and every gun in a match with a holder carries a fn-23 row there (`compile.py` `_EMP_SIR_ROW`). `effects.cooldown_s` (45) and `effects.stun_duration_s` (6) are PLACEHOLDERS until brx2's pass-2 numbers. The victim's phone holds the jam for max(stun_duration_s, SMOKE_MS = 6 s), because fn 23 leaves the gun's accuracy at 0 for about 6 s whatever the phone does. UNHIDE when docs/bench-0426.md P2.5-P2.11 pass and Tony sets the numbers.",
+ "_note": "M-LOADOUT PerkCatalog (docs/spec/loadout.md \u00a71.2, docs/perk-design.md). A perk is the third slot of a player's kit (A14, 2026-09-04: beside the weapons; the ALT-button accessibility switch moved OUT of this slot in S50 -- see `easy_reload` below). v1 perks are PASSIVE: pure head-frame tweaks the compiler already knows how to write ($PSET armor/shield, $AMMO + $WEAP ammo/reload tokens, a $SIR key swap) or, for `motion_tracker`/`second_wind`, entirely NODE-LOCAL (the phone's own logic against its own gun; `effects: {}` on purpose -- do not invent a wire lever for either). `mechanism: slot_frame` rows would be a $WEAP in slot 1 whose effect lives in the VICTIM's $SIR table (game-wide, not per-player) \u2014 they stay `hidden` until the emit-side bench proves them. `verified` = effect proven on hardware. Copy is player-facing: no protocol jargon. S50 (2026-09-17, perk balance pass, decided in docs/perk-design.md \u00a72): every perk now trades on the SAME lever its opposite buys, so the set is rock/paper/scissors instead of a ladder. `effects.max_armor_add` is a FLAT armour grant/cost, this field is the one source of the number (`compile.py` builds `_MAX_ARMOR_ADD` from it and runs the arithmetic; F604), kept a plain integer because `app/src/hud/hud.js` and `webapp/mc/src/screens/Kit.tsx` both render it literally as '+N ARMOR'. body_armor is +20 (after +25 in S50, reduced on 2026-10-25; it was a flat +50 before S50); quick_switch is -20, floored at 0 and capped at 255 by `compile.armed_armor`/`armed_shield`. In a game whose base armour is 0 (the Shields preset), body_armor's grant compiles into the SHIELD ceiling instead of armour (`compile.is_shields_preset`). `hidden` (2026-09-18): `motion_tracker` and `second_wind` are the two NODE-LOCAL perks of the S50 set (docs/perk-design.md \u00a72). The compiler has nothing to write for either, and the phone half is not built, so they are hidden until it is. A visible perk that does nothing is worse than a missing one: a player picks it, gets nothing, and reports a bug in something else. `effects.ammo_mult_pistol` (D5, 2026-09-25, docs/perk-design.md \u00a72): extended_mags' per-class override -- a pistol primary (role `sidearm` or the `pistol` tag) takes this value instead of `ammo_mult`, rounded DOWN (`compile.py` `WeaponCatalog._ammo` is the one place either multiplier is read, so the compiled frame and the phone's own $AMMO report can never disagree). Every other weapon keeps the plain `ammo_mult`. `emp` (2026-10-24, Tony via brx1: the EMP perk in place of the Haze weapon): the holder's phone throws a host `$IRTX` on cell <8,1> on LEFT, and every gun in a match with a holder carries a fn-23 row there (`compile.py` `_EMP_SIR_ROW`). `effects.cooldown_s` (45) and `effects.stun_duration_s` (6) are PLACEHOLDERS until brx2's pass-2 numbers. The victim's phone holds the jam for max(stun_duration_s, SMOKE_MS = 6 s), because fn 23 leaves the gun's accuracy at 0 for about 6 s whatever the phone does. UNHIDE when docs/bench-0426.md P2.5-P2.11 pass and Tony sets the numbers.",
  "perks": [
   {
    "perk_id": "body_armor",
    "name": "Body Armor",
-   "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer (not the Sniper Rifle's bolt).",
+   "desc": "Start every life with 20 extra armour, about a sixth more total health in Standard. Armour soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer (not the Sniper Rifle's bolt).",
    "tags": [
     "passive",
     "defense"
    ],
    "mechanism": "passive",
    "effects": {
-    "max_armor_add": 25,
+    "max_armor_add": 20,
     "reload_mult": 1.25
    },
    "verified": true,
@@ -20,7 +20,7 @@
   {
    "perk_id": "extended_mags",
    "name": "Extended Mags",
-   "desc": "Double the magazine on your primary, and the reserve up to 384 rounds (2026-10-17: the largest reserve a gun has proven, so the Assault Rifle, Burst Rifle, SMG, Suppressor and Energy Rifle gain no reserve); +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). The Sniper Rifle is exempt: its bolt keeps one round. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
+   "desc": "In Standard, double the magazine on your primary. In Shields, increase it by 50%. Your reserve grows up to 384 rounds; some rifles already reach that limit. A pistol primary gains 50%, rounded down. The Sniper Rifle is exempt: its bolt keeps one round. The larger magazine slows your weapon swap by 30%.",
    "tags": [
     "passive",
     "ammo"
@@ -30,6 +30,11 @@
     "ammo_mult": 2,
     "ammo_mult_pistol": 1.5,
     "switch_mult": 1.3
+   },
+   "effects_by_preset": {
+    "shields": {
+     "ammo_mult": 1.5
+    }
    },
    "verified": true,
    "hidden": false

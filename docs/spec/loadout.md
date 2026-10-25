@@ -88,13 +88,16 @@ PerkView {
                                     // arithmetic (F604). Kept a plain integer. `gain`/`cost`
                                     // below (S50, 2026-09-19) turn it into the "+N ARMOR" line either UI
                                     // renders — neither reads this field directly any more. body_armor
-                                    // +25 (was a flat +50), quick_switch
+                                    // +20 (was +25, originally a flat +50), quick_switch
                                     // -20. Capped at 255, floored at 0. In a game whose BASE
                                     // health.max_armor is 0 (the Shields preset, `mc/compile.py`
                                     // `is_shields_preset`), the grant compiles into the SHIELD ceiling
                                     // instead of armour — adding an armour layer to a preset built with
                                     // none would defeat its design.
-    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY (the reserve capped at max(`RESERVE_PROVEN_MAX`, the row's own reserve) since 2026-10-17) ($AMMO,0 + t16/t39/t17/t40), UNLESS the primary is a
+    ammo_mult?: number,            // extended_mags: ×2 mag + reserve on Standard, ×1.5 on Shields.
+                                    // The reserve caps at max(`RESERVE_PROVEN_MAX`, the row's own reserve).
+                                    // The health-preset variant overrides this key before compilation,
+                                    // unless the primary is a
                                     // pistol (see ammo_mult_pistol below); quick_hands: ×0.8 (the cost of a faster reload)
     ammo_mult_pistol?: number,     // D5 (2026-09-25, docs/perk-design.md §2): extended_mags' override, read INSTEAD of ammo_mult when
                                     // the primary is a pistol (role "sidearm" or the "pistol" tag): ×1.5, rounded DOWN, not ×2. USP
@@ -105,8 +108,8 @@ PerkView {
     armor_piercing?: boolean       // S50 NEW (armor_piercing perk): the PRIMARY's $SIR key is swapped, compile-time, to
                                     // a fixed cell (mc/compile.py `_AP_CELL`, `(4,0)`) permanently wired in
                                     // `gameconfig._SIR_TABLE` to fn 2 (bench-proven to bypass armour AND
-                                    // shields, straight to HP). Damage is cut to `_AP_DAMAGE_MULT` (~40%,
-                                    // a 60% reduction) via `dmg_mult`. PRIMARY ONLY, and refused (compile
+                                    // shields, straight to HP). Each eligible primary has its own
+                                    // `ap_dmg` and `ap_fire_ms` pair in weapons.json. PRIMARY ONLY, and refused (compile
                                     // raises) on a weapon whose damage key is already special: a charge
                                     // weapon (the Charge Rifle), or a stock grant/heal/status cell.
                                     // ⚠ THE KEY IS GAME-WIDE, FOR THE WHOLE MATCH, NOT PER PLAYER: a
@@ -118,7 +121,7 @@ PerkView {
                                     // no row for the cell (the F11 shape: a gun with no matching row eats
                                     // the hit silently while both ends report healthy).
   },
-  gain: string[],                  // S50 (2026-09-19): player-facing GAIN lines, e.g. "+25 ARMOR",
+  gain: string[],                  // S50 (2026-09-19): player-facing GAIN lines, e.g. "+20 ARMOR",
                                     // "IGNORES ARMOR & SHIELDS" — `mc/perks.py` `gain_cost_lines` is the
                                     // ONE place either UI reads a perk's trade from; app/src/hud/hud.js
                                     // and webapp/mc/src/screens/Kit.tsx render these two lists rather
@@ -130,7 +133,15 @@ PerkView {
                                     // when the perk carries none. armor_piercing's cost is WORDED, not a
                                     // figure ("FIXED DAMAGE, SLOWER CYCLE"): the actual numbers
                                     // (`ap_dmg`/`ap_fire_ms`) live on the WEAPON (`weapons.json` §7.7),
-                                    // not the perk, and vary per primary.
+                                    // not the perk, and vary per primary. 2026-10-25 prices use fraction
+                                    // arithmetic; see `docs/weapon-design.md` §7.7.
+  variants: {                      // absent from an older MC: use the base effects and copy
+    shields?: {                    // present when a shield pool replaces the base perk effect
+      effects: PerkEffects,        // full merged effects, not only the changed keys
+      gain: string[],              // generated from the merged effects by gain_cost_lines()
+      cost: string[]
+    }
+  },
   verified: boolean,               // effect proven on hardware
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)
 }

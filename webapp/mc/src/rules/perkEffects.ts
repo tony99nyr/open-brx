@@ -13,7 +13,9 @@ export function perkEffectsResolved(config: GameConfig, player: Player, weapons:
   perks: readonly PerkView[]): PerkEffectsResolved | null {
   const perkId = player.loadout?.perk;
   if (!perkId) return null;
-  const effects = perks.find(perk => perk.perk_id === perkId)?.effects ?? {};
+  const perk = perks.find(perk => perk.perk_id === perkId);
+  const shieldsPreset = config.health.max_armor === 0 && (config.health.max_shield ?? 0) > 0;
+  const effects = (shieldsPreset ? perk?.variants?.shields : undefined)?.effects ?? perk?.effects ?? {};
   const primaryId = player.loadout.weapons[0]?.weapon_id ?? 'assault_rifle';
   const secondaryId = player.loadout.weapons[1]?.weapon_id;
   const primary = weapons.find(weapon => weapon.weapon_id === primaryId);

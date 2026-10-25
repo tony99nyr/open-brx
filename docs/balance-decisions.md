@@ -186,3 +186,12 @@ The log is append-only, so these corrections do not edit the sections they name.
   main from `e75f1fdbc` to `324b1a869` (2026-10-18, 01:51 to 08:46), and no APK came from that window (0.4.25 is
   from `e91600c2`, 2026-10-17; 0.4.26 is from `29c755645`, 2026-10-24).
 - **F576.** The USP's 2.10 s is the figure at 12 damage. Since F579 (10 damage) the USP publishes 2.56 s.
+
+## 2026-10-25: balance 0.4.31 part A
+
+- Verdict: none. This records Tony's documentation and tuning call; no balance review verdict is available here.
+- Tony's call: AMR fire interval 450 ms on both presets; Body Armor reload ×1.25; use fraction arithmetic for AP damage; Extended Mags ammunition multipliers are ×1.5 on Shields and ×2 on Standard, with swap ×1.3; merge FH in part B.
+- Decision: Body Armor adds 20 armour and costs ×1.25 primary reload time. Extended Mags uses ×2 ammunition on Standard and ×1.5 on Shields, with ×1.3 weapon swap time. AP prices are per weapon: Assault Rifle 4/131, SMG 4/131, Shotgun 15/467, Suppressor 6/314 and Energy Rifle 4/170. AMR ordinary fire interval is 450 ms on Standard and Shields, with no AP pair in part A.
+- AP guard: lift the guard for AMR, Burst Rifle and USP only after fraction arithmetic proves each price. Keep the lift pending that proof. Higher AP damage for SMG and Shotgun was rejected because it would remove the headset-word cost. Recharge Shields was rejected.
+- FH merge is part B and remains pending.
+- Command: documentation record, no `balance_review.py` verdict.

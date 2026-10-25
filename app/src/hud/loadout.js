@@ -13,6 +13,8 @@ const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidear
 // server that has not shipped `gain`/`cost` yet degrades to an empty line, never a crash.
 const perkGain = p => (p && p.gain) || [];
 const perkCost = p => (p && p.cost) || [];
+const perkForConfig = (p, config) => config && config.health && config.health.max_armor === 0 && config.health.max_shield > 0 && p && p.variants && p.variants.shields
+  ? { ...p, ...p.variants.shields } : p;
 const perkEffect = (p, short) => {
   const gain = perkGain(p), cost = perkCost(p);
   if (short) return gain[0] || 'PASSIVE';
@@ -78,7 +80,7 @@ export function _slotPlate(st, slot, mode, ammoLine) {
     const k = slot.toUpperCase();
     const noneSub = slot === 'perk' ? (rule && rule.choice === 'off' ? 'NO PERKS' : 'NO PERK') : (rule && rule.choice === 'off' ? 'NO SECONDARY' : 'NO ALT-FIRE');
     let art = '', h = '', sub = '';
-    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(item, true)); }   // the line is ~150px wide: the GAIN only (S50), the cost is in the browser row
+    if (item && item.kind === 'perk') { art = `<div class="thumb perk">${perkGlyph(item.perk_id)}</div>`; h = esc(item.name); sub = esc(perkEffect(perkForConfig(item, st.config || (st.game && st.game.config)), true)); }   // the line is ~150px wide: the GAIN only (S50), the cost is in the browser row
     else if (item) { art = `<div class="thumb">${weaponArt(item.weapon_id)}</div>`; h = esc(item.name); sub = slot === 'primary' ? (ammoLine || '') : `<span class="nw">MAG ${item.clip != null ? item.clip : '—'} · RES ${item.reserve != null ? item.reserve : '—'}</span>`; }
     else { art = '<div class="thumb none"><span>—</span></div>'; h = 'NONE'; sub = noneSub; }
     if (locked) sub = (rule.choice === 'fixed' ? 'FIXED BY THE HOST' : rule.choice === 'off' ? noneSub : 'SET BY THE HOST');
@@ -89,6 +91,7 @@ export function _slotPlate(st, slot, mode, ammoLine) {
   /** Rows for a tab: [{key, kind, id, row, allowed}] in catalog order, filtered to the player's pool. */
 export function _loRows(st, tab) {
     const cat = st.catalog || { weapons: [], perks: [] }; const rule = st.policy ? st.policy[tab] : null;
+    const config = st.config || (st.game && st.game.config) || null;
     // Honest pickers (Tony 2026-10-25): a held perk (or one still waiting for MC's ack) takes the weapons it cannot ride
     // with out of the weapon tabs, from MC's own lists, so a player never picks a pair MC would clear. Change the perk first.
     const pp = st.pendingPick && st.pendingPick.slot === 'perk' ? st.pendingPick : null;
@@ -105,7 +108,7 @@ export function _loRows(st, tab) {
       const pri = pend('primary') || (lo.primary && lo.primary.weapon_id), sec = pend('secondary') || (lo.secondary && lo.secondary.weapon_id);
       const blocked = p => (Array.isArray(p.blocked_primary) && pri != null && p.blocked_primary.includes(pri))
         || (Array.isArray(p.blocked_secondary) && sec != null && p.blocked_secondary.includes(sec));
-      return (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden && !blocked(p)).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: p }));
+      return (cat.perks || []).filter(p => okP.has(p.perk_id) && !p.hidden && !blocked(p)).map(p => ({ key: 'perk:' + p.perk_id, kind: 'perk', id: p.perk_id, row: perkForConfig(p, config) }));
     }
     const okW = new Set((rule && rule.allowed_weapon_ids) || []);
     const kinds = (rule && rule.kinds) || ['weapon'];

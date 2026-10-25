@@ -312,12 +312,12 @@ def test_compile_perk_effects():
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2
     assert int(_tok(f, 16)) == max(1, round(int(_tok(w0, 16)) * 0.8)) == int(_tok(f, 39))
-    # body_armor: S50's flat grant on $PSET armor (token 4) -- +25 (docs/perk-design.md §2, Tony
+    # body_armor: S50's flat grant on $PSET armor (token 4) -- +20 (docs/perk-design.md §2, Tony
     # 2026-09-17: "maybe 50 is too much armor and it should be 25", down from a flat +50) -- hp
     # untouched, PLUS its S50 cost -- ×1.25 reload (t18).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[3] == "45" and pset[4] == "95"                           # 70 + 25
+    assert pset[3] == "45" and pset[4] == "90"                           # 70 + 20
     assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == round(int(_tok(w0, 18)) * 1.25)
@@ -328,6 +328,7 @@ def test_compile_perk_effects():
     assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
     assert pset[4] == "50"                                              # 70 - 20
+
     # armor_piercing (S50): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP cell and
     # its damage (t5) replaced by the weapon's own `ap_dmg`. Secondary/melee untouched (primary only).
     # 2026-09-18: `ap_dmg` is a PER-WEAPON number, not the old 0.4 multiplier, because 45/115 is 0.39 so
@@ -352,6 +353,20 @@ def test_compile_perk_effects():
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
     assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
 
+
+def test_extended_mags_shields_override_reaches_the_frame_and_effect_report():
+    lo = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}
+    player = _player(lo)
+    standard = _cfg()
+    shields = _cfg()
+    shields["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 105, "preset": "shields"}
+    hardcore = _cfg()
+    hardcore["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 0, "preset": "hardcore"}
+    for config, mag in ((standard, 64), (shields, 48), (hardcore, 64)):
+        bundle = C.compile(config, player, TEAMS)
+        frame = next(x for x in bundle["head"] if x.startswith("$WEAP,0"))
+        assert int(_tok(frame, 16)) == mag
+        assert bundle["perk_effects"]["mag"] == {"base": 32, "resolved": mag}
 
 def test_extended_mags_doubles_a_reserve_below_the_ceiling_and_stops_at_it():
     """Reserves x2 (2026-10-17): `compile.RESERVE_PROVEN_MAX` (384) caps any compiled reserve at

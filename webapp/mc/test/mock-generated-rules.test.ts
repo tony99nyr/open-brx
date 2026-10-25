@@ -5,8 +5,17 @@ import { apply } from '../src/mock/policy';
 import { mergeModeParams } from '../src/rules/modeParams';
 import { defaultPresentation, mergePresentation, profileFromPreset } from '../src/rules/presentation';
 import { perkEffectsResolved, roundHalfEven } from '../src/rules/perkEffects';
+import { perkForHealth } from '../src/screens/kit/art';
 
 describe('generated server rule inputs', () => {
+  it('shows the health-specific Extended Mags trade in Standard and Shields', async () => {
+    const perks = await new MockBackend().getPerks();
+    const extendedMags = perks.find(perk => perk.perk_id === 'extended_mags')!;
+
+    expect(perkForHealth(extendedMags, { max_armor: 70, max_shield: 0 }).gain).toContain('×2 MAG');
+    expect(perkForHealth(extendedMags, { max_armor: 0, max_shield: 105 }).gain).toContain('×1.5 MAG');
+  });
+
   it('keeps an unchanged headset and gun preset, and merges a nested readout', () => {
     const current = profileFromPreset('standard');
     const unchanged = mergePresentation(current, { headset: structuredClone(current.headset), gun: structuredClone(current.gun) });

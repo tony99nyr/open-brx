@@ -9,7 +9,9 @@ from __future__ import annotations
 import json
 import pathlib
 
-from .types import PerkEffects, PerkView
+from typing import cast
+
+from .types import PerkEffects, PerkVariant, PerkView
 
 _HERE = pathlib.Path(__file__).resolve().parent
 
@@ -114,6 +116,14 @@ def gain_cost_lines(perk_id: str, effects: PerkEffects) -> tuple[list[str], list
     return gain, cost
 
 
+def resolve_effects(row: dict, preset: str | None = None) -> dict:
+    """Merge a health preset's effect overrides over this perk's base effects."""
+    effects = dict(row.get("effects") or {})
+    if preset:
+        effects.update((row.get("effects_by_preset") or {}).get(preset) or {})
+    return effects
+
+
 def _load_perks() -> list[dict]:
     return json.loads((_HERE / "perks.json").read_text())["perks"]
 
@@ -126,6 +136,10 @@ class PerkCatalog:
             bad = set(r.get("effects") or {}) - EFFECT_KEYS
             if bad:
                 raise ValueError(f"perks.json {r['perk_id']}: unknown effect keys {sorted(bad)}")
+            for preset, override in (r.get("effects_by_preset") or {}).items():
+                bad = set(override) - EFFECT_KEYS
+                if preset != "shields" or bad:
+                    raise ValueError(f"perks.json {r['perk_id']}: invalid {preset!r} effect keys {sorted(bad)}")
 
     def all(self) -> list[PerkView]:
         """Visible rows (hidden excluded), API/phone `PerkView` shape."""
@@ -133,7 +147,7 @@ class PerkCatalog:
 
     @staticmethod
     def view(r: dict) -> PerkView:
-        raw_effects = r.get("effects") or {}
+        raw_effects = resolve_effects(r)
         # Built key-by-key rather than `dict(raw_effects)`: `PerkEffects` fields each have their own
         # concrete type (int/float/bool), which a loop over a runtime key can't express -- `__init__`
         # already refused any row whose `effects` carries a key outside this same five, so this is a
@@ -160,10 +174,18 @@ class PerkCatalog:
         if "stun_duration_s" in raw_effects:
             effects["stun_duration_s"] = raw_effects["stun_duration_s"]
         gain, cost = gain_cost_lines(r["perk_id"], effects)
-        return {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
-                "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),
-                "effects": effects, "gain": gain, "cost": cost, "verified": bool(r.get("verified")),
-                "hidden": bool(r.get("hidden"))}
+        variants: dict[str, PerkVariant] = {}
+        for preset in (r.get("effects_by_preset") or {}):
+            variant_effects = cast(PerkEffects, resolve_effects(r, preset))
+            variant_gain, variant_cost = gain_cost_lines(r["perk_id"], variant_effects)
+            variants[preset] = {"effects": variant_effects, "gain": variant_gain, "cost": variant_cost}
+        view: PerkView = {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
+                          "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),
+                          "effects": effects, "gain": gain, "cost": cost,
+                          "verified": bool(r.get("verified")), "hidden": bool(r.get("hidden"))}
+        if variants:
+            view["variants"] = variants
+        return view
 
     def visible_ids(self) -> list[str]:
         return [r["perk_id"] for r in self._rows if not r.get("hidden")]
@@ -176,11 +198,11 @@ class PerkCatalog:
     def has(self, perk_id: str) -> bool:
         return perk_id in self._by_id
 
-    def effects(self, perk_id: str | None) -> dict:
+    def effects(self, perk_id: str | None, preset: str | None = None) -> dict:
         """Effect knobs for a perk id (empty dict for None / unknown)."""
         if not perk_id or perk_id not in self._by_id:
             return {}
-        return dict(self._by_id[perk_id].get("effects") or {})
+        return resolve_effects(self._by_id[perk_id], preset)
 
 
 _DEFAULT = PerkCatalog()

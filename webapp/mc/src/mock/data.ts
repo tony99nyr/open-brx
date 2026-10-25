@@ -28,7 +28,7 @@ export const WEAPONS: WeaponView[] = [
     "reload_s": 1.4,
     "reload_ms": 1400,
     "dmg": 23,
-    "rpm": 21,
+    "rpm": 17,
     "rng": 75,
     "dmg_per_hit": 26,
     "dual_emitter": false,
@@ -44,7 +44,7 @@ export const WEAPONS: WeaponView[] = [
       "long"
     ],
     "htk": 5,
-    "ttk_ms": 1572,
+    "ttk_ms": 1972,
     "rounds_per_charge": 1,
     "recoil": {
       "ceiling": 100,
@@ -66,9 +66,9 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 126,
     "bars": {
       "power": 60,
-      "rof": 53,
+      "rof": 47,
       "ammo": 45,
-      "ttk": 64
+      "ttk": 49
     }
   },
   {
@@ -349,7 +349,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 40,
       "rof": 67,
       "ammo": 100,
-      "ttk": 56
+      "ttk": 64
     }
   },
   {
@@ -518,7 +518,7 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 54,
     "bars": {
       "power": 70,
-      "rof": 47,
+      "rof": 53,
       "ammo": 32,
       "ttk": 93
     }
@@ -743,7 +743,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 30,
       "rof": 73,
       "ammo": 94,
-      "ttk": 49
+      "ttk": 56
     }
   },
   {
@@ -868,18 +868,18 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "body_armor",
     "name": "Body Armor",
-    "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer (not the Sniper Rifle's bolt).",
+    "desc": "Start every life with 20 extra armour, about a sixth more total health in Standard. Armour soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer (not the Sniper Rifle's bolt).",
     "tags": [
       "passive",
       "defense"
     ],
     "mechanism": "passive",
     "effects": {
-      "max_armor_add": 25,
+      "max_armor_add": 20,
       "reload_mult": 1.25
     },
     "gain": [
-      "+25 ARMOR"
+      "+20 ARMOR"
     ],
     "cost": [
       "RELOADS 1.2× SLOWER"
@@ -895,7 +895,7 @@ export const PERKS: PerkView[] = [
   {
     "perk_id": "extended_mags",
     "name": "Extended Mags",
-    "desc": "Double the magazine on your primary, and the reserve up to 384 rounds (2026-10-17: the largest reserve a gun has proven, so the Assault Rifle, Burst Rifle, SMG, Suppressor and Energy Rifle gain no reserve); +50% on a pistol carried as the primary, rounded down (D5, 2026-09-25: a rifle-sized magazine does not fit a pistol frame). The Sniper Rifle is exempt: its bolt keeps one round. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
+    "desc": "In Standard, double the magazine on your primary. In Shields, increase it by 50%. Your reserve grows up to 384 rounds; some rifles already reach that limit. A pistol primary gains 50%, rounded down. The Sniper Rifle is exempt: its bolt keeps one round. The larger magazine slows your weapon swap by 30%.",
     "tags": [
       "passive",
       "ammo"
@@ -914,6 +914,21 @@ export const PERKS: PerkView[] = [
     ],
     "verified": true,
     "hidden": false,
+    "variants": {
+      "shields": {
+        "effects": {
+          "ammo_mult": 1.5,
+          "ammo_mult_pistol": 1.5,
+          "switch_mult": 1.3
+        },
+        "gain": [
+          "×1.5 MAG"
+        ],
+        "cost": [
+          "SWAPS 1.3× SLOWER"
+        ]
+      }
+    },
     "blocked_primary": [],
     "blocked_secondary": [],
     "blocked_presets": []
