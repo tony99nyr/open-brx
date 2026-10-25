@@ -51,13 +51,17 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
   }, [armed]);
   useEffect(() => { setArmed(null); }, [r.status]);
   // A menu opened on the last row must move into the scrollable screen after its height settles.
+  // F615: and again when a line lands above it (content above grows one of its ancestors), until the operator scrolls.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const menu = box.current;
     if (!menu) return;
+    const ancestors: HTMLElement[] = [];
+    for (let parent = menu.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
+    let follow = true;
+    const stop = () => { follow = false; };
     const reveal = () => {
-      const ancestors: HTMLElement[] = [];
-      for (let parent = menu.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
+      if (!follow) return;
       const scrollable = ancestors.find(parent =>
         parent.scrollHeight > parent.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(parent).overflowY));
       const screen = scrollable ?? document.scrollingElement;
@@ -72,7 +76,13 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
     const frame = requestAnimationFrame(reveal);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal);
     observer?.observe(menu);
-    return () => { cancelAnimationFrame(frame); observer?.disconnect(); };
+    for (const parent of ancestors) observer?.observe(parent);
+    const input = ['wheel', 'touchmove', 'keydown'] as const;
+    for (const type of input) window.addEventListener(type, stop, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame); observer?.disconnect();
+      for (const type of input) window.removeEventListener(type, stop);
+    };
   }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);

@@ -361,6 +361,17 @@ try {
     const menu = pg.locator(`[data-operator-menu="${pid}"]`);
     const inView = async () => { const bb = await box(menu); return !!bb && bb.y >= 0 && bb.y + bb.height <= 900; };
     expect(await until(inView, 4000, 'the menu in view'), `the last row's operator menu is fully on screen (${JSON.stringify(await box(menu))})`);
+    // F615: under load a line can land above the board after the menu opened (the lander's failures had the menu
+    // revealed, then pushed about 55 px below the fold). The open menu must come back into view.
+    await pg.evaluate(() => {
+      const late = document.createElement('div');
+      late.setAttribute('data-e2e-late-line', '1');
+      late.style.height = '60px';
+      document.querySelector('[data-testid="station-alerts"]')?.before(late);
+    });
+    expect(await until(inView, 4000, 'the menu back in view'),
+      `a line that lands above the board after the menu opened does not leave it off screen (${JSON.stringify(await box(menu))})`);
+    await pg.evaluate(() => document.querySelector('[data-e2e-late-line]')?.remove());
     await shot(pg, 'menu-fold-1440');
     // polish r1: the compact strips must not scroll sideways at phone width
     await pg.setViewportSize({ width: 393, height: 852 });
