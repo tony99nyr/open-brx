@@ -1933,7 +1933,7 @@ class KitMatch(B.Match):
             tgt.health -= min(tgt.health, dmg)
             if tgt.health <= 0:
                 self._death(tgt, src, t, dot=False)
-            else:
+            elif dmg > 0:
                 self._damaged(tgt, t)
             return
         super()._hit(src, tgt, dmg, t)
