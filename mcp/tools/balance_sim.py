@@ -1558,7 +1558,9 @@ def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel
 
 def _pull_dmg(gun_dmg: int, headset_dmg: int, band: str) -> int:
     """What one pull delivers at a range band: both words at "close", the gun word alone past the
-    headset word's own reach ("mid" -- F275, the headset word's real range is unmeasured)."""
+    headset word's own reach ("mid" -- F275, the headset word's real range is unmeasured). This mode keeps Tony's
+    R4-R9 framing ("past the headset range"); compile ships the word at every range, and `balance_review.py`
+    models it there by default (F602) until bench-0426 P3.1 measures the reach."""
     return gun_dmg + headset_dmg if band == "close" else gun_dmg
 
 

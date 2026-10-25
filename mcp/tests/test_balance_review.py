@@ -886,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 16
+    assert R.SCENARIO_VERSION == 17
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1053,7 +1053,7 @@ def test_plain_shotgun_against_ar_close_duel_uses_the_full_reload_path():
     # F609: without the melee lottery the Shotgun wins every close duel at aim 0.9, which pins nothing; the pin moves to
     # real aim, where a kill takes about 7.5 shells on average, so most duels reach the 6-shell tube's reload
     rate = R.duel_rate(shotgun, ar, "close", reps=200, aim=R.REAL_AIM)
-    assert rate == 0.81, rate
+    assert rate == 0.79, rate   # F602: the headset word lands 88 ms after the gun word
 
 
 def test_swap_applies_a_deferred_ammo_pickup_after_cancelling_reload():
@@ -1430,6 +1430,43 @@ def test_haze_blinds_then_swaps_and_zero_blind_cannot_improve_the_kit():
     assert b.act(100)[1] == 0
     assert a.active == 0 and a.next_t >= haze.swap_ms
     assert R.duel_rate(haze, plain, "close", reps=40, haze_blind_ms=0) <= R.duel_rate(plain, plain, "close", reps=40)
+
+
+def test_the_headset_word_reaches_every_range_and_lands_88_ms_later():
+    # F602: the review dropped the headset word past close; compile ships it at every range, about 88 ms behind
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    g = kit.guns[0]
+    assert g.head_dmg > 0
+    f = R.Fighter(kit, 115, 1, R.DIST["mid"], random.Random(2), pull_ms=0)
+    tgt = R.Fighter(kit, (500, 0, 0), 0, R.DIST["mid"], random.Random(3))
+    tgt.next_t = math.inf
+    hits = []
+    receive = tgt.receive
+    tgt.receive = lambda dmg, **kw: (hits.append((kw["t"], dmg)), receive(dmg, **kw))[1]
+    R.fight(random.Random(1), [f], [tgt], cap_ms=150)
+    assert hits[:2] == [(0.0, g.gun_dmg), (R.HEADSET_WORD_DELAY_MS, g.head_dmg)], hits
+    est = R.finish_estimate(g, pool=g.gun_dmg + g.head_dmg, chance=1.0, ammo=g.mag, reserve=0, reload_amount=0,
+                            ready_at=0.0, locked_until=-1.0, t=0.0, pull_ms=0, overshoot_ms=0.0, charged=True,
+                            count=0, dist=R.DIST["mid"], heat=0.0, heat_t=0.0, heat_cool_while_firing=True,
+                            cooling_started=False)
+    assert est == 0.0, est
+
+
+def test_a_stated_headset_reach_keeps_the_word_inside_it_only():
+    old = R.HEADSET_WORD_REACH_M
+    R.HEADSET_WORD_REACH_M = 10.0      # the U002 proxy's physical reach, a sensitivity line
+    try:
+        assert R.headset_word_reaches(R.DIST["close"]) and not R.headset_word_reaches(R.DIST["mid"])
+        assert R.headset_word_reaches(R.DIST["mid"], 8.0) and not R.headset_word_reaches(R.DIST["close"], 12.0)
+        w = R.shipped_world()
+        kit = R.make_kit(w, "Shotgun", "shotgun")
+        f = R.Fighter(kit, 115, 1, R.DIST["mid"], random.Random(2), pull_ms=0)
+        f.targets = [R.Fighter(kit, (500, 0, 0), 0, R.DIST["mid"], random.Random(3))]
+        assert f.act(0) is not None and f.pending_head == 0
+    finally:
+        R.HEADSET_WORD_REACH_M = old
+    assert R.headset_word_reaches(R.DIST["long"])
 
 
 def test_melee_finishes_at_close_only():
