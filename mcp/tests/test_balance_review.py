@@ -34,6 +34,22 @@ def test_older_verdict_rep_scale_matches_main():
     assert REPS_SCALE == 0.01
 
 
+def test_burst_keeps_a_loaded_primary_when_deagle_needs_a_landed_hit():
+    plain = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    fast = R.replace(plain, name="fast", swap_ms=plain.swap_ms / 2,
+                     guns=(R.replace(plain.guns[0], reload_ms=plain.guns[0].reload_ms / 2), plain.guns[1]))
+    rng = random.Random(7)
+    fighter = R.Fighter(fast, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+    target = R.Fighter(plain, (5, 0, 0), 0, R.DIST["mid"], rng)
+    fighter.targets = [target]
+    fighter.gs[0].ammo = 16
+    fighter.gs[0].count = 20
+
+    assert fighter._finish_ms(0, target, 4643) < fast.swap_ms + fighter._finish_ms(1, target, 4643)
+    assert not fighter._maybe_swap(4643)
+    assert fighter.active == 0
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
@@ -1013,7 +1029,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 22
+    assert R.SCENARIO_VERSION == 23
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True

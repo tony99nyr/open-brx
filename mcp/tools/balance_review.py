@@ -108,8 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 22   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608)
+SCENARIO_VERSION = 23   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a one-hit finish needs one landed hit (F617)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -567,6 +567,10 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
+    if mode != "charge" and 0 < pool < damage:
+        # F617: a target with less health than one shot still needs one LANDED shot, not a fraction of one: a
+        # 5-health target is not killed by 26 x 0.20 = 5.2 expected Deagle damage.
+        pool = damage
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
