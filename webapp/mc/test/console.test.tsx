@@ -155,7 +155,7 @@ describe('the RECAP history picker', () => {
     const state = withLive(d.state);
     state.recap = { ...state.recap!, winner: null as unknown as NonNullable<State['recap']>['winner'], sync: { pending: true, finalised: false, result_changed: false, rows: [] } };
     const pending = { match_id: 'm-pending', mode: 'ffa', go_live_t: 1000, ended_t: 2000, pending: true } as MatchHistoryRow;
-    const recap = await mountScreen(<Recap />, { ...d, state, view: 'recap', api: { matchHistory: async () => [pending], recapCsvUrl: () => { throw new Error('pending CSV'); } } });
+    const recap = await mountScreen(<Recap />, { ...d, state, view: 'recap', api: { matchHistory: async () => [pending], recapCsvUrl: () => '/api/recap.csv' } });
     expect(recap.text()).not.toContain('MATCH HISTORY');
     expect(recap.find('[data-testid="results-pending"]')).toHaveLength(1);
     recap.unmount();

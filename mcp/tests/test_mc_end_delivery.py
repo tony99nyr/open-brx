@@ -17,9 +17,12 @@ whistle is normal, and must not be able to hang the whistle.
 
 Run: python3 run_tests.py mc_end_delivery
 """
+import json
+
 from brx_mcp.mc.fakes import FakeNet
 from brx_mcp.mc.state import END_RETRY_MS
-from _session import DeafNet, end_view, ends_to, go_live, mk_kit_session, node_heartbeat, online, unconfirmed
+from _session import (DeafNet, end_view, ends_to, go_live, mk_kit_session, node_heartbeat,
+                      online, persisting_live, restart_no_repersist, unconfirmed)
 
 
 def _controls_to(net, nid):
@@ -174,6 +177,68 @@ def test_a_node_with_no_socket_at_all_is_still_shown_as_unconfirmed():
     s.tick()
     assert unconfirmed(s) == ["OP1"]
     assert end_view(s)["unconfirmed"][0]["reached"] is False, "MC must not claim a push that had no socket"
+
+
+def test_retry_progress_survives_a_restart_and_catches_up_once_per_open_row():
+    s, net, clock, ps, info = persisting_live()
+    s.control("end")
+    clock["t"] += END_RETRY_MS[0] + 1
+    s.tick()
+    s.persist_now()
+    saved = json.loads(s._persist_path.read_text())
+    assert saved["end_delivery"]["node0"]["tries"] == 2
+    s2, net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap"
+    assert s2._end_delivery["node0"]["tries"] == 2
+    clock["t"] += 600_000
+    s2.tick()
+    for nid in ("node0", "node1"):
+        assert len(ends_to(net2, nid)) == 1, "one catch-up push per open row"
+    s2.tick()
+    for nid in ("node0", "node1"):
+        assert len(ends_to(net2, nid)) == 1, "no second push on the same overdue rung"
+
+
+def test_spent_ladder_notice_is_not_reposted_after_a_restart():
+    s, net, clock, ps, info = persisting_live()
+    s.control("end")
+    for _ in END_RETRY_MS:
+        clock["t"] = max(e["next_t"] for e in s._end_delivery.values()) + 1
+        s.tick()
+    assert len([e for e in s.feed if "NEVER CONFIRMED" in e.get("text", "")]) == 1
+    s.persist_now()
+    s2, net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap"
+    s2.tick()
+    assert len([e for e in s2.feed if "NEVER CONFIRMED" in e.get("text", "")]) == 1
+
+
+def test_a_finalised_roll_keeps_the_active_watch_across_restart():
+    s, net, clock, ps, info = persisting_live()
+    s.control("end")
+    s.finalise_recap()
+    s.next_match()
+    s.persist_now()
+    assert json.loads(s._persist_path.read_text())["end_delivery"]
+    s2, net2 = restart_no_repersist(s, clock)
+    assert s2._end_delivery["node0"]["match_id"] == info["match_id"]
+    clock["t"] += END_RETRY_MS[0] + 1
+    s2.tick()
+    assert len(ends_to(net2, "node0")) == 1
+
+
+def test_an_old_recap_snapshot_without_a_saved_watch_does_not_invent_one():
+    s, net, clock, ps, info = persisting_live()
+    s.control("end")
+    s.persist_now()
+    saved = json.loads(s._persist_path.read_text())
+    saved.pop("end_delivery", None)
+    saved.pop("end_delivery_told", None)
+    saved["match"].pop("end_delivery", None)
+    s._persist_path.write_text(json.dumps(saved))
+    s2, net2 = restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap"
+    assert s2._end_delivery == {}
 
 
 # --------------------------------------------------------------------------------------------------

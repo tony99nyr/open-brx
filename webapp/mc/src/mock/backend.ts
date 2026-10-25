@@ -34,6 +34,7 @@ import { sessionArmEndDelivery, sessionEndDeliveryTried, sessionEndDeliveryView,
   sessionNoteEndConfirmLine, sessionRetryEndDelivery, sessionSayEndUnconfirmed, type EndReceipt } from '../rules/endDelivery';
 import { galleryState } from './gallery';
 import { recapSync } from '../api/recapSync';
+import { PENDING_CSV_URL } from './csv';
 import type { RecapSyncRow, RecapSyncStage } from '../api/recapSync';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { sessionVersions } from '../rules/versions';
@@ -2874,12 +2875,12 @@ export class MockBackend implements Api {
   }
   async getRecap() { const recap = this.recapView(); if (!recap) throw new Error('no recap yet'); return recap; }
   recapCsvUrl() {
-    if (recapSync(this.recapView())?.pending) throw Object.assign(new Error('Finalise the result first.'), { status: 409 });
+    if (recapSync(this.recapView())?.pending) return PENDING_CSV_URL;
     return this.csvOf(this.recap_);
   }
   matchCsvUrl(match_id: string) {
     if (this.phase === 'recap' && this.live_?.match_id === match_id && recapSync(this.recapView())?.pending)
-      throw Object.assign(new Error('Finalise the result first.'), { status: 409 });
+      return PENDING_CSV_URL;
     return this.csvOf(this.history_.find(h => h.match_id === match_id)?.recap ?? undefined);
   }
   private csvOf(r?: RecapView) {

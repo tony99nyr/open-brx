@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MockBackend } from '../src/mock/backend';
 import { recapSync } from '../src/api/recapSync';
 import { galleryState } from '../src/mock/gallery';
+import { installMockCsvFetch, PENDING_CSV_URL } from '../src/mock/csv';
 
 async function pendingMatch() {
   vi.useFakeTimers();
@@ -36,8 +37,15 @@ describe('mock released result', () => {
       expect(history[0]).toMatchObject({ pending: true });
       expect(history[0]).not.toHaveProperty('recap');
       expect(history[0]).not.toHaveProperty('config');
-      expect(() => b.recapCsvUrl()).toThrow('Finalise the result first.');
-      expect(() => b.matchCsvUrl(history[0].match_id)).toThrow('Finalise the result first.');
+      const restoreFetch = installMockCsvFetch();
+      try {
+        for (const url of [b.recapCsvUrl(), b.matchCsvUrl(history[0].match_id)]) {
+          expect(url).toBe(PENDING_CSV_URL);
+          const response = await fetch(url);
+          expect(response.status).toBe(409);
+          expect(await response.json()).toEqual({ error: 'Finalise the result first.' });
+        }
+      } finally { restoreFetch(); }
       for (const roll of [() => b.nextMatch(), () => b.loadGame(), () => b.setPhase('lobby'), () => b.pushLobby(true), () => b.newSession(false)]) {
         await expect(roll()).rejects.toMatchObject({ status: 409, message: 'Finalise the result first.' });
         expect((await b.getState()).phase).toBe('recap');

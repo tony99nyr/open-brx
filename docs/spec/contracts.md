@@ -667,8 +667,10 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
   `hello.pending` and post-whistle status counts keep the phone row in sync; a later batch can reopen a received
   row. Once released, the result stays released through late batches and restarts. A lost link leaves a received row received and shows the link separately. FINALISE releases the held result
   and marks it finalised. A late fact that changes the winner sets
-  `RESULT CHANGED` and updates the released result. While sync is pending, recap history marks the current match
-  pending with no recap statistics or configuration, `/api/recap` gives a null winner, and both recap CSV routes return 409. Every path to a new match refuses a pending result with 409 until FINALISE or all receipts arrive.
+  `RESULT CHANGED` and updates the released result. While sync is pending, the console withholds the winner, team score
+  and honours, and API winner fields are null. `/api/recap` and the snapshot retain per-player rows for the sync table.
+  Recap history marks the current match pending without recap statistics or configuration, and both recap CSV routes
+  return 409. Every path to a new match refuses a pending result with 409 until FINALISE or all receipts arrive.
 - **Which player a fact scores for [F481-F487, 2026-10-05].** Each stored fact carries its node's holder at arrival, and a replay binds by that holder, so a replay repeats the live decision. At the whistle the node-to-player map freezes. A late fact stays on the player who held that phone then, through a handover, an evict and the roll. A player with no phone at the whistle takes their latest binding after it. The RECAP connection dots follow the live holder (F486). **Evict:** during a match an evicted node keeps its earlier facts' player. Facts it sends after the evict score for nobody, take no powerup and add no possession tally, live and in replay (F482). The node-map fallback never rebinds it: only a hello by its own gun does (F487). An evict in RECAP keeps its late facts and its pre-live sync record, so they still count (F483, Tony 2026-10-24: they happened in play).
 - **Medals [A11.4, A61]:** `feedback.medals: string[]` is a Halo-style stack: first_blood · ONE multi-kill medal, the
   highest of the ladder the chain has reached (double_kill 2 · triple_kill 3 · killtacular 4 · killtrocity 5 ·

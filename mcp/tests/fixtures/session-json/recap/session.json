@@ -96,6 +96,20 @@
     "time_limit_s": 600
   },
   "demo": false,
+  "end_delivery": {
+    "hot-joined": {
+      "confirmed": false,
+      "confirmed_t": null,
+      "exhausted": false,
+      "last_ok": true,
+      "match_id": "0000000800",
+      "next_t": 5038001,
+      "player_id": "00000009",
+      "since": 5036001,
+      "tries": 1
+    }
+  },
+  "end_delivery_told": null,
   "ended": [
     {
       "config": {

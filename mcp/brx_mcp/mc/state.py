@@ -3066,7 +3066,7 @@ class Session:
         entry.pop("status_rev", None)
         if _is_count(pending):
             entry["pending"] = pending
-            if pending > 0:
+            if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
         else:
             entry.pop("pending", None)
@@ -3080,7 +3080,7 @@ class Session:
         if entry is None:
             return
         if _is_count(pending):
-            if pending > 0:
+            if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
             if entry.get("pending") != pending:
                 entry["changed_t"] = at
@@ -3104,7 +3104,7 @@ class Session:
             entry["event_rev"] = entry.get("event_rev", 0) + 1
             self._sync_update(nid, at)
 
-    def _recap_sync(self, winner: WinnerView, stations: list[RecapStationRow]) -> RecapSyncView:
+    def _recap_sync(self, winner: WinnerView | None, stations: list[RecapStationRow]) -> RecapSyncView:
         match = self.match
         if match is None or match.scorer is None:
             return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
@@ -3160,10 +3160,10 @@ class Session:
         pending = not match.released and any(
             row["stage"] != "received" for row in rows)
         changed = False
-        if not pending and match.final_winner is None:
+        if not pending and match.final_winner is None and winner is not None:
             match.final_winner = copy.deepcopy(dict(winner))
             changed = True
-        elif match.final_winner is not None and winner != match.final_winner:
+        elif match.final_winner is not None and winner is not None and winner != match.final_winner:
             if not match.result_changed:
                 match.result_changed = True
                 changed = True
@@ -4636,12 +4636,16 @@ class Session:
             match.whistle(whistle)
             self._finish(resuming=True)
             match.played = played
-            self._resume_end_delivery(mid, whistle, m.get("end_delivery"))
+            self._resume_end_delivery(mid, whistle, m.get("_end_delivery_saved", m.get("end_delivery")),
+                                      m.get("_end_delivery_told"))
             if mid in self._ended:
                 self._ended[mid]["players"] = dict(played)
             self._changed()
             self.persist_now()
             return "recap"
+        # A snapshot can land between the END push and the whistle's RECAP write.
+        self._resume_end_delivery(mid, match_nodes, m.get("_end_delivery_saved", m.get("end_delivery")),
+                                  m.get("_end_delivery_told"))
         self._clear_claims()      # O10: a Stick's count is only valid for the arm since this start (the game byte wraps)
         if self.store:
             try:
@@ -5065,12 +5069,18 @@ class Session:
             self._end_delivery[nid] = {"match_id": match_id, "player_id": pid, "since": now,
                                        "tries": 0, "next_t": now + END_RETRY_MS[0], "confirmed": False,
                                        "confirmed_t": None, "exhausted": False, "last_ok": False}
+            self._persist_dirty = True
 
-    def _resume_end_delivery(self, match_id: str, bindings: dict[str, str], saved: object) -> None:
-        # Build only the whistle's watch. This schedules retries without sending END on resume.
-        self._arm_end_delivery(match_id, bindings)
+    def _resume_end_delivery(self, match_id: str, bindings: dict[str, str], saved: object,
+                             told: object = None) -> None:
+        # An old snapshot cannot say which phones confirmed. Restore saved rows only.
         if not isinstance(saved, dict):
             return
+        saved_bindings = {nid: pid for nid, pid in bindings.items()
+                          if isinstance(saved.get(nid), dict)
+                          and saved[nid].get("match_id") == match_id
+                          and saved[nid].get("player_id") == pid}
+        self._arm_end_delivery(match_id, saved_bindings)
         for nid, row in saved.items():
             watch = self._end_delivery.get(nid)
             if watch is None or not isinstance(row, dict) or row.get("match_id") != match_id:
@@ -5081,6 +5091,7 @@ class Session:
                     watch[key] = value
             for key in ("confirmed", "exhausted", "last_ok"):
                 watch[key] = row.get(key) is True
+        self._end_delivery_told = told if isinstance(told, str) and told == match_id else None
 
     def _end_delivery_tried(self, nid: str, match_id: str, ok: bool) -> None:
         """Record ONE attempt at `nid` — the whistle's own push, A34's reconcile or A42's retry, which are
@@ -5092,6 +5103,7 @@ class Session:
         e["last_ok"] = ok
         e["next_t"] = self.now_ms() + END_RETRY_MS[min(e["tries"] - 1, len(END_RETRY_MS) - 1)]
         e["exhausted"] = e["tries"] >= 1 + len(END_RETRY_MS)
+        self._persist_dirty = True
 
     def _note_end_confirm(self, nid: str, body: dict) -> None:
         """The ack, read off the heartbeat the phone was already sending — no new wire kind.

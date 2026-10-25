@@ -23,6 +23,13 @@ def _rows(stack):
     return {row["player_id"]: row for row in r.get("rows", [])}
 
 
+async def _released_recap(stack):
+    """Wait for the phones' post-whistle zero-pending status before reading the winner."""
+    assert await until(lambda: bool((r := stack.session.recap()) and r["winner"] is not None), 6.0), \
+        f"recap result stayed pending: {stack.session.recap()}"
+    return stack.session.recap()
+
+
 # --------------------------------------------------------------- happy path
 def test_full_game_to_recap():
     if not HAVE_WS:
@@ -49,7 +56,7 @@ def test_full_game_to_recap():
                 f"A's kills not credited: {_rows(s)}"
 
             s.session.control("end")
-            r = s.session.recap()
+            r = await _released_recap(s)
             assert r and r["rows"], "recap has rows"
             assert _rows(s)[a["player_id"]]["kills"] >= 2 and _rows(s)[b["player_id"]]["deaths"] >= 2
             # a winner is named (team or player) and MVP honor exists
@@ -117,7 +124,7 @@ def test_ffa_never_friendly_winner_is_top_row():
                 f"FFA kills under one $TID must count, not be friendly: {_rows(s)}"
 
             s.session.control("end")
-            r = s.session.recap()
+            r = await _released_recap(s)
             assert r["winner"].get("player_id") == a["player_id"], f"FFA winner is the top row: {r['winner']}"
             assert not r["winner"].get("team_id"), "FFA has no team winner"
     run(go())
@@ -184,7 +191,7 @@ def test_victory_cue_to_winning_team_only():
             await _kill(s, a, nb)                    # blue draws first blood → blue wins on end
             assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) >= 1)
             s.session.control("end")
-            r = s.session.recap()
+            r = await _released_recap(s)
             assert r["winner"].get("team_id") == a["team_id"], f"blue should win: {r['winner']}"
             # the WINNER's node gets the victory cue; the LOSER's does not
             assert await until(lambda: _got_cue(na, "victory"), 5.0), "winning node receives the victory cue"

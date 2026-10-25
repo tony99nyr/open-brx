@@ -57,6 +57,8 @@ class SnapshotHost(Protocol):
     _resume_pending: dict | None
     _match_end_t: int | None
     _sync_pending: dict[str, str]
+    _end_delivery: dict[str, Any]
+    _end_delivery_told: str | None
     restored_from: RestoredFromView | None
     demo_session: bool
     powerup_ledger: PowerupLedger
@@ -89,6 +91,9 @@ class SnapshotHost(Protocol):
     def in_play(self) -> bool: ...
     def is_adopted(self) -> bool: ...
     def current_match_id(self) -> str | None: ...
+    def mono_ms(self) -> int: ...
+    def _resume_end_delivery(self, match_id: str, bindings: dict[str, str], saved: object,
+                             told: object = None) -> None: ...
 
 
 class SnapshotCodec:
@@ -148,6 +153,8 @@ class SnapshotCodec:
                     "hill_bytes": station["hill_bytes"],   # F535: a hill MC armed may still advertise these bytes
                     "join_secret": self.host.join_secret,
                     **({"match": m} if (m := self._match_snapshot()) else {}),
+                    **({"end_delivery": {nid: dict(row) for nid, row in self.host._end_delivery.items()},
+                        "end_delivery_told": self.host._end_delivery_told} if self.host._end_delivery else {}),
                     "ended": self._ended_snapshot(),
                     **({"powerups": pu} if (pu := self.host.powerup_ledger.to_snapshot()) is not None else {})}
             # brx5's landed-late review (High): a demo snapshot must never replace a real session's file, whatever
@@ -180,7 +187,7 @@ class SnapshotCodec:
             acks=self.host.acks,
             sync_mono_ms=self.host.mono_ms(),
             store_path=str(self.host.store.path) if self.host.store is not None and getattr(self.host.store, "path", None) else None)
-        if self.host.phase == "recap":
+        if self.host._end_delivery:
             snap["end_delivery"] = {nid: dict(row) for nid, row in self.host._end_delivery.items()}
         return snap
 
@@ -265,7 +272,8 @@ class SnapshotCodec:
 
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
                       "nodes", "game_no", "_game_no_started", "join_secret", "_ended", "start_seq",
-                      "_resume_pending", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from")
+                      "_resume_pending", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from",
+                      "_end_delivery", "_end_delivery_told")
 
     def _move_aside(self, suffix: str) -> Path | None:
         path = self.host._persist_path
@@ -405,12 +413,25 @@ class SnapshotCodec:
                 # F-2026-09-17d: resume needs the outer saved time to reject an old match.
                 self.host._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
                 rp = self.host._resume_pending
+                rp["_end_delivery_saved"] = snap.get("end_delivery", rp.get("end_delivery"))
+                rp["_end_delivery_told"] = snap.get("end_delivery_told")
                 if isinstance(rp.get("config"), dict) and isinstance(rp["config"].get("teams"), list):
                     rp["config"] = {**rp["config"], "teams": self.migrate_teams(rp["config"]["teams"])}
                 if isinstance(rp.get("players"), dict):
                     rp["players"] = {k: self.migrate_player(v) for k, v in rp["players"].items()}
                 if isinstance(snap.get("powerups"), dict):
                     self.host.powerup_ledger.from_snapshot(snap["powerups"])  # A56 (M1): same match only
+            elif isinstance((saved_watch := snap.get("end_delivery")), dict):
+                # The result may have rolled forward while the old HUD watch was still active.
+                mids = {row.get("match_id") for row in saved_watch.values() if isinstance(row, dict)
+                        and isinstance(row.get("match_id"), str)}
+                if len(mids) == 1:
+                    mid = next(iter(mids))
+                    if isinstance(mid, str):
+                        bindings = {nid: row["player_id"] for nid, row in saved_watch.items()
+                                    if isinstance(nid, str) and isinstance(row, dict)
+                                    and row.get("match_id") == mid and isinstance(row.get("player_id"), str)}
+                        self.host._resume_end_delivery(mid, bindings, saved_watch, snap.get("end_delivery_told"))
             self._repair_player_nums()
             self.host.config["health"] = _compile.normalize_health(self.host.config.get("health"))
             old_scoring = self.host.config.get("scoring") if isinstance(self.host.config.get("scoring"), dict) else {}

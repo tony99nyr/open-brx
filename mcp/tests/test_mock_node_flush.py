@@ -49,6 +49,24 @@ def test_send_status_puts_one_status_on_the_socket_now():
     asyncio.run(run())
 
 
+def test_post_whistle_status_reports_the_unsent_ring_and_then_zero():
+    node = MockNode("ws://127.0.0.1:1/ws")
+    node.arm_state = "kitted"
+    node.match_id = "match-1"
+    node.ring = [(7, {"type": "death"})]
+    assert node.status_body()["pending"] == 1
+    node.ring.clear()
+    assert node.status_body()["pending"] == 0
+
+
+def test_an_old_phone_can_omit_pending_from_its_status():
+    node = MockNode("ws://127.0.0.1:1/ws", report_pending=False)
+    node.arm_state = "kitted"
+    node.match_id = "match-1"
+    node.ring = [(7, {"type": "death"})]
+    assert "pending" not in node.status_body()
+
+
 def test_die_and_take_hit_say_whether_they_sent_anything():
     """T5: on a dead node `die` and `take_hit` sent nothing and said nothing, so a harness answered `ok` for no frame."""
     async def run():

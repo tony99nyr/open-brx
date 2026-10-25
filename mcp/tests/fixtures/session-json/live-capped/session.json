@@ -96,6 +96,31 @@
     "time_limit_s": 600
   },
   "demo": false,
+  "end_delivery": {
+    "node0": {
+      "confirmed": false,
+      "confirmed_t": null,
+      "exhausted": false,
+      "last_ok": true,
+      "match_id": "0000001300",
+      "next_t": 5017001,
+      "player_id": "00000011",
+      "since": 5015001,
+      "tries": 1
+    },
+    "node1": {
+      "confirmed": false,
+      "confirmed_t": null,
+      "exhausted": false,
+      "last_ok": true,
+      "match_id": "0000001300",
+      "next_t": 5017001,
+      "player_id": "00000012",
+      "since": 5015001,
+      "tries": 1
+    }
+  },
+  "end_delivery_told": null,
   "ended": [],
   "feed": [
     {
@@ -494,6 +519,30 @@
       "00000012": "node1"
     },
     "departed_stations": [],
+    "end_delivery": {
+      "node0": {
+        "confirmed": false,
+        "confirmed_t": null,
+        "exhausted": false,
+        "last_ok": true,
+        "match_id": "0000001300",
+        "next_t": 5017001,
+        "player_id": "00000011",
+        "since": 5015001,
+        "tries": 1
+      },
+      "node1": {
+        "confirmed": false,
+        "confirmed_t": null,
+        "exhausted": false,
+        "last_ok": true,
+        "match_id": "0000001300",
+        "next_t": 5017001,
+        "player_id": "00000012",
+        "since": 5015001,
+        "tries": 1
+      }
+    },
     "evicted_nodes": [],
     "go_live_t": 5010000,
     "joined_t": {},

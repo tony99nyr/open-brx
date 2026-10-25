@@ -56,9 +56,9 @@ def routes(ctx) -> list[BaseRoute]:
             for m in s.store.matches():
                 config = m["config"] or {}
                 is_pending = pending and m["match_id"] == current_id
-                row = {"match_id": m["match_id"], "go_live_t": m["go_live_t"],
-                       "ended_t": m["ended_t"],
-                       "mode": config.get("mode", "")}
+                row: MatchHistoryRow = {"match_id": m["match_id"], "go_live_t": m["go_live_t"],
+                                        "ended_t": m["ended_t"],
+                                        "mode": config.get("mode", "")}
                 if is_pending:
                     row["pending"] = True
                 else:
