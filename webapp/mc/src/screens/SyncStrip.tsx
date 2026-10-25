@@ -118,7 +118,7 @@ function StationShape({ r, w }: { r: RecapSyncRow; w: number }) {
   );
 }
 
-function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; labelRow: boolean; crowded: boolean }) {
+function StripIcon({ r, w, labelRow, crowded, hideLinkLost = false }: { r: RecapSyncRow; w: number; labelRow: boolean; crowded: boolean; hideLinkLost?: boolean }) {
   const endId = useContext(EndAlertCtx);
   const b = w >= 40 ? 16 : w >= 32 ? 14 : 12;
   const badge = (pos: CSSProperties, color: string, kids: ReactNode, key: string, attr: Record<string, string>) =>
@@ -133,7 +133,7 @@ function StripIcon({ r, w, labelRow, crowded }: { r: RecapSyncRow; w: number; la
       <div style={{ position: 'relative', opacity: r.stuck ? 0.5 : 1 }}>
         {phone ? <PhoneShape r={r} w={w} /> : <StationShape r={r} w={w} />}
         {v.transport && badge({ right: -4, bottom: 0 }, T.body, transportIcon(v.transport, b - 2), 't', { 'data-strip-transport': v.transport })}
-        {(r.stage === 'unlinked' || v.linkLost) && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
+        {(r.stage === 'unlinked' || (v.linkLost && !hideLinkLost)) && badge({ right: -4, bottom: 0 }, colourOf('recap-sync-outofrange'), Icon.unlinked(b - 2), 'u', { 'data-strip-unlinked': '1' })}
         {v.end && badge({ left: -4, top: 0 }, colourOf(endId), Icon.endOpen(b - 2), 'e', { 'data-strip-end': '1' })}
         {!!v.lost && badge({ right: -4, top: 0 }, T.warn, Icon.warn(b - 2), 'w', { 'data-strip-lost': '1' })}
       </div>
@@ -172,13 +172,13 @@ export function SyncStrip({ rows, phase }: { rows: RecapSyncRow[]; phase: SyncPh
   const phones = rows.filter(r => r.kind === 'phone');
   const stations = rows.filter(r => r.kind === 'station');
   if (allIn && phase === 'line') {
-    const keep = rows.filter(r => r.lost || r.end_unconfirmed || rowView(r).linkLost);
+    const keep = rows.filter(r => r.lost || r.end_unconfirmed);
     return (
       <div data-testid="all-synced" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 14px', marginBottom: 10, color: T.ok, font: F.mono(600, 12), letterSpacing: '.12em' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>{Icon.check(16)}<span>{phones.length} OF {phones.length} PHONES SYNCED</span></span>
         {keep.length > 0 && (
           <span data-testid="sync-kept" style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 10 }}>
-            {keep.map((r, i) => <StripIcon key={`${r.kind}:${r.id}:${i}`} r={r} w={30} labelRow={false} crowded />)}
+            {keep.map((r, i) => <StripIcon key={`${r.kind}:${r.id}:${i}`} r={r} w={30} labelRow={false} crowded hideLinkLost />)}
           </span>
         )}
       </div>

@@ -88,6 +88,7 @@ HAPPY = [
     {'name': 'start', 'action': 'start', 'runway_s': 10, 'force': True},
     {'name': 'go live', 'action': 'advance', 'ms': 20_000},
     {'name': 'end', 'action': 'control', 'cmd': 'end', 'ms_before': 10_000, 'defer_sync': True},
+    {'name': 'finalise', 'action': 'finalise'},
     {'name': 'next match', 'action': 'next', 'ms_before': 1_100},
 ]
 PREFIX = [HAPPY[i] for i in (1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 13)]
@@ -443,6 +444,8 @@ def _apply_step(session, game, clock, step, script, rows, quiet_nodes, reported_
                 session.net.simulate_status(node_id, body, clock['t'])
     elif action == 'abort':
         session.abort_start()
+    elif action == 'finalise':
+        session.finalise_recap()
     elif action == 'new':
         session.new_session(keep_roster=step['keep_roster'])
         # CLEAR ROSTER keeps the same initially stale phone in the net layer.

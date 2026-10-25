@@ -56,15 +56,14 @@ def routes(ctx) -> list[BaseRoute]:
             for m in s.store.matches():
                 config = m["config"] or {}
                 is_pending = pending and m["match_id"] == current_id
-                recap = m["recap"]
-                if is_pending and isinstance(recap, dict):
-                    recap = {**recap}
-                    recap.pop("winner", None)
                 row = {"match_id": m["match_id"], "go_live_t": m["go_live_t"],
-                       "ended_t": m["ended_t"], "recap": recap, "config": config,
+                       "ended_t": m["ended_t"],
                        "mode": config.get("mode", "")}
                 if is_pending:
                     row["pending"] = True
+                else:
+                    row["recap"] = m["recap"]
+                    row["config"] = config
                 rows.append(row)
             return JSONResponse(rows)
         except Exception:                            # history is a convenience; never 500 the console

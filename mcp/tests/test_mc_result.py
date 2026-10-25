@@ -48,15 +48,19 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     assert isinstance(b["t"], int)
 
 
-def test_the_result_stops_being_provisional_once_every_node_has_flushed():
-    """The other half of the claim — `provisional` has to be able to go FALSE, or the phone's "results
-    may still move" line never clears and the player never learns the sheet is final."""
-    s, net, clock, ps, info, g, late = _late_cap_scenario()
-    assert results(net)["node0"]["provisional"] is True, "two of four phones had not reported yet"
+def test_the_result_releases_once_every_whistle_phone_has_reported():
+    """The recap releases after each whistle-bound phone reports an empty outbox."""
+    s, net, clock, ps, info, g, late = _late_cap_scenario(release=False)
+    assert s.recap()["sync"]["pending"] is True
     clock["t"] = g + 300_000
     net.simulate_node_message("node3", "event_batch", {"events": late}, clock["t"])
-    assert s.last_recap["missing"] == [], s.last_recap["missing"]
-    assert results(net)["node0"]["provisional"] is False, "the last phone reported; the sheet is final"
+    assert s.recap()["sync"]["pending"] is True, "the late batch reopened its row"
+    for i, player in enumerate(ps):
+        clock["t"] += 1_000
+        net.simulate_status(f"node{i}", {"player_id": player["player_id"], "shots": 0,
+                                         "alive": True, "synced": True, "pending": 0}, clock["t"])
+    assert s.recap()["sync"]["pending"] is False
+    assert s.match.released is True
 
 
 def test_result_says_undecided_rather_than_inventing_a_winner():
@@ -128,7 +132,7 @@ def test_status_only_shot_change_pushes_the_new_score_to_every_phone_once():
 # ---------------------------------------------------------------------------------------------
 # A24/M2 — the replay: a late fact can move the END ITSELF
 # ---------------------------------------------------------------------------------------------
-def _late_cap_scenario():
+def _late_cap_scenario(release=True):
     """A caps at +2.0 s in coverage; B's victim is off the LAN and flushes a cap of its own at +0.9 s.
 
     Four players: A (node0) kills C (node2, online), B (node1) kills D (node3, whose facts arrive as a
@@ -145,7 +149,10 @@ def _late_cap_scenario():
     death(2, 0, g + 1000, 1)
     death(2, 0, g + 2000, 2)
     assert s.phase == "recap", "A reached the cap in coverage and MC ended the match"
-    assert scorer_of(s).end_t == g + 2000 and s.recap()["winner"]["player_id"] == ps[0]["player_id"]
+    if release:
+        s.finalise_recap()
+        assert s.recap()["winner"]["player_id"] == ps[0]["player_id"]
+    assert scorer_of(s).end_t == g + 2000
     late = [death(3, 1, g + 500, 1, batch=True), death(3, 1, g + 900, 2, batch=True)]
     return s, net, clock, ps, info, g, late
 
@@ -228,6 +235,7 @@ def test_two_cap_kills_inside_the_clock_band_are_a_tie():
     net.simulate_node_message("node3", "event_batch", {"events": [
         {"type": "death", "t": g + 5400, "match_id": info["match_id"], "player_id": ps[3]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 1, "seq": 1}]}, g + 60_000)
+    s.finalise_recap()
     w = s.recap()["winner"]
     assert w.get("tie") == sorted([ps[0]["player_id"], ps[1]["player_id"]]), w
     assert w.get("player_id") is None
@@ -244,6 +252,7 @@ def test_two_cap_kills_inside_the_clock_band_are_a_tie():
         {"type": "death", "t": g2 + 5000 + CLOCK_TIE_MS + 500, "match_id": info2["match_id"],
          "player_id": ps2[3]["player_id"], "shooter_num": ps2[1]["player_num"], "shooter_team": 1, "seq": 1}]},
         g2 + 60_000)
+    s2.finalise_recap()
     assert s2.recap()["winner"]["player_id"] == ps2[0]["player_id"], s2.recap()["winner"]
 
 
@@ -342,7 +351,9 @@ def test_the_replay_scores_the_teams_the_field_actually_wore():
         net.simulate_event("node1", {"type": "death", "t": t, "match_id": info["match_id"],
                                      "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
                                      "shooter_team": 1}, t, seq=n)
-    assert s.phase == "recap" and s.recap()["winner"]["team_id"] == blue
+    assert s.phase == "recap"
+    s.finalise_recap()
+    assert s.recap()["winner"]["team_id"] == blue
 
     # The operator re-teams the yellow player in the DEBRIEF — next match, not this one.
     s.patch_player(ps[1]["player_id"], team_id=blue)
@@ -492,6 +503,7 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
         {"type": "death", "t": g + 900, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 2}]}, clock["t"])
 
+    s.finalise_recap()
     got = results(net)
     assert s.recap()["winner"]["team_id"] == yellow, s.recap()["winner"]
     assert got["node1"]["outcome"] == "win", "the player who WON it was told they lost, on a recap re-team"

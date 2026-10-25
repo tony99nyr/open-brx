@@ -172,13 +172,17 @@ class SnapshotCodec:
         if (self.host.phase not in ("armed", "live", "recap") or match is None
                 or not (match.head or match.ended_head) or not match.scorer):
             return None
-        return match.to_snapshot(
+        snap = match.to_snapshot(
             live=self.host.phase == "live", adopted=self.host.is_adopted(), config=self.host.config,
             roster=self.host.players, node_player=self.host.node_player,
             synced_at_lobby=self.host.synced_at_lobby,
             clock_suspect=self.host.clock_watch.to_snapshot(), bundles=self.host.bundles,   # F474: clock_suspect
             acks=self.host.acks,
+            sync_mono_ms=self.host.mono_ms(),
             store_path=str(self.host.store.path) if self.host.store is not None and getattr(self.host.store, "path", None) else None)
+        if self.host.phase == "recap":
+            snap["end_delivery"] = {nid: dict(row) for nid, row in self.host._end_delivery.items()}
+        return snap
 
     def _ended_snapshot(self) -> list[dict]:
         """The newest few A34 ledger rows, JSON-safe. A bad row is dropped, never fatal."""

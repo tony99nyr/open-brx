@@ -133,6 +133,7 @@ def _run(case: dict) -> None:
         elif what == "end":
             s.control("end")
         elif what == "next_match":
+            s.finalise_recap()
             s.next_match()
         elif what == "restart":
             s, roster = _restart(s, clock, sid, roster, step.get("old_shape", False))

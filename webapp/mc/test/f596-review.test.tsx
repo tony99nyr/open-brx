@@ -26,7 +26,7 @@ const PENDING = syncOf([phone('p1'), phone('p2', { stage: 'sending', pending: 3,
 async function stateWith(sync: unknown, rc: Partial<RecapView> = {}, over: Partial<State> = {}) {
   const d = await demo();
   const players = NAMES.map((display, i) => ({ ...d.state.players[0], player_id: `p${i + 1}`, player_num: i + 1, display, team_id: i % 2 ? 'yellow' : 'blue', node_id: `n${i + 1}` }));
-  const recap = { winner: { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [{ award: 'MVP', key: 'mvp', player_id: 'p2', stat: '9 K' }],
+  const recap = { winner: (sync as { pending?: boolean } | null)?.pending ? null : { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [{ award: 'MVP', key: 'mvp', player_id: 'p2', stat: '9 K' }],
     provisional: false, missing: [], played_s: 300, ...(sync ? { sync } : {}), ...rc } as unknown as RecapView;
   const state: State = { ...d.state, phase: 'recap', players, recap, config: { ...d.state.config, time_limit_s: 300 }, ...over };
   return { d, state };

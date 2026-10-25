@@ -1522,6 +1522,7 @@ class Session:
         """
         if self.in_play():
             raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
+        self._refuse_pending_roll()
         self._refuse_koth_hill()               # F402: before any side effect, an API LOAD cannot bypass it
         self._roll_forward_from_recap()        # a LOAD after the whistle loads the NEXT match
         cfg_id = self.config["config_id"]
@@ -3037,6 +3038,11 @@ class Session:
             return "received"
         if isinstance(pending, int) and pending > 0:
             return "sending"
+        # A late batch needs a fresh zero-pending status before its row is received again.
+        # Until then the phone is sending, even if its last count was zero.
+        event_rev = entry.get("event_rev", 0)
+        if event_rev > 0 and entry.get("status_rev", -1) < event_rev:
+            return "sending"
         return "linked"
 
     def _sync_update(self, nid: str, at: int) -> None:
@@ -3151,12 +3157,22 @@ class Session:
                                  "stage": stage, "transport": None, "end_unconfirmed": False,
                                  "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
             rows.append(row)
-        pending = not (match.finalised or match.restored_final) and any(
+        pending = not match.released and any(
             row["stage"] != "received" for row in rows)
+        changed = False
         if not pending and match.final_winner is None:
             match.final_winner = copy.deepcopy(dict(winner))
+            changed = True
         elif match.final_winner is not None and winner != match.final_winner:
-            match.result_changed = True
+            if not match.result_changed:
+                match.result_changed = True
+                changed = True
+        if not pending:
+            changed = changed or not match.released
+            match.released = True
+        if changed:
+            self._persist_dirty = True
+            self.persist_now()
         return {"rows": rows, "pending": pending, "finalised": match.finalised,
                 "result_changed": match.result_changed}
 
@@ -4587,35 +4603,40 @@ class Session:
         if m.get("finished") is True:
             raw_sync = m.get("sync_nodes")
             saved_ms = m.get("_saved_ms")
-            age_at = max(self.now_ms(), saved_ms) if isinstance(saved_ms, int) else self.now_ms()
             for nid, row in (raw_sync.items() if isinstance(raw_sync, dict) else ()):
                 if not isinstance(nid, str) or not isinstance(row, dict):
                     continue
                 changed = row.get("changed_t")
                 if not isinstance(changed, int) or isinstance(changed, bool):
                     continue
+                age_ms = row.get("idle_ms")
+                if not isinstance(age_ms, int) or isinstance(age_ms, bool) or age_ms < 0:
+                    age_ms = max(0, (saved_ms if isinstance(saved_ms, int) else self.now_ms()) - changed)
                 match.sync_nodes[nid] = {"received": row.get("received") is True,
                                          "status_received": row.get("status_received") is True, "changed_t": changed,
-                                         "changed_mono": self.mono_ms() - max(0, age_at - changed)}
+                                         "changed_mono": self.mono_ms() - age_ms}
             match.finalised = m.get("finalised") is True
             winner = m.get("final_winner")
             match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
-            match.restored_final = match.final_winner is not None
+            match.released = (m.get("released") is True or match.finalised or match.final_winner is not None)
             match.result_changed = m.get("result_changed") is True
+            match.end_reason = m.get("end_reason") if isinstance(m.get("end_reason"), str) else None
+            self.end_reason = match.end_reason
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
             frozen = m.get("frozen_stations")
             if isinstance(frozen, list):
                 match.frozen_stations = [row for raw in frozen
                                          if (row := snapshot_departed_station(raw)) is not None]
-            self._finish(resuming=True)
-            match.played = played
             raw_whistle = m.get("whistle_base")
             whistle = ({nid: pid for nid, pid in raw_whistle.items()
                         if isinstance(nid, str) and isinstance(pid, str) and pid in played}
                        if isinstance(raw_whistle, dict) else dict(node_player))
             scorer.node_player = dict(whistle)
             match.whistle(whistle)
+            self._finish(resuming=True)
+            match.played = played
+            self._resume_end_delivery(mid, whistle, m.get("end_delivery"))
             if mid in self._ended:
                 self._ended[mid]["players"] = dict(played)
             self._changed()
@@ -5022,7 +5043,7 @@ class Session:
     # ⚠ IT NEVER GATES. `_finish()` has written the recap and moved MC to recap before the first retry is
     # even due. A player who walks out of range at the whistle is normal and expected: there is no `await`
     # on a phone anywhere in the end path, and there must never be one.
-    def _arm_end_delivery(self, match_id: str | None) -> None:
+    def _arm_end_delivery(self, match_id: str | None, bindings: dict[str, str] | None = None) -> None:
         """Watch every bound player HUD for its confirmation that `match_id` ended.
 
         The population is the BOUND PLAYER nodes — the same one the operator reads as `nodes`, and the only
@@ -5036,13 +5057,30 @@ class Session:
         if any(e["match_id"] != match_id for e in self._end_delivery.values()):
             self._end_delivery = {n: e for n, e in self._end_delivery.items() if e["match_id"] == match_id}
             self._end_delivery_told = None
-        for p in self.players.values():
-            nid = p.get("node_id")
+        bound = (bindings.items() if bindings is not None else
+                 ((p.get("node_id"), p["player_id"]) for p in self.players.values()))
+        for nid, pid in bound:
             if not nid or (self.nodes.get(nid) or {}).get("node_type") == "utility" or nid in self._end_delivery:
                 continue
-            self._end_delivery[nid] = {"match_id": match_id, "player_id": p["player_id"], "since": now,
+            self._end_delivery[nid] = {"match_id": match_id, "player_id": pid, "since": now,
                                        "tries": 0, "next_t": now + END_RETRY_MS[0], "confirmed": False,
                                        "confirmed_t": None, "exhausted": False, "last_ok": False}
+
+    def _resume_end_delivery(self, match_id: str, bindings: dict[str, str], saved: object) -> None:
+        # Build only the whistle's watch. This schedules retries without sending END on resume.
+        self._arm_end_delivery(match_id, bindings)
+        if not isinstance(saved, dict):
+            return
+        for nid, row in saved.items():
+            watch = self._end_delivery.get(nid)
+            if watch is None or not isinstance(row, dict) or row.get("match_id") != match_id:
+                continue
+            for key in ("since", "tries", "next_t", "confirmed_t"):
+                value = row.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    watch[key] = value
+            for key in ("confirmed", "exhausted", "last_ok"):
+                watch[key] = row.get(key) is True
 
     def _end_delivery_tried(self, nid: str, match_id: str, ok: bool) -> None:
         """Record ONE attempt at `nid` — the whistle's own push, A34's reconcile or A42's retry, which are
@@ -6640,6 +6678,7 @@ class Session:
         self._refuse_push_in_play()       # before any side effect: a refused push must change nothing
         # F402: chaos/the CLI/an older console can reach this without ever calling `load_game()`, so the
         # hard hill gate has to live here too, or a direct push is the bypass LOAD itself was closed against.
+        self._refuse_pending_roll()
         self._refuse_koth_hill()
         # A push after the whistle is for the NEXT match. The roll is the one side effect that may come
         # before a refusal below: the operator has already moved on, and the roll is what they asked for.
@@ -7530,6 +7569,8 @@ class Session:
         if match is None:
             raise RuntimeError("_finish needs the match it ends")   # every caller runs with a Match (slice 4a review)
         if not resuming:
+            match.end_reason = self.end_reason
+        if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}
         # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
@@ -7559,7 +7600,7 @@ class Session:
             self._archive("match_ended", match.head["match_id"], self.last_recap, end_t)
         match.ended_head = dict(match.head) if match.head else None
         match.head = None            # no re-hydrating a finished match's `start`
-        if match.scorer:
+        if match.scorer and not resuming:
             match.scorer.node_player = self._whistle_map()   # 0.4.19 review: late facts are judged by the whistle's bindings
             match.whistle(match.scorer.node_player)
         self._set_phase("recap")
@@ -7633,6 +7674,8 @@ class Session:
             r.update(self.settling())     # advisory only — never gates, see settling()
             if self.phase == "recap":
                 r["sync"] = self._recap_sync(r["winner"], r.get("stations") or [])
+                if r["sync"]["pending"]:
+                    r["winner"] = None
             return r
         return self.last_recap
 
@@ -7642,6 +7685,7 @@ class Session:
             raise ValueError("no match in RECAP to finalise")
         if not self.match.finalised:
             self.match.finalised = True
+            self.match.released = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()
             self.persist_now()
@@ -7709,8 +7753,14 @@ class Session:
         outlive it: `new_session` keeps the finished scorer for late facts and the A42 end watch."""
         if self.phase != "recap":
             return False
+        self._refuse_pending_roll()
         self.new_session(keep_roster=True)
         return True
+
+    def _refuse_pending_roll(self) -> None:
+        recap = self.recap() if self.phase == "recap" else None
+        if recap and (recap.get("sync") or {}).get("pending"):
+            raise ConflictError("Finalise the result first.")
 
     def next_match(self) -> dict:
         """`POST /api/match/next`: RECAP's NEXT MATCH. Roll forward, then LOAD the same game, so the operator
@@ -7763,6 +7813,7 @@ class Session:
         self._changed()
 
     def new_session(self, keep_roster: bool = True) -> None:
+        self._refuse_pending_roll()
         # O7: a failure for a row that is STILL missing is real and stays; one whose row exists now is pruned.
         for mid in list(self._archive_failures):
             try:

@@ -1958,7 +1958,7 @@ class RecapSyncView(TypedDict):
 
 
 class RecapView(TypedDict):
-    winner: WinnerView
+    winner: WinnerView | None  # null while this RECAP result waits for its bound phones and hills
     score: dict[str, int]
     rows: list[ScoreRow]
     honors: list[Honor]
@@ -1983,7 +1983,7 @@ class MatchHistoryRow(TypedDict):
     mode: str
     go_live_t: int | None
     ended_t: int | None
-    recap: RecapView | None
+    recap: NotRequired[RecapView | None]  # omitted for the current pending match
     config: NotRequired[dict[str, Any]]
     pending: NotRequired[bool]                 # F596: current match result is held until sync or FINALISE
 

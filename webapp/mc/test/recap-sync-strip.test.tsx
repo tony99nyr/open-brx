@@ -30,7 +30,7 @@ const syncOf = (rows: RecapSyncRow[], o: SyncOver = {}) => ({ pending: o.pending
 async function stateWith(sync: unknown, rc: Partial<RecapView> = {}) {
   const d = await demo();
   const players = NAMES.map((display, i) => ({ ...d.state.players[0], player_id: `p${i + 1}`, player_num: i + 1, display, team_id: i % 2 ? 'yellow' : 'blue', node_id: `n${i + 1}` }));
-  const recap = { winner: { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [HONOR], provisional: false, missing: [], played_s: 300,
+  const recap = { winner: (sync as { pending?: boolean } | null)?.pending ? null : { team_id: 'blue' }, score: { blue: 6, yellow: 15 }, rows: ROWS, honors: [HONOR], provisional: false, missing: [], played_s: 300,
     ...(sync ? { sync } : {}), ...rc } as unknown as RecapView;
   const state: State = { ...d.state, phase: 'recap', players, recap, config: { ...d.state.config, time_limit_s: 300 } };
   return { d, state };
@@ -77,7 +77,9 @@ describe('F596 · results pending: nothing that names a winner', () => {
     expect(dim('p1')).toBe(1);
     expect(m.find('[data-sync-row="p2"]')[0].dataset.unverified).toBe('1');
     expect(dim('p2'), 'sending stays legible').toBeGreaterThanOrEqual(0.5);
+    expect(dim('p2'), 'sending stays dimmer than a received row').toBeLessThan(1);
     expect(dim('p3'), 'unlinked stays legible').toBeGreaterThanOrEqual(0.5);
+    expect(dim('p3'), 'unlinked stays dimmer than a received row').toBeLessThan(1);
     expect(getComputedStyle(m.find('[data-sync-row="p2"] [data-cell="sync"]')[0]).opacity || '1', 'SYNC remains full strength').toBe('1');
     expect(m.find('[data-cell][data-pending]').length, 'no all-dash cells').toBe(0);
     m.unmount();
@@ -201,7 +203,7 @@ describe('F597 · the strip', () => {
     } finally { errors.mockRestore(); }
   });
 
-  it('keeps a received phone green and shows its dropped link as a badge', async () => {
+  it('keeps a received phone green, without a dropped-link badge after release', async () => {
     const received = phone('p1', { linked: false });
     const pending = await recapOf(syncOf([received, phone('p2', { stage: 'unlinked' })]));
     expect(pending.find('[data-strip-icon="p1"] [data-strip-tick]')).toHaveLength(1);
@@ -210,7 +212,7 @@ describe('F597 · the strip', () => {
     pending.unmount();
     const released = await recapOf(syncOf([received]));
     expect(released.find('[data-testid="all-synced"]')).toHaveLength(1);
-    expect(released.find('[data-testid="sync-kept"] [data-strip-unlinked]')).toHaveLength(1);
+    expect(released.find('[data-testid="sync-kept"] [data-strip-unlinked]')).toHaveLength(0);
     released.unmount();
   });
 
@@ -298,10 +300,11 @@ describe('F597 · the strip', () => {
   });
 
   it('a phone that lost facts, or whose END is open, stays visible after the collapse: an icon, and a badge by its name', async () => {
-    const m = await recapOf(syncOf([phone('p1'), phone('p2', { lost: 4 }), phone('p3', { end_unconfirmed: true }), phone('p4')], { pending: false }));
+    const m = await recapOf(syncOf([phone('p1'), phone('p2', { lost: 4, linked: false }), phone('p3', { end_unconfirmed: true }), phone('p4')], { pending: false }));
     expect(m.find('[data-testid="all-synced"]').length).toBe(1);
     expect(m.find('[data-testid="sync-kept"] [data-strip-icon]').map(e => e.dataset.stripIcon).sort()).toEqual(['p2', 'p3']);
     expect(m.find('[data-sync-row="p2"] [data-sync-lost]').length).toBe(1);
+    expect(m.find('[data-testid="sync-kept"] [data-strip-unlinked]')).toHaveLength(0);
     expect(m.find('[data-sync-row="p3"] [data-sync-end]').length).toBe(1);
     expect(m.find('[data-sync-row="p1"] [data-sync-lost], [data-sync-row="p1"] [data-sync-end]').length).toBe(0);
     m.unmount();

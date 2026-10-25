@@ -190,7 +190,8 @@ def test_to_snapshot_without_session_keeps_match_merge_and_order():
         live=True, adopted=False, config={"mode": "tdm"}, roster={"p1": {"player_id": "other"}},
         node_player={"live": "p1", "new": "p2", "bad": "missing"},
         synced_at_lobby={"live": True}, clock_suspect={"n": 3},
-        bundles={"live": {"head": []}}, acks={"live": {"ok": True}}, store_path="session.sqlite")
+        bundles={"live": {"head": []}}, acks={"live": {"ok": True}}, store_path="session.sqlite",
+        sync_mono_ms=0)
     expected = {
         "match_id": "m", "go_live_t": 100, "seq": 7, "countdown_s": 10,
         "adopted": False, "live": True, "config": {"mode": "tdm"},
@@ -213,7 +214,7 @@ def test_to_snapshot_without_session_keeps_match_merge_and_order():
     match.played = None
     fallback = match.to_snapshot(
         live=False, adopted=False, config={"mode": "tdm"}, roster={"p1": p1},
-        node_player={}, synced_at_lobby={}, clock_suspect=None,
+        node_player={}, synced_at_lobby={}, clock_suspect=None, sync_mono_ms=0,
         bundles={}, acks={}, store_path=None)
     assert fallback["players"] == {"p1": p1}
     assert fallback["node_player"] == {"old": "p1"}
@@ -451,6 +452,7 @@ def test_roll_keeps_match_bindings_and_fresh_session_drops_match():
     old_stations = match.frozen_stations
     old_evicted = match.evicted
     old_whistle = match.whistle_base
+    s.finalise_recap()
     s.next_match()
     retired = s.retired
     assert isinstance(retired, Match) and retired.frozen
@@ -466,6 +468,7 @@ def test_roll_keeps_match_bindings_and_fresh_session_drops_match():
 def test_frozen_match_refuses_evict_unbind_and_whistle():
     s, _net, _clock, _players, _info = go_live()
     s.control("end")
+    s.finalise_recap()
     s.next_match()
     retired = s.retired
     assert retired is not None and retired.frozen
@@ -528,6 +531,7 @@ def test_every_get_route_answers_after_a_fresh_session_drops_a_played_match():
     needs(HAVE_HTTP, "starlette + httpx")
     s, _net, _clock, _players, _info = go_live()
     s.control("end")
+    s.finalise_recap()
     s.new_session(keep_roster=False)
     assert s.match is None
     _every_get_route_answers(s)

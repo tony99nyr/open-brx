@@ -692,6 +692,8 @@
       "00000012": "node1"
     },
     "departed_stations": [],
+    "end_delivery": {},
+    "end_reason": "frag_limit",
     "end_t": 5015001,
     "evicted_nodes": [],
     "final_winner": null,
@@ -742,6 +744,7 @@
         "voice": "male"
       }
     },
+    "released": false,
     "result_changed": false,
     "seq": 1,
     "station_history": {},
@@ -752,10 +755,12 @@
     "store_path": "session.sqlite",
     "sync_nodes": {
       "node0": {
-        "changed_t": 5015001
+        "changed_t": 5015001,
+        "idle_ms": 50
       },
       "node1": {
-        "changed_t": 5015001
+        "changed_t": 5015001,
+        "idle_ms": 50
       }
     },
     "synced_at_lobby": {

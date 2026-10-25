@@ -47,6 +47,7 @@ def fixture_run():
                 store = Store(store_name, root / f"{store_name}.sqlite")
                 opened.append(store)
                 session, net, clock, players = mk_kit_session(cfg=cfg, store=store)
+                session.mono_ms = lambda: clock["t"]
                 session._persist_path = root / "session.json"
                 return session, net, clock, players
 
@@ -125,6 +126,7 @@ def fixture_run():
                 save("live", s)
                 s.control("end")
                 save("recap", s)
+                s.finalise_recap()
                 s.next_match()
                 s.set_phase("kit")
                 s.add_player("NEXT", gun_id="GUN-D")

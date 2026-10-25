@@ -378,6 +378,7 @@ async function replay(onPhaseStep?: (row: PhaseStep) => void): Promise<Gap[]> {
             if (step.ms_before) vi.advanceTimersByTime(step.ms_before);
             await b.control(step.cmd, step.cmd === 'panic'); break;
           case 'abort': await b.abort(); break;
+          case 'finalise': await b.finaliseRecap(); break;
           case 'new': await b.newSession(step.keep_roster); break;
           case 'next':
             if (step.ms_before) vi.advanceTimersByTime(step.ms_before);
@@ -440,7 +441,7 @@ describe('recorded server State against the console mock', () => {
     try {
       await b.pushLobby(true); await b.start(0, true);
       const before = await b.getState();
-      await vi.advanceTimersByTimeAsync(2000); await b.control('end'); await b.nextMatch();
+      await vi.advanceTimersByTimeAsync(2000); await b.control('end'); await b.finaliseRecap(); await b.nextMatch();
       const correct = await b.getState();
       const wrong = structuredClone(correct);
       wrong.end_delivery!.match_id = 'another-match';

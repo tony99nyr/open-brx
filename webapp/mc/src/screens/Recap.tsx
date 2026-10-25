@@ -102,7 +102,7 @@ export function Recap() {
   useEffect(() => { api.matchHistory().then(setHistory).catch(() => setHistory([])); }, [api, liveId, state?.phase]);
   // The match still on screen is in the store too — showing it again as an "archived" chip hid its own
   // NEXT MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
-  const archive = history.filter(h => h.match_id !== liveId);
+  const archive = history.filter(h => h.match_id !== liveId && !h.pending && !!h.recap);
   // A selection that no longer exists (new session, or it became the live match) must not silently
   // fall back to the live recap with nothing highlighted — drop it so the UI matches what is shown.
   // NB this sits ABOVE the `!state` early return: a hook after a conditional return changes hook
@@ -116,7 +116,7 @@ export function Recap() {
   useEffect(() => { setCsvErr(null); }, [sel]);
   if (!state) return null;
   const past = sel && !stale ? archive.find(h => h.match_id === sel) ?? null : null;
-  const rc: RecapView | null = past ? past.recap : live;
+  const rc: RecapView | null = past ? past.recap ?? null : live;
   const picker = archive.length > 0 ? (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
       <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>MATCH HISTORY ▸</span>
@@ -185,7 +185,7 @@ export function Recap() {
   const mvpIds = new Set(rc.honors.filter(h => (h.key ?? (h.award === 'MVP' ? 'mvp' : '')) === 'mvp').map(h => h.player_id));
   // W1/F6: `/api/recap.csv` only ever serves the LIVE scorer, so an archived match used to hide its
   // export button rather than hand the operator the wrong game. It has its own endpoint now.
-  const csv = past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
+  const csv = pendingResults ? '' : past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
   const csvName = past ? `brx-recap-${past.match_id}.csv` : 'brx-recap.csv';
   // M23 (visual QA 2026-09-23): the header printed the TIME LIMIT, so a match ended early at 2:13 read
   // as 10:00. F319: the server now sends the length itself (`played_s`). Without it (an older MC) the
@@ -399,7 +399,7 @@ function Row({ r, mvp, sync = null, syncCol = false, pending = false }: { r: Sco
     <div data-sync-row={sync ? r.player_id : undefined} data-stage={sync?.stage} data-stuck={sync?.stuck ? '1' : undefined} data-unverified={unverified ? '1' : undefined}
       style={{ display: 'grid', gridTemplateColumns: syncCol ? COLS_SYNC : COLS, gap: GAP, alignItems: 'center', padding: pending ? '0 14px' : '10px 14px', ...(pending ? { height: 22, boxSizing: 'border-box' as const, overflow: 'hidden' } : {}), background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       {/* M8 (visual QA 2026-09-24): at 900 px a 24-character name ran over the K number */}
-      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, pending ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span data-recap-name={r.player_id} title={r.display} style={{ font: F.chk(700, pending ? 13 : 14), letterSpacing: '.1em', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 8, opacity: unverified ? 0.65 : 1 }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.display}</span>
         {/* the column has collapsed (every phone in): a phone that lost facts keeps its warning, and a HUD whose END is open its flag */}
         {sync && !syncCol && !!sync.lost && <span data-sync-lost title={`${sync.lost} facts lost`} style={{ color: T.warn, display: 'inline-flex' }}>{Icon.warn(14)}</span>}

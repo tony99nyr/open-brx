@@ -4,32 +4,32 @@
     {
       "group": "by design",
       "path": "$.lan.ip",
-      "count": 70,
-      "sha1": "b51974ead2ce1bc0"
+      "count": 71,
+      "sha1": "b12b930e86c3603f"
     },
     {
       "group": "by design",
       "path": "$.lan.join_secret",
-      "count": 70,
-      "sha1": "1728b6bd939e05f3"
+      "count": 71,
+      "sha1": "90e9386208aa1b4f"
     },
     {
       "group": "by design",
       "path": "$.lan.qr",
-      "count": 70,
-      "sha1": "5dcd6ae632f7684a"
+      "count": 71,
+      "sha1": "f5b670a88df21a80"
     },
     {
       "group": "by design",
       "path": "$.lan.ssid",
-      "count": 70,
-      "sha1": "0647e586e774dc06"
+      "count": 71,
+      "sha1": "30d83c7b37d84453"
     },
     {
       "group": "by design",
       "path": "$.lan.ws_url",
-      "count": 70,
-      "sha1": "0827ecd75b389b78"
+      "count": 71,
+      "sha1": "bf965445e24853fb"
     },
     {
       "group": "cosmetic",
@@ -52,8 +52,8 @@
     {
       "group": "fixture",
       "path": "$.feed[*]",
-      "count": 6,
-      "sha1": "90f1c9edc2a3ac03"
+      "count": 7,
+      "sha1": "1f8487932395218e"
     },
     {
       "group": "fixture",
@@ -64,104 +64,104 @@
     {
       "group": "fixture",
       "path": "$.nodes[*]",
-      "count": 3055,
-      "sha1": "75f71d1cf4829ab9"
+      "count": 3087,
+      "sha1": "cea2bfe861457ac6"
     },
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 13023,
-      "sha1": "e144b2069658667d"
+      "count": 13168,
+      "sha1": "93667ad1d2f2fb38"
     },
     {
       "group": "fixture",
       "path": "$.readiness.greens",
-      "count": 69,
-      "sha1": "9531b39a39bac524"
+      "count": 70,
+      "sha1": "ea8e9e9e4eefce66"
     },
     {
       "group": "fixture",
       "path": "$.recap.after_end",
-      "count": 1,
-      "sha1": "99aaba95d5889757"
+      "count": 2,
+      "sha1": "b062d7cc1f13992a"
     },
     {
       "group": "fixture",
       "path": "$.recap.honors[*]",
-      "count": 10,
-      "sha1": "1151b0a0b047380b"
+      "count": 20,
+      "sha1": "b41c8bc56e1d9be8"
     },
     {
       "group": "fixture",
       "path": "$.recap.post_end",
-      "count": 1,
-      "sha1": "10eb91958a7e71a9"
+      "count": 2,
+      "sha1": "5c99dcc2079b4b1c"
     },
     {
       "group": "fixture",
       "path": "$.recap.post_end_facts",
-      "count": 1,
-      "sha1": "d2e27f9e1cae512f"
+      "count": 2,
+      "sha1": "55ff56b5c3e4d26e"
     },
     {
       "group": "fixture",
       "path": "$.recap.rows[*]",
-      "count": 152,
-      "sha1": "45a0335ca859a929"
+      "count": 256,
+      "sha1": "07c911afa0ed18a8"
     },
     {
       "group": "fixture",
       "path": "$.recap.score.blue",
-      "count": 1,
-      "sha1": "e625ebc456f2ca7f"
+      "count": 2,
+      "sha1": "8006935ea5e4e5e4"
     },
     {
       "group": "fixture",
       "path": "$.recap.score.yellow",
-      "count": 1,
-      "sha1": "2fe6384af2b3420e"
+      "count": 2,
+      "sha1": "129ca1479a4a33bd"
     },
     {
       "group": "fixture",
       "path": "$.recap.winner.team_id",
       "count": 1,
-      "sha1": "47156daa5ebe6068"
+      "sha1": "9f7814c91b617960"
     },
     {
       "group": "fixture",
       "path": "$.recap.winner.tie",
       "count": 1,
-      "sha1": "0dbce2dba2683de6"
+      "sha1": "37940198c12dfaf4"
     },
     {
       "group": "fixture",
       "path": "$.stations[*]",
-      "count": 1242,
-      "sha1": "36ba75986e1e2144"
+      "count": 1259,
+      "sha1": "44699c27ea47d193"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.missing[*]",
-      "count": 7,
-      "sha1": "5e3b667cbcdbad7f"
+      "count": 14,
+      "sha1": "ca102f6ac2036be7"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.sync.rows[*].id",
-      "count": 2,
-      "sha1": "c8b34ae70d2386c0"
+      "count": 4,
+      "sha1": "5f6471f0f3e25d2c"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.sync.rows[*].name",
-      "count": 2,
-      "sha1": "b6f9c4d1410dce7a"
+      "count": 4,
+      "sha1": "064eadbb1c7f48da"
     },
     {
       "group": "the mock shows it wrong",
       "path": "$.recap.sync.rows[*].team_id",
-      "count": 2,
-      "sha1": "7d73f5c549afb0ba"
+      "count": 4,
+      "sha1": "ee518c81effd2080"
     }
   ]
 }

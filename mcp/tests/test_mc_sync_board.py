@@ -12,8 +12,9 @@ import tempfile
 import json
 import asyncio
 
-from _session import go_live, go_live_stored, restart_session, mk_stored_session, online
+from _session import go_live, go_live_stored, restart_session, mk_stored_session, online, kill
 from brx_mcp.mc.types import SYNC_STUCK_S
+from brx_mcp.mc.state import END_RETRY_MS
 from brx_mcp.mc.net import NetServer
 from brx_mcp.mc import envelope as E
 
@@ -62,7 +63,7 @@ def test_a_later_event_in_the_same_millisecond_reopens_a_received_row():
     net.simulate_event("node0", {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"],
                                   "player_id": pid, "shooter_num": ps[1]["player_num"],
                                   "shooter_team": 2, "dmg": 1}, clock["t"], seq=30)
-    assert _row(s, pid)["stage"] == "linked"
+    assert _row(s, pid)["stage"] == "sending"
 
 
 def test_a_status_without_pending_keeps_a_received_claim():
@@ -168,34 +169,48 @@ def test_received_stays_released_across_disconnect_stale_and_plain_hello():
     assert not s.recap()["sync"]["pending"]
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=2)
     assert _row(s, pid)["stage"] == "sending"
-    assert s.recap()["sync"]["pending"]
+    assert not s.recap()["sync"]["pending"]
 
 
 def test_recap_resume_preserves_receipts_and_whistle_side_effects():
     s, net, clock, ps, info = _ended(stored=True)
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-    _status(net, clock, 0, ps[0]["player_id"], 0)
+    _status(net, clock, 0, ps[0]["player_id"], 0,
+            arm_state="kitted", match_id=info["match_id"])
+    _row(s, ps[1]["player_id"])
+    s.match.sync_nodes["node1"]["changed_mono"] -= 120_000
     before = _row(s, ps[1]["player_id"])["idle_s"]
+    assert before >= 120
     ended_ms = s._ended[info["match_id"]]["ended_ms"]
     archive = s.store.matches()[0]
-    s.persist_now()
-    clock["t"] += 2000
-    s2, net2 = restart_session(s, clock)
+    s._persist_last = 0
+    s._persist()
+    clock["t"] += 24 * 3600 * 1000  # downtime and a forward wall-clock step are not idle time
+    from _session import restart_no_repersist
+    s2, net2 = restart_no_repersist(s, clock)
     pushed = []
     pulled = []
     archived = []
     s2._push_victory = lambda *args: pushed.append("victory")
     s2._push_result = lambda *args: pushed.append("result")
-    s2._arm_end_delivery = lambda *args: pushed.append("END")
     s2.pull_log = lambda *args: pulled.append(args)
     s2._archive = lambda *args: archived.append(args)
     assert s2.resume_match() == "recap"
     assert pushed == [] and pulled == [] and archived == []
+    assert not [p for p in net2.pushed if p[1] == "control" and p[2].get("cmd") == "end"]
+    assert s2._end_delivery["node1"]["confirmed"] is False
+    assert s2._end_delivery["node0"]["confirmed"] is True
+    assert _row(s2, ps[1]["player_id"])["end_unconfirmed"]
+    assert not _row(s2, ps[0]["player_id"])["end_unconfirmed"]
     assert s2._ended[info["match_id"]]["ended_ms"] == ended_ms
     assert s.store.matches()[0] == archive
     assert _row(s2, ps[0]["player_id"])["stage"] == "received"
-    assert _row(s2, ps[1]["player_id"])["idle_s"] >= before
-    assert not _row(s2, ps[1]["player_id"])["stuck"]
+    assert before <= _row(s2, ps[1]["player_id"])["idle_s"] <= before + 2
+    for delay in END_RETRY_MS:
+        clock["t"] += delay + 1
+        s2.tick()
+    assert [p for p in net2.pushed if p[1] == "control" and p[2].get("cmd") == "end"]
+    assert any("NEVER CONFIRMED THE END" in f.get("text", "") for f in s2.feed)
 
 
 def test_sync_stuck_age_survives_a_backward_wall_clock_step():
@@ -374,7 +389,7 @@ def test_backward_clock_does_not_hide_late_batch_or_zero_status():
     net.simulate_batch("node0", [{"type": "hit_taken", "seq": 42, "t": clock["t"],
                                   "match_id": info["match_id"], "player_id": pid,
                                   "shooter_num": ps[1]["player_num"], "shooter_team": 2, "dmg": 1}], clock["t"])
-    assert _row(s, pid)["stage"] == "linked"
+    assert _row(s, pid)["stage"] == "sending"
     _status(net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     net.simulate_disconnect("node0")
@@ -382,7 +397,7 @@ def test_backward_clock_does_not_hide_late_batch_or_zero_status():
     assert (_row(s, pid)["stage"], _row(s, pid)["pending"]) == ("sending", 2)
 
 
-def test_multi_event_batch_after_zero_reopens_the_wait():
+def test_multi_event_batch_after_zero_reopens_the_row_but_not_the_wait():
     s, net, clock, ps, info = _ended()
     for i, p in enumerate(ps):
         _status(net, clock, i, p["player_id"], 0)
@@ -392,11 +407,109 @@ def test_multi_event_batch_after_zero_reopens_the_wait():
         {"type": "hit_taken", "seq": seq, "t": clock["t"], "match_id": info["match_id"],
          "player_id": pid, "shooter_num": ps[1]["player_num"], "shooter_team": 2, "dmg": 1}
         for seq in (43, 44)], clock["t"])
-    assert _row(s, pid)["stage"] == "linked"
-    assert s.recap()["sync"]["pending"]
+    assert _row(s, pid)["stage"] == "sending"
+    assert not s.recap()["sync"]["pending"]
+    assert s.match.released
     _status(net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     assert not s.recap()["sync"]["pending"]
+
+
+def test_late_batch_keeps_released_result_and_flags_winner_flip_in_process():
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    s.control("end")
+    for i, p in enumerate(ps):
+        _status(net, clock, i, p["player_id"], 0)
+    assert s.match.released and not s.recap()["sync"]["pending"]
+    previous = s.recap()["winner"]
+    clock["t"] += 1
+    net.simulate_batch("node1", [{"type": "death", "seq": 51, "t": clock["t"] - 2,
+                                  "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
+    assert _row(s, ps[1]["player_id"])["stage"] == "sending"
+    assert not s.recap()["sync"]["pending"] and s.match.released
+    assert s.recap()["winner"] != previous
+    assert s.recap()["sync"]["result_changed"]
+    if HAVE:
+        from starlette.testclient import TestClient
+        from brx_mcp.mc.api import create_app
+        c = TestClient(create_app(s))
+        assert c.get("/api/recap.csv").status_code == 200
+        assert c.get(f"/api/matches/{info['match_id']}.csv").status_code == 200
+        current = next(row for row in c.get("/api/matches").json() if row["match_id"] == info["match_id"])
+        assert not current.get("pending") and current["recap"]["winner"] == s.recap()["winner"]
+
+
+def test_late_batch_keeps_released_result_after_restart():
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s.control("end")
+    for i, p in enumerate(ps):
+        _status(net, clock, i, p["player_id"], 0)
+    previous = s.recap()["winner"]
+    assert json.loads(s._persist_path.read_text())["match"]["released"] is True
+    s2, net2 = restart_session(s, clock)
+    assert s2.resume_match() == "recap" and s2.match.released
+    from _session import online
+    online(s2, net2, clock, ps[1], 1)
+    clock["t"] += 1
+    net2.simulate_batch("node1", [{"type": "death", "seq": 52, "t": clock["t"] - 2,
+                                   "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                   "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
+    assert _row(s2, ps[1]["player_id"])["stage"] == "sending"
+    assert not s2.recap()["sync"]["pending"] and s2.match.released
+    assert s2.recap()["winner"] != previous
+    assert s2.recap()["sync"]["result_changed"]
+    if HAVE:
+        from starlette.testclient import TestClient
+        from brx_mcp.mc.api import create_app
+        c = TestClient(create_app(s2))
+        assert c.get("/api/recap.csv").status_code == 200
+        assert c.get(f"/api/matches/{info['match_id']}.csv").status_code == 200
+        current = next(row for row in c.get("/api/matches").json() if row["match_id"] == info["match_id"])
+        assert not current.get("pending") and current["recap"]["winner"] == s2.recap()["winner"]
+
+
+def test_pending_recap_refuses_every_roll_route_before_changing_history():
+    needs(HAVE, "starlette + httpx")
+    from starlette.testclient import TestClient
+    from brx_mcp.mc.api import create_app
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    c = TestClient(create_app(s))
+    s.control("end")
+    paths = [("post", "/api/match/next", {}), ("post", "/api/session/new", {"keep_roster": True}),
+             ("post", "/api/session/new", {"keep_roster": False}),
+             ("post", "/api/games/load", {}), ("post", "/api/lobby/push", {"force": True}),
+             ("post", "/api/play/pick", {"match": {"night": True}}),
+             ("post", "/api/phase", {"phase": "build"}),
+             ("put", "/api/config", {"night": True})]
+    for method, path, body in paths:
+        response = getattr(c, method)(path, json=body)
+        assert response.status_code == 409, (path, response.status_code, response.text)
+        assert "Finalise the result first." in response.json()["error"], path
+        assert s.phase == "recap" and s.match.scorer.match_id == info["match_id"]
+        assert c.get("/api/matches").json()[0]["pending"] is True
+
+
+def test_frag_cap_reason_restores_and_reconciles_a_late_kill():
+    s, net, clock, ps, info = go_live_stored(4, "tdm", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    kill(s, net, clock, ps, 0, 1, info, seq=61)
+    kill(s, net, clock, ps, 2, 3, info, seq=62)
+    assert s.phase == "recap" and s.end_reason == "frag_limit"
+    s2, net2 = restart_session(s, clock)
+    assert s2.resume_match() == "recap" and s2.end_reason == "frag_limit"
+    online(s2, net2, clock, ps[0], 0)
+    calls = []
+    original = s2._match_facts
+    def counted(mid):
+        calls.append(mid)
+        return original(mid)
+    s2._match_facts = counted
+    net2.simulate_event("node0", {"type": "death", "t": s2.match.scorer.end_t - 1,
+                                  "match_id": info["match_id"], "player_id": ps[0]["player_id"],
+                                  "shooter_num": ps[1]["player_num"], "shooter_team": 2}, clock["t"], seq=63)
+    assert info["match_id"] in calls
 
 
 def test_first_zero_status_after_reconnect_receives_and_stale_count_sends():
@@ -477,6 +590,7 @@ def test_old_finished_snapshot_defaults_to_not_finalised():
     assert snap["match"]["finalised"] is True
     snap["match"].pop("finalised")
     snap["match"].pop("final_winner")
+    snap["match"].pop("released")
     snap["match"].pop("result_changed")
     s._persist_path.write_text(json.dumps(snap))
     from _session import restart_no_repersist
@@ -554,12 +668,14 @@ def test_pending_result_is_hidden_from_match_csv_and_history():
     c = TestClient(create_app(s))
     s.control("end")
     assert s.recap()["sync"]["pending"]
+    assert c.get("/api/recap").json()["winner"] is None
+    assert c.get("/api/state").json()["recap"]["winner"] is None
     csv_response = c.get(f"/api/matches/{info['match_id']}.csv")
     assert csv_response.status_code == 409 and "PENDING" in csv_response.json()["error"].upper()
     history = c.get("/api/matches").json()
     current = next(row for row in history if row["match_id"] == info["match_id"])
     assert current["pending"] is True
-    assert "winner" not in current["recap"]
+    assert set(current) == {"match_id", "go_live_t", "ended_t", "mode", "pending"}
     s.finalise_recap()
     assert c.get(f"/api/matches/{info['match_id']}.csv").status_code == 200
     released = next(row for row in c.get("/api/matches").json() if row["match_id"] == info["match_id"])

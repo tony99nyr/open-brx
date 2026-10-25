@@ -1156,6 +1156,7 @@ def _late_death_after_the_cap(evict_in_live=False, evict_in_recap=False, rebind=
         net.simulate_stale("node2", STALE_AFTER_MS)
         assert net.simulate_hello("node1", _gun(2)) is not None, "control: a debrief handover to p2's gun"
     if roll:
+        s.finalise_recap()
         s.next_match()
         assert s.phase == "build", "control: rolled past RECAP"
     net.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],
@@ -1194,6 +1195,7 @@ def _late_death_with_a_rebind(scenario):
     assert s.phase == "recap", "control: the match ended"
     clock["t"] += 2_000
     if scenario == "rebind after the roll":
+        s.finalise_recap()
         s.next_match()
     elif scenario == "spare first":
         assert net.simulate_hello("node8", _gun(1)) is not None, "control: a spare phone binds p1's gun first"
@@ -1230,6 +1232,7 @@ def test_a_phone_back_after_a_restart_and_the_roll_reaches_the_retired_recap():
         net2.simulate_hello(f"node{i}", _gun(i))
     clock["t"] += 1_000
     s2.control("end")
+    s2.finalise_recap()
     s2.next_match()
     assert net2.simulate_hello("node1", _gun(1)) is not None, "control: node1 is back by its gun"
     net2.simulate_event("node1", {"type": "death", "t": late_t, "match_id": info["match_id"], "player_id": ps[1]["player_id"],

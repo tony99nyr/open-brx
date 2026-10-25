@@ -202,6 +202,7 @@ def test_a_new_match_clears_the_previous_match_watch():
     s, net, clock, ps, info = go_live(2)
     s.control("end")
     assert end_view(s)["total"] == 2
+    s.finalise_recap()
     s.push_config()
     for i in range(2):
         net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
@@ -215,6 +216,7 @@ def test_a_fresh_session_clears_the_watch_and_new_match_keeps_it():
     when the operator presses it. `_schedule` ends the watch at the next START. A FRESH SESSION ends it."""
     s, net, clock, ps, info = go_live(2)
     s.control("end")
+    s.finalise_recap()
     s.new_session()
     assert end_view(s) is not None and end_view(s)["match_id"] == info["match_id"]
     s.new_session(keep_roster=False)

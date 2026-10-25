@@ -9,6 +9,7 @@ import { Catalog } from '../src/screens/Catalog';
 import { Kit } from '../src/screens/Kit';
 import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
+import { Games } from '../src/screens/Games';
 import { CommandBar } from '../src/frame/CommandBar';
 import { MockBackend } from '../src/mock/backend';
 import { counted, demo, makeStore, mount, mountScreen, starved } from './harness';
@@ -149,6 +150,27 @@ function withLive(state: State): State {
 }
 
 describe('the RECAP history picker', () => {
+  it('keeps pending metadata out of the picker and surfaces a refused PLAY LOAD', async () => {
+    const d = await demo();
+    const state = withLive(d.state);
+    state.recap = { ...state.recap!, winner: null as unknown as NonNullable<State['recap']>['winner'], sync: { pending: true, finalised: false, result_changed: false, rows: [] } };
+    const pending = { match_id: 'm-pending', mode: 'ffa', go_live_t: 1000, ended_t: 2000, pending: true } as MatchHistoryRow;
+    const recap = await mountScreen(<Recap />, { ...d, state, view: 'recap', api: { matchHistory: async () => [pending], recapCsvUrl: () => { throw new Error('pending CSV'); } } });
+    expect(recap.text()).not.toContain('MATCH HISTORY');
+    expect(recap.find('[data-testid="results-pending"]')).toHaveLength(1);
+    recap.unmount();
+
+    let error: string | null = null;
+    const store = makeStore({ ...d, state, view: 'build', api: { loadGame: async () => { throw Object.assign(new Error('Finalise the result first.'), { status: 409 }); } } }, {
+      run: async fn => { try { return await fn(); } catch (e) { error = (e as Error).message; return undefined; } },
+    });
+    const play = await mount(<StoreCtx.Provider value={store}><CommandBar /><Games /></StoreCtx.Provider>);
+    await play.click('LOAD ▸');
+    expect(error).toBe('Finalise the result first.');
+    await play.update(<StoreCtx.Provider value={{ ...store, error }}><CommandBar /><Games /></StoreCtx.Provider>);
+    expect(play.find('[data-alert="frame-error-toast"]')[0]?.textContent).toContain('Finalise the result first.');
+    play.unmount();
+  });
   it('exports the ARCHIVED match, not the live one', async () => {
     // W1/F6: `/api/recap.csv` only ever serves the LIVE scorer, so the picker used to HIDE its
     // export button on a past match rather than hand the operator the wrong game's numbers.
