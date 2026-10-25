@@ -248,3 +248,15 @@ def test_a_zero_damage_hit_does_not_restart_the_window():
     B.Match._hit(match, p, q, 0, 6000.0)
     _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
     assert q.shield > 45
+
+
+def test_a_shields_field_kit_refuses_a_perk_the_preset_refuses():
+    world = R.shipped_world()
+    for perk in ("body_armor", "armor_piercing"):
+        try:
+            R.field_kit(world, "AR", "assault_rifle", perk=perk, preset="shields")
+        except ValueError as exc:
+            assert "shields" in str(exc)
+        else:
+            raise AssertionError(f"{perk} was fielded on Shields")
+    assert R.field_kit(world, "AR", "assault_rifle", perk="extended_mags", preset="shields").pool.shield == 105

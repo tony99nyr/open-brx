@@ -1809,7 +1809,10 @@ def _wm(world: World, wid: str, fx: dict | None):
 
 def field_kit(world: World, name: str, primary: str, secondary: str | None = None, perk: str | None = None,
               combo=False, preset: str = "standard") -> FieldKit:
-    """`preset` (F605): the health preset the field kit fields; "shields" gives an armour-0 pool that regenerates."""
+    """`preset` (F605): the health preset the field kit fields; "shields" gives an armour-0 pool that regenerates.
+    A perk the preset refuses (Armour Piercing or an armour grant on Shields) raises, as MC refuses it."""
+    if perk and (why := _compile_mod.Compiler(perks=world.perks).preset_block(perk, preset)):
+        raise ValueError(f"{perk} on {preset}: {why}")
     fx = world.fx(perk)
     models, swap = (_wm(world, primary, fx),), 0.0
     ap = bool(fx.get("armor_piercing"))
