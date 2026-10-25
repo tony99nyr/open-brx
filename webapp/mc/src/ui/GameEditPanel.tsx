@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { pushGate } from '../api/derive';
-import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
+import { VENUE_VOLUME_INDOOR, VENUE_VOLUME_OUTDOOR } from '../api/types';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
@@ -11,6 +11,7 @@ import { healthPresetOf } from '../rules/health';
 import { HealthPresetEditor } from '../screens/HealthPresetEditor';
 import { GhostButton, PrimaryButton, Seg, Toggle } from './index';
 import { LoadStatus } from './LoadedGame';
+import { HelpNote } from './Compact';
 
 type Slot = 'primary' | 'secondary';
 const toggleId = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
@@ -155,7 +156,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
         const err = e as Error;
         // The one server refusal this panel can actually provoke (state.py `set_config`, phase guard).
         // The raw sentence is true but gives no next step; RECALL is the next step.
-        if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()} — RECALL FIRST, THEN EDIT AGAIN.`);
+        if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()}. RECALL FIRST, THEN EDIT AGAIN.`);
         throw e;
       }
     });
@@ -223,10 +224,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modeOptions.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modeOptions.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>
               ) : (
-                <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
+                <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} · Mode list unavailable (server predates this UI?)</span>
               )}
             </Row>
             <Row label="NIGHT OPS">
@@ -236,7 +236,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               </span>
             </Row>
             <Row label="VOLUME">
-              <VolumeEditor volume={shown.volume} environment={shown.environment} benchVolume={state.bench_volume}
+              <VolumeEditor volume={shown.volume} environment={shown.environment}
                 onChange={v => edit(d => { const n = { ...d }; if (v == null) delete n.volume; else n.volume = v; return n; })} />
             </Row>
             <Row label="LIFE PRESET">
@@ -251,6 +251,9 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               </div>
             </Row>
           </fieldset>
+
+          <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
+            keep={`${modes.length ? `Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. ` : ''}Nothing is sent until SAVE. SAVE updates MC. If the game is already pushed, SAVE re-pushes it to every gun at once; otherwise guns get it at the next push. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.${state.bench_volume != null ? ` This MC runs with --bench-volume ${state.bench_volume}: guns play at ${state.bench_volume}, try-outs included.` : ''}`} />
 
           {/* The one place anything leaves this panel. */}
           {confirmCancel && (
@@ -274,15 +277,15 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               {/* Round-2 fix pass F (2026-09-12): this sat OUTSIDE the fieldset above, so the ONE control
                   on this panel that navigates somewhere was the one the lock did not reach. */}
               <GhostButton size={10.5} pad="8px 12px" disabled={locked}
-                title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
-                onClick={() => { if (!locked) openBuild(); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN BUILD ▸</GhostButton>
+                title={locked ? `THE MATCH IS ${state.phase.toUpperCase()}. RECALL FIRST, THEN EDIT.` : undefined}
+                onClick={() => { if (!locked) openBuild(); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES · OPEN BUILD ▸</GhostButton>
               <span data-testid="game-edit-cancel"><GhostButton size={11} pad="9px 14px" onClick={cancel}>CANCEL</GhostButton></span>
               <span data-testid="game-edit-save">
                 <PrimaryButton onClick={save} disabled={locked || saving || !dirty}
-                  title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.`
+                  title={locked ? `THE MATCH IS ${state.phase.toUpperCase()}. RECALL FIRST, THEN EDIT.`
                     : !dirty ? 'Nothing has changed yet'
-                    : pushed ? 'Sends the whole change to MC in one go, then re-pushes it to every gun. The count on the left drops to 0 and climbs as each one answers.'
-                    : 'Applies the change. Nothing has been loaded to the guns yet — LOAD on the GAMES tab sends it.'}>
+                    : pushed ? 'SAVE updates MC. It re-pushes the config to every gun at once.'
+                    : 'SAVE updates MC. Guns get the config at the next push.'}>
                   {saving ? 'SAVING…' : saveLabel}
                 </PrimaryButton>
               </span>
@@ -311,8 +314,8 @@ const VOLUME_STEPS = [60, 70, 80, 90, 100] as const;
 function venueVolume(environment: string | undefined): number {
   return environment === 'outdoor' ? VENUE_VOLUME_OUTDOOR : VENUE_VOLUME_INDOOR;   // unknown = the quieter, as the server
 }
-function VolumeEditor({ volume, environment, benchVolume, onChange }:
-  { volume: number | null | undefined; environment: string | undefined; benchVolume?: number; onChange: (v: number | null) => void }) {
+function VolumeEditor({ volume, environment, onChange }:
+  { volume: number | null | undefined; environment: string | undefined; onChange: (v: number | null) => void }) {
   const venue = venueVolume(environment);
   const set = volume ?? null;
   const steps: number[] = [...VOLUME_STEPS];
@@ -322,7 +325,6 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
     font: F.chk(on ? 700 : 600, 12), letterSpacing: '.06em', padding: '6px 12px', minHeight: 36, minWidth: 44, cursor: 'pointer',
     background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.acc : T.micro, border: `1px solid ${on ? T.acc : T.line}`,
   });
-  const plays = benchVolume ?? set ?? venue;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div role="group" aria-label="volume" data-testid="game-edit-volume" style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
@@ -337,28 +339,16 @@ function VolumeEditor({ volume, environment, benchVolume, onChange }:
           </button>
         ))}
       </div>
-      <div data-testid="game-edit-volume-note" style={{ font: F.chk(500, 11.5), color: T.micro, lineHeight: 1.45 }}>
-        {set == null
-          ? `PLAYS AT ${venue}: the ${(environment ?? 'indoor').toUpperCase()} venue default.`
-          : `PLAYS AT ${set}, set for this game (the venue default is ${venue}).`}
-        {` ${GAME_VOLUME_MIN} is on-gun level 1, ${GAME_VOLUME_MAX} the loudest.`}
-        {benchVolume == null && ' Try-outs play at 69.'}
-        {/* F221: Tony's rule names BENCH VOL itself NEUTRAL; this inline note states the same fact and
-            now matches, instead of a third amber rendering of it (the audit's own issue note). */}
-        {benchVolume != null && (
-          <span style={{ color: colourOf('frame-bench-volume-override') }}>{` BENCH VOLUME ${benchVolume} OVERRIDES THIS ON THIS RUN: every gun plays at ${plays}, try-outs too.`}</span>
-        )}
-      </div>
     </div>
   );
 }
 
 function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
   { label: string; rule: SlotRule; allowed: string[]; weapons: WeaponView[]; onToggleId: (id: string) => void }) {
-  if (rule.choice === 'off') return <PoolNote label={label} text="OFF for this game — the alt-fire button does nothing." />;
+  if (rule.choice === 'off') return <PoolNote label={label} text="OFF for this game. The alt-fire button does nothing." />;
   if (rule.choice === 'fixed') {
     const w = weapons.find(x => x.weapon_id === rule.fixed_id);
-    return <PoolNote label={label} text={`FIXED — everyone carries ${w?.name ?? rule.fixed_id ?? '—'}.`} />;
+    return <PoolNote label={label} text={`FIXED: everyone carries ${w?.name ?? rule.fixed_id ?? '—'}.`} />;
   }
   const candidates = kindRows(rule, weapons);
   return (
@@ -370,7 +360,7 @@ function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
           const role = roleOf(w.role, w.cls);
           return (
             <button key={w.weapon_id} type="button" className="hit44" aria-pressed={on} onClick={() => onToggleId(w.weapon_id)}
-              title={on ? `${w.name} — allowed, tap to switch off` : `${w.name} — off, tap to allow`}
+              title={on ? `${w.name}: allowed, tap to switch off` : `${w.name}: off, tap to allow`}
               aria-label={`${w.name}, ${on ? 'allowed' : 'off'}`}
               style={{ font: F.chk(600, 11), letterSpacing: '.04em', padding: '5px 10px', minHeight: 36, cursor: 'pointer',
                        background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.ink : T.micro,

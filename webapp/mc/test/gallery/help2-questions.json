@@ -1,0 +1,14 @@
+[
+  {
+    "question": "Should the disabled power-ups note stay behind INFO?",
+    "recommendation": "Keep it behind INFO because the operator must restart MC to restore the feature."
+  },
+  {
+    "question": "Does the dual-emitter total need its caveat in the catalogue?",
+    "recommendation": "Cut it because the metric is optional and the table already names the total."
+  },
+  {
+    "question": "Should the LIVE hill keep the host-decides rule behind INFO?",
+    "recommendation": "Keep it behind INFO because the score does not show who decides before possession reports."
+  }
+]

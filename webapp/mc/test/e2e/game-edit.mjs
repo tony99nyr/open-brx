@@ -655,7 +655,7 @@ async function runFaults(browser, viteBase) {
   expect(/RE-PUSH CONFIG on LOBBY/.test(title ?? ''), `...and names the button that fixes it (saw ${JSON.stringify(title)})`);
   expect(await pg.locator('[data-override="1"]').count() === 0,
     'a force-proof query mismatch never offers HOST OVERRIDE');
-  expect(/CANNOT BE OVERRIDDEN: RE-PUSH CONFIG/.test(rail), 'the rail says why override is absent and names the cure');
+  expect(/RE-PUSH CONFIG/.test(rail), 'the rail keeps the visible cure for the force-proof fault');
   ok(`LOBBY names the stale guns and keeps every instruction   ${await shot(pg, '53-faults-lobby')}`);
   // R2-1 — the button the three fault lines name. Every one of them says RE-PUSH and until now
   // `api.pushLobby` was reachable only while the lobby was UNPUSHED, so the word named nothing.
@@ -714,7 +714,8 @@ async function runFaults(browser, viteBase) {
   expect(/GUN CONFIG ≠ PUSHED HEAD/.test(queryText), 'the isolated scene carries the F271 blocker');
   expect(!/ACKED AN OLDER CONFIG/.test(queryText), 'the isolated scene has no stale-ack reason suppressing override');
   expect(await query.locator('[data-override="1"]').count() === 0, 'F271 alone suppresses HOST OVERRIDE');
-  expect(await query.locator('[data-no-override-reason]').count() === 1, 'F271 alone explains the missing override');
+  expect(await query.locator('[data-no-override-reason]').count() === 0, 'the read-back fault needs no empty reason');
+  expect(await query.locator('button[data-repush="1"]').first().isEnabled(), 'the read-back fault offers RE-PUSH');
   await query.locator('button[data-repush="1"]').first().click();
   await until(async () => !/GUN CONFIG ≠ PUSHED HEAD/.test((await query.locator('main').innerText()).replace(/\s+/g, ' ')),
     8000, 'the isolated F271 blocker to clear');
@@ -756,7 +757,8 @@ async function runFaultsPhone(browser, viteBase) {
       `${what} is inside the viewport (saw ${JSON.stringify(box)})`);
   }
   expect(await pg.locator('[data-override="1"]').count() === 0, 'the force-proof mismatch has no host override');
-  expect(await pg.locator('[data-no-override-reason]').count() === 1, 'the missing override is explained on screen');
+  expect(await pg.locator('[data-no-override-reason]').count() === 0, 'the phone-width rail has no empty reason');
+  expect(/GUN CONFIG ≠ PUSHED HEAD/.test((await pg.locator('main').innerText()).replace(/\s+/g, ' ')), 'the phone-width board names the read-back fault');
   // ...and nothing on this screen paints outside its own box. The roster row's callsign span was
   // `flex: 1; minWidth: 0`, which at 393 px collapsed to 26 px — narrower than one callsign — so the
   // name overflowed and was drawn ON TOP of the LAN tag next to it (measured here, 2026-09-13).

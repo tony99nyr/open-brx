@@ -43,7 +43,7 @@ import { boardHeader } from '../api/derive';
 import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { ClockSub, Num, ScrollX, useTick } from '../ui';
-import { TEAM_KILL_NOTE, bestStreak } from './Live';
+import { bestStreak } from './Live';
 import { heldSeconds, hillOwner, sitesNote } from './objective';
 import { objectiveWord } from '../rules/scoring';
 import { colourOf } from '../alerts';
@@ -219,7 +219,7 @@ function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNod
       {wanted && (
         <div data-spectate="escape" data-alert="spectate-escape-line" data-sev="neutral" role="status"
           style={{ ...chk(600, SZ.label), letterSpacing: '.18em', color: colourOf('spectate-escape-line'), marginTop: 12, flex: 'none' }}>
-          {wanted.toUpperCase()} IS A CONSOLE SCREEN: THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted.toUpperCase()}.
+          {`Reload this tab to open ${wanted === 'kit' ? 'KIT' : wanted}.`}
         </div>
       )}
     </div>
@@ -385,7 +385,7 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
     {rows.some(r => r.kills < 0) && (
       <div data-spectate="team-kill-note" data-alert="spectate-team-kill-note" data-sev="neutral"
         style={{ ...chk(600, SZ.label), letterSpacing: '.12em', color: colourOf('spectate-team-kill-note'), marginTop: 8, flex: 'none' }}>
-        K BELOW ZERO: {TEAM_KILL_NOTE}
+        A team kill costs one kill, so K and K/D can fall below zero.
       </div>
     )}
     </>
@@ -464,7 +464,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
   // frag-cap dead heat with) and TEAM ids everywhere else — `label` on a player id fell through to
   // the raw hex id.
   const tieLabel = (id: string) => (state?.config.mode === 'ffa' ? name(id) : label(id));
-  const headline = w.tie?.length ? `TIE — ${w.tie.map(tieLabel).join(' / ')}`
+  const headline = w.tie?.length ? `TIE: ${w.tie.map(tieLabel).join(' / ')}`
     : w.player_id ? `${name(w.player_id)} WINS`
     : w.team_id ? `${label(w.team_id)} WINS`
     : 'MATCH OVER';

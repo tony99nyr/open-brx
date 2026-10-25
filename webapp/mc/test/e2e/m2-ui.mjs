@@ -529,11 +529,14 @@ async function runMock(browser, viteBase, vp, tag) {
   await pg.locator('[data-logsync] button', { hasText: before === 'auto' ? 'MANUAL' : 'AUTO' }).click();
   await until(async () => (await modeNow()) !== before, 8000, 'the LOG SYNC switch to move');
   ok(`A25: LOG SYNC ${before} → ${await modeNow()} (the switch writes and the snapshot comes back)`);
-  // Bench 2026-09-17 (Tony): no legend under the switch; the LOG SYNC label carries a short tooltip.
+  // The INFO button explains the log sync modes.
   expect(await pg.locator('[data-logsync-legend]').count() === 0, 'no legend under the LOG SYNC switch');
-  const tip = await pg.locator('[data-logsync-label]').getAttribute('title');
-  expect(new RegExp(`^${await modeNow()}`, 'i').test(tip || ''), `the tooltip describes the mode the switch is in (${tip})`);
-  ok(`A25 tooltip: "${tip}"`);
+  const logInfo = pg.getByTestId('help2-log-sync-info');
+  expect(await logInfo.getAttribute('aria-expanded') === 'false', 'the LOG SYNC detail starts closed');
+  await logInfo.click();
+  const detail = await pg.getByTestId('armory-log-sync-note').innerText();
+  expect(detail.includes('Auto collects logs after the match.') && detail.includes('Manual collects a log when you press Logs.'), 'the opened detail explains both modes');
+  ok(`A25 INFO: "${detail}"`);
   // F-armory-dedup (2026-09-17): not scoped to `[data-node-card]` any more — a bound phone's log row now
   // lives on its GUN CARD instead, once that phone's own node card is hidden as a duplicate.
   const states = await pg.locator('[data-log-state]').evaluateAll(els =>

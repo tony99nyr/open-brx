@@ -66,6 +66,14 @@ describe('every screen renders', () => {
   });
 });
 
+it('LIVE names the empty match state and links back to LOBBY', async () => {
+  const d = await demo();
+  const m = await mountScreen(<Live />, { ...d, view: 'live' });
+  expect(m.text()).toContain('No match is live.');
+  expect(m.find('button').some(b => b.textContent?.includes('LOBBY'))).toBe(true);
+  m.unmount();
+});
+
 describe('a screen that gets its snapshot late still works', () => {
   it('kit renders its own content, not just something', async () => {
     // the parameterised case above proves no screen THROWS; this one proves KIT actually arrives

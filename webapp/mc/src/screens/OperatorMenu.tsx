@@ -4,7 +4,7 @@ import type { LiveRow, OperatorCmd } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { colourOf, glyphed } from '../alerts';
-import { FaultPill } from '../ui/Compact';
+import { FaultPill, HelpNote } from '../ui/Compact';
 
 /** A47 (bench 2026-09-17): the operator's cures for ONE player in a bad state, e.g. a gun that cannot fire.
  *  Each goes to that player's phone only (`POST /api/players/{pid}/operator`), and the phone does the work.
@@ -50,12 +50,29 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
     return () => clearTimeout(id);
   }, [armed]);
   useEffect(() => { setArmed(null); }, [r.status]);
-  // M7 (visual QA 2026-09-24): at 1440×900 a row near the bottom opened its menu below the fold, so the
-  // host tapped and saw nothing change. The menu brings itself into view once, when it opens.
+  // A menu opened on the last row must move into the scrollable screen after its height settles.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const frame = requestAnimationFrame(() => box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'auto' }));
-    return () => cancelAnimationFrame(frame);
+    const menu = box.current;
+    if (!menu) return;
+    const reveal = () => {
+      const ancestors: HTMLElement[] = [];
+      for (let parent = menu.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
+      const scrollable = ancestors.find(parent =>
+        parent.scrollHeight > parent.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(parent).overflowY));
+      const screen = scrollable ?? document.scrollingElement;
+      if (!screen) return;
+      const bounds = menu.getBoundingClientRect();
+      const frame = screen === document.scrollingElement
+        ? { top: 0, bottom: window.innerHeight }
+        : screen.getBoundingClientRect();
+      if (bounds.bottom > frame.bottom - 4) screen.scrollTop += bounds.bottom - frame.bottom + 8;
+      else if (bounds.top < frame.top + 4) screen.scrollTop -= frame.top - bounds.top + 8;
+    };
+    const frame = requestAnimationFrame(reveal);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal);
+    observer?.observe(menu);
+    return () => { cancelAnimationFrame(frame); observer?.disconnect(); };
   }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);
@@ -80,11 +97,7 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
           style={{ font: F.chk(600, 11), letterSpacing: '.16em', background: 'transparent', color: T.dim,
                    border: `1px solid ${T.line}`, padding: '8px 14px', minHeight: 40, cursor: 'pointer' }}>CLOSE</button>
       </div>
-      {!inPlay ? (
-        <div data-op-unavailable="phase" data-alert="frame-op-not-in-play" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-not-in-play'), lineHeight: 1.5 }}>
-          THE MATCH IS NOT IN PLAY. NOTHING CAN BE SENT.
-        </div>
-      ) : outOfReach ? (
+      {!inPlay ? null : outOfReach ? (
         // F221 (2026-09-25): a gun/phone link lost DURING a match is RED — the boxed row, per Tony's
         // rule for a gun card. Was a quiet T.dim line; a live-match link loss is act-now, not status.
         <div data-op-unavailable="reach"><FaultPill id="frame-op-out-of-reach" short={`${who} is out of reach`}
@@ -92,7 +105,7 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
         </div>
       ) : <>{!live && (
         <div data-op-unavailable="armed" data-alert="frame-op-wait-t0" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-wait-t0'), lineHeight: 1.5 }}>
-          RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.
+          <HelpNote label="Action timing" infoTestid="help2-operator-info" keep="Resync and respawn work at T-0. Relink works now." />
         </div>
       )}{offered.map(a => {
         const downResync = a.cmd === 'resync' && r.status === 'down';

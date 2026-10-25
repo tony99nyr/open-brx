@@ -62,7 +62,10 @@ winner, team score or honours on the console or in API winner fields. `/api/reca
 rows for the sync table. RECAP resume restores the end reason, A42 watch and saved idle age without a second END.
 The console and mock follow those rules. Round 3 passed pyright, chaos and soak tests, 4,317 system Python tests,
 4,565 venv Python tests, 1,758 Vitest tests, TypeScript and four named browser jobs. The 2026-10 log records the evidence.
-**Next:** review this worktree diff and land it through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
+F599 phase 2 final fixes are uncommitted on `brx3/f599-2`: the report warning, pre-push readiness reason, GAME INFO,
+locked KIT wording, sentence case tooltips and rendered-state tests. TypeScript, 1,794 Vitest tests and nine named browser
+jobs pass. The rebuilt gallery is at `/mnt/c/Users/Tony/brx-console-help-2-built/`.
+**Next:** review and land the two worktree diffs through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
 
 **A81 result release (uncommitted on `brx3/result-release`, 2026-10-25):** MC withholds `result`, `score`,
 `victory` and welcome result/score while RECAP waits. Release flushes result and score together. Late facts and

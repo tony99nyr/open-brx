@@ -241,7 +241,11 @@ try {
     expect(await score(T1) === '—', `before any report, ${T1.toUpperCase()}'s headline is a dash, not a kill score (saw "${await score(T1)}")`);
     const panel = pg.getByTestId('hill-panel');
     expect(await panel.isVisible().catch(() => false), 'the hill panel is on the LIVE board');
-    expect((await panel.innerText().catch(() => '')).includes('NO PHONE HAS REPORTED POSSESSION YET'), 'and it says no phone has reported possession');
+    const possessionInfo = pg.getByTestId('help2-live-hill-info');
+    expect(await possessionInfo.isVisible().catch(() => false), 'and the possession INFO control is visible');
+    await possessionInfo.click();
+    expect(await possessionInfo.getAttribute('aria-expanded') === 'true', 'the possession detail opens on click');
+    expect((await panel.innerText().catch(() => '')).includes('No phone has reported possession. The host decides the winner until one does.'), 'and the opened detail explains the host decision before a report');
     await nodes.cmd(`possession GUN-A ${tid[T1]}=214000,${tid[T2]}=131000 441000`);
     const moved = await until(async () => (await score(T1)) === '3:34' && (await score(T2)) === '2:11', 8000);
     expect(moved, `a real possession fact makes the headline ${T1.toUpperCase()} 3:34 · ${T2.toUpperCase()} 2:11 (saw "${await score(T1)}" / "${await score(T2)}")`);
@@ -305,7 +309,7 @@ try {
     expect(await until(async () => (await pg.locator(`[data-live-row="${target}"] [data-cell="k"]`).textContent()) !== kBefore, 8000),
       'control: the board received the kill');
     expect(JSON.stringify(await order()) === JSON.stringify(before), 'with the pointer on the board, the rows did not move');
-    expect(await pg.getByTestId('order-held').isVisible().catch(() => false), 'and the board says the order is held');
+    expect(await pg.locator('[data-live-rows]').getAttribute('data-order-held') === '1', 'the board records that the order is held');
     await shot(pg, 'order-held-1280');
     await pg.mouse.move(5, 790);
     expect(await until(async () => (await order())[0] === target, 4000), 'moving the pointer off the board re-sorts it');
@@ -376,7 +380,10 @@ try {
     expect(await until(() => seen.ws > 0, 5000), `the socket snapshots were stripped too (rest ${seen.rest}, ws ${seen.ws})`);
     const t1 = (await pg.locator(`[data-team-score="${T1}"]`).innerText().catch(() => '')).trim();
     expect(t1 === '—', `with no possession field the headline is a dash, never a kill score (saw "${t1}")`);
-    expect((await pg.getByTestId('hill-panel').innerText().catch(() => '')).includes('NO PHONE HAS REPORTED'), 'and the hill panel says nothing has been reported');
+    const possessionInfo = pg.getByTestId('help2-live-hill-info');
+    expect(await possessionInfo.isVisible().catch(() => false), 'and the possession INFO control is visible');
+    await possessionInfo.click();
+    expect((await pg.getByTestId('hill-panel').innerText().catch(() => '')).includes('No phone has reported possession. The host decides the winner until one does.'), 'and the opened detail explains the host decision before a report');
     await shot(pg, 'old-server-1280');
     await pg.context().close();
   });

@@ -6,7 +6,7 @@
 // every snapshot as `stations`): what was ASSIGNED, what the phone was last ARMED with, what the phone
 // itself REPORTS, and the attention flags the server derives from the three disagreeing. Until
 // 2026-09-11 none of this existed, so no station was ever armed in the field.
-import { FaultPill, ItemChip } from '../ui/Compact';
+import { FaultPill, ItemChip, HelpNote } from '../ui/Compact';
 import { HillReadout } from '../ui/HillReadout';
 import { useEffect, useState } from 'react';
 import type { PowerupPreset, StationDeparture, StationItem, StationKind, StationView, TxPower } from '../api/types';
@@ -34,7 +34,7 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
 const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: the label and the edit's starting point for threshold 0 (the rule itself is `defaultThreshold`). */
-const cap = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();   // F599 prototype: sentence case
+const cap = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();
 
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
   const start = defaultThreshold(kind, stick);
@@ -89,7 +89,7 @@ export function Items() {
         {awayBlock}
         {focusHill && <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px' }}>
-          <span>NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.</span>
+          <HelpNote label="Add a station" infoTestid="help2-items-hill-info" keep="Power on a StickS3 or tap an idle phone seven times to switch it to utility station mode." />
           {backToPlay}
         </div>}
       </div>
@@ -105,12 +105,12 @@ export function Items() {
       {focusHill && (
         <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px', marginBottom: 10 }}>
-          <span>ASSIGN A PHONE OR STICK AS CONTROL BELOW: THAT IS YOUR HILL FOR KING OF THE HILL.</span>
+          <span>Assign a station as Control below.</span>
           {backToPlay}
         </div>
       )}
       <SectionRule label={`ITEMS // ${stations.length} STATION${stations.length === 1 ? '' : 'S'}`}
-        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? '—'} · ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED</>} />
+        hint={<>{nArmed}/{stations.length} ARMED{nAttention > 0 && <span data-items-attention style={{ color: colourOf('items-need-attention-count') }}> · {nAttention} NEED ATTENTION</span>} · GAME {state.game_byte ?? '—'}</>} />
       <HillReadout config={state.config} style={{ marginBottom: 10 }} />
       {awayBlock}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
@@ -417,7 +417,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             split={stick
               // a Stick has no HUD: a release drops it to UNASSIGNED and unlocks it, and its link stays (station_link.h apply_release)
               ? 'RELEASE DROPS THIS STICKS3 TO UNASSIGNED RIGHT NOW, EVEN LIVE, AND UNLOCKS IT. IT STAYS LINKED, SO YOU CAN ASSIGN IT AGAIN HERE.'
-              : 'RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.'}
+              : 'Release sends this phone back to its own HUD, even live. After it leaves, this console cannot reach it. Walk to it and tap seven times to return it to utility mode.'}
             action={`TAP ${releaseLabel} AGAIN TO SEND IT`} />
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -485,9 +485,9 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
     effective?: StationItem | null }) {
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
-  if (pu.s === 'loading') return note('READING THE ITEM LIST…');
+  if (pu.s === 'loading') return null;
   if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
-  if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
+  if (!pu.v.enabled) return note(<HelpNote label="Items unavailable" infoTestid="help2-items-picker-info" keep={`Power-ups are disabled for this MC. Restart MC with ${POWERUPS_RESTART} to assign an item.`} />, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>
@@ -511,7 +511,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
           );
         })}
       </div>
-      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM</div>}
+      {locked && <div data-testid="item-locked" style={{ font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-itempicker-locked') }}>Recall or end to change items.</div>}
     </div>
   );
 }

@@ -372,7 +372,7 @@ describe('F154 polish — an FFA tie names players, never raw ids', () => {
     const state = ffaTieState(d);
     const m = await mountScreen(<Spectate />, { ...d, state });
     const [p1, p2] = d.state.players;
-    expect(m.text()).toContain(`TIE — ${p1.display} / ${p2.display}`);
+    expect(m.text()).toContain(`TIE: ${p1.display} / ${p2.display}`);
     expect(m.text()).not.toContain(p1.player_id);
     m.unmount();
   });

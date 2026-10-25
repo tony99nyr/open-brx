@@ -203,8 +203,8 @@ describe('S25 · the spectator board', () => {
     const m = await spectate({}, { wantedView: 'kit' });
     const line = m.find('[data-spectate="escape"]')[0];
     expect(line, 'the board says which screen is waiting').toBeTruthy();
-    expect(line.textContent).toMatch(/RELOAD/);
-    expect(line.textContent).toContain('KIT');
+    expect(line.textContent).toMatch(/Reload/i);
+    expect(line.textContent).toMatch(/kit/i);
     expect(fontOf(line), 'readable like everything else on this board').toBeGreaterThanOrEqual(16);
     expect(m.find('button, a[href], input, [role="button"]').length, 'still not a control in sight').toBe(0);
     m.unmount();

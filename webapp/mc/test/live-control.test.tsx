@@ -97,6 +97,7 @@ describe('LIVE · END / RECALL report what the server said', () => {
   it('RECALL reports itself as a recall, never as an ended match', async () => {
     const m = await liveScreen({ ok: true, ended: true, reached: 8, pushed: 8, nodes: 8, phase: 'kit' });
     await m.click('RECALL');
+    expect(m.find('button').find(b => b.textContent?.includes('CONFIRM RECALL'))?.textContent).toContain('CONFIRM RECALL: REVIVES & HOLDS EVERYONE IN RANGE');
     await m.click('CONFIRM RECALL');
     expect(m.calls).toEqual(['recall']);
     expect(m.text()).toContain('RECALLED · REACHED 8 OF 8 NODES');

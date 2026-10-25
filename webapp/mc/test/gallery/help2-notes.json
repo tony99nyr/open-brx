@@ -1,0 +1,462 @@
+[
+  {
+    "id": "live-no-match",
+    "file": "src/screens/Live.tsx",
+    "line": 121,
+    "screen": "LIVE",
+    "current": "NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0.",
+    "proposal": "INLINE",
+    "wording": "No match is live.",
+    "reason": "The LIVE screen needs an empty state and a LOBBY link."
+  },
+  {
+    "id": "live-order-held",
+    "file": "src/screens/Live.tsx",
+    "line": 287,
+    "screen": "LIVE",
+    "current": "ORDER HELD WHILE THE POINTER IS ON THE BOARD OR A MENU IS OPEN. IT RE-SORTS WHEN YOU MOVE AWAY.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Sorting resumes on pointer exit"
+  },
+  {
+    "id": "live-team-kill",
+    "file": "src/screens/Live.tsx",
+    "line": 65,
+    "screen": "LIVE",
+    "current": "A TEAM KILL COSTS THE SHOOTER ONE KILL, SO K AND K/D CAN GO BELOW ZERO.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Score explains the result"
+  },
+  {
+    "id": "live-first-sync",
+    "file": "src/screens/Live.tsx",
+    "line": 327,
+    "screen": "LIVE feed",
+    "current": "WAITING FOR THE FIRST SYNC POINT…",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Empty feed is self-evident"
+  },
+  {
+    "id": "live-withheld",
+    "file": "src/screens/Live.tsx",
+    "line": 364,
+    "screen": "LIVE feed",
+    "current": "WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.",
+    "proposal": "INFO",
+    "wording": "Withheld means MC recorded the event but did not call it to players.",
+    "reason": "Explains a non-obvious feed state"
+  },
+  {
+    "id": "live-after-whistle",
+    "file": "src/screens/Live.tsx",
+    "line": 369,
+    "screen": "LIVE feed",
+    "current": "AFTER WHISTLE = A KILL AFTER THE END. IT IS NOT IN THE SCORE, THE RESULTS, THE AWARDS OR THE MEDALS.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Label and score already distinguish it"
+  },
+  {
+    "id": "live-hill-none",
+    "file": "src/screens/Live.tsx",
+    "line": 435,
+    "screen": "LIVE hill",
+    "current": "NO PHONE HAS REPORTED POSSESSION YET. THE {word} TIME SHOWS HERE WHEN ONE DOES; UNTIL THEN THE WINNER IS THE HOST'S CALL.",
+    "proposal": "INFO",
+    "wording": "No phone has reported possession. The host decides the winner until one does.",
+    "reason": "Winner rule is not otherwise visible"
+  },
+  {
+    "id": "armed-no-schedule",
+    "file": "src/screens/Armed.tsx",
+    "line": 49,
+    "screen": "ARMED",
+    "current": "NO SCHEDULE: PUSH CONFIG AND ARM FROM THE LOBBY.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Lobby action is the only available path"
+  },
+  {
+    "id": "kit-empty-slot",
+    "file": "src/screens/kit/cards.tsx",
+    "line": 53,
+    "screen": "KIT slot cards",
+    "current": "Alt-fire does nothing · tap to pick / Rides beside the weapons · tap to pick",
+    "proposal": "INLINE",
+    "wording": "Tap to pick.",
+    "reason": "Needed to explain the empty slot action"
+  },
+  {
+    "id": "kit-dual-emitter",
+    "file": "src/screens/kit/cards.tsx",
+    "line": 158,
+    "screen": "KIT weapon cards",
+    "current": "* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Advanced metric caveat is optional"
+  },
+  {
+    "id": "kit-passive-perk",
+    "file": "src/screens/kit/cards.tsx",
+    "line": 208,
+    "screen": "KIT perk cards",
+    "current": "PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT · TAKES THE ALT BUTTON OR RIDES BESIDE BOTH WEAPONS",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Card and slot state convey this"
+  },
+  {
+    "id": "items-item-list-loading",
+    "file": "src/screens/Items.tsx",
+    "line": 488,
+    "screen": "ITEMS picker",
+    "current": "READING THE ITEM LIST…",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Loading state needs no explanation"
+  },
+  {
+    "id": "items-powerups-off",
+    "file": "src/screens/Items.tsx",
+    "line": 490,
+    "screen": "ITEMS picker",
+    "current": "POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: {POWERUPS_RESTART}",
+    "proposal": "INFO",
+    "wording": "Power-ups are disabled for this MC. Restart MC with ./start.sh (no --no-powerups flag) to assign an item.",
+    "reason": "Required to restore the unavailable feature"
+  },
+  {
+    "id": "items-locked",
+    "file": "src/screens/Items.tsx",
+    "line": 515,
+    "screen": "ITEMS picker",
+    "current": "LOCKED FOR THE MATCH: RECALL OR END IT TO CHANGE THIS STATION'S ITEM",
+    "proposal": "INLINE",
+    "wording": "Recall or end to change items.",
+    "reason": "Gives the required unlock action"
+  },
+  {
+    "id": "build-title-note",
+    "file": "src/screens/Build.tsx",
+    "line": 181,
+    "screen": "BUILD",
+    "current": "BUILD CREATES PRESETS. PLAY PICKS THEM.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Navigation labels explain the split"
+  },
+  {
+    "id": "spawn-delay",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 115,
+    "screen": "BUILD spawn editor",
+    "current": "1S OR 2S IS NOT ALLOWED — IT WEDGES THE HEADSET, SO IT SNAPS UP TO 3S",
+    "proposal": "INFO",
+    "wording": "One or two seconds can wedge the headset. The delay snaps to three seconds.",
+    "reason": "Explains a non-obvious value adjustment"
+  },
+  {
+    "id": "spawn-gate",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 142,
+    "screen": "BUILD spawn editor",
+    "current": "NOT YET SUPPORTED — ONLY TRIGGER IS BENCH-PROVEN",
+    "proposal": "INFO",
+    "wording": "The station gate is not supported; only the trigger is bench-proven.",
+    "reason": "Shares one INFO with delay"
+  },
+  {
+    "id": "fixed-item-required",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 186,
+    "screen": "BUILD slot editor",
+    "current": "PICK ONE TO SAVE THIS PRESET",
+    "proposal": "INLINE",
+    "wording": "Pick an item to save this preset.",
+    "reason": "Required to complete the save"
+  },
+  {
+    "id": "type-snapshot",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 197,
+    "screen": "BUILD slot editor",
+    "current": "A SNAPSHOT — DOES NOT UPDATE IF A NEW WEAPON OF THIS TYPE IS ADDED LATER",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Selection behaves visibly as a snapshot"
+  },
+  {
+    "id": "only-these-empty",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 208,
+    "screen": "BUILD slot editor",
+    "current": "EMPTY = ANY OF THE ABOVE",
+    "proposal": "INFO",
+    "wording": "Leave this empty to allow any listed item.",
+    "reason": "Explains the empty selection meaning"
+  },
+  {
+    "id": "heavies-rule",
+    "file": "src/screens/presets/editors.tsx",
+    "line": 231,
+    "screen": "BUILD loadout editor",
+    "current": "OFF EXCLUDES HEAVY WEAPONS FROM PRIMARY AND SECONDARY, UNLESS THAT SLOT ALREADY EXCLUDES ITS OWN",
+    "proposal": "INFO",
+    "wording": "When off, heavy weapons are excluded from primary and secondary, unless that slot already excludes them.",
+    "reason": "Explains precedence in the toggle"
+  },
+  {
+    "id": "catalogue-intro",
+    "file": "src/screens/Catalog.tsx",
+    "line": 76,
+    "screen": "CATALOGUE",
+    "current": "NOTHING HERE CHANGES A LOADOUT — BROWSE FREELY. METERS RANK EACH WEAPON AGAINST THE WHOLE ARSENAL; THE NUMBERS BESIDE THEM ARE REAL.",
+    "proposal": "INFO",
+    "wording": "Browsing does not change a loadout. Bars compare weapons across the arsenal.",
+    "reason": "Read-only behaviour and meter basis are not obvious"
+  },
+  {
+    "id": "catalogue-pool",
+    "file": "src/screens/Catalog.tsx",
+    "line": 79,
+    "screen": "CATALOGUE",
+    "current": "HITS AND TIME TO KILL ARE AT THIS GAME'S {pool} POOL (HP + ARMOUR).",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Pool is named beside the values"
+  },
+  {
+    "id": "catalogue-dual",
+    "file": "src/screens/Catalog.tsx",
+    "line": 80,
+    "screen": "CATALOGUE",
+    "current": "* DUAL EMITTER TOTAL PER TRIGGER WHEN BOTH WORDS LAND.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Advanced metric caveat is optional"
+  },
+  {
+    "id": "lobby-no-override",
+    "file": "src/screens/Lobby.tsx",
+    "line": 585,
+    "screen": "LOBBY",
+    "current": "CANNOT BE OVERRIDDEN: RE-PUSH CONFIG BEFORE THE COUNTDOWN",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Action and deadline are explicit"
+  },
+  {
+    "id": "lobby-ready-closed",
+    "file": "src/screens/Lobby.tsx",
+    "line": 590,
+    "screen": "LOBBY",
+    "current": "MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {phase}, NOT LOBBY.",
+    "proposal": "INLINE",
+    "wording": "Push config first.",
+    "reason": "The button is unavailable before the first push."
+  },
+  {
+    "id": "operator-not-in-play",
+    "file": "src/screens/OperatorMenu.tsx",
+    "line": 85,
+    "screen": "Operator menu",
+    "current": "THE MATCH IS NOT IN PLAY. NOTHING CAN BE SENT.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Unavailable controls need no duplicate note"
+  },
+  {
+    "id": "operator-wait-t0",
+    "file": "src/screens/OperatorMenu.tsx",
+    "line": 95,
+    "screen": "Operator menu",
+    "current": "RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.",
+    "proposal": "INFO",
+    "wording": "Resync and respawn work at T-0. Relink works now.",
+    "reason": "Explains different action availability"
+  },
+  {
+    "id": "spectate-escape",
+    "file": "src/screens/Spectate.tsx",
+    "line": 222,
+    "screen": "Spectate",
+    "current": "{wanted} IS A CONSOLE SCREEN: THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted}.",
+    "proposal": "INLINE",
+    "wording": "Reload this tab to open {wanted}.",
+    "reason": "Explains the latched board route"
+  },
+  {
+    "id": "report-idle",
+    "file": "src/ui/ReportPanel.tsx",
+    "line": 111,
+    "screen": "Report panel",
+    "current": "THIS MAKES A REPORT FROM THIS SESSION",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "The privacy INFO note covers the needed context"
+  },
+  {
+    "id": "items-focus-hill-no-station",
+    "file": "src/screens/Items.tsx",
+    "line": 92,
+    "screen": "ITEMS hill setup",
+    "current": "NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.",
+    "proposal": "INFO",
+    "wording": "Power on a StickS3 or tap an idle phone seven times to switch it to utility station mode.",
+    "reason": "Explains how to add the missing station"
+  },
+  {
+    "id": "items-focus-hill-assign",
+    "file": "src/screens/Items.tsx",
+    "line": 108,
+    "screen": "ITEMS hill setup",
+    "current": "ASSIGN A PHONE OR STICK AS CONTROL BELOW: THAT IS YOUR HILL FOR KING OF THE HILL.",
+    "proposal": "INLINE",
+    "wording": "Assign a station as Control below.",
+    "reason": "Labels the required Control assignment"
+  },
+  {
+    "id": "items-section-hint",
+    "file": "src/screens/Items.tsx",
+    "line": 113,
+    "screen": "ITEMS section header",
+    "current": "ASSIGN, THEN PLACE: A STATION NEEDS NO WI-FI ONCE ARMED",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Section summary can go"
+  },
+  {
+    "id": "kit-empty-hero",
+    "file": "src/screens/Kit.tsx",
+    "line": 475,
+    "screen": "KIT focused slot",
+    "current": "A perk rides beside the weapons — pick one below, or leave it empty; that is a valid kit. / The alt-fire button does nothing. Pick a second weapon from the arsenal below — or leave it empty; that is a valid kit.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Card already offers pick and empty states"
+  },
+  {
+    "id": "armory-log-sync-tooltip",
+    "file": "src/screens/Armory.tsx",
+    "line": 186,
+    "screen": "ARMORY log sync",
+    "current": "Auto: MC collects each phone log after the match. The LOGS button always works. / Manual: MC collects a log only when you press LOGS.",
+    "proposal": "INFO",
+    "wording": "Auto collects logs after the match. Manual collects a log when you press Logs.",
+    "reason": "Explains a setting that changes collection"
+  },
+  {
+    "id": "armory-section-hint",
+    "file": "src/screens/Armory.tsx",
+    "line": 263,
+    "screen": "ARMORY phone section",
+    "current": "WITH OR WITHOUT A GUN",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Section label detail, not help copy"
+  },
+  {
+    "id": "armory-known-guns-hint",
+    "file": "src/screens/Armory.tsx",
+    "line": 279,
+    "screen": "ARMORY known guns",
+    "current": "POWERED OFF, OUT OF RANGE, OR NOT YET CLAIMED BY A PHONE",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Describes the heading states"
+  },
+  {
+    "id": "armory-unclaimed-hint",
+    "file": "src/screens/Armory.tsx",
+    "line": 287,
+    "screen": "ARMORY unclaimed guns",
+    "current": "HAND THEM OUT — A PHONE MUST CLAIM EACH GUN",
+    "proposal": "INLINE",
+    "wording": "Give each gun to a phone user.",
+    "reason": "Needed next step for unclaimed guns"
+  },
+  {
+    "id": "game-edit-mode-change",
+    "file": "src/ui/GameEditPanel.tsx",
+    "line": 227,
+    "screen": "Game editor",
+    "current": "Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until Save.",
+    "proposal": "INFO",
+    "wording": "Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC. If the game is already pushed, SAVE re-pushes it to every gun at once; otherwise guns get it at the next push. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.",
+    "reason": "The one editor INFO covers mode, push timing, volume and health rules."
+  },
+  {
+    "id": "game-edit-volume",
+    "file": "src/ui/GameEditPanel.tsx",
+    "line": 341,
+    "screen": "Game editor volume",
+    "current": "PLAYS AT {venue or set}: the venue default or selected game level. {min} is on-gun level 1, {max} the loudest. Try-outs play at 69. Bench volume overrides this on this run; every gun plays at {plays}, try-outs too.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Fold into the editor info note"
+  },
+  {
+    "id": "report-privacy-summary",
+    "file": "src/ui/ReportPanel.tsx",
+    "line": 110,
+    "screen": "Report panel",
+    "current": "This makes a report from this session. Names, tagger ids, IP addresses and the access code are removed. GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.",
+    "proposal": "INFO",
+    "wording": "Names you typed in the console stay in the report, and it goes to a public GitHub issue.",
+    "reason": "Privacy details affect the posting decision"
+  },
+  {
+    "id": "frame-connecting",
+    "file": "src/App.tsx",
+    "line": 41,
+    "screen": "Frame connecting",
+    "current": "CONNECTING TO MISSION CONTROL… IF THIS DOES NOT CLEAR, CHECK THAT THE MC SERVER IS RUNNING.",
+    "proposal": "INLINE",
+    "wording": "Connecting. Check the MC server if stalled.",
+    "reason": "An empty waiting screen gives no status"
+  },
+  {
+    "id": "frame-token-prompt",
+    "file": "src/App.tsx",
+    "line": 39,
+    "screen": "Frame token prompt",
+    "current": "{OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} {OPERATOR_TOKEN.code}… {OPERATOR_TOKEN.actPost}, OR PASTE THE TOKEN ABOVE.",
+    "proposal": "INLINE",
+    "wording": "Open MC's token link or paste the token.",
+    "reason": "Required to unlock the console"
+  },
+  {
+    "id": "bench-volume-tooltip",
+    "file": "src/frame/CommandBar.tsx",
+    "line": 191,
+    "screen": "Command bar bench volume",
+    "current": "MC was started with --bench-volume {n}: every gun plays at {n}, not the venue level. Not for a real game.",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "Bench volume label is explicit"
+  },
+  {
+    "id": "lobby-operator-note",
+    "file": "src/screens/Lobby.tsx",
+    "line": 305,
+    "screen": "LOBBY operator note",
+    "current": "TEAM HITS DON'T COUNT",
+    "proposal": "CUT",
+    "wording": "",
+    "reason": "PLAY already has mode notes"
+  },
+  {
+    "id": "debug-token-prompt",
+    "file": "src/screens/Debug.tsx",
+    "line": 53,
+    "screen": "Debug token prompt",
+    "current": "{OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} {OPERATOR_TOKEN.code} {OPERATOR_TOKEN.actPost}",
+    "proposal": "INLINE",
+    "wording": "Open MC's token link or paste the token.",
+    "reason": "Required to unlock the console"
+  }
+]

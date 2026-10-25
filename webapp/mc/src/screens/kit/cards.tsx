@@ -50,7 +50,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
           <span style={{ width: 64, height: 44, flex: 'none', border: `1px dashed ${T.line2}`, display: 'grid', placeItems: 'center', font: F.osw(700, 20), color: T.faint }}>—</span>
           <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', color: T.dim }}>{choice === 'off' ? 'OFF' : slot === 'perk' ? 'NO PERK' : 'EMPTY'}</span>
-            <span style={{ font: F.chk(500, 11), color: T.micro }}>{choice === 'off' ? (slot === 'perk' ? 'This game has no perks — change it in GAMES' : 'This game has no slot 2 — change it in GAMES') : matchLocked ? (slot === 'perk' ? 'Rides beside the weapons' : 'Alt-fire does nothing') : slot === 'perk' ? 'Rides beside the weapons · tap to pick' : 'Alt-fire does nothing · tap to pick'}</span>
+            <span style={{ font: F.chk(500, 11), color: T.micro }}>{!locked ? 'Tap to pick.' : null}</span>
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
@@ -107,7 +107,7 @@ export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBu
       <SectionRule label={`ARSENAL // ${slot.toUpperCase()} · ${summary}`} hint={hint} style={{ marginBottom: 0 }} />
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty — alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
+          {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty: alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
         </div>
       )}
     </div>
@@ -128,7 +128,7 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
           <span style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase' }}>{w.name}</span>
           <Tag color={role.color} style={{ letterSpacing: '.22em', padding: '3px 10px' }}>{role.label}</Tag>
-          {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
+          {!w.verified && <span title="Retuned from the captured Callsign frame for balance, not the stock numbers" style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>TUNED · NOT STOCK</span>}
           {/* F221: briefing information (a known hardware quirk), not a live fault — amber, not red. */}
           {w.caution && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.14em', color: colourOf('kit-weapon-caution-hero') }}>{GLYPH} {w.caution.toUpperCase()}</span>}
         </div>
@@ -155,7 +155,6 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
           {w.ttk_ms != null && <NumberCell label="TIME TO KILL" value={+(w.ttk_ms / 1000).toFixed(2)} unit="s" size={20} pad="6px 14px" />}
         </div>
         {w.desc && <div style={{ font: F.chk(500, 12), lineHeight: 1.5, color: T.dim, maxWidth: '54ch' }}>{w.desc}</div>}
-        {w.dual_emitter && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, maxWidth: '54ch' }}>* ONE TRIGGER MAY EMIT SEPARATE GUN AND HEADSET WORDS; THE TOTAL ASSUMES BOTH LAND.</div>}
         {tryingId && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('kit-tryout-banner') }}>
             {GLYPH} TRYING OUT ON {sp.display}'S GUN: HAVE THEM FIRE A FEW ROUNDS · POINT AWAY FROM OTHERS
@@ -175,7 +174,6 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
 }
 
 export function PerkHero({ k }: { k: PerkView }) {
-  const fx = k.effects ?? {};
   const gain = k.gain ?? [], cost = k.cost ?? [];
   return (
     <>
@@ -205,7 +203,6 @@ export function PerkHero({ k }: { k: PerkView }) {
           </div>
         )}
         <div style={{ font: F.chk(500, 13), lineHeight: 1.5, color: T.body, maxWidth: '54ch' }}>{k.desc}</div>
-        <div style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>PASSIVE — APPLIED TO THE GUN WHEN THE GAME IS PUSHED · NOTHING TO TRY OUT{fx.alt_reload ? ' · TAKES THE ALT BUTTON: NO SECOND WEAPON WITH THIS ONE' : ' · RIDES BESIDE BOTH WEAPONS'}</div>
       </div>
     </>
   );
@@ -267,10 +264,8 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
     // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
     // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
     // setup without offering a write the server refuses.
-    // 'kit-pool-note-on' is NEUTRAL (F221 polish, 2026-09-25): a deliberate, host-set difference is a
-    // status, not a fix-before-match amber, so the whole card border/label reads the same colour as the
-    // note at the bottom of it, not a hardcoded T.warn.
-    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? colourOf('kit-pool-note-on') : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
+    // A deliberate pool override stays neutral, with its state shown on the card.
+    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? T.dim : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
         <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={11} pad="4px 12px"
@@ -280,11 +275,11 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
       </div>
       {/* F221: a two-tap confirm (drops the second weapon) — UNCHANGED per Tony's rule. */}
       {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
-      {/* F221: explanatory copy, always shown — NEUTRAL, no glyph (matches kit-easy-note-off/on). */}
+      {/* A divider separates the reload and pool controls. */}
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? colourOf('kit-pool-note-on') : T.dim }}>POOL</span>
-        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? colourOf('kit-pool-note-on') : T.micro }}>
+        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: T.dim }}>POOL</span>
+        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? T.dim : T.micro }}>
           {on ? `${mult}\u00d7 GAME POOL` : 'GAME DEFAULT'}
         </span>
       </div>
@@ -301,8 +296,7 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
           </div>
         );
       })}
-      {/* F221: a deliberate, host-set difference either way \u2014 NEUTRAL, no glyph (kit-pool-note-off/on). */}
-      {on && !locked && <GhostButton onClick={onClear} color={colourOf('kit-pool-note-on')} border={colourOf('kit-pool-note-on')} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+      {on && !locked && <GhostButton onClick={onClear} color={T.dim} border={T.dim} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </fieldset>
   );
 }

@@ -177,9 +177,6 @@ export function Build() {
     // all -- one screen looked narrow next to the other for no reason. Match PLAY: no cap here either.
     <div style={{ padding: '24px 28px 60px' }}>
       <ScreenHeader kicker="[ BUILD ]" title="BUILD" right={<GhostButton onClick={backToPlay}>◂ BACK TO PLAY</GhostButton>} />
-      <p style={{ font: F.chk(500, 12), color: T.dim, margin: '0 0 20px', maxWidth: 640 }}>
-        BUILD CREATES PRESETS. PLAY PICKS THEM.
-      </p>
 
       {/* Review Low: gated on `connected` the same way Games.tsx's own sibling banner is now -- a
           stale piecesError must not flash on every reconnect blip while the console is already saying
@@ -218,13 +215,13 @@ export function Build() {
               back, or the server's own phase advancing under an unattended tab) -- naming what it is
               says what tapping again actually leaves for, which a bare "leave" does not. `confirmLeave`
               (BUILD's own kind-tab/back-button confirm) has no other view to name. */}
-          ▲ UNSAVED CHANGES{navBlockedTo ? ` — TAP AGAIN TO LEAVE FOR ${viewLabel(navBlockedTo)} WITHOUT SAVING` : ' — TAP AGAIN TO LEAVE WITHOUT SAVING'}
+          ▲ UNSAVED CHANGES{navBlockedTo ? ` · TAP AGAIN TO LEAVE FOR ${viewLabel(navBlockedTo)} WITHOUT SAVING` : ' · TAP AGAIN TO LEAVE WITHOUT SAVING'}
         </div>
       )}
 
       {!editing && (
         <>
-          <SectionRule label={`${meta.label} — PRESETS`} style={{ marginBottom: 12 }} />
+          <SectionRule label={`${meta.label} · PRESETS`} style={{ marginBottom: 12 }} />
           <Shelf>
             {list.map(p => (
               // QA-24 (visual QA round 1): a read-only tab (GAME MODE, GAMEPLAY) never has a NEW

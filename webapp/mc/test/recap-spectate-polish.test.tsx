@@ -129,7 +129,7 @@ describe('2 · RECAP during LIVE is not a finished match', () => {
 describe('4 · a negative K carries a team-kill icon (F596: no note line)', () => {
   it('RECAP puts a small icon beside the negative K, with the reason as its hover', async () => {
     const m = await recap();
-    expect(m.find('[data-testid="team-kill-note"]').length, 'the full-width note is gone').toBe(0);
+    expect(strip(m.text())).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
     const icons = m.find('[data-testid="team-kill-icon"]');
     expect(icons.length).toBe(1);
     expect(strip(icons[0].getAttribute('title') ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
@@ -214,7 +214,7 @@ describe('3 · SPECTATE rows stay readable', () => {
   it('carries the team-kill note when a K is below zero', async () => {
     const m = await spectate([liveRow(0, 2), liveRow(1, -1)]);
     const note = m.find('[data-spectate="team-kill-note"]')[0];
-    expect(strip(note?.textContent ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(note?.textContent?.trim()).toBe('A team kill costs one kill, so K and K/D can fall below zero.');
     expect(parseFloat(getComputedStyle(note).fontSize), 'nothing on the board under 16 px').toBeGreaterThanOrEqual(16);
     m.unmount();
     const clean = await spectate([liveRow(0, 2)]);

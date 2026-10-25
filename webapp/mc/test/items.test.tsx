@@ -305,9 +305,7 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const confirm = m.find('[data-testid="confirm-switch"]');
     expect(confirm.length, 'the tap-again confirm must appear').toBe(1);
     // the field consequence (blast radius), not a generic warning
-    expect(confirm[0].textContent).toMatch(/EVEN LIVE/);
-    expect(confirm[0].textContent).toMatch(/NOTHING ON THIS CONSOLE CAN REACH IT AGAIN/);
-    expect(confirm[0].textContent).toMatch(/SEVEN-TAP GESTURE/);
+    expect(confirm[0].textContent).toContain('Release sends this phone back to its own HUD, even live. After it leaves, this console cannot reach it. Walk to it and tap seven times to return it to utility mode.');
     // and it says what the SECOND tap does, so tapping the same button again is not a guess
     expect(confirm[0].textContent).toMatch(/TAP RELEASE ▸ HUD AGAIN/);
     m.unmount();
