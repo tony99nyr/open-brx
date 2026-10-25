@@ -12,7 +12,7 @@
 import { FaultPill, ItemChip, HelpNote } from '../ui/Compact';
 import { useEffect, useRef, useState } from 'react';
 import { StationAlerts } from '../ui/StationAlerts';
-import { STATION_CONFLICT, conflictWords, friendlySetupLine, setupLines } from '../ui/SetupSteps';
+import { STATION_CONFLICT, friendlySetupLine, setupLines } from '../ui/SetupSteps';
 import { CONFIG_ERRORS_ALERT_ID } from '../api/derive';
 import type { Favourite, GamePick, GamePiece, HillSettings, MatchSettings, PieceKind, TeamColour } from '../api/types';
 import { setNotice } from '../notice';
@@ -223,24 +223,17 @@ export function Games() {
           {[...state.config_warnings!].filter(w => /HAS NOT SYNCED THE LAST MATCH/.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
             return line.sev === 'red'
-              ? <FaultPill key={`sync-${i}`} id={line.id} testid="games-station-not-synced" short="Station not synced" why={w} />
-              : <ItemChip key={`sync-${i}`} id={line.id} testid="games-station-not-synced" short="Station not synced" detail={w} />;
+              ? <FaultPill key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" short="Station not synced" why={w} role="status" />
+              : <ItemChip key={`sync-${i}`} id={line.id} sev={line.sev} testid="games-station-not-synced" short="Station not synced" detail={w} />;
           })}
           {setupLines(state.config_warnings).filter(w => STATION_CONFLICT.test(w)).map((w, i) => {
             const line = serverLine(w, 'amber');
-            // VQA QA-17: the raw server words say "respawn is set to station" now (matching the SPAWN
-            // picker's own STATION option), but the shared friendly-rewrite table (ui/SetupSteps.tsx,
-            // another lane's file this round) still hard-codes "scanner" — override the words here,
-            // in the one file this fix owns, and add the button the KOTH block already has.
             const isRespawnSetup = /NO RESPAWN STATION IS ASSIGNED/i.test(w);
-            const words = isRespawnSetup
-              ? 'NO RESPAWN STATION IS ASSIGNED, AND RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION. ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT.'
-              : conflictWords(w);
             return (
               <div key={`setup-conflict-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {line.sev === 'red'
-                  ? <FaultPill id={line.id} testid="games-setup-line" short="Station conflict" why={words.charAt(0) + words.slice(1).toLowerCase()} />
-                  : <ItemChip id={line.id} testid="games-setup-line" inline short={isRespawnSetup ? 'Respawn station missing' : 'Station conflict'} detail={isRespawnSetup ? 'Respawn is set to a station, but none is assigned, so a downed player can only come back at a station. Assign a station as respawn in ITEMS and arm it.' : words.charAt(0) + words.slice(1).toLowerCase()} />}
+                  ? <FaultPill id={line.id} sev={line.sev} testid="games-setup-line" short="Station conflict" why={w} role="status" />
+                  : <ItemChip id={line.id} sev={line.sev} testid="games-setup-line" inline short={isRespawnSetup ? 'Respawn station missing' : 'Station conflict'} detail={w} />}
                 {isRespawnSetup && (
                   <span data-testid="assign-a-respawn-station">
                     <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={() => setView('muster')}>ASSIGN A RESPAWN STATION ▸</GhostButton>
@@ -249,9 +242,7 @@ export function Games() {
               </div>
             );
           })}
-          {/* QA-26: upper case, the same transform its STATION_CONFLICT sibling above already uses
-              (`conflictWords` = `friendlySetupLine(w).toUpperCase()`) -- this was the one setup line
-              left in mixed case, with internal terms, on an otherwise all-caps screen. */}
+          {/* Non-conflict setup steps remain in the standing status region. */}
           {setupLines(state.config_warnings).filter(w => !STATION_CONFLICT.test(w)).map((w, i) => (
             <div key={`setup-step-${i}`} data-testid="games-setup-step" style={{ font: F.chk(500, 12), letterSpacing: '.02em', lineHeight: 1.5, color: T.body }}>
               {friendlySetupLine(w).toUpperCase()}
@@ -299,7 +290,9 @@ export function Games() {
       {!missingPick && !realFault && kothNoHill && (
         <div data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <ItemChip id="games-koth-no-hill" inline short="No hill assigned"
-            detail="King of the Hill needs one phone or Stick set as the hill, in ARMORY." />
+            detail={<>King of the Hill needs one phone or Stick set as the hill, in ARMORY.
+              {state.station_departures?.filter(d => d.kind === 'control').map(d =>
+                <span key={d.node_id} data-testid="games-hill-departed" style={{ display: 'block', marginTop: 4 }}>{d.line}</span>)}</>} />
           <span data-testid="assign-a-hill">
             <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={assignAHill}>ASSIGN A HILL ▸</GhostButton>
           </span>
@@ -394,7 +387,7 @@ export function Games() {
                       onChange={id => pickPiece(kind, id)} />
                   )}
                   {kind === 'mode' && note.length > 0 && (
-                    <HelpNote label="Mode notes" keep={note.map((l, i) => <span key={i} style={{ display: 'block' }}>{l.charAt(0) + l.slice(1).toLowerCase()}</span>)} />
+                    <HelpNote label="Mode notes" testid="operator-note" keep={note.map((l, i) => <span key={i} style={{ display: 'block' }}>{l}</span>)} />
                   )}
                 </div>
               );

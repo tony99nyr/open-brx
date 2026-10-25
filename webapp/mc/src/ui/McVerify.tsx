@@ -35,7 +35,7 @@ export function friendlyMcVerifyLine(raw: string): string {
     return `${n} phone${n === 1 ? '' : 's'} ${n === 1 ? 'is' : 'are'} off-grid (${names[1]}). `
       + 'Wins are confirmed at MC, so tell players to come back after the whistle.';
   }
-  // Fallback for an unrecognised shape: never invent facts, just stop shouting and drop the em dash.
+  // Fallback for an unrecognised shape: keep MC's labels and ids unchanged.
   const flat = raw.replace(/\s*·\s*/g, '. ').replace(/\s*—\s*/g, '. ');
-  return flat.charAt(0).toUpperCase() + flat.slice(1).toLowerCase();
+  return flat;
 }

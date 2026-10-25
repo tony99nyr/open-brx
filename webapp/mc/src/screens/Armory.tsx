@@ -8,7 +8,7 @@ import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { StationAlerts } from '../ui/StationAlerts';
-import { STATION_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
+import { STATION_CONFLICT, setupLines } from '../ui/SetupSteps';
 import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag, Val } from '../ui';
 import { TagHint } from '../ui/TagHint';
 import { TAG_INPUT_MAX, tagError } from '../api/tag';
@@ -229,10 +229,10 @@ export function Armory() {
                 {/* `serverLine` keeps the server line's id and severity. The full reason opens from the chip. */}
                 {setupNeeds.map((w, i) => {
                   const line = serverLine(w, 'amber');
-                  const detail = conflictWords(w);
+                  const detail = w;
                   return line.sev === 'red'
-                    ? <FaultPill key={i} id={line.id} short="Station conflict" why={detail} />
-                    : <ItemChip key={i} id={line.id} short="Station setup needed" detail={detail} />;
+                    ? <FaultPill key={i} id={line.id} sev={line.sev} short="Station conflict" why={detail} role="status" />
+                    : <ItemChip key={i} id={line.id} sev={line.sev} short="Station setup needed" detail={detail} />;
                 })}
               </div>
             )}
@@ -324,7 +324,7 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
   // Keep the fault by the button row so the operator sees the reason before trying again.
   const errLine = linkErr ? (
     <div data-backhaul-error="1">
-      <ItemChip id="armory-backhaul-error" short="Backhaul failed" detail={linkErr} />
+      <ItemChip id="armory-backhaul-error" short="Backhaul failed" detail={linkErr} role="alert" />
     </div>
   ) : null;
   let control: ReactNode = null;
@@ -396,10 +396,10 @@ function RestoredBanner() {
     : '—';
   return (
     <div data-testid="restored-banner" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <ItemChip id="armory-restored-banner" short={`Session restored · ${r.players} player${r.players === 1 ? '' : 's'}`}
+      <ItemChip id="armory-restored-banner" role="alert" short={`Session restored · ${r.players} player${r.players === 1 ? '' : 's'}`}
         detail={`Restored from ${stamp}. Check the roster before you kit out.`}>
         <button type="button" disabled={busy} onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
-          style={{ font: F.chk(600, 12), padding: '3px 10px', minHeight: 26, background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, cursor: 'pointer' }}>{busy ? 'Starting…' : 'New session ▸'}</button>
+          style={{ font: F.chk(600, 12), padding: '3px 10px', minHeight: 26, background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, cursor: 'pointer' }}>{busy ? 'Starting…' : 'New session, clear roster ▸'}</button>
       </ItemChip>
     </div>
   );
@@ -573,8 +573,8 @@ function GunCard({ g }: { g: ReadinessRow }) {
             // MC words the detail, and `serverLine` keeps its catalogue id and severity.
             const line = b;
             const { id, sev } = serverLine(line, blocking ? 'blocker' : 'amber');
-            if (sev === 'red') return <FaultPill key={`${i}-${b}`} id={id} short="Check this gun" why={line} />;
-            if (sev === 'amber') return <ItemChip key={`${i}-${b}`} id={id} short={id === 'armory-amber-app-older-field' ? 'App update needed' : 'Gun needs attention'} detail={line} />;
+            if (sev === 'red') return <FaultPill key={`${i}-${b}`} id={id} sev={sev} short="Check this gun" why={line} />;
+            if (sev === 'amber') return <ItemChip key={`${i}-${b}`} id={id} sev={sev} short={id === 'armory-amber-app-older-field' ? 'App update needed' : 'Gun needs attention'} detail={line} />;
             return <Alert key={`${i}-${b}`} id={id} sev={sev} variant="row">{line}</Alert>;
           })}
         </div>
@@ -715,8 +715,7 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
             {claiming ? 'SETTING…' : 'SET GAMERTAG'}
           </button>
           {/* the operator's team stays a LOBBY decision; the server auto-balances a new claim */}
-          {claimErr && <div role="alert" data-claim-error={n.node_id ?? ''} data-alert="armory-nodecard-claim-error" data-sev="amber"
-            style={{ font: F.chk(700, 11), letterSpacing: '.05em', color: colourOf('armory-nodecard-claim-error'), textTransform: 'none' }}>{glyphed('amber', claimErr.toUpperCase())}</div>}
+          {claimErr && <div data-claim-error={n.node_id ?? ''}><ItemChip id="armory-nodecard-claim-error" role="alert" short="Claim refused" detail={claimErr} /></div>}
         </form>
       )}
     </div>

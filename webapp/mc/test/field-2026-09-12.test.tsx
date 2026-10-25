@@ -147,6 +147,7 @@ describe('F142 — restored-session banner', () => {
     const m = await mountScreen(<Armory />, { ...d, state, api: { newSession } });
     expect(m.find('[data-testid="restored-banner"]').length).toBe(1);
     expect(m.text()).toContain('Session restored · 1 player');
+    expect(m.text()).toContain('New session, clear roster ▸');
     expect(m.find('[data-testid="restored-banner"]')[0].querySelector('button')?.getAttribute('aria-expanded')).toBe('false');
     await m.click('Session restored');
     expect(m.find('[data-testid="restored-banner"]')[0].textContent).toContain('Restored from');

@@ -129,7 +129,7 @@ describe('H2 · a CONTROL station under a grenade objective is a conflict, not a
     expect(line, 'the conflict line is on the CONTROL card').toBeTruthy();
     expect(line!.textContent).toContain('Station setup conflict');
     await act(async () => { line!.querySelector('button')?.click(); });
-    expect(line!.textContent?.toLowerCase()).toMatch(/every phone ignores its hill/);
+    expect(line!.textContent).toContain(REVERSE);
     expect(card.getAttribute('style') ?? '').not.toContain('rgb(46, 204, 113)');
     m.unmount();
   });
@@ -174,10 +174,10 @@ describe('M5 · Station Alerts carry every attention line of an assigned station
       station('b', { assigned: { kind: 'respawn', team: 255, id: 2, threshold: 0 }, attention: ['STATION #2 RESTARTED: CHECK THE STATION'] }),
     ] });
     const t = m.text();
-    expect(t).toContain('Station battery low');
-    expect(t).toContain('Station needs attention');
-    await m.click('Station battery low');
-    await m.click('Station needs attention');
+    expect(t).toContain('Respawn 1 battery low');
+    expect(t).toContain('Respawn 2 needs attention');
+    await m.click('Respawn 1 battery low');
+    await m.click('Respawn 2 needs attention');
     expect(m.text()).toContain('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
     expect(m.text()).toContain('STATION #2 RESTARTED: CHECK THE STATION');
     expect(m.text(), 'a line that names no station says which one').toMatch(/RESPAWN 1/);
@@ -302,20 +302,13 @@ describe('M11 · ARMORY says when the game needs a station that is not assigned'
   });
 });
 
-describe('M12 · the GAMES rail SETUP warnings are the friendly rewrite, upper case, and name no device the server did not', () => {
-  // F221 polish r1: GAMES used to draw every `SETUP:` line as one flat amber chip, so the control-vs-
-  // grenade conflict (RED in the catalogue) read exactly like this ordinary reminder. Each line now
-  // goes through `serverLine` and is upper case, WHAT: DO, like every other catalogued alert, but it
-  // is still the FRIENDLY rewrite (`friendlySetupLine`), never the raw server sentence with its
-  // semicolons and the device name the server never sent.
-  it('renders the friendly line, upper case, not the raw server copy', async () => {
+describe('M12 · the GAMES rail keeps MC setup details intact', () => {
+  it('opens the exact server line behind the short label', async () => {
     const { m } = await screen(<Games />, { phase: 'build', config_warnings: [NO_RESPAWN] });
     const t = m.text();
     expect(t).toContain('Respawn station missing');
     await m.click('Respawn station missing');
-    // VQA round 1 QA-17: the picker calls this option STATION, never the wire word SCANNER — the
-    // friendly rewrite must use the operator's own vocabulary, not the raw server sentence's.
-    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent?.toLowerCase()).toContain('respawn is set to a station');
+    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent).toBe(NO_RESPAWN);
     expect(t).not.toMatch(/utility phone/i);
     m.unmount();
   });

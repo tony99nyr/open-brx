@@ -46,10 +46,9 @@ export function friendlySetupLine(raw: string): string {
     const m = body.match(known.test);
     return known.line.replace('$1', m?.[1] ?? 'this team');
   }
-  // Fallback for a `SETUP:` body not yet on the list above: drop a trailing internal id like
-  // "(F88: ...)", stop shouting, and turn the em dash into a full stop rather than showing it raw.
+  // Keep unknown server words intact so a node label or screen name keeps its exact case.
   const stripped = body.replace(/\s*\([A-Z]\d+:[^)]*\)\s*$/, '').replace(/\s*—\s*/g, '. ');
-  return stripped.charAt(0).toUpperCase() + stripped.slice(1).toLowerCase();
+  return stripped;
 }
 
 /** H2 (visual QA 2026-09-24): the SETUP lines where the game and the ITEMS assignments disagree. They are

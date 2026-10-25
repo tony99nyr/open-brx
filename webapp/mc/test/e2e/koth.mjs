@@ -444,14 +444,17 @@ step('objective-row', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { ms: 6000 });
+  const info = pg.getByRole('button', { name: 'Mode notes' });
+  expect(await info.count() === 1, 'the Mode notes INFO button shows for a station-gated mode');
+  await info.click();
   const note = pg.getByTestId('operator-note');
-  expect(await note.count() > 0, 'the operator note shows for a station-gated mode');
+  expect(await note.count() > 0, 'the opened operator note shows for a station-gated mode');
   const v = (await note.textContent()).trim();
   expect(/PLACE THE HILL BEFORE START/.test(v), `the note names the field step (saw ${JSON.stringify(v)})`);
   expect(await note.isVisible(), 'the note is visible, not merely in the DOM');
   // and it must be ABSENT for a mode with nothing to place (FFA carries no note, games-redesign.md §9)
   await pickMode(pg, 'FREE-FOR-ALL', { ms: 6000 });
-  await until(() => pg.getByTestId('operator-note').count().then(n => n === 0), 6000, 'the operator note to disappear for FFA');
+  expect(await pg.getByRole('button', { name: 'Mode notes' }).count() === 0, 'FFA has no Mode notes INFO button');
   ok(`operator note names the field step on koth, absent on ffa  ${await shot(pg, '03-objective-row')}`);
   await closePage(pg);
 });

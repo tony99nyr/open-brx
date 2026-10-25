@@ -10,6 +10,7 @@ import { Items } from '../src/screens/Items';
 import { Kit } from '../src/screens/Kit';
 import { StoreCtx } from '../src/store';
 import { FaultPill, HelpNote, ItemChip } from '../src/ui/Compact';
+import { LoadError } from '../src/ui/LoadError';
 import { demo, makeStore, mount } from './harness';
 
 async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: string, detail: string, hoverSelector = selector) {
@@ -34,13 +35,13 @@ async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: strin
 
 describe('F599 console copy', () => {
   it('opens FaultPill detail on hover and pins it with a tap', async () => {
-    const m = await mount(<FaultPill id="fault" short="MC offline" why="Check the server." />);
-    await revealCycle(m, 'button', 'Check the server.', '[data-alert="fault"]');
+    const m = await mount(<FaultPill id="frame-mc-offline" short="MC offline" why="Check the server." />);
+    await revealCycle(m, 'button', 'Check the server.', '[data-alert="frame-mc-offline"]');
     m.unmount();
   });
 
   it('opens ItemChip detail on hover and pins it with a tap', async () => {
-    const m = await mount(<ItemChip id="chip" short="Kit locked" detail="Change it after the whistle." />);
+    const m = await mount(<ItemChip id="kit-slot-note-locked" short="Kit locked" detail="Change it after the whistle." />);
     await revealCycle(m, 'button', 'Change it after the whistle.');
     m.unmount();
   });
@@ -48,6 +49,75 @@ describe('F599 console copy', () => {
   it('opens HelpNote detail on hover and pins it with a tap', async () => {
     const m = await mount(<HelpNote label="INFO" keep="Players pick on their phone." />);
     await revealCycle(m, 'button', 'Players pick on their phone.');
+    m.unmount();
+  });
+
+  it('closes hovered detail on tap until the pointer leaves and returns', async () => {
+    for (const node of [
+      <FaultPill key="fault" id="frame-mc-offline" short="MC offline" why="Check the server." />,
+      <ItemChip key="chip" id="kit-slot-note-locked" short="Kit locked" detail="Check the kit." />,
+    ]) {
+      const m = await mount(node);
+      const wrapper = m.find('[data-alert]')[0]?.closest('div') as HTMLElement;
+      const button = m.find('button')[0] as HTMLButtonElement;
+      const hoverTarget = node.key === 'chip' ? button : wrapper;
+      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      await act(async () => { button.click(); });
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })); });
+      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      m.unmount();
+    }
+  });
+
+  it('takes chip and failed-load severity from the catalogue and exposes live roles', async () => {
+    const cases = [
+      <FaultPill key="red" id="frame-mc-offline" role="status" short="MC offline" why="Check MC." />,
+      <ItemChip key="amber" id="kit-slot-note-locked" short="Kit locked" detail="Check kit." />,
+      <ItemChip key="alert" id="frame-catalogue-unavailable" short="Catalogue unavailable" role="alert" detail="Retry." />,
+      ...['games-pieces-error', 'games-favourites-error', 'kit-load-error'].map(id =>
+        <LoadError key={id} id={id} testid={id} retryTestid={`${id}-retry`} what="the list" error="MC refused." onRetry={() => {}} />),
+    ];
+    for (const node of cases) {
+      const m = await mount(node);
+      const alert = m.find('[data-alert]')[0];
+      const id = alert.getAttribute('data-alert')!;
+      expect(alert.getAttribute('data-sev'), id).toBe(sevOf(id));
+      const live = alert.tagName === 'BUTTON' ? alert.parentElement! : alert;
+      expect(live.getAttribute('role'), id).toBe(id === 'frame-catalogue-unavailable' ? 'alert' : 'status');
+      m.unmount();
+    }
+  });
+
+  it("keeps a chip's hover target within its visible width", async () => {
+    const m = await mount(<ItemChip id="kit-slot-note-locked" short="Kit locked" detail="Check kit." />);
+    const button = m.find('button[data-alert]')[0];
+    const wrapper = button.parentElement as HTMLElement;
+    expect(wrapper.style.display).toBe('inline-flex');
+    await act(async () => { wrapper.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+    expect(m.text()).not.toContain('Check kit.');
+    await act(async () => { button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+    expect(m.text()).toContain('Check kit.');
+    m.unmount();
+  });
+
+  it('puts the HelpNote test id on the opened body and a separate id on INFO', async () => {
+    const m = await mount(<HelpNote label="INFO" testid="operator-note" keep="Player picks." />);
+    expect(m.find('[data-testid="help-info"]')).toHaveLength(1);
+    expect(m.find('[data-testid="operator-note"]')).toHaveLength(0);
+    await m.click('INFO');
+    expect(m.find('[data-testid="operator-note"]')[0]?.textContent).toBe('Player picks.');
+    m.unmount();
+  });
+
+  it('shows static fault and chip details without a control', async () => {
+    const m = await mount(<><FaultPill id="frame-mc-offline" short="MC offline" why="Check MC." static />
+      <ItemChip id="kit-slot-note-locked" short="Kit locked" detail="Check kit." static /></>);
+    expect(m.find('button')).toHaveLength(0);
+    expect(m.text()).toContain('Check MC.');
+    expect(m.text()).toContain('Check kit.');
     m.unmount();
   });
 

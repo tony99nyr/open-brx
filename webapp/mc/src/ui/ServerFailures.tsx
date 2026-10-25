@@ -14,34 +14,33 @@ export function ServerFailures() {
   const { state } = useStore();
   if (!state) return null;
   const now = state.t;
-  const rows: { id: string; testid: string; title: string; short: string; why: string; fix: string }[] = [];
+  const rows: { id: string; testid: string; short: string; why: string; fix: string }[] = [];
   const ns = state.not_saving;
   if (ns?.store) {
-    rows.push({ id: 'server-not-saving-store', testid: 'not-saving-store', title: `${ns.store.count} writes failed${since(ns.store.since, now)}: ${ns.store.error}`,
+    rows.push({ id: 'server-not-saving-store', testid: 'not-saving-store',
       short: 'Not saving game data', why: `A result can be lost. ${ns.store.count} writes failed${since(ns.store.since, now)}: ${ns.store.error}`, fix: 'Check the disk and the MC log.' });
   }
   if (ns?.archive) {
     // the match's own start / end row: the result itself. Cleared only by a later archive write, never by a log write.
-    rows.push({ id: 'server-not-saving-archive', testid: 'not-saving-archive', title: `${ns.archive.count} writes failed${since(ns.archive.since, now)}: ${ns.archive.error}`,
+    rows.push({ id: 'server-not-saving-archive', testid: 'not-saving-archive',
       short: 'Not saving this result', why: `The result can be lost. ${ns.archive.count} writes failed${since(ns.archive.since, now)}: ${ns.archive.error}`, fix: 'Check the disk and the MC log.' });
   }
   if (ns?.snapshot) {
     // a restart resumes an ARMED or LIVE match from this file, so the same failure is RED then
     const inPlay = state.phase === 'armed' || state.phase === 'live';
     rows.push({ id: inPlay ? 'server-not-saving-snapshot-live' : 'server-not-saving-snapshot', testid: 'not-saving-snapshot',
-      title: `${ns.snapshot.count} writes failed${since(ns.snapshot.since, now)}: ${ns.snapshot.error}`,
       short: 'Not saving the session', why: `${inPlay ? 'A restart cannot resume this match.' : 'A restart loses the roster.'} ${ns.snapshot.count} writes failed${since(ns.snapshot.since, now)}: ${ns.snapshot.error}`, fix: 'Check the disk and the MC log.' });
   }
   if (state.ticker_failing) {
     const t = state.ticker_failing;
     // never advise a restart while the session file is failing: the restart would lose what is not saved
     const notSaving = !!(ns?.snapshot || ns?.store || ns?.archive);
-    rows.push({ id: 'server-ticker-failing', testid: 'ticker-failing', title: `${t.count} ticks failed${since(t.since, now)}: ${t.error}`,
+    rows.push({ id: 'server-ticker-failing', testid: 'ticker-failing',
       short: 'Match clock failing', why: `A match will not go live or end. ${t.count} ticks failed${since(t.since, now)}: ${t.error}`, fix: notSaving ? 'Check the MC log. Do not restart while MC is not saving.' : 'Restart MC.' });
   }
   if (state.join_error) {
     const { ws_url, error } = state.join_error;
-    rows.push({ id: 'server-join-info-failed', testid: 'join-info-failed', title: `${error}; the QR holds ${ws_url || 'no address'}`,
+    rows.push({ id: 'server-join-info-failed', testid: 'join-info-failed',
       short: ws_url ? 'Join address out of date' : 'Join QR has no address', why: `${ws_url ? 'The QR may be out of date.' : 'The QR holds no address.'} ${error}`, fix: 'Check the laptop network, then restart MC.' });
   }
   if (!rows.length) return null;

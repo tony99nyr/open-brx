@@ -247,7 +247,7 @@ export function Live() {
               <div style={{ marginBottom: 12 }}>
                 {edSev === 'red'
                   ? <FaultPill id={edId} testid="end-delivery" short="End did not reach phones" why={edLine.text} />
-                  : <ItemChip id={edId} testid="end-delivery" short="End still reaching phones" detail={edLine.text} />}
+                  : <ItemChip id={edId} testid="end-delivery" short="End still reaching phones" detail={edLine.text} role="alert" />}
               </div>
             );
             return (
@@ -314,7 +314,6 @@ export function Live() {
               {/* F540 review: a refused token also leaves the socket down; that is not "MC IS OFFLINE" */}
               {offline && authRequired && <span data-testid="controls-token" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('frame-token-required-app') }}>{operatorTokenLine()}</span>}
               {offline && !authRequired && <FaultPill id="live-controls-offline" testid="controls-offline" short="Controls offline" why={OFFLINE_WHY} />}
-              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT MATCH TIME {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
           </ScrollX>

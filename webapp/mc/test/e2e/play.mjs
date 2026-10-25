@@ -841,6 +841,7 @@ step('real-teams-hold', async ({ browser }) => {
     ok('TEAMS: KOTH fixes the count at 2 and never offers yellow, against a real MC');
 
     // control: the operator note must NOT already read a hold target before one is set.
+    await pg.getByRole('button', { name: 'Mode notes' }).click();
     const noteBefore = await pg.getByTestId('operator-note').innerText();
     expect(!/FIRST TO HOLD/.test(noteBefore), `control: no hold target note yet (saw ${JSON.stringify(noteBefore)})`);
     await pg.getByTestId('match-hold-value').click();

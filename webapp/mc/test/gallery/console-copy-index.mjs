@@ -13,7 +13,7 @@ const GROUPS = [
 ];
 const cap = id => caps.find(c => c.id === id)?.cap ?? id;
 const fig = (id, kind, label) => has(`${id}-${kind}.png`) ? `<figure><figcaption>${label}</figcaption><a href="${id}-${kind}.png"><img src="${id}-${kind}.png" alt="${id} ${label}" width="1280" height="720" loading="lazy"></a></figure>` : '';
-const card = id => `<section class="frame" id="${id}"><h3>${id}</h3><p class="cap">${cap(id)}</p><div class="pair">${fig(id, 'current', 'Default copy')}</div>${has(`${id}-open.png`) ? `<div class="pair">${fig(id, 'open', 'Detail opened')}</div>` : ''}</section>`;
+const card = id => `<section class="frame" id="${id}"><h3>${id}</h3><p class="cap">${cap(id)}</p><div class="pair">${fig(id, 'before', 'Before (main)')}${fig(id, 'current', 'After (F599)')}</div>${has(`${id}-open.png`) ? `<div class="pair">${fig(id, 'open', 'Detail opened')}</div>` : ''}</section>`;
 const html = `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Console copy cleanup F599</title>
 <style>
 :root{--bg:#0b0f14;--panel:#121923;--ink:#e8eef5;--dim:#9db0c2;--line:#25313f;--acc:#39b4ff;--red:#ff5252;--amber:#ffb020}

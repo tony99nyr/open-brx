@@ -20,9 +20,9 @@ import { ItemStationRow, Swatch } from '../ui/Powerups';
 import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val, ValueBox } from '../ui';
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
-import { CONTROL_CONFLICT, conflictWords, setupLines } from '../ui/SetupSteps';
+import { CONTROL_CONFLICT, setupLines } from '../ui/SetupSteps';
 import { AlertTag } from '../ui/Alert';
-import { GLYPH, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
+import { SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
 
 const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
@@ -71,7 +71,7 @@ export function Items() {
     <div data-testid="items-departures" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
       {away.map(d => (
         <div key={d.node_id} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <ItemChip id="items-station-departed" testid="station-departure" inline short={`${cap(STATION_KIND_SHORT[d.kind])} ${d.id} left`} detail={d.line.charAt(0) + d.line.slice(1).toLowerCase()} />
+          <ItemChip id="items-station-departed" testid="station-departure" inline short={`${cap(STATION_KIND_SHORT[d.kind])} ${d.id} left`} detail={d.line} />
           {/* polish r1 M2(b): a phone that stays a player would otherwise leave this line up every match */}
           <DismissDeparture node_id={d.node_id} />
         </div>
@@ -332,16 +332,14 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
       {/* a standing fact, so a status region that is always mounted (it announces when the line arrives).
           F221: RED — Tony names the KOTH grenade-vs-control conflict by name as RED, the game is wrong. */}
       <div role="status" data-station-setup-region={s.node_id} style={{ display: 'contents' }}>
-        {/* F221 polish r2: same words, same case as GAMES/LOBBY's own conflict line (`SetupConflicts`,
-            `conflictWords()`) — this card used to hand-draw the glyph and keep sentence case, so the
-            one fact read differently on three screens. */}
+        {/* The opened detail keeps MC's exact conflict line. */}
         {setupConflict && (
-          <FaultPill id="items-setup-conflict" testid="station-setup-conflict" short="Station setup conflict" why={conflictWords(setupConflict)} />
+          <FaultPill id="items-setup-conflict" testid="station-setup-conflict" short="Station setup conflict" why={setupConflict} role="status" />
         )}
       </div>
       {departure && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <ItemChip id="items-station-departed" testid="station-departure" short={`${cap(STATION_KIND_SHORT[departure.kind])} ${departure.id} left`} detail={departure.line.charAt(0) + departure.line.slice(1).toLowerCase()} />
+          <ItemChip id="items-station-departed" testid="station-departure" short={`${cap(STATION_KIND_SHORT[departure.kind])} ${departure.id} left`} detail={departure.line} />
           {/* L7 (overnight review): DISMISS sits beside RESTORE here too, not only on the away block above */}
           <span style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {canRestore && (
@@ -364,8 +362,8 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             const line = serverLine(t, 'amber');
             const short = line.id === 'station-attention-bring-back' ? 'Station out of range' : line.id.includes('battery') ? 'Station battery low' : 'Station needs attention';
             return line.sev === 'red'
-              ? <FaultPill key={t} id={line.id} short={short} why={t} />
-              : <ItemChip key={t} id={line.id} short={short} detail={t} />;
+              ? <FaultPill key={t} id={line.id} sev={line.sev} short={short} why={t} />
+              : <ItemChip key={t} id={line.id} sev={line.sev} short={short} detail={t} />;
           })}
         </div>
       )}
@@ -435,7 +433,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : stoodDown ? 'NOT ARMED' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {/* F221: a fix-before-match refusal on ARMORY, not an act-now event — AMBER, not red. */}
-          {applyErr && <span data-testid="station-apply-error" role="alert" style={{ flexBasis: '100%', font: F.chk(700, 11), letterSpacing: '.06em', color: colourOf('items-apply-err') }}>{GLYPH} NOT ARMED: {applyErr}</span>}
+          {applyErr && <ItemChip id="items-apply-err" role="alert" testid="station-apply-error" short="Station not armed" detail={applyErr} />}
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
@@ -488,7 +486,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
   if (pu.s === 'loading') return note('READING THE ITEM LIST…');
-  if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
+  if (pu.s === 'err') return <div data-testid="item-note"><ItemChip id="items-itempicker-err" short="Item list unavailable" detail={pu.msg} /></div>;
   if (!pu.v.enabled) return note(`POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: ${POWERUPS_RESTART}`, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -500,7 +498,7 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
           return (
             <button key={preset} type="button" data-testid={`item-pick-${preset}`} aria-pressed={on} disabled={locked}
               onClick={() => onPick(preset)}
-              title={locked ? 'items are locked for the match: RECALL or END it to change this station' : `${item.name}: ${itemDetail(item)}, ${schedule(item).toLowerCase()}`}
+              title={locked ? 'items are locked for the match: RECALL or END it to change this station' : `${item.name}: ${itemDetail(item)}, ${schedule(item)}`}
               style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '7px 9px', minHeight: 44, textAlign: 'left',
                 background: on ? T.panelAlt : 'transparent', color: on ? T.ink : T.dim,
                 borderTop: `1px solid ${on ? item.color : T.line}`, borderRight: `1px solid ${on ? item.color : T.line}`,

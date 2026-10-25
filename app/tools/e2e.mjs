@@ -320,10 +320,11 @@ await step('PLAY: the mode picker switches the game — aria-pressed follows the
   expect((await modeBtn('FREE-FOR-ALL').getAttribute('aria-pressed')) === 'true', 'FFA button not marked picked');
   // FFA carries no operator note (games-redesign.md §9); TDM's is TEAM HITS DON'T COUNT — the switch
   // below proves the note follows the mode, not just the server's config.
-  expect((await mc.locator('[data-testid="operator-note"]').count()) === 0, 'FFA should show no operator note');
+  expect((await mc.getByRole('button', { name: 'Mode notes' }).count()) === 0, 'FFA should show no Mode notes INFO button');
   await playMode('TEAM DEATHMATCH');
   await until(async () => (await st()).config.mode === 'tdm', 5000, 'tdm back');
   expect((await modeBtn('TEAM DEATHMATCH').getAttribute('aria-pressed')) === 'true', 'TDM button not marked picked');
+  await mc.getByRole('button', { name: 'Mode notes' }).click();
   await until(async () => (await mc.locator('[data-testid="operator-note"]').count()) > 0, 6000, 'TDM operator note');
   expect((await mc.locator('[data-testid="operator-note"]').textContent()).includes("TEAM HITS DON'T COUNT"), 'TDM note missing');
   await shot(mc, 'games-modes'); await textAudit(mc, 'play');

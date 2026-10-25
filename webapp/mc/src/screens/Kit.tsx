@@ -269,7 +269,7 @@ export function Kit() {
         </span>} />
       {matchInPlay(state.phase) && (
         <InPlayBanner screen="kit" phase={state.phase} onGo={() => setView(state.phase)}
-          headline="THE KIT IS LOCKED."
+          headline="The kit is locked."
           why="Every gun already holds this match's loadouts. MC refuses a weapon, perk, pool, voice, gun, number or team change until the match ends. A callsign can still be renamed." />
       )}
       {/* F-3/A39: a connected phone with nobody in the roster claiming it — last night's "4 guns

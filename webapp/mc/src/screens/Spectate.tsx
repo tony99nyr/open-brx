@@ -46,7 +46,8 @@ import { ClockSub, Num, ScrollX, useTick } from '../ui';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { heldSeconds, hillOwner, sitesNote } from './objective';
 import { objectiveWord } from '../rules/scoring';
-import { MC_OFFLINE, alertWords, colourOf, glyphed } from '../alerts';
+import { colourOf } from '../alerts';
+import { FaultPill, ItemChip } from '../ui/Compact';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
  *  Everything here is deliberately above the console's own scale — this screen is not operated, it is
@@ -198,13 +199,10 @@ function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNod
       style={{ ...(fit ? { height: '100vh', overflow: 'hidden' } : { minHeight: '100vh' }),
                display: 'flex', flexDirection: 'column', background: T.page, color: T.ink,
                padding: `${pad}px 34px ${pad + 8}px`, boxSizing: 'border-box' }}>
-      {/* F221: RED, the MC-offline cluster. The words are MC_OFFLINE's, imported, never re-typed —
-          the LIVE offline banner is the model. */}
+      {/* The static fault keeps the projector free of controls. */}
       {frozen && (
-        <div data-spectate="frozen" data-alert="spectate-frozen-tag" data-sev="red" role="alert"
-          style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: colourOf('spectate-frozen-tag'), border: `1px solid ${colourOf('spectate-frozen-tag')}`,
-                   padding: '8px 14px', marginBottom: 14, alignSelf: 'flex-start' }}>
-          {glyphed('red', alertWords(MC_OFFLINE.what, MC_OFFLINE.act))}
+        <div data-spectate="frozen" style={{ marginBottom: 14, alignSelf: 'flex-start' }}>
+          <FaultPill id="spectate-frozen-tag" short="Board frozen, MC offline" why="The board shows the last snapshot." size={Math.max(17, SZ.label)} static />
         </div>
       )}
       {/* the dimming sits INSIDE the frame so the tag above it stays at full strength */}
@@ -253,10 +251,11 @@ function TeamBlock({ name, color, value, side, label, SZ }: { name: string; colo
  *  frame dims the whole board, which is the part a room can actually see from the back. */
 function Clock({ remaining, sub, stale, SZ }: { remaining: number; sub: string; stale?: boolean; SZ: SZ }) {
   return (
-    <div data-alert={stale ? 'spectate-clock-frozen' : undefined} data-sev={stale ? 'red' : undefined}
+    <div
       style={{ flex: '0 1 340px', background: T.panel, border: `1px solid ${stale ? colourOf('spectate-clock-frozen') : T.line}`, padding: `${Math.round(SZ.pad * 1.6)}px 26px`,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-      <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: stale ? colourOf('spectate-clock-frozen') : T.micro }}>{stale ? glyphed('red', 'CLOCK FROZEN') : 'TIME REMAINING'}</span>
+      {stale ? <FaultPill id="spectate-clock-frozen" short="Clock frozen" why="MC is offline." size={Math.max(16, SZ.label)} static />
+        : <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: T.micro }}>TIME REMAINING</span>}
       <span data-spectate="clock" style={{ ...osw(700, SZ.clock), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
       <ClockSub text={sub} style={{ ...chk(600, SZ.label), letterSpacing: '.2em', color: T.micro }} />
     </div>
@@ -477,9 +476,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
                     display: 'flex', alignItems: 'baseline', gap: 26, flexWrap: 'wrap' }}>
         <span style={{ ...osw(700, Math.round(SZ.score * 0.78)), letterSpacing: '.08em', color }}>{headline}</span>
         {rc.provisional && (
-          <span data-alert="spectate-final-provisional" data-sev="amber" style={{ ...chk(700, SZ.label), letterSpacing: '.2em', color: colourOf('spectate-final-provisional') }}>
-            {glyphed('amber', 'PROVISIONAL: STILL SETTLING')}
-          </span>
+          <ItemChip id="spectate-final-provisional" short="Provisional score" detail="Still settling." size={Math.max(16, SZ.label)} static />
         )}
       </div>
       <Board rows={rows} SZ={SZ} fit={fit} />

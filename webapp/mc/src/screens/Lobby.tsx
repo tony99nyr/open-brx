@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, InfoIcon, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, shortCoverageLine, coverageColor, useNarrow } from '../ui';
 import { Alert } from '../ui/Alert';
-import { FaultPill } from '../ui/Compact';
+import { FaultPill, HelpNote } from '../ui/Compact';
 import { GLYPH, alertWords, colourOf, glyphed, sevOf, serverLine } from '../alerts';
 import { SetupSteps } from '../ui/SetupSteps';
 import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
@@ -38,8 +38,9 @@ export function InPlayBanner({ screen, phase, headline, why, onGo }:
       background: T.panelAlt, border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.acc}`, padding: '12px 16px' }}>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 320px' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.12em', color: T.ink }}>
-          <span title={why}>{phase === 'live' ? 'The match is live.' : 'The countdown is running.'} {headline.charAt(0) + headline.slice(1).toLowerCase()}</span>
+          <span>{phase === 'live' ? 'The match is live.' : 'The countdown is running.'} {headline}</span>
         </span>
+        <HelpNote label="Why?" keep={why} />
       </span>
       <button type="button" {...{ [`data-${screen}-goto`]: phase }} className="hov-acc" onClick={onGo}
         style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.16em', color: T.acc, border: `1px solid ${T.acc}`, padding: '10px 16px', minHeight: 44 }}>
@@ -295,7 +296,7 @@ export function Lobby() {
       } />
       {matchInPlay(state.phase) && (
         <InPlayBanner screen="lobby" phase={state.phase} onGo={() => setView(state.phase)}
-          headline="THIS LOBBY IS READ-ONLY."
+          headline="This lobby is read-only."
           why="Every gun already holds this match's config, and MC refuses a push, a READY change or a team move until the match ends." />
       )}
       {/* QA-04: the same note PLAY shows -- an SVG icon, never the ⓘ glyph (QA-05, no bundled face

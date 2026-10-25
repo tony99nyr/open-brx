@@ -7,7 +7,7 @@ import { GLYPH, colourOf } from '../../alerts';
 import { BTN_RESET, GhostButton, NumberCell, Seg, SegBar, StripedSlot, SectionRule, Tag, ValueBox, onKey } from '../../ui';
 import { useStore } from '../../store';
 import { PRESET_LABELS } from '../../api/contract.gen';
-import { Alert } from '../../ui/Alert';
+import { FaultPill } from '../../ui/Compact';
 import { useDraftCommit } from '../../ui/useDraftCommit';
 import { poolOf, type Slot } from './helpers';
 import { Lock, WeaponArt, PerkGlyph, PerkTrade } from './art';
@@ -17,13 +17,13 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
     overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void }) {
   const choice = rule?.choice ?? 'player';
   const locked = matchLocked || choice === 'fixed' || choice === 'off';
-  const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : 'PLAYER PICKS · YOU CAN OVERRIDE';
+  const empty = kind === 'none';
+  const right = matchLocked ? 'LOCKED FOR THIS MATCH' : choice === 'fixed' ? 'FIXED BY THE GAME' : choice === 'off' ? 'OFF FOR THIS GAME' : choice === 'host' ? 'HOST PICKS' : empty ? '' : 'PLAYER PICKS · YOU CAN OVERRIDE';
   // F221 polish r2 (Low): FIXED/OFF are configuration facts, not a fault — only a match already LOCKED
   // (`kit-slot-note-locked`) is a real constraint on the operator right now, so only that one is amber.
   const lockColor = matchLocked ? colourOf('kit-slot-note-locked') : T.micro;
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
-  const empty = kind === 'none';
   // `✕ CLEAR` is absolutely positioned in the card's bottom-right corner, and the line it lands on is
   // the weapon's `ROLE · MAG 12 · RES 24` — which ran straight under it on every SECONDARY plate in
   // every Kit screenshot we have (review 2026-09-12). Absolute position takes an element out of flow,
@@ -38,7 +38,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
         borderTop: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderRight: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderBottom: `1px ${empty ? 'dashed' : 'solid'} ${active ? color : T.line}`, borderLeft: `3px solid ${active ? color : T.line2}` }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '2px 8px', flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.22em', color: active ? color : T.dim }}>{active ? '▸ ' : ''}{label}</span>
-        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? lockColor : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={lockColor} />}{right}</span>
+        {right && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: locked ? lockColor : T.micro, marginLeft: 'auto', textAlign: 'right', display: 'inline-flex', alignItems: 'center', gap: 5 }}>{locked && <Lock color={lockColor} />}{right}</span>}
       </div>
       {empty ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
@@ -69,9 +69,8 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
         <button type="button" data-slot-clear={slot} onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
           style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 11), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
-      {/* F221 polish r2: this was plain mono text colouring itself off the catalogue — RED goes through
-          <Alert>, the boxed row a gun card uses (Tony's rule), like every other RED on this card. */}
-      {required && !item && <Alert id="kit-primary-required" variant="row" what="a primary is required" />}
+      {/* A required primary blocks the player until the host picks one. */}
+      {required && !item && <FaultPill id="kit-primary-required" short="Primary required" why="Pick a primary before continuing." />}
       {overridden && (
         <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('kit-changed-from-phone') }}>
           {GLYPH} CHANGED FROM THEIR PHONE: YOURS WAS {overridden.label.toUpperCase()}

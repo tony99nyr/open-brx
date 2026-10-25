@@ -45,16 +45,16 @@ describe('StationAlerts — the STATION #N attention lines', () => {
   it('renders a RESTARTED line', async () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 RESTARTED 2 TIMES: CHECK THE STATION'] })]);
     expect(m.find('[data-testid="station-alerts"]').length, m.text()).toBe(1);
-    expect(m.text()).toContain('Station needs attention');
-    await m.click('Station needs attention');
+    expect(m.text()).toContain('Respawn 1 needs attention');
+    await m.click('Respawn 1 needs attention');
     expect(m.text()).toContain('STATION #4 RESTARTED 2 TIMES: CHECK THE STATION');
     m.unmount();
   });
 
   it('renders an OFFLINE line', async () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE'] })]);
-    expect(m.text()).toContain('Station offline');
-    await m.click('Station offline');
+    expect(m.text()).toContain('Respawn 1 offline');
+    await m.click('Respawn 1 offline');
     expect(m.text()).toContain('STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE');
     m.unmount();
   });
@@ -64,6 +64,7 @@ describe('StationAlerts — the STATION #N attention lines', () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE'] })], { phase: 'live' });
     const line = m.find('[data-station-alert="STATION #4 OFFLINE: CHECK IT IS ON AND IN RANGE"]')[0] as HTMLElement;
     expect(line.querySelector('[data-alert="frame-station-offline"][data-sev="red"]'), line.textContent ?? '').toBeTruthy();
+    expect(line.querySelector('[data-alert="frame-station-offline"]')?.getAttribute('role')).toBe('status');
     m.unmount();
   });
 
@@ -76,8 +77,8 @@ describe('StationAlerts — the STATION #N attention lines', () => {
 
   it('renders a LOCK EXPIRES MID-MATCH line', async () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER'] })]);
-    expect(m.text()).toContain('Station needs attention');
-    await m.click('Station needs attention');
+    expect(m.text()).toContain('Respawn 1 needs attention');
+    await m.click('Respawn 1 needs attention');
     expect(m.text()).toContain('STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER');
     m.unmount();
   });
@@ -88,15 +89,25 @@ describe('StationAlerts — the STATION #N attention lines', () => {
       station('a', { attention: ['STATION #1 RESTARTED', 'BATTERY LOW'] }),
       station('b', { attention: ['STATION #2 OFFLINE'] }),
     ]);
-    expect(m.text()).toContain('Station needs attention');
-    expect(m.text()).toContain('Station offline');
-    expect(m.text()).toContain('Station battery low');
-    await m.click('Station needs attention');
-    await m.click('Station offline');
-    await m.click('Station battery low');
+    expect(m.text()).toContain('Respawn 1 needs attention');
+    expect(m.text()).toContain('Respawn 1 offline');
+    expect(m.text()).toContain('Respawn 1 battery low');
+    await m.click('Respawn 1 needs attention');
+    await m.click('Respawn 1 offline');
+    await m.click('Respawn 1 battery low');
     expect(m.text()).toContain('STATION #1 RESTARTED');
     expect(m.text()).toContain('STATION #2 OFFLINE');
     expect(m.text()).toContain('BATTERY LOW');
+    m.unmount();
+  });
+
+  it('names each station in an offline chip, including a phone', async () => {
+    const { m } = await alerts([
+      station('stick-a', { attention: ['STATION #1 OFFLINE'] }),
+      station('phone-ab12', { platform: 'android', assigned: { kind: 'control', team: 255, id: 2, threshold: -74, at: 0 }, attention: ['STATION #2 OFFLINE'] }),
+    ], { phase: 'lobby' });
+    const labels = m.find('[data-alert="station-attention-offline"]').map(e => e.textContent ?? '');
+    expect(labels).toEqual(expect.arrayContaining([expect.stringContaining('Respawn 1 offline'), expect.stringContaining('Phone ab12 offline')]));
     m.unmount();
   });
 
@@ -308,6 +319,7 @@ describe('ITEMS — the ASSIGN + ARM form (Block 9, brx4)', () => {
     const card = () => m.find('[data-station-card="stick-1"]')[0] as HTMLElement;
     const btn = [...card().querySelectorAll('button')].find(b => b.textContent === 'ASSIGN + ARM') as HTMLButtonElement;
     await act(async () => { btn.click(); });
+    await m.click('Station not armed');
     expect(card().textContent).toMatch(/OPERATOR TOKEN NEEDED/);
     m.unmount();
   });

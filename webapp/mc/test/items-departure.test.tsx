@@ -143,7 +143,8 @@ describe('ITEMS shows the departure, and RESTORE only once that node is back', (
     const { m, settle } = await armory(api);
     await m.click('RESTORE');
     await settle();
-    expect(m.find('[data-testid="station-apply-error"]')[0]?.textContent).toMatch(/item_preset is for a powerup station/);
+    await m.click('Station not armed');
+    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent).toMatch(/item_preset is for a powerup station/);
     expect(m.find('[data-testid="station-restore"]')).toHaveLength(1);
     m.unmount();
   });
@@ -157,6 +158,10 @@ describe('PLAY names the hill that left in its NO HILL block', () => {
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
     expect(m.find('[data-testid="games-hill-departed"]')).toHaveLength(0);
     expect(m.find('[data-testid="games-locked"]')[0].textContent).toContain('No hill assigned');
+    await m.click('No hill assigned');
+    const departure = (await api.getState()).station_departures![0];
+    expect(m.find('[data-testid="games-hill-departed"]')).toHaveLength(1);
+    expect(m.find('[data-testid="games-hill-departed"]')[0].textContent).toBe(departure.line);
     m.unmount();
     const plain = new MockBackend();
     await plain.putConfig({ mode: 'koth', station_source: 'phone' });

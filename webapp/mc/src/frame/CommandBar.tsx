@@ -81,7 +81,7 @@ export function CommandBar() {
       {(offline || state?.lan.public?.status === 'error') && (
         <div data-testid="frame-faults" style={{ padding: '8px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8 }}>
           {offline && (
-          <FaultPill id="frame-mc-offline" short="MC offline, board frozen" icon="stop"
+          <FaultPill id="frame-mc-offline" short="MC offline, board frozen" icon="stop" role="status"
             why={state ? 'The board is frozen at the last snapshot.' : 'No snapshot yet. Is the server running?'} fix="Check that MC is running." />
           )}
           {state?.lan.public?.status === 'error' && (
@@ -92,7 +92,7 @@ export function CommandBar() {
       )}
       {catalogueDown && (
         <div style={{ display: 'flex', padding: '8px 20px' }}>
-          <ItemChip id="frame-catalogue-unavailable" short="Catalogue unavailable" detail="The weapon, mode or perk list did not load. Retrying. Restart MC if this continues." />
+          <ItemChip id="frame-catalogue-unavailable" role="alert" short="Catalogue unavailable" detail="The weapon, mode or perk list did not load. Retrying. Restart MC if this continues." />
         </div>
       )}
       {/* O7/O8: MC cannot save, its match clock is failing, or its join QR has no address: stands on every screen. */}
@@ -179,7 +179,7 @@ export function CommandBar() {
               F221 round 2: ARMED used ▲ in T.warn, the glyph and colour every amber ALERT uses, on a
               plain phase readout. A phase is NOT-ALERT (data, never T.warn/T.bad): ◆ is its own glyph,
               shared with no alert, in T.ink. */}
-          {autoOf(state?.lan.public) && <BackhaulStatus compact auto={autoOf(state?.lan.public)!.on} onCellular={autoOf(state?.lan.public)!.cellular} error={autoOf(state?.lan.public)!.error} />}
+          {state?.lan.public?.status !== 'error' && autoOf(state?.lan.public) && <BackhaulStatus compact auto={autoOf(state?.lan.public)!.on} onCellular={autoOf(state?.lan.public)!.cellular} error={autoOf(state?.lan.public)!.error} />}
           <span data-testid="phase-chip" title={offline ? 'MC is offline: this is the phase in the last snapshot' : undefined}
                 style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
                          color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.ink : state?.phase === 'recap' ? T.ok : T.dim }}>
