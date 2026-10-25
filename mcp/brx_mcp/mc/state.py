@@ -85,6 +85,7 @@ END_RETRY_MS = (2_000, 5_000, 10_000, 20_000, 40_000, 60_000)
 # (`idle`, `connected`, `lobby`, `armed`, `live` -- PHASES in engine.js) is NO CLAIM: see `_note_end_confirm`
 # for why the absence of a denial must never be read as one.
 END_CONFIRM_PHASES = ("kitted",)
+VICTORY_STING_MAX_S = 30
 
 
 def release_app_version() -> str | None:
@@ -648,6 +649,8 @@ class Session:
         self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
         self._result_pushed: dict[str, dict] = {}  # A24: last `result` body pushed per player (minus `t`)
+        self._result_release_pending = False   # A81: flush outside recap getters
+        self._resuming_recap = False
         # A34 (field 2026-09-12): the matches this MC has RETIRED, newest last -- match_id -> {recap, players,
         # ended_ms}. A phone that was off the network at the whistle comes back still LIVE in one of these
         # (its status says so), and MC, already on the next KIT, used to have nothing left to tell it with:
@@ -816,6 +819,7 @@ class Session:
         self._sync_kit_open()          # A10: phase/push flips re-assign the phones (setting-up ⇄ kit editor)
         if self.phase == "recap" and self.match is not None and self.match.scorer is not None:
             self._recap_sync(self.match.scorer.winner(), self.match.frozen_stations or [])
+        self._flush_result_release()
         for cb in self._listeners:
             cb()
         self._persist()
@@ -3179,7 +3183,9 @@ class Session:
                 match.result_changed = True
                 changed = True
         if not pending:
-            changed = changed or not match.released
+            if not match.released:
+                self._result_release_pending = True
+                changed = True
             match.released = True
         if changed:
             self._persist_dirty = True
@@ -3743,6 +3749,8 @@ class Session:
             self.pull_log(nid, "reconnect")
         self._prune_unbound_nodes()
         self._changed()
+        if p and self.phase == "recap" and self.match is not None and self.match.released:
+            self._push_result()   # a restarted MC has no prior delivery record for this returning socket
         return self.node_player.get(nid)
 
     def _hydrate(self, hello: dict) -> dict | None:
@@ -3820,9 +3828,9 @@ class Session:
             row = next((r for r in rows if r["player_id"] == p["player_id"]), None)
             if row:
                 node["score"] = dict(row, board=self._score_board(sc), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
-        if self.phase == "recap" and self.last_recap and self._played_this_match(p["player_id"]):
-            # A24: a phone that comes back into coverage AFTER the whistle still learns how it ended —
-            # the only route to a result for a node that was off the LAN when `_finish` pushed it.
+        if (self.phase == "recap" and self.match is not None and self.match.released
+                and self.last_recap and self._played_this_match(p["player_id"])):
+            # A24/A81: a returning phone gets the released result even if it missed the push.
             # A player added DURING the debrief was not in it, so there is no result to carry.
             node["result"] = self._result_body(self.last_recap, p)
         return node
@@ -4328,7 +4336,10 @@ class Session:
         p = self.players.get(pid) if pid else None
         recap = ended.get("recap") if ended else None
         told_result = False
-        if p and ended and recap and (ended.get("players") is None or p["player_id"] in ended["players"]):
+        current_pending = (self.phase == "recap" and self.match is not None
+                           and self.match.scorer is not None and self.match.scorer.match_id == mid
+                           and not self.match.released)
+        if p and ended and recap and not current_pending and (ended.get("players") is None or p["player_id"] in ended["players"]):
             roster = ended.get("players") or self.players
             self.net.push(nid, "result", self._result_body(recap, p, match_id=mid, roster=roster))
             told_result = True
@@ -4647,6 +4658,8 @@ class Session:
             match.whistle(whistle)
             self._finish(resuming=True)
             match.played = played
+            if match.released:
+                self._push_result()   # the in-memory dedupe is empty after a restart
             self._resume_end_delivery(mid, whistle, m.get("_end_delivery_saved", m.get("end_delivery")),
                                       m.get("_end_delivery_told"))
             if mid in self._ended:
@@ -5353,7 +5366,8 @@ class Session:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
-            self._push_result()          # A24: the field is re-told whenever the recap moves
+            if self._m().released:
+                self._push_result()      # A81: late facts cannot reveal a pending result
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
@@ -5473,7 +5487,7 @@ class Session:
     def _push_result(self) -> int:
         """A24: push `result` to every BOUND player node, best-effort, and again whenever it changes.
 
-        Sent at `_finish()` and re-sent on every late fact that moves the recap — including the A24/M2
+        Sent when the result releases and re-sent on every late fact that moves the recap — including the A24/M2
         reconciliation, where the winner itself can change minutes after the whistle. De-duplicated on
         the body MINUS `t` (the timestamp moves on every call and would defeat the compare), so a node
         that is already holding the current result is not re-told; a node out of coverage simply misses
@@ -5499,6 +5513,17 @@ class Session:
             self._result_pushed[p["player_id"]] = key
             sent += 1
         return sent
+
+    def _flush_result_release(self) -> None:
+        """Send an A81 release marked by recap sync, after the caller leaves its getter."""
+        if not self._result_release_pending:
+            return
+        self._result_release_pending = False
+        self._push_result()
+        sc = self._m().scorer
+        if not self._resuming_recap and sc is not None and sc.end_t is not None \
+                and 0 <= self.now_ms() - sc.end_t <= VICTORY_STING_MAX_S * 1000:
+            self._push_victory(self.last_recap)
 
     # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
     _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession")
@@ -7022,6 +7047,7 @@ class Session:
         self._log_inflight = set()
         self._pending_limit_t = None           # a new match owes nothing to the last one's cap
         self._result_pushed = {}               # A24: nor to the last one's result
+        self._result_release_pending = False
         self.end_reason = None
         self.feed = []
         # The delivery loop below must restate any WITHHELD phone after this feed reset. Keeping the
@@ -7574,6 +7600,7 @@ class Session:
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
     def _finish(self, *, resuming: bool = False):
+        self._resuming_recap = resuming
         # A24/M2: before the recap is taken, ask whether the cap was a DEAD HEAT — a second cap kill
         # inside the clock-sync band parks as post_end (A6.1) and would otherwise hand the match to
         # whichever of two indistinguishable kills MC happened to order first.
@@ -7616,8 +7643,6 @@ class Session:
         # is precisely the end where the operator has least to go on about the one phone that did not.
         if not resuming:
             self._arm_end_delivery(self._log_match)
-            self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
-            self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if not resuming and self.store and match.head and self.last_recap:
             # F560: the scorer's own end (a timed scorer is built with it); MC's clock, never the wall clock, if it has none
             end_t = match.scorer.end_t if match.scorer and match.scorer.end_t is not None else self.now_ms()
@@ -7655,6 +7680,7 @@ class Session:
             self.station_registry.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
         self._validate()                  # F401: config_warnings must carry the fresh sync warning at once
         self._changed()
+        self._resuming_recap = False
         self.persist_now()                # the snapshot must stop naming a match that ended
 
     def tick(self) -> None:
@@ -7665,6 +7691,7 @@ class Session:
         # A42: ABOVE the head gate on purpose. `_finish()` clears the head, and RECAP is the
         # only phase an end re-delivery ever runs in. Below the gate it would be dead code.
         self._retry_end_delivery(self.now_ms())
+        self._flush_result_release()
         head = self._m().head
         if not head:
             return
@@ -7709,6 +7736,8 @@ class Session:
             raise ValueError("no match in RECAP to finalise")
         if not self.match.finalised:
             self.match.finalised = True
+            if not self.match.released:
+                self._result_release_pending = True
             self.match.released = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()

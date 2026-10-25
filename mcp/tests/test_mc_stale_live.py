@@ -295,6 +295,7 @@ def test_the_existing_result_paths_are_unchanged():
     """`_result_body` grew keyword-only knobs; every existing caller must produce the same body as before."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.finalise_recap()
     got = results(net)
     assert got["node0"]["outcome"] == "win" and got["node1"]["outcome"] == "lose"
     assert got["node0"]["match_id"] == info["match_id"]
