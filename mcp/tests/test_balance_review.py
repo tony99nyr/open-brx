@@ -105,7 +105,7 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
 
 def test_field_score_is_zero_when_one_team_size_gets_no_kills():
     shipped = R.shipped_world()
-    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=3)
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=1)   # F601: at 3 the fixed swap lets its Deagle finish in every team size
     world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
              R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
@@ -1357,6 +1357,30 @@ def test_a_fast_reload_primary_does_not_ping_pong_with_its_secondary():
         swaps += f.active != before
         t = f.next_t
     assert swaps <= 2 and f.shots > 0
+
+
+def test_the_field_engine_does_not_ping_pong_a_dry_shotgun():
+    # F601 in KitMatch (Fable sim review #2): a dry primary forced the secondary, the way back chose the primary,
+    # and the reload never started inside a contact: about 27 swaps and 49 shots a 2v2 match for a Shotgun.
+    w = R.shipped_world()
+    fk = R.field_kit(w, "shotgun", "shotgun", "deagle")
+    cfg = R.B.SimConfig(pool=R.B.default_pool(), venue=R.FIELD_VENUE)
+    swaps = []
+    orig = R.KitMatch._swap_to
+
+    def counting(self, p, idx, t_end):
+        swaps.append(p.pid)
+        return orig(self, p, idx, t_end)
+
+    rng = random.Random(7)
+    R.KitMatch._swap_to = counting
+    try:
+        for r in range(8):
+            players = [R._kit_player(i, i // 2, fk) for i in range(4)]
+            R.KitMatch(players, rng, cfg, cfg.hit_probs[r % len(cfg.hit_probs)], 2).run()
+    finally:
+        R.KitMatch._swap_to = orig
+    assert len(swaps) / 8 < 8
 
 
 def test_a_loaded_secondary_fires_before_returning_to_an_empty_primary():
