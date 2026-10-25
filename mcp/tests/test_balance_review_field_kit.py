@@ -1,7 +1,9 @@
 """Field kit swaps and Armour Piercing use the same catalogue rules as the duel engine."""
 import pathlib
+import heapq
 import random
 import sys
+from dataclasses import replace
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
@@ -41,6 +43,45 @@ def test_field_kit_waits_out_a_heat_lock_when_the_secondary_cannot_finish():
     p.heat = float(heat["lock_at"] - heat["per_shot"])
     match._shot(p, 0.0, p.engage_id)
     assert p.active == 0 and p.shots == 1 and p.heat_lock_until > 0
+
+
+def test_field_kit_draws_a_secondary_that_finishes_before_the_heat_lock_ends():
+    world = R.shipped_world()
+    match, p, _q = _match(R.field_kit(world, "hot", "energy_rifle", "glock"))
+    heat = dict(p.w.heat)
+    p.heat = float(heat["lock_at"] - heat["per_shot"])
+    match._shot(p, 0.0, p.engage_id)
+    assert p.active == 1 and p.swap_until == p.kit.swap_ms
+
+
+def test_field_kit_does_not_cancel_a_reload_to_swap_between_two_dry_slots():
+    # F601 (Opus review): the check after a shot also ran after a reload start, swapped away and cancelled it, so a
+    # slow-reload primary and a fast-reload sidearm, both dry, swapped about 28 times and never finished a reload.
+    world = R.shipped_world()
+    kit = R.field_kit(world, "slow", "shotgun", "deagle")
+    kit = replace(kit, models=(replace(kit.models[0], reload_ms=5000.0), replace(kit.models[1], reload_ms=300.0)))
+    p = R._kit_player(0, 0, kit)
+    q = R._kit_player(1, 1, R.field_kit(world, "target", "assault_rifle"))
+    match = R.KitMatch([p, q], random.Random(1), B.SimConfig(pool=B.default_pool(), range_model=False), 0.3, 1)
+    p.target, p.engage_id, p.contact_end = 1, 1, 60000.0
+    q.health = 400                      # a long fight, so both slots run dry and reload
+    match._swap_to(p, 1, 0.0)
+    p.ammo, p.committed = 1, False
+    p.stash[0] = (0, 12, *p.stash[0][2:])
+    swaps = []
+    orig = match._swap_to
+    match._swap_to = lambda pp, idx, t_end: (swaps.append(idx), orig(pp, idx, t_end))
+    match.heap = []
+    match.push(0.0, match.SHOT, 0, p.engage_id)
+    for _ in range(80):
+        due = [e for e in match.heap if e[2] == match.SHOT and e[3] == 0]
+        if not due:
+            break
+        event = min(due)
+        match.heap.remove(event)
+        heapq.heapify(match.heap)
+        match._shot(p, event[0], event[4])
+    assert len(swaps) <= 2, swaps
 
 
 def test_field_kit_armour_piercing_hits_health_and_refuses_unpriced_primary():

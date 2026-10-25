@@ -163,11 +163,11 @@ describe('S25 · the spectator board', () => {
     const m = await spectate({}, { connected: false });
     const tag = m.find('[data-spectate="frozen"]')[0];
     expect(tag, 'a tag that says why').toBeTruthy();
-    // F221 (Tony, 2026-09-25): the words are MC_OFFLINE's, imported from src/alerts, never re-typed —
-    // the LIVE offline banner is the model, so this tag now carries the same wording.
-    expect(tag.textContent).toContain('MC OFFLINE');
-    expect(tag.textContent).toContain('FROZEN');
-    expect(fontOf(tag), 'and it is legible across the room too').toBeGreaterThanOrEqual(16);
+    expect(tag.textContent).toContain('Board frozen, MC offline');
+    const label = tag.querySelector('[data-alert="spectate-frozen-tag"] span') as HTMLElement;
+    expect(fontOf(label), 'and it is legible across the room too').toBeGreaterThanOrEqual(16);
+    expect(m.find('[data-alert="spectate-clock-frozen"]')).toHaveLength(1);
+    expect(tag.querySelectorAll('button')).toHaveLength(0);
     const frame = m.find('[data-spectate="board"]')[0];
     expect(frame.getAttribute('data-frozen')).toBe('1');
     const content = m.find('[data-spectate="content"]')[0];
@@ -227,11 +227,13 @@ describe('S25 · the spectator board', () => {
       winner: { team_id: 'blue' }, score: { blue: 9, yellow: 4 },
       rows: [{ player_id: 'p1', display: 'VIPER', team_id: 'blue', kills: 9, deaths: 3, assists: 2,
                shots: 40, hits: 14, accuracy: 35, kd: 3, streak: 0, best_streak: 9, medals: ['MVP'] }],
-      honors: [], provisional: false, missing: [],
+      honors: [], provisional: true, missing: [],
     };
     const store = makeStore({ ...d, state: { ...d.state, phase: 'recap', live, recap } as State, view: 'live' });
     const m = await mount(<StoreCtx.Provider value={store}><Spectate /></StoreCtx.Provider>);
     expect(m.find('[data-spectate="final"]').length, 'the result card').toBe(1);
+    expect(m.find('[data-alert="spectate-final-provisional"]')[0].getAttribute('data-sev')).toBe('amber');
+    expect(m.find('button')).toHaveLength(0);
     expect(m.text()).toMatch(/WINS|TIE/);
     expect(m.find('[data-spectate="clock"]').length, 'and no clock still counting a finished match').toBe(0);
     m.unmount();

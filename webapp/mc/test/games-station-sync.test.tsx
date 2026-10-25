@@ -17,8 +17,10 @@ describe('GAMES — the F401 station sync warning', () => {
     const m = await mountScreen(<Games />, { ...d, state: withWarnings(d.state, [SYNC_WARNING]) });
     const row = m.find('[data-testid="games-station-not-synced"]')[0];
     expect(row, `expected the sync warning row, saw: ${m.text()}`).toBeTruthy();
-    expect(row.textContent).toMatch(/RESPAWN 3/);
-    expect(row.textContent).toMatch(/HAS NOT SYNCED THE LAST MATCH/);
+    expect(row.textContent).toContain('Station not synced');
+    await m.click('Station not synced');
+    expect(row.parentElement?.textContent?.toUpperCase()).toMatch(/RESPAWN 3/);
+    expect(row.parentElement?.textContent?.toUpperCase()).toMatch(/HAS NOT SYNCED THE LAST MATCH/);
     expect(row.getAttribute('data-sev')).toBe('amber');
     m.unmount();
   });

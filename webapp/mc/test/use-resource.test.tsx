@@ -114,7 +114,9 @@ describe('KIT: a failed load is shown, never read as "none"', () => {
     await settle();
     const strip = m.find('[data-alert="kit-load-error"]');
     expect(strip.length).toBe(1);
-    expect(strip[0].textContent).toContain('COULD NOT LOAD THE GUN LIST: SOCKET RESET');
+    expect(strip[0].textContent).toContain('Could not load the gun list');
+    await act(async () => { (strip[0].querySelector('button[aria-expanded]') as HTMLButtonElement)?.click(); });
+    expect(strip[0].textContent).toContain('socket reset');
     await act(async () => { m.find('[data-testid="kit-load-retry-0"] button')[0].click(); });
     await settle();
     expect(calls).toBe(2);
@@ -129,7 +131,9 @@ describe('KIT: a failed load is shown, never read as "none"', () => {
     const m = await mountScreen(<Kit />, { ...d, view: 'kit', selPlayer: pid, api: { getVoices } });
     await settle();
     const strip = m.find('[data-alert="kit-load-error"]');
-    expect(strip.map(s => s.textContent)).toEqual([expect.stringContaining('COULD NOT LOAD THE VOICES: NOT FOUND')]);
+    expect(strip.map(s => s.textContent)).toEqual([expect.stringContaining('Could not load the voices')]);
+    await act(async () => { (strip[0].querySelector('button[aria-expanded]') as HTMLButtonElement)?.click(); });
+    expect(strip[0].textContent).toContain('not found');
     m.unmount();
   });
 });

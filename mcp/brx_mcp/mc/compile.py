@@ -2574,11 +2574,29 @@ class Compiler:
             raise ValueError(f"F278 CRIT-PERK GUARD: refusing to compile {name}'s crit-chance perk with "
                              f"{weapon_id!r} armed — {why}")
 
-    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None) -> str | None:
-        """F551: why `perk_id` cannot ride with this primary/secondary, or None. The same rules the compile guards
-        refuse on, so a pick MC accepts can never be refused at push."""
+    def preset_block(self, perk_id: str, preset: str | None) -> str | None:
+        """Honest pickers (Tony 2026-10-25): why `perk_id` is refused under this `health.preset`, or None. On the
+        Shields preset (45 HP, 105 shield, no armour) Armour Piercing hard-counters the only buffer, and an armour
+        grant has no armour to add to. Read from the perk's effects, so a new perk with either effect is refused too."""
+        if preset != "shields" or not self.perks.has(perk_id):
+            return None
+        fx = self.perks.effects(perk_id)
+        if fx.get("armor_piercing"):
+            return "Armour Piercing is refused on the Shields preset: it ignores the shield, the only buffer there."
+        if (fx.get("max_armor_add") or 0) > 0:
+            return "An armour grant is refused on the Shields preset: the preset has no armour."
+        return None
+
+    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None,
+                          preset: str | None = None) -> str | None:
+        """F551: why `perk_id` cannot ride with this primary/secondary (or, honest pickers, under this
+        `health.preset`), or None. The weapon rules are the ones the compile guards refuse on, so a pick MC accepts can
+        never be refused at push. The preset rule has no compile guard: MC clears such a perk on every path in
+        (`apply_policy` on a config change, `_check_loadout`, a restore), so it never reaches a compile."""
         if not perk_id or not self.perks.has(perk_id):
             return None
+        if (why := self.preset_block(perk_id, preset)) is not None:
+            return why
         fx = self.perks.effects(perk_id)
         if fx.get("armor_piercing") and primary and (why := self._ap_block(primary)) is not None:
             return why
@@ -3657,6 +3675,7 @@ class Compiler:
         for v in self.perks.all():
             v["blocked_primary"] = [w for w in ids if self.perk_block_reason(v["perk_id"], w) is not None]
             v["blocked_secondary"] = [w for w in ids if self.perk_block_reason(v["perk_id"], None, w) is not None]
+            v["blocked_presets"] = [p for p in HEALTH_PRESETS if self.preset_block(v["perk_id"], p) is not None]
             out.append(v)
         return out
 

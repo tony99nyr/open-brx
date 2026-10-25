@@ -3,7 +3,7 @@ import { MockBackend } from '../src/mock/backend';
 import { WEAPON_MOCK_FIELDS } from '../src/api/contract.gen';
 import { apply } from '../src/mock/policy';
 import { mergeModeParams } from '../src/rules/modeParams';
-import { defaultPresentation, mergePresentation, presentationView, profileFromPreset } from '../src/rules/presentation';
+import { defaultPresentation, mergePresentation, profileFromPreset } from '../src/rules/presentation';
 import { perkEffectsResolved, roundHalfEven } from '../src/rules/perkEffects';
 
 describe('generated server rule inputs', () => {
@@ -38,15 +38,6 @@ describe('generated server rule inputs', () => {
     const after = await backend.getState();
     expect(after.config).toEqual(before.config);
     expect(after.players).toEqual(before.players);
-  });
-
-  it('serves the generated presentation event catalogue', async () => {
-    const backend = new MockBackend();
-    const config = (await backend.getState()).config;
-    const view = presentationView(config);
-    expect(view.events.length).toBeGreaterThan(50);
-    expect(view.events.find(row => row.event === 'lead_taken')?.sound).toBe('VA6D');
-    expect(view.presets).toContain('silenced');
   });
 
   it('refuses unknown and out-of-range mode parameters', async () => {

@@ -78,7 +78,6 @@ describe('server live rules in the mock', () => {
       expect(state.nodes.find(n => n.player_id === onyx.player_id)?.last_seen_ms).toBe(age);
       expect(live?.rows.find(r => r.player_id === onyx.player_id)?.sync_age_ms).toBe(age);
       expect(state.mc_confidence.stale).toContain(live?.rows.find(r => r.possibly_protected)?.player_id);
-      expect((await backend.getPresentation()).mc_confidence).toEqual(state.mc_confidence);
       const nomad = state.players.find(p => p.display === 'NOMAD')!;
       expect(state.readiness.board.find(r => r.player_id === nomad.player_id)?.pool_stale).toBe('silent');
       expect(live?.rows.find(r => r.player_id === nomad.player_id)?.pool_stale).toBe('silent');

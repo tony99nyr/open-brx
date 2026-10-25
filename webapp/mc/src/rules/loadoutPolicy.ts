@@ -67,7 +67,7 @@ function emptyCode(rule: SlotRule, ids: Set<string>, weapons = false): PoolEmpty
   return 'filtered';
 }
 
-export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
+export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[], healthPreset?: string | null): LoadoutPool {
   // 2026-09-18 (weapon-design.md §7.4): a weapon the catalogue marks `lethal: false` deliberately
   // cannot kill, and it may NEVER be a primary. The server refuses one in slot 0 outright
   // (`Compiler.validate`) and keeps it out of the primary pool (`policy._support_ids`), so this mirror
@@ -81,6 +81,14 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
   if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot
   else if (k.choice !== 'off') sp = visiblePerks.filter(x => inPool(k, x.perk_id, x.tags ?? [])).map(x => x.perk_id);
+  // Honest pickers (Tony 2026-10-25), as policy.py pool(): a perk the game's health preset refuses
+  // (`PerkView.blocked_presets`, Armour Piercing and Body Armor on Shields) is not offered
+  let presetEmptied = false;
+  if (healthPreset) {
+    const kept = sp.filter(id => !(visiblePerks.find(x => x.perk_id === id)?.blocked_presets ?? []).includes(healthPreset));
+    presetEmptied = sp.length > 0 && !kept.length;
+    sp = kept;
+  }
   let perkEmptiedPrim = false, perkEmptiedSw = false;   // F585: the fixed-perk prune emptied the slot, not its own rule
   if (k.choice === 'fixed' && sp.length) {
     // F551, as policy.py pool(): a fixed perk takes the weapons it cannot ride with out of the pool
@@ -106,7 +114,7 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const reasons: LoadoutPoolReasons = {};
   if (prim.length === 0) reasons.primary = perkEmptiedPrim ? 'perk_blocked' : emptyCode(p.primary, weaponIds, true);
   if (sw.length === 0) reasons.secondary_weapons = perkEmptiedSw ? 'perk_blocked' : emptyCode(s, weaponIds, true);
-  if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : emptyCode(k, perkIds);
+  if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : presetEmptied ? 'preset_blocked' : emptyCode(k, perkIds);
   if (Object.keys(reasons).length) out.reasons = reasons;
   return out;
 }

@@ -8,6 +8,7 @@
 //     reads 4/4 green beside a START the server refuses.
 // The strings are the SERVER'S — rendered verbatim, never re-derived here (F33/A32's lesson: two
 // rules for one fact disagree exactly when it matters).
+import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { Lobby } from '../src/screens/Lobby';
@@ -47,9 +48,13 @@ describe('ARMORY · the three A36 proofs appear on the gun card', () => {
   for (const [name, blocker] of [['a stale ack', STALE], ['a bad gun echo', ECHO], ['a wrong pool', POOL],
     ['a wrong query read-back', READBACK]] as const) {
     it(`${name} renders as a red fault, verbatim`, async () => {
-      const { d, state } = await boardWith({ status: 'red', blockers: [blocker], ambers: [] });
+      const { d, state, who } = await boardWith({ status: 'red', blockers: [blocker], ambers: [] });
       const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-      expect(m.text()).toContain(splitLine(blocker)[0]);
+      const card = m.find(`[data-gun-card="${who}"]`)[0];
+      const detail = Array.from(card.querySelectorAll('button')).find(b => b.getAttribute('aria-expanded') === 'false');
+      expect(detail, 'the gun card keeps the reason behind its fault control').toBeTruthy();
+      await act(async () => { detail!.click(); });
+      expect(card.textContent).toContain(splitLine(blocker)[0]);
       m.unmount();
     });
   }

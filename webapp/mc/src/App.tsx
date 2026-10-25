@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { OPERATOR_TOKEN, alertWords, colourOf, glyphed } from './alerts';
+import { OPERATOR_TOKEN, colourOf } from './alerts';
 import { CommandBar } from './frame/CommandBar';
 import { Armed } from './screens/Armed';
 import { Armory } from './screens/Armory';
@@ -14,6 +14,7 @@ import { Recap } from './screens/Recap';
 import { Spectate } from './screens/Spectate';
 import { StoreProvider, useStore } from './store';
 import { F, T } from './tokens';
+import { FaultPill } from './ui/Compact';
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -22,10 +23,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
   render() {
     if (this.state.error) {
       return (
-        <div role="alert" data-alert="frame-console-error" data-sev="red" style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: colourOf('frame-console-error'), padding: 40, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <span>{glyphed('red', alertWords('CONSOLE ERROR', String(this.state.error.message || this.state.error)))}</span>
-          <button type="button" onClick={() => location.reload()} style={{ alignSelf: 'flex-start', font: F.chk(700, 12), letterSpacing: '.2em', padding: '10px 18px', background: T.acc, color: T.accInk, border: 'none', cursor: 'pointer', minHeight: 44 }}>RELOAD</button>
-        </div>
+        <div style={{ padding: 40 }}><FaultPill id="frame-console-error" short="Console error"
+          why={String(this.state.error.message || this.state.error)} extra={<button type="button" onClick={() => location.reload()} style={{ alignSelf: 'flex-start', font: F.chk(700, 12), letterSpacing: '.2em', padding: '6px 12px', background: T.acc, color: T.accInk, border: 'none', cursor: 'pointer', minHeight: 32 }}>Reload</button>} /></div>
       );
     }
     return this.props.children;

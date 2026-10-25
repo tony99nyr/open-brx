@@ -1700,6 +1700,7 @@ class KitMatch(B.Match):
     def _seek(self, p, t, _gen=0):
         if not p.alive or p.target is not None:
             return
+        p.committed = False          # a draw made for the last engagement does not bind the next one (F601)
         enemies = [q for q in self.players if q.team != p.team and q.alive]
         if not enemies:
             self.push(t + 200.0, self.SEEK, p.pid)
@@ -1835,8 +1836,12 @@ class KitMatch(B.Match):
                 self.push(first, self.SHOT, p.pid, gen)
             return
         if not p.combo:
+            fired = p.shots
             super()._shot(p, t, gen)
-            if p.alive and p.engage_id == gen and p.target is not None and self.players[p.target].alive:
+            # reconsider only after a round left the gun: a reload or a heat-lock reschedule is the slot's action,
+            # and swapping away from it cancelled it, so two dry slots could still ping-pong (F601, Opus review)
+            if p.shots > fired and p.alive and p.engage_id == gen and p.target is not None and \
+                    self.players[p.target].alive:
                 idx = self._choose_slot(p, t)
                 if idx != p.active:
                     self.heap = [e for e in self.heap if not (e[2] == self.SHOT and e[3] == p.pid and

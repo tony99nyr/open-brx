@@ -93,9 +93,9 @@ describe('Report a problem', () => {
     const m = await openPanel(async () => ({ ...RESULT, too_large: true }));
     await m.click('MAKE REPORT');
     const t = (panel(m).textContent ?? '').toLowerCase();
-    expect(t).toMatch(/larger than 25 mb/);
-    expect(t).toMatch(/github's limit for an attachment/);
-    expect(t).toMatch(/make the issue anyway/);
+    expect(t).toMatch(/report exceeds 25 mb/);
+    expect(t).toMatch(/open github issue/);
+    expect(t).toMatch(/drag the downloaded file into the issue/);
     expect(t).not.toMatch(/trim/);
     m.unmount();
   });
@@ -105,6 +105,8 @@ describe('Report a problem', () => {
     await m.click('MAKE REPORT');
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('error');
+    expect(p.querySelector('[role="alert"]')?.textContent).toContain('Report failed');
+    await m.click('Why?');
     expect(p.querySelector('[role="alert"]')?.textContent ?? '').toContain('Not Found');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('TRY AGAIN'))).toBe(true);
     m.unmount();
@@ -113,6 +115,7 @@ describe('Report a problem', () => {
   it('error: any other rejection shows its own message, not a swallowed failure', async () => {
     const m = await openPanel(async () => { throw new Error('mc unreachable'); });
     await m.click('MAKE REPORT');
+    await m.click('Why?');
     expect(panel(m).querySelector('[role="alert"]')?.textContent ?? '').toContain('mc unreachable');
     m.unmount();
   });
@@ -159,7 +162,7 @@ describe('Report a problem', () => {
     expect(p.getAttribute('data-report-phase')).toBe('auth');
     const line = m.find('[data-testid="report-panel"] [data-alert="frame-token-refused"]')[0];
     expect(line?.getAttribute('data-sev')).toBe('red');
-    expect(line?.textContent ?? '').toMatch(/MC REFUSED THE CHANGE/);
+    expect(line?.textContent ?? '').toContain('MC refused the token');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('ENTER OPERATOR TOKEN'))).toBe(true);
     m.unmount();
   });
@@ -173,6 +176,7 @@ describe('Report a problem', () => {
     await m.click('ENTER OPERATOR TOKEN');
     expect(panel(m), 'the panel must still be up, with something the operator can read').toBeTruthy();
     expect(panel(m).getAttribute('data-report-phase')).toBe('error');
+    await m.click('Why?');
     expect((panel(m).textContent ?? '').toLowerCase()).toMatch(/could not open the token screen/);
     m.unmount();
   });

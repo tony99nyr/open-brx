@@ -13,7 +13,7 @@ describe('F318 item 1: the command bar while MC is offline', () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'live' };
     const bar = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'live' }, { mock: false, connected: false })}><CommandBar /></StoreCtx.Provider>);
-    expect(bar.text()).toContain('MC OFFLINE');
+    expect(bar.text()).toContain('MC offline, board frozen');
     const chip = bar.find('[data-testid="phase-chip"]')[0];
     expect(chip.textContent).toContain('LAST KNOWN');
     expect(chip.textContent).not.toContain('●');

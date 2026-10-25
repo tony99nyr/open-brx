@@ -25,3 +25,27 @@ test('F551: a perk blocked for the current primary or secondary is not offered; 
   assert.deepEqual(ids({ ...st('assault_rifle', 'usp'), pendingPick: { slot: 'primary', kind: 'weapon', id: 'sniper_rifle' } }), ['quick_switch', 'body_armor'],
     'a primary pick still waiting for its ack counts');
 });
+
+// Honest pickers (Tony 2026-10-25): with a perk held, the weapon tabs offer only the weapons it can ride with, so a
+// player never picks a pair MC would clear. MC's lists decide (the catalogue), never a hand list.
+const weapons = ['assault_rifle', 'sniper_rifle', 'usp', 'deagle'].map(weapon_id => ({ weapon_id, name: weapon_id }));
+const wst = (perk, extra = {}) => ({
+  catalog: { weapons, perks },
+  policy: { primary: { allowed_ids: weapons.map(w => w.weapon_id) }, secondary: { allowed_weapon_ids: weapons.map(w => w.weapon_id), kinds: ['weapon'] },
+    perk: { allowed_perk_ids: perks.map(p => p.perk_id) } },
+  loadout: { primary: { kind: 'weapon', weapon_id: 'assault_rifle' }, secondary: null, perk: perk ? { kind: 'perk', perk_id: perk } : null },
+  ...extra,
+});
+const wids = (s, tab) => Hud.prototype._loRows.call({}, s, tab).map(r => r.id);
+
+test('honest pickers: a held perk takes the weapons it cannot ride with out of the primary and secondary tabs', () => {
+  assert.deepEqual(wids(wst('armor_piercing'), 'primary'), ['assault_rifle', 'usp', 'deagle'], 'AP held: no sniper as primary');
+  assert.deepEqual(wids(wst('armor_piercing'), 'secondary'), ['assault_rifle', 'sniper_rifle', 'usp'], 'AP held: no deagle as secondary');
+  assert.deepEqual(wids(wst('quick_switch'), 'primary'), weapons.map(w => w.weapon_id), 'a perk that blocks nothing hides nothing');
+  assert.deepEqual(wids(wst('body_armor'), 'primary'), weapons.map(w => w.weapon_id), 'an older MC (no lists) hides nothing');
+  assert.deepEqual(wids(wst(null), 'primary'), weapons.map(w => w.weapon_id), 'no perk hides nothing');
+  assert.deepEqual(wids(wst(null, { pendingPick: { slot: 'perk', kind: 'perk', id: 'armor_piercing' } }), 'primary'), ['assault_rifle', 'usp', 'deagle'],
+    'a perk pick still waiting for its ack counts');
+  assert.deepEqual(wids(wst('armor_piercing', { pendingPick: { slot: 'perk', kind: 'none', id: null } }), 'primary'), weapons.map(w => w.weapon_id),
+    'a pending NONE on the perk frees the weapons');
+});
