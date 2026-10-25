@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 14
+SCENARIO_VERSION = 15   # 15: a dry primary draws the secondary only when it finishes first (F601)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -642,6 +642,7 @@ class Fighter:
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
         self.swap_until = 0.0
+        self.committed = False   # a drawn slot fires or reloads once before the slot is reconsidered (F601)
         self.gs = [_GunState(g, charged=(i == 0)) for i, g in enumerate(kit.guns)]  # a slot not in hand holds no charge
         self.active, self.phase, self.next_t, self.alive = (1 if kit.plan == "haze" else 0), "open", 0.0, True
         self.targets: list = []
@@ -735,6 +736,7 @@ class Fighter:
         chosen = self.gs[idx]
         draw = t + self.kit.swap_ms
         self.swap_until = draw
+        self.committed = True
         if self.kit.guns[idx].mode == "charge" and not chosen.charged:
             chosen.charged = True
             chosen.ready_at = max(chosen.ready_at, draw + self.kit.guns[idx].fire_ms)
@@ -801,14 +803,16 @@ class Fighter:
         if self.kit.plan != "single":
             return False
         if self.active == 0:
+            # A dry, reloading or locked primary draws the secondary only when the secondary still finishes
+            # first after the swap (the same test as the way back), or when the primary cannot finish at all.
+            # An unconditional draw ping-ponged: the way back counts the primary's reload, so a fast reload
+            # (the Shotgun's chain, Quick Hands) swapped back to an empty primary, drew again at once, and fired
+            # nothing all fight (F601).
             blocked = ps.ammo == 0 or ps.locked_until > t or ps.ready_at > t
-            if blocked and ss.ammo:
+            own = self._finish_ms(0, target, t)
+            if ss.ammo and ((blocked and own == math.inf) or self.kit.swap_ms + self._finish_ms(1, target, t) < own):
                 self._swap(1, t)
                 return True
-            if ss.ammo and not blocked:
-                if self.kit.swap_ms + self._finish_ms(1, target, t) < self._finish_ms(0, target, t):
-                    self._swap(1, t)
-                    return True
         elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)) or \
                 (ps.ready_at <= t and ps.locked_until <= t and
                  self.kit.swap_ms + self._finish_ms(0, target, t) < self._finish_ms(1, target, t)):
@@ -830,7 +834,9 @@ class Fighter:
             self.next_t = self.melee_ready
             self.last_effect = "melee"
             return self.kit.melee_dmg, MELEE_HIT_P * self.aim * (0.0 if t < self.blind_until else 1.0), False
-        if self._maybe_swap(t):
+        if self.committed:
+            self.committed = False
+        elif self._maybe_swap(t):
             return None
         g, s = self.kit.guns[self.active], self.gs[self.active]
         heat = dict(g.heat)

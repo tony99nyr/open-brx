@@ -886,7 +886,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 14
+    assert R.SCENARIO_VERSION == 15
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1323,6 +1323,23 @@ def test_a_dry_primary_draws_a_lethal_secondary_and_pays_both_swaps():
     shots = solo.shots
     assert solo.act(solo.next_t) is None
     assert solo.active == 0 and solo.shots == shots and len(solo.gs) == 1
+
+
+def test_a_fast_reload_primary_does_not_ping_pong_with_its_secondary():
+    # F601: a dry primary drew the secondary unconditionally, and the way back counted the primary's short reload,
+    # so a Quick Hands Shotgun swapped back and forth for the whole fight and never fired or reloaded.
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun + Deagle + QH", "shotgun", "deagle", perk="quick_hands")
+    f = R.Fighter(kit, 115, 0.4, R.DIST["long"], random.Random(2))
+    f.targets = [R.Fighter(kit, 45, 0, R.DIST["long"], random.Random(3))]   # a target already down to health
+    f.gs[0].ammo = 0
+    swaps, t = 0, 0.0
+    for _ in range(40):
+        before = f.active
+        f.act(t)
+        swaps += f.active != before
+        t = f.next_t
+    assert swaps <= 2 and f.shots > 0
 
 
 def test_a_loaded_secondary_fires_before_returning_to_an_empty_primary():
