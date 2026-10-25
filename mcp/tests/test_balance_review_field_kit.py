@@ -1,6 +1,7 @@
 """Field kit swaps and Armour Piercing use the same catalogue rules as the duel engine."""
 import pathlib
 import heapq
+import math
 import random
 import sys
 from dataclasses import replace
@@ -260,3 +261,49 @@ def test_a_shields_field_kit_refuses_a_perk_the_preset_refuses():
         else:
             raise AssertionError(f"{perk} was fielded on Shields")
     assert R.field_kit(world, "AR", "assault_rifle", perk="extended_mags", preset="shields").pool.shield == 105
+
+
+def test_a_spent_primary_draws_a_secondary_that_only_has_reserve():
+    # F608: the duel drew only a secondary with rounds in the magazine, so this fighter stopped for good
+    world = R.shipped_world()
+    kit = R.make_kit(world, "Shotgun + Deagle", "shotgun", "deagle")
+    f = R.Fighter(kit, 115, 0.4, 0, random.Random(2), pull_ms=0)
+    f.targets = [R.Fighter(kit, 115, 0, 0, random.Random(3))]
+    f.gs[0].ammo = f.gs[0].reserve = 0
+    f.gs[1].ammo = 0
+    assert f.gs[1].reserve > 0
+    t = 0.0
+    for _ in range(6):
+        f.act(t)
+        t = f.next_t
+    assert f.active == 1 and f.shots > 0 and t < math.inf
+
+
+def test_a_combo_never_draws_a_spent_finisher_and_leaves_one_it_holds():
+    # F608: the alpha path drew a spent finisher (the Sniper) and the base shot scheduled nothing
+    world = R.shipped_world()
+    match, p, _q = _match(R.field_kit(world, "CR+Sniper", "charge_rifle", "sniper_rifle", combo=True))
+    assert p.contact_end > 1000.0
+    p.stash[1] = (0, 0, *p.stash[1][2:])
+    match._shot(p, 0.0, p.engage_id)
+    assert p.active == 0
+    match._swap_to(p, 1, 0.0)
+    p.ammo = p.reserve = 0
+    match.heap = []
+    match._shot(p, 1000.0, p.engage_id)
+    assert p.active == 0 and any(e[2] == match.SHOT for e in match.heap)
+
+
+
+def test_a_combo_leaves_its_finisher_after_the_last_round():
+    # F608 (Opus review): after the finisher's last round the base shot queues nothing, so the swap back must
+    # happen in the same call, not wait for a shot that never comes
+    world = R.shipped_world()
+    match, p, _q = _match(R.field_kit(world, "CR+Sniper", "charge_rifle", "sniper_rifle", combo=True))
+    assert p.contact_end > 5000.0
+    match._swap_to(p, 1, 0.0)
+    p.phase = "finish"
+    p.ammo, p.reserve, p.next_ready, p.reload_until = 1, 0, 0.0, -1.0
+    match.heap = []
+    match._shot(p, 1000.0, p.engage_id)
+    assert p.shots == 1 and p.stash[1][0] == 0 and p.active == 0 and any(e[2] == match.SHOT for e in match.heap)

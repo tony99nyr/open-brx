@@ -108,8 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 21   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605)
+SCENARIO_VERSION = 22   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -853,7 +853,10 @@ class Fighter:
             # nothing all fight (F601).
             blocked = ps.ammo == 0 or ps.locked_until > t or ps.ready_at > t
             own = self._finish_ms(0, target, t)
-            if ss.ammo and ((blocked and own == math.inf) or self.kit.swap_ms + self._finish_ms(1, target, t) < own):
+            # F608: a primary that cannot finish also draws a secondary that is empty but has reserve; the draw is
+            # committed, so the secondary reloads before anything else (it used to stall with next_t at infinity)
+            if (ss.ammo and ((blocked and own == math.inf) or self.kit.swap_ms + self._finish_ms(1, target, t) < own)) \
+                    or (blocked and own == math.inf and ss.reserve > 0):
                 self._swap(1, t)
                 return True
         elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)) or \
@@ -1989,11 +1992,17 @@ class KitMatch(B.Match):
                     if first <= p.contact_end:
                         self.push(first, self.SHOT, p.pid, gen)
             return
+        if self._leave_spent_finisher(p, t, gen):
+            return
         w = p.w
-        alpha_ready = p.active == 0 and p.phase == "open" and p.ammo > 0 and t >= p.reload_until and (
+        finisher_left = p.stash[1][0] > 0 or p.stash[1][1] > 0     # F608: never draw a spent finisher
+        alpha_ready = p.active == 0 and p.phase == "open" and p.ammo > 0 and t >= p.reload_until and finisher_left and (
             not w.charge_and_tap or (p.ammo >= w.rounds_per_charge and t - p.last_pull >= w.fire_ms))
         target = self.players[p.target]
         super()._shot(p, t, gen)
+        if p.alive and p.engage_id == gen and p.target is not None and target.alive and \
+                self._leave_spent_finisher(p, t, gen):
+            return                  # the finisher's last round: the base shot queued nothing after it
         if alpha_ready and p.alive and p.engage_id == gen and p.target is not None and target.alive:
             # drop the SHOT the base pushed for this engagement; schedule the swap and the finisher instead
             self.heap = [e for e in self.heap if not (e[2] == self.SHOT and e[3] == p.pid and e[4] == gen and e[0] >= t)]
@@ -2006,6 +2015,19 @@ class KitMatch(B.Match):
                         p.reload_until, p.next_ready)
             if first <= p.contact_end:
                 self.push(first, self.SHOT, p.pid, gen)
+
+    def _leave_spent_finisher(self, p, t, gen) -> bool:
+        """F608: a combo holding a spent finisher goes back to its opener, which can still fire. The base shot
+        schedules nothing for a spent slot, so the combo would idle until the contact ends."""
+        if not (p.combo and p.active == 1 and p.ammo <= 0 and p.reserve <= 0 and not p.reload_amount and
+                (p.stash[0][0] > 0 or p.stash[0][1] > 0)):
+            return False
+        self._swap_to(p, 0, t + p.kit.swap_ms)
+        p.phase = "open"
+        first = max(p.swap_until, p.next_ready, p.reload_until)
+        if first <= p.contact_end:
+            self.push(first, self.SHOT, p.pid, gen)
+        return True
 
     def _respawn(self, p, t, _gen=0):
         pool = p.kpool
