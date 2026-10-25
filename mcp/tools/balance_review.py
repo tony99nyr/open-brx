@@ -20,14 +20,14 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
   viable                 the candidate's plain primary field ratio clears `VIABLE_FIELD_FLOOR`, and its
                          kit beats another kit in a 1v1 band. A sidearm instead needs the R10a finish bar.
   balance_kept           no Balance rule (R1-R12, R10a, both presets) flips from pass to fail, and no
-                         other kit loses its last near-top cell beyond sampling noise.
+                         other kit loses its baseline niche through a material score drop.
   op_rule                no non-pickup weapon one-shots the lowest pool a player can field on a gated
                          preset (rule 7: one-shot weapons are a pickup tier).
   marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
                          plain AR and AR with Body Armor rushes at 20 m (Tony, 2026-10-17).
   pickup_utility         pickup-only candidates: enough Standard kills per full stock and a prompt
                          undefended Standard first kill at REAL_AIM.
-  heat_sensitivity       when heat is involved, no rule, last-cell, domination or pickup utility
+  heat_sensitivity       when heat is involved, no rule, niche-score, domination or pickup utility
                          failure appears in another cooling branch; only branch differences appear here.
 
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
@@ -108,8 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 19   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610)
+SCENARIO_VERSION = 20   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -2906,8 +2906,15 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     haze_check = (haze_gate(base, world, _reps("haze_sweep", reps_scale), heat_cool_while_firing)
                   if haze_section else None)
     haze_failure = bool(haze_check and haze_check["fail"])
+    # the candidate's own weapon or perk; a `with` entry is in both worlds, so a kit carrying it is a bystander
+    involved = {wid} if wid else {entry.get("perk_id")} - {None}
+    by_primary: dict = {}       # one gain per primary: its presets averaged, so no primary weighs more
+    for cell, gain in (tests["viable"]["numbers"].get("score_minus_no_perk") or {}).items():
+        by_primary.setdefault(cell.rsplit("|", 1)[0], []).append(gain)
+    gains = [sum(v) / len(v) for v in by_primary.values()]
+    subject_trap = tests["viable"]["pass"] is False or bool(is_perk and gains and perk_is_a_trap(gains, _reps("perk", reps_scale)))
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
-                                         haze_failure=haze_failure)
+                                         haze_failure=haze_failure, involved=involved, subject_trap=subject_trap)
 
     # op_rule -------------------------------------------------------------------------------------------
     perk_in_play = is_perk or any(e["kind"].startswith("perk") for e in cand["with"])
@@ -3016,7 +3023,7 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             after_dom = domination_verdict(branch_mb, branch_mc)["numbers"]
             if _new_dominance_kits(before_dom, after_dom):
                 flips.append("no_domination")
-            kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid)
+            kept = balance_kept({}, {}, {}, branch_mb, branch_mc, wid, involved=involved)
             last_cell_losses[branch] = kept["numbers"]["kits_losing_last_near_top"]
             flips.extend(f"balance_kept:{kit}" for kit in last_cell_losses[branch])
             if pickup and not verdict["heat_pickup_utility"][branch]["pass"]:
@@ -3047,56 +3054,60 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         verdict["tests"]["heat_sensitivity"] = _test(not sensitive,
             {"failed_branches": sensitive, "differing_rule_cells": differences,
              "differing_matrix_cells": sorted(set(differing_matrix))},
-            "no new rule, last-cell, domination or pickup utility failure in another cooling branch")
+            "no new rule, niche-score, domination or pickup utility failure in another cooling branch")
         verdict["pass"] = verdict["pass"] and not sensitive
     return verdict
 
 
-def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -> bool:
-    """A last-cell loss matters only when its margin shortfall exceeds sampling noise."""
-    def standard_error(matrix, name, column, score, reps):
-        if column == "field":
-            # The geometric mean combines kill-rate ratios; Poisson count error adds on log scale.
-            counts = matrix.get("field_counts", {}).get(name)
-            if counts:
-                return score * math.sqrt(sum(1 / max(test, 0.5) + 1 / max(anchor, 0.5)
-                                             for test, anchor in counts)) / len(counts)
-            return math.sqrt((score + score * score) / (reps * len(FIELD_NS)))
-        if column == "ammo stress":
-            kills = matrix.get("ammo_stress_kills", {}).get(name)
-            anchor = matrix.get("ammo_stress_anchor_kills")
-            if kills is not None and anchor and kills > 0:
-                return score * math.sqrt(1 / (kills * reps) + 1 / (anchor * reps))
-            return math.sqrt((score + score * score) / reps)
-        if column == "ambush":
-            # The sum of two binary outcomes has range 0..2, and can exceed one.
-            p = min(1.0, max(0.0, score / 2))
-            return 2 * math.sqrt(p * (1 - p) / (reps * len(DIST)))
-        averaged = max(1, len(matrix.get("kits", [])) - 1)
-        if column == "shields":
-            averaged *= len(DIST)
-        elif column == "hill hold":
-            averaged = len(HILL_REFERENCES)
-        p = min(1.0, max(0.0, score))
-        return math.sqrt(p * (1 - p) / (reps * averaged))
+def _column_standard_error(matrix: dict, name: str, column: str, score: float, reps: int) -> float:
+    """Estimate one matrix cell's sampling error from its column and available counts."""
+    if column == "field":
+        # The geometric mean combines kill-rate ratios; Poisson count error adds on log scale.
+        counts = matrix.get("field_counts", {}).get(name)
+        if counts:
+            return score * math.sqrt(sum(1 / max(test, 0.5) + 1 / max(anchor, 0.5)
+                                         for test, anchor in counts)) / len(counts)
+        return math.sqrt((score + score * score) / (reps * len(FIELD_NS)))
+    if column == "ammo stress":
+        kills = matrix.get("ammo_stress_kills", {}).get(name)
+        anchor = matrix.get("ammo_stress_anchor_kills")
+        if kills is not None and anchor and kills > 0:
+            return score * math.sqrt(1 / (kills * reps) + 1 / (anchor * reps))
+        return math.sqrt((score + score * score) / reps)
+    if column == "ambush":
+        # The sum of two binary outcomes has range 0..2, and can exceed one.
+        p = min(1.0, max(0.0, score / 2))
+        return 2 * math.sqrt(p * (1 - p) / (reps * len(DIST)))
+    averaged = max(1, len(matrix.get("kits", [])) - 1)
+    if column == "shields":
+        averaged *= len(DIST)
+    elif column == "hill hold":
+        averaged = len(HILL_REFERENCES)
+    p = min(1.0, max(0.0, score))
+    return math.sqrt(p * (1 - p) / (reps * averaged))
 
-    material = []
-    for column in mb["near_top"][old_name]:
-        value = mc.get("columns", {}).get(new_name, {}).get(column)
-        top = mc.get("top", {}).get(column)
-        if value is None or top is None or not (math.isfinite(value) and math.isfinite(top)):
-            return True
-        limit = top * (1 - NEAR_TOP_MARGIN[column]) if column == "ammo stress" else top - NEAR_TOP_MARGIN[column]
-        shortfall = limit - value
-        kind = "ammo" if column == "ammo stress" else ("field" if column == "field" else
-                ("ambush" if column == "ambush" else "duel"))
-        reps = min(mb.get("reps", {}).get(kind, REPS[kind]), mc.get("reps", {}).get(kind, REPS[kind]))
-        top_name = next((name for name in mc.get("kits", [])
-                         if mc["columns"].get(name, {}).get(column) == top), new_name)
-        se = math.hypot(standard_error(mc, top_name, column, top, reps),
-                        standard_error(mc, new_name, column, value, reps))
-        material.append(shortfall > NOISE_Z * se)
-    return all(material)
+
+def _niche_score_material_loss(mb: dict, mc: dict, old_name: str, new_name: str, column: str) -> bool:
+    """Whether the kit's own score fell beyond noise in one baseline niche column."""
+    before = mb.get("columns", {}).get(old_name, {}).get(column)
+    after = mc.get("columns", {}).get(new_name, {}).get(column)
+    if before is None or not math.isfinite(before):
+        return False
+    if after is None or not math.isfinite(after):
+        return True
+    kind = "ammo" if column == "ammo stress" else ("field" if column == "field" else
+            ("ambush" if column == "ambush" else "duel"))
+    reps = min(mb.get("reps", {}).get(kind, REPS[kind]), mc.get("reps", {}).get(kind, REPS[kind]))
+    se_before = _column_standard_error(mb, old_name, column, before, reps)
+    se_after = _column_standard_error(mc, new_name, column, after, reps)
+    # cell_rng keys on kit names, so a kit that keeps its name shares random numbers across the two matrices and
+    # the paired difference needs about one sample's error (the larger of the two, as a changed fight path draws
+    # differently); a renamed kit draws an independent stream, so both errors add.
+    se = math.hypot(se_before, se_after) if old_name != new_name else max(se_before, se_after)
+    # and a niche is lost only by a drop at least the near-top margin: a real but tiny drop (one new counter in
+    # the mean, many reps) is not a lost niche (Opus review)
+    floor = NEAR_TOP_MARGIN[column] * before if column == "ammo stress" else NEAR_TOP_MARGIN[column]
+    return before - after > max(NOISE_Z * se, floor)
 
 
 def _ceiling_pass(cell: dict, key: str) -> bool:
@@ -3105,12 +3116,26 @@ def _ceiling_pass(cell: dict, key: str) -> bool:
     return True if v is None else (v < bar if key.split("|", 1)[1].startswith("R10a") else v >= bar)
 
 
+def perk_is_a_trap(gains: list[float], reps: int) -> bool:
+    """A perk is a trap when its mean score over no perk across primaries is below zero by more than NOISE_Z standard
+    errors (brx1: a comfort pick such as Fast Hands sits near zero and must not fail on noise). The error is the
+    spread of the per-primary gains, floored at a binomial cell's error at `reps`."""
+    n = len(gains)
+    mean = sum(gains) / n
+    spread = math.sqrt(sum((g - mean) ** 2 for g in gains) / (n - 1) / n) if n > 1 else 0.0
+    se = max(spread, math.sqrt(0.25 / max(1, reps)))
+    return mean < -NOISE_Z * se
+
+
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
-                 side: dict | None = None, *, haze_failure: bool = False) -> dict:
+                 side: dict | None = None, *, haze_failure: bool = False, involved=(),
+                 subject_trap: bool = False) -> dict:
     """Rule cells fail when, at either aim (real or the 0.9 ceiling), they pass in the shipped catalogue but fail in
     either world (this judges a `with`
-    entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
-    (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
+    entry too), or pass in the baseline and fail in the candidate. A kit fails when its own score
+    materially falls in every baseline near-top column outside the three 0.9 ceiling columns. A kit that carries a
+    changed weapon or perk (`involved`) is part of the change, not a bystander, so it is not judged here (F611:
+    otherwise a Body Armor nerf failed on CR+Sniper+BA's own drop)."""
     def flipped(passes):
         return [k for k in rules_c if (passes(rules_b, k) and not passes(rules_c, k))
                 or (passes(rules_s, k) and not (passes(rules_b, k) and passes(rules_c, k)))]
@@ -3122,12 +3147,29 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     flips += ceiling_flips
     already = [k for k in rules_s if not rules_s[k]["pass"]]
     by_key_c = {key: name for name, key in mc["keys"].items()}
-    candidates = [(name, key, by_key_c[key]) for name, key in mb["keys"].items()
-                  if key != subject and mb["near_top"][name] and key in by_key_c
-                  and not mc["near_top"][by_key_c[key]]]
-    lost = [key for name, key, new_name in candidates if _last_cell_material_loss(mb, mc, name, new_name)]
-    noise_excused = [key for name, key, new_name in candidates
-                     if not _last_cell_material_loss(mb, mc, name, new_name)]
+    ceiling = {"1v1 close", "1v1 mid", "1v1 long"}
+    lost, noise_excused, skipped = [], [], {}
+    for name, key in mb["keys"].items():
+        if key == subject or key not in by_key_c:
+            continue
+        carried = {spec.get(field) for spec in (mb.get("specs", {}).get(name, {}),
+                                                mc.get("specs", {}).get(by_key_c[key], {}))
+                   for field in ("primary", "secondary", "perk", "shields_perk")}
+        if carried & set(involved):
+            drops = {c: [mb["columns"][name].get(c), mc["columns"][by_key_c[key]].get(c)]
+                     for c in mb["near_top"][name] if c not in ceiling}
+            if drops:
+                skipped[key] = drops        # listed, not judged: the kit carries the change
+            continue
+        new_name = by_key_c[key]
+        niche = [column for column in mb["near_top"][name] if column not in ceiling]
+        if not niche:
+            continue
+        material = [_niche_score_material_loss(mb, mc, name, new_name, column) for column in niche]
+        if all(material):
+            lost.append(key)
+        elif not any(column not in ceiling for column in mc["near_top"][new_name]):
+            noise_excused.append(key)
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
                                "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"],
                                **({"ceiling_shipped": rules_s[k].get("ceiling_value"),
@@ -3136,9 +3178,13 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
                            for k in flips},
             "ceiling_rule_flips": ceiling_flips,
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
+            "kits_carrying_the_change_not_judged": skipped,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
             "haze_flip_over_bar": haze_failure, "haze_win_bar": HAZE_WIN_BAR}
-    ok = not flips and not lost and not haze_failure
+    # F611: the kits that carry the change are not judged above, so an over-nerf must fail here: the subject
+    # itself is not viable, or (a perk) worse than no perk on average across primaries
+    nums["subject_is_a_trap"] = subject_trap
+    ok = not flips and not lost and not haze_failure and not subject_trap
     if side is not None:
         low = {k: v for k, v in side["r10b"].items()
                if v < (R10_PRIMARY_BAR if k.startswith("standard") else B.SHIELDS_BAR)}
@@ -3146,7 +3192,7 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
         nums["r10b_under_bar"] = low
         ok = ok and not low
     return _test(ok, nums, "no Balance rule cell flips to fail at either aim (against the shipped catalogue too), "
-                           "no other kit loses its last near-top cell, and no selectable Haze row "
+                           "no other kit loses its baseline niche through material score drops, and no selectable Haze row "
                            "crosses the Haze win bar from a passing baseline")
 
 

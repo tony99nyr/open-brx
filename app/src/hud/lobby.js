@@ -1,5 +1,6 @@
 // Lobby rendering for the phone HUD.
 import { MAX_TAG_LEN } from '../transport/contract.gen.js';
+import { syncTrack, chipHtml } from './synctrack.js';
 import { esc, OUTCOME_WORD, splitGun, discoveredRow, refusalWords, MC_URL_HINT, roleName, weaponArt, statBlock } from './shared.js';
 /** F366: the phone cannot rename a gamertag, only the host can (MC's ARMORY/KIT) — this only decides whether to
  *  show the note. Measured exactly as MC's `_check_tag` does (mcp/brx_mcp/mc/state.py): trimmed, upper-cased,
@@ -256,7 +257,9 @@ export function _lobby(st, mode) {
       // The note is `_readyNote`, the same one the kitted screen renders and patches: `setReady` REFUSES while
       // the clock is unsynced, and the hard-coded note said nothing about it — the one control gating the next
       // match went dead with no explanation on screen.
-      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
+      // Phone sync track: back in the lobby, the gallery's compact chip above the button, RECEIVED included.
+      const trk = syncTrack(this.sync, st, Date.now());
+      foot = `${trk ? `<div class="oversync">${chipHtml(trk)}</div>` : ''}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
       // A24 (game test D3: "let players get back to results after OK · maybe a match history"). The outcome word
       // is printed here ONLY out of `st.result` — with no result the line simply does not carry one.
       const rw = st.result ? (OUTCOME_WORD[st.result.outcome] || null) : null;

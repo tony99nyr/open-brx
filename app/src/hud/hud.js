@@ -10,6 +10,7 @@ import * as SV from './shieldmeter.js';
 import * as Lobby from './lobby.js';
 import * as Loadout from './loadout.js';
 import * as Result from './result.js';
+import { syncTrack } from './synctrack.js';
 import * as Live from './live.js';
 import * as Score from './score.js';
 import * as Ammo from './ammo.js';
@@ -237,6 +238,8 @@ export class Hud {
       // F488: normalised, so the first 1 s sync poll (app.js: `hud.sync` goes from unset to {bound:false, pending:0})
       // is not a screen change. Every reader treats the two the same, and the raw values rebuilt the picker's rows ~1 s after boot.
       st.rejoin, !!st.pendingTeardown, !!(this.sync && this.sync.bound), (this.sync && this.sync.pending) || 0,
+      // phone sync track: its stage, tone and reason are structure (the stuck reason appears with time, not with a poll value)
+      (t => t ? `${t.stage}/${t.tone}/${t.via}/${t.reason}` : '')(syncTrack(this.sync, st, Date.now())),
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
       // block (the type-address box vs "MC LINKED") on `wsState`, not just text — `_patch` only ever touched
       // `#mcstatus`'s TEXT, so with wsState excluded from the signature that swap needed some UNRELATED field

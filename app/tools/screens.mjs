@@ -1968,17 +1968,21 @@ for (const view of VIEWS) {
     must(/MC NOT REACHED/.test(t) && /SEE MISSION CONTROL/.test(t), 'copy: ' + t.slice(0, 200));
     must(!/\b(LOSE|LOST|DEFEAT)\b/.test(t), 'an unreachable MC was rendered as a defeat: ' + t.slice(0, 200));
   });
-  await step(`${view.name} A24 result-pending: RETURN TO MISSION CONTROL is on screen and blinking`, async () => {
+  await step(`${view.name} A24 result-pending: the sync track says NOT LINKED and its walk-back action blinks until the result is in`, async () => {
     const pg = await open(view, 'result-pending');
-    const r = await pg.evaluate(() => { const e = document.querySelector('.result .retmc'); if (!e) return null;
-      const cs = getComputedStyle(e); return { txt: e.textContent.trim(), anim: cs.animationName, dur: cs.animationDuration, fs: parseFloat(cs.fontSize) }; });
-    const gone = await pg.evaluate(async () => { window.brxDemo.result('win'); await new Promise(r => setTimeout(r, 400)); return !document.querySelector('.result .retmc'); });
+    await pg.waitForTimeout(1200);   // past app.js's 1 s sync poll, which draws the track
+    const r = await pg.evaluate(() => { const e = document.querySelector('.result .rfoot .sy .act'); if (!e) return null;
+      const cs = getComputedStyle(e); return { txt: e.textContent.trim(), trk: document.querySelector('.result .rfoot .sy .trk').textContent.trim(),
+        anim: cs.animationName, dur: cs.animationDuration, fs: parseFloat(cs.fontSize), retmc: !!document.querySelector('.result .retmc') }; });
+    const after = await pg.evaluate(async () => { window.brxDemo.result('win'); await new Promise(r => setTimeout(r, 400));
+      const e = document.querySelector('.result .rfoot .sy .act'); return e ? getComputedStyle(e).animationName : 'gone'; });
     await pg.close();
-    must(r, 'no RETURN TO MISSION CONTROL line');
-    must(r.txt === 'RETURN TO MISSION CONTROL', 'copy: ' + r.txt);
+    must(r, 'no sync track action on the no-result screen');
+    must(/NOT LINKED/.test(r.trk) && r.txt === '▸ Walk back towards Mission Control', 'copy: ' + JSON.stringify(r));
+    must(!r.retmc, 'RETURN TO MISSION CONTROL repeats the track');
     must(r.anim !== 'none' && parseFloat(r.dur) > 0, 'it does not blink: ' + JSON.stringify(r));
     must(r.fs >= 11, 'too small: ' + r.fs);
-    must(gone, 'it kept blinking after the result arrived — the walk back is over');
+    must(after === 'none', 'the action kept blinking after the result arrived: ' + after);
   });
   await step(`${view.name} A24 result-win-team: the headline is the pushed outcome, in the team colour language`, async () => {
     const pg = await open(view, 'result-win-team');
@@ -5276,12 +5280,12 @@ for (const stage of ['result-unreached', 'result-pending']) {
       const hit = (a, b) => a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1;
       const title = document.querySelector('.result .rh1'), tr = title && title.getBoundingClientRect();
       const pills = Array.from(document.querySelectorAll('.chipbar .pill')).filter(vis);
-      return { title: title ? title.textContent.trim() : null, lines: Array.from(document.querySelectorAll('.result .rfoot .retmc, .result .rfoot .syncline')).filter(vis).map(e => e.textContent.trim()),
+      return { title: title ? title.textContent.trim() : null, lines: Array.from(document.querySelectorAll('.result .rfoot .retmc, .result .rfoot .sy')).filter(vis).map(e => e.dataset.sync || e.textContent.trim()),
         pills: pills.map(p => p.textContent.trim()), onTitle: pills.filter(p => tr && hit(p.getBoundingClientRect(), tr)).map(p => p.textContent.trim()) };
     });
     await pg.close();
     must(r.title && /MC NOT REACHED|RESULT PENDING/.test(r.title), 'not the no-result screen: ' + JSON.stringify(r));
-    must(r.lines.length === 1 && r.lines[0] === 'RETURN TO MISSION CONTROL', 'the footer does not carry exactly one status line: ' + JSON.stringify(r.lines));
+    must(r.lines.length === 1 && r.lines[0] === 'unlinked', 'the footer does not carry exactly one status line, the NOT LINKED track: ' + JSON.stringify(r.lines));
     must(r.onTitle.length === 0, 'a pill sits on the title: ' + JSON.stringify(r.onTitle));
     must(!r.pills.some(p => /MISSION CONTROL/.test(p)), 'the MC pill repeats the footer line: ' + JSON.stringify(r.pills));
   });
@@ -5289,10 +5293,63 @@ for (const stage of ['result-unreached', 'result-pending']) {
 await step('QA-15 stage result: a result MC just delivered never reads OUT OF RANGE under it', async () => {
   const pg = await open(VIEWS[0], 'result-win-team');
   await pg.waitForTimeout(1200);   // fixed on purpose: past the first tick of app.js's 1 s sync poller, which is what could turn the line
-  const r = await pg.evaluate(() => ({ ws: window.brx.engine.state().wsState, line: (document.querySelector('.result .syncline') || {}).textContent || '' }));
+  const r = await pg.evaluate(() => { const e = document.querySelector('.result .rfoot .sy'); return { ws: window.brx.engine.state().wsState, stage: e ? e.dataset.sync : null, line: e ? e.textContent : '' }; });
   await pg.close();
   must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
-  must(!/OUT OF RANGE/.test(r.line) && /SENT TO THE HOST|SENDING/.test(r.line), 'the sync line contradicts the link that just delivered the result: ' + JSON.stringify(r));
+  must(r.stage === 'received' && !/NOT LINKED/.test(r.line), 'the sync track contradicts the link that just delivered the result: ' + JSON.stringify(r));
+});
+// Phone sync track (Tony 2026-10-25, gallery C:/Users/Tony/brx-phone-sync, option A): MC's own stages after the whistle,
+// a sentence-case reason and one action, at both widths, never overlapping the OK button.
+const SYNC_CASES = [
+  ['result-sync-sending', 'sending', /SENDING 12 LEFT/, null],
+  ['result-sync-cell', 'sending', /MOBILE/, 'Over mobile data, slower than the Wi-Fi'],
+  ['result-sync-stuck', 'sending', /SENDING 12 LEFT/, 'No progress for 2 min · ▸ Walk back towards Mission Control'],
+  ['result-sync-mc-silent', 'unlinked', /NOT LINKED/, 'Mission Control is not answering · ▸ Tell the host'],
+  ['result-win-team', 'received', /RECEIVED/, 'Mission Control has all your scores'],
+];
+for (const view of VIEWS) for (const [stage, sync, trk, why] of SYNC_CASES) {
+  await step(`${view.name} sync track ${stage}: ${sync}, its reason, and clear of the OK button`, async () => {
+    const pg = await open(view, stage);
+    await pg.waitForTimeout(1200);   // past app.js's 1 s sync poll, which draws the track
+    const r = await pg.evaluate(() => {
+      const e = document.querySelector('.result .rfoot .sy'), ok = document.querySelector('.result .rfoot .ready');
+      if (!e) return null;
+      const why = e.querySelector('.why'), a = e.getBoundingClientRect(), b = ok.getBoundingClientRect();
+      const clip = x => x && x.scrollWidth > x.clientWidth + 1;
+      return { sync: e.dataset.sync, trk: e.querySelector('.trk').textContent.trim(), why: why ? why.textContent.trim() : null,
+        overlap: a.right > b.left + 1 && a.bottom > b.top + 1 && a.top < b.bottom - 1, clipped: clip(e.querySelector('.trk')) || clip(why),
+        fs: why ? parseFloat(getComputedStyle(why).fontSize) : 13 };
+    });
+    await pg.close();
+    must(r, 'no sync track on the results screen');
+    must(r.sync === sync && trk.test(r.trk), 'stage: ' + JSON.stringify(r));
+    must(r.why === why, 'reason: ' + JSON.stringify(r.why) + ' wanted ' + JSON.stringify(why));
+    must(!r.overlap, 'the track runs under the OK button');
+    must(!r.clipped, 'the track or its reason is cut off: ' + JSON.stringify(r));
+    must(r.fs >= 11, 'reason too small: ' + r.fs);
+    must(!/[A-Z]{3,} [A-Z]{3,} [A-Z]{3,}/.test(r.why || ''), 'a capitalised warning sentence: ' + r.why);
+  });
+}
+await step('sync track night: the walk-back action does not blink at night (B4: nothing blinks at night)', async () => {
+  const pg = await open(VIEWS[0], 'result-pending', '&night');
+  await pg.waitForTimeout(1200);
+  const r = await pg.evaluate(() => { const e = document.querySelector('.result .rfoot .sy .act'); return e ? getComputedStyle(e).animationName : null; });
+  await pg.close();
+  must(r === 'none', 'the action blinks at night: ' + r);
+});
+for (const view of VIEWS) await step(`${view.name} sync track over-sync-unlinked: back in the lobby the track sits above READY until MC has the scores`, async () => {
+  const pg = await open(view, 'over-sync-unlinked');
+  await pg.waitForTimeout(1200);
+  const r = await pg.evaluate(() => {
+    const e = document.querySelector('.lobby .foot .oversync .sychip'), btn = document.querySelector('.lobby .foot .ready');
+    const plates = Array.from(document.querySelectorAll('.lobby .plate')).map(p => p.getBoundingClientRect());
+    if (!e) return null;
+    const a = e.closest('.oversync').getBoundingClientRect(), b = btn.getBoundingClientRect();
+    return { sync: e.dataset.sync, txt: e.textContent, onBtn: a.bottom > b.top + 1, onPlate: plates.some(p => a.top < p.bottom - 1 && a.bottom > p.top + 1 && a.left < p.right && a.right > p.left) };
+  });
+  await pg.close();
+  must(r && r.sync === 'unlinked' && /Walk back towards Mission Control/.test(r.txt), 'lobby track: ' + JSON.stringify(r));
+  must(!r.onBtn && !r.onPlate, 'the lobby track overlaps the button or a plate: ' + JSON.stringify(r));
 });
 for (const view of VIEWS) {
   await step(`${view.name} QA-20 briefing-long: clamped host notes open in full, and the mode art has no readable fake clock`, async () => {

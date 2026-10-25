@@ -1006,7 +1006,7 @@ await step('HUDs show the FINAL RESULTS screen with stats; OK → the next-match
   if (accTxt !== '\u2014') expect(parseInt(accTxt, 10) <= 100, `accuracy reads ${accTxt} — >100% means double-scaled (server sends PERCENT)`);
   expect((await hudA.locator('.result .cell').count()) >= 4, 'stat cells missing');
   await shot(hudA, 'hudA-result'); await shot(hudB, 'hudB-result'); await tapAudit(hudA, 'hud-result');
-  const ov = await overlapAudit(hudA, 'hud-result', ['.result .banner', '.result .rstats', '.result .sess', '.result .foot .ready', '.result .syncline']);
+  const ov = await overlapAudit(hudA, 'hud-result', ['.result .banner', '.result .rstats', '.result .sess', '.result .foot .ready', '.result .rfoot .sy']);
   expect(ov.length === 0, 'result-screen elements overlap: ' + ov.join('; '));
   await hudA.setViewportSize({ width: 740, height: 340 });      // shorter real-phone aspect
   await hudA.waitForTimeout(300);
@@ -1014,7 +1014,7 @@ await step('HUDs show the FINAL RESULTS screen with stats; OK → the next-match
   expect(ov2.length === 0, 'result overlaps on a short viewport: ' + ov2.join('; '));
   await hudA.setViewportSize({ width: 891, height: 411 });
   try {
-    await until(async () => ((await hudA.locator('.result .syncline').textContent().catch(() => '')) || '').includes('SENT TO THE HOST'), 6000, 'score-delivery confirmation (1s sync poller)');
+    await until(async () => ((await hudA.locator('.result .rfoot .sy').getAttribute('data-sync').catch(() => '')) || '') === 'received', 6000, 'score-delivery confirmation (1s sync poller)');
   } catch (e) {
     const ring = await hudA.evaluate(() => { const t = window.brx.transport; return JSON.stringify({ state: t.state, pending: t.ring.pending().map(x => ({ seq: x.seq, type: x.type, match: x.match_id })) }); });
     throw new Error(e.message + ' — ring ' + ring);
