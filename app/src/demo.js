@@ -798,6 +798,8 @@ export function startDemo({ engine, log }) {
       'result-pending':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'mcLost']],            // ended, no result, MC gone: PENDING — never "lost"
       'result-unreached':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'unreached']],         // ... and still nothing 30 s later: MC NOT REACHED
       // Phone sync track (hud/synctrack.js): the result with each sync state app.js's poll can report (window.brxDemoSync)
+      // A81: MC withholds the result until every phone is in, so a linked phone that is still sending waits with no outcome
+      'result-pending-linked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan' })]],
       'result-sync-sending': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan' })], [2500, () => ev.result('win')]],
       'result-sync-cell':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'cellular', reach: 'backhaul' })], [2500, () => ev.result('win')]],
       'result-sync-stuck': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 125_000; syncAs({ bound: true, pending: 12, drainedAt: 0, connType: 'wifi', reach: 'lan', pendingChangedAt: Date.now() - 125_000, boundAt: 1 }); /* the whistle 125 s ago */ }], [2500, () => ev.result('win')]],

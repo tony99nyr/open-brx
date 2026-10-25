@@ -119,7 +119,7 @@ export function _result(st) {
     const word = R ? (OUTCOME_WORD[R.outcome] || OUTCOME_WORD.undecided) : null;
     const head = word
       ? `<span class="rh1 w ${esc(String(R.outcome || 'undecided'))}"><span class="unskew">${word}</span></span>`
-      : `<span class="rh1 p"><span class="unskew">${wait === 'unreached' ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING · CONFIRM AT MISSION CONTROL'}</span></span>`;
+      : `<span class="rh1 p"><span class="unskew">${wait === 'unreached' ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING'}</span></span>`;
     const modeName = String((R && R.mode) || st.mode || '').toUpperCase().replace(/_/g, ' ');
     const tilesHidden = recapTilesHidden(tab, rows, myId);
     const meta = [modeName || null,
@@ -137,7 +137,7 @@ export function _result(st) {
       // a dashed box that filled the body with nothing. It now says only what the footer does not: who has the result.
       body = `<div class="rwait"><div class="wl">${wait === 'unreached'
         ? 'Your phone never reached Mission Control after the whistle. The host has the scores: read the result there.'
-        : 'Mission Control decides how the match ended and sends the result here.'}</div>
+        : 'Mission Control sends the result here once every phone has sent its scores.'}</div>
         <div class="wl dim">The line below is what this phone counted. It is not the result.</div></div>`;
     } else if (tab === 'awards') {
       body = this._awards(awards, rows, myId, !!st.night);
