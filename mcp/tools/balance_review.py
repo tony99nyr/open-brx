@@ -108,8 +108,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 20   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611)
+SCENARIO_VERSION = 21   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -464,6 +464,7 @@ class Kit:
     melee_dmg: int
     melee_ms: float
     melee_swap_ms: float         # F609: the slot-4 draw, the larger t15 of the gun and the melee slot
+    shield_regen_delay_ms: float = float(SHIELD_REGEN_DELAY_MS)   # F605: a sim-only per-kit quiet window (set with replace())
 
     def pool(self, preset: str) -> int:
         return dict(self.pools)[preset]
@@ -686,10 +687,10 @@ class Fighter:
         return self.health + self.armour + self.shield
 
     def advance_shield(self, t):
-        """Apply the Shields preset's four one-second grants after 6.5 seconds without damage."""
+        """Apply the Shields preset's four one-second grants after the kit's quiet window (6.5 s shipped)."""
         if not self.alive or self.shield_max <= 0 or self.shield >= self.shield_max:
             return
-        first = self.last_damage_t + SHIELD_REGEN_DELAY_MS
+        first = self.last_damage_t + self.kit.shield_regen_delay_ms
         step = math.ceil(self.shield_max / SHIELD_REGEN_GRANTS)
         while self.shield_grants < SHIELD_REGEN_GRANTS and first + self.shield_grants * SHIELD_REGEN_STEP_MS <= t:
             self.shield = min(self.shield_max, self.shield + step)
@@ -1793,6 +1794,7 @@ class FieldKit:
     pool: B.Pool
     combo: bool
     ap: bool
+    shield_regen_delay_ms: float = float(SHIELD_REGEN_DELAY_MS)   # F605: a sim-only per-kit quiet window
 
 
 def _wm(world: World, wid: str, fx: dict | None):
@@ -1923,6 +1925,8 @@ class KitMatch(B.Match):
             tgt.health -= min(tgt.health, dmg)
             if tgt.health <= 0:
                 self._death(tgt, src, t, dot=False)
+            else:
+                self._damaged(tgt, t)
             return
         super()._hit(src, tgt, dmg, t)
 
@@ -1999,6 +2003,7 @@ class KitMatch(B.Match):
         pool = p.kpool
         p.alive = True
         p.committed = False
+        p.regen_gen += 1           # F605: a new life starts full
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
         if len(p.models) > 1:
             p.stash = [(m.mag, m.reserve, -1.0, 0.0, t, -1.0, 0.0, -1e9, 0, 0, False) for m in p.models]
@@ -2022,6 +2027,8 @@ def _kit_player(pid, team, fk: FieldKit):
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
     p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
+    p.regen_delay_ms = fk.shield_regen_delay_ms     # F605
+    p.shield_max = fk.pool.shield if fk.pool.armour == 0 else 0
     return p
 
 

@@ -128,6 +128,7 @@ from brx_mcp.mc import state as _state  # noqa: E402
 from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEALTH_PRESETS, PULL_SIGMA, SEMI_PULL_MS,  # noqa: E402
                                 WeaponCatalog)
 from brx_mcp.mc.types import RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG  # noqa: E402
+from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Invented model constants (see the module docstring)
@@ -374,7 +375,8 @@ class Player:
                  "reload_until", "reload_amount", "next_ready", "last_pull", "burst_i", "target", "contact_end",
                  "engage_id", "attackers", "hit_p", "poison_gen", "poison_src", "poison_left",
                  "poison_dmg", "poison_tick_ms", "heat", "last_heat_ms", "heat_lock_until", "heat_has_locked",
-                 "kills", "deaths", "dot_kills", "shots")
+                 "kills", "deaths", "dot_kills", "shots",
+                 "shield_max", "regen_delay_ms", "regen_gen")
 
     def __init__(self, pid: int, team: int, w: WeaponModel, pool: Pool):
         self.pid, self.team, self.w = pid, team, w
@@ -401,6 +403,10 @@ class Player:
         self.heat_lock_until = -1.0
         self.heat_has_locked = False
         self.kills = self.deaths = self.dot_kills = self.shots = 0
+        # F605: the Shields preset (an armour-0 pool) refills its shield after a quiet window, as the duel does
+        self.shield_max = pool.shield if pool.armour == 0 else 0
+        self.regen_delay_ms = float(SHIELD_REGEN_DELAY_MS)
+        self.regen_gen = 0
 
 
 class Match:
@@ -415,12 +421,12 @@ class Match:
     def push(self, t: float, kind: int, pid: int, gen: int = 0) -> None:
         heapq.heappush(self.heap, (t, next(self._seq), kind, pid, gen))
 
-    SEEK, SHOT, CEND, TICK, RESPAWN, WORD = range(6)
+    SEEK, SHOT, CEND, TICK, RESPAWN, WORD, REGEN = range(7)
 
     def run(self) -> None:
         for p in self.players:
             self.push(self.rng.uniform(0, INITIAL_JITTER_MS), self.SEEK, p.pid)
-        handlers = (self._seek, self._shot, self._contact_end, self._tick, self._respawn, self._word)
+        handlers = (self._seek, self._shot, self._contact_end, self._tick, self._respawn, self._word, self._regen)
         end = self.cfg.match_ms
         while self.heap:
             t, _s, kind, pid, gen = heapq.heappop(self.heap)
@@ -610,6 +616,21 @@ class Match:
             self.push(t + w.dot_tick_ms, self.TICK, tgt.pid, tgt.poison_gen)
         if tgt.health <= 0:
             self._death(tgt, src, t, dot=False)
+        else:
+            self._damaged(tgt, t)
+
+    def _damaged(self, p: Player, t: float) -> None:
+        """F605: damage restarts the shield's quiet window: four grants one step apart once it ends."""
+        if p.shield_max > 0 and p.alive:
+            p.regen_gen += 1
+            self.push(t + p.regen_delay_ms, self.REGEN, p.pid, p.regen_gen)
+
+    def _regen(self, p: Player, t: float, gen: int, grant: int = 1) -> None:
+        if not p.alive or gen != p.regen_gen or p.shield >= p.shield_max:
+            return
+        p.shield = min(p.shield_max, p.shield + math.ceil(p.shield_max / SHIELD_REGEN_GRANTS))
+        if p.shield < p.shield_max and t + SHIELD_REGEN_STEP_MS <= self.cfg.match_ms:
+            self.push(t + SHIELD_REGEN_STEP_MS, self.REGEN, p.pid, gen)
 
     def _word(self, src: Player, t: float, key: int) -> None:
         """Deliver a queued headset word: plain damage, no weapon effect. Dropped when either side died since the
@@ -625,6 +646,8 @@ class Match:
             rem -= take
         if tgt.health <= 0:
             self._death(tgt, src, t, dot=False)
+        else:
+            self._damaged(tgt, t)
 
     def _tick(self, tgt: Player, t: float, gen: int) -> None:
         if not tgt.alive or tgt.poison_gen != gen or tgt.poison_left <= 0:
@@ -639,7 +662,9 @@ class Match:
         tgt.poison_left -= 1
         if tgt.health <= 0:
             self._death(tgt, self.players[tgt.poison_src], t, dot=True)
-        elif tgt.poison_left > 0:
+            return
+        self._damaged(tgt, t)
+        if tgt.poison_left > 0:
             self.push(t + tgt.poison_tick_ms, self.TICK, tgt.pid, gen)
 
     def _death(self, dead: Player, killer: Player, t: float, dot: bool) -> None:
@@ -676,6 +701,7 @@ class Match:
         pool = self.cfg.pool
         p.alive = True
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
+        p.regen_gen += 1          # a new life starts full; no refill left over from the last one
         p.ammo, p.reserve = p.w.mag, p.w.reserve
         p.reload_until = -1.0
         p.reload_amount = 0
