@@ -219,7 +219,6 @@ def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), f"{wid}: gained a headset word it never declared"
 
 
-
 def test_time_to_kill_waits_for_the_headset_word_when_the_kill_needs_it():
     """F614: a dual-emitter pull lands its headset word about 88 ms after the gun word. When the last
     pull's gun word alone does not finish the target, the kill lands on the headset word, so the
@@ -244,6 +243,10 @@ def test_time_to_kill_waits_for_the_headset_word_when_the_kill_needs_it():
             assert views[wid]["ttk_ms"] == CAT.time_to_kill(wid, pool), (
                 f"{wid} at {pool}: the view's ttk {views[wid]['ttk_ms']} is not the catalogue's "
                 f"{CAT.time_to_kill(wid, pool)}")
+    # a one-shot whose only time is the lag (the Rocket Launcher at 120) shows no KILL SPEED bar, like any one-shot
+    rocket = {v["weapon_id"]: v for v in weapon_views(CAT.all(), 120)}["rocket_launcher"]
+    assert rocket["htk"] == 1 and rocket["ttk_ms"] == HEADSET_WORD_LAG_MS and rocket["bars"]["ttk"] is None, rocket["bars"]
+
 
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier

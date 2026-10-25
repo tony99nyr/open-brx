@@ -1856,8 +1856,9 @@ class WeaponCatalog:
 
     def time_to_kill(self, weapon_id: str, pool: int, pull_ms: float = SEMI_PULL_MS) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
-        one-shots on its gun word (a one-shot that needs the headset word publishes the 88 ms lag, F614). Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
-        on an fn 36/37 weapon lands sooner than this.
+        one-shots on its gun word (a one-shot that needs the headset word publishes the 88 ms lag, F614).
+        Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill on an fn 36/37
+        weapon lands sooner than this. Perks are not modelled: Armour Piercing zeroes the headset word.
 
         (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge/hold weapon with NO
         tap (Rail Gun, Laser Cannon: `mode` in `_CHARGE_MODES`), where the first shot has to be charged

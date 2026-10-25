@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, headset_lag_ms, hir_from_weap
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, HEADSET_WORD_LAG_MS, cells_from_weap, headset_lag_ms, hir_from_weap
 from .policy import chain_reload
 from .types import Weapon, WeaponView
 
@@ -182,9 +182,12 @@ def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[We
         A one-shot weapon stores `ttk_ms: 0` (it is `(htk-1) * fire_ms`, and htk is 1). Ranked as a
         number that reads as *instant*, which handed the Energy Launcher — the weapon flagged as
         dealing no damage at all — a full 100 KILL SPEED bar. A weapon that kills in one hit has no
-        time-to-kill to compare; it shows no bar rather than the best one.
+        time-to-kill to compare; it shows no bar rather than the best one. F614: nor does a one-shot whose
+        only time is its own headset word's lag.
         """
         t = v.get("ttk_ms")
+        if v.get("htk") == 1 and t == HEADSET_WORD_LAG_MS:
+            return None
         return None if not t else t
 
     for v in views:
