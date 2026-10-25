@@ -2,7 +2,8 @@
 
 S50 (2026-09-17, perk balance pass, decided in docs/perk-design.md §2): `body_armor`'s grant is a
 flat +25 (was +50 -- "maybe 50 is too much armor and it should be 25", Tony 2026-09-17);
-`quick_switch` carries a flat -20 cost. Both are `compile._MAX_ARMOR_ADD`, keyed by perk_id.
+`quick_switch` carries a flat -20 cost. Both are perks.json `effects.max_armor_add`, which
+`compile._MAX_ARMOR_ADD` reads (F604), keyed by perk_id.
 
 `Session.health_pool()` (state.py), `Compiler._to_gc()` (compile.py, what actually goes out on
 `$PSET`), and the mag>=htk gate inside `Compiler.validate()` (compile.py) each write this formula
@@ -167,3 +168,18 @@ def test_a_negative_grant_floors_at_zero_not_underflow():
     shields_cfg = dict(_cfg(45, 0, max_shield=70))
     assert _pset_shield(C, shields_cfg, quick_switch) == 70 - 20
     assert _pset_shield(C, shields_cfg, _player("assault_rifle")) == 70
+
+
+def test_the_armour_grant_has_one_source_perks_json():
+    """F604 (Astra sim review #11): the compiler kept its own grant table, so a perks.json-only change was
+    simulated by the balance review but never reached the gun. The grant now comes from perks.json."""
+    from brx_mcp.mc import compile as C
+    from brx_mcp.mc.perks import PerkCatalog
+    assert C._MAX_ARMOR_ADD == C.max_armor_grants(PerkCatalog())
+    rows = [dict(r, effects=dict(r.get("effects") or {})) for r in PerkCatalog()._rows]
+    next(r for r in rows if r["perk_id"] == "body_armor")["effects"]["max_armor_add"] = 40
+    assert C.max_armor_grants(PerkCatalog(rows))["body_armor"] == 40
+    # a Compiler built on that catalogue writes its grant on the literal $PSET frame, not the module's
+    config, player = _cfg(45, 70), _player("assault_rifle", "body_armor")
+    assert _pset_pool(C.Compiler(perks=PerkCatalog(rows)), config, player) == 45 + 70 + 40
+    assert _pset_pool(C.Compiler(), config, player) == 45 + 70 + 25

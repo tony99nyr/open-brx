@@ -167,3 +167,96 @@ def test_finish_estimate_steps_a_single_shot_at_the_published_cycle():
                                 heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
         published = world.cat.paced_cycle_ms(wid)
         assert abs((two - one) - published) < 0.5, (wid, two - one, published)
+
+
+def _shields_match(delay_ms=None):
+    world = R.shipped_world()
+    pool = B.Pool(health=45, armour=0, shield=105, respawn_ms=5000.0)
+    kit = R.field_kit(world, "AR", "assault_rifle")
+    kit = replace(kit, pool=pool, **({"shield_regen_delay_ms": delay_ms} if delay_ms else {}))
+    p, q = R._kit_player(0, 0, kit), R._kit_player(1, 1, kit)
+    match = R.KitMatch([p, q], random.Random(1), B.SimConfig(pool=pool, range_model=False), 1.0, 1)
+    return match, p, q
+
+
+def _run_regen(match, until):
+    while match.heap and match.heap[0][0] <= until:
+        t, _s, kind, pid, gen = heapq.heappop(match.heap)
+        if kind == match.REGEN:
+            match._regen(match.players[pid], t, gen)
+
+
+def test_the_field_refills_a_shield_after_the_quiet_window_in_four_grants():
+    # F605: the field engine never regenerated Shields, so Shields team numbers ignored regen
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    assert q.shield == 45
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS - 1)
+    assert q.shield == 45
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 3 * R.SHIELD_REGEN_STEP_MS)
+    assert q.shield == 105
+
+
+def test_damage_restarts_the_window_and_a_kit_can_shorten_it():
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    match._hit(p, q, 10, 5000.0)           # restarts the window: nothing refills at 6.5 s
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
+    assert q.shield == 35
+    fast, p2, q2 = _shields_match(delay_ms=4000.0)
+    fast._hit(p2, q2, 60, 0.0)
+    _run_regen(fast, 4000.0)
+    assert q2.shield > 45                   # a 4 s kit (pass 7's Recharge) starts refilling at 4 s
+
+
+def test_a_respawn_cancels_a_pending_refill():
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    match._respawn(q, 1000.0)
+    q.shield = 50                           # a stale refill must not top up the new life
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 5 * R.SHIELD_REGEN_STEP_MS)
+    assert q.shield == 50
+
+
+def test_the_duel_uses_the_kits_regen_delay():
+    world = R.shipped_world()
+    kit = replace(R.make_kit(world, "AR", R.ANCHOR, R.SECONDARY), shield_regen_delay_ms=4000.0)
+    f = R.Fighter(kit, (45, 0, 105), 0.4, 0, random.Random(2))
+    f.receive(60, t=0.0)
+    f.advance_shield(4000.0)
+    assert f.shield > 45
+
+
+def test_a_shields_field_kit_fields_a_regenerating_pool_and_a_tick_restarts_the_window():
+    # F605 (Opus review): field_kit always built the Standard pool, so no field run regenerated anything
+    world = R.shipped_world()
+    kit = R.field_kit(world, "AR", "assault_rifle", preset="shields")
+    assert (kit.pool.armour, kit.pool.shield) == (0, 105)
+    assert R.field_kit(world, "AR", "assault_rifle").pool.armour == 70
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    q.poison_gen, q.poison_left, q.poison_dmg, q.poison_tick_ms, q.poison_src = 1, 2, 5, 1000.0, 0
+    match._tick(q, 5000.0, 1)              # a poison tick restarts the quiet window too
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
+    assert q.shield == 40
+
+
+def test_a_zero_damage_hit_does_not_restart_the_window():
+    # F605 (Codex review): the phone restarts the clock only for positive damage; a Haze hit carries 0
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    B.Match._hit(match, p, q, 0, 6000.0)
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
+    assert q.shield > 45
+
+
+def test_a_shields_field_kit_refuses_a_perk_the_preset_refuses():
+    world = R.shipped_world()
+    for perk in ("body_armor", "armor_piercing"):
+        try:
+            R.field_kit(world, "AR", "assault_rifle", perk=perk, preset="shields")
+        except ValueError as exc:
+            assert "shields" in str(exc)
+        else:
+            raise AssertionError(f"{perk} was fielded on Shields")
+    assert R.field_kit(world, "AR", "assault_rifle", perk="extended_mags", preset="shields").pool.shield == 105
