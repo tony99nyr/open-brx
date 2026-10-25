@@ -2584,14 +2584,15 @@ class Compiler:
         if fx.get("armor_piercing"):
             return "Armour Piercing is refused on the Shields preset: it ignores the shield, the only buffer there."
         if (fx.get("max_armor_add") or 0) > 0:
-            return "an armour grant is refused on the Shields preset: the preset has no armour."
+            return "An armour grant is refused on the Shields preset: the preset has no armour."
         return None
 
     def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None,
                           preset: str | None = None) -> str | None:
         """F551: why `perk_id` cannot ride with this primary/secondary (or, honest pickers, under this
-        `health.preset`), or None. The same rules the compile guards refuse on, so a pick MC accepts can never be
-        refused at push."""
+        `health.preset`), or None. The weapon rules are the ones the compile guards refuse on, so a pick MC accepts can
+        never be refused at push. The preset rule has no compile guard: MC clears such a perk on every path in
+        (`apply_policy` on a config change, `_check_loadout`, a restore), so it never reaches a compile."""
         if not perk_id or not self.perks.has(perk_id):
             return None
         if (why := self.preset_block(perk_id, preset)) is not None:
