@@ -3097,7 +3097,8 @@ def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -
 
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
                  side: dict | None = None, *, haze_failure: bool = False) -> dict:
-    """Rule cells fail when they pass in the shipped catalogue but fail in either world (this judges a `with`
+    """Rule cells fail when, at either aim (real or the 0.9 ceiling), they pass in the shipped catalogue but fail in
+    either world (this judges a `with`
     entry too), or pass in the baseline and fail in the candidate. A kit fails when, keyed by its weapon_id
     (or combo name), it had a near-top cell in the baseline and has none in the candidate."""
     def flipped(passes):
@@ -3121,7 +3122,11 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
     noise_excused = [key for name, key, new_name in candidates
                      if not _last_cell_material_loss(mb, mc, name, new_name)]
     nums = {"rule_flips": {k: {"shipped": rules_s[k]["value"], "baseline": rules_b[k]["value"],
-                               "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"]} for k in flips},
+                               "candidate": rules_c[k]["value"], "bar": rules_c[k]["bar"],
+                               **({"ceiling_shipped": rules_s[k].get("ceiling_value"),
+                                   "ceiling_baseline": rules_b[k].get("ceiling_value"),
+                                   "ceiling_candidate": rules_c[k].get("ceiling_value")} if k in ceiling_flips else {})}
+                           for k in flips},
             "ceiling_rule_flips": ceiling_flips,
             "already_failing_when_shipped": already, "kits_losing_last_near_top": lost,
             "near_top_losses_within_noise": noise_excused, "noise_z": NOISE_Z,
@@ -3133,7 +3138,7 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
         nums["r10b_primaries_beat_it"] = side["r10b"]
         nums["r10b_under_bar"] = low
         ok = ok and not low
-    return _test(ok, nums, "no Balance rule cell flips to fail (against the shipped catalogue too), "
+    return _test(ok, nums, "no Balance rule cell flips to fail at either aim (against the shipped catalogue too), "
                            "no other kit loses its last near-top cell, and no selectable Haze row "
                            "crosses the Haze win bar from a passing baseline")
 
