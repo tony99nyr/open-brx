@@ -5,7 +5,7 @@
 //   AMBER lines   -> ItemChip: an icon with a short label ON the item it concerns; the detail sits
 //                    behind a tap.
 //   NEUTRAL notes -> HelpNote: cut, unless `keep`, and then it sits behind the INFO icon.
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { F, T } from '../tokens';
 import { InfoIcon } from './index';
 import { sevOf, type Severity } from '../alerts';
@@ -28,9 +28,10 @@ function useDetail() {
   const [suppressed, setSuppressed] = useState(false);
   return {
     open: pinned || (hovered && !suppressed),
-    onMouseEnter: () => { setHovered(true); setSuppressed(false); },
-    onMouseLeave: () => { setHovered(false); setSuppressed(false); },
-    onClick: () => { if (pinned || (hovered && !suppressed)) { setPinned(false); setSuppressed(true); } else setPinned(true); },
+    pinned,
+    onPointerEnter: (e: React.PointerEvent) => { if (e.pointerType === 'mouse') { setHovered(true); setSuppressed(false); } },
+    onPointerLeave: (e: React.PointerEvent) => { if (e.pointerType === 'mouse') { setHovered(false); setSuppressed(false); } },
+    onClick: () => { if (pinned) { setPinned(false); setSuppressed(true); } else { setPinned(true); setSuppressed(false); } },
   };
 }
 
@@ -49,28 +50,29 @@ export function Icon({ kind, size = 16, color }: { kind: Kind; size?: number; co
   );
 }
 
-const btn = (c: string): React.CSSProperties => ({ background: 'transparent', border: `1px solid ${c}`, color: c, font: F.chk(600, 12), padding: '2px 8px', minHeight: 26, cursor: 'pointer', borderRadius: 2 });
+const btn = (c: string): React.CSSProperties => ({ background: 'transparent', border: `1px solid ${c}`, color: c, font: F.chk(600, 12), padding: '6px 8px', minHeight: 36, cursor: 'pointer', borderRadius: 2 });
 
 /** RED: icon + short sentence-case label + "Why?". `why` says what is wrong, `fix` what to do. */
 export function FaultPill({ id, short, why, fix, testid, extra, onTap, tapHint, icon = 'stop', role, static: alwaysOpen = false, sev: dynamicSev, size = 14 }: {
-  id: string; short: string; why: ReactNode; fix?: ReactNode; testid?: string; extra?: ReactNode; onTap?: () => void; tapHint?: string; icon?: Kind; role?: 'alert' | 'status'; static?: boolean; sev?: Severity; size?: number;
+  id: string; short: string; why: ReactNode; fix?: ReactNode; testid?: string; extra?: ReactNode; onTap?: () => void; tapHint?: string; icon?: Kind; role?: 'alert' | 'status' | null; static?: boolean; sev?: Severity; size?: number;
 }) {
   const detail = useDetail();
+  const detailId = useId();
   const sev = pillSeverity(id, dynamicSev);
   const colour = sev === 'amber' ? AMBER : RED;
   return (
-    <div data-testid={testid} data-alert={id} data-sev={sev} role={role ?? (sev === 'red' ? 'alert' : 'status')}
-      onMouseEnter={alwaysOpen ? undefined : detail.onMouseEnter} onMouseLeave={alwaysOpen ? undefined : detail.onMouseLeave}
+    <div data-testid={testid} data-alert={id} data-sev={sev} role={role === undefined ? (sev === 'red' ? 'alert' : 'status') : role ?? undefined}
+      onPointerEnter={alwaysOpen ? undefined : detail.onPointerEnter} onPointerLeave={alwaysOpen ? undefined : detail.onPointerLeave}
       style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignSelf: 'flex-start', maxWidth: 'min(520px, 100%)' }}>
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: sev === 'amber' ? 'rgba(255,176,32,.10)' : 'rgba(255,82,82,.12)', border: `1px solid ${colour}`, borderLeft: `3px solid ${colour}` }}>
         <Icon kind={icon} size={16} color={colour} />
         <span style={{ font: F.chk(700, size), color: colour }}>{short}</span>
         {extra}
-        {!alwaysOpen && <button type="button" aria-expanded={detail.open} onClick={detail.onClick} style={btn(colour)}>{detail.open ? 'Hide ▴' : 'Why? ▾'}</button>}
+        {!alwaysOpen && <button type="button" aria-expanded={detail.open} aria-controls={detail.open ? detailId : undefined} aria-label={`${detail.pinned ? 'Hide' : 'Why?'} ${short}`} onClick={detail.onClick} style={btn(colour)}>{detail.pinned ? 'Hide ▴' : 'Why? ▾'}</button>}
         {onTap && <button type="button" onClick={onTap} style={btn(colour)}>{tapHint ?? 'Fix'}</button>}
       </div>
       {(alwaysOpen || detail.open) && (
-        <div data-testid="fault-detail" style={{ font: F.chk(500, Math.max(13, size - 1), 1.45), color: T.body, padding: '6px 10px', background: T.panelAlt, border: `1px solid ${T.line2}`, overflowWrap: 'anywhere' }}>
+        <div id={detailId} data-testid="fault-detail" style={{ font: F.chk(500, Math.max(13, size - 1), 1.45), color: T.body, padding: '6px 10px', background: T.panelAlt, border: `1px solid ${T.line2}`, overflowWrap: 'anywhere' }}>
           <div>{why}</div>
           {fix && <div style={{ marginTop: 4, color: T.ink }}><b>What to do:</b> {fix}</div>}
         </div>
@@ -81,19 +83,19 @@ export function FaultPill({ id, short, why, fix, testid, extra, onTap, tapHint, 
 
 /** AMBER: a small chip on the item it concerns. Tap opens the detail under it. */
 export function ItemChip({ id, short, detail, testid, icon = 'warn', children, inline, role = 'status', static: alwaysOpen = false, sev: dynamicSev, size = 12 }: {
-  id: string; short: string; detail?: ReactNode; testid?: string; icon?: Kind; children?: ReactNode; inline?: boolean; role?: 'alert' | 'status'; static?: boolean; sev?: Severity; size?: number;
+  id: string; short: string; detail?: ReactNode; testid?: string; icon?: Kind; children?: ReactNode; inline?: boolean; role?: 'alert' | 'status' | null; static?: boolean; sev?: Severity; size?: number;
 }) {
   const reveal = useDetail();
   const sev = pillSeverity(id, dynamicSev);
   const colour = sev === 'red' ? RED : AMBER;
   const chipStyle: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 9px', background: sev === 'red' ? 'rgba(255,82,82,.12)' : 'rgba(255,176,32,.10)', border: `1px solid ${colour}`, color: colour,
-    font: F.chk(600, size), cursor: detail && !alwaysOpen ? 'pointer' : 'default', minHeight: 26, whiteSpace: 'nowrap' };
+    font: F.chk(600, size), cursor: detail && !alwaysOpen ? 'pointer' : 'default', minHeight: 36, whiteSpace: 'nowrap' };
   const inner = (
     <>
       {alwaysOpen
         ? <span data-testid={testid} data-alert={id} data-sev={sev} style={chipStyle}><Icon kind={icon} size={14} color={colour} />{short}</span>
         : <button type="button" data-testid={testid} data-alert={id} data-sev={sev} aria-expanded={detail ? reveal.open : undefined}
-            onClick={detail ? reveal.onClick : undefined} onMouseEnter={detail ? reveal.onMouseEnter : undefined} onMouseLeave={detail ? reveal.onMouseLeave : undefined}
+            onClick={detail ? reveal.onClick : undefined}
             title={typeof detail === 'string' ? detail : undefined} style={chipStyle}>
             <Icon kind={icon} size={14} color={colour} />{short}{detail ? <span aria-hidden="true" style={{ opacity: .7 }}>{reveal.open ? '▴' : '▾'}</span> : null}
           </button>}
@@ -103,7 +105,8 @@ export function ItemChip({ id, short, detail, testid, icon = 'warn', children, i
       )}
     </>
   );
-  return <div role={role} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: inline ? undefined : '100%' }}>{inner}</div>;
+  return <div role={role ?? undefined} onPointerEnter={detail && !alwaysOpen ? reveal.onPointerEnter : undefined} onPointerLeave={detail && !alwaysOpen ? reveal.onPointerLeave : undefined}
+    style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', maxWidth: inline ? undefined : '100%' }}>{inner}</div>;
 }
 
 /** NEUTRAL: gone, unless `keep`; then one INFO icon opens it. */
@@ -111,10 +114,10 @@ export function HelpNote({ keep, label, testid, infoTestid = 'help-info' }: { ke
   const detail = useDetail();
   if (!keep) return null;
   return (
-    <span onMouseEnter={detail.onMouseEnter} onMouseLeave={detail.onMouseLeave}
+    <span onPointerEnter={detail.onPointerEnter} onPointerLeave={detail.onPointerLeave}
       style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
       <button type="button" data-testid={infoTestid} aria-expanded={detail.open} aria-label={label ?? 'Help'} onClick={detail.onClick}
-        style={{ background: 'transparent', border: `1px solid ${T.line2}`, color: T.acc, padding: '3px 8px', minHeight: 26, display: 'inline-flex', alignItems: 'center', gap: 6, font: F.chk(600, 12), cursor: 'pointer' }}>
+        style={{ background: 'transparent', border: `1px solid ${T.line2}`, color: T.acc, padding: '6px 8px', minHeight: 36, display: 'inline-flex', alignItems: 'center', gap: 6, font: F.chk(600, 12), cursor: 'pointer' }}>
         <InfoIcon size={14} color={T.acc} />{label ?? 'Help'}
       </button>
       {detail.open && <span data-testid={testid} style={{ font: F.chk(500, 13, 1.45), color: T.body, padding: '6px 10px', background: T.panelAlt, border: `1px solid ${T.line2}`, maxWidth: 520 }}>{keep}</span>}
@@ -129,11 +132,11 @@ export function BackhaulStatus({ auto, onCellular, error, compact }: { auto: boo
   const c = bad ? RED : auto ? T.ok : T.dim;
   const label = bad ? 'Backhaul failed' : auto ? `Backhaul on · ${onCellular} on cellular` : 'Backhaul off';
   return (
-    <span data-testid="backhaul-status" data-state={bad ? 'error' : auto ? 'on' : 'off'} onMouseEnter={bad ? detail.onMouseEnter : undefined} onMouseLeave={bad ? detail.onMouseLeave : undefined}
+    <span data-testid="backhaul-status" data-state={bad ? 'error' : auto ? 'on' : 'off'} onPointerEnter={bad ? detail.onPointerEnter : undefined} onPointerLeave={bad ? detail.onPointerLeave : undefined}
       style={{ display: 'inline-flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
       <button type="button" aria-expanded={bad ? detail.open : undefined} onClick={bad ? detail.onClick : undefined}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: `1px solid ${bad ? RED : T.line2}`, color: c, font: F.chk(600, compact ? 12 : 13),
-                 padding: '3px 9px', minHeight: 28, cursor: bad ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
+                 padding: '6px 9px', minHeight: 36, cursor: bad ? 'pointer' : 'default', whiteSpace: 'nowrap' }}>
         <Icon kind="globe" size={15} color={c} />{label}{bad ? <span aria-hidden="true">{detail.open ? ' ▴' : ' ▾'}</span> : null}
       </button>
       {bad && detail.open && <span style={{ font: F.chk(500, 12, 1.45), color: T.body, padding: '5px 9px', background: T.panelAlt, border: `1px solid ${T.line2}`, maxWidth: 420, overflowWrap: 'anywhere' }}>{error}</span>}

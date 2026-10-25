@@ -326,7 +326,7 @@ await step('PLAY: the mode picker switches the game — aria-pressed follows the
   expect((await modeBtn('TEAM DEATHMATCH').getAttribute('aria-pressed')) === 'true', 'TDM button not marked picked');
   await mc.getByRole('button', { name: 'Mode notes' }).click();
   await until(async () => (await mc.locator('[data-testid="operator-note"]').count()) > 0, 6000, 'TDM operator note');
-  expect((await mc.locator('[data-testid="operator-note"]').textContent()).includes("TEAM HITS DON'T COUNT"), 'TDM note missing');
+  expect(/TEAM HITS DON'T COUNT/i.test(await mc.locator('[data-testid="operator-note"]').innerText()), 'TDM note missing');
   await shot(mc, 'games-modes'); await textAudit(mc, 'play');
 });
 await step('PLAY: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'play', true); });
@@ -776,7 +776,7 @@ await step(`(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "${SIDEAR
   await until(async () => (await mc.locator(`text=${sidearmHdr}`).count()) > 0, 6000, `arsenal header reads ${sidearmHdr}`);   // A14: no kind Seg on slot 2 any more
   expect((await mc.locator('button:has-text("WEAPONS ·")').count()) === 0, 'a WEAPONS chip should not show under a sidearm-only rule');
   await until(async () => (await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').count()) > 0, 6000, 'pistol tiles for slot 2');
-  expect((await mc.locator('text=SLOT 2 IS A SIDEARM').count()) > 0, 'the hint should read SLOT 2 IS A SIDEARM');
+  // F599: the slot 2 hint is cut; the arsenal header above already names the sidearms.
   await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').first().click();
   await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'deagle'; }, 6000, 'server slot 2 = deagle');
   await until(async () => (await st()).kit.trying[pB.player_id] === 'deagle', 6000, 'server try-out = deagle');   // sent after the PATCH: see (i)
@@ -800,7 +800,7 @@ await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED F
     await until(async () => /weapon not allowed by the rules/i.test(await errStrip()), 6000, 'the server\'s error in the strip');
     await sleep(800);
     expect(/weapon not allowed by the rules/i.test(await errStrip()), 'error strip was wiped by a later call');
-    expect((await mc.locator('text=CHANGED FROM THEIR PHONE').count()) === 0, 'a rejected host pick was blamed on the phone');
+    expect((await mc.locator('text=/changed from their phone/i').count()) === 0, 'a rejected host pick was blamed on the phone');
     expect((await mc.locator('text=TRYING SHOTGUN').count()) === 0, 'a try-out started for the refused weapon');
     expect((await st()).kit.trying[pB.player_id] !== 'shotgun', 'server started a try-out of the refused weapon after the rejected PATCH');
     expect(JSON.stringify((await st()).players.find(p => p.player_id === pB.player_id).loadout) === before, 'loadout changed despite the 400');

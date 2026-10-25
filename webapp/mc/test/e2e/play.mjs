@@ -327,8 +327,10 @@ step('stale', async ({ browser, base }) => {
   await pg.evaluate(() => { location.hash = '#build'; });
   await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 6000, 'the pieces error');
   await pg.waitForTimeout(300);   // the scanIn fade on PLAY's fresh remount
-  const t = await text(pg);
-  expect(/COULD NOT LOAD THE GAME PIECES: NOT FOUND/i.test(t), `the request failure is visible (saw: ${t.slice(0, 200)})`);   // alertWords upper-cases the server's words
+  const failure = pg.getByTestId('play-pieces-error');
+  await failure.getByRole('button', { name: /Why\?/i }).click();
+  const t = (await failure.getByTestId('fault-detail').innerText()) ?? '';
+  expect(/NOT FOUND/i.test(t), `the request failure is visible (saw: ${t.slice(0, 200)})`);
   expect(await pg.getByTestId('pieces-retry').count() === 1, 'the retry control is visible');
   ok(`GET /api/pieces 404 -> error and retry, PLAY still renders   ${await shot(pg, 'stale-server')}`);
   await pg.context().close();
@@ -359,7 +361,10 @@ step('locked', async ({ browser, base }) => {
     await api.setPhase('lobby'); await api.pushLobby(true); await api.start(30, true);
   });
   await pg.evaluate(() => { location.hash = '#build'; });
-  await until(() => pg.locator('text=GAME SETTINGS ARE LOCKED').count().then(n => n > 0), 6000, 'the locked banner');
+  const locked = pg.getByTestId('games-locked');
+  await until(() => locked.count().then(n => n > 0), 6000, 'the locked banner');
+  await locked.getByRole('button', { name: /Why\?/i }).click();
+  expect(/GAME SETTINGS ARE LOCKED/i.test((await locked.getByTestId('fault-detail').innerText()) ?? ''), 'the locked banner explains the phase');
   await pg.waitForTimeout(300);
   const modeBtn = pg.getByRole('button', { name: 'FREE-FOR-ALL' });
   expect(await modeBtn.isDisabled(), 'a picker option is a real HTML disabled control while locked');
@@ -403,8 +408,10 @@ step('pieces-failure', async ({ browser, base }) => {
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 4000, 'ARMORY');
   await pg.evaluate(() => { location.hash = '#build'; });
   await until(() => pg.getByTestId('play-pieces-error').count().then(n => n === 1), 6000, 'the pieces-error banner');
-  const t1 = await text(pg);
-  expect(/COULD NOT LOAD THE GAME PIECES/.test(t1) && /500/.test(t1), 'the real failure is shown, not swallowed');
+  const failure = pg.getByTestId('play-pieces-error');
+  await failure.getByRole('button', { name: /Why\?/i }).click();
+  const t1 = (await failure.getByTestId('fault-detail').innerText()) ?? '';
+  expect(/500/.test(t1), 'the real failure is shown, not swallowed');
   // RETRY, once the fetch is fixed, clears the banner and repopulates the pickers.
   await pg.evaluate(() => { window.__MC_MOCK__.getPieces = Object.getPrototypeOf(window.__MC_MOCK__).getPieces.bind(window.__MC_MOCK__); });
   await pg.getByTestId('pieces-retry').getByRole('button').click();
@@ -428,7 +435,7 @@ step('hit-areas', async ({ browser, base }) => {
       // measured 38px in a real browser -- the shared `Seg`'s own floor is 36px, and these rows'
       // pad used to fall short of it. `pad={SEG_PAD_44}` on the two Seg-based rows (LIFE/SPAWN share
       // one Seg call; GAME MODE is its own bespoke row, already built with an explicit 44px floor).
-      pickers: rects('[data-testid^="picker-"] button'),
+      pickers: rects('[data-testid^="picker-"] [role="group"] button'),
       daynight: rects('[data-testid="match-settings"] [role="group"][aria-label="day or night"] button'),
     };
   });
@@ -729,12 +736,13 @@ step('real-stale-token', async ({ browser }) => {
     await pickMode(pg, 'FREE-FOR-ALL');
     const refused = pg.locator('[data-alert="frame-token-refused"]');
     await until(() => refused.isVisible(), 5000, 'the refused-write alert');
+    await refused.getByRole('button', { name: /Why\?/i }).click();
     const words = (await refused.innerText()).toUpperCase();
     expect(/MC REFUSED THE CHANGE/.test(words) && /#TOK=/.test(words) && /PASTE THE NEW TOKEN/.test(words), `it names the refusal and the cure (saw "${words}")`);
     expect((await refused.getAttribute('data-sev')) === 'red', 'the refusal is RED');
     expect((await mode()) === before && before !== 'ffa', `the refused pick changed nothing (${before})`);
     ok(`a refused write says so, in red, with the cure   ${await shot(pg, 'real-stale-token-refused')}`);
-    await refused.click();                                       // the cure: tap the red line, paste, APPLY
+    await refused.getByRole('button', { name: /Paste token/i }).click(); // the cure: open the token form, paste, APPLY
     await pg.locator('#dbg-tok').fill('tok-after');
     await pg.getByRole('button', { name: 'APPLY' }).click();
     await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n === 0), 8000, 'the pill to clear');
@@ -927,7 +935,9 @@ step('real-hill', async ({ browser }) => {
     // The refusal: the real client reads `error` from a 400 body (client.ts `j`).
     await pg.route('**/api/play/pick', route => route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'PROBE REFUSAL' }) }));
     await pg.getByRole('button', { name: 'hill net cap plus' }).click();
-    await until(() => pg.locator('header button[role="alert"]').filter({ hasText: 'PROBE REFUSAL' }).count().then(n => n > 0), 6000, 'the refusal on screen');
+    const refusal = pg.locator('header button[role="alert"]').filter({ hasText: 'PROBE REFUSAL' });
+    await until(() => refusal.count().then(n => n > 0), 6000, 'the refusal on screen');
+    expect(/PROBE REFUSAL/i.test((await refusal.innerText()) ?? ''), 'the refusal keeps the server reason');
     expect((await netV.innerText()) === '5', `the refused tap leaves NET CAP at 5 (saw ${JSON.stringify(await netV.innerText())})`);
     expect((await state()).config.hill?.net_cap === 5, 'and the server still holds net_cap 5');
     // The browser logs the probe's own 400 as a console error; that one is the point of the step, not a fault.

@@ -146,7 +146,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
               <div data-testid="report-privacy" style={{ font: F.chk(600, 12), lineHeight: 1.5, color: T.ink, border: `1px solid ${T.line2}`, background: T.panelAlt, padding: '9px 12px' }}>
                 GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed.
               </div>
-              {result.too_large && <ItemChip id="frame-report-too-large" short="Report exceeds 25 MB" detail="GitHub's attachment limit is 25 MB. Make the issue anyway and note this. A developer will ask for the file another way." />}
+              {result.too_large && <ItemChip id="frame-report-too-large" role="alert" short="Report exceeds 25 MB" detail="GitHub's attachment limit is 25 MB. Make the issue anyway and note this. A developer will ask for the file another way." />}
               {removedList.length > 0 && (
                 <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>
                   Removed: {removedList.map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}${n === 1 || /s$/.test(k) ? '' : 's'}`).join(' · ')}

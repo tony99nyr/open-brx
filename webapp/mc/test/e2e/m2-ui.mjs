@@ -812,7 +812,7 @@ async function runOffline(browser, viteBase, mcBase, vp, tag) {
     const content = document.querySelector('[data-spectate="content"]');
     return {
       says: (tag2?.textContent || '').replace(/\s+/g, ' ').trim(),
-      tagFs: tag2 ? parseFloat(getComputedStyle(tag2).fontSize) : 0,
+      tagFs: tag2 ? parseFloat(getComputedStyle(tag2.querySelector('[data-alert="spectate-frozen-tag"] span') ?? tag2).fontSize) : 0,
       tagOpacity: tag2 ? parseFloat(getComputedStyle(tag2).opacity) : 0,
       boardOpacity: content ? parseFloat(getComputedStyle(content).opacity) : 1,
       rows: document.querySelectorAll('[data-spectate="row"]').length,

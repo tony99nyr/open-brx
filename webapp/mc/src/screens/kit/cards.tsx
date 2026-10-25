@@ -70,10 +70,10 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
           style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 11), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
       {/* A required primary blocks the player until the host picks one. */}
-      {required && !item && <FaultPill id="kit-primary-required" short="Primary required" why="Pick a primary before continuing." />}
+      {required && !item && <FaultPill id="kit-primary-required" role="status" short="Primary required" why="Pick a primary before continuing." />}
       {overridden && (
-        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 11), letterSpacing: '.12em', color: colourOf('kit-changed-from-phone') }}>
-          {GLYPH} CHANGED FROM THEIR PHONE: YOURS WAS {overridden.label.toUpperCase()}
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.chk(600, 12), color: colourOf('kit-changed-from-phone') }}>
+          {GLYPH} Changed from their phone. Yours was {overridden.label}.
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
             style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
         </div>

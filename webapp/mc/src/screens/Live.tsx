@@ -296,7 +296,7 @@ export function Live() {
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FREEZE SCORING NOW? LATER KILLS WON'T COUNT.</span>
+                  <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>Freeze scoring now? Later kills won't count. Nodes out of range end at match time {fmtClock(lv.time_limit_s)}.</span>
                   <GhostButton color={T.bad} border={T.bad} onClick={async () => { setEndConfirm(false); const r = await run(() => control('end')); if (r) setNotice(`${r.ended ? 'MATCH ENDED' : 'END SENT'}${reachTxt(r)}`, short(r)); }}>CONFIRM END</GhostButton>
                   <GhostButton onClick={() => setEndConfirm(false)}>CANCEL</GhostButton>
                 </span>
@@ -313,7 +313,7 @@ export function Live() {
               )}
               {/* F540 review: a refused token also leaves the socket down; that is not "MC IS OFFLINE" */}
               {offline && authRequired && <span data-testid="controls-token" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: colourOf('frame-token-required-app') }}>{operatorTokenLine()}</span>}
-              {offline && !authRequired && <FaultPill id="live-controls-offline" testid="controls-offline" short="Controls offline" why={OFFLINE_WHY} />}
+              {offline && !authRequired && <FaultPill id="live-controls-offline" testid="controls-offline" short="Controls offline" why={OFFLINE_WHY} role={null} />}
             </div>
           </div>
           </ScrollX>

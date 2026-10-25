@@ -8,10 +8,9 @@ export function LoadError({ id, testid, retryTestid, what, error, onRetry }:
   { id: string; testid: string; retryTestid: string; what: string; error: string; onRetry: () => void }) {
   return (
     <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <FaultPill id={id} testid={testid} short={`Could not load ${what.toLowerCase()}`} why={error} />
-      <span data-testid={retryTestid}>
+      <FaultPill id={id} testid={testid} short={`Could not load ${what.toLowerCase()}`} why={error} extra={<span data-testid={retryTestid}>
         <GhostButton size={14} pad="8px 14px" color={T.ink} border={T.line2} onClick={onRetry}>RETRY ▸</GhostButton>
-      </span>
+      </span>} />
     </div>
   );
 }

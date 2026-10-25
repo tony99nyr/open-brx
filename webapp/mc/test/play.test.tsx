@@ -447,7 +447,7 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="play-favourites-error"]').length).toBe(1);
     expect(m.text()).toContain('Could not load favourites');
-    await act(async () => { m.find('[data-testid="play-favourites-error"] button')[0].click(); });
+    await act(async () => { m.find('[data-testid="play-favourites-error"] button[aria-expanded]')[0].click(); });
     expect(m.text()).toContain('socket reset');
     await m.click('RETRY');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });

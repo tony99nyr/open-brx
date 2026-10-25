@@ -17,7 +17,7 @@ export type {
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
   WeaponView, GamePiece, GamePick, MatchSettings, LastMatch, PieceKind, ModePiece, LifePiece, MiscLoadoutsPiece, GameplayPiece, Favourite,
   LiveRow, EndDeliveryRow, WeaponBars, Coverage,
-  LanPublic, TunnelAuto, PresentationRow, PresentationSummary, HeadsetSummary, GunSummary,
+  LanPublic, TunnelAuto, PresentationView, PresentationRow, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,

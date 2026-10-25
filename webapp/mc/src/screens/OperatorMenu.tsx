@@ -53,7 +53,19 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
   // M7 (visual QA 2026-09-24): at 1440×900 a row near the bottom opened its menu below the fold, so the
   // host tapped and saw nothing change. The menu brings itself into view once, when it opens.
   const box = useRef<HTMLDivElement>(null);
-  useEffect(() => { box.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }); }, []);
+  useEffect(() => {
+    const menu = box.current;
+    if (!menu) return;
+    const show = (force = false) => {
+      const rect = menu.getBoundingClientRect();
+      if (force || rect.bottom > window.innerHeight || rect.top < 0) menu.scrollIntoView?.({ block: 'nearest', behavior: 'auto' });
+    };
+    show(true);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => show());
+    observer.observe(menu);
+    return () => observer.disconnect();
+  }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);
 
@@ -68,7 +80,7 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
 
   return (
     <div ref={box} id={operatorMenuId(r.player_id)} data-operator-menu={r.player_id} role="group" aria-label={`Operator actions for ${who}`}
-      style={{ position: 'sticky', left: 0, maxWidth: 'min(560px, calc(100vw - 48px))', boxSizing: 'border-box',
+      style={{ position: 'sticky', left: 0, scrollMarginBottom: 4, maxWidth: 'min(560px, calc(100vw - 48px))', boxSizing: 'border-box',
                margin: '0 0 4px', padding: '10px 12px', background: T.panelDeep, border: `1px solid ${T.line2}`,
                borderLeft: `3px solid ${T.acc}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -84,8 +96,9 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
       ) : outOfReach ? (
         // F221 (2026-09-25): a gun/phone link lost DURING a match is RED — the boxed row, per Tony's
         // rule for a gun card. Was a quiet T.dim line; a live-match link loss is act-now, not status.
-        <FaultPill id="frame-op-out-of-reach" short={`${who} is out of reach`}
+        <div data-op-unavailable="reach"><FaultPill id="frame-op-out-of-reach" short={`${who} is out of reach`}
           why={`${who}'s phone was last heard from ${fmtAge(r.sync_age_ms)} ago. Nothing can be sent until it checks in again.`} />
+        </div>
       ) : <>{!live && (
         <div data-op-unavailable="armed" data-alert="frame-op-wait-t0" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('frame-op-wait-t0'), lineHeight: 1.5 }}>
           RESYNC AND RESPAWN WAIT FOR T-0. RELINK WORKS NOW.

@@ -153,8 +153,8 @@ step('panic', async ({ browser, base }) => {
   await pg.locator('header [role="menu"] button', { hasText: 'CONFIRM' }).click();
   await until(() => pg.locator('header', { hasText: 'Fleet safed' }).count().then(n => n > 0), 4000, 'the PANIC receipt');
   const t = await pg.locator('[data-testid="cb-notices"]').innerText().catch(() => '');
-  expect(/\d+ OF \d+ NODES/.test(t), `the receipt counts the nodes (saw ${JSON.stringify(t)})`);
-  expect(/\(\d\d:\d\d:\d\d\)/.test(t) && !/[AP]M/.test(t), `the receipt uses a 24-hour clock (saw ${JSON.stringify(t)})`);
+  expect(/\b\d+ of \d+\b/i.test(t), `the receipt counts the nodes (saw ${JSON.stringify(t)})`);
+  expect(/\b(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\b/.test(t) && !/\b\d{1,2}:\d\d(?::\d\d)?\s*[AP]M\b/i.test(t), `the receipt uses a 24-hour clock (saw ${JSON.stringify(t)})`);
   ok(`PANIC confirm and receipt   ${await shot(pg, 'panic-receipt')}`);
   await pg.context().close();
 });

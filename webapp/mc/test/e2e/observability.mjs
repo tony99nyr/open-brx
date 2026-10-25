@@ -32,14 +32,42 @@ const amberTile = pg => pg.evaluate(() => {
   return l ? Number(l.previousElementSibling?.textContent) : null;
 });
 const present = async (pg, testid) => (await chip(pg, testid).count()) > 0;
-/** The chip's catalogue severity and its words must read `WHAT IS WRONG: WHAT TO DO` with one colon. */
+/** Open the compact fault and check its visible label, reason, and next step. */
 async function checkChip(pg, testid, sev, headWords) {
   const el = chip(pg, testid).first();
   const s = await el.getAttribute('data-sev');
   const t = ((await el.innerText()) || '').replace(/\s+/g, ' ').trim();
+  const labels = {
+    'NOT SAVING GAME DATA': 'Not saving game data',
+    "NOT SAVING THIS MATCH'S RESULT": 'Not saving this result',
+    'NOT SAVING THE SESSION': 'Not saving the session',
+    'MATCH CLOCK FAILING': 'Match clock failing',
+    'JOIN QR HAS NO ADDRESS': 'Join QR has no address',
+    'JOIN ADDRESS NOT REFRESHED': 'Join address out of date',
+  };
+  const label = labels[headWords] ?? (/facts lost/i.test(headWords) ? headWords : '');
   c.expect(s === sev, `${testid} is ${sev} (data-sev=${s})`);
-  c.expect(t.startsWith(`▲ ${headWords}`) || t.startsWith(headWords), `${testid} reads "${headWords}…" (saw "${t.slice(0, 90)}")`);
-  c.expect(/: [A-Z]/.test(t) && !/\)\s*$/.test(t), `${testid} ends with what to do (saw "${t.slice(-60)}")`);
+  c.expect(t.toLowerCase().includes(label.toLowerCase()) || /facts lost/i.test(headWords) && /Gun needs attention/i.test(t), `${testid} reads "${label}" (saw "${t.slice(0, 90)}")`);
+  if (await el.evaluate(e => e.tagName === 'BUTTON')) {
+    if (await el.getAttribute('aria-expanded') !== 'true') await el.click();
+  } else {
+    const toggle = el.locator('button[aria-expanded]');
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+  }
+  const detail = await (await el.evaluate(e => e.tagName === 'BUTTON')
+    ? el.locator('xpath=..').locator('[data-testid="chip-detail"]')
+    : el.locator('[data-testid="fault-detail"]')).first().innerText();
+  const reasons = {
+    'NOT SAVING GAME DATA': /a result can be lost/i,
+    "NOT SAVING THIS MATCH'S RESULT": /the result can be lost/i,
+    'NOT SAVING THE SESSION': /a restart (loses the roster|cannot resume this match)/i,
+    'MATCH CLOCK FAILING': /a match will not go live or end/i,
+    'JOIN QR HAS NO ADDRESS': /the QR holds no address/i,
+    'JOIN ADDRESS NOT REFRESHED': /the QR may be out of date/i,
+  };
+  const reason = reasons[headWords] ?? /\d+ facts lost from the phone outbox/i;
+  c.expect(reason.test(detail), `${testid} explains the fault (saw "${detail.slice(0, 110)}")`);
+  c.expect(/(?:What to do:|:)\s*(Check this player's recap by hand|Check the disk and the MC log|Restart MC|Check the MC log|Check the laptop network)/i.test(detail), `${testid} ends with what to do (saw "${detail.slice(-100)}")`);
   const colour = await el.evaluate(e => getComputedStyle(e).color);
   c.expect(colour !== 'rgb(0, 0, 0)', `${testid} is drawn in a catalogue colour (${colour})`);
 }
@@ -81,8 +109,8 @@ const steps = {
     await checkChip(pg, OUTBOX, 'amber', '12 facts lost');
     const amberAfter = await amberTile(pg);
     c.expect(amberBefore != null && amberAfter === amberBefore + 1, `the card with lost facts counts in the AMBER tile (${amberBefore} -> ${amberAfter})`);
-    const card = pg.locator('[data-alert="armory-nodecard-outbox-lost"]').first().locator('xpath=ancestor::div[contains(., "GUN-A")][1]');
-    c.expect(!/READY/.test(await card.innerText()) && /CHECK/.test(await card.innerText()), 'that card reads CHECK, not READY');
+    const card = pg.locator('[data-alert="armory-nodecard-outbox-lost"]').first().locator('xpath=ancestor::div[@data-gun-card][1]');
+    c.expect(await card.getAttribute('data-status') === 'amber' && /\bCHECK\b/.test(await card.innerText()) && !/\bREADY\b/.test(await card.innerText()), 'that card reads CHECK, not READY');
     await chip(pg, OUTBOX).first().scrollIntoViewIfNeeded();
     await sh(pg, 'mock-outbox');
     await pg.context().close();
@@ -90,7 +118,8 @@ const steps = {
     const claims = pg.locator('[data-alert="station-attention-claims-dropped"]');
     await c.until(async () => (await claims.count()) > 0, 6000, 'the dropped-claims line on a Stick card');
     c.expect(await claims.first().getAttribute('data-sev') === 'amber', 'the dropped-claims line is amber');
-    c.expect(/3 CLAIM REPORTS DROPPED BY THE STICK: CHECK THE RECAP'S PICKUPS FOR STATION #4/.test((await claims.first().innerText()).toUpperCase()), 'it reads WHAT IS WRONG: WHAT TO DO');
+    await claims.first().click();
+    c.expect(/3 claim reports dropped by the Stick:\s*check the recap's pickups for Station #4/i.test(await claims.first().locator('xpath=..').locator('[data-testid="chip-detail"]').innerText()), 'it reads WHAT IS WRONG: WHAT TO DO');
     await claims.first().scrollIntoViewIfNeeded();
     await sh(pg, 'mock-claims');
     await pg.context().close();
@@ -179,8 +208,10 @@ const steps = {
     if (process.env.DBG) console.log(JSON.stringify((await state()).readiness.board.filter(r => r.node === 'linked')));
     // The HTTP read above already says 9, but the page draws from its own snapshot feed, which can lag under load: wait
     // for the line to say 9, not just to exist (it read 7, the count two reports back, in one --ui gate, 2026-10-10).
-    await c.until(async () => (await present(pg, OUTBOX)) && /^(▲ )?9 facts lost/.test(((await chip(pg, OUTBOX).first().innerText()) || '').replace(/\s+/g, ' ').trim()),
-      8000, 'the outbox-lost line on the player card, at 9');
+    await c.until(() => present(pg, OUTBOX), 8000, 'the outbox-lost pill on the player card');
+    await chip(pg, OUTBOX).first().click();
+    await c.until(async () => /9 facts lost from the phone outbox/i.test(await chip(pg, OUTBOX).first().locator('xpath=..').locator('[data-testid="chip-detail"]').innerText()),
+      8000, 'the opened outbox-lost detail on the player card, at 9');
     await checkChip(pg, OUTBOX, 'amber', '9 facts lost');
     c.expect((await state()).readiness.board.some(r => r.status === 'amber' && r.ambers.some(a => /OUTBOX/.test(a))), 'MC marks that board row amber');
     await chip(pg, OUTBOX).first().scrollIntoViewIfNeeded();

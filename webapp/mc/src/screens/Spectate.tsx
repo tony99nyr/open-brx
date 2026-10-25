@@ -254,7 +254,7 @@ function Clock({ remaining, sub, stale, SZ }: { remaining: number; sub: string; 
     <div
       style={{ flex: '0 1 340px', background: T.panel, border: `1px solid ${stale ? colourOf('spectate-clock-frozen') : T.line}`, padding: `${Math.round(SZ.pad * 1.6)}px 26px`,
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-      {stale ? <FaultPill id="spectate-clock-frozen" short="Clock frozen" why="MC is offline." size={Math.max(16, SZ.label)} static />
+      {stale ? <FaultPill id="spectate-clock-frozen" short="Clock frozen" why="MC is offline." role={null} size={Math.max(16, SZ.label)} static />
         : <span style={{ ...chk(700, SZ.label), letterSpacing: '.26em', color: T.micro }}>TIME REMAINING</span>}
       <span data-spectate="clock" style={{ ...osw(700, SZ.clock), lineHeight: 1 }}><Num value={fmtClock(remaining)} /></span>
       <ClockSub text={sub} style={{ ...chk(600, SZ.label), letterSpacing: '.2em', color: T.micro }} />

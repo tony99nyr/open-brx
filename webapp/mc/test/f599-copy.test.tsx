@@ -13,21 +13,26 @@ import { FaultPill, HelpNote, ItemChip } from '../src/ui/Compact';
 import { LoadError } from '../src/ui/LoadError';
 import { demo, makeStore, mount } from './harness';
 
+function pointer(target: Element, type: 'pointerover' | 'pointerout', pointerType = 'mouse') {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperty(event, 'pointerType', { value: pointerType });
+  target.dispatchEvent(event);
+}
+
 async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: string, detail: string, hoverSelector = selector) {
   const button = m.find(selector)[0];
   const hoverTarget = m.find(hoverSelector)[0];
   expect(button).toBeTruthy();
   expect(m.text()).not.toContain(detail);
-  await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+  await act(async () => { pointer(hoverTarget, 'pointerover'); });
   expect(m.text()).toContain(detail);
   expect(button.getAttribute('aria-expanded')).toBe('true');
-  await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })); });
-  expect(m.text()).not.toContain(detail);
+  if (button.textContent?.includes('Why?')) expect(button.textContent).not.toContain('Hide');
   await act(async () => { button.click(); });
   expect(m.text()).toContain(detail);
-  await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })); });
+  if (button.textContent?.includes('Why?') || button.textContent?.includes('Hide')) expect(button.textContent).toContain('Hide');
+  await act(async () => { pointer(hoverTarget, 'pointerout'); });
   expect(m.text()).toContain(detail);
-  expect(button.getAttribute('aria-expanded')).toBe('true');
   await act(async () => { button.click(); });
   expect(m.text()).not.toContain(detail);
   expect(button.getAttribute('aria-expanded')).toBe('false');
@@ -36,6 +41,7 @@ async function revealCycle(m: Awaited<ReturnType<typeof mount>>, selector: strin
 describe('F599 console copy', () => {
   it('opens FaultPill detail on hover and pins it with a tap', async () => {
     const m = await mount(<FaultPill id="frame-mc-offline" short="MC offline" why="Check the server." />);
+    expect(m.find('button')[0].getAttribute('aria-label')).toBe('Why? MC offline');
     await revealCycle(m, 'button', 'Check the server.', '[data-alert="frame-mc-offline"]');
     m.unmount();
   });
@@ -52,7 +58,7 @@ describe('F599 console copy', () => {
     m.unmount();
   });
 
-  it('closes hovered detail on tap until the pointer leaves and returns', async () => {
+  it('pins hovered detail on tap and closes it on the next tap', async () => {
     for (const node of [
       <FaultPill key="fault" id="frame-mc-offline" short="MC offline" why="Check the server." />,
       <ItemChip key="chip" id="kit-slot-note-locked" short="Kit locked" detail="Check the kit." />,
@@ -61,13 +67,26 @@ describe('F599 console copy', () => {
       const wrapper = m.find('[data-alert]')[0]?.closest('div') as HTMLElement;
       const button = m.find('button')[0] as HTMLButtonElement;
       const hoverTarget = node.key === 'chip' ? button : wrapper;
-      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+      await act(async () => { pointer(hoverTarget, 'pointerover'); });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      await act(async () => { button.click(); });
       expect(button.getAttribute('aria-expanded')).toBe('true');
       await act(async () => { button.click(); });
       expect(button.getAttribute('aria-expanded')).toBe('false');
-      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseout', { bubbles: true })); });
-      await act(async () => { hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
-      expect(button.getAttribute('aria-expanded')).toBe('true');
+      await act(async () => { pointer(hoverTarget, 'pointerout'); });
+      m.unmount();
+    }
+  });
+
+  it('does not open detail when a touch pointer enters', async () => {
+    for (const node of [
+      <FaultPill key="fault" id="frame-mc-offline" short="MC offline" why="Check the server." />,
+      <ItemChip key="chip" id="kit-slot-note-locked" short="Kit locked" detail="Check the kit." />,
+    ]) {
+      const m = await mount(node);
+      const target = node.key === 'chip' ? m.find('button')[0].parentElement! : m.find('[data-alert]')[0];
+      await act(async () => { pointer(target, 'pointerover', 'touch'); });
+      expect(m.find('[data-testid="fault-detail"], [data-testid="chip-detail"]')).toHaveLength(0);
       m.unmount();
     }
   });
@@ -96,9 +115,7 @@ describe('F599 console copy', () => {
     const button = m.find('button[data-alert]')[0];
     const wrapper = button.parentElement as HTMLElement;
     expect(wrapper.style.display).toBe('inline-flex');
-    await act(async () => { wrapper.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
-    expect(m.text()).not.toContain('Check kit.');
-    await act(async () => { button.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })); });
+    await act(async () => { pointer(wrapper, 'pointerover'); });
     expect(m.text()).toContain('Check kit.');
     m.unmount();
   });

@@ -115,7 +115,7 @@ describe('KIT: a failed load is shown, never read as "none"', () => {
     const strip = m.find('[data-alert="kit-load-error"]');
     expect(strip.length).toBe(1);
     expect(strip[0].textContent).toContain('Could not load the gun list');
-    await act(async () => { strip[0].querySelector('button')?.click(); });
+    await act(async () => { (strip[0].querySelector('button[aria-expanded]') as HTMLButtonElement)?.click(); });
     expect(strip[0].textContent).toContain('socket reset');
     await act(async () => { m.find('[data-testid="kit-load-retry-0"] button')[0].click(); });
     await settle();
@@ -132,7 +132,7 @@ describe('KIT: a failed load is shown, never read as "none"', () => {
     await settle();
     const strip = m.find('[data-alert="kit-load-error"]');
     expect(strip.map(s => s.textContent)).toEqual([expect.stringContaining('Could not load the voices')]);
-    await act(async () => { strip[0].querySelector('button')?.click(); });
+    await act(async () => { (strip[0].querySelector('button[aria-expanded]') as HTMLButtonElement)?.click(); });
     expect(strip[0].textContent).toContain('not found');
     m.unmount();
   });
