@@ -580,6 +580,9 @@ def test_an_over_nerfed_subject_still_fails_balance_kept():
     trap = R.balance_kept({}, {}, {}, empty, empty, None, subject_trap=True)
     assert not trap["pass"] and trap["numbers"]["subject_is_a_trap"]
     assert R.balance_kept({}, {}, {}, empty, empty, None)["pass"]
+    # a comfort pick near zero is not a trap; a clear loss on average is
+    assert not R.perk_is_a_trap([0.01, -0.02, 0.0, -0.01], 2000)
+    assert R.perk_is_a_trap([-0.10, -0.12, -0.08, -0.11], 2000)
 
 
 def test_ceiling_only_near_top_cells_do_not_define_a_niche():

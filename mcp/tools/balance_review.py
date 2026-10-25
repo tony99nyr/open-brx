@@ -2908,8 +2908,11 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
     haze_failure = bool(haze_check and haze_check["fail"])
     # the candidate's own weapon or perk; a `with` entry is in both worlds, so a kit carrying it is a bystander
     involved = {wid} if wid else {entry.get("perk_id")} - {None}
-    gains = tests["viable"]["numbers"].get("score_minus_no_perk") or {}
-    subject_trap = tests["viable"]["pass"] is False or bool(is_perk and gains and sum(gains.values()) / len(gains) < 0)
+    by_primary: dict = {}       # one gain per primary: its presets averaged, so no primary weighs more
+    for cell, gain in (tests["viable"]["numbers"].get("score_minus_no_perk") or {}).items():
+        by_primary.setdefault(cell.rsplit("|", 1)[0], []).append(gain)
+    gains = [sum(v) / len(v) for v in by_primary.values()]
+    subject_trap = tests["viable"]["pass"] is False or bool(is_perk and gains and perk_is_a_trap(gains, _reps("perk", reps_scale)))
     tests["balance_kept"] = balance_kept(rules_s, rules_b, rules_c, mb, mc, wid, side,
                                          haze_failure=haze_failure, involved=involved, subject_trap=subject_trap)
 
@@ -3111,6 +3114,17 @@ def _ceiling_pass(cell: dict, key: str) -> bool:
     """A rule cell's pass at the 0.9 ceiling (F610); a cell without a ceiling value passes there."""
     v, bar = cell.get("ceiling_value"), cell["bar"]
     return True if v is None else (v < bar if key.split("|", 1)[1].startswith("R10a") else v >= bar)
+
+
+def perk_is_a_trap(gains: list[float], reps: int) -> bool:
+    """A perk is a trap when its mean score over no perk across primaries is below zero by more than NOISE_Z standard
+    errors (brx1: a comfort pick such as Fast Hands sits near zero and must not fail on noise). The error is the
+    spread of the per-primary gains, floored at a binomial cell's error at `reps`."""
+    n = len(gains)
+    mean = sum(gains) / n
+    spread = math.sqrt(sum((g - mean) ** 2 for g in gains) / (n - 1) / n) if n > 1 else 0.0
+    se = max(spread, math.sqrt(0.25 / max(1, reps)))
+    return mean < -NOISE_Z * se
 
 
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
