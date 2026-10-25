@@ -1992,14 +1992,7 @@ class KitMatch(B.Match):
                     if first <= p.contact_end:
                         self.push(first, self.SHOT, p.pid, gen)
             return
-        if p.active == 1 and p.ammo <= 0 and p.reserve <= 0 and not p.reload_amount and \
-                (p.stash[0][0] > 0 or p.stash[0][1] > 0):
-            # F608: a spent finisher goes back to the opener, which can still fire (the base shot schedules nothing)
-            self._swap_to(p, 0, t + p.kit.swap_ms)
-            p.phase = "open"
-            first = max(p.swap_until, p.next_ready, p.reload_until)
-            if first <= p.contact_end:
-                self.push(first, self.SHOT, p.pid, gen)
+        if self._leave_spent_finisher(p, t, gen):
             return
         w = p.w
         finisher_left = p.stash[1][0] > 0 or p.stash[1][1] > 0     # F608: never draw a spent finisher
@@ -2007,6 +2000,9 @@ class KitMatch(B.Match):
             not w.charge_and_tap or (p.ammo >= w.rounds_per_charge and t - p.last_pull >= w.fire_ms))
         target = self.players[p.target]
         super()._shot(p, t, gen)
+        if p.alive and p.engage_id == gen and p.target is not None and target.alive and \
+                self._leave_spent_finisher(p, t, gen):
+            return                  # the finisher's last round: the base shot queued nothing after it
         if alpha_ready and p.alive and p.engage_id == gen and p.target is not None and target.alive:
             # drop the SHOT the base pushed for this engagement; schedule the swap and the finisher instead
             self.heap = [e for e in self.heap if not (e[2] == self.SHOT and e[3] == p.pid and e[4] == gen and e[0] >= t)]
@@ -2019,6 +2015,19 @@ class KitMatch(B.Match):
                         p.reload_until, p.next_ready)
             if first <= p.contact_end:
                 self.push(first, self.SHOT, p.pid, gen)
+
+    def _leave_spent_finisher(self, p, t, gen) -> bool:
+        """F608: a combo holding a spent finisher goes back to its opener, which can still fire. The base shot
+        schedules nothing for a spent slot, so the combo would idle until the contact ends."""
+        if not (p.combo and p.active == 1 and p.ammo <= 0 and p.reserve <= 0 and not p.reload_amount and
+                (p.stash[0][0] > 0 or p.stash[0][1] > 0)):
+            return False
+        self._swap_to(p, 0, t + p.kit.swap_ms)
+        p.phase = "open"
+        first = max(p.swap_until, p.next_ready, p.reload_until)
+        if first <= p.contact_end:
+            self.push(first, self.SHOT, p.pid, gen)
+        return True
 
     def _respawn(self, p, t, _gen=0):
         pool = p.kpool
