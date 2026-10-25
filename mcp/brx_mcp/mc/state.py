@@ -568,7 +568,7 @@ class Session:
         # says this is a real run that allows it, so no test or demo can reach a real cloudflared.
         self.tunnel_auto = False
         self._tunnel_operator_off = False         # F595: the operator switched it off; no trigger restarts it
-        self._tunnel_auto_fired: set[str] = set() # F595: each trigger gets one try per session
+        self._tunnel_auto_fired: set[str] = set() # F595: each trigger gets one try per match (new_session clears it)
         self._tunnel_auto: TunnelAuto | None = None
         self._tunnel_seq = 0                      # F595: bumps on every switch press, so a later ON wins an OFF in flight
         self._tunnel_stopping = 0                 # F595: OFFs still awaiting the child's exit

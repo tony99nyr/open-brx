@@ -2251,7 +2251,7 @@ test('AMMO review: a refill taken with a held heavy on the trigger survives SELE
   const back = h.since(n).filter(f => f.startsWith('$AMMO,0,'));
   assert.ok(back.length && back.every(f => f === '$AMMO,0,20,384,1,*'), 'SELECT puts slot 0 back with the refilled reserve: ' + JSON.stringify(back));
 });
-test('AMMO review: a gun write that fails is retried for the life', async () => {
+test('AMMO review: a gun write that fails is granted once more', async () => {
   const h = harness(AMMO_GAME);
   h.at(46); h.fire(0, 20, 40);
   h.failNext(fr => fr.includes('$AMMO,0,20,384,1,*'));

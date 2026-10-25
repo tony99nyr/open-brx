@@ -14,7 +14,7 @@
 //     state       reset() · snapshot() · restore(p) · setPset(frame)
 //     clock       tickAnnounce(now) · tick(now)
 //     stations    onStations(now) · items() · claimable(id, item, now) · claimView(now) · view(now)
-//     grants      grantWeapon(id, item, now) · grantShield(id, item, now) · grantAmmo(id, item, now) · end(why)
+//     grants      grantWeapon(id, item, now) · grantShield(id, item, now) · grantAmmo(id, item, now, retry) · end(why)
 //     the gun     onAmmo(slot, mag, prev) · repairUnpulled(slot, mag, prev) · lostEquip(slot, mag, prev, expectedBefore,
 //                 altPending) · repairLostEquip(held, slot, mag) · onSelect() · onAltPressed() · onAssumedSwap(to) ·
 //                 onConfirmedSwap(slot) · onHp() · onShieldFrame(shield)
@@ -34,7 +34,7 @@
 //   read-only   phase · alive · bleUp · ended · stunned · reconciling · resync · tutorial · gunLocked · frames · config ·
 //               player · matchId · stations · goLiveT · lifeSeq · pulledLife · armPending · actSeq · activeSlot ·
 //               switching · weaponName · hp · armor · shield · shieldBase · maxShield · latch · lastHitAt · reloading
-//   writes      acctWrote(slot, mag, res, weap, resetMag) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) ·
+//   writes      acctWrote(slot, mag, res, weap, resetMag) · setPrev(slot, mag, res) · setMag(slot, mag) · equipped(slot, mag, res) · setSwitching(card) · setReserve(slot, res) ·
 //               recoilArm(why) · setShield(v) · setWriteLost(life) · showSlot(slot) (the AMMO grant's new reserve on the ammo block)
 //   Each write is one named door into the engine: `equipped` is the engine's side of a phone equip (the swap and reload
 //   end, `activeSlot`, the ammo block), `setShield` is the overshield grant's pools, `setWriteLost` asks MC for RESYNC GUN.
