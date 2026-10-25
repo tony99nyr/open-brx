@@ -1222,10 +1222,12 @@ class Session:
         2026-09-12."""
         return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
 
-    def _health_preset(self) -> str | None:
-        """The game's `health.preset` (A50), or None for an older config without one."""
-        preset = (self.config.get("health") or {}).get("preset")
-        return preset if isinstance(preset, str) else None
+    def _health_preset(self, health: object = None) -> str:
+        """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:
+        a config with 45/0/105 and no preset key is Shields, and edited numbers are custom. The console's
+        `healthPresetOf` derives it the same way (brx3 review). `health` defaults to the game's own."""
+        h = _compile.normalize_health(health if isinstance(health, dict) else self.config.get("health"))
+        return _compile.resolve_health_preset(h["max_hp"], h["max_armor"], h["max_shield"])
 
     def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
@@ -1697,24 +1699,28 @@ class Session:
         weapons, perks = self._catalog_rows()
         lp = self.loadout_pool()
         changed: list[str] = []
+        noticed = 0       # honest pickers (Tony 2026-10-25, no warnings): a perk-only clear is silent, not "RESET"
         for pl in self.players.values():
-            new = _policy.apply(self.policy(), lp, pl.get("loadout") or {"weapons": []}, weapons, perks)
+            old = pl.get("loadout") or {"weapons": []}
+            new = _policy.apply(self.policy(), lp, old, weapons, perks)
             if new != pl.get("loadout"):
                 pl["loadout"] = new
                 changed.append(pl["player_id"])
+                if {k: v for k, v in new.items() if k != "perk"} != {k: v for k, v in old.items() if k != "perk"}:
+                    noticed += 1
         for pid in changed:
             pl = self.players[pid]
             if pid in self.trying:                       # an in-flight try-out of a weapon the ruleset just took away
                 self.tryout(pid, None)                   # → tutorial {end} teardown on the node
             self._resend(pl)
-        if changed:
+        if noticed:
             # F411: the whole-game "saved game" this used to override with is gone (the old branch
             # read `self.presets.get(self.active_preset_id)["name"]`) — a named loadout_policy preset
             # (no_heavies/snipers/open/custom) always has its own label, so the mode's own name is
             # only ever the defensive fallback below, same as before.
             mode_row = next((m for m in MODES if m["mode"] == self.config.get("mode")), None)
             label = _policy.PRESET_LABELS.get(self.policy().get("preset") or "", (mode_row or {}).get("name") or "THE LOADOUT RULES")
-            self._policy_notice = f"{len(changed)} LOADOUT{'S' if len(changed) != 1 else ''} RESET BY {label}"
+            self._policy_notice = f"{noticed} LOADOUT{'S' if noticed != 1 else ''} RESET BY {label}"
         return changed
 
     def _prune_browsing(self) -> None:

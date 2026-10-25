@@ -238,7 +238,8 @@ class FakeCompiler:
         from .perks import default_perks
         return default_perks().all()
 
-    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None) -> str | None:
+    def perk_block_reason(self, perk_id: str | None, primary: str | None, secondary: str | None = None,
+                          preset: str | None = None) -> str | None:
         """F551: the fake's demo weapons carry no Armour Piercing prices; it refuses nothing."""
         return None
 

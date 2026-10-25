@@ -50,7 +50,8 @@ def test_a_switch_to_the_shields_preset_clears_the_perk_silently_and_the_push_go
     assert "perk" not in s.players[a]["loadout"], s.players[a]["loadout"]
     assert s.players[a]["loadout"]["weapons"] == [{"weapon_id": "assault_rifle"}], "the weapons stay"
     assert s.players[b]["loadout"].get("perk") == "extended_mags", "a perk the preset allows stays"
-    assert not any("armor_piercing" in w or "Armour Piercing" in w for w in s.config_warnings), s.config_warnings
+    assert not any("armor_piercing" in w or "Armour Piercing" in w or "RESET" in w for w in s.config_warnings), \
+        "a perk-only clear is silent: no RESET notice (Codex review)"
     s.push_config(force=True)
 
 
@@ -85,3 +86,13 @@ def test_a_phone_weapon_pick_that_drops_the_held_perk_is_acked_with_no_warning()
     assert not acks[-1].get("dropped") and not acks[-1].get("reason"), acks[-1]
     lo = s.players[pid]["loadout"]
     assert lo["weapons"][0]["weapon_id"] == "burst_rifle" and "perk" not in lo, lo
+
+
+def test_shields_is_read_from_the_numbers_not_the_stored_preset_string():
+    """brx3 review: the console derives the preset from the numbers (`healthPresetOf`), so MC must too, or the GAMES
+    preview and the real pool disagree."""
+    s, *_ = _real()
+    s.config["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 105}           # an older config: no preset key
+    assert "armor_piercing" not in s.loadout_pool()["perks"], "45/0/105 is Shields"
+    s.config["health"] = {"max_hp": 60, "max_armor": 0, "max_shield": 105, "preset": "shields"}   # edited numbers
+    assert "armor_piercing" in s.loadout_pool()["perks"], "edited numbers are custom, whatever the string says"
