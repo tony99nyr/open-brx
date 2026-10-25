@@ -414,6 +414,25 @@ static void test_powerup_claim_feed_and_updates() {
   CHECK(link.assignment().id == 5);
 }
 
+// F591 (brx2's milestone review, 2026-10-24): the status reports the hill pace the Stick applies, as utility.js's does,
+// so MC can confirm a Stick took its capture_s and net_cap.
+static void test_fill_status_reports_the_hill_pace() {
+  StationLink link;
+  link.set_mode(AssocMode::HELD);
+  link.apply_welcome({true, "s1", ""});
+  link.apply_station_config(parse_station_config(body(
+      R"({"kind":"control","team":255,"id":9,"game":3,"capture_s":20,"net_cap":2})")), 1000);
+  const StatusFields f = fill_status(link, 2000, true, 7, 0);
+  CHECK(f.control_capture_s == 20 && f.control_net_cap == 2);
+  CHECK(build_status_body(f).find("\"capture_s\":20,\"net_cap\":2") != std::string::npos);
+  StationLink plain;   // MC named no pace: the Stick reports the one it runs
+  plain.set_mode(AssocMode::HELD);
+  plain.apply_welcome({true, "s1", ""});
+  plain.apply_station_config(parse_station_config(body(R"({"kind":"control","team":255,"id":9,"game":3})")), 1000);
+  const StatusFields g = fill_status(plain, 2000, true, 7, 0);
+  CHECK(g.control_capture_s == contract::HILL_CAPTURE_S && g.control_net_cap == contract::HILL_NET_CAP);
+}
+
 // The status heartbeat body: fill_status reads the link the way the glue's heartbeat block did.
 static void test_fill_status_matches_the_glue_heartbeat() {
   StationLink link;
@@ -469,6 +488,8 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   want.control_has_inputs = true;   // F558: nobody is counted here, so net 0, no counts, no lead
   want.control_net = 0;
   want.control_lead = -1;
+  want.control_capture_s = contract::HILL_CAPTURE_S;   // F591: the pace it applies
+  want.control_net_cap = contract::HILL_NET_CAP;
   CHECK(build_status_body(armed) == build_status_body(want));
   CHECK(build_status_body(armed).find("\"net\":0,\"counts\":{},\"lead\":null") != std::string::npos);
   StatusFields two = want;   // F558: two RED and one BLUE counted, RED leads at net 1
@@ -574,6 +595,7 @@ int main() {
   test_a_muster_config_drops_last();
   test_powerup_claim_feed_and_updates();
   test_fill_status_matches_the_glue_heartbeat();
+  test_fill_status_reports_the_hill_pace();
   test_the_lock_running_out_clears_the_snapshot();
   test_a_station_update_takes_the_deferred_muster_drop();
   test_a_failed_refresh_write_stays_owed();

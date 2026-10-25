@@ -100,8 +100,8 @@ export function Games() {
   const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);
   const poolEmpty = emptyRequiredSlots(state.loadout_pool);
   const poolEmptyReason = poolEmpty.any
-    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', state.loadout_pool.reasons!.primary!),
-       poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!),
+    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', state.loadout_pool.reasons!.primary!, null, cfg.loadout_policy?.primary?.choice === 'fixed'),
+       poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!, null, cfg.loadout_policy?.secondary?.choice === 'fixed'),
        poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
   // games-redesign.md §8: KOTH needs a hill station assigned in ARMORY — never a dead end.

@@ -245,6 +245,9 @@ struct StatusFields {
   int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
                            // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
+  // F591 (additive; 0 = left out): the hill pace this Stick applies, as utility.js's status reports it
+  int control_capture_s = 0;
+  int control_net_cap = 0;
   // Additive, respawn only: the revives counted here (utility.js `revives`; StationReport.revives).
   bool has_revives = false;
   uint32_t revives = 0;
@@ -316,6 +319,8 @@ inline std::string build_status_body(const StatusFields& f) {
       }
       j += "}";
     }
+    if (f.control_capture_s) j += ",\"capture_s\":" + std::to_string(f.control_capture_s);
+    if (f.control_net_cap) j += ",\"net_cap\":" + std::to_string(f.control_net_cap);
     j += "}";
   }
   if (f.has_revives) j += ",\"revives\":" + std::to_string(f.revives);
@@ -1326,7 +1331,7 @@ class StationLink {
     if (hill_restore_guard_) {
       hill_restore_guard_ = false;
       duration_restore_wait_ = false;
-      hill_.frozen = false;
+      hill_.thaw();
     }
     duration_anchor_known_ = true;
     starts_known_ = true;
@@ -1353,7 +1358,7 @@ class StationLink {
     hill_restore_guard_ = false;
     duration_anchor_known_ = true;
     if (remaining_ms == 0) { hill_.freeze(); return true; }
-    hill_.frozen = false;
+    hill_.thaw();
     starts_known_ = true;
     hill_live_ = true;
     hill_starts_ms_ = now_ms;
@@ -1548,7 +1553,7 @@ class StationLink {
       starts_known_ = false;
       hill_live_ = false;
       hill_offline_waiting_ = false;
-      if (!hill_restore_guard_) hill_.frozen = false;
+      if (!hill_restore_guard_) hill_.thaw();
     } else if (a.kind == "control" && a.duration_ms > 0) {
       // Polish round 2: MC sends a duration without a start only when no match runs (LOBBY, or an abort back to it).
       // That stops an advert anchor or a resumed clock too; the next START or down -> alive edge anchors again.
@@ -1557,7 +1562,7 @@ class StationLink {
       starts_known_ = false;
       hill_live_ = false;
       hill_offline_waiting_ = false;
-      if (!hill_restore_guard_) hill_.frozen = false;
+      if (!hill_restore_guard_) hill_.thaw();
     }
     if (kind_or_id_changed || game_changed || a.ends_in_ms >= 0 || a.starts_known ||
         (!a.starts_known && a.duration_ms <= 0) ||
@@ -1572,7 +1577,7 @@ class StationLink {
     }
     if (hill_restore_guard_ && a.starts_known) {
       hill_restore_guard_ = false;
-      if (a.ends_in_ms != 0) hill_.frozen = false;
+      if (a.ends_in_ms != 0) hill_.thaw();
     }
     if (a.ends_in_ms == 0) hill_.freeze();
     // F386 for a pickup: END/recap/RECALL (`ends_in_ms:0`) freezes the schedule into MATCH OVER, the
@@ -1976,6 +1981,8 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_lead = h.lead;
     f.control_has_hold = true;
     for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
+    f.control_capture_s = h.capture_s;   // F591
+    f.control_net_cap = h.net_cap;
   }
   if (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment()) {  // post-MVP (presence.h): off by default
     f.has_revives = true;
