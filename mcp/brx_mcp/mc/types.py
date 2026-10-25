@@ -1278,6 +1278,8 @@ class NodeView(TypedDict):
     log: NotRequired[LogView | None]
     # F309: the phone's own last `status.transport` claim; absent = never reported (older app).
     transport: NotRequired[Literal["wifi", "cellular", "none", "unknown"]]
+    # F595: the phone's last `status.has_pub` claim (it holds the tunnel URL as a fallback); absent = an older app.
+    has_pub: NotRequired[bool]
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
     # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
@@ -1417,6 +1419,8 @@ class Event(TypedDict, total=False):
     # The node says `cellular` only when the network at bind time AND the current one are both cellular
     # (a bound socket stays on the network it opened on); the full rule is contracts §5d.
     transport: Literal["wifi", "cellular", "none", "unknown"]
+    # F595: the phone holds `pub` (the tunnel URL) as a fallback. Always sent by a current app; absent = older.
+    has_pub: bool
 
 
 class ScoreRow(TypedDict):
@@ -1811,6 +1815,13 @@ TunnelStatus = Literal["off", "starting", "up", "error"]
 TunnelProviderValue = Literal["cloudflared", "manual"]
 
 
+class TunnelAuto(TypedDict):
+    """F595: why MC started the backhaul itself. Absent when it did not (or the operator took over)."""
+    reason: Literal["kit", "cellular"]
+    cellular: NotRequired[int]        # bound, fresh phones on cellular right now (derived per snapshot)
+    error: NotRequired[str]           # the start was refused at once (not installed, port not bound)
+
+
 class LanPublic(TypedDict):
     ws_url: str | None
     status: TunnelStatus
@@ -1819,6 +1830,7 @@ class LanPublic(TypedDict):
     was_up: NotRequired[bool]
     detail: NotRequired[str]
     error: NotRequired[str]
+    auto: NotRequired[TunnelAuto]
 
 
 class PresentationRow(TypedDict):

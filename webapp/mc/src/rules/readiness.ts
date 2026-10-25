@@ -2,7 +2,7 @@
 import type { ConfigView, Coverage, LobbyAck, NodeView, Player } from '../api/types';
 
 type Binding = Pick<Player, 'player_id' | 'display' | 'node_id'>;
-type Path = Pick<NodeView, 'node_id' | 'reach' | 'stale' | 'transport'>;
+type Path = Pick<NodeView, 'node_id' | 'reach' | 'stale' | 'transport' | 'has_pub'>;
 
 // Server: state.py Session.readiness(): roster_size.
 export const sessionReadinessRosterSize = (players: readonly Binding[]) => players.length;
@@ -20,8 +20,10 @@ export function sessionUpdating(players: readonly (Binding & Pick<Player, 'ready
   }).length;
 }
 
-const independentPath = (node?: Path): boolean =>
-  node?.reach === 'backhaul' && !node.stale && node.transport === 'cellular';
+// Server: state.py Session._independent_path(). F595: a LAN phone on cellular counts when it says it holds pub.
+const independentPath = (node: Path | undefined): boolean =>
+  !!node && !node.stale && node.transport === 'cellular'
+  && (node.reach === 'backhaul' || (node.reach === 'lan' && node.has_pub === true));
 
 // Server: state.py Session.coverage(). Walking players equals the server's node_player walk only
 // while bind and evict keep node_player and players[*].node_id inverse maps.

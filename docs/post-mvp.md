@@ -739,6 +739,8 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 ## 6. Phone HUD and Mission Control
 
+- **F600 🟢 A PHONE ON THE BACKHAUL MOVES BACK TO THE WI-FI WHEN IT RETURNS (LOBBY OR RECAP ONLY).** brx4, 2026-10-24 (F595 item 2 review). Under A28.3's LAN-first rule a phone that fell back to the tunnel stays on it until that socket drops, because `dialNow` does nothing while bound, so F588's Wi-Fi-back kick does not move it. brx1: the tunnel works, and a move back gains a little latency for one more reconnect, so it stays out. If wanted: a Wi-Fi-back kick drops a pub-bound link in LOBBY or RECAP only, never inside the config-ack window or a match. `desk`.
+
 - **F499 🟢 REDEPLOYED CARD POLISH: THREE COSMETIC TIMING EDGES.** brx4, after F498 (2026-10-05). The card already ends at or after weapons hot; these only make it less exact. (1) An in-flight write can make the forecast early by the link delay. (2) A stale cue can make the card too long. (3) A late send cannot move a card that is already drawn. Owner: unassigned.
 
 - **F491 🟢 AFTER AN MC RESTART, A STRANGER WITH AN ABSENT PHONE'S SAVED NODE ID AND AN UNKNOWN GUN PASSES THE F468 FALLBACK.** 0.4.19 cross-lane recheck (brx3, 2026-10-05): the node-map fallback checks no identity proof. Post-MVP hardening: the MVP trust model is the local LAN plus the MC token. Owner: unassigned.

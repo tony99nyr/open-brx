@@ -1000,7 +1000,7 @@ export class MockBackend implements Api {
   }
   /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
    *  "bound" — an unclaimed phone joining over backhaul does not move the needle. F309, as `state.py
-   *  _independent_path()`: only a connected phone on the tunnel that reports cellular is covered. */
+   *  _independent_path()`: a connected phone that reports cellular is covered on the tunnel, or on the LAN when it holds pub. */
   private coverage(nodes: NodeView[]): Coverage {
     return sessionCoverage(this.players, nodes);
   }

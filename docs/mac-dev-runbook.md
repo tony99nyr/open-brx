@@ -26,6 +26,12 @@ under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `sess
 made sure Node, Python and the console are in place; `pnpm mc` skips straight to starting when they
 already are.)
 
+**The backhaul starts itself (F595).** With `cloudflared` installed, MC starts the internet tunnel at the
+kit push (once a phone is bound), and again if a bound phone reports mobile data before the whistle or during
+the match. ARM never waits for it. Phones stay on the Wi-Fi and use the tunnel only after they lose it. The console switch still turns it off, and an OFF holds until Mission Control restarts or a new session starts.
+Pass `--no-tunnel` (`pnpm mc -- --no-tunnel`) to keep it manual. A dev run with `--demo`, `--ephemeral` or
+`--fake-net` never starts it.
+
 **Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
 and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
 in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep

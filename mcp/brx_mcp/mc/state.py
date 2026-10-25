@@ -45,7 +45,7 @@ from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, Event, FeedEntry,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
-                    KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
+                    KitView, LanPublic, LanView, TunnelAuto, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapSyncRow, RecapSyncView, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, FailureView, NotSavingView, StationAssignment, StationDeparture, StationRestore, StationItem, PowerupSlot, PowerupsView, StationRef, StationControl, StationRange, StationReport, RangeEdit,
@@ -564,6 +564,14 @@ class Session:
         self._tick_failures = FailureTrack("match tick", self.now_ms)       # armed->live and the timed end stop while this fails
         self._join_error: str | None = None                                 # O8: join_info() raised; the QR has no URL
         self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
+        # F595: MC may start the backhaul itself (kit push, a phone on cellular). OFF unless `__main__`
+        # says this is a real run that allows it, so no test or demo can reach a real cloudflared.
+        self.tunnel_auto = False
+        self._tunnel_operator_off = False         # F595: the operator switched it off; no trigger restarts it
+        self._tunnel_auto_fired: set[str] = set() # F595: each trigger gets one try per session
+        self._tunnel_auto: TunnelAuto | None = None
+        self._tunnel_seq = 0                      # F595: bumps on every switch press, so a later ON wins an OFF in flight
+        self._tunnel_stopping = 0                 # F595: OFFs still awaiting the child's exit
         # F142 (field 2026-09-12): is THIS process a demo? Set by `__main__` when `--demo` seeds the
         # roster, persisted with the snapshot, and compared on restore — a demo roster must never wake
         # up inside a real match day, and a real roster must never be handed to a demo run.
@@ -1074,6 +1082,11 @@ class Session:
                 self.net.broadcast("join", self.join_body())
             except Exception:
                 import logging; logging.getLogger("brx.mc").exception("join broadcast failed")
+            # F595: coverage can move here, so the frag warning (A6.1) is re-derived; never at the tunnel's expense.
+            try:
+                self._validate()
+            except Exception:
+                import logging; logging.getLogger("brx.mc").exception("revalidation after a tunnel change failed")
         self._changed()
 
     def _ws_port(self) -> int:
@@ -1085,24 +1098,92 @@ class Session:
 
     async def set_tunnel(self, on: bool) -> LanPublic:
         """`POST /api/tunnel` (A28.1). Returns `lan.public`; raises `TunnelError` (409) when there is
-        nothing MC may start or stop."""
+        nothing MC may start or stop. F595: the operator wins, so an OFF here holds for the session."""
         t = self.tunnel
         if t is None:
             raise TunnelError("this Mission Control was built without tunnel support")
+        # The choice is recorded BEFORE any await, so an ON that lands while an OFF is still stopping
+        # the child is not lost: the OFF sees the newer press and starts it again once the stop is done.
+        self._tunnel_seq += 1
+        seq = self._tunnel_seq
+        self._tunnel_operator_off = not on
         if on:
-            t.start(self._ws_port())
+            if t.status not in ("starting", "up"):
+                self._tunnel_auto = None          # the operator started this one, not a trigger
+            if not self._tunnel_stopping:
+                t.start(self._ws_port())
         else:
-            await t.stop()
-        return self._public().copy()
+            self._tunnel_auto = None
+            self._tunnel_stopping += 1
+            try:
+                await t.stop()
+            finally:
+                self._tunnel_stopping -= 1
+            if self._tunnel_seq != seq and not self._tunnel_operator_off and not self._tunnel_stopping:
+                t.start(self._ws_port())          # a later ON landed during the stop: it wins
+        self._changed()
+        return self._tunnel_public()
+
+    def _tunnel_public(self) -> LanPublic:
+        """`lan.public` exactly as GET /api/state shows it (`public.auto` included)."""
+        return cast(LanPublic, dict(self._lan_view().get("public") or PUBLIC_OFF))
+
+    def _auto_tunnel(self, reason: Literal["kit", "cellular"]) -> None:
+        """F595: start the backhaul because of `reason`, the way the console switch does. Never awaits and
+        never raises: ARM and the kit flow do not wait on it, and a failure is one log line plus
+        `lan.public.auto.error` (a child that dies later is `lan.public.status == "error"`, as ever)."""
+        t = self.tunnel
+        if (not self.tunnel_auto or t is None or self._tunnel_operator_off or not t.stoppable
+                or reason in self._tunnel_auto_fired or t.status in ("starting", "up")):
+            return
+        self._tunnel_auto_fired.add(reason)
+        auto: TunnelAuto = {"reason": reason}
+        try:
+            t.start(self._ws_port())
+            logging.getLogger("brx.mc").info("backhaul: auto-start (%s)", reason)
+        except Exception as e:
+            auto["error"] = str(e)
+            logging.getLogger("brx.mc").warning("backhaul: auto-start (%s) failed: %s", reason, e)
+        self._tunnel_auto = auto
+        self._changed()
+
+    def _auto_tunnel_kit(self) -> None:
+        """F595: any push, first or re-push, with a phone bound: every connected phone holds `join.pub` before ARM."""
+        if any(pid in self.players for pid in self.node_player.values()):
+            self._auto_tunnel("kit")
+
+    def _cellular_phones(self) -> int:
+        """F595: bound, fresh phones whose own status says cellular (the console's "N PHONE ON CELLULAR")."""
+        n = 0
+        for nid, pid in self.node_player.items():
+            nv = self.nodes.get(nid) or {}
+            if pid in self.players and not nv.get("stale") and nv.get("transport") == "cellular":
+                n += 1
+        return n
+
+    def _lan_view(self) -> LanView:
+        """`lan` for the snapshot: `public.auto` (F595) is derived here, so its count is never stale."""
+        if self._tunnel_auto is None:
+            return self.lan
+        lan = cast(LanView, dict(self.lan))
+        pub = cast(LanPublic, dict(self._public()))
+        pub["auto"] = {**self._tunnel_auto, "cellular": self._cellular_phones()}
+        err = self._tunnel_auto.get("error")
+        if err and not pub.get("error") and pub.get("status") not in ("starting", "up"):
+            pub["error"] = err                    # the backhaul row already renders `error`
+        lan["public"] = pub
+        return lan
 
     @staticmethod
     def _independent_path(nv: dict) -> bool:
-        """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale), through the
-        tunnel (`reach`, MC's own stamp from the socket), and riding cellular by its own report
-        (`transport`, the one fact only the phone has). F256: `reach` alone named only the URL, so
-        two phones on one Wi-Fi behind one tunnel read as covered and were one point of failure."""
-        return (nv.get("reach") == "backhaul" and not nv.get("stale")
-                and nv.get("transport") == "cellular")
+        """F309: can this phone reach MC WITHOUT the field Wi-Fi? Connected (not stale) and riding cellular by
+        its own report (`transport`, the one fact only the phone has), with the tunnel as its path: it came
+        through it (`reach`, MC's own stamp from the socket), or (A28.3 LAN-first, F595) it is on a live LAN
+        socket and its last status said it holds `pub` (`has_pub`), so a phone that missed the join push says
+        so and an older app makes no claim. F256: `reach` alone named only the URL, so two phones on one Wi-Fi
+        behind one tunnel read as covered and were one point of failure."""
+        return (not nv.get("stale") and nv.get("transport") == "cellular"
+                and (nv.get("reach") == "backhaul" or (nv.get("reach") == "lan" and nv.get("has_pub") is True)))
 
     def coverage(self) -> Coverage:
         """A28.4: coverage is DERIVED, not asserted. `on_backhaul` counts the bound player nodes that are
@@ -3835,6 +3916,16 @@ class Session:
         nv.pop("transport", None)
         if body.get("transport") in ("wifi", "cellular", "none", "unknown"):
             nv["transport"] = body["transport"]
+        # F595: the phone holds `pub` as a fallback, restated on every beat like `transport`; a bool or nothing.
+        nv.pop("has_pub", None)
+        if isinstance(body.get("has_pub"), bool):
+            nv["has_pub"] = body["has_pub"]
+        # F595: the backstop. Android moves the default route to cellular when the field Wi-Fi has no
+        # internet, and a phone that has lost the LAN can only learn `join.pub` while it still has a socket.
+        # It trusts the phone's own `transport` claim; only a bound phone counts, and kit-start runs anyway.
+        if (nv.get("transport") == "cellular" and self.phase in ("kit", "lobby", "armed", "live")
+                and self.node_player.get(nid) in self.players):
+            self._auto_tunnel("cellular")
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -6609,6 +6700,7 @@ class Session:
             # fresh heads for everybody, acks/echo/pool judgements dropped.
             self._set_phase("lobby")            # A58: before the re-push, which re-arms the stations with the LOAD lock
             self._fresh_head_repush()
+            self._auto_tunnel_kit()
             self._changed()
             return {"ok": True, "acks": self.acks, "repushed": True,
                     "config_id": self.config["config_id"]}
@@ -6623,6 +6715,7 @@ class Session:
         self._set_phase("lobby")
         self.station_registry.reset_for_load()  # A58: the LOAD lock reads the phase set above
         self.station_registry.arm_stations()                    # A13.5: every assigned station learns this game's number
+        self._auto_tunnel_kit()
         self._changed()
         self.persist_now()                     # A59: a crash in the snapshot debounce must not lose the game_no bump
         return {"ok": True, "acks": self.acks, "repushed": False,
@@ -7641,6 +7734,12 @@ class Session:
         # match is still being delivered: late facts (`_ingest_retired`), the A42 end watch and the A34
         # re-tell ledger all carry across. A FRESH SESSION drops them, as before.
         rolling = keep_roster and self.phase == "recap"
+        # F595: each match gets its own tries, so a tunnel that died after the last one restarts at kit.
+        # The operator's OFF outlives NEXT MATCH and ends with a fresh session (or an MC restart).
+        self._tunnel_auto_fired = set()
+        self._tunnel_auto = None
+        if not rolling:
+            self._tunnel_operator_off = False
         if rolling:
             self._retire_scorer()
         else:
@@ -7864,7 +7963,7 @@ class Session:
                 key: nv[key] for key in (
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
-                    "platform", "transport", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
+                    "platform", "transport", "has_pub", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms", "cure",
                     "gun_locked") if key in nv
             })
             if (lost := self._node_loss(nv, "outbox")) > 0:
@@ -7886,7 +7985,7 @@ class Session:
                    if (v := track.view())}
         if (av := self._archive_view()) is not None:
             failing["archive"] = av
-        state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
+        state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self._lan_view(),
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": nodes,

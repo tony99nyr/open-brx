@@ -32,6 +32,31 @@ describe('server readiness rules in the mock', () => {
     expect(sessionCoverage(players, nodes)).toEqual({ level: 'zones', bound: 2, on_backhaul: 1, on_cellular: 1 });
   });
 
+  it('F595: a LAN phone on cellular counts only when it says it holds pub (state.py _independent_path)', () => {
+    const players = [{ player_id: 'a', display: 'ALPHA', node_id: 'node-a', ready: true }];
+    const lan = (o: object) => [{ node_id: 'node-a', reach: 'lan' as const, stale: false, transport: 'cellular' as const, ...o }];
+    expect(sessionCoverage(players, lan({ has_pub: true })).level).toBe('full');
+    expect(sessionCoverage(players, lan({ has_pub: false })).level).toBe('zones');
+    expect(sessionCoverage(players, lan({})).level).toBe('zones');                                  // an older phone
+    expect(sessionCoverage(players, lan({ has_pub: true, reach: null })).level).toBe('zones');      // just disconnected
+    expect(sessionCoverage(players, lan({ has_pub: true, stale: true })).level).toBe('zones');
+    expect(sessionCoverage(players, lan({ has_pub: true, transport: 'wifi' })).level).toBe('zones'); // Wi-Fi never does
+    expect(sessionCoverage(players, lan({ reach: 'backhaul' })).level).toBe('full');                // backhaul still counts
+    expect(sessionOffGrid(players, lan({ has_pub: true }))).toEqual([]);
+    expect(sessionOffGrid(players, lan({ has_pub: false }))).toEqual(['ALPHA']);
+  });
+
+  it('F595: the mock\'s nodes carry no has_pub, as MC\'s own fake phones send none (the recorded states stay the reference)', async () => {
+    const backend = new MockBackend();
+    try {
+      const nodes = (await backend.getState()).nodes;
+      expect(nodes.length).toBeGreaterThan(0);
+      expect(nodes.every(n => n.has_pub === undefined)).toBe(true);
+    } finally {
+      backend.dispose();
+    }
+  });
+
   it('shows a phoneless player as waiting, even when the demo gun is unpowered', async () => {
     const backend = new MockBackend();
     try {

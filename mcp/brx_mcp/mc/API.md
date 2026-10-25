@@ -83,7 +83,12 @@ State {
                                      // plain Linux never set this -- pinned by test_mc_netinfo.py/test_mc_advertise.py).
          join_secret: string,   // A28.2: 8 url-safe chars, per session, persisted; enforced only on hellos that arrive through the tunnel
          public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, was_up?: boolean, error?: string,
-                   detail?: string } },  // A28.1; `detail` is F140 (field 2026-09-12): the sub-state under
+                   detail?: string, auto?: { reason: "kit"|"cellular", cellular?: number, error?: string } } },
+         // F595: `auto` is present while MC started the backhaul itself: at the kit push with a phone bound
+         // (`kit`), or on a bound phone's first `cellular` status in KIT..LIVE (`cellular`). `cellular` is the
+         // count of bound, fresh phones on cellular now; `error` is a start refused at once. An operator OFF
+         // clears it and holds; `--no-tunnel`, `--demo`, `--ephemeral` and `--fake-net` never set it.
+         // A28.1; `detail` is F140 (field 2026-09-12): the sub-state under
          // `starting` — `"resolving <host>"` while MC waits for the tunnel hostname to answer at
          // Cloudflare's own resolver, and a warning line under `up` when it never did inside 60 s.
          // `status` does NOT reach `"up"` (and `qr` carries no `&pub=`, and no `join` is pushed) until
@@ -91,8 +96,9 @@ State {
          // a phone that dialled a second too early had the miss negative-cached for ~250 s.
   coverage: { level: "full"|"zones", on_backhaul: number, on_cellular: number, bound: number },
                                               // A28.4: on_backhaul = bound player nodes connected with reach == "backhaul".
-                                              // F309 (2026-09-23): on_cellular = those that also report status.transport ==
-                                              // "cellular" (and are not stale), an independent path. level is "full" iff every bound node is
+                                              // F309 (2026-09-23): on_cellular = bound nodes that report status.transport ==
+                                              // "cellular" (and are not stale) on the tunnel: reach == "backhaul", or (F595)
+                                              // reach == "lan" with status.has_pub true. level is "full" iff every bound node is
                                               // on_cellular. reach alone names only the URL a phone joined through (F256)
   nodes: NodeView[],                          // every node that ever said hello this session
                                               // F564 (A75): a node's `device` is its make and model, e.g. "Google Pixel 4" (absent before Device.getInfo)
@@ -245,9 +251,10 @@ State {
                                               // WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
                                               // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
-                                              // names. F309: a phone is off-grid unless it joined through the tunnel AND
-                                              // reports `transport: "cellular"` (`state.py _independent_path`, the
-                                              // same test as `coverage`); an older app is always off-grid.
+                                              // names. F309: a phone is off-grid unless it reports `transport: "cellular"`
+                                              // AND joined through the tunnel or (F595) sits on the LAN with
+                                              // `has_pub: true` (`state.py _independent_path`, the same test as
+                                              // `coverage`); an older app is always off-grid.
 }
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?,
            // --- additive 2026-09-12 (A25/A29); an older UI ignores them, an older server omits them ---
@@ -273,7 +280,8 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
            pool_stale?: "silent"|"no_fire"|"write_lost"|"pool_wrong", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4 / the gun's pools are not the armed ones after two repairs, F341) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */,
            outbox_lost?: number /* O6: facts the phone's outbox dropped from the match in play (the phone's own per-match `status.outbox_lost {match_id, n}`, shown only while match_id is the current/resumed/adopted match or the match in RECAP); absent = none */, claims_dropped?: number /* O10: a Stick's CLAIM reports evicted from a full queue since it was armed for the CURRENT game (`status.actions_dropped` + `actions_dropped_game`, shown only while that game byte is the current one) */,
            gun_locked?: true /* F272: current positive lock-up verdict; absence, false or junk clears it */,
-           transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */ }
+           transport?: "wifi"|"cellular"|"none"|"unknown" /* F309: the phone's own last `status.transport` claim; absent = never reported */,
+           has_pub?: boolean /* F595: the last `status.has_pub` claim (holds the tunnel URL); absent = an older app */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */,
             possession?: RecapView.possession /* visual QA H2 2026-09-23: the same merged tally, live; absent until a node reports one */ }
@@ -412,7 +420,7 @@ WeaponView dual-emitter note: `dual_emitter: true` marks a trigger that can prod
 | `GET /api/options` | → `{log_sync: "auto"|"manual"}` — A25 session options. Also on every snapshot as `State.options` | any |
 | `PUT /api/options` | `{log_sync}` (partial: only the keys you send are set) → the full options object. An unknown key or an out-of-table value is 400 and nothing is changed — an option the operator set and MC silently ignored is worse than a refusal | any |
 | `POST /api/nodes/{node_id}/pull_log` | → `{ok: boolean, reason: string|null, node_id, log: NodeView["log"]}` — A25, the operator's **LOGS** button. Pushes `pull_log {reason:"manual"}` to that node. **Never gated by `log_sync`**: "manual" means the button is the only asker, not that the button stops working. `reason` (O11) is `null` when the ask went out, else one of `no_node` · `utility_node` · `auto_sync_off` (automatic asks only) · `already_asked` (automatic asks only) · `budget_spent` · `push_failed` (the node is off the net); the console words each in its toast. `ok:false` (still 200) when the node is a utility phone (F106(d): a station never binds a match) or past the ~1 MB per-node budget (which is per MATCH — it resets at the next start, or a session of four games would silently stop asking); 404 for an unknown node. The NODE decides when to answer (never while ARMED/LIVE or with unacked facts) — watch `NodeView.log` | any |
-| `POST /api/tunnel` | `{on: boolean}` → `lan.public` (A28.1). `on:true` spawns `cloudflared tunnel --url http://127.0.0.1:<ws-port> --no-autoupdate` as a child of MC, answers at once with `status:"starting"`, and the snapshot flips to `up` with `ws_url` when the `trycloudflare.com` line is read (20 s cap → `error`); `on:false` kills it (`off`). Any status change re-renders `lan.qr`; a change of the usable public URL (new hostname, or gone) pushes MC→node `join {pub, secret}` to every connected node. `409 {error}` when `available:false` (binary not on PATH; the error names the install line) or when `provider:"manual"` (`--public-url` is not MC's to stop). Idempotent: `on:true` while `up`/`starting` is a no-op 200 | any |
+| `POST /api/tunnel` | `{on: boolean}` → `lan.public` (A28.1). `on:true` spawns `cloudflared tunnel --url http://127.0.0.1:<ws-port> --no-autoupdate` as a child of MC, answers at once with `status:"starting"`, and the snapshot flips to `up` with `ws_url` when the `trycloudflare.com` line is read (20 s cap → `error`); `on:false` kills it (`off`). Any status change re-renders `lan.qr`; a change of the usable public URL (new hostname, or gone) pushes MC→node `join {pub, secret}` to every connected node. `409 {error}` when `available:false` (binary not on PATH; the error names the install line) or when `provider:"manual"` (`--public-url` is not MC's to stop). Idempotent: `on:true` while `up`/`starting` is a no-op 200. F595: `on:false` also stops MC's own auto-start until Mission Control restarts or a new session starts; `on:true` lifts that. The answer carries `public.auto` exactly as `GET /api/state` does | any |
 | `DELETE /api/nodes/{node_id}` | → `{ok}`; operator kick: closes the node's socket (4000), unbinds its player, clears its ready/ack, rotates its key and marks it stale so the next hello for that gun (the real phone) re-hydrates. Use when a stranger squatted a live gun name before its owner's phone connected. During a match the node keeps its earlier facts' player. Facts it sends after the evict score for nobody, take no powerup and add no possession tally, live and in replay (F482). The node-map fallback never rebinds it: only a hello by its own gun does (F487). An evict in RECAP keeps its late facts and its pre-live sync record (F483). 404 for an unknown node | any |
 | `POST /api/players/{id}/ready` | `{ready}` host override → `Player` | lobby |
 | `POST /api/lobby/ready_all` | `{}` → `{ok, readied: player_id[]}` — bench 2026-09-17: the roster-wide sibling of the route above, for the operator's MARK ALL READY control. Marks every rostered, non-standby player ready with the same `set_ready(..., host_override=True)` cure, one call instead of one HOST OVERRIDE tap per player; each newly-readied player gets a fresh `assign` (no config leg) so the phone's own READY state follows, the same wire field `PATCH .../ready` already documents. Never touches `self.acks` or re-compiles — arming still checks the gun config proofs exactly as before. `400` outside `lobby` | lobby |
