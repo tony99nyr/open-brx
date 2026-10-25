@@ -1490,11 +1490,17 @@ class RecoilDuelResult:
     label: str
     expected_winner: str
     reps: int
-    wins: float   # duels the expected winner took; a draw counts half
+    wins: int
+    losses: int
+    draws: int
 
     @property
     def win_rate(self) -> float:
         return self.wins / self.reps if self.reps else float("nan")
+
+    @property
+    def draw_rate(self) -> float:
+        return self.draws / self.reps if self.reps else float("nan")
 
     def ci(self) -> tuple[float, float]:
         p, n = self.win_rate, self.reps
@@ -1504,13 +1510,18 @@ class RecoilDuelResult:
 
 def recoil_duel_batch(fn, expected_winner: str, reps: int, seed: int, label: str, *fn_args) -> RecoilDuelResult:
     """`reps` seeded, independent duels of `fn(rng, *fn_args)`; `expected_winner` is the label the rule
-    claims wins most of the time. A draw counts half a win for both sides, same convention as `duel()`."""
+    claims wins most of the time. Draws do not count as kills."""
     rng = cell_rng(seed, "recoil_duel", label)
-    wins = 0.0
+    wins = losses = draws = 0
     for _ in range(reps):
         winner = fn(rng, *fn_args)
-        wins += 1.0 if winner == expected_winner else (0.5 if winner is None else 0.0)
-    return RecoilDuelResult(label, expected_winner, reps, wins)
+        if winner == expected_winner:
+            wins += 1
+        elif winner is None:
+            draws += 1
+        else:
+            losses += 1
+    return RecoilDuelResult(label, expected_winner, reps, wins, losses, draws)
 
 
 RECOIL_RULES = {
@@ -1547,7 +1558,7 @@ def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel
         f"burst {m.burst_min}-{m.burst_max} rounds, {m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause",
         f"Charge Rifle tap cadence: current {tap_ms_current:g} ms (CHARGE_TAP_CADENCE_MS), "
         f"proposed {tap_ms_proposed:g} ms", "",
-        f"{'rule':<45}{'tap':<10}{'win rate':>9}{'95% CI':>16}  flag",
+        f"{'rule':<45}{'tap':<10}{'kill share':>10}{'draw share':>11}{'95% CI':>16}  flag",
     ]
     for r in results:
         rule_key = r.label.split("_")[0].replace("rule", "")
@@ -1557,7 +1568,8 @@ def recoil_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel
             tap = r.label.rsplit("_tap_", 1)[1]
         lo, hi = r.ci()
         flag = bar_flag(r.win_rate, preset_bar(m, 0.60))
-        lines.append(f"{desc:<45}{tap:<10}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
+        lines.append(f"{desc:<45}{tap:<10}{r.win_rate:>10.1%}{r.draw_rate:>11.1%}"
+                     f"{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
     lines += ["", "\"most of the time\" = clearly above 50%. " + bar_note(m, preset_bar(m, 0.60))]
     return "\n".join(lines) + "\n"
 
@@ -1788,15 +1800,19 @@ RANGE_RULES = {
 
 
 def range_duel_batch(m: RecoilDuelModel, key: str, reps: int, seed: int) -> RecoilDuelResult:
-    """`reps` seeded, independent duels of `RANGE_RULES[key]`. A draw counts half a win, same
-    convention as `duel()`/`recoil_duel_batch()`."""
+    """`reps` seeded, independent duels of `RANGE_RULES[key]`. Draws do not count as kills."""
     _desc, expected, a_kind, b_kind, band = RANGE_RULES[key]
     rng = cell_rng(seed, "range_duel", key)
-    wins = 0.0
+    wins = losses = draws = 0
     for _ in range(reps):
         winner = run_range_duel(rng, m, a_kind, b_kind, band)
-        wins += 1.0 if winner == expected else (0.5 if winner is None else 0.0)
-    return RecoilDuelResult(f"range_{key}", expected, reps, wins)
+        if winner == expected:
+            wins += 1
+        elif winner is None:
+            draws += 1
+        else:
+            losses += 1
+    return RecoilDuelResult(f"range_{key}", expected, reps, wins, losses, draws)
 
 
 def range_duel_report(m: RecoilDuelModel, reps: int, seed: int, keys=tuple(RANGE_RULES)) -> list[RecoilDuelResult]:
@@ -1810,14 +1826,15 @@ def range_duel_summary_text(results: list[RecoilDuelResult], m: RecoilDuelModel)
         f"{m.reaction_sd_ms:.0f}) ms/player; bursting AR: {m.burst_min}-{m.burst_max} rounds, "
         f"{m.burst_pause_min_ms:.0f}-{m.burst_pause_max_ms:.0f} ms pause; close = gun word + declared "
         "headset word, mid = gun word only (past the headset word's own reach, unmeasured -- F275)", "",
-        f"{'rule':<62}{'win rate':>9}{'95% CI':>16}  flag",
+        f"{'rule':<62}{'kill share':>10}{'draw share':>11}{'95% CI':>16}  flag",
     ]
     for r in results:
         key = r.label.replace("range_", "", 1)
         desc = RANGE_RULES[key][0]
         lo, hi = r.ci()
         flag = bar_flag(r.win_rate, preset_bar(m, 0.65))
-        lines.append(f"{desc:<62}{r.win_rate:>9.1%}{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
+        lines.append(f"{desc:<62}{r.win_rate:>10.1%}{r.draw_rate:>11.1%}"
+                     f"{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
     lines += ["", "\"most of the time\" = at least 65% on Standard (docs/weapon-design.md's Balance rules table). "
               + bar_note(m, preset_bar(m, 0.65))]
     return "\n".join(lines) + "\n"
@@ -1870,11 +1887,16 @@ def r10_duel_batch(m: RecoilDuelModel, primary: str, sidearm: str, reps: int, se
     """`primary` beats `sidearm` from full Standard health -- the same mechanics as `range_duel_batch`,
     band "mid" (unused: neither weapon carries a headset word)."""
     rng = cell_rng(seed, "r10_duel", primary, sidearm)
-    wins = 0.0
+    wins = losses = draws = 0
     for _ in range(reps):
         winner = run_range_duel(rng, m, primary, sidearm, "mid")
-        wins += 1.0 if winner == primary else (0.5 if winner is None else 0.0)
-    return RecoilDuelResult(f"r10_{primary}_v_{sidearm}", primary, reps, wins)
+        if winner == primary:
+            wins += 1
+        elif winner is None:
+            draws += 1
+        else:
+            losses += 1
+    return RecoilDuelResult(f"r10_{primary}_v_{sidearm}", primary, reps, wins, losses, draws)
 
 
 def r10_report(m: RecoilDuelModel, reps: int, seed: int) -> tuple[dict, dict]:
@@ -1897,13 +1919,14 @@ def r10_summary_text(finish: dict, duels: dict, m: RecoilDuelModel) -> str:
         lines.append(f"{R10_SIDEARM_NAMES[s]:<14}{r.median_ms:>11.0f}  {flag}")
     lines += ["", f"(b) each primary beats each live sidearm from full {m.health_preset.capitalize()} health "
               f"(pool {m.pool_hp}). " + bar_note(m, preset_bar(m, 0.65)), "",
-             f"{'primary':<16}{'sidearm':<12}{'win rate':>9}{'95% CI':>16}  flag"]
+             f"{'primary':<16}{'sidearm':<12}{'kill share':>10}{'draw share':>11}{'95% CI':>16}  flag"]
     for p in R10_PRIMARIES:
         for s in R10_SIDEARMS:
             r = duels[(p, s)]
             lo, hi = r.ci()
             flag = bar_flag(r.win_rate, preset_bar(m, 0.65))
-            lines.append(f"{R10_PRIMARY_NAMES[p]:<16}{R10_SIDEARM_NAMES[s]:<12}{r.win_rate:>9.1%}"
+            lines.append(f"{R10_PRIMARY_NAMES[p]:<16}{R10_SIDEARM_NAMES[s]:<12}{r.win_rate:>10.1%}"
+                         f"{r.draw_rate:>11.1%}"
                          f"{f'[{lo:.1%}, {hi:.1%}]':>16}  {flag}")
     lines += ["", "Not modelled here (named, not silently dropped): the Toxin Rifle (DoT, no tick "
              "mechanism in this engine) and the Force Rifle (burst mode + a real recoil ladder, a "
