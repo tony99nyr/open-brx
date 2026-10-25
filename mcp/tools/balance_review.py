@@ -32,7 +32,7 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
 
 An overall PASS requires a passing value test (value_addition, viable or pickup_utility).
 
-Scenario version 12 models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
+The scenario models three catalogue heat cooling branches, Shields regeneration, secondary cover and finishing, Armour Piercing, Toxin Rifle
 ticks, aim-scaled melee finishes inside the rush reach (with the slot-4 swap), field aim and density. It also reports 20 m and 30 m rushes,
 close hill holds and contests, long hill overwatch, mid-range ammo stress with downtime-only incoming hits,
 healing and a spawn-reserve pickup, and pistol
@@ -107,7 +107,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 16   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609)
+SCENARIO_VERSION = 17   # 15: a dry primary draws the secondary only when it finishes first (F601); 16: melee only in the rush (F609); 17: the headset word at every range, 88 ms late (F602)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -140,6 +140,14 @@ PEEK_REACT_MS = 1000.0        # a peeked player reacts 1 s after the first lande
 PEEK_P_ESCAPE = 0.3           # ... and breaks line of sight with this chance, else fights back
 AMBUSH_REACT_MS = 1000.0      # 1v2 ambush: both enemies start firing 1 s after the first landed hit
 CLOSE_EDGE_M = 10.0           # range bands for the rush model: close under 10 m, mid under 30 m
+# F602: the second (headset-emitted) word. compile ships it at every range; how far it physically reaches is
+# unmeasured (bench-0426 P3.1). None = every range (the default, as shipped). A number is a reach in metres: the
+# rush compares it with its tracked distance, and a duel band counts as inside it only for the close band. The
+# U002 proxy put the emitter's physical reach near 10 m, which is a sensitivity line, not a range-token effect.
+HEADSET_WORD_REACH_M = None
+HEADSET_WORD_DELAY_MS = B.HEADSET_WORD_DELAY_MS   # the word lands this long after the gun word (balance_sim)
+# The word lands on the same hit as its gun word, needs the target exposed when it lands, and is dropped when the
+# shooter has died since the pull (its headset no longer fires). It carries no weapon effect (no Haze, no DoT).
 MID_EDGE_M = 30.0
 RUSH_SPEED_MS = 5.0           # a rusher closes at 5 m/s ...
 RUSH_SPEED_SWEEP = (2.5, 5.0, 8.0)
@@ -535,7 +543,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     fire_ms = g.fire_ms
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
-    damage = (g.gun_dmg + (g.head_dmg if dist == 0 and not g.ap else 0)) if is_gun else g.pull_dmg
+    damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -625,7 +633,8 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
 
 class Fighter:
     """One player with a kit. Hit chance per round = recoil accuracy/100 x aim x BAND_FIT[band][distance],
-    capped at 1. Damage = the gun word, plus the headset word at close. Shields refill after a quiet window."""
+    capped at 1. Damage = the gun word, then the headset word HEADSET_WORD_DELAY_MS later when it reaches (F602).
+    Shields refill after a quiet window."""
 
     def __init__(self, kit: Kit, pool: int, aim: float, dist: int, rng, fit=True, pull_ms=PULL_MS,
                  allow_melee=False, heat_cool_while_firing=True, persistent_reload=False):
@@ -641,6 +650,8 @@ class Fighter:
         self.last_effect = None
         # F609: melee only where the rush tracks the distance (`dist_m`); a plain close duel never swings.
         self.melee_ready, self.melee_winding, self.melee_in_hand = 0.0, False, False
+        self.pending_head = 0       # F602: the last pull's headset word, delivered HEADSET_WORD_DELAY_MS later
+        self.words = []             # queued headset words: (due t, damage, target)
         self.dist_m = None
         self.peek_w = None          # exposure window (ms) around each own shot; None = always exposed
         self.last_shot_t = -math.inf
@@ -717,7 +728,9 @@ class Fighter:
         return B.semi_interval(self.rng, ms, self.pull_ms) if self.pull_ms > 0 else ms
 
     def act(self, t):
-        """Fire one round at t (or start a reload). (dmg, hit_p, alpha) or None for no round."""
+        """Fire one round at t (or start a reload). (dmg, hit_p, alpha) or None for no round. `dmg` is the gun word;
+        a headset word waits in `pending_head` for the loop to queue once the gun word lands (F602)."""
+        self.pending_head = 0
         r = self._act(t)
         if r is not None:
             self.last_shot_t = t
@@ -924,7 +937,9 @@ class Fighter:
         self.last_effect = g
         if g.mode == "charge":
             was = s.charged
-            dmg = g.gun_dmg + g.head_dmg if was else g.tap
+            dmg = g.gun_dmg if was else g.tap
+            if was and headset_word_reaches(self.dist, self.dist_m):
+                self.pending_head = g.head_dmg
             s.ammo -= cost
             s.charged = False
             self.next_t = t + CHARGE_TAP_CADENCE_MS
@@ -933,8 +948,8 @@ class Fighter:
         dmg = g.gun_dmg
         if g.crit and self.rng.random() * 100.0 < g.crit:
             dmg = int(dmg * B.CRIT_MULT)
-        if self.dist == 0:
-            dmg += g.head_dmg
+        if g.head_dmg and headset_word_reaches(self.dist, self.dist_m):
+            self.pending_head = g.head_dmg
         s.ammo -= 1
         if g.mode == "bolt":
             iv = self._semi(g.fire_ms)
@@ -1015,14 +1030,22 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
     alert = alert or {}
     for f in alert:
         f.next_t = math.inf
-    first_hit = None
+    first_hit = None      # queued words carry over (hill hold chains fights); land_word drops a stale one
     while True:
         if stop_when and stop_when():
-            break
+            due = [word_due(f) for f in allf if word_due(f) <= cap_ms]
+            if not due:
+                break
+            cap_ms = max(due)      # play on, shots and ticks included, until the words already in flight land
         cands = [f for f in allf if f.alive and f.next_t <= cap_ms and f.target() is not None]
         ticks = [f for f in allf if f.alive and f.dot_next <= cap_ms]
-        if not cands and not ticks:
+        words = [f for f in allf if word_due(f) <= cap_ms]
+        if not cands and not ticks and not words:
             break
+        if words and min(map(word_due, words)) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
+                                                     default=math.inf):
+            land_word(min(words, key=word_due))
+            continue
         if ticks and min(f.dot_next for f in ticks) <= min((f.next_t for f in cands), default=math.inf):
             f = min(ticks, key=lambda x: x.dot_next)
             f.tick(f.dot_next)
@@ -1047,6 +1070,8 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
             effect = f.last_effect if isinstance(f.last_effect, Gun) else None
             killed = tgt.receive(dmg, bypass=bool(effect and effect.ap), src=f, t=t,
                                  gun=effect, haze_blind_ms=haze_blind_ms)
+            if not killed:
+                queue_word(f, tgt, t)
             if first_hit is None:
                 first_hit = t
                 for g in alert:
@@ -1199,6 +1224,13 @@ def peek_encounter(rng, m: Fighter, v: Fighter, escape_p=PEEK_P_ESCAPE):
         nxt = min((f.next_t for f in cands), default=math.inf)
         ticks = [f for f in (m, v) if f.alive and f.dot_next <= FIGHT_CAP_MS]
         tick_t = min((f.dot_next for f in ticks), default=math.inf)
+        words = [f for f in (m, v) if word_due(f) <= FIGHT_CAP_MS]
+        word_t = min(map(word_due, words), default=math.inf)
+        pending_alert = t_alert if t_alert is not None and not alerted else math.inf
+        if words and word_t <= min(nxt, tick_t) and word_t < pending_alert:
+            if land_word(min(words, key=word_due)):
+                break
+            continue
         nxt = min(nxt, tick_t)
         if t_alert is not None and not alerted and t_alert <= nxt and t_alert <= FIGHT_CAP_MS:
             alerted = True
@@ -1225,6 +1257,8 @@ def peek_encounter(rng, m: Fighter, v: Fighter, escape_p=PEEK_P_ESCAPE):
         if rng.random() < hp and exposed(tgt, t):
             effect = f.last_effect if isinstance(f.last_effect, Gun) else None
             killed = tgt.receive(dmg, bypass=bool(effect and effect.ap), src=f, t=t, gun=effect)
+            if not killed:
+                queue_word(f, tgt, t)
             if f is m and t_alert is None:
                 t_alert = t + PEEK_REACT_MS
             if killed:
@@ -1233,6 +1267,40 @@ def peek_encounter(rng, m: Fighter, v: Fighter, escape_p=PEEK_P_ESCAPE):
         if killed:
             break
     return (m.alive and not v.alive), (not m.alive), escaped
+
+
+def headset_word_reaches(dist: int, dist_m: float | None = None) -> bool:
+    """F602: whether the headset word reaches at this duel band (0 close) or tracked distance."""
+    if HEADSET_WORD_REACH_M is None:
+        return True
+    if dist_m is not None:
+        return dist_m <= HEADSET_WORD_REACH_M
+    return dist == 0 and HEADSET_WORD_REACH_M >= CLOSE_EDGE_M
+
+
+def queue_word(f, tgt, t: float) -> None:
+    """After `f`'s gun word lands on `tgt`, queue the pull's headset word HEADSET_WORD_DELAY_MS later (see the
+    assumptions beside HEADSET_WORD_REACH_M)."""
+    if f.pending_head:
+        f.words.append((t + HEADSET_WORD_DELAY_MS, f.pending_head, tgt))
+
+
+def word_due(f) -> float:
+    return min((w[0] for w in f.words), default=math.inf)
+
+
+def land_word(f) -> bool:
+    """Deliver `f`'s earliest queued headset word. True when it kills."""
+    w = min(f.words, key=lambda x: x[0])
+    f.words.remove(w)
+    t, dmg, tgt = w
+    if not f.alive or not tgt.alive or not exposed(tgt, t):
+        return False
+    killed = tgt.receive(dmg, src=f, t=t)
+    if killed:
+        f.kill_times.append(t)
+        f.after(t, False, True)
+    return killed
 
 
 def _band_of(dist_m: float) -> int:
@@ -1254,8 +1322,13 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float, speed_m_s=RUSH_S
     while True:
         cands = [f for f in (m, v) if f.alive and f.next_t <= RUSH_CAP_MS and f.target() is not None]
         ticks = [f for f in (m, v) if f.alive and f.dot_next <= RUSH_CAP_MS]
-        if not cands and not ticks:
+        words = [f for f in (m, v) if word_due(f) <= RUSH_CAP_MS]
+        if not cands and not ticks and not words:
             break
+        if words and min(map(word_due, words)) <= min([f.next_t for f in cands] + [f.dot_next for f in ticks],
+                                                     default=math.inf):
+            land_word(min(words, key=word_due))
+            continue
         if ticks and min(f.dot_next for f in ticks) <= min((f.next_t for f in cands), default=math.inf):
             target = min(ticks, key=lambda x: x.dot_next)
             target.tick(target.dot_next)
@@ -1278,6 +1351,8 @@ def rush_encounter(rng, m: Fighter, v: Fighter, start_m: float, speed_m_s=RUSH_S
         if rng.random() < hp and exposed(tgt, t):
             effect = f.last_effect if isinstance(f.last_effect, Gun) else None
             killed = tgt.receive(dmg, bypass=bool(effect and effect.ap), src=f, t=t, gun=effect)
+            if not killed:
+                queue_word(f, tgt, t)
             if killed:
                 f.kill_times.append(t)
         if f is m and t_rush is None:

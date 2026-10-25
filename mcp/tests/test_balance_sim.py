@@ -519,7 +519,8 @@ def _kill_trace(m: "B.WeaponModel", cfg: "B.SimConfig", seed: int):
     sequence off before the kill: `_shot()` itself stops scheduling once its next shot would land past
     `contact_end` (see the `nxt <= p.contact_end` guard), so a short window silently truncates a fight
     otherwise. Returns (hit count, ms of the killing hit) -- what `WeaponCatalog.hits_to_kill()` and
-    `time_to_kill()` publish."""
+    `time_to_kill()` publish -- and whether the kill came from a headset word, which lands
+    `HEADSET_WORD_DELAY_MS` after its pull (F602), so such a kill comes that much after the published time."""
     dummy = B.weapon_model(B.catalogue_with(CAT, "assault_rifle", {"wire.dmg": 0}), "assault_rifle")
     players = [B.Player(0, 0, m, cfg.pool), B.Player(1, 1, dummy, cfg.pool)]
     rng = B.cell_rng(seed, "ttk", m.weapon_id)
@@ -533,16 +534,18 @@ def _kill_trace(m: "B.WeaponModel", cfg: "B.SimConfig", seed: int):
     match._hit = traced
     match._seek(players[0], 0.0)
     players[0].contact_end = 1e9
+    kill_t, by_word = None, False
     while match.heap:
         t, _s, kind, pid, gen = heapq.heappop(match.heap)
-        if kind != match.SHOT:
+        if kind not in (match.SHOT, match.WORD):
             continue   # the engagement never legitimately ends here -- CEND/TICK/RESPAWN are not pushed for pid 0
         if t > cfg.match_ms:
             break
-        match._shot(players[pid], t, gen)
+        (match._shot if kind == match.SHOT else match._word)(players[pid], t, gen)
         if players[1].health <= 0:
+            kill_t, by_word = t, kind == match.WORD
             break
-    return len(hits), (hits[-1] if hits else None)
+    return len(hits), kill_t, by_word
 
 
 def test_shot_mechanics_reproduce_hits_and_time_to_kill():
@@ -566,9 +569,10 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
         m = B.weapon_model(cat, weapon_id)
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
         ttk = CAT.time_to_kill(weapon_id, pool_pts, pull_ms=0)
-        n_hits, kill_ms = _kill_trace(m, cfg, SEED)
+        n_hits, kill_ms, by_word = _kill_trace(m, cfg, SEED)
         assert n_hits == htk, (weapon_id, n_hits, htk)
-        assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
+        late = B.HEADSET_WORD_DELAY_MS if by_word else 0.0   # F602: the word lands 88 ms after its pull
+        assert kill_ms is not None and round(kill_ms - late) == ttk, (weapon_id, kill_ms, ttk)
 
 
 def test_legacy_sampled_pull_gaps_match_the_renewal_estimate():
@@ -596,9 +600,12 @@ def test_the_engines_fire_single_shots_at_the_paced_cycle():
     for weapon_id in ("shotgun", "deagle"):   # no crit_pct: htk is exact at a 100% hit chance (not the bolt Sniper)
         m = B.weapon_model(CAT, weapon_id)
         htk = CAT.hits_to_kill(weapon_id, pool_pts)
-        kills = [_kill_trace(m, cfg, seed)[1] for seed in range(300)]
-        mean = sum(k for k in kills if k is not None) / len([k for k in kills if k is not None])
-        want = (htk - 1) * (CAT.fire_ms(weapon_id) + B.FIGHT_OVERSHOOT_MS * math.exp(B.PULL_SIGMA ** 2 / 2))
+        traces = [_kill_trace(m, cfg, seed) for seed in range(300)]
+        kills = [k for _n, k, _w in traces if k is not None]
+        mean = sum(kills) / len(kills)
+        by_word = sum(w for _n, k, w in traces if k is not None) / len(kills)
+        want = (htk - 1) * (CAT.fire_ms(weapon_id) + B.FIGHT_OVERSHOOT_MS * math.exp(B.PULL_SIGMA ** 2 / 2)) \
+            + by_word * B.HEADSET_WORD_DELAY_MS   # F602: a kill by the headset word lands 88 ms after its pull
         # The lognormal's mean, not its median: the median is about 6 ms per gap short, about 1% of a kill.
         assert abs(mean - want) / want < 0.005, (weapon_id, round(mean), round(want))
     m = _recoil_model()
