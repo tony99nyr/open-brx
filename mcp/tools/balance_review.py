@@ -1035,9 +1035,10 @@ def fight(rng, side_a: list, side_b: list, cap_ms=FIGHT_CAP_MS, alert=None, haze
     first_hit = None
     while True:
         if stop_when and stop_when():
-            while any(word_due(f) <= cap_ms for f in allf):      # words already in flight still land
-                land_word(min(allf, key=word_due))
-            break
+            due = [word_due(f) for f in allf if word_due(f) <= cap_ms]
+            if not due:
+                break
+            cap_ms = max(due)      # play on, shots and ticks included, until the words already in flight land
         cands = [f for f in allf if f.alive and f.next_t <= cap_ms and f.target() is not None]
         ticks = [f for f in allf if f.alive and f.dot_next <= cap_ms]
         words = [f for f in allf if word_due(f) <= cap_ms]

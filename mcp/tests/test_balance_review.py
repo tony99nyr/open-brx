@@ -1468,6 +1468,18 @@ def test_headset_words_queue_and_a_dead_shooters_word_is_dropped():
     assert not R.land_word(f) and tgt.health == 480 and not f.words
 
 
+def test_a_stop_lets_words_in_flight_land_in_order_with_the_other_events():
+    # F602 (Codex re-review): a stop_when exit landed the words at once, before a shot that killed their shooter
+    w = R.shipped_world()
+    kit = R.make_kit(w, "Shotgun", "shotgun")
+    holder = R.Fighter(kit, (1, 0, 0), 1, 0, random.Random(2), pull_ms=0)
+    enemy = R.Fighter(kit, (500, 0, 0), 1, 0, random.Random(3), pull_ms=0)
+    holder.next_t, enemy.next_t = 0.0, 40.0          # the enemy fires inside the holder's 88 ms
+    holder.gs[0].ammo, holder.gs[0].reserve = 1, 0
+    R.fight(random.Random(1), [holder], [enemy], stop_when=lambda: holder.gs[0].ammo == 0 and holder.gs[0].reserve == 0)
+    assert not holder.alive and enemy.health == 500 - kit.guns[0].gun_dmg
+
+
 def test_a_stated_headset_reach_keeps_the_word_inside_it_only():
     old = R.HEADSET_WORD_REACH_M
     R.HEADSET_WORD_REACH_M = 10.0      # the U002 proxy's physical reach, a sensitivity line
