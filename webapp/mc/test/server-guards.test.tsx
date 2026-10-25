@@ -125,8 +125,10 @@ describe('A27 · CONTINUE against a server that guards the phase', () => {
   it('names them when the server only gives a count', async () => {
     const m = await kitScreen({ error: '2 PLAYERS ARE NOT READY', not_ready: ['SABLE', 'DRIFT'] });
     await m.click('CONTINUE');
-    expect(m.find('[data-continue-refusal]')[0].textContent)
-      .toBe('▲ 2 PLAYERS ARE NOT READY, SABLE, DRIFT: CONTINUE ANYWAY?');
+    const refusal = m.find('[data-continue-refusal]')[0].textContent ?? '';
+    expect(refusal.toUpperCase()).toContain('2 PLAYERS ARE NOT READY');
+    expect(refusal).toContain('SABLE and DRIFT');
+    expect(refusal.toUpperCase()).toContain('CONTINUE ANYWAY?');
     m.unmount();
   });
 
@@ -201,6 +203,7 @@ describe('A29 · what build each phone is running', () => {
     // The demo readiness board carries the A29 amber the server words. The console must print it and
     // must not decide on its own that 0.1.8 vs 0.1.9 is a problem — that rule lives in `state.py`.
     const m = await mountScreen(<Armory />, { ...d, view: 'muster' });
+    await m.click('App update needed');
     expect(m.text()).toContain('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9)');
     m.unmount();
   });

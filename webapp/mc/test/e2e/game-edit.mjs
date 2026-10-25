@@ -166,7 +166,12 @@ async function auditRail(pg, where) {
   return `${rows.length} controls audited`;
 }
 const panel = pg => pg.locator('[data-testid="game-edit-panel"]');
-const openPanel = async pg => { await panel(pg).locator('[data-testid="game-edit-toggle"]').click(); await panel(pg).waitFor({ state: 'visible' }); };
+const openPanel = async pg => {
+  const toggle = panel(pg).locator('[data-testid="game-edit-toggle"]');
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+  await toggle.waitFor({ state: 'visible' });
+  await until(() => toggle.getAttribute('aria-expanded').then(v => v === 'true'), 5000, 'the game editor to open');
+};
 // S45: LIFE PRESET's ADVANCED section starts OPEN already when the loaded game is CUSTOM (so a hand-tuned
 // pool never hides its own numbers) -- a blind `.click()` on the toggle would then CLOSE it. Check
 // `aria-expanded` first, so this is idempotent whichever state the panel opened in.
@@ -303,6 +308,8 @@ async function runMock(browser, viteBase) {
   // WEAPONS AVAILABLE — switch one primary weapon off, then SAVE AND LOAD (the label the button
   // wears once there IS a head on the guns).
   const primaryGroup = panel(pg).locator('[aria-label="primary weapons available"]');
+  await until(() => primaryGroup.locator('button[aria-label$=", allowed"]').count().then(n => n > 0),
+    5000, 'an allowed primary weapon in the open editor');
   const chip = primaryGroup.locator('button[aria-label$=", allowed"]').first();
   const chipName = (await chip.innerText()).replace(/^✓\s*/, '').trim();
   await chip.click();
@@ -605,12 +612,21 @@ async function runFaults(browser, viteBase) {
   // The console FOLLOWS a phase that advances, so the push lands us on LOBBY. The muster board is
   // where the per-gun proof lives, and the nav tab is never phase-gated — the operator's own route.
   await onMuster(pg);
+  // The board keeps server wording inside each gun's fault detail.
+  const boardFaults = pg.locator('main [data-alert] button').filter({ hasText: 'Why?' });
+  while (await boardFaults.count()) await boardFaults.first().click();
+  // A stale ack is amber, so its server wording sits in an ItemChip instead of a red FaultPill.
+  const staleAck = pg.locator('main [data-alert="armory-blocker-stale-ack"]').first();
+  expect(await staleAck.count() === 1, 'the stale ack has a chip on the board');
+  await staleAck.click();
+  expect(/ACKED AN OLDER CONFIG/i.test((await staleAck.locator('..').getByTestId('chip-detail').innerText()) ?? ''),
+    'the stale ack detail names the older config');
   const txt = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
   for (const [what, re] of [
-    ['the stale ack', /ACKED AN OLDER CONFIG/],
-    ['the echo mismatch', /GUN ECHO ≠ CONFIG/],
-    ['the pool fault', /GUN POOL ≠ CONFIG/],
-    ['the query read-back mismatch', /GUN CONFIG ≠ PUSHED HEAD/],
+    ['the stale ack', /ACKED AN OLDER CONFIG/i],
+    ['the echo mismatch', /GUN ECHO ≠ CONFIG/i],
+    ['the pool fault', /GUN POOL ≠ CONFIG/i],
+    ['the query read-back mismatch', /GUN CONFIG ≠ PUSHED HEAD/i],
     ['the gun that did not echo', /GUN DID NOT ECHO ITS WEAPON/],
   ]) expect(re.test(txt), `${what} is on the board (saw ${JSON.stringify(txt.slice(0, 200))})`);
   // NOT ECHOED is neutral: it is on a row that is not red, and it is not one of the blocker lines.

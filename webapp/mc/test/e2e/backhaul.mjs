@@ -173,11 +173,14 @@ step('tunnel-error-banner-persists-across-screens', async ({ browser, base }) =>
   await pg.locator('button', { hasText: 'TURN ON' }).click();
   await until(() => pg.locator(bannerSel).count().then(n => n > 0), 6000, 'the persistent tunnel-down banner after the simulated failure');
   const txt = await pg.locator(bannerSel).first().textContent();
-  expect(/INTERNET TUNNEL DOWN/.test(txt ?? ''), `the banner names the outage (saw ${JSON.stringify(txt)})`);
+  expect(/Internet tunnel down/.test(txt ?? ''), `the banner names the outage (saw ${JSON.stringify(txt)})`);
   // M13: this tunnel never came up, so there was nothing to fall back FROM; the banner says so
   expect(!/FELL BACK/.test(txt ?? ''), `a tunnel that never started does not claim a fallback (saw ${JSON.stringify(txt)})`);
-  expect(/PHONES CAN JOIN OVER WI-FI ONLY/.test(txt ?? ''), 'the banner says what phones can do now');
-  expect(/cloudflared exited/i.test(txt ?? ''), 'the banner carries the server-supplied reason, never swallowed');
+  await pg.locator(bannerSel).first().locator('button', { hasText: 'Why?' }).click();
+  const detail = await pg.locator(bannerSel).first().locator('[data-testid="fault-detail"]').innerText();
+  expect(!/WRONG WI-FI/i.test(await pg.locator('body').innerText()), 'the page never says WRONG WI-FI');
+  expect(/phones can join over Wi-Fi only/i.test(detail), 'the banner says what phones can do now');
+  expect(/cloudflared exited/i.test(detail), 'the banner carries the server-supplied reason, never swallowed');
   ok(`tunnel-down banner appears on ARMORY after a simulated failure  ${await shot(pg, 'b08-tunnel-error-armory')}`);
   // the whole point of putting it in the shared frame: it must ride to a screen that never renders
   // the REACH panel at all, not just the one with the TURN ON/OFF control. Click the real nav tab —
@@ -280,8 +283,16 @@ step('field-2026-09-12-network-row-and-stale-reach', async ({ browser, base }) =
   const pg2 = await newPage(browser, base);
   await pg2.goto(`${pg2.__base}/?mock&laststale=1#muster`, { waitUntil: 'domcontentloaded' });
   await until(() => pg2.locator('main', { hasText: 'READINESS BOARD' }).count().then(n => n > 0), 8000, 'the readiness board');
-  await until(() => pg2.locator('text=NOT REACHED FOR').count().then(n => n > 0), 6000, 'the honest stale-reach reason');
-  expect(await pg2.locator('text=WRONG WI-FI').count() === 0, 'never blames the phone\'s Wi-Fi for a dropped tunnel');
+  const stale = pg2.locator('[data-alert="armory-blocker-reach-reason"], [data-alert="server-not-reached"]');
+  await until(() => stale.count().then(n => n > 0), 6000, 'the stale-reach fault');
+  const staleFault = stale.first();
+  if (await staleFault.evaluate(e => e.tagName === 'BUTTON')) await staleFault.click();
+  else await staleFault.locator('button', { hasText: 'Why?' }).click();
+  const staleDetail = await (await staleFault.evaluate(e => e.tagName === 'BUTTON')
+    ? staleFault.locator('xpath=..').locator('[data-testid="chip-detail"]')
+    : staleFault.locator('[data-testid="fault-detail"]')).innerText();
+  expect(/NOT REACHED FOR/i.test(staleDetail), 'the honest stale-reach reason is in the opened fault');
+  expect(!/WRONG WI-FI/i.test(staleDetail), 'never blames the phone\'s Wi-Fi for a dropped tunnel');
   ok(`a node last seen on the internet path reads NOT REACHED FOR, not WRONG WI-FI  ${await shot(pg2, 'b13-last-stale')}`);
   await closePage(pg2);
 
@@ -290,7 +301,8 @@ step('field-2026-09-12-network-row-and-stale-reach', async ({ browser, base }) =
   await pg3.goto(`${pg3.__base}/?mock&restored=1#muster`, { waitUntil: 'domcontentloaded' });
   const banner = pg3.locator('[data-testid="restored-banner"]');
   await until(() => banner.count().then(n => n > 0), 8000, 'the restored-session banner');
-  expect(await banner.textContent().then(t => (t ?? '').includes('RESTORED FROM')), 'the banner names when the session was restored');
+  await banner.locator('button[data-alert="armory-restored-banner"]').click();
+  expect(/Restored from/i.test(await banner.locator('[data-testid="chip-detail"]').innerText()), 'the banner names when the session was restored');
   await pg3.locator('button', { hasText: 'NEW SESSION, CLEAR ROSTER' }).click();
   await until(() => banner.count().then(n => n === 0), 4000, 'the banner to clear after NEW SESSION, CLEAR ROSTER');
   ok(`restored-session banner shows and NEW SESSION, CLEAR ROSTER clears it  ${await shot(pg3, 'b14-restored')}`);

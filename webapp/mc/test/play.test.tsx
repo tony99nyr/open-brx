@@ -99,7 +99,7 @@ describe('PLAY — a tap is one POST /api/play/pick', () => {
     await m.click('KING OF THE HILL');   // second tap actually picks it
     m.unmount();
     const m2 = await settle();
-    expect(m2.text()).toContain('NO HILL STATION ASSIGNED');
+    expect(m2.text()).toContain('No hill assigned');
     expect(m2.find('[data-testid="assign-a-hill"]').length).toBe(1);
     const load = m2.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
     expect(load.disabled).toBe(true);
@@ -446,7 +446,9 @@ describe('PLAY — M5: a FAVOURITES fetch failure', () => {
     const m = await mount(<StoreCtx.Provider value={store}><Games /></StoreCtx.Provider>);
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="play-favourites-error"]').length).toBe(1);
-    expect(m.text()).toContain('SOCKET RESET');   // alertWords upper-cases the whole line
+    expect(m.text()).toContain('Could not load favourites');
+    await act(async () => { m.find('[data-testid="play-favourites-error"] button[aria-expanded]')[0].click(); });
+    expect(m.text()).toContain('socket reset');
     await m.click('RETRY');
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(m.find('[data-testid="play-favourites-error"]').length, 'RETRY must try again, and this time it lands').toBe(0);

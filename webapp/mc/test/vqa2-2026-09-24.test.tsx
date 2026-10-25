@@ -114,7 +114,9 @@ describe('H2 · a CONTROL station under a grenade objective is a conflict, not a
     expect(block, 'a red conflict block on LOBBY').toBeTruthy();
     expect(block.closest('[role="status"]'), 'a standing status, not an alert').toBeTruthy();
     expect(block.getAttribute('style') ?? '').toContain('rgb(255, 82, 82)');
-    expect(block.textContent).toMatch(/EVERY PHONE IGNORES ITS HILL/);
+    expect(block.textContent).toContain('Station conflict');
+    await act(async () => { block.querySelector('button')?.click(); });
+    expect(block.textContent).toMatch(/every phone ignores its hill/i);
     const reminders = m.find('[data-testid="setup-steps"]')[0];
     expect(reminders?.textContent ?? '', 'not also a plain reminder').not.toMatch(/every phone ignores/i);
     m.unmount();
@@ -125,8 +127,9 @@ describe('H2 · a CONTROL station under a grenade objective is a conflict, not a
     const card = m.find('[data-station-card="util-c"]')[0];
     const line = card.querySelector('[data-testid="station-setup-conflict"]');
     expect(line, 'the conflict line is on the CONTROL card').toBeTruthy();
-    // F221 polish r2: upper case now, same words as GAMES/LOBBY's own conflict line.
-    expect(line!.textContent).toMatch(/EVERY PHONE IGNORES ITS HILL/);
+    expect(line!.textContent).toContain('Station setup conflict');
+    await act(async () => { line!.querySelector('button')?.click(); });
+    expect(line!.textContent).toContain(REVERSE);
     expect(card.getAttribute('style') ?? '').not.toContain('rgb(46, 204, 113)');
     m.unmount();
   });
@@ -171,10 +174,13 @@ describe('M5 · Station Alerts carry every attention line of an assigned station
       station('b', { assigned: { kind: 'respawn', team: 255, id: 2, threshold: 0 }, attention: ['STATION #2 RESTARTED: CHECK THE STATION'] }),
     ] });
     const t = m.text();
-    // F221: the step is the server line's own action now (`WHAT IS WRONG: WHAT TO DO`)
-    expect(t).toContain('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
-    expect(t).toContain('STATION #2 RESTARTED: CHECK THE STATION');
-    expect(t, 'a line that names no station says which one').toMatch(/RESPAWN 1/);
+    expect(t).toContain('Respawn 1 battery low');
+    expect(t).toContain('Respawn 2 needs attention');
+    await m.click('Respawn 1 battery low');
+    await m.click('Respawn 2 needs attention');
+    expect(m.text()).toContain('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
+    expect(m.text()).toContain('STATION #2 RESTARTED: CHECK THE STATION');
+    expect(m.text(), 'a line that names no station says which one').toMatch(/RESPAWN 1/);
     m.unmount();
   });
   it('an unassigned station still shows nothing', async () => {
@@ -215,7 +221,8 @@ describe('M7 · LIVE keeps the board and the operator menu in view', () => {
     try {
       const { m } = await screen(<Live />, { phase: 'live', live: liveView([row()]) });
       await act(async () => { m.find('[data-live-row-toggle="p1"]')[0].click(); });
-      expect(spy, 'the menu asked to be scrolled into view').toHaveBeenCalled();
+      await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+      expect(spy, 'the menu asked to be scrolled into view').toHaveBeenCalledTimes(1);
       m.unmount();
     } finally { Element.prototype.scrollIntoView = orig; }
   });
@@ -284,8 +291,8 @@ describe('M11 · ARMORY says when the game needs a station that is not assigned'
     const { m } = await screen(<Armory />, { phase: 'muster', config_warnings: [NO_CONTROL] });
     const line = m.find('[data-testid="armory-setup"]')[0];
     expect(line, 'a SETUP line in the ARMORY header').toBeTruthy();
-    // F221 polish (2026-09-25): this row now draws MC's own words verbatim (`serverLine`), upper case,
-    // not a sentence-cased retelling.
+    expect(line.textContent).toContain('Station setup needed');
+    await m.click('Station setup needed');
     expect(line.textContent).toMatch(/NO CONTROL STATION IS ASSIGNED/);
     m.unmount();
   });
@@ -296,19 +303,13 @@ describe('M11 · ARMORY says when the game needs a station that is not assigned'
   });
 });
 
-describe('M12 · the GAMES rail SETUP warnings are the friendly rewrite, upper case, and name no device the server did not', () => {
-  // F221 polish r1: GAMES used to draw every `SETUP:` line as one flat amber chip, so the control-vs-
-  // grenade conflict (RED in the catalogue) read exactly like this ordinary reminder. Each line now
-  // goes through `serverLine` and is upper case, WHAT: DO, like every other catalogued alert, but it
-  // is still the FRIENDLY rewrite (`friendlySetupLine`), never the raw server sentence with its
-  // semicolons and the device name the server never sent.
-  it('renders the friendly line, upper case, not the raw server copy', async () => {
+describe('M12 · the GAMES rail keeps MC setup details intact', () => {
+  it('opens the exact server line behind the short label', async () => {
     const { m } = await screen(<Games />, { phase: 'build', config_warnings: [NO_RESPAWN] });
     const t = m.text();
-    expect(t.toUpperCase()).toContain('NO RESPAWN STATION IS ASSIGNED');
-    // VQA round 1 QA-17: the picker calls this option STATION, never the wire word SCANNER — the
-    // friendly rewrite must use the operator's own vocabulary, not the raw server sentence's.
-    expect(t.toUpperCase()).toContain('RESPAWN IS SET TO STATION');
+    expect(t).toContain('Respawn station missing');
+    await m.click('Respawn station missing');
+    expect(m.find('[data-testid="chip-detail"]')[0]?.textContent).toBe(NO_RESPAWN);
     expect(t).not.toMatch(/utility phone/i);
     m.unmount();
   });
@@ -373,8 +374,7 @@ describe('polish round 1 (2026-09-24)', () => {
     state = { ...base, config_warnings: [NO_CONTROL] };
     await m.update(node());
     expect(m.find('[data-setup-region]')[0], 'the same element, not a remount').toBe(region);
-    // F221 polish r1: upper case now, like every catalogued line.
-    expect(region.textContent?.toUpperCase()).toContain('NO CONTROL STATION IS ASSIGNED');
+    expect(region.textContent).toContain('Station setup needed');
     expect(m.find('[role="alert"]').filter(e => /control station/i.test(e.textContent ?? '')).length).toBe(0);
     m.unmount();
   });
@@ -395,7 +395,9 @@ describe('F337 (d): a pushed game keeps stations LOCKED in MUSTER, BUILD and KIT
       const on = await screen(node, { phase, stations: locked });
       const box = on.m.find('[data-testid="station-unlock-only"]');
       expect(box.length, `${name} carries the unlock control`).toBe(1);
-      expect(box[0].textContent).toContain('STATIONS LOCKED FOR THE LOADED GAME');
+    expect(box[0].textContent).toContain('Stations locked');
+    await on.m.click('Stations locked');
+    expect(on.m.find('[data-testid="chip-detail"]')[0]?.textContent).toContain('The loaded game locked the stations.');
       expect(box[0].querySelector('[data-testid="station-unlock"]')).toBeTruthy();
       on.m.unmount();
       const off = await screen(node, { phase, stations: [station('a')] });

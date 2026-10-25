@@ -361,7 +361,9 @@ try {
     expect(await cellText(pg, reaper.player_id, 'sync') === '—', 'and shows no sync age');
     expect(await end.isDisabled(), 'END MATCH EARLY is disabled');
     expect(await pg.locator('button', { hasText: /^RECALL$/ }).isDisabled(), 'RECALL is disabled');
-    expect((await pg.getByTestId('controls-offline').innerText()).includes('MC IS OFFLINE'), 'and the reason is on screen');
+    const controlsOffline = pg.getByTestId('controls-offline');
+    await controlsOffline.locator('button', { hasText: 'Why?' }).click();
+    expect(/MC is offline/i.test(await controlsOffline.locator('[data-testid="fault-detail"]').innerText()), 'and the reason is on screen');
     await shot(pg, 'offline-1280');
     await pg.context().close();
   });

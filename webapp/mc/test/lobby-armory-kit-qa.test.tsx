@@ -34,7 +34,7 @@ describe('H5 · LOBBY outside the lobby phase', () => {
       const banner = m.find('[data-lobby-readonly]')[0];
       expect(banner, 'the read-only reason').toBeTruthy();
       expect(banner.getAttribute('data-lobby-readonly')).toBe(phase);
-      expect(banner.textContent).toContain('READ-ONLY');
+      expect(banner.textContent).toContain('This lobby is read-only.');
       const labels = btnText(m);
       for (const word of ['MARK ALL READY', 'PUSH CONFIG', 'ARM COUNTDOWN', 'Push anyway', 'RE-PUSH']) {
         expect(labels.some(l => l.includes(word)), `no "${word}" in ${phase}`).toBe(false);

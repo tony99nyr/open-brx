@@ -260,9 +260,8 @@ try {
     await go(pg, 'LOBBY');
     const block = pg.getByTestId('setup-conflict');
     expect(await until(() => block.isVisible(), 6000, 'the conflict block'), 'LOBBY shows a SETUP CONFLICT block');
-    // F221 (Tony's rule, approved 2026-09-25): the line is now UPPER CASE (was sentence case), and a
-    // control station wired to a game whose objective is the grenade is RED (act now), not amber.
-    expect(/EVERY PHONE IGNORES ITS HILL/.test(await block.innerText().catch(() => '')), 'it says every phone ignores the station\'s hill');
+    await block.getByRole('button', { name: /Why\?/i }).click();
+    expect(/every phone ignores its hill/i.test(await block.getByTestId('fault-detail').innerText().catch(() => '')), 'it says every phone ignores the station\'s hill');
     expect(await styleOf(block, 'borderLeftColor') === RED, `it is red (${await styleOf(block, 'borderLeftColor')})`);
     await shot(pg, 'koth-lobby-1440');
     await go(pg, 'ARMORY');
@@ -334,11 +333,17 @@ try {
     await go(pg, 'MATCH');
     const alerts = pg.getByTestId('station-alerts');
     expect(await until(() => alerts.isVisible(), 8000, 'the station alerts'), 'the BATTERY LOW station alert reaches LIVE');
-    expect(await until(async () => /RESTARTED/.test(await alerts.innerText().catch(() => '')), 6000, 'RESTARTED'), 'the restart is on the strip');
-    const at = await alerts.innerText().catch(() => '');
-    expect(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/.test(at), 'BATTERY LOW reaches LIVE, with its next step (M5)');
-    // F221: `WHAT IS WRONG: WHAT TO DO`, one colon, upper case (catalogue id 'station-attention-restarted').
-    expect(/RESTARTED(?: \d+ TIMES)?: CHECK THE STATION/.test(at), 'RESTARTED has its next step (M5)');
+    const restarted = alerts.locator('[data-station-alert*="RESTARTED"]');
+    expect(await until(() => restarted.isVisible(), 6000, 'RESTARTED'), 'the restart is on the strip');
+    const battery = alerts.locator('[data-station-alert*="BATTERY LOW"]');
+    await battery.getByRole('button').click();
+    expect(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/i.test(await battery.innerText()), 'BATTERY LOW reaches LIVE, with its next step (M5)');
+    await restarted.getByRole('button').click();
+    expect(/RESTARTED(?: \d+ TIMES)?: CHECK THE STATION/i.test(await restarted.innerText()), 'RESTARTED has its next step (M5)');
+    await battery.getByRole('button').click();
+    await restarted.getByRole('button').click();
+    expect(await battery.getByTestId('chip-detail').count() === 0 && await restarted.getByTestId('chip-detail').count() === 0,
+      'the station details are closed before measuring the board');
     expect(await pg.getByTestId('hill-panel').isVisible().catch(() => false) && await pg.getByTestId('powerup-strip').isVisible().catch(() => false),
       'control: the hill panel and the powerup strip are on the board too');
     const rows = pg.locator('[data-live-rows]');

@@ -2,6 +2,7 @@
 // F151, F155, S38, S41; 27b lives in reach.test.tsx beside the rest of the REACH panel). Each test
 // reproduces the exact condition Tony hit in the field, against a real MockBackend fixture, and would
 // have failed on the pre-fix code (ui-build-verify skill: a test is worth having only if it can fail).
+import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { Lobby } from '../src/screens/Lobby';
@@ -66,7 +67,9 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     const alert = m.find('[data-testid="roster-fault"]');
     expect(alert.length, 'the empty team gets its own alert, not a tag').toBe(1);
     expect(alert[0].getAttribute('role')).toBe('alert');
-    expect(m.text()).toContain('ONLY ONE SIDE HAS PLAYERS');
+    expect(alert[0].textContent).toContain('Roster cannot play');
+    await m.click('Why?');
+    expect(alert[0].textContent?.toUpperCase()).toContain('ONLY ONE SIDE HAS PLAYERS');
     expect(pushBtn(m).disabled, 'MC would refuse this push anyway — never offer it').toBe(true);
     m.unmount();
   });
@@ -91,7 +94,8 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     const old = await lobbyOn(() => 'blue', null);
     expect(old.find('[data-testid="roster-fault"]').length,
       'against an older server the console still has to say it').toBe(1);
-    expect(old.text()).toContain('ONLY ONE SIDE HAS PLAYERS');
+    await old.click('Why?');
+    expect(old.text().toUpperCase()).toContain('ONLY ONE SIDE HAS PLAYERS');
     old.unmount();
     // ...and the local rule is the SAME question the server asks: populated $TIDs, so a populated
     // second side is never a fault even against an old server.
@@ -113,7 +117,7 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     const m = await mountScreen(<Lobby />, { ...d, state });
     expect(m.find('[data-override="1"]').length, 'no override control while the roster is unplayable').toBe(0);
     expect(m.find('[data-no-override-reason]').length, 'the fault banner says why it is missing').toBe(1);
-    expect(m.text()).toContain('CANNOT BE OVERRIDDEN');
+    expect(m.find('[data-no-override-reason]')[0].textContent).toBe('Cannot override this. Fix the roster first.');
     m.unmount();
   });
 
@@ -142,9 +146,12 @@ describe('F142 — restored-session banner', () => {
     const newSession = vi.fn(async () => state);
     const m = await mountScreen(<Armory />, { ...d, state, api: { newSession } });
     expect(m.find('[data-testid="restored-banner"]').length).toBe(1);
-    expect(m.text()).toContain('RESTORED FROM');
-    expect(m.text()).toContain('1 PLAYER');
-    await m.click('NEW SESSION, CLEAR ROSTER');
+    expect(m.text()).toContain('Session restored · 1 player');
+    expect(m.text()).toContain('New session, clear roster ▸');
+    expect(m.find('[data-testid="restored-banner"]')[0].querySelector('button')?.getAttribute('aria-expanded')).toBe('false');
+    await m.click('Session restored');
+    expect(m.find('[data-testid="restored-banner"]')[0].textContent).toContain('Restored from');
+    await m.click('New session');
     expect(newSession).toHaveBeenCalledWith(false);
     m.unmount();
   });
@@ -164,8 +171,10 @@ describe('O1 — failed-restore banner', () => {
     const m = await mountScreen(<Armory />, { ...d, state });
     expect(m.find('[data-testid="restore-failed-banner"]').length).toBe(1);
     expect(m.find('[data-testid="restore-failed-banner"]')[0].getAttribute('data-sev')).toBe('red');
-    expect(m.text()).toContain('COULD NOT BE RESTORED');
-    expect(m.text()).toContain('REBUILD THE ROSTER');
+    expect(m.text()).toContain('Session not restored');
+    await m.click('Why?');
+    expect(m.text()).toContain('The roster started empty. The old file is kept at');
+    expect(m.text()).toContain('Rebuild the roster.');
     expect(m.text()).toContain('/h/session.json.bad-20261003T010203');
     m.unmount();
   });
@@ -174,7 +183,8 @@ describe('O1 — failed-restore banner', () => {
     const d = await demo();
     const state: State = { ...d.state, restore_failed: { reason: 'OSError: denied', kept: null } };
     const m = await mountScreen(<Armory />, { ...d, state });
-    expect(m.text()).toContain('COULD NOT BE MOVED ASIDE');
+    await m.click('Why?');
+    expect(m.text()).toContain('The file could not be moved aside.');
     m.unmount();
   });
 
@@ -221,7 +231,11 @@ describe('F144/F155 — Armory gun card reach', () => {
       node_id: 'node_A0B3', stale: true, last_reach: 'backhaul', last_seen_ms: 130_000,
     });
     const m = await mountScreen(<Armory />, d);
-    expect(m.text()).toContain('NOT REACHED FOR');
+    const card = m.find('[data-gun-card="GUN-F"]')[0];
+    const details = Array.from(card.querySelectorAll('button[aria-expanded="false"]'));
+    expect(details.length).toBeGreaterThan(0);
+    for (const detail of details) await act(async () => { (detail as HTMLButtonElement).click(); });
+    expect(card.textContent?.toUpperCase()).toContain('NOT REACHED FOR');
     expect(m.text()).not.toContain('WRONG WI-FI');
     m.unmount();
   });

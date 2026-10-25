@@ -4,8 +4,8 @@ import type { ReportResult } from '../api/types';
 import { useStore } from '../store';
 import { F, T } from '../tokens';
 import { GhostButton, PrimaryButton } from './index';
-import { Alert } from './Alert';
-import { OPERATOR_TOKEN, colourOf, glyphed, tokenRefusedLine } from '../alerts';
+import { FaultPill, ItemChip } from './Compact';
+import { OPERATOR_TOKEN, colourOf, tokenRefusedLine } from '../alerts';
 
 type Phase = 'idle' | 'busy' | 'done' | 'error' | 'auth';
 
@@ -116,10 +116,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
               <p style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
                 Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.
               </p>
-              {/* F221 round 2: was a hand-drawn box (its own border/background, its own glyph via
-                  `glyphed()`). `<Alert>` draws the RED banner Tony's rule gives every failed action,
-                  from the one catalogue id (`frame-report-error`), and adds the glyph itself. */}
-              {phase === 'error' && <Alert id="frame-report-error">{error ?? ''}</Alert>}
+              {phase === 'error' && <FaultPill id="frame-report-error" short="Report failed" why={error ?? ''} />}
               <span>
                 <PrimaryButton onClick={makeReport}>{phase === 'error' ? 'TRY AGAIN' : 'MAKE REPORT'}</PrimaryButton>
               </span>
@@ -133,9 +130,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
           {phase === 'auth' && (
             <>
               {refused
-                ? <div role="alert" data-alert="frame-token-refused" data-sev="red" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-refused'), padding: '9px 12px' }}>
-                    {glyphed('red', tokenRefusedLine())}
-                  </div>
+                ? <FaultPill id="frame-token-refused" short="MC refused the token" why="This tab's operator token is old or wrong. Did MC restart? Open the #tok= link that MC printed, or enter a new token." />
                 : <div role="status" data-alert="frame-token-required-app" data-sev="neutral" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-token-required-app'), padding: '9px 12px' }}>
                     {OPERATOR_TOKEN.what}: {OPERATOR_TOKEN.actPre} <code>{OPERATOR_TOKEN.code}</code> {OPERATOR_TOKEN.actPost}, THEN TRY AGAIN TO MAKE THE REPORT.
                   </div>}
@@ -151,18 +146,14 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
               <div data-testid="report-privacy" style={{ font: F.chk(600, 12), lineHeight: 1.5, color: T.ink, border: `1px solid ${T.line2}`, background: T.panelAlt, padding: '9px 12px' }}>
                 GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed.
               </div>
-              {result.too_large && (
-                <div role="alert" data-alert="frame-report-too-large" data-sev="amber" style={{ font: F.chk(700, 12), lineHeight: 1.5, color: colourOf('frame-report-too-large'), border: `1px solid ${colourOf('frame-report-too-large')}`, background: 'rgba(255,176,32,.1)', padding: '9px 12px' }}>
-                  {glyphed('amber', "This report is larger than 25 MB, GitHub's limit for an attachment. Make the issue anyway and say so: a developer will ask for the file another way.")}
-                </div>
-              )}
+              {result.too_large && <ItemChip id="frame-report-too-large" role="alert" short="Report exceeds 25 MB" detail="GitHub's attachment limit is 25 MB. Make the issue anyway and note this. A developer will ask for the file another way." />}
               {removedList.length > 0 && (
                 <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>
                   Removed: {removedList.map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}${n === 1 || /s$/.test(k) ? '' : 's'}`).join(' · ')}
                 </div>
               )}
               {downloadErr && (
-                <div role="alert" data-alert="frame-report-download-err" data-sev="red" style={{ font: F.chk(700, 12), color: colourOf('frame-report-download-err') }}>{glyphed('red', downloadErr)}</div>
+                <FaultPill id="frame-report-download-err" short="Report download failed" why={downloadErr} />
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <GhostButton onClick={download}>⬇ DOWNLOAD REPORT</GhostButton>

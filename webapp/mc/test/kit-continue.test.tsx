@@ -55,7 +55,7 @@ const noReadyField = (s: State): State => ({
 /** the button, whatever state it is in */
 const btn = (m: Mounted) => m.find('[data-continue="kit"] button').slice(-1)[0];
 /** the visible consequence line: it must NAME the players and say what the tap costs them */
-const WARN = '▲ SABLE, DRIFT ARE STILL KITTING AND WILL LOSE THEIR SCREEN: CONTINUE ANYWAY?';
+const WARN = 'SABLE and DRIFT still kitting, they lose their screen. Continue anyway?';
 /** ready everyone EXCEPT these callsigns */
 const unReadyOnly = (names: string[]) => (s: State): State => ({ ...s, players: s.players.map(p => ({ ...p, ready: !names.includes(p.display.toUpperCase()) })) });
 /** un-ready the two the demo roster starts short of */
@@ -92,7 +92,7 @@ describe('KIT · CONTINUE to lobby (F127)', () => {
     const m = await kitScreen();
     await act(async () => { btn(m).click(); });
     await m.click('CANCEL');
-    expect(m.text()).not.toContain('STILL KITTING');
+    expect(m.text()).not.toContain('still kitting');
     expect(btn(m).textContent, 'CANCEL restores the resting label').toBe('CONTINUE · 6/8 READY ▸');
     await act(async () => { btn(m).click(); });
     expect(m.phases, 'a tap after CANCEL re-arms, it does not advance').toEqual([]);
@@ -106,16 +106,16 @@ describe('KIT · CONTINUE to lobby (F127)', () => {
     await act(async () => { btn(m).click(); });
     expect(m.phases).toEqual(['lobby']);
     expect(m.views).toEqual(['lobby']);
-    expect(m.text()).not.toContain('STILL KITTING');
+    expect(m.text()).not.toContain('still kitting');
     m.unmount();
   });
 
   it('a snapshot that makes everyone ready disarms an armed confirm', async () => {
     const m = await kitScreen();
     await act(async () => { btn(m).click(); });
-    expect(m.text()).toContain('STILL KITTING');
+    expect(m.text()).toContain(WARN);
     await m.push(allReady(m.base));
-    expect(m.text()).not.toContain('STILL KITTING');
+    expect(m.text()).not.toContain('still kitting');
     expect(m.text()).toContain('CONTINUE · 8/8 READY');
     await act(async () => { btn(m).click(); });
     expect(m.phases, 'the disarmed button must not still be a second tap').toEqual(['lobby']);
@@ -131,9 +131,9 @@ describe('KIT · CONTINUE to lobby (F127)', () => {
     await act(async () => { btn(m).click(); });          // armed on SABLE|DRIFT
     expect(m.text()).toContain(WARN);
     await m.push(allReady(m.base));                       // both ready up -> not blocked
-    expect(m.text()).not.toContain('STILL KITTING');
+    expect(m.text()).not.toContain('still kitting');
     await m.push(unReady(m.base));                        // ...and both go un-ready again
-    expect(m.text(), 'a re-blocked roster must NOT arrive already armed').not.toContain('STILL KITTING');
+    expect(m.text(), 'a re-blocked roster must NOT arrive already armed').not.toContain('still kitting');
     expect(btn(m).textContent).toBe('CONTINUE · 6/8 READY ▸');
     await act(async () => { btn(m).click(); });
     expect(m.phases, 'the first tap after re-blocking must arm, not advance').toEqual([]);
@@ -151,10 +151,10 @@ describe('KIT · CONTINUE to lobby (F127)', () => {
     await act(async () => { btn(m).click(); });          // armed on SABLE|DRIFT
     expect(m.text()).toContain(WARN);
     await m.push(unReadyOnly(['DRIFT'])(m.base));         // SABLE readies: STILL blocked, now by DRIFT alone
-    expect(m.text(), 'the confirm was armed for SABLE|DRIFT, and that is no longer who it would strand').not.toContain('STILL KITTING');
+    expect(m.text(), 'the confirm was armed for SABLE|DRIFT, and that is no longer who it would strand').not.toContain('still kitting');
     expect(btn(m).textContent).toBe('CONTINUE · 7/8 READY ▸');
     await m.push(unReady(m.base));                        // ...and SABLE drops back out
-    expect(m.text(), 'the old set must have been FORGOTTEN, not hidden behind a blocked roster').not.toContain('STILL KITTING');
+    expect(m.text(), 'the old set must have been FORGOTTEN, not hidden behind a blocked roster').not.toContain('still kitting');
     expect(btn(m).textContent).toBe('CONTINUE · 6/8 READY ▸');
     await act(async () => { btn(m).click(); });
     expect(m.phases, 'the first tap on the re-blocked roster must arm, not advance').toEqual([]);

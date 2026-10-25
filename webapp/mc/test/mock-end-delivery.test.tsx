@@ -394,7 +394,9 @@ describe('mock end-delivery (A42) is armed at the whistle and derives the ladder
     const name = state.end_delivery!.unconfirmed[0].display;
     const recap = await mountScreen(<Recap />, { state, view: 'recap' });
     const live = await mountScreen(<Live />, { state, view: 'live' });
-    const liveDelivery = live.find('[data-testid="end-delivery"]')[0]?.textContent ?? '';
+    expect(live.find('[data-testid="end-delivery"]')[0]?.textContent).toContain('End still reaching phones');
+    await live.click('End still reaching phones');
+    const liveDelivery = live.find('[data-testid="chip-detail"]')[0]?.textContent ?? '';
     // F596: RECAP carries the same fact as a flag on that phone's strip icon, with no sentence and no settling banner
     const pid = state.end_delivery!.unconfirmed[0].player_id;
     expect(recap.find('[data-testid="end-delivery-recap"]')).toHaveLength(0);

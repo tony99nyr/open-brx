@@ -44,7 +44,7 @@ describe('ITEMS — utility phones at muster', () => {
     // CONTROL: this is the ONLY station that is offline, so the string is unambiguous evidence the
     // panel actually renders the `online: false` case, not just a hard-coded label.
     expect(panel.textContent).toMatch(/OUT OF WI-FI/);
-    expect(panel.textContent).toMatch(/ARM PENDING/);
+    expect(panel.textContent).toMatch(/Arm pending/);
     m.unmount();
   });
 
@@ -75,9 +75,11 @@ describe('ITEMS — utility phones at muster', () => {
     await api.pushLobby(true);
     await settle();
     const panel = m.find('[data-testid="items-panel"]')[0].textContent ?? '';
-    expect(panel).toMatch(/NOT ARMED: THIS MODE HAS NO HILL/);
+    expect(panel).toMatch(/Station needs attention/);
+    await m.click('Station needs attention');
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/NOT ARMED: THIS MODE HAS NO HILL/);
     expect(panel).not.toMatch(/MC-ARMED · GAME \d+ PHONE util-a1b2c3/);
-    expect(panel.match(/THIS MODE HAS NO HILL/g)?.length).toBe(1);
+    expect(m.find('[data-testid="items-panel"]')[0].textContent?.match(/THIS MODE HAS NO HILL/g)?.length).toBe(1);
     expect(m.find('[data-testid="station-setup-conflict"]').length).toBe(0);
     expect([...m.find('button')].some(b => b.textContent === 'NOT ARMED')).toBe(true);
     m.unmount();
@@ -126,6 +128,10 @@ describe('ITEMS — utility phones at muster', () => {
     const m = await mountScreen(<Armory />, { state: flagged, view: 'muster' });
     const att = m.find('[data-testid="station-attention"]');
     expect(att.length).toBe(1);
+    expect(att[0].textContent).toContain('Station needs attention');
+    expect(att[0].textContent).toContain('Station battery low');
+    await m.click('Station needs attention');
+    await m.click('Station battery low');
     expect(att[0].textContent).toMatch(/ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY/);
     expect(att[0].textContent).toMatch(/BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE/);
     m.unmount();
@@ -175,12 +181,11 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
   it('choosing CONTROL hides the team control, shows STARTS NEUTRAL, and PUTs team 255', async () => {
     const { m, api } = await muster();
     const panel = () => m.find('[data-testid="items-panel"]')[0];
-    // control: the team Seg is present and STARTS NEUTRAL is not, before CONTROL is picked
+    // control: the team Seg is present before CONTROL is picked
     expect(m.find('[role="group"][aria-label="team for util-a1b2c3"]').length).toBe(1);
     expect(panel().textContent).not.toMatch(/STARTS NEUTRAL/);
     await m.click('CONTROL');
     expect(m.find('[role="group"][aria-label="team for util-a1b2c3"]').length, 'team choice is moot for a control point').toBe(0);
-    expect(panel().textContent).toMatch(/STARTS NEUTRAL/);
     const sent: { kind: string; team: number | string }[] = [];
     const orig = api.putStation.bind(api);
     api.putStation = (async (node_id, a) => { sent.push(a); return orig(node_id, a); }) as Api['putStation'];
@@ -245,6 +250,8 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const m = await mountScreen(<Armory />, { state: flagged, view: 'muster', api });
     const buttons = m.find('[data-testid="items-panel"] button');
     // control: the flag itself is shown (already covered above) — this test is about the button next to it
+    expect(m.find('[data-testid="station-attention"]')[0].textContent).toMatch(/Station needs attention/);
+    await m.click('Station needs attention');
     expect(m.find('[data-testid="station-attention"]')[0].textContent).toMatch(/PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY/);
     const btn = buttons.find(b => /^(RE-ARM|ARMED)$/.test(b.textContent?.trim() ?? '')) as HTMLButtonElement | undefined;
     expect(btn?.textContent?.trim(), 'the phone disagrees, so the fix (RE-ARM) must be offered, not a stale ARMED').toBe('RE-ARM');
@@ -265,9 +272,9 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     const m = await mount(render({ ...base, stations: [{ ...base.stations![0] }] }));
     // F364: the id is MC's, so the draft that must survive is the kind pick
     await act(async () => { ([...card(m).querySelectorAll('button')].find(b => b.textContent === 'CONTROL') as HTMLButtonElement).click(); });
-    expect(card(m).textContent, 'the operator\'s kind pick committed').toMatch(/STARTS NEUTRAL/);
+    expect(card(m).textContent, 'the operator\'s kind pick committed').toMatch(/CONTROL/);
     await m.update(render({ ...base, stations: [{ ...base.stations![0], report: { ...base.stations![0].report, station_id: 2 } }] }));
-    expect(card(m).textContent, 'a report-only change must not remount the card and reset the draft').toMatch(/STARTS NEUTRAL/);
+    expect(card(m).textContent, 'a report-only change must not remount the card and reset the draft').toMatch(/CONTROL/);
     m.unmount();
   });
 

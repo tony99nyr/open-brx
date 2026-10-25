@@ -29,7 +29,7 @@ describe('KIT locks in ARMED and LIVE', () => {
       const banner = m.find('[data-kit-readonly]')[0];
       expect(banner, 'the lock reason').toBeTruthy();
       expect(banner.getAttribute('data-kit-readonly')).toBe(phase);
-      expect(banner.textContent).toContain('THE KIT IS LOCKED');
+      expect(banner.textContent).toContain('The kit is locked.');
       const labels = btnText(m);
       expect(labels).toContain(`GO TO ${phase.toUpperCase()} ▸`);
       expect(m.find('[data-continue="kit"]').length, 'no CONTINUE').toBe(0);
@@ -40,7 +40,7 @@ describe('KIT locks in ARMED and LIVE', () => {
       expect(m.find('[data-stand-down]').length, 'no STAND DOWN').toBe(0);
       expect(m.find('[data-slot-clear]').length, 'no CLEAR on a slot').toBe(0);
       expect(m.text(), 'no slot offers an override').not.toContain('YOU CAN OVERRIDE');
-      expect(m.text()).toContain('LOCKED FOR THIS MATCH');
+      expect(m.text()).toContain('The kit is locked.');
       const teamBtns = m.find('[aria-label="team"] button') as HTMLButtonElement[];
       expect(teamBtns.length).toBeGreaterThan(0);
       expect(teamBtns.every(b => b.disabled), 'team buttons disabled').toBe(true);

@@ -1,7 +1,7 @@
 // F221: the alerts this lane's screens render, by the audit id. See ./index.ts for the rule.
 //
 // Lane files: screens/Kit.tsx, screens/Items.tsx, ui/Powerups.tsx, screens/Games.tsx (PLAY),
-// screens/AdvancedPresentation.tsx, screens/HealthPresetEditor.tsx. F411: the GAME DESIGNER is retired
+// screens/HealthPresetEditor.tsx. F411: the GAME DESIGNER is retired
 // (docs/spec/design/games-presets.md) — most of its own `designer-*` ids retired with it; one survives,
 // renamed, under PLAY (below).
 import type { AlertDef } from './index';
@@ -11,20 +11,6 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
   // it before the match); inside the soft band it is status only.
   'kit-tag-too-long': { sev: 'amber', text: '{N} OF {MAX} CHARACTERS: SHORTEN IT' },
   'kit-tag-may-shorten': { sev: 'neutral', text: '{N} OF {MAX} CHARACTERS: MAY BE SHORTENED ON THE PHONE HUD' },
-  // ---- DESIGNER (Advanced panel) — AdvancedPresentation.tsx --------------------------------------
-  'adv-confidence-armed': { sev: 'neutral',
-    text: 'MC CONFIDENCE GATE ARMED: MC-DRIVEN GLOBAL EVENTS (LEAD, NEXT KILL WINS, LAST SURVIVOR) ARE SENT ONLY WHILE EVERY HUD IS CONNECTED, FRESH AND FLUSHED; CHECKED AT EACH EVENT. RIGHT NOW: {counts}' },
-  'adv-confidence-gate-off': { sev: 'neutral',
-    text: 'MC CONFIDENCE GATE OFF: MC-DRIVEN GLOBAL EVENTS ARE SENT REGARDLESS OF WHO IS CONNECTED. RIGHT NOW: {counts}' },
-  'adv-mc-events-off': { sev: 'neutral', text: 'MC-DRIVEN EVENTS OFF: THIS GAME SENDS NO LEAD / NEXT KILL WINS / LAST SURVIVOR CALLS' },
-  'adv-not-confident': { sev: 'red',
-    text: 'MC NOT CONFIDENT: MC-DRIVEN GLOBAL EVENTS ARE WITHHELD. OFFLINE: {names} · STALE: {names} · UNFLUSHED: {names}',
-    why: "a gun/phone link problem DURING a match is Tony's own RED example, not amber." },
-  'adv-load-failed': { sev: 'amber', text: 'COULD NOT LOAD THE PRESENTATION PROFILE: {msg}' },
-  'adv-loading': { sev: 'neutral', text: 'LOADING…' },
-  'adv-server-old': { sev: 'amber', text: "MC SERVER IS OLDER THAN THIS CONSOLE: RESTART MC. IT HAS NO `/api/presentation`." },
-
-
   // ---- ARMORY / ITEMS — screens/Items.tsx, ui/Powerups.tsx (audit's "ARMORY" screen, this lane's files) --
   'frame-health-preset-custom': { sev: 'neutral', text: 'CUSTOM' },   // NOT-ALERT would fit too; kept as a plain status tag, never amber-filled
   'frame-item-reset-error': { sev: 'red', text: 'RESET REFUSED: {err}' },
@@ -94,10 +80,6 @@ export const SETUP_ALERTS: Record<string, AlertDef> = {
 export const SETUP_RETIRED: Record<string, string> = {
   'frame-powerup-predates': 'MC serves its own console, so a failed powerup list now shows the ordinary request error.',
   'items-itempicker-old-mc': 'MC serves its own console, so a failed item list now shows the ordinary request error.',
-  'adv-confident': 'positive live status, restyled T.ok — not an alert (NOT-ALERT).',
-  'adv-sound-off-chip': 'a plain config fact chip, restyled neutral outline — not an alert (NOT-ALERT).',
-  'adv-source-chip': 'a source-type classification tag, not a status — not an alert (NOT-ALERT).',
-  'adv-switch-chip': 'a plain on/off status chip — not an alert (NOT-ALERT).',
   'designer-saved-ok': 'positive confirmation, restyled T.ok — not an alert (NOT-ALERT).',
   'designer-unsaved-leave': 'a two-tap drop-your-draft confirm; UNCHANGED per Tony\'s rule, left exactly as it is.',
   // F411 (docs/spec/design/games-presets.md): the GAME DESIGNER is retired outright — BUILD (owned by

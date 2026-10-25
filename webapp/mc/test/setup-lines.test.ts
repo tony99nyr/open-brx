@@ -32,3 +32,8 @@ describe('F535: a hill left assigned in a mode with no hill', () => {
     expect(line).not.toMatch(/OBJECTIVE SOURCE/);
   });
 });
+
+it('keeps the case of MC labels in an unknown setup detail', () => {
+  expect(friendlySetupLine('SETUP: Phone Ab12 needs REPAIR on PLAY (F88: internal)'))
+    .toBe('Phone Ab12 needs REPAIR on PLAY');
+});

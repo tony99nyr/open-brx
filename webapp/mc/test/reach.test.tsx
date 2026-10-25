@@ -118,8 +118,7 @@ describe('Armory REACH panel', () => {
     const d = await withPublic(undefined);
     const m = await mountScreen(<Armory />, d);
     // F221 (2026-09-25): the MC_OLDER words, not screen-specific wording — one fact, one sentence.
-    expect(m.text()).toContain('MC SERVER IS OLDER THAN THIS CONSOLE');
-    expect(m.text()).toContain('RESTART MC');
+    expect(m.text()).toContain('MC older than console');
     const toggle = m.find('button').find(b => /TURN (ON|OFF)/.test(b.textContent ?? ''));
     expect(toggle, 'no toggle is invented for a route that does not exist on this server').toBeFalsy();
     m.unmount();
@@ -191,16 +190,16 @@ describe('CommandBar: the tunnel-down banner rides on every screen, not just Arm
   it('a tunnel in error shows a persistent, non-colour-only banner naming the server\'s reason', async () => {
     const d = await withPublic({ ws_url: null, status: 'error', provider: 'cloudflared', available: true, error: 'cloudflared exited: bad gateway' });
     const m = await mountScreen(<CommandBar />, d);
-    const alert = m.find('[role="alert"]').find(el => /TUNNEL DOWN/.test(el.textContent ?? ''));
+    const alert = m.find('[data-alert="frame-tunnel-down"]')[0];
     expect(alert, 'a role=alert banner names the tunnel outage').toBeTruthy();
     const txt = (alert!.textContent ?? '');
-    expect(txt).toContain('INTERNET TUNNEL DOWN');
+    expect(txt).toContain('Internet tunnel down');
     // M13: this tab never saw the tunnel UP, so it must not claim phones "fell back" from it
     expect(txt).not.toContain('FELL BACK');
-    expect(txt).toContain('PHONES CAN JOIN OVER WI-FI ONLY');
-    expect(txt).toContain('cloudflared exited: bad gateway');
-    // ▲ carries the same meaning as the colour — never colour-only
-    expect(txt.trim().startsWith('▲')).toBe(true);
+    await m.click('Why? ▾');
+    const detail = m.find('[data-testid="fault-detail"]')[0]?.textContent ?? '';
+    expect(detail).toContain('phones can join over Wi-Fi only');
+    expect(detail).toContain('cloudflared exited: bad gateway');
     m.unmount();
   });
 

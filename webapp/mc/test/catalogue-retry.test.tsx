@@ -28,12 +28,12 @@ describe('loadWithRetry', () => {
 });
 
 describe('the catalogue chip', () => {
-  it('shows an amber WHAT: WHAT TO DO line only while the lists are down', async () => {
+  it('shows an amber catalogue chip only while the lists are down', async () => {
     const d = await demo();
     const down = await mount(<StoreCtx.Provider value={makeStore({ state: d.state }, { catalogueDown: true })}><CommandBar /></StoreCtx.Provider>);
     const chip = down.find('[data-alert="frame-catalogue-unavailable"]')[0];
     expect(chip.getAttribute('data-sev')).toBe('amber');
-    expect(chip.textContent).toContain('WEAPON, MODE OR PERK LIST NOT LOADED: ');
+    expect(chip.textContent).toContain('Catalogue unavailable');
     down.unmount();
     const up = await mount(<StoreCtx.Provider value={makeStore({ state: d.state }, { catalogueDown: false })}><CommandBar /></StoreCtx.Provider>);
     expect(up.find('[data-alert="frame-catalogue-unavailable"]').length).toBe(0);
