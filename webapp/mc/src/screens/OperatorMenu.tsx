@@ -65,7 +65,8 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
     // a press outside the menu (the scrollbar included), a wheel, a swipe or a scroll key
     const stop = (e: Event) => {
       if (e instanceof KeyboardEvent && !SCROLL_KEYS.has(e.key)) return;
-      if (e.type === 'pointerdown' && e.target instanceof Node && menu.contains(e.target)) return;
+      // a press or a key inside the menu (Space on its own button) is the operator using it, not scrolling away
+      if ((e.type === 'pointerdown' || e.type === 'keydown') && e.target instanceof Node && menu.contains(e.target)) return;
       follow = false;
     };
     const reveal = (entries?: ResizeObserverEntry[]) => {
