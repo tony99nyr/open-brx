@@ -22,6 +22,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
+  RecapSyncRow, RecapSyncView, SyncStage, SyncTransport,
   NoticesView, RestoredFromView, RestoreFailedView, FeedEntry, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue, ValuePair, RespawnProfile, DotSpec, EmpSpec, HirCell,
   RangeEdit, StationRange, StationDeparture, StationRestore,
@@ -201,6 +202,8 @@ export interface Api {
    *  `error`. `pushed` means a socket took it (no ack kind exists for `control`). A server that predates it 404s. */
   operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult>;
   getRecap(): Promise<RecapView>;
+  /** F596: `POST /api/recap/finalise` -- release the result although phones are still missing. 409 outside RECAP; a server that predates it 404s. */
+  finaliseRecap(): Promise<{ ok: boolean }>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;
   /** an ARCHIVED match's stats table — `recapCsvUrl` only ever serves the LIVE scorer (W1/F6) */

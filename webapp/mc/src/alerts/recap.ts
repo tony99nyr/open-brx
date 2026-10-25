@@ -2,13 +2,6 @@
 import type { AlertDef } from './index';
 
 export const RECAP_ALERTS: Record<string, AlertDef> = {
-  // ---- RECAP.tsx -------------------------------------------------------------------------------
-  'recap-after-whistle-breakdown': { sev: 'neutral',
-    text: 'RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.' },
-  'recap-after-whistle-count': { sev: 'neutral',
-    text: 'RECORDED, NOT COUNTED: THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE. '
-      + 'THIS MC SENT THE COUNT WITHOUT THE PER-PLAYER SPLIT, SO THERE IS NONE TO SHOW.' },
-  'recap-archived-banner': { sev: 'neutral', text: 'ARCHIVED MATCH: ENDED {date} · READ ONLY' },
   // an export failure is not a live-safety issue, so it is fix-before-next, not act-now, though it
   // used to render red on screen — the audit's own note on this row. One render site, three causes:
   // a 404 (words are MC_OLDER's, imported), a bad status, or a fetch failure (MC_OFFLINE.act, imported).
@@ -26,40 +19,14 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
     text: '{n} OF {total} NODES NEVER CONFIRMED THE END ({who}). MC TOLD THEM {tries} TIMES AND HAS STOPPED. '
       + '{reach}, AND REACHING A NODE IS NOT A CONFIRMATION. THIS IS A DELIVERY FACT: IT SAYS NOTHING ABOUT '
       + 'HOW THEY PLAYED. THAT TAGGER MAY HAVE PLAYED ON AFTER THE WHISTLE: CHECK IT ON THE GUN.' },
-  'recap-possession-neutral': { sev: 'neutral',
-    text: 'NEUTRAL {dur}: NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)' },
-  // a coverage caveat about the MEASUREMENT, not a fault in the match: no glyph, no amber.
-  'recap-possession-thin': { sev: 'neutral', why: 'a measurement caveat, not a fault',
-    text: 'BEST COVERAGE {dur} OF {dur2}: A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, '
-      + 'NOT A FULL ACCOUNT.' },
-  // F556: why a two-hill match can read more held time than its length. A fact about the sum, not a fault. F572: the hold-target sentence shows only when a target is set.
-  'recap-possession-sites': { sev: 'neutral',
-    text: 'HELD TIME ADDS UP OVER THE {n} HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO {dur} IN A {dur2} MATCH. THE {dur3} HOLD TARGET IS SUMMED ACROSS HILLS.' },
-  // milestone review 2026-10-18: a site the hill station counted itself (F555) is the authority, not a floor
-  'recap-possession-station': { sev: 'neutral',
-    text: '{who} COUNTED ITS OWN HOLD TIME. PHONES SAW {team} {dur} · {team2} {dur2}.' },
-  'recap-provisional-banner': { sev: 'amber',
-    text: '{n} NODE(S) HAVE NOT FLUSHED ({names}): BRING THEM INTO RANGE TO FINALIZE '
-      + '(KILLS LIVE IN THEIR REPORTS UNTIL THEN).' },
-  'recap-settling-banner': { sev: 'amber',
-    text: '{n} NODE(S) HAVE NOT REPORTED SINCE THE WHISTLE ({names}) · {s}S AGO: THESE TOTALS CAN STILL CHANGE.' },
   'recap-station-never-heard': { sev: 'amber', text: 'NEVER HEARD FROM: CHECK THE STATION ON SITE.' },
-  // F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of Wi-Fi
-  // range; MC only gets its result once it is heard again. Shown only for a station that DID report
-  // (`heard`) but not since the whistle -- a station never heard from at all keeps its own, stronger
-  // `recap-station-never-heard` alert instead of carrying both.
-  'recap-station-not-synced': { sev: 'amber', text: '{STATION} NEEDS SYNC: BRING IT INTO WI-FI' },
   'recap-status-inplay': { sev: 'neutral', text: 'IN PLAY · PROVISIONAL' },
   // SENDING/HOLDING is a NEUTRAL family (F221 rule): a node still delivering its own data is routine.
-  'recap-sync-awaiting': { sev: 'neutral', why: 'SENDING/HOLDING family', text: 'CONNECTED: AWAITING DATA' },
-  'recap-sync-no-report': { sev: 'amber', text: 'NO REPORT SINCE THE WHISTLE: BRING IT INTO RANGE.' },
   // a phone out of range after the whistle is fix-before-next, not a live-safety fault; it used to
   // render red (the same colour as a true act-now fault) — flagged in the audit's own issues list.
   'recap-sync-outofrange': { sev: 'amber', why: 'fix-before-next-match, not act-now, though it used to render red',
     text: 'OUT OF RANGE: WILL SYNC ON RETURN' },
   'recap-sync-sending': { sev: 'neutral', why: 'SENDING/HOLDING family', text: 'SENDING: {n} LEFT' },
-  'recap-team-kill-note': { sev: 'neutral',
-    text: 'K BELOW ZERO: A TEAM KILL COSTS THE SHOOTER ONE KILL, SO K AND K/D CAN GO BELOW ZERO.' },
 
   // ---- Spectate.tsx ------------------------------------------------------------------------------
   'spectate-clock-frozen': { sev: 'red', text: 'CLOCK FROZEN' },
@@ -88,4 +55,17 @@ export const RECAP_ALERTS: Record<string, AlertDef> = {
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
  *  positive/data status). */
 export const RECAP_RETIRED: Record<string, string> = {
+  'recap-after-whistle-breakdown': 'F596: the after-the-whistle box is gone; RESULT CHANGED covers a flipped winner',
+  'recap-after-whistle-count': 'F596: the after-the-whistle box is gone; RESULT CHANGED covers a flipped winner',
+  'recap-archived-banner': 'F596: now a small ARCHIVED chip beside the title, not an alert line',
+  'recap-possession-neutral': 'F596: the possession caveat lines are gone from RECAP',
+  'recap-possession-thin': 'F596: the possession caveat lines are gone from RECAP',
+  'recap-possession-sites': 'F596: the possession caveat lines are gone from RECAP',
+  'recap-possession-station': 'F596: the possession caveat lines are gone from RECAP',
+  'recap-provisional-banner': 'F596: the NOT FLUSHED line is gone; the sync strip carries its meaning',
+  'recap-settling-banner': 'F596: the STILL SETTLING line is gone; the sync strip carries its meaning',
+  'recap-station-not-synced': 'F596: a station that has not synced is an icon in the sync strip',
+  'recap-team-kill-note': 'F596: now a small icon beside the negative score, with the words as its hover',
+  'recap-sync-awaiting': 'F596: the per-player DATA SYNC chips are gone; the strip icon carries the stage',
+  'recap-sync-no-report': 'F596: the per-player DATA SYNC chips are gone; the strip icon carries the stage',
 };

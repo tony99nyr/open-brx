@@ -843,6 +843,10 @@ step('hill-departed-restore', async ({ browser, base }) => {
   // --- PLAY AGAIN: the server's refusal names it, in the error strip the operator reads -----------------------
   const pg = await go(await newPage(browser, base), 'recap');
   const again = pg.locator('[data-testid="recap-next-match"] button');
+  // F596: a hill station the match never heard back from keeps the result PENDING, and PLAY AGAIN is hidden until FINALISE (two taps)
+  const fin = pg.locator('[data-testid="finalise"]');
+  await until(() => Promise.all([again.count(), fin.count()]).then(([a, f]) => a + f > 0), 8000, 'PLAY AGAIN or FINALISE on RECAP');
+  if (await fin.count() > 0) { await fin.click(); await fin.click(); }
   await until(() => again.count().then(n => n > 0), 8000, 'PLAY AGAIN on RECAP');
   await again.click();
   const strip = errorStrip(pg);
@@ -930,9 +934,8 @@ step('recap-possession', async ({ browser, base }) => {
   expect(bars[0]?.pct === '100%', `the leader's bar is full (saw ${JSON.stringify(bars[0])})`);
   expect(bars[1] && bars[1].w > 0 && bars[1].w < bars[0].w, `the trailing bar is shorter and not zero (${JSON.stringify(bars)})`);
   expect(bars[0].bg !== bars[1].bg, `the two bars are painted their own team colours (${JSON.stringify(bars.map(b => b.bg))})`);
-  // neutral time is nobody's, and the screen has to say so or 96 s went missing
-  expect(/NEUTRAL 1:36/.test(txt), `the 96 s the hill sat unowned is shown as NEUTRAL 1:36 (saw ${JSON.stringify(txt.slice(0, 240))})`);
-  expect(/NOBODY HELD THE POINT/i.test(txt), 'the neutral line says nobody held it');
+  // F596: the NEUTRAL sentence is gone from RECAP (no caveat lines under the possession bars)
+  expect(!/NEUTRAL|NOBODY HELD THE POINT/i.test(txt), `no neutral-time sentence on the possession panel (saw ${JSON.stringify(txt.slice(0, 240))})`);
   // 🔴 the whole reason the panel exists: the WINNER comes off possession, not the kills table
   const winner = await pg.locator('main').textContent();
   // the block names the TEAM as the live config names it ("RED TEAM"), not the raw team_id
@@ -943,41 +946,25 @@ step('recap-possession', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-// Possession from a grenade is a LOWER BOUND (F92: the beacon is IR, only a gun in range hears it).
-// A number presented as the result when a third of the match went unwatched is a wrong answer stated
-// confidently, so the coverage line goes AMBER under 75%.
+// F596: possession from a grenade is a LOWER BOUND (F92), but the BEST COVERAGE sentence is gone from RECAP: no caveat
+// line under the bars, thin coverage or full.
 step('recap-coverage-floor', async ({ browser, base }) => {
   await resetTdm(base);
-  const open = async coverage => {
+  for (const coverage of ['thin', 'full']) {
     const pg = await newPage(browser, base);
     await patchSnapshots(pg, st => { st.recap = recapFixture(['--coverage', coverage]); });
     await go(pg, 'build');
     await pickKoth(pg);
     await go(pg, 'recap');
-    const line = pg.getByTestId('possession').locator('div', { hasText: 'BEST COVERAGE' }).last();
-    await until(() => line.count().then(n => n > 0), 10000, `the coverage line (${coverage})`);
-    return { pg, line };
-  };
-  const thin = await open('thin');            // 441 of 600 s = 73.5%
-  const tTxt = await thin.line.textContent();
-  expect(/BEST COVERAGE 7:21 OF 10:00/.test(tTxt), `the coverage line reads "BEST COVERAGE 7:21 OF 10:00" (saw ${JSON.stringify(tTxt.trim().slice(0, 140))})`);
-  expect(/THIS IS A FLOOR, NOT A FULL ACCOUNT/i.test(tTxt), 'it says the number is a FLOOR');
-  // F221 (approved audit): a coverage caveat is about the MEASUREMENT, not a fault in the match, so
-  // it is NEUTRAL whatever the number says: no ▲, no colour change under 75%.
-  expect(!/^▲/.test(tTxt.trim()), 'a thin coverage run is NEUTRAL, not flagged with ▲');
-  const tStyle = await thin.line.evaluate(e => ({ c: getComputedStyle(e).color, px: parseFloat(getComputedStyle(e).fontSize) }));
-  expect(tStyle.px >= 10, `the coverage line is legible (${tStyle.px}px)`);
-  await shot(thin.pg, '18-coverage-thin');
-  await closePage(thin.pg);
-
-  const full = await open('full');            // 560 of 600 s = 93%
-  const fTxt = await full.line.textContent();
-  expect(/BEST COVERAGE 9:20 OF 10:00/.test(fTxt), `a well-watched match reads 9:20 OF 10:00 (saw ${JSON.stringify(fTxt.trim().slice(0, 140))})`);
-  expect(!/^▲/.test(fTxt.trim()), 'CONTROL: a well-covered run is not flagged either');
-  const fStyle = await full.line.evaluate(e => getComputedStyle(e).color);
-  expect(fStyle === tStyle.c, `the coverage caveat is NEUTRAL regardless of coverage: same colour thin vs full (${tStyle.c} vs ${fStyle})`);
-  ok(`the coverage floor is stated as a neutral measurement caveat, never flagged  ${await shot(full.pg, '18-coverage-full')}`);
-  await closePage(full.pg);
+    const poss = pg.getByTestId('possession');
+    await until(() => poss.count().then(n => n > 0), 10000, `the possession panel (${coverage})`);
+    const txt = await poss.textContent();
+    expect(!/BEST COVERAGE|FLOOR, NOT A FULL ACCOUNT/i.test(txt), `${coverage}: no coverage caveat sentence (saw ${JSON.stringify(txt.trim().slice(0, 160))})`);
+    expect(await pg.locator('[data-alert^="recap-possession"]').count() === 0, `${coverage}: no possession alert line at all`);
+    await shot(pg, `18-coverage-${coverage}`);
+    await closePage(pg);
+  }
+  ok('the coverage caveat sentence is gone for thin and full coverage alike');
 });
 
 // A8, field 2026-08-30: "it kinda was showing the final results as if it was final and then it finally
@@ -992,20 +979,11 @@ step('recap-settling', async ({ browser, base }) => {
   await go(pg, 'build');
   await pickKoth(pg);
   await go(pg, 'recap');
-  const band = pg.getByTestId('settling');
-  await until(() => band.count().then(n => n > 0), 10000, 'the STILL SETTLING banner');
-  expect(await band.isVisible(), 'the STILL SETTLING banner is visible');
-  const txt = await band.textContent();
-  expect(/STILL SETTLING/.test(txt), 'it says STILL SETTLING');
-  expect(/2 NODES HAVE NOT REPORTED SINCE THE WHISTLE/.test(txt), `it counts the silent nodes (saw ${JSON.stringify(txt.trim().slice(0, 160))})`);
-  expect(/THESE TOTALS CAN STILL CHANGE/.test(txt), 'it says the totals can still change — the whole point');
-  // Case matters here: nothing uppercases this band, so a `4s` in the source renders as a lowercase
-  // "4s" in an otherwise all-caps strip. Asserted exactly, not case-insensitively.
-  expect(/4S AGO/.test(txt), `it says how long ago the whistle was, in the band's own case (saw ${JSON.stringify(txt.trim().slice(0, 200))})`);
-  expect(!/\ds AGO/.test(txt), 'and not as a lowercase "4s" in a caps strip');
-  expect(!/PROVISIONAL/.test(txt), 'it is its own banner, not the provisional one');
-  const px = await band.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
-  expect(px >= 10, `the banner is legible (${px}px)`);
+  await pg.getByTestId('possession').waitFor({ state: 'visible', timeout: 10000 });
+  // F596: the STILL SETTLING banner is gone. The fixture has no `sync`, so this is also the older-MC case: no pending state.
+  expect(await pg.getByTestId('settling').count() === 0, 'a settling recap renders NO settling banner');
+  expect(!/STILL SETTLING|THESE TOTALS CAN STILL CHANGE/.test(await pg.locator('main').textContent()), 'and no STILL SETTLING text anywhere on it');
+  expect(await pg.getByTestId('results-pending').count() === 0, 'with no `sync` in the snapshot there is no pending state');
   await shot(pg, '19-settling');
   await closePage(pg);
 
@@ -1018,7 +996,7 @@ step('recap-settling', async ({ browser, base }) => {
   await until(() => pg2.getByTestId('possession').count().then(n => n > 0), 10000, 'the settled recap to render');
   expect(await pg2.getByTestId('settling').count() === 0, 'a settled recap renders NO settling banner');
   expect(!/STILL SETTLING/.test(await pg2.locator('main').textContent()), 'and no STILL SETTLING text anywhere on it');
-  ok(`STILL SETTLING on a moving recap, nothing on a settled one  ${await shot(pg2, '19-settled')}`);
+  ok(`no STILL SETTLING banner on a moving recap or a settled one  ${await shot(pg2, '19-settled')}`);
   await closePage(pg2);
 });
 

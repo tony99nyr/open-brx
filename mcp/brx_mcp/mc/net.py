@@ -839,6 +839,8 @@ class NetServer:
             try:
                 clean_body = dict(body)
                 clean_body.pop("prior_utility", None)       # the takeover key never reaches session code
+                if type(clean_body.get("pending")) is not int or clean_body["pending"] < 0:
+                    clean_body.pop("pending", None)         # F596: old or malformed hellos make no count claim
                 if prior_utility_node_id:
                     clean_body["prior_utility_node_id"] = prior_utility_node_id
                 node_ctx = self._hydrate(clean_body)

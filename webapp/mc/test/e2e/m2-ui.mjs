@@ -379,10 +379,11 @@ async function runMock(browser, viteBase, vp, tag) {
   await until(() => pg.locator('text=MATCH COMPLETE').count().then(n => n > 0), 15000, 'the RECAP screen');
   const rStk = await pg.locator('[data-cell="stk"]').evaluateAll(els => els.map(e => e.textContent.trim()));
   expect(rStk.length > 0 && rStk.every(v => /^\d+$/.test(v)), `RECAP's STK column renders (${rStk.join(',')})`);
+  // F596: the after-the-whistle box is gone even though the demo records two late facts; RESULT CHANGED covers a flipped winner
   const after = await pg.locator('[data-testid="after-end"]').count();
-  expect(after === 1, 'the after-the-whistle block is on the recap (the demo records two late facts)');
-  const afterTxt = after ? (await pg.locator('[data-testid="after-end"]').innerText()).replace(/\s+/g, ' ') : '';
-  expect(/RECORDED, NOT COUNTED/i.test(afterTxt), `it says the facts do not count (saw ${JSON.stringify(afterTxt.slice(0, 120))})`);
+  expect(after === 0, 'no after-the-whistle block on the recap (the demo records two late facts)');
+  const afterTxt = '';
+  expect(!/RECORDED, NOT COUNTED/i.test(await pg.locator('main').innerText()), 'and none of its words');
   await audit(pg, 'main', `${tag} RECAP`);
   ok(`RECAP: STK ${rStk.join(',')} · "${afterTxt.slice(0, 90)}"   ${await shot(pg, `04-${tag}-recap`)}`);
 
@@ -468,6 +469,11 @@ async function runMock(browser, viteBase, vp, tag) {
   // The OTHER branch of the board: after the whistle the projector shows the final card and the same
   // table, and it has to fit for the same reason. Ended through the control, not by poking the rows.
   await pg.evaluate(async () => { await window.__MC_MOCK__.control('end'); });
+  // F596: the demo's last phone never arrives, so the projector first shows RESULTS PENDING, with no winner and no ranking.
+  await until(() => pg.locator('[data-spectate="pending"]').count().then(n => n > 0), 20000, 'the pending card on the projector');
+  expect(await pg.locator('[data-spectate="final"]').count() === 0, 'no winner card while results are pending');
+  expect(!/WINS/.test(await pg.locator('body').innerText()), 'and no WINS line anywhere on the projector');
+  await pg.evaluate(async () => { await window.__MC_MOCK__.finaliseRecap(); });
   // Wait for the thing that CHANGES. "12 rows on the board" is already true of the live board, so
   // waiting on it measured the live board and called it the final card (caught in this run's own
   // screenshot, 2026-09-12): the result card is the only proof the whistle has blown.

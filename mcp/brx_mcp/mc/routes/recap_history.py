@@ -32,6 +32,13 @@ def routes(ctx) -> list[BaseRoute]:
         return JSONResponse(r) if r else _err("no match", 404)
 
 
+    async def finalise_recap(_):
+        try:
+            return JSONResponse(s.finalise_recap())
+        except ValueError as e:
+            return _err(e, 409)
+
+
     async def match_history(_):
         """Past matches, newest first (A8): the RECAP screen's history picker. Read-only, so it needs
         no operator token — a spectator may look at how the last round went."""
@@ -104,6 +111,9 @@ def routes(ctx) -> list[BaseRoute]:
         scorer = match.scorer if match is not None else None
         if not scorer:
             return _err("no match", 404)
+        if (s.recap().get("sync") or {}).get("pending"):
+            # F596: the table is provisional until every phone is received or FINALISE, as on the RECAP page
+            return _err("results pending: wait for every phone to sync, or FINALISE", 409)
         return _csv(scorer.csv(), "recap.csv")
 
 
@@ -133,6 +143,7 @@ def routes(ctx) -> list[BaseRoute]:
 
     return [
         Route("/api/recap", recap),
+        Route("/api/recap/finalise", finalise_recap, methods=["POST"]),
         Route("/api/matches", match_history),
         Route("/api/diag/matches", diag_matches),
         Route("/api/recap.csv", recap_csv),

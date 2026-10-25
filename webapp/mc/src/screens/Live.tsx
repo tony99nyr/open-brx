@@ -5,8 +5,10 @@ import { NEVER_SEEN_MS, STALE_AFTER_MS, type LiveRow, type LiveView, type State 
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
-import { Blink, ClockSub, GhostButton, Num, ScrollX, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
+import { Blink, ClockSub, GhostButton, Num, PrimaryButton, ScrollX, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
+import { recapSync } from '../api/recapSync';
+import { waitingLine } from './SyncStrip';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 import { floorSource, heldSeconds, hillOwner, sitesNote, stationSource } from './objective';
 import { objectiveWord } from '../rules/scoring';
@@ -100,7 +102,7 @@ const reachTxt = (r: ControlResult) =>
 const short = (r: ControlResult) => r.nodes != null && (r.reached ?? 0) < r.nodes;
 
 export function Live() {
-  const { state, feed, run, api, serverNow, connected, authRequired } = useStore();
+  const { state, feed, run, api, serverNow, connected, authRequired, setView } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);   // A47: the row whose operator menu is open
@@ -119,6 +121,11 @@ export function Live() {
       </div>
     );
   }
+  // F596: after the whistle, while a phone bound at the whistle has not delivered, LIVE must not headline a score,
+  // a leader or a hold time, or rank anyone either (`state.live` is still sent in RECAP): the score strip becomes the
+  // pending header with a way to the RECAP, and the board keeps ROSTER order. Everything else (END delivery, faults) stays.
+  const pendingSync = state.phase === 'recap' ? recapSync(state.recap) : undefined;
+  const pending = !!pendingSync?.pending;
   // POST /api/control answers 200 with `ok:false` when it REFUSES — an END with no scorer, or a
   // second END after the recap is written (state.py `control`). The old handler read `reached`/`nodes`
   // and threw `error` away, so the one press that did nothing reported "END REACHED 0 OF 8 NODE(S)":
@@ -135,7 +142,8 @@ export function Live() {
   };
   const header = boardHeader(state, serverNow());
   const { remaining, objective, teamIds } = header;
-  const ranked = [...lv.rows].sort((a, b) => b.kills - a.kills);
+  const rosterIx = new Map(state.players.map((p, i) => [p.player_id, i]));
+  const ranked = [...lv.rows].sort(pending ? (a, b) => (rosterIx.get(a.player_id) ?? 1e6) - (rosterIx.get(b.player_id) ?? 1e6) : (a, b) => b.kills - a.kills);
   // M6 (visual QA 2026-09-24): the rows the operator has to act on come first; the kill ranking inside each.
   // `ranked` itself stays the kill ranking: the FFA LEADER reads it.
   const faultOf = (r: LiveRow) => !!rowFault(r, { offline: !connected, endUnconfirmed: (state.end_delivery?.unconfirmed ?? []).some(u => u.player_id === r.player_id) });
@@ -183,6 +191,14 @@ export function Live() {
         </a>
       </div>
       {/* score strip */}
+      {pending ? (
+        <div data-testid="live-pending" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', padding: '14px 22px', marginBottom: 16, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `4px solid ${T.warn}` }}>
+          <span style={{ font: F.osw(700, 30), letterSpacing: '.08em' }}>RESULTS PENDING</span>
+          {waitingLine(pendingSync!.rows) && <span style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(pendingSync!.rows)}</span>}
+          <span style={{ flex: 1 }} />
+          <span data-testid="live-open-recap"><PrimaryButton size={13} onClick={() => setView('recap')}>OPEN RECAP ▸</PrimaryButton></span>
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2, marginBottom: 16 }}>
         {teamIds.length >= 2 ? (
           <>
@@ -202,7 +218,8 @@ export function Live() {
           </>
         )}
       </div>
-      {objective && <HillPanel state={state} lv={lv} teamIds={teamIds} />}
+      )}
+      {objective && !pending && <HillPanel state={state} lv={lv} teamIds={teamIds} />}
       {/* M7 (visual QA 2026-09-24): compact, so the board starts near the top at 1440×900 */}
       <StationAlerts showUnlock compact />
       <PowerupStrip compact />

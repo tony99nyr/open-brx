@@ -5,7 +5,6 @@
 // M23: the header printed the 10:00 time limit over a match that was ended early.
 import { describe, expect, it } from 'vitest';
 import { Recap } from '../src/screens/Recap';
-import { recapDeliveryText } from '../src/screens/recapDelivery';
 import type { EndDeliveryView, LiveView, RecapView, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
@@ -37,52 +36,47 @@ async function recap(over: Partial<State>, rc: Partial<RecapView> = {}) {
   return mountScreen(<Recap />, { ...d, state, view: 'recap' });
 }
 
+/** F596: the server's `sync` view. The END is a FLAG on the phone's strip icon now, never a sentence. */
+const sync = (over: Record<string, Partial<Record<string, unknown>>> = {}, pending = false) => ({ sync: { pending, finalised: false, result_changed: false,
+  rows: ['p1', 'p2'].map(id => ({ kind: 'phone', id, name: id === 'p1' ? 'ALPHA' : 'BRAVO', team_id: 'blue', stage: 'received', transport: null,
+    end_unconfirmed: false, idle_s: 0, stuck: false, ...(over[id] ?? {}) })) } } as unknown as Partial<RecapView>);
+
 describe('M1 · RECAP says one consistent thing about the END', () => {
-  it('never says NEVER while MC is still re-delivering', async () => {
-    const m = await recap({ end_delivery: EARLY });
-    const el = m.find('[data-testid="end-delivery-recap"]')[0];
-    const t = strip(el.textContent ?? '');
-    expect(t).not.toContain('NEVER');
-    expect(t).toContain('2 OF 2 NODES HAVE NOT CONFIRMED THE END YET (ALPHA, BRAVO)');
-    expect(t).toContain('STILL RE-DELIVERING');
-    expect(el.getAttribute('data-end-state')).toBe('retrying');
-    expect(el.getAttribute('role'), 'a retry in progress is a status, not an alarm').toBe('status');
+  it('prints no END sentence while MC is still re-delivering: one flag on the phone that has not confirmed', async () => {
+    const m = await recap({ end_delivery: EARLY }, sync({ p1: { end_unconfirmed: true }, p2: { end_unconfirmed: true } }));
+    expect(m.find('[data-testid="end-delivery-recap"]').length, 'the END block is gone').toBe(0);
+    expect(strip(m.text())).not.toContain('HAVE NOT CONFIRMED THE END');
+    expect(m.find('[data-strip-end]').length, 'one flag per unconfirmed phone').toBe(2);
   });
 
-  it('separates REACHED (the link took it) from CONFIRMED (the HUD answered)', async () => {
-    const m = await recap({ end_delivery: EARLY });
-    const t = strip(m.find('[data-testid="end-delivery-recap"]')[0].textContent ?? '');
-    expect(t).toContain('THE END REACHED 2 OF THOSE 2 NODES, AND REACHING A NODE IS NOT A CONFIRMATION');
+  it('a REACHED / CONFIRMED sentence is not on the screen either', async () => {
+    const m = await recap({ end_delivery: EARLY }, sync({ p1: { end_unconfirmed: true } }));
+    expect(strip(m.text())).not.toContain('REACHING A NODE IS NOT A CONFIRMATION');
   });
 
-  it('says NEVER, red, only once the ladder is spent', async () => {
-    const m = await recap({ end_delivery: SPENT });
-    const el = m.find('[data-testid="end-delivery-recap"]')[0];
-    const t = strip(el.textContent ?? '');
-    expect(t).toContain('1 OF 2 NODES NEVER CONFIRMED THE END (BRAVO)');
-    expect(t).toContain('TOLD IT 7 TIMES AND HAS STOPPED');
-    expect(t).toContain('THE END HAS NOT REACHED THAT NODE');
-    expect(el.getAttribute('role')).toBe('alert');
+  it('colours the flag amber while re-delivering and red only once the ladder is spent', async () => {
+    const retry = await recap({ end_delivery: EARLY }, sync({ p2: { end_unconfirmed: true } }));
+    const spent = await recap({ end_delivery: SPENT }, sync({ p2: { end_unconfirmed: true } }));
+    const col = (m: typeof retry) => (m.find('[data-strip-end]')[0] as HTMLElement).style.color;
+    expect(col(retry)).not.toBe(col(spent));
+    expect(spent.find('[data-testid="end-delivery-recap"]').length, 'a spent ladder prints no sentence either').toBe(0);
   });
 
-  it('no DATA SYNC chip says a bare SYNCED next to an unconfirmed END', async () => {
-    const m = await recap({ end_delivery: SPENT });
-    const alpha = strip(m.find('[data-sync-chip="p1"]')[0].textContent ?? '');
-    const bravo = strip(m.find('[data-sync-chip="p2"]')[0].textContent ?? '');
-    expect(alpha).toContain('DATA SYNCED ✓');
-    expect(alpha).not.toContain('END NOT CONFIRMED');
-    expect(bravo).toMatch(/DATA SYNCED ✓ ?· END NOT CONFIRMED/);
+  it('no per-player DATA SYNC chip is drawn; a phone with a flag says END not confirmed in its title', async () => {
+    const m = await recap({ end_delivery: SPENT }, sync({ p2: { end_unconfirmed: true } }));
+    expect(m.find('[data-sync-chip]').length).toBe(0);
+    expect(m.find('[data-strip-icon="p2"]')[0].getAttribute('title')).toContain('END not confirmed');
+    expect(m.find('[data-strip-icon="p1"]').length, 'a clean phone has no kept icon once all are in').toBe(0);
   });
 
-  it('a phone MC has not heard from since the whistle is not called synced', async () => {
-    const m = await recap({}, { settling: true, awaiting: ['p2'], since_end_ms: 3_000 });
-    expect(strip(m.find('[data-sync-chip="p2"]')[0].textContent ?? '')).toContain('NO REPORT SINCE THE WHISTLE');
-    expect(strip(m.find('[data-sync-chip="p2"]')[0].textContent ?? '')).not.toContain('SYNCED');
+  it('a phone MC has not heard from since the whistle is an unlinked icon, not a NO REPORT sentence', async () => {
+    const m = await recap({}, sync({ p2: { stage: 'unlinked' } }, true));
+    expect(m.find('[data-strip-icon="p2"]')[0].getAttribute('data-stage')).toBe('unlinked');
+    expect(m.find('[data-strip-icon="p2"] [data-strip-unlinked]').length).toBe(1);
+    expect(strip(m.text())).not.toContain('NO REPORT SINCE THE WHISTLE');
+    expect(m.find('[data-sync-chip]').length).toBe(0);
   });
 
-  it('the text helper names the spent ladder for one phone, and returns null when all confirmed', () => {
-    expect(recapDeliveryText({ ...SPENT, unconfirmed: [], confirmed: 2 })).toBeNull();
-  });
 });
 
 describe('M23 · the RECAP header shows how long the match actually ran', () => {
