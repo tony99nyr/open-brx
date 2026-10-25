@@ -671,6 +671,11 @@ ScoreRow { player_id, display, team_id, kills, deaths, assists, shots, hits, acc
   and honours, and API winner fields are null. `/api/recap` and the snapshot retain per-player rows for the sync table.
   Recap history marks the current match pending without recap statistics or configuration, and both recap CSV routes
   return 409. Every path to a new match refuses a pending result with 409 until FINALISE or all receipts arrive.
+  **The phone shows the same stages** (Tony 2026-10-25, `app/src/hud/synctrack.js`): after the whistle its results
+  screen draws NOT LINKED/LINKED, SENDING N LEFT and RECEIVED, by MC's rule. RECEIVED needs a status with nothing pending
+  sent after the whistle (`transport.drainedAt`), and it latches. A stuck stage adds one reason and one action: no Wi-Fi
+  to MC or MC not answering, mobile data, or no progress for `SYNC_STUCK_S`. The end needs no stage of its own, because
+  that same status confirms it (A42). Back in the lobby, the track stays above READY until RECEIVED.
 - **Which player a fact scores for [F481-F487, 2026-10-05].** Each stored fact carries its node's holder at arrival, and a replay binds by that holder, so a replay repeats the live decision. At the whistle the node-to-player map freezes. A late fact stays on the player who held that phone then, through a handover, an evict and the roll. A player with no phone at the whistle takes their latest binding after it. The RECAP connection dots follow the live holder (F486). **Evict:** during a match an evicted node keeps its earlier facts' player. Facts it sends after the evict score for nobody, take no powerup and add no possession tally, live and in replay (F482). The node-map fallback never rebinds it: only a hello by its own gun does (F487). An evict in RECAP keeps its late facts and its pre-live sync record, so they still count (F483, Tony 2026-10-24: they happened in play).
 - **Medals [A11.4, A61]:** `feedback.medals: string[]` is a Halo-style stack: first_blood · ONE multi-kill medal, the
   highest of the ladder the chain has reached (double_kill 2 · triple_kill 3 · killtacular 4 · killtrocity 5 ·

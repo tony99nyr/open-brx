@@ -210,6 +210,9 @@ export class Transport {
     this.reach = null;                       // A28.3: 'lan' | 'backhaul' | null (not yet welcomed)
     /** @type {'wifi'|'cellular'|'none'|'unknown'|null} */
     this.connectionType = node.connection_type || null;   // F309: the phone's own connection; null = never told (web, tests)
+    // Phone sync track: when a status with nothing pending last reached the socket. MC marks the phone RECEIVED on such a
+    // status after the whistle (state.py `_sync_stage`), so the HUD's RECEIVED reads this, never the ring alone.
+    this.drainedAt = 0;
     /** @type {'wifi'|'cellular'|'none'|'unknown'|null} */
     this._boundConnType = null;             // F309: the connection when THIS socket bound (the one it rides)
     this.nodeType = node.node_type || 'phone';
@@ -368,7 +371,9 @@ export class Transport {
     // match it counts and says how many of ITS facts the outbox dropped (a bounded per-match map in storage), so MC shows a loss
     // only against the match it belongs to and never needs a baseline. Sent whenever the phone knows its match.
     if (this.matchId) full.outbox_lost = { match_id: this.matchId, n: this.ring.lostFor(this.matchId) };
-    return this._sendKind('status', full);
+    const sent = this._sendKind('status', full);
+    if (sent && full.pending === 0) this.drainedAt = this.now();
+    return sent;
   }
   /** F309: the phone's own connection (Capacitor Network `connectionType`). MC counts a phone as covered
    *  only when it reports `cellular` AND reached MC through the tunnel, or is on the LAN with `has_pub` (F595); anything unrecognised is 'unknown'.

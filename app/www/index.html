@@ -1182,8 +1182,22 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rfoot .fl{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 auto}   /* the blinking RETURN line sat a pixel off the sync line under it (design-result-pending.png) */
 .result .rfoot .ready{flex:0 0 auto;width:auto;min-width:180px;height:44px;font-size:21px;margin:0}
 .result .rfoot .ready.ghost{background:transparent;color:var(--mut);border:1px solid var(--edge);box-shadow:none}
-.result .syncline{font-size:11px;letter-spacing:.2em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.result .syncline.ok{color:var(--ok)}.result .syncline.warn{color:var(--warn)}
+/* Phone sync track (hud/synctrack.js, gallery option A): MC's own stages, NOT LINKED/LINKED, SENDING, RECEIVED, and one
+   sentence-case reason with one action. The current step glows; a done step is green. */
+.sy{display:flex;flex-direction:column;gap:5px;min-width:0}
+.sy .trk{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.18em;font-weight:700;white-space:nowrap;color:var(--mut)}
+.sy .nd{display:inline-flex;align-items:center;gap:5px}
+.sy .nd i{width:9px;height:9px;border:2px solid currentColor;border-radius:50%;display:inline-block;box-sizing:border-box}
+.sy .nd.done{color:var(--ok)}.sy .nd.done i{background:currentColor}
+.sy .nd.cur{color:var(--num)}.sy .nd.cur i{background:currentColor;box-shadow:0 0 8px currentColor}
+.sy.warn .nd.cur{color:var(--warn)}.sy.ok .nd.cur{color:var(--ok)}.sy.mut .nd.cur{color:var(--num)}
+.sy .ln{flex:0 0 18px;height:2px;background:currentColor;opacity:.35}
+.sy .via{display:inline-flex;align-items:center;gap:3px;color:var(--mut);letter-spacing:.1em}
+.sy .why{font-size:13px;letter-spacing:.01em;font-weight:500;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sy.warn .why{color:var(--warn)}
+.sy .act{color:var(--num);font-weight:700}
+.sy.blink .act{animation:retblink 1.1s steps(1,end) infinite}
+.lobby .foot .oversync{position:absolute;left:0;bottom:100%;margin-bottom:10px;padding:6px 10px;background:rgba(6,14,24,.86);border:1px solid var(--edge);max-width:100%}
 .result .sess{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .result .mcvline{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Blinks only while the result is NOT in — which is exactly when walking back to MC is the thing to do (D3). */

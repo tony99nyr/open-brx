@@ -790,15 +790,24 @@ setInterval(refreshPreflight, 5000);
 // transitions are deterministic and screen-truth asserts against them land within a couple of seconds,
 // which the debounce would otherwise blow straight through.
 let _boundRun = null;
+// Phone sync track (hud/synctrack.js): the facts it needs beyond bound/pending. `pendingChangedAt` moves whenever the
+// unsent count changes, so a count that sits still for SYNC_STUCK_MS reads as stuck.
+let _syncPending = null, _syncChangedAt = Date.now();
 setInterval(() => { try {
-  let bound, pending;
-  if (DEMO && !transport) { bound = engine.state().wsState === 'bound'; pending = 0; }
-  else {
+  let bound, pending, drainedAt = 0, connType = null, reach = null;
+  if (DEMO && !transport) {
+    bound = engine.state().wsState === 'bound'; pending = 0; drainedAt = bound ? Date.now() : 0;   // a bound stage has delivered
+    const o = typeof window !== 'undefined' && window.brxDemoSync;   // a stage that shows another sync state (demo.js)
+    if (o) ({ bound = bound, pending = pending, drainedAt = drainedAt, connType = connType, reach = reach } = o);
+  } else {
     _boundRun = debounceBound(_boundRun, !!transport && transport.state === 'bound');
     bound = _boundRun.committed;
-    pending = transport && transport.ring ? transport.ring.pending().length : 0;
+    pending = transport && transport.ring ? transport.ring.size : 0;
+    if (transport) ({ drainedAt, connectionType: connType, reach } = transport);
   }
-  hud.sync = { bound, pending };
+  if (pending !== _syncPending) { _syncPending = pending; _syncChangedAt = Date.now(); }
+  const o = DEMO && typeof window !== 'undefined' && window.brxDemoSync;
+  hud.sync = { bound, pending, drainedAt, connType, reach, pendingChangedAt: o && o.pendingChangedAt != null ? o.pendingChangedAt : _syncChangedAt };
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 

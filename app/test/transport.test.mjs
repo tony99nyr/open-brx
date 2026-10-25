@@ -122,6 +122,30 @@ test('F595: the hello carries the unsent count; an ack that empties the ring sen
   assert.equal(beats().length, n + 1, 'a partial prune waits for the next beat');
 });
 
+test('phone sync track: drainedAt is when a status with nothing pending last reached the socket', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
+  t.setStatusProvider(() => ({ arm_state: 'ended' }));
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 }); t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
+  assert.equal(t.status(), false); assert.equal(t.drainedAt, 0, 'unbound: nothing reached MC');
+  const p = t.connect({ url: 'ws://x/ws' });
+  const ws = sockets[0]; ws.open();
+  ws.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 })); await p;
+  await advance(1);
+  t.status();
+  assert.equal(t.drainedAt, 0, 'a beat with facts still queued is not a drain');
+  ws.recv(E.makeEnvelope('ack', { seq_hi: 2 }));        // empties the ring: the A78 beat goes at pending 0
+  assert.ok(t.drainedAt > 0, 'the zero-pending beat stamps drainedAt');
+  const first = t.drainedAt;
+  await advance(5);
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
+  t.status();
+  assert.equal(t.drainedAt, first, 'a beat with a new fact queued keeps the old stamp');
+});
+
 test('transport: hello→welcome→bind, queue offline, flush on reconnect, prune on ack', async ctx => {
   const advance = useClock(ctx);
   const sockets = [];
