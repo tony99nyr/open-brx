@@ -1441,6 +1441,9 @@ def test_melee_finishes_at_close_only():
     b.next_t = math.inf
     R.fight(random.Random(1), [a], [b], cap_ms=500 + kit.swap_ms)
     assert not b.alive and a.shots == 1 and a.last_effect == "melee"
+    wind = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0, allow_melee=True)
+    wind.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
+    assert wind.act(0) is None and wind.next_t == kit.swap_ms + R.MELEE_SWING_MS   # the slot-4 draw, then the swing
     plain = R.Fighter(kit, 115, 1, 0, random.Random(2), pull_ms=0)     # F609: no melee outside the rush
     plain.targets = [R.Fighter(kit, (30, 0, 0), 0, 0, random.Random(2))]
     assert plain.act(0) is not None and plain.last_effect != "melee"
