@@ -3,7 +3,7 @@
 // (state.py `_sync_stage`): RECEIVED only once a status with nothing pending reached MC after the whistle, and it latches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { syncTrack, trackHtml, SYNC_STUCK_MS } from '../src/hud/synctrack.js';
+import { syncTrack, trackHtml, chipHtml, SYNC_STUCK_MS, MC_SILENT_MS } from '../src/hud/synctrack.js';
 
 const END = 1_000_000;
 const base = { bound: true, pending: 0, drainedAt: 0, connType: 'wifi', reach: 'lan', pendingChangedAt: END };
@@ -19,6 +19,7 @@ test('RECEIVED needs a zero-pending status sent after the whistle, and it latche
   const r = at({ ...base, drainedAt: END + 10 });
   assert.equal(r.stage, 'received'); assert.equal(r.tone, 'ok'); assert.equal(r.action, null);
   assert.equal(at({ ...base, bound: false, connType: 'cellular', drainedAt: END + 10 }).stage, 'received', 'MC latches it too');
+  assert.equal(at({ ...base, pending: 1, drainedAt: END + 10 }).stage, 'sending', 'a fact queued after the receipt reopens it, as MC does');
 });
 
 test('SENDING N LEFT while bound with facts queued; mobile data says so; no progress for 2 min is stuck', () => {
@@ -29,11 +30,15 @@ test('SENDING N LEFT while bound with facts queued; mobile data says so; no prog
   const k = at({ ...base, pending: 12, pendingChangedAt: END }, END + SYNC_STUCK_MS);
   assert.equal(k.tone, 'warn'); assert.equal(k.reason, 'No progress for 2 min'); assert.equal(k.action, 'Walk back towards Mission Control');
   assert.equal(at({ ...base, pending: 12, pendingChangedAt: END }, END + SYNC_STUCK_MS - 1).reason, null, 'control: under 2 min');
+  assert.equal(at({ ...base, pending: 12, pendingChangedAt: END - 600_000 }, END + 1000).reason, null, 'a count still since play is not stuck at the whistle');
+  assert.equal(at({ ...base, pending: 12, pendingChangedAt: END, boundAt: END + 300_000 }, END + 301_000).reason, null, 'nor the moment it relinks');
 });
 
 test('NOT LINKED names the reason the phone can see, and one action', () => {
-  const w = at({ ...base, bound: false, pending: 3, connType: 'wifi' });
+  const w = at({ ...base, bound: false, pending: 3, connType: 'wifi', unboundAt: END }, END + MC_SILENT_MS);
   assert.deepEqual([w.stage, w.reason, w.action], ['unlinked', 'Mission Control is not answering', 'Tell the host']);
+  const r = at({ ...base, bound: false, pending: 3, connType: 'wifi', unboundAt: END + 1000 }, END + MC_SILENT_MS);
+  assert.deepEqual([r.reason, r.action, r.tone], ['Reconnecting to Mission Control', null, 'mut'], 'a short drop on Wi-Fi is the reconnect backoff, not MC (review)');
   for (const connType of ['cellular', 'none', 'unknown', null]) {
     const n = at({ ...base, bound: false, pending: 3, connType });
     assert.deepEqual([n.reason, n.action], ['No Wi-Fi to Mission Control', 'Walk back towards Mission Control'], String(connType));
@@ -48,4 +53,7 @@ test('the markup: three steps, sentence-case reason, no capitalised warning sent
   assert.doesNotMatch(html, /NO PROGRESS|WALK BACK/);
   assert.match(trackHtml(at({ ...base, bound: false, pending: 3 })), /NOT LINKED/);
   assert.equal(trackHtml(null), '');
+  assert.match(chipHtml(at({ ...base, drainedAt: END + 10 })), /✓ RECEIVED/);
+  assert.match(chipHtml(at({ ...base, pending: 4 })), /SENDING · 4 LEFT/);
+  assert.equal(chipHtml(null), '');
 });

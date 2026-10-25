@@ -338,6 +338,7 @@ export class Transport {
   /** @param {TransportFact} fact @returns {number} */
   send(fact) {
     try {
+      this.drainedAt = 0;   // phone sync track: a new fact reopens the receipt, as a late batch reopens MC's row (Codex review)
       const ev = { ...fact };
       if (ev.t == null) ev.t = this.syncedNow();
       if (!('match_id' in ev)) ev.match_id = this.matchId;

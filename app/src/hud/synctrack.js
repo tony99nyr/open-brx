@@ -10,21 +10,31 @@
 export const SYNC_STUCK_MS = 120_000;
 
 const WALK = 'Walk back towards Mission Control';
+/** Unlinked on Wi-Fi this long before the phone blames MC: a few seconds off is the normal reconnect backoff (review). */
+export const MC_SILENT_MS = 30_000;
 
-/** `sync` is app.js's `hud.sync` ({bound, pending, drainedAt, connType, reach, pendingChangedAt}); `st` the engine state.
- *  Null before the whistle or without a reading. */
+/** `sync` is app.js's `hud.sync` ({bound, pending, drainedAt, connType, reach, pendingChangedAt, boundAt, unboundAt, whistleAt}); `st` the engine
+ *  state. Null before the whistle or without a reading. */
 export function syncTrack(sync, st, now) {
   if (!sync || !st || !st.ended) return null;
-  const endedAt = st.endedAt || 0;
+  // the whistle on the phone's own clock (app.js), which drainedAt and the progress times use; st.endedAt is MC's clock
+  const endedAt = sync.whistleAt || st.endedAt || 0;
   const via = sync.reach === 'backhaul' || sync.connType === 'cellular' ? 'cell' : 'wifi';
-  if (sync.drainedAt && sync.drainedAt >= endedAt) return { stage: 'received', via: null, n: 0, tone: 'ok', reason: 'Mission Control has all your scores', action: null };
+  // a fact queued after the receipt reopens it, as a late batch reopens MC's row (`_sync_events`)
+  if (sync.drainedAt && sync.drainedAt >= endedAt && !(sync.pending > 0)) return { stage: 'received', via: null, n: 0, tone: 'ok', reason: 'Mission Control has all your scores', action: null };
   if (!sync.bound) {
-    const wifi = sync.connType === 'wifi';
-    return { stage: 'unlinked', via: null, n: sync.pending || 0, tone: 'warn',
-      reason: wifi ? 'Mission Control is not answering' : 'No Wi-Fi to Mission Control', action: wifi ? 'Tell the host' : WALK };
+    const n = sync.pending || 0;
+    if (sync.connType !== 'wifi') return { stage: 'unlinked', via: null, n, tone: 'warn', reason: 'No Wi-Fi to Mission Control', action: WALK };
+    // on Wi-Fi: a short drop is the reconnect backoff, so the phone blames MC only after MC_SILENT_MS off the link
+    const off = Math.max(sync.unboundAt || 0, endedAt);
+    if (now - off < MC_SILENT_MS) return { stage: 'unlinked', via: null, n, tone: 'mut', reason: 'Reconnecting to Mission Control', action: null };
+    return { stage: 'unlinked', via: null, n, tone: 'warn', reason: 'Mission Control is not answering', action: 'Tell the host' };
   }
   if (!(sync.pending > 0)) return { stage: 'linked', via, n: 0, tone: 'mut', reason: 'Checking what is left to send', action: null };
-  const stuck = sync.pendingChangedAt != null && now - sync.pendingChangedAt >= SYNC_STUCK_MS;
+  // progress is measured from the latest of: the count last moving, the whistle, and this link (a count that sat still
+  // in play, or while the phone was away, is not stuck the moment the phone links)
+  const since = Math.max(sync.pendingChangedAt || 0, endedAt, sync.boundAt || 0);
+  const stuck = now - since >= SYNC_STUCK_MS;
   if (stuck) return { stage: 'sending', via, n: sync.pending, tone: 'warn', reason: 'No progress for 2 min', action: WALK };
   return { stage: 'sending', via, n: sync.pending, tone: 'num', reason: via === 'cell' ? 'Over mobile data, slower than the Wi-Fi' : null, action: null };
 }
@@ -44,4 +54,13 @@ export function trackHtml(t, { blink = false } = {}) {
   const why = t.reason || t.action ? `<div class="why">${t.reason || ''}${t.reason && t.action ? ' · ' : ''}${t.action ? `<span class="act">▸ ${t.action}</span>` : ''}</div>` : '';
   return `<div class="sy ${t.tone}${blink && t.action ? ' blink' : ''}" data-sync="${t.stage}"><div class="trk">${nd(at <= 1, at >= 2, at === 0 ? 'NOT LINKED' : 'LINKED')}${via}<span class="ln"></span>`
     + `${nd(at === 2, at === 3, t.stage === 'sending' ? `SENDING ${t.n} LEFT` : 'SENDING')}<span class="ln"></span>${nd(at === 3, false, 'RECEIVED')}</div>${why}</div>`;
+}
+
+/** The compact chip (gallery: back in the lobby): the stage as one label and the reason under it, or '' for no track. */
+export function chipHtml(t) {
+  if (!t) return '';
+  const label = t.stage === 'unlinked' ? 'NOT LINKED' : t.stage === 'linked' ? 'LINKED' : t.stage === 'sending' ? `SENDING · ${t.n} LEFT` : 'RECEIVED';
+  const mark = t.tone === 'ok' ? '✓' : t.tone === 'warn' ? '!' : '•';
+  const why = t.reason || t.action ? `<div class="why">${t.reason || ''}${t.reason && t.action ? ' · ' : ''}${t.action ? `<span class="act">▸ ${t.action}</span>` : ''}</div>` : '';
+  return `<div class="sychip ${t.tone}" data-sync="${t.stage}"><div class="l1">${mark} ${label}</div>${why}</div>`;
 }

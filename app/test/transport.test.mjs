@@ -143,7 +143,8 @@ test('phone sync track: drainedAt is when a status with nothing pending last rea
   await advance(5);
   t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
   t.status();
-  assert.equal(t.drainedAt, first, 'a beat with a new fact queued keeps the old stamp');
+  assert.ok(first > 0);
+  assert.equal(t.drainedAt, 0, 'a new fact reopens the receipt: MC needs a fresh zero-pending status (Codex review)');
 });
 
 test('transport: hello→welcome→bind, queue offline, flush on reconnect, prune on ack', async ctx => {

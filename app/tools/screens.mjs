@@ -5330,11 +5330,18 @@ for (const view of VIEWS) for (const [stage, sync, trk, why] of SYNC_CASES) {
     must(!/[A-Z]{3,} [A-Z]{3,} [A-Z]{3,}/.test(r.why || ''), 'a capitalised warning sentence: ' + r.why);
   });
 }
+await step('sync track night: the walk-back action does not blink at night (B4: nothing blinks at night)', async () => {
+  const pg = await open(VIEWS[0], 'result-pending', '&night');
+  await pg.waitForTimeout(1200);
+  const r = await pg.evaluate(() => { const e = document.querySelector('.result .rfoot .sy .act'); return e ? getComputedStyle(e).animationName : null; });
+  await pg.close();
+  must(r === 'none', 'the action blinks at night: ' + r);
+});
 for (const view of VIEWS) await step(`${view.name} sync track over-sync-unlinked: back in the lobby the track sits above READY until MC has the scores`, async () => {
   const pg = await open(view, 'over-sync-unlinked');
   await pg.waitForTimeout(1200);
   const r = await pg.evaluate(() => {
-    const e = document.querySelector('.lobby .foot .oversync .sy'), btn = document.querySelector('.lobby .foot .ready');
+    const e = document.querySelector('.lobby .foot .oversync .sychip'), btn = document.querySelector('.lobby .foot .ready');
     const plates = Array.from(document.querySelectorAll('.lobby .plate')).map(p => p.getBoundingClientRect());
     if (!e) return null;
     const a = e.closest('.oversync').getBoundingClientRect(), b = btn.getBoundingClientRect();
