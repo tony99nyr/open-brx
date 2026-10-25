@@ -41,6 +41,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   list, "Last Man Standing is post-MVP too" — do not build this fix for MVP. `build` (post-MVP).
 
 - **F407 🟡 INFECTION IS POST-MVP.** Tony, 2026-09-25: "infection can be post mvp". The mode exists in Mission Control's code (MODES row `mvp: false`, hidden from the picker; F319 (a)'s survivor-only alert stays built) but has never run a real match. Before it returns: a desk proof of its win paths (the last human, time expiry) with the chaos suite, then a bench match. `build` + `bench`.
+- **F616 🟢 INFECTION: RE-CHECK THE SURVIVOR'S TIME-OUT CUE AGAINST THE NO-PROVISIONAL-WINNER RULE.** brx2 for brx4, 2026-10-25 (brx1). Under A81 a phone shows no winner until MC releases the result. One exception stays, by design (brx1 and Tony): at an infection time-out an unturned survivor's phone plays `survivors_win` from its own clock (`engine.js` `_writeTeardown`, A11.4), before the release, because the survivor's clock is real knowledge. When infection is built, re-check that cue: a late fact could show the survivor was turned earlier. `build`.
 
 - **F409 🟡 CUSTOM GAMEPLAY PRESETS.** Tony, 2026-09-25: "post mvp we could enable some way of either loading or customizing the gameplay into presets". Today a host picks a stock mode or a saved game; gameplay rules cannot be loaded or edited as a named preset. Design first (what a preset holds beside a saved game), then build. `decision` + `build`.
 
