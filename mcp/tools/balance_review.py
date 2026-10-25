@@ -109,7 +109,7 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # --------------------------------------------------------------------------- #
 
 SCENARIO_VERSION = 23   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a one-hit finish needs one landed hit (F617)
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -567,10 +567,11 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
-    if mode != "charge" and 0 < pool < damage:
-        # F617: a target with less health than one shot still needs one LANDED shot, not a fraction of one: a
-        # 5-health target is not killed by 26 x 0.20 = 5.2 expected Deagle damage.
-        pool = damage
+    if mode != "charge" and damage > 0 and pool > 0:
+        # F617: a kill needs whole LANDED shots. The loop below spends `damage * chance` a shot, so it must spend
+        # down a pool rounded up to whole shots: a 5-health target is not killed by 26 x 0.20 = 5.2 expected Deagle
+        # damage, and a 30-health one needs two landed hits (about 10 shots at 0.20), not 30 / 5.2 = 6.
+        pool = math.ceil(pool / damage) * damage
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -594,6 +595,15 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         got = min(mag - ammo, reserve)
         ammo += got
         reserve -= got
+    fired_at, last_dmg = None, 0.0
+
+    def run_dry():
+        # F617: a gun that runs dry on a round that kills IF it lands still finishes on that round. Whole landed
+        # shots leave one round's miss share, `damage * (1 - chance)`, unspent, and that must not read as never.
+        if fired_at is not None and pool <= last_dmg * (1 - chance) + 1e-9:
+            return fired_at
+        return math.inf
+
     while ammo > 0 or reserve > 0:
         cost = rpc if mode == "charge" and charged else 1
         if ammo < cost:
@@ -602,7 +612,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
                 continue
             got = min(mag - ammo, reserve)
             if got <= 0:
-                return math.inf
+                return run_dry()
             ammo += got
             reserve -= got
             elapsed += reload_ms * got if chain else reload_ms
@@ -617,11 +627,12 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         was_charged = mode == "charge" and charged
         ammo -= cost
         pool -= dmg * chance
+        last_dmg = dmg
         if pool <= 0:
             return elapsed
         if mode == "bolt":
             if reserve <= 0:
-                return math.inf
+                return run_dry()
             ammo += 1
             reserve -= 1
             # F581: compile's bolt cycle (`paced_cycle_ms`): one lever pull, the bolt, then the mean renewal
@@ -655,7 +666,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
                     reserve -= got
                 cooling_started = True
                 heat_t = t + elapsed
-    return math.inf
+    return run_dry()
 
 
 class Fighter:

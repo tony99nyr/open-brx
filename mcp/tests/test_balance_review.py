@@ -50,6 +50,33 @@ def test_burst_keeps_a_loaded_primary_when_deagle_needs_a_landed_hit():
     assert fighter.active == 0
 
 
+def test_finish_estimate_counts_whole_landed_shots():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    deagle = kit.guns[1]
+    hit = deagle.gun_dmg + deagle.head_dmg
+    est = {}
+    for health in (hit + 4, 2 * hit):
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+        target = R.Fighter(kit, (health, 0, 0), 0, R.DIST["mid"], rng)
+        fighter.targets = [target]
+        est[health] = fighter._finish_ms(1, target, 0)
+    # Both need two landed Deagle hits, so a mean-damage count must not call the first one quicker.
+    assert est[hit + 4] == est[2 * hit]
+
+
+def test_a_last_round_that_kills_if_it_lands_is_a_finish():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    rng = random.Random(7)
+    fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["close"], rng)
+    target = R.Fighter(kit, (5, 0, 0), 0, R.DIST["close"], rng)
+    fighter.targets = [target]
+    fighter.gs[1].ammo, fighter.gs[1].reserve = 1, 0
+    # Whole landed shots must not turn a likely one-round kill into "never".
+    assert 0.5 < fighter._hit_chance(1) < 1
+    assert fighter._finish_ms(1, target, 0) < float("inf")
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
