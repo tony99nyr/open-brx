@@ -6903,13 +6903,18 @@ test('A24 result: a STALE match_id is dropped, not rendered over this match', ()
   assert.equal(h.eng.state().result, null);
 });
 
-test('A81: a phone that reached MC after the whistle waits on RESULT PENDING, even out of range later', () => {
+test('A81: a phone whose report MC received waits on RESULT PENDING, even out of range later', () => {
   const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.setWsState('bound');
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-  h.eng.setWsState('bound');                            // delivered its scores (MC now holds the result for the others)
-  assert.equal(h.eng.state().resultWait, 'pending');
+  h.eng.markReached();                                  // app.js: the sync track reads RECEIVED (MC holds the result for the others)
   h.eng.setWsState('closed'); h.adv(31000);             // then walked out of range
-  assert.equal(h.eng.state().resultWait, 'pending', 'it reached MC, so MC NOT REACHED ("never reached") would be false');
+  assert.equal(h.eng.state().resultWait, 'pending', 'MC has its report, so MC NOT REACHED ("never reached") would be false');
+  // control: bound at the whistle but MC never had the report, then out of range: MC NOT REACHED, as before
+  const g = harness().kit().config_(); g.echo(); g.start(0); g.adv(100);
+  g.eng.setWsState('bound'); g.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  g.eng.setWsState('closed'); g.adv(31000);
+  assert.equal(g.eng.state().resultWait, 'unreached');
 });
 
 test('A24 result: no match_id, and no current match, are both dropped', () => {

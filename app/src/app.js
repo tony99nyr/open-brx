@@ -818,6 +818,8 @@ setInterval(() => { try {
   hud.sync = { bound, pending, drainedAt, connType, reach, pendingChangedAt: o && o.pendingChangedAt != null ? o.pendingChangedAt : _syncChangedAt,
     boundAt: o && o.boundAt != null ? o.boundAt : _syncBoundAt,
     unboundAt: o && o.unboundAt != null ? o.unboundAt : _syncUnboundAt, whistleAt: _syncWhistleAt };
+  // A81: once MC has this phone's post-whistle report (the track's RECEIVED), MC NOT REACHED would be false
+  if (es.ended && drainedAt && drainedAt >= (_syncWhistleAt || es.endedAt) && !(pending > 0)) engine.markReached();
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 

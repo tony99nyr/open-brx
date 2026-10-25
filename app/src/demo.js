@@ -408,7 +408,7 @@ export function startDemo({ engine, log }) {
         team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },
         honors: [{ medal: 'FIRST BLOOD', player_id: 'p-2', display: 'VIPER' }], provisional: false, t: Date.now() } }),   // no `stat` at all: the honour still names the player
       // The settle window has passed and MC is still unreachable: "MC NOT REACHED", which is NOT "you lost".
-      unreached: () => { engine.endedAt = engine.now() - 31000; engine.setWsState('closed'); },
+      unreached: () => { engine.endedAt = engine.now() - 31000; engine.setWsState('closed'); syncAs({ bound: false, pending: 0, drainedAt: 0 }); },   /* MC never had its report */
       mcVerify: line => { game.mc_verify = line || 'A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE'; ev.assign(); },
       seedHistory: () => { const h = hud(); if (!h) return;
         h.sessionId = 'demo-session'; const t0 = Date.now() - 3600e3;
