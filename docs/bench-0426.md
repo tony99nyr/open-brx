@@ -177,7 +177,7 @@ lets the word through to the yellow teammate's gun; if it does, only the phone k
 **P2.11. An FFA match (5 min).** Arm all three in FFA and throw. **Pass:** both other guns are stunned and the
 thrower is not. **Control:** the thrower's own `$HIR`, if its headset hears the word, shows no STUNNED (F438).
 
-## P3: outdoors, the victim-side reach (about 40 min)
+## P3: outdoors, the victim-side reach (about 60 min)
 
 Outdoors only, no walls or ceiling near the line. The shooter is Tactix-9498, the target is a second gun's headset at
 full Standard health, with a full capture. Both are armed from `compile.resolve()`.
@@ -193,6 +193,11 @@ F580, the F579 caveat.
 at the target headset from 1, 2, 3, 5 and 7 m, five strikes per mark. **Read:** the longest distance that hits. On the
 U002 proxy melee reached about 7 m, and the range token showed no usable effect on reach at 3 to 7 m. **Control:** a
 cloth over the target headset at 1 m gives 0. Rows: F580, F567.
+
+**P3.3. Hit odds against t2 and distance (20 min).** *Impact: the balance sim's range bands are invented; it needs a
+measured curve (F606).* The AR gun word at the target headset at 10, 20 and 30 m, with outdoor t2 100, 60 and 30, ten
+pulls per cell. Arm each t2 from `compile.resolve()` with only `range_outdoor_pct` changed. **Read:** hits out of ten
+per cell. **Control:** a cloth over the target headset at 10 m, t2 100, gives 0. Row: F606.
 
 ## Not in this sheet
 
