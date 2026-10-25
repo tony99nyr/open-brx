@@ -1,12 +1,15 @@
 """A81: a phone learns the outcome when MC releases the recap result."""
 
-from _session import go_live_stored, kill, persisting_live, restart_session
+import json
+
+from _session import go_live_stored, kill, persisting_live, restart_no_repersist, restart_session
 from brx_mcp.mc.fakes import demo_armory
 
 
 def _end_pending():
     s, net, clock, ps, info = go_live_stored(2, "ffa")
     kill(s, net, clock, ps, 0, 1, info, seq=1)
+    net.pushed.clear()
     s.control("end")
     assert s.phase == "recap" and s.recap()["sync"]["pending"]
     return s, net, clock, ps, info
@@ -28,7 +31,9 @@ def _welcome(net, i):
 def test_whistle_with_a_pending_phone_withholds_result_victory_and_welcome():
     s, net, clock, ps, info = _end_pending()
     assert net.pushes("result") == [] and _victories(net) == []
+    assert net.pushes("score") == []
     assert "result" not in _welcome(net, 1)
+    assert "score" not in _welcome(net, 1)
     net.simulate_status("node1", {"player_id": ps[1]["player_id"], "arm_state": "live",
                                   "match_id": info["match_id"], "pending": 1}, clock["t"])
     assert net.pushes("result") == [], "stale-live reconciliation must respect the wait"
@@ -42,15 +47,17 @@ def test_last_zero_pending_status_releases_once_to_every_node():
     _status(net, clock, ps, 1)
     assert s.match.released is True
     assert [p[0] for p in net.pushes("result")] == ["node0", "node1"]
+    assert [p[0] for p in net.pushes("score")] == ["node0", "node1"]
     assert [p[0] for p in _victories(net)] == ["node0"]
     _status(net, clock, ps, 1)
     s.recap()
     assert len(net.pushes("result")) == 2 and len(_victories(net)) == 1
+    assert len(net.pushes("score")) == 2
 
 
 def test_release_after_thirty_seconds_has_no_victory():
     s, net, clock, ps, info = _end_pending()
-    clock["t"] = s.match.scorer.end_t + 30_001
+    clock["t"] += 31_000
     _status(net, clock, ps, 0)
     _status(net, clock, ps, 1)
     assert len(net.pushes("result")) == 2 and _victories(net) == []
@@ -59,12 +66,14 @@ def test_release_after_thirty_seconds_has_no_victory():
 def test_finalise_releases_with_timed_victory_only():
     s, net, clock, ps, info = _end_pending()
     s.finalise_recap()
-    assert len(net.pushes("result")) == 2 and [p[0] for p in _victories(net)] == ["node0"]
+    assert len(net.pushes("result")) == 2 and len(net.pushes("score")) == 2
+    assert [p[0] for p in _victories(net)] == ["node0"]
     s.finalise_recap()
-    assert len(net.pushes("result")) == 2 and len(_victories(net)) == 1
+    assert len(net.pushes("result")) == 2 and len(net.pushes("score")) == 2
+    assert len(_victories(net)) == 1
 
     s2, net2, clock2, ps2, info2 = _end_pending()
-    clock2["t"] = s2.match.scorer.end_t + 30_001
+    clock2["t"] += 31_000
     s2.finalise_recap()
     assert len(net2.pushes("result")) == 2 and _victories(net2) == []
 
@@ -74,7 +83,7 @@ def test_late_batch_changes_released_result_without_second_victory():
     s.finalise_recap()
     first = net.pushes("result")[0][2]
     clock["t"] += 1_000
-    net.simulate_node_message("node1", "event_batch", {"events": [{
+    net.simulate_node_message("node0", "event_batch", {"events": [{
         "type": "death", "t": s.match.scorer.end_t - 1, "match_id": info["match_id"],
         "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
         "shooter_team": 1, "seq": 2}]}, clock["t"])
@@ -108,12 +117,24 @@ def test_restart_pending_stays_quiet_until_release():
     _welcome(net2, 0)
     assert "result" not in _welcome(net2, 1)
     s2.finalise_recap()
-    assert len(net2.pushes("result")) == 2
+    assert len(net2.pushes("result")) == 2 and len(_victories(net2)) == 1
+
+    s3, net3, clock3, ps3, info3 = persisting_live()
+    kill(s3, net3, clock3, ps3, 0, 1, info3, seq=1)
+    s3.control("end")
+    s4, net4 = restart_session(s3, clock3)
+    s4.resume_match()
+    _welcome(net4, 0)
+    _welcome(net4, 1)
+    clock3["t"] += 31_000
+    s4.finalise_recap()
+    assert len(net4.pushes("result")) == 2 and _victories(net4) == []
 
 
 def test_nobody_waited_on_at_whistle_releases_immediately():
     s, net, clock, ps, info = go_live_stored(2, "ffa")
     kill(s, net, clock, ps, 0, 1, info, seq=1)
+    net.pushed.clear()
     entry_for = s._sync_entry
 
     def already_received(nid):
@@ -123,9 +144,10 @@ def test_nobody_waited_on_at_whistle_releases_immediately():
         return entry
 
     s._sync_entry = already_received
+    before = len(net.pushes("result"))
     s.control("end")
     assert s.match.released is True
-    assert [p[0] for p in net.pushes("result")] == ["node0", "node1"]
+    assert [p[0] for p in net.pushes("result")[before:]] == ["node0", "node1"]
     assert [p[0] for p in _victories(net)] == ["node0"]
 
     s, net, clock, ps, info = go_live_stored(2, "ffa")
@@ -138,3 +160,139 @@ def test_nobody_waited_on_at_whistle_releases_immediately():
     s.control("end")
     assert s.match.released is True
     assert net.pushes("result") == [] and _victories(net) == []
+
+
+def test_late_batch_and_status_do_not_push_score_while_pending():
+    s, net, clock, ps, info = _end_pending()
+    net.simulate_node_message("node0", "event_batch", {"events": [{
+        "type": "death", "t": clock["t"] - 1, "match_id": info["match_id"],
+        "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
+        "shooter_team": 1, "seq": 2}]}, clock["t"])
+    _status(net, clock, ps, 0)
+    assert s.match.scorer.stats[ps[1]["player_id"]].kills == 1
+    assert s.match.released is False and net.pushes("score") == []
+
+
+def test_stale_live_return_after_late_winner_change_gets_current_result_only():
+    s, net, clock, ps, info = _end_pending()
+    initial = s.last_recap["winner"]
+    for seq in (2, 3):
+        net.simulate_node_message("node0", "event_batch", {"events": [{
+            "type": "death", "t": clock["t"] - 10 + seq, "match_id": info["match_id"],
+            "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
+            "shooter_team": 1, "seq": seq}]}, clock["t"])
+    assert s.last_recap["winner"] != initial
+    s.finalise_recap()
+    net.pushed.clear()
+    welcome = _welcome(net, 1)
+    assert welcome["result"]["winner"] == s.last_recap["winner"]
+    net.simulate_status("node1", {"player_id": ps[1]["player_id"], "arm_state": "live",
+                                  "match_id": info["match_id"], "pending": 1}, clock["t"])
+    pushed = net.pushes("result", "node1")
+    assert pushed and all(row[2]["winner"] == s.last_recap["winner"] for row in pushed)
+
+
+def test_getter_release_flushes_result_score_and_victory_on_tick_once():
+    s, net, clock, ps, info = _end_pending()
+    for nid in ("node0", "node1"):
+        s.match.sync_nodes[nid]["received"] = True
+    s.recap()
+    assert s.match.released and net.pushes("result") == [] and net.pushes("score") == []
+    s.tick()
+    assert len(net.pushes("result")) == 2 and len(net.pushes("score")) == 2
+    assert [kind for _nid, kind, _body in net.pushed if kind in ("result", "score")] == [
+        "result", "result", "score", "score"]
+    assert len(_victories(net)) == 1
+    s.tick()
+    assert len(net.pushes("result")) == 2 and len(net.pushes("score")) == 2
+    assert len(_victories(net)) == 1
+
+
+def test_mc_clock_step_back_does_not_cancel_instant_victory():
+    s, net, clock, ps, info = go_live_stored(2, "ffa")
+    mono = {"t": clock["t"]}
+    s.mono_ms = lambda: mono["t"]
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    mono["t"] = clock["t"]
+    s.control("end")
+    clock["t"] -= 60_000  # mc_clock_step: the wall clock moves, the monotonic clock does not
+    s.finalise_recap()
+    assert [p[0] for p in _victories(net)] == ["node0"]
+
+
+def test_frag_cap_kill_timestamp_ahead_of_mc_still_plays_victory():
+    s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
+    t = clock["t"] + 2_000
+    net.simulate_event("node1", {"type": "death", "t": t, "match_id": info["match_id"],
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1}, clock["t"], seq=1)
+    assert s.phase == "recap" and s.match.scorer.end_t > clock["t"]
+    s.finalise_recap()
+    assert [p[0] for p in _victories(net)] == ["node0"]
+
+
+def test_recap_team_edit_does_not_move_victory_to_loser():
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    winner_team = s.match.played[ps[0]["player_id"]]["team_id"]
+    net.evict("node0")
+    net.simulate_hello("replacement", f"GUN-A-{demo_armory()[0]['ble']['tail']}")
+    assert s.players[ps[0]["player_id"]]["node_id"] == "replacement"
+    s.patch_player(ps[0]["player_id"], team_id=ps[1]["team_id"])
+    s.patch_player(ps[1]["player_id"], team_id=winner_team)
+    s.finalise_recap()
+    assert [p[0] for p in _victories(net)] == ["replacement"]
+
+
+def test_crash_after_release_latch_replays_unsent_result_score_and_timed_victory():
+    s, net, clock, ps, info = persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    for nid in ("node0", "node1"):
+        s.match.sync_nodes[nid]["received"] = True
+    s.recap()
+    saved = json.loads(s._persist_path.read_text())
+    assert saved["match"]["released"] is True and saved["match"]["release_pending"] is True
+    s2, net2 = restart_no_repersist(s, clock)
+    _welcome(net2, 0)
+    _welcome(net2, 1)
+    s2.resume_match()
+    assert len(net2.pushes("result")) == 2 and len(net2.pushes("score")) == 2
+    assert [p[0] for p in _victories(net2)] == ["node0"]
+    s2.tick()
+    assert len(net2.pushes("result")) == 2 and len(_victories(net2)) == 1
+
+
+def test_restart_downtime_counts_against_victory_window():
+    s, net, clock, ps, info = persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    saved = json.loads(s._persist_path.read_text())
+    assert saved["match"]["whistle_elapsed_ms"] >= 0
+    clock["t"] += 31_000
+    s2, net2 = restart_no_repersist(s, clock)
+    s2.resume_match()
+    _welcome(net2, 0)
+    _welcome(net2, 1)
+    s2.finalise_recap()
+    assert len(net2.pushes("result")) == 2 and _victories(net2) == []
+
+
+def test_resuming_recap_flag_clears_if_finish_raises():
+    s, net, clock, ps, info = _end_pending()
+    old = s._scorer_recap
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("recap failed")
+
+    s._scorer_recap = broken
+    try:
+        s._finish(resuming=True)
+    except RuntimeError:
+        pass
+    else:
+        assert False, "the fixture must raise"
+    finally:
+        s._scorer_recap = old
+    assert s._resuming_recap is False

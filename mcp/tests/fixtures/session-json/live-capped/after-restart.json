@@ -792,6 +792,7 @@
         "voice": "male"
       }
     },
+    "release_pending": false,
     "released": false,
     "result_changed": false,
     "seq": 1,
@@ -819,7 +820,9 @@
     "whistle_base": {
       "node0": "00000011",
       "node1": "00000012"
-    }
+    },
+    "whistle_elapsed_ms": 0,
+    "whistle_saved_mono_ms": 5015051
   },
   "players": [
     {

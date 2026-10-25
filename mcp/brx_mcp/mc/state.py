@@ -649,7 +649,6 @@ class Session:
         self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
         self._result_pushed: dict[str, dict] = {}  # A24: last `result` body pushed per player (minus `t`)
-        self._result_release_pending = False   # A81: flush outside recap getters
         self._resuming_recap = False
         # A34 (field 2026-09-12): the matches this MC has RETIRED, newest last -- match_id -> {recap, players,
         # ended_ms}. A phone that was off the network at the whistle comes back still LIVE in one of these
@@ -3184,7 +3183,7 @@ class Session:
                 changed = True
         if not pending:
             if not match.released:
-                self._result_release_pending = True
+                match.release_pending = True
                 changed = True
             match.released = True
         if changed:
@@ -3823,7 +3822,8 @@ class Session:
             node["start"] = self._start_body()
             node["match_id"] = head["match_id"]
         sc = self._m().scorer
-        if sc:
+        if sc and not (self.phase == "recap" and self.match is not None
+                       and (not self.match.released or self.match.release_pending)):
             rows = sc.rows()
             row = next((r for r in rows if r["player_id"] == p["player_id"]), None)
             if row:
@@ -4334,13 +4334,13 @@ class Session:
                 self._end_delivery_tried(nid, mid, ok is not False)
         pid = self.node_player.get(nid)
         p = self.players.get(pid) if pid else None
-        recap = ended.get("recap") if ended else None
+        current_match = (self.match if self.phase == "recap" and self.match is not None
+                         and self.match.scorer is not None and self.match.scorer.match_id == mid else None)
+        recap = (self.last_recap if current_match.released else None) if current_match else (ended.get("recap") if ended else None)
         told_result = False
-        current_pending = (self.phase == "recap" and self.match is not None
-                           and self.match.scorer is not None and self.match.scorer.match_id == mid
-                           and not self.match.released)
-        if p and ended and recap and not current_pending and (ended.get("players") is None or p["player_id"] in ended["players"]):
-            roster = ended.get("players") or self.players
+        current_pending = current_match is not None and not current_match.released
+        roster = (current_match.played if current_match else ended.get("players") if ended else None) or self.players
+        if p and recap and not current_pending and (current_match or ended) and p["player_id"] in roster:
             self.net.push(nid, "result", self._result_body(recap, p, match_id=mid, roster=roster))
             told_result = True
         # The `start` is the E5 hot join, and it is NOT sent in the same breath as a `result`: `startAt`
@@ -4641,6 +4641,15 @@ class Session:
             winner = m.get("final_winner")
             match.final_winner = copy.deepcopy(winner) if isinstance(winner, dict) else None
             match.released = (m.get("released") is True or match.finalised or match.final_winner is not None)
+            match.release_pending = m.get("release_pending") is True
+            elapsed = m.get("whistle_elapsed_ms")
+            saved_mono = m.get("whistle_saved_mono_ms")
+            if isinstance(elapsed, int) and not isinstance(elapsed, bool) and elapsed >= 0:
+                mono = self.mono_ms()
+                # A monotonic epoch change cannot prove the cue is still timely.
+                age = elapsed + (mono - saved_mono if isinstance(saved_mono, int) and mono >= saved_mono
+                                 else VICTORY_STING_MAX_S * 1000 + 1)
+                match.whistle_mono_ms = mono - age
             match.result_changed = m.get("result_changed") is True
             match.end_reason = m.get("end_reason") if isinstance(m.get("end_reason"), str) else None
             self.end_reason = match.end_reason
@@ -4658,7 +4667,9 @@ class Session:
             match.whistle(whistle)
             self._finish(resuming=True)
             match.played = played
-            if match.released:
+            if match.release_pending:
+                self._flush_result_release()
+            elif match.released:
                 self._push_result()   # the in-memory dedupe is empty after a restart
             self._resume_end_delivery(mid, whistle, m.get("_end_delivery_saved", m.get("end_delivery")),
                                       m.get("_end_delivery_told"))
@@ -5372,10 +5383,11 @@ class Session:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
 
-    def _push_scores(self):
+    def _push_scores(self, *, release_flush: bool = False):
         """A7: push each player's ScoreRow to its node when it changed (best-effort; only reaches nodes in coverage)."""
         sc = self._m().scorer
-        if not sc:
+        if not sc or (self.phase == "recap" and self.match is not None
+                      and (not self.match.released or self.match.release_pending) and not release_flush):
             return
         plist = self.players.values() if isinstance(self.players, dict) else self.players
         by_pid = {p["player_id"]: p for p in plist}
@@ -5516,14 +5528,18 @@ class Session:
 
     def _flush_result_release(self) -> None:
         """Send an A81 release marked by recap sync, after the caller leaves its getter."""
-        if not self._result_release_pending:
+        match = self.match
+        if match is None or not match.release_pending or self._resuming_recap:
             return
-        self._result_release_pending = False
         self._push_result()
-        sc = self._m().scorer
-        if not self._resuming_recap and sc is not None and sc.end_t is not None \
-                and 0 <= self.now_ms() - sc.end_t <= VICTORY_STING_MAX_S * 1000:
+        self._score_pushed.clear()
+        self._push_scores(release_flush=True)
+        if match.whistle_mono_ms is not None \
+                and 0 <= self.mono_ms() - match.whistle_mono_ms <= VICTORY_STING_MAX_S * 1000:
             self._push_victory(self.last_recap)
+        match.release_pending = False
+        self._persist_dirty = True
+        self.persist_now()
 
     # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
     _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession")
@@ -7591,16 +7607,24 @@ class Session:
         wt, wp = w.get("team_id"), w.get("player_id")
         if wt is None and wp is None:
             return
-        for p in self.players.values():
-            if not p.get("node_id"):
+        played_roster = self._m().played
+        for pid, played in (played_roster if played_roster is not None else self.players).items():
+            p = self.players.get(pid)
+            if not p or not p.get("node_id"):
                 continue
-            won = (wt is not None and p.get("team_id") == wt) or (wp is not None and p["player_id"] == wp)
+            won = (wt is not None and played.get("team_id") == wt) or (wp is not None and pid == wp)
             if won:
                 # feedback.player_id is required by the envelope contract (contracts §5)
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
     def _finish(self, *, resuming: bool = False):
         self._resuming_recap = resuming
+        try:
+            self._finish_recap(resuming=resuming)
+        finally:
+            self._resuming_recap = False
+
+    def _finish_recap(self, *, resuming: bool = False):
         # A24/M2: before the recap is taken, ask whether the cap was a DEAD HEAT — a second cap kill
         # inside the clock-sync band parks as post_end (A6.1) and would otherwise hand the match to
         # whichever of two indistinguishable kills MC happened to order first.
@@ -7621,6 +7645,7 @@ class Session:
             raise RuntimeError("_finish needs the match it ends")   # every caller runs with a Match (slice 4a review)
         if not resuming:
             match.end_reason = self.end_reason
+            match.whistle_mono_ms = self.mono_ms()
         if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}
@@ -7680,7 +7705,6 @@ class Session:
             self.station_registry.arm_stations(relock=True)               # A58: lock_s 0 to every station still connected
         self._validate()                  # F401: config_warnings must carry the fresh sync warning at once
         self._changed()
-        self._resuming_recap = False
         self.persist_now()                # the snapshot must stop naming a match that ended
 
     def tick(self) -> None:
@@ -7737,7 +7761,7 @@ class Session:
         if not self.match.finalised:
             self.match.finalised = True
             if not self.match.released:
-                self._result_release_pending = True
+                self.match.release_pending = True
             self.match.released = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()

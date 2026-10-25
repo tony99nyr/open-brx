@@ -113,6 +113,8 @@ class Match:
     finalised: bool = False
     final_winner: dict | None = None
     released: bool = False  # once the result is released, later facts cannot restore the wait
+    release_pending: bool = False  # durable until the result, score and timed cue have been flushed
+    whistle_mono_ms: int | None = None
     result_changed: bool = False
     end_reason: str | None = None
     ended_head: dict | None = None
@@ -186,6 +188,10 @@ class Match:
                 **({"finished": True, "end_t": self.scorer.end_t,
                     "finalised": self.finalised, "final_winner": self.final_winner,
                     "released": self.released, "end_reason": self.end_reason,
+                    "release_pending": self.release_pending,
+                    "whistle_elapsed_ms": (max(0, sync_mono_ms - self.whistle_mono_ms)
+                                           if self.whistle_mono_ms is not None else None),
+                    "whistle_saved_mono_ms": sync_mono_ms,
                     "result_changed": self.result_changed,
                     "sync_nodes": {nid: {**{key: entry[key] for key in ("received", "status_received", "changed_t")
                                              if key in entry},
