@@ -1804,7 +1804,8 @@ def _wm(world: World, wid: str, fx: dict | None):
 
 
 def field_kit(world: World, name: str, primary: str, secondary: str | None = None, perk: str | None = None,
-              combo=False) -> FieldKit:
+              combo=False, preset: str = "standard") -> FieldKit:
+    """`preset` (F605): the health preset the field kit fields; "shields" gives an armour-0 pool that regenerates."""
     fx = world.fx(perk)
     models, swap = (_wm(world, primary, fx),), 0.0
     ap = bool(fx.get("armor_piercing"))
@@ -1818,7 +1819,7 @@ def field_kit(world: World, name: str, primary: str, secondary: str | None = Non
         models += (_wm(world, secondary, None),)
         sw = {"switch_mult": fx["switch_mult"]} if "switch_mult" in fx else None
         swap = float(max(world.cat.swap_ms(primary, sw), world.cat.swap_ms(secondary, sw)))
-    hp, arm, sh = pool_parts("standard", fx)
+    hp, arm, sh = pool_parts(preset, fx)
     return FieldKit(name, models, swap, B.Pool(hp, arm, sh, B.default_pool().respawn_ms),
                     combo and secondary is not None, ap)
 
@@ -2027,8 +2028,7 @@ def _kit_player(pid, team, fk: FieldKit):
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
     p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
-    p.regen_delay_ms = fk.shield_regen_delay_ms     # F605
-    p.shield_max = fk.pool.shield if fk.pool.armour == 0 else 0
+    p.regen_delay_ms = fk.shield_regen_delay_ms     # F605 (shield_max comes from the pool in Player.__init__)
     return p
 
 

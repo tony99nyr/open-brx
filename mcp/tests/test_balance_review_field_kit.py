@@ -225,3 +225,26 @@ def test_the_duel_uses_the_kits_regen_delay():
     f.receive(60, t=0.0)
     f.advance_shield(4000.0)
     assert f.shield > 45
+
+
+def test_a_shields_field_kit_fields_a_regenerating_pool_and_a_tick_restarts_the_window():
+    # F605 (Opus review): field_kit always built the Standard pool, so no field run regenerated anything
+    world = R.shipped_world()
+    kit = R.field_kit(world, "AR", "assault_rifle", preset="shields")
+    assert (kit.pool.armour, kit.pool.shield) == (0, 105)
+    assert R.field_kit(world, "AR", "assault_rifle").pool.armour == 70
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    q.poison_gen, q.poison_left, q.poison_dmg, q.poison_tick_ms, q.poison_src = 1, 2, 5, 1000.0, 0
+    match._tick(q, 5000.0, 1)              # a poison tick restarts the quiet window too
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
+    assert q.shield == 40
+
+
+def test_a_zero_damage_hit_does_not_restart_the_window():
+    # F605 (Codex review): the phone restarts the clock only for positive damage; a Haze hit carries 0
+    match, p, q = _shields_match()
+    match._hit(p, q, 60, 0.0)
+    B.Match._hit(match, p, q, 0, 6000.0)
+    _run_regen(match, R.SHIELD_REGEN_DELAY_MS + 100)
+    assert q.shield > 45

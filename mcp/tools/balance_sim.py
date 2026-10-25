@@ -616,7 +616,7 @@ class Match:
             self.push(t + w.dot_tick_ms, self.TICK, tgt.pid, tgt.poison_gen)
         if tgt.health <= 0:
             self._death(tgt, src, t, dot=False)
-        else:
+        elif dmg > 0:                 # the phone restarts the clock only for positive damage (a Haze hit is 0)
             self._damaged(tgt, t)
 
     def _damaged(self, p: Player, t: float) -> None:
@@ -625,7 +625,7 @@ class Match:
             p.regen_gen += 1
             self.push(t + p.regen_delay_ms, self.REGEN, p.pid, p.regen_gen)
 
-    def _regen(self, p: Player, t: float, gen: int, grant: int = 1) -> None:
+    def _regen(self, p: Player, t: float, gen: int) -> None:
         if not p.alive or gen != p.regen_gen or p.shield >= p.shield_max:
             return
         p.shield = min(p.shield_max, p.shield + math.ceil(p.shield_max / SHIELD_REGEN_GRANTS))
