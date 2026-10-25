@@ -1651,7 +1651,7 @@ def pickup_utility(world: World, wid: str, scale: float,
 # --------------------------------------------------------------------------- #
 
 class KitPlayer(B.Player):
-    __slots__ = ("kit", "models", "stash", "active", "phase", "swap_until", "kpool", "dist", "combo", "ap")
+    __slots__ = ("kit", "models", "stash", "active", "phase", "swap_until", "kpool", "dist", "combo", "ap", "committed")
 
 
 @dataclass(frozen=True)
@@ -1738,6 +1738,7 @@ class KitMatch(B.Match):
          p.next_ready, p.last_pull, p.burst_i, p.reload_amount, p.heat_has_locked) = p.stash[idx]
         p.w = p.models[idx]
         p.swap_until = t_end
+        p.committed = True       # the drawn slot acts once before the slot is reconsidered (F601)
         if p.w.charge_and_tap:
             p.last_pull = t_end
             p.next_ready = max(p.next_ready, t_end + p.w.fire_ms)
@@ -1774,11 +1775,13 @@ class KitMatch(B.Match):
         other = 1 - p.active
         if not p.models[other].lethal:
             return p.active
-        if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t):
-            if p.stash[1][0] > 0:
-                return 1
         current = self._finish_ms(p, p.active, t, pool)
         alternative = self._finish_ms(p, other, t, pool) + p.kit.swap_ms
+        # F601, as in Fighter._maybe_swap: a dry or locked primary draws the secondary only when the secondary
+        # finishes first, or when the primary cannot finish; an unconditional draw ping-ponged with the way back.
+        if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t) and p.stash[1][0] > 0 and \
+                current == math.inf:
+            return 1
         if p.active == 1 and p.ammo <= 0 and alternative < math.inf:
             return 0
         return other if alternative < current else p.active
@@ -1813,7 +1816,12 @@ class KitMatch(B.Match):
             lever = t + pull_gap(self.rng, self.cfg.pull_ms)
             self._start_reload(p, lever)
             p.heat_lock_until = max(lever + p.w.reload_ms, p.reload_until)
-        idx = self._choose_slot(p, t)
+        if p.committed:
+            p.committed = False
+            self._finish_reload(p, t)
+            idx = p.active
+        else:
+            idx = self._choose_slot(p, t)
         if idx != p.active:
             self._swap_to(p, idx, t + p.kit.swap_ms)
             first = max(p.swap_until, p.next_ready, p.reload_until)
@@ -1854,6 +1862,7 @@ class KitMatch(B.Match):
     def _respawn(self, p, t, _gen=0):
         pool = p.kpool
         p.alive = True
+        p.committed = False
         p.shield, p.armour, p.health = pool.shield, pool.armour, pool.health
         if len(p.models) > 1:
             p.stash = [(m.mag, m.reserve, -1.0, 0.0, t, -1.0, 0.0, -1e9, 0, 0, False) for m in p.models]
@@ -1876,7 +1885,7 @@ def _kit_player(pid, team, fk: FieldKit):
     p = KitPlayer(pid, team, fk.models[0], fk.pool)
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
-    p.active, p.phase, p.swap_until, p.dist = 0, "open", 0.0, 1
+    p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
     return p
 
 
