@@ -303,7 +303,7 @@ def test_t9_every_stick_host_test_is_built_by_this_gate():
     assert set(REVIVE_ON_FILES) <= set(TEST_FILES), "every revive-on file is also built normally"
 
 
-def test_the_stick_reports_a_version_at_or_above_mcs_firmware_floor():
+def test_the_stick_reports_a_version_equal_to_mcs_firmware_floor():
     # A Stick flashed from main must never show STICK FIRMWARE TOO OLD: its base version is MC's floor.
     glue = (CORE / "mc_link_glue.h").read_text(encoding="utf-8")
     m = re.search(r'stationAppVer = station_version\("(h\d+-\d+\.\d+)"', glue)

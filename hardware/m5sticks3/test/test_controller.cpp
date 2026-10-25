@@ -465,11 +465,11 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   StationLink link;
   StationIdentity id;
   id.node_id = "stick-1";
-  id.app_ver = "h8-0.2+abc";
+  id.app_ver = "h8-0.3+abc";
   link.set_identity(id);
   link.set_mode(AssocMode::HELD);
   StatusFields idle = fill_status(link, 61500, false, 7, 2);
-  CHECK(idle.node_id == "stick-1" && idle.app_ver == "h8-0.2+abc");
+  CHECK(idle.node_id == "stick-1" && idle.app_ver == "h8-0.3+abc");
   CHECK(idle.kind == "respawn" && idle.team == contract::STATION_TEAM_ANY && idle.station_id == 0);
   CHECK(idle.threshold == stick_default_threshold_dbm("respawn") && idle.threshold_src.empty());
   CHECK(!idle.live && !idle.armed && idle.has_health && idle.uptime_s == 61 && idle.boot_count == 7);
@@ -486,7 +486,7 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   StatusFields armed = fill_status(link, 2000, true, 7, 0);
   StatusFields want;
   want.node_id = "stick-1";
-  want.app_ver = "h8-0.2+abc";
+  want.app_ver = "h8-0.3+abc";
   want.kind = "control";
   want.team = 255;
   want.station_id = 9;
