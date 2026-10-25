@@ -34,23 +34,34 @@ async function kit(opts: { phase?: Phase; config?: Partial<GameConfig>; bench?: 
   const panel = () => m.el.querySelector('[data-testid="game-edit-panel"]')!;
   const group = () => panel().querySelector('[data-testid="game-edit-volume"]') as HTMLElement | null;
   const btn = (v: string | number) => group()?.querySelector(`[data-volume="${v}"]`) as HTMLButtonElement | null;
-  const note = () => panel().querySelector('[data-testid="game-edit-volume-note"]')?.textContent ?? '';
+  const note = () => panel().querySelector('[data-testid="game-edit-settings-note"]')?.textContent ?? '';
+  const settingsInfo = () => panel().querySelector('[data-testid="help2-game-settings-info"]') as HTMLButtonElement | null;
   const open = () => click(m.find('[data-testid="game-edit-toggle"]')[0]);
   const save = () => panel().querySelector('[data-testid="game-edit-save"] button') as HTMLButtonElement | null;
-  return { m, d, calls, resync, group, btn, note, open, save };
+  return { m, d, calls, resync, group, btn, note, settingsInfo, open, save };
 }
 
 describe('GameEditPanel VOLUME (K8)', () => {
   it('an older server with no volume field renders VENUE DEFAULT, naming what the venue resolves to', async () => {
-    const { m, d, btn, note, open } = await kit();
+    const { m, d, btn, note, settingsInfo, open } = await kit();
     expect(d.state.config.volume, 'the demo config carries no knob, like a pre-K8 server').toBeUndefined();
     await open();
     const venue = d.state.config.environment === 'outdoor' ? 90 : 80;
     expect(btn('venue')!.textContent).toBe(`VENUE DEFAULT (${venue})`);
     expect(btn('venue')!.getAttribute('aria-pressed')).toBe('true');
     for (const v of [60, 70, 80, 90, 100]) expect(btn(v)!.getAttribute('aria-pressed'), `${v}`).toBe('false');
-    expect(note()).not.toContain('PLAYS AT');
-    expect(m.find('[data-testid="help2-game-settings-info"]')[0]?.getAttribute('aria-expanded')).toBe('false');
+    expect(m.find('[data-testid="help2-game-settings-info"]').length).toBe(1);
+    const modeLabel = [...m.el.querySelectorAll('span')].find(s => s.textContent === 'MODE');
+    expect(modeLabel?.parentElement?.contains(settingsInfo())).toBe(true);
+    expect(m.find('[data-testid="help2-health-info"]').length).toBe(0);
+    await click(settingsInfo());
+    expect(note()).toContain('Changing mode resets the time limit, respawn, health and weapon rules');
+    expect(note()).toContain('moves players onto its teams');
+    expect(note()).toContain('Day/night and volume stay.');
+    expect(note()).toContain('Nothing is sent until SAVE.');
+    expect(note()).toContain('guns get the config when it is pushed');
+    expect(note()).toContain('The shield recharges only when the game has no armour.');
+    expect(note()).not.toContain('--bench-volume');
     m.unmount();
   });
 
@@ -114,19 +125,21 @@ describe('GameEditPanel VOLUME (K8)', () => {
   });
 
   it('says when --bench-volume overrides the knob on this run', async () => {
-    const { m, note, open } = await kit({ bench: 55 });
+    const { m, note, settingsInfo, open } = await kit({ bench: 55 });
     await open();
-    expect(note()).not.toContain('BENCH VOLUME');
+    await click(settingsInfo());
+    expect(note()).toContain('When MC runs with --bench-volume, guns play at the bench value 55 instead, try-outs included.');
     expect(m.find('[data-testid="bench-volume"]')[0]?.textContent).toContain('BENCH VOL 55');
     m.unmount();
   });
 
-  it('without --bench-volume a try-out plays at 69 whatever the game volume', async () => {
-    const { m, note, open } = await kit({ config: { volume: 90 } });
+  it('omits the bench override detail when --bench-volume is unset', async () => {
+    const { m, note, settingsInfo, open } = await kit({ config: { volume: 90 } });
     await open();
-    expect(note()).not.toContain('Try-outs play at 69.');
+    await click(settingsInfo());
+    expect(note()).not.toContain('--bench-volume');
     expect(m.find('[data-testid="bench-volume"]').length).toBe(0);
-    expect(m.find('[data-testid="help2-game-settings-info"]')[0]?.getAttribute('aria-expanded')).toBe('false');
+    expect(settingsInfo()!.getAttribute('aria-expanded')).toBe('true');
     m.unmount();
   });
 
@@ -151,4 +164,3 @@ describe('GameEditPanel VOLUME (K8)', () => {
     m.unmount();
   });
 });
-

@@ -215,13 +215,13 @@ export function Build() {
               back, or the server's own phase advancing under an unattended tab) -- naming what it is
               says what tapping again actually leaves for, which a bare "leave" does not. `confirmLeave`
               (BUILD's own kind-tab/back-button confirm) has no other view to name. */}
-          ▲ UNSAVED CHANGES{navBlockedTo ? ` — TAP AGAIN TO LEAVE FOR ${viewLabel(navBlockedTo)} WITHOUT SAVING` : ' — TAP AGAIN TO LEAVE WITHOUT SAVING'}
+          ▲ UNSAVED CHANGES{navBlockedTo ? ` · TAP AGAIN TO LEAVE FOR ${viewLabel(navBlockedTo)} WITHOUT SAVING` : ' · TAP AGAIN TO LEAVE WITHOUT SAVING'}
         </div>
       )}
 
       {!editing && (
         <>
-          <SectionRule label={`${meta.label} — PRESETS`} style={{ marginBottom: 12 }} />
+          <SectionRule label={`${meta.label} · PRESETS`} style={{ marginBottom: 12 }} />
           <Shelf>
             {list.map(p => (
               // QA-24 (visual QA round 1): a read-only tab (GAME MODE, GAMEPLAY) never has a NEW

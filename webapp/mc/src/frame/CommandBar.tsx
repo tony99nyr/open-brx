@@ -222,7 +222,7 @@ export function CommandBar() {
                     </span>
                   </div>
                 ) : (
-                  <MenuItem onClick={() => setPanic(true)} label="Panic" hint="Fleet-wide safe — asks first" danger />
+                  <MenuItem onClick={() => setPanic(true)} label="Panic" hint="Fleet-wide safe. Asks first." danger />
                 )}
               </div>
             )}

@@ -23,6 +23,16 @@ const click = async (p, sel, name) => {
 };
 const go = (p, url) => p.goto(url, { timeout: 15000, waitUntil: 'domcontentloaded' });
 const scroll = async (p, selector) => { await p.locator(selector).first().scrollIntoViewIfNeeded({ timeout: 7000 }); };
+const capture = async (p, file) => {
+  await p.evaluate(() => Promise.all(document.getAnimations()
+    .filter(a => Number.isFinite(a.effect?.getComputedTiming().endTime))
+    .map(a => a.finished.catch(() => {}))));
+  const session = await p.context().newCDPSession(p);
+  try {
+    const { data } = await session.send('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false });
+    fs.writeFileSync(file, Buffer.from(data, 'base64'));
+  } finally { await session.detach(); }
+};
 const armed = async p => {
   await go(p, mockUrl(p, '', 'lobby'));
   await click(p, 'button', 'Push anyway, over 1 missing phone');
@@ -60,7 +70,7 @@ const drivers = {
   'BUILD slot editor': { run: async p => { await nav(p, 'PLAY'); await click(p, 'button', 'BUILD ▸'); await click(p, '[data-testid="build-tab-primary"]'); await click(p, 'button', 'NEW ▸'); }, anchor: '[data-testid="slot-only-row"]', infoTestid: 'help2-only-these-info' },
   'BUILD loadout editor': { run: async p => { await nav(p, 'PLAY'); await click(p, 'button', 'BUILD ▸'); await click(p, '[data-testid="build-tab-misc_loadouts"]'); await click(p, 'button', 'NEW ▸'); }, anchor: 'body', infoTestid: 'help2-loadout-info' },
   'CATALOGUE': { run: async p => { await go(p, mockUrl(p)); await click(p, 'button[aria-label="Menu"]'); await click(p, 'button', 'Arsenal'); }, anchor: 'body', infoTestid: 'help2-catalogue-info' },
-  'LOBBY': { run: async p => { await nav(p, 'LOBBY'); await click(p, 'button', 'PUSH CONFIG'); }, anchor: 'body' },
+  'LOBBY': { run: async p => { await nav(p, 'LOBBY'); await p.evaluate(async () => { await window.__MC_MOCK__.setPhase('build', true); location.hash = 'lobby'; }); await p.waitForSelector('[data-mark-all-ready-reason]'); }, anchor: 'body' },
   'Operator menu': { run: async p => { await armed(p); await click(p, 'header nav button', 'MATCH'); await click(p, 'button[data-live-row-toggle]'); }, anchor: '[data-operator-menu]', infoTestid: 'help2-operator-info' },
   'Spectate': { run: async p => { await go(p, mockUrl(p, '', 'spectate')); await p.waitForSelector('[data-spectate]', { timeout: 12000 }); await p.evaluate(() => { window.location.hash = 'kit'; }); await p.waitForSelector('[data-spectate="escape"]', { timeout: 7000 }); }, anchor: '[data-spectate="escape"]' },
   'Report panel': { run: async p => { await go(p, mockUrl(p)); await click(p, 'button[aria-label="Menu"]'); await click(p, 'button', 'Report a problem'); }, anchor: '[data-testid="report-panel"]', infoTestid: 'help2-report-info' },
@@ -70,7 +80,6 @@ const drivers = {
   'ARMORY unclaimed guns': { run: p => nav(p, 'ARMORY'), anchor: 'body' },
   'Game editor': { run: async p => { await nav(p, 'LOBBY'); await click(p, '[data-testid="game-edit-toggle"]'); }, anchor: '[data-testid="game-edit-panel"]', infoTestid: 'help2-game-settings-info' },
   'Game editor volume': { run: async p => { await nav(p, 'LOBBY'); await click(p, '[data-testid="game-edit-toggle"]'); }, anchor: '[data-testid="game-edit-volume"]' },
-  'Game editor health': { run: async p => { await nav(p, 'LOBBY'); await click(p, '[data-testid="game-edit-toggle"]'); await click(p, '[data-testid="health-advanced-toggle"]'); }, anchor: '[data-testid="game-edit-panel"]', infoTestid: 'help2-health-info' },
   'Debug token prompt': { run: async p => { await go(p, mockUrl(p, '&gallery=copy:token')); await click(p, 'button[aria-label="Menu"]'); await click(p, 'button', 'Debug'); }, anchor: '[data-alert="frame-token-required-app"]' },
   'Report panel privacy': { run: async p => { await go(p, mockUrl(p)); await click(p, 'button[aria-label="Menu"]'); await click(p, 'button', 'Report a problem'); }, anchor: '[data-testid="report-panel"]', infoTestid: 'help2-report-info' },
   'Frame connecting': { run: p => go(p, mockUrl(p, '', 'lobby')), anchor: '[data-alert="frame-connecting"]', unavailable: 'The mock connects immediately, before the connecting message can render.' },
@@ -109,7 +118,7 @@ for (const screen of groups) {
     const anchor = page.locator(driver.anchor).first();
     await anchor.waitFor({ state: 'visible', timeout: 10000 });
     await anchor.evaluate(el => el.scrollIntoView({ block: 'start', inline: 'nearest' }));
-    await page.screenshot({ path: path.join(out, `${id}-current.png`), timeout: 10000 });
+    await capture(page, path.join(out, `${id}-current.png`));
     const body = await page.locator('body').innerText();
     for (const n of groupNotes) {
       if (n.proposal === 'CUT' && !n.current.startsWith('{') && contains(body, excerpt(n.current))) {
@@ -135,7 +144,7 @@ for (const screen of groups) {
       if (await target.getAttribute('aria-expanded') !== 'true') throw new Error(`${n.id}: INFO did not open`);
       const detail = await target.locator('xpath=..').innerText({ timeout: 5000 });
       if (!contains(detail, n.wording)) throw new Error(`${n.id}: approved INFO wording is absent`);
-      if (!opened) await page.screenshot({ path: path.join(out, `${id}-open.png`), timeout: 10000 });
+      if (!opened) await capture(page, path.join(out, `${id}-open.png`));
       opened = true;
       if (n !== infos.at(-1)) await target.click({ timeout: 7000 });
     }

@@ -36,10 +36,16 @@ function cut(m: Mounted, id: string, anchor: string) {
   expect(m.text().toLowerCase(), `${id}: old note remains`).not.toContain(old.toLowerCase());
 }
 
+function absent(m: Mounted, id: string) {
+  const old = note(id).current.split('{')[0].trim();
+  expect(old.length, `${id}: no stable old wording`).toBeGreaterThan(5);
+  expect(m.text().toLowerCase(), `${id}: old note remains`).not.toContain(old.toLowerCase());
+}
+
 function inline(m: Mounted, id: string, anchor: string) {
   const el = m.find(anchor)[0];
   expect(el, `${id}: state did not render`).toBeTruthy();
-  expect(el.textContent, `${id}: approved short line`).toContain(note(id).wording.replace('{wanted}', 'kit'));
+  expect(el.textContent, `${id}: approved short line`).toContain(note(id).wording.replace('{wanted}', 'KIT'));
 }
 
 async function info(m: Mounted, id: string, testid: string) {
@@ -67,7 +73,8 @@ describe('F599 phase 2 approved help copy', () => {
   it('LIVE empty state removes the old explanation', async () => {
     const d = await demo();
     const m = await mountScreen(<Live />, { ...d, state: starved(d.state), view: 'live' });
-    cut(m, 'live-no-match', '[data-alert="live-no-match"]');
+    expect(m.text()).toContain('No match is live.');
+    absent(m, 'live-no-match');
     m.unmount();
   });
 
@@ -83,9 +90,9 @@ describe('F599 phase 2 approved help copy', () => {
     const m = await mount(<StoreCtx.Provider value={store}><Live /></StoreCtx.Provider>);
     expect(m.find('[data-live-row="p1"]').length).toBe(1);
     expect(m.find('[data-feed-kind]').length).toBeGreaterThan(0);
-    cut(m, 'live-team-kill', '[data-testid="team-kill-note"]');
+    absent(m, 'live-team-kill');
     expect(m.find('[data-feed-tag="AFTER WHISTLE"]').length).toBe(1);
-    cut(m, 'live-after-whistle', '[data-testid="feed-after-whistle-note"]');
+    absent(m, 'live-after-whistle');
     await info(m, 'live-withheld', 'help2-live-feed-info');
     m.unmount();
     const empty = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'live' })}><Live /></StoreCtx.Provider>);
@@ -103,7 +110,7 @@ describe('F599 phase 2 approved help copy', () => {
     const second = { ...first, live: liveView({ rows: [liveRow({ kills: 1 }), liveRow({ player_id: 'p2', display: 'GHOST', kills: 9 })] }) };
     await m.update(render(second));
     expect(m.find('[data-live-rows="1"][data-order-held="1"]').length).toBe(1);
-    cut(m, 'live-order-held', '[data-testid="order-held"]');
+    absent(m, 'live-order-held');
     m.unmount();
   });
 
@@ -184,10 +191,8 @@ describe('F599 phase 2 approved help copy', () => {
     const m = await mountScreen(<Items />, { ...d, api: { getPowerups: () => pending }, view: 'muster' });
     await m.click('POWERUP');
     expect(m.find('[data-testid="item-picker"]').length).toBe(0);
-    const loading = m.find('[data-testid="item-note"]')[0];
-    expect(loading, 'the pending request reaches the picker').toBeTruthy();
-    expect(loading.textContent).toBe('');
-    cut(m, 'items-item-list-loading', '[data-testid="item-note"]');
+    expect(m.find('[data-testid="item-note"]').length, 'loading has no empty note stub').toBe(0);
+    expect(m.find('[data-testid="item-picker"]').length, 'loading does not show stale choices').toBe(0);
     m.unmount();
   });
 
@@ -196,6 +201,7 @@ describe('F599 phase 2 approved help copy', () => {
     const none = await mount(<StoreCtx.Provider value={makeStore({ ...d, state: { ...d.state, stations: [] } }, { focusHill: true })}><Items /></StoreCtx.Provider>);
     expect(none.find('[data-testid="items-hill-focus"]').length).toBe(1);
     await info(none, 'items-focus-hill-no-station', 'help2-items-hill-info');
+    expect(none.text()).toContain('tap an idle phone seven times to switch it to utility station mode.');
     none.unmount();
     const some = await mount(<StoreCtx.Provider value={makeStore(d, { focusHill: true })}><Items /></StoreCtx.Provider>);
     inline(some, 'items-focus-hill-assign', '[data-testid="items-hill-focus"]');
@@ -253,7 +259,7 @@ describe('F599 phase 2 approved help copy', () => {
     const d = await demo();
     const m = await mountScreen(<Lobby />, { ...d, state: { ...d.state, phase: 'lobby', config: { ...d.state.config, mode: 'tdm' } }, view: 'lobby' });
     expect(m.text()).toContain('PUSH CONFIG');
-    cut(m, 'lobby-operator-note', '[data-testid="operator-note"]');
+    expect(m.find('[data-testid="operator-note"]').length).toBe(0);
     m.unmount();
   });
 
@@ -272,7 +278,7 @@ describe('F599 phase 2 approved help copy', () => {
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.find('[data-override="1"]').length).toBe(0);
     expect(m.text()).toContain('RE-PUSH CONFIG');
-    cut(m, 'lobby-no-override', '[data-no-override-reason]');
+    expect(m.find('[data-no-override-reason]').length).toBe(0);
     m.unmount();
   });
 
@@ -284,7 +290,10 @@ describe('F599 phase 2 approved help copy', () => {
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(m.find('[data-mark-all-ready="1"]').length).toBe(0);
     expect(m.find('[data-mark-ready="1"]').length).toBe(1);
-    cut(m, 'lobby-ready-closed', '[data-ready-closed="build"]');
+    const reason = m.find('[data-mark-all-ready-reason="1"]')[0];
+    expect(reason?.textContent).toBe('Push config first.');
+    expect(reason?.parentElement?.parentElement?.textContent).toContain('Team Assignment');
+    absent(m, 'lobby-ready-closed');
     m.unmount();
   });
 
@@ -295,7 +304,7 @@ describe('F599 phase 2 approved help copy', () => {
       <OperatorMenu r={row} matchId="m1" onClose={() => {}} />
     </StoreCtx.Provider>;
     const closed = await mount(render('lobby'));
-    cut(closed, 'operator-not-in-play', '[data-op-unavailable="phase"]');
+    expect(closed.find('[data-op-unavailable="phase"]').length).toBe(0);
     closed.unmount();
     const armed = await mount(render('armed'));
     expect(armed.find('[data-op="relink"]').length).toBe(1);
@@ -321,7 +330,7 @@ describe('F599 phase 2 approved help copy', () => {
     expect(m.text()).toContain('UNCLAIMED');
     expect(m.text()).toContain('PHONES ON THE NET');
     cut(m, 'armory-section-hint', '[data-nodes]');
-    expect(m.text()).toContain('KNOWN GUNS — NOT SEEN');
+    expect(m.text()).toContain('KNOWN GUNS · NOT SEEN');
     expect(m.text()).toContain('GUN-D-22E8');
     cut(m, 'armory-known-guns-hint', '.screen');
     inline(m, 'armory-unclaimed-hint', '.screen');
@@ -338,7 +347,9 @@ describe('F599 phase 2 approved help copy', () => {
     cut(m, 'game-edit-volume', '[data-testid="game-edit-volume"]');
     await info(m, 'game-edit-mode-change', 'help2-game-settings-info');
     await act(async () => { m.find('[data-testid="health-advanced-toggle"]')[0].click(); });
-    await info(m, 'health-preset-note', 'help2-health-info');
+    expect(m.find('[data-testid="help2-health-info"]').length).toBe(0);
+    expect(m.find('[data-testid="help2-game-settings-info"]').length).toBe(1);
+    expect(m.text()).toContain('The shield recharges only when the game has no armour.');
     m.unmount();
   });
 
@@ -348,6 +359,7 @@ describe('F599 phase 2 approved help copy', () => {
     expect(m.find('[data-testid="report-panel"][data-report-phase="idle"]').length).toBe(1);
     cut(m, 'report-idle', '[data-testid="report-panel"]');
     await info(m, 'report-privacy-summary', 'help2-report-info');
+    expect(m.text()).toContain('Anything you type here goes into a public GitHub issue.');
     m.unmount();
   });
 

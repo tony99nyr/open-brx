@@ -34,8 +34,7 @@ describe('every screen renders', () => {
   it.each(SCREENS)('%s · with a full session', async (_name, view, make) => {
     const d = await demo();
     const m = await mountScreen(make(), { ...d, view });
-    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
-    else expect(m.text().length).toBeGreaterThan(0);
+    expect(m.text().length).toBeGreaterThan(0);
     m.unmount();
   });
 
@@ -44,8 +43,7 @@ describe('every screen renders', () => {
     // something rather than throw — several of these index [0] or [-1] into a list.
     const d = await demo();
     const m = await mountScreen(make(), { state: starved(d.state), weapons: [], perks: [], view });
-    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
-    else expect(m.text().length).toBeGreaterThan(0);
+    expect(m.text().length).toBeGreaterThan(0);
     m.unmount();
   });
 
@@ -63,10 +61,17 @@ describe('every screen renders', () => {
     const full = makeStore({ ...d, view });
     const m = await mount(<StoreCtx.Provider value={empty}>{make()}</StoreCtx.Provider>);
     await m.update(<StoreCtx.Provider value={full}>{make()}</StoreCtx.Provider>);
-    if (_name === 'live') expect(m.find('[data-alert="live-no-match"]').length).toBe(1);
-    else expect(m.text().length, 'the screen must render once it has a snapshot').toBeGreaterThan(0);
+    expect(m.text().length, 'the screen must render once it has a snapshot').toBeGreaterThan(0);
     m.unmount();
   });
+});
+
+it('LIVE names the empty match state and links back to LOBBY', async () => {
+  const d = await demo();
+  const m = await mountScreen(<Live />, { ...d, view: 'live' });
+  expect(m.text()).toContain('No match is live.');
+  expect(m.find('button').some(b => b.textContent?.includes('LOBBY'))).toBe(true);
+  m.unmount();
 });
 
 describe('a screen that gets its snapshot late still works', () => {

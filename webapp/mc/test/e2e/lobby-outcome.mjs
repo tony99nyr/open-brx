@@ -162,7 +162,7 @@ step('operator-note', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#lobby', 1280);   // default mode is TDM
   await until(() => pg.locator('text=Team Assignment').count().then(n => n > 0), 8000, 'LOBBY');
   const lobbyNote = pg.getByTestId('operator-note');
-  expect(await lobbyNote.count() === 1 && !(await lobbyNote.isVisible()), 'LOBBY has no visible duplicate TDM operator note');
+  expect(await lobbyNote.count() === 0, 'LOBBY has no duplicate TDM operator note');
 
   await pg.evaluate(async () => {
     const api = window.__MC_MOCK__;
@@ -214,7 +214,7 @@ step('koth-no-stations', async ({ browser, base }) => {
   expect(await stationInfo.getAttribute('aria-expanded') === 'false', 'the station explanation starts closed');
   await stationInfo.click();
   const t = (await focus.innerText()).toUpperCase();
-  expect(t.includes('NO STATION IS AVAILABLE YET'), `the opened detail says nothing is on the net yet (saw "${t}")`);
+  expect(t.includes('TAP AN IDLE PHONE SEVEN TIMES'), `the opened detail gives the phone gesture (saw "${t}")`);
   expect(t.includes('UTILITY STATION MODE') && t.includes('STICKS3'), 'the opened detail says how to make a station');
   const back = focus.getByTestId('items-back-to-play');
   await until(() => back.count().then(n => n === 1), 4000, 'CONTINUE TO PLAY inside the callout');

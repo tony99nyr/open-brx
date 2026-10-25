@@ -57,7 +57,7 @@ describe('Report a problem', () => {
     expect(info.getAttribute('aria-expanded')).toBe('false');
     await m.click('Report privacy');
     expect(info.getAttribute('aria-expanded')).toBe('true');
-    expect((p.textContent ?? '').toLowerCase()).toContain('reports may contain names you typed. check the file before posting it publicly.');
+    expect((p.textContent ?? '').toLowerCase()).toContain('anything you type here goes into a public github issue.');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('MAKE REPORT'))).toBe(true);
     m.unmount();
   });

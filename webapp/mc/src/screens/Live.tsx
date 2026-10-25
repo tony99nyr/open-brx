@@ -115,9 +115,11 @@ export function Live() {
   if (!state) return null;
   const lv = state.live;
   if (!lv) {
+    if (state.orphan_match) return <div className="screen"><OrphanMatch /></div>;
     return (
-      <div className="screen" data-alert="live-no-match" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: colourOf('live-no-match') }}>
-        <OrphanMatch />
+      <div className="screen" style={{ padding: 20, font: F.chk(600, 14), color: T.body }}>
+        <p>No match is live.</p>
+        <GhostButton onClick={() => setView('lobby')}>LOBBY ▸</GhostButton>
       </div>
     );
   }
@@ -154,7 +156,6 @@ export function Live() {
   const teamScore = (id: string, side: 'left' | 'right') => objective
     ? <TeamScore key={id} id={id} side={side} value={fmtHeld(heldSeconds(lv, id))} sub={`KILLS ${lv.score[id] ?? 0}`} />
     : <TeamScore key={id} id={id} side={side} value={<Num value={lv.score[id] ?? 0} />} />;
-  const anyTeamKill = rows.some(r => r.kills < 0);
   const offline = !connected;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
@@ -281,14 +282,6 @@ export function Live() {
                 </div>
               ))}
             </div>
-            {held && (
-              <div data-testid="order-held" data-alert="live-order-held" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-order-held'), marginTop: 8 }}>
-              </div>
-            )}
-            {anyTeamKill && (
-              <div data-testid="team-kill-note" data-alert="live-team-kill-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-team-kill-note'), marginTop: 8 }}>
-              </div>
-            )}
             <HelpNote label="Tap a player for more" keep="Tap a player for resync, respawn or relink." />
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
@@ -358,10 +351,6 @@ export function Live() {
             {feed.some(e => e.tag === 'WITHHELD') && (
               <div data-alert="live-feed-withheld-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-feed-withheld-note'), padding: '6px 10px', lineHeight: 1.5 }}>
                 <HelpNote label="Feed notes" infoTestid="help2-live-feed-info" keep="Withheld means MC recorded the event but did not call it to players." />
-              </div>
-            )}
-            {feed.some(e => e.tag === 'AFTER WHISTLE') && (
-              <div data-testid="feed-after-whistle-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
               </div>
             )}
           </div>

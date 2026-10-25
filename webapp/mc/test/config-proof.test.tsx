@@ -457,8 +457,9 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     expect(btn(m, 'RE-PUSH CONFIG')).toBeTruthy();
     expect(m.find('[data-override="1"]').length).toBe(0);
-    expect(m.find('[data-no-override-reason]').length).toBeGreaterThan(0);
+    expect(m.find('[data-no-override-reason]').length).toBe(0);
     const arm = btn(m, 'ARM COUNTDOWN')!;
+    expect(btn(m, 'RE-PUSH CONFIG')!.disabled).toBe(false);
     expect(arm.title).toContain('needs config re-pushed');
     expect(arm.title).not.toContain('older config');
     m.unmount();

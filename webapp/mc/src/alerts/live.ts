@@ -22,7 +22,6 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   'frame-match-tab-dot': { sev: 'amber', text: 'PHONES ARE IN A MATCH THIS MC DID NOT START: OPEN MATCH' },
   'frame-mc-offline': { sev: 'red', text: 'MC OFFLINE, THE BOARD IS FROZEN AT THE LAST SNAPSHOT: CHECK THAT MC IS RUNNING' },
   'frame-notice-toast': { sev: 'neutral', text: '{notice}' },
-  'frame-op-not-in-play': { sev: 'neutral', text: 'THE MATCH IS NOT IN PLAY, NOTHING CAN BE SENT' },
   'frame-op-out-of-reach': { sev: 'red', text: "{WHO}'S PHONE IS OUT OF REACH: WAIT FOR IT TO CHECK IN" },
   'frame-op-outcome-refused': { sev: 'amber', text: 'THE PHONE REFUSED {word}: {why}' },
   'frame-op-outcome-sent': { sev: 'neutral', text: '{word} SENT, WAITING FOR THE PHONE' },
@@ -54,8 +53,6 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   'live-feed-withheld-note': { sev: 'neutral', text: 'WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.' },
   'live-hill-none': { sev: 'neutral', text: 'NO PHONE HAS REPORTED POSSESSION YET' },
   'live-hill-owner-none': { sev: 'neutral', text: 'OWNER NOT REPORTED LIVE' },
-  'live-no-match': { sev: 'neutral', text: 'NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0' },
-  'live-order-held': { sev: 'neutral', text: 'ORDER HELD WHILE THE POINTER IS ON THE BOARD OR A MENU IS OPEN, IT RE-SORTS WHEN YOU MOVE AWAY' },
   'live-phones-ended': { sev: 'amber', text: 'PHONES HAVE ENDED THIS MATCH: PRESS END' },
   'live-row-cure-dead': { sev: 'neutral', text: 'NODE FOUND IT DEAD' },
   // derive.ts (server lane) still writes this with a ` - `; the render here follows the audit's
@@ -74,13 +71,16 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   'live-row-status-unknown': { sev: 'neutral', text: 'UNKNOWN' },
   'live-row-sync-stale': { sev: 'neutral', text: '{age} AGO' },
   'live-scroll-hint': { sev: 'neutral', text: 'SCROLL FOR K/D, ACC, STK, STATUS' },
-  'live-team-kill-note': { sev: 'neutral', text: 'K BELOW ZERO: A TEAM KILL COSTS THE SHOOTER ONE KILL, SO K AND K/D CAN GO BELOW ZERO.' },
   'live-timecell-offline': { sev: 'red', text: 'TIME REMAINING, OFFLINE' },
 };
 
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
  *  positive/data status). */
 export const LIVE_RETIRED: Record<string, string> = {
+  'frame-op-not-in-play': 'the closed-phase explanation was removed from the operator menu.',
+  'live-no-match': 'the old explanation was removed; LIVE now shows a short empty state and a LOBBY link.',
+  'live-order-held': 'the explanatory note was removed; the board still keeps its order while a menu is open.',
+  'live-team-kill-note': 'the explanatory note was removed from LIVE.',
   'live-feed-first-blood-tag': 'a fact tag on a notable kill, not a warning: restyled to T.ink (was T.bad, the same red as a real fault).',
   'live-feed-team-kill-tag': 'a fact tag, not an instruction: restyled to T.ink (was T.bad, overloading red as an event colour).',
   // F221 round 2: this restated MC_OFFLINE in a second red banner under the frame's own one. The rows

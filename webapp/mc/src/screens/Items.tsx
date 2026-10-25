@@ -17,7 +17,7 @@ import { useStore } from '../store';
 import { ContinueToPlay } from './ContinueToPlay';
 import { CHAMFER, F, T, fmtAge, fmtDuration, teamColor } from '../tokens';
 import { ItemStationRow, Swatch } from '../ui/Powerups';
-import { type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
+import { POWERUPS_RESTART, type PowerupsState, itemDetail, schedule, usePowerups } from '../ui/powerupData';
 import { GhostButton, Micro, SectionRule, Seg, StepBtn, SwitchConfirm, Tag, Val, ValueBox } from '../ui';
 import { AMOUNT_MAX, AMOUNT_MIN, AMOUNT_STEP, CHARGES_MAX, CHARGES_MIN, SPAWN_EVERY_MAX, SPAWN_EVERY_MIN, SPAWN_EVERY_STEP } from '../ui/powerupLimits';
 import { CONTROL_CONFLICT, setupLines } from '../ui/SetupSteps';
@@ -34,7 +34,7 @@ const KIND_SHORT: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: '
 const MVP_STATION_KINDS: StationKind[] = STATION_KINDS.filter(k => k !== 'extraction' && k !== 'bomb');
 const TID_NAME: Record<number, string> = { ...Object.fromEntries(TEAM_NAMES.map((name, tid) => [tid, name])), [STATION_TEAM_ANY]: 'ANY' };   // F423: tid 3 paints purple, not green
 /** H1: the label and the edit's starting point for threshold 0 (the rule itself is `defaultThreshold`). */
-const cap = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();   // F599 prototype: sentence case
+const cap = (w: string) => w.charAt(0) + w.slice(1).toLowerCase();
 
 export function bubbleDefault(kind: StationKind, stick: boolean): { label: string; start: number } {
   const start = defaultThreshold(kind, stick);
@@ -89,7 +89,7 @@ export function Items() {
         {awayBlock}
         {focusHill && <div data-testid="items-hill-focus" role="status" style={{ display: 'flex', flexDirection: 'column', gap: 10, font: F.chk(700, 12), letterSpacing: '.06em', lineHeight: 1.5,
           color: T.acc, border: `1px solid ${T.acc}`, background: 'rgba(57,180,255,.08)', padding: '9px 12px' }}>
-          <HelpNote label="Add a station" infoTestid="help2-items-hill-info" keep="No station is available yet. Switch an idle phone to utility station mode, or power on a StickS3." />
+          <HelpNote label="Add a station" infoTestid="help2-items-hill-info" keep="Power on a StickS3 or tap an idle phone seven times to switch it to utility station mode." />
           {backToPlay}
         </div>}
       </div>
@@ -417,7 +417,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
             split={stick
               // a Stick has no HUD: a release drops it to UNASSIGNED and unlocks it, and its link stays (station_link.h apply_release)
               ? 'RELEASE DROPS THIS STICKS3 TO UNASSIGNED RIGHT NOW, EVEN LIVE, AND UNLOCKS IT. IT STAYS LINKED, SO YOU CAN ASSIGN IT AGAIN HERE.'
-              : 'RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.'}
+              : 'Release sends this phone back to its own HUD, even live. After it leaves, this console cannot reach it. Walk to it and tap seven times to return it to utility mode.'}
             action={`TAP ${releaseLabel} AGAIN TO SEND IT`} />
         )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -485,9 +485,9 @@ function ItemPicker({ node, pu, chosen, locked, onPick, effective }:
     effective?: StationItem | null }) {
   const note = (text: React.ReactNode, color: string = colourOf('items-itempicker-loading')) => (
     <div data-testid="item-note" style={{ font: F.chk(600, 11), letterSpacing: '.06em', color }}>{text}</div>);
-  if (pu.s === 'loading') return note(null);
+  if (pu.s === 'loading') return null;
   if (pu.s === 'err') return note(<>{GLYPH} COULD NOT READ THE ITEM LIST: {pu.msg}</>, colourOf('items-itempicker-err'));
-  if (!pu.v.enabled) return note(<HelpNote label="Items unavailable" infoTestid="help2-items-picker-info" keep="Power-ups are disabled for this MC. Restart MC with power-ups enabled to assign an item." />, colourOf('items-itempicker-powerups-off'));
+  if (!pu.v.enabled) return note(<HelpNote label="Items unavailable" infoTestid="help2-items-picker-info" keep={`Power-ups are disabled for this MC. Restart MC with ${POWERUPS_RESTART} to assign an item.`} />, colourOf('items-itempicker-powerups-off'));
   return (
     <div data-testid="item-picker" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <Micro>ITEM · ONE PER STATION</Micro>

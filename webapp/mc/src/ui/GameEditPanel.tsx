@@ -156,7 +156,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
         const err = e as Error;
         // The one server refusal this panel can actually provoke (state.py `set_config`, phase guard).
         // The raw sentence is true but gives no next step; RECALL is the next step.
-        if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()} — RECALL FIRST, THEN EDIT AGAIN.`);
+        if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()}. RECALL FIRST, THEN EDIT AGAIN.`);
         throw e;
       }
     });
@@ -224,9 +224,11 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
                   <Seg label="mode" value={shown.mode} wrap options={modeOptions.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modeOptions.map(m => [m.mode, m.name]))}
                     onChange={pickMode} />
+                  <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
+                    keep={`Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC; guns get the config when it is pushed. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.${state.bench_volume != null ? ` When MC runs with --bench-volume, guns play at the bench value ${state.bench_volume} instead, try-outs included.` : ''}`} />
                 </>
               ) : (
-                <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
+                <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} · Mode list unavailable (server predates this UI?)</span>
               )}
             </Row>
             <Row label="NIGHT OPS">
@@ -236,7 +238,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               </span>
             </Row>
             <Row label="VOLUME">
-              <VolumeEditor volume={shown.volume} environment={shown.environment} benchVolume={state.bench_volume}
+              <VolumeEditor volume={shown.volume} environment={shown.environment}
                 onChange={v => edit(d => { const n = { ...d }; if (v == null) delete n.volume; else n.volume = v; return n; })} />
             </Row>
             <Row label="LIFE PRESET">
@@ -274,15 +276,15 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange
               {/* Round-2 fix pass F (2026-09-12): this sat OUTSIDE the fieldset above, so the ONE control
                   on this panel that navigates somewhere was the one the lock did not reach. */}
               <GhostButton size={10.5} pad="8px 12px" disabled={locked}
-                title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
-                onClick={() => { if (!locked) openBuild(); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN BUILD ▸</GhostButton>
+                title={locked ? `THE MATCH IS ${state.phase.toUpperCase()}. RECALL FIRST, THEN EDIT.` : undefined}
+                onClick={() => { if (!locked) openBuild(); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES · OPEN BUILD ▸</GhostButton>
               <span data-testid="game-edit-cancel"><GhostButton size={11} pad="9px 14px" onClick={cancel}>CANCEL</GhostButton></span>
               <span data-testid="game-edit-save">
                 <PrimaryButton onClick={save} disabled={locked || saving || !dirty}
-                  title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.`
+                  title={locked ? `THE MATCH IS ${state.phase.toUpperCase()}. RECALL FIRST, THEN EDIT.`
                     : !dirty ? 'Nothing has changed yet'
                     : pushed ? 'Sends the whole change to MC in one go, then re-pushes it to every gun. The count on the left drops to 0 and climbs as each one answers.'
-                    : 'Applies the change. Nothing has been loaded to the guns yet — LOAD on the GAMES tab sends it.'}>
+                    : 'Applies the change. The guns get the config when you push it.'}>
                   {saving ? 'SAVING…' : saveLabel}
                 </PrimaryButton>
               </span>
@@ -312,7 +314,7 @@ function venueVolume(environment: string | undefined): number {
   return environment === 'outdoor' ? VENUE_VOLUME_OUTDOOR : VENUE_VOLUME_INDOOR;   // unknown = the quieter, as the server
 }
 function VolumeEditor({ volume, environment, onChange }:
-  { volume: number | null | undefined; environment: string | undefined; benchVolume?: number; onChange: (v: number | null) => void }) {
+  { volume: number | null | undefined; environment: string | undefined; onChange: (v: number | null) => void }) {
   const venue = venueVolume(environment);
   const set = volume ?? null;
   const steps: number[] = [...VOLUME_STEPS];
@@ -336,20 +338,16 @@ function VolumeEditor({ volume, environment, onChange }:
           </button>
         ))}
       </div>
-      <div data-testid="game-edit-volume-note" style={{ font: F.chk(500, 11.5), color: T.micro, lineHeight: 1.45 }}>
-        <HelpNote label="Game settings" testid="game-edit-settings-note" infoTestid="help2-game-settings-info"
-          keep="Changing mode replaces game rules and teams; venue and volume stay. Save sends changes and applies the selected volume to every gun." />
-      </div>
     </div>
   );
 }
 
 function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
   { label: string; rule: SlotRule; allowed: string[]; weapons: WeaponView[]; onToggleId: (id: string) => void }) {
-  if (rule.choice === 'off') return <PoolNote label={label} text="OFF for this game — the alt-fire button does nothing." />;
+  if (rule.choice === 'off') return <PoolNote label={label} text="OFF for this game. The alt-fire button does nothing." />;
   if (rule.choice === 'fixed') {
     const w = weapons.find(x => x.weapon_id === rule.fixed_id);
-    return <PoolNote label={label} text={`FIXED — everyone carries ${w?.name ?? rule.fixed_id ?? '—'}.`} />;
+    return <PoolNote label={label} text={`FIXED: everyone carries ${w?.name ?? rule.fixed_id ?? '—'}.`} />;
   }
   const candidates = kindRows(rule, weapons);
   return (
@@ -361,7 +359,7 @@ function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
           const role = roleOf(w.role, w.cls);
           return (
             <button key={w.weapon_id} type="button" className="hit44" aria-pressed={on} onClick={() => onToggleId(w.weapon_id)}
-              title={on ? `${w.name} — allowed, tap to switch off` : `${w.name} — off, tap to allow`}
+              title={on ? `${w.name}: allowed, tap to switch off` : `${w.name}: off, tap to allow`}
               aria-label={`${w.name}, ${on ? 'allowed' : 'off'}`}
               style={{ font: F.chk(600, 11), letterSpacing: '.04em', padding: '5px 10px', minHeight: 36, cursor: 'pointer',
                        background: on ? 'rgba(57,180,255,.10)' : T.panelDeep, color: on ? T.ink : T.micro,

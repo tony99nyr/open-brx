@@ -58,7 +58,7 @@ describe('H5 · LOBBY outside the lobby phase', () => {
     expect(m.find('[data-lobby-primary="push"]').length, 'the push is still offered').toBe(1);
     expect(btnText(m).some(l => l.includes('MARK ALL READY')), 'ready_all refuses outside LOBBY').toBe(false);
     expect(m.find('[data-mark-ready="1"]').length, 'the per-player MARK READY stays').toBe(1);
-    expect(m.find('[data-ready-closed]')[0]?.textContent).toBe('');
+    expect(m.text()).toContain('Push config first.');
     expect(m.text()).not.toContain('MARK ALL READY OPENS ONCE');
     m.unmount();
   });

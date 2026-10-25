@@ -264,10 +264,8 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
     // Fix-1: in ARMED/LIVE a disabled <fieldset> turns off every button and input inside it at once
     // (Seg's options, both ValueBoxes, MATCH THE GAME POOL), so the card still SAYS the player's
     // setup without offering a write the server refuses.
-    // 'kit-pool-note-on' is NEUTRAL (F221 polish, 2026-09-25): a deliberate, host-set difference is a
-    // status, not a fix-before-match amber, so the whole card border/label reads the same colour as the
-    // note at the bottom of it, not a hardcoded T.warn.
-    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? colourOf('kit-pool-note-on') : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
+    // A deliberate pool override stays neutral, with its state shown on the card.
+    <fieldset data-pool-card disabled={locked || undefined} style={{ margin: 0, minWidth: 0, border: `1px solid ${on ? T.dim : T.line}`, background: T.panelDeep, padding: '8px 10px 10px', display: 'flex', flexDirection: 'column', gap: 8, opacity: locked ? 0.7 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: easy ? T.acc : T.dim }}>EASY RELOAD</span>
         <Seg value={easy ? 'on' : 'off'} onChange={v => onEasy(v === 'on')} size={11} pad="4px 12px"
@@ -277,11 +275,11 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
       </div>
       {/* F221: a two-tap confirm (drops the second weapon) — UNCHANGED per Tony's rule. */}
       {easyAsk && <span role="alert" data-easy-ask style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }}>▲ {easyAsk}</span>}
-      {/* F221: explanatory copy, always shown — NEUTRAL, no glyph (matches kit-easy-note-off/on). */}
+      {/* A divider separates the reload and pool controls. */}
       <span style={{ height: 1, background: T.line }} />
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: on ? colourOf('kit-pool-note-on') : T.dim }}>POOL</span>
-        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? colourOf('kit-pool-note-on') : T.micro }}>
+        <span style={{ font: F.chk(700, 11), letterSpacing: '.18em', color: T.dim }}>POOL</span>
+        <span data-pool-state style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: on ? T.dim : T.micro }}>
           {on ? `${mult}\u00d7 GAME POOL` : 'GAME DEFAULT'}
         </span>
       </div>
@@ -298,8 +296,7 @@ export function PoolCard({ hp, armor, pool, onSet, onClear, name, easy, onEasy, 
           </div>
         );
       })}
-      {/* F221: a deliberate, host-set difference either way \u2014 NEUTRAL, no glyph (kit-pool-note-off/on). */}
-      {on && !locked && <GhostButton onClick={onClear} color={colourOf('kit-pool-note-on')} border={colourOf('kit-pool-note-on')} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
+      {on && !locked && <GhostButton onClick={onClear} color={T.dim} border={T.dim} size={11} pad="7px 12px">MATCH THE GAME POOL</GhostButton>}
     </fieldset>
   );
 }

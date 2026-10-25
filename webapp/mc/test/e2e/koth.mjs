@@ -1098,7 +1098,9 @@ step('stale-server', async ({ browser, base }) => {
     ws.onMessage(m => s.send(m));
   });
   await go(pg, 'build');
+  const staleState = await pg.evaluate(async () => (await fetch('/api/state')).json());
   expect(stripped > 0, 'REST bodies were actually stripped (the interception is live)');
+  expect(staleState.config?.mode === 'tdm', 'the intercepted REST response is the active TDM snapshot');
   // mc-koth went red twice in a week on the PIECES wait under a full parallel gate and passed alone. The pieces alert
   // shows only while the console's WebSocket (here through the stale-server proxy) is connected (`Games.tsx`:
   // `piecesRes.error && connected`); the catalogue alert has no such guard. Both stay condition waits: 30 s only bounds

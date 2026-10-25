@@ -17,7 +17,6 @@ import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 import { StationAlerts } from '../ui/StationAlerts';
 import { PowerupsLobbyLine } from '../ui/Powerups';
 import { ARM_TIMEOUT_MS } from './OperatorMenu';
-import { hillCount, operatorNote } from './operatorNote';
 
 /** H5 (visual QA 2026-09-23): the phases the server refuses every LOBBY write in. `push_config`
  *  (`_refuse_push_in_play`), `ready_all` and a re-team all refuse in ARMED and LIVE, so LOBBY there is
@@ -234,7 +233,6 @@ export function Lobby() {
   // QA-04 (visual QA round 1, 2026-09-26): the same operator note PLAY shows beside the mode picker
   // (`Games.tsx`) -- "the last reminder before players scatter" (games-redesign.md §9) -- so it has to
   // survive the tab switch too, not just be true the moment the game was picked.
-  const note = operatorNote(state.config, hillCount(state.stations));
 
   // QA-02 (visual QA round 1, 2026-09-26): ONE outcome line for "are the guns ready", read straight off
   // the readiness board -- the same rows `faults`/`redRows`/`waitRows` above already read, so this can
@@ -292,6 +290,9 @@ export function Lobby() {
               )}
             </span>
           )}
+          {!allReady && players.length > 0 && !readyOpen && state.phase === 'build' && !lobby.pushed && (
+            <span data-mark-all-ready-reason="1" role="status" style={{ font: F.chk(600, 11), color: T.micro }}>Push config first.</span>
+          )}
         </>
       } />
       {matchInPlay(state.phase) && (
@@ -301,9 +302,6 @@ export function Lobby() {
       )}
       {/* QA-04: the same note PLAY shows -- an SVG icon, never the ⓘ glyph (QA-05, no bundled face
           carries U+24D8). */}
-      {note.length > 0 && (
-        <div data-testid="operator-note" role="status" style={{ display: 'none' }} />
-      )}
       <HillReadout config={state.config} style={{ marginBottom: 12 }} />
       {rosterFault && (
         <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
@@ -572,14 +570,6 @@ export function Lobby() {
             onClick={() => pushAndArm(true)}>
             {lobby.pushed ? override.label : `Push anyway, over ${[reds.length && `${reds.length} fault${reds.length === 1 ? '' : 's'}`, waitRows.length && `${waitRows.length} missing phone${waitRows.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ')}`} ▸
           </button>
-        </div>
-      )}
-      {lobby.pushed && forceProofRows.length > 0 && balancedForTeams && (
-        <div data-no-override-reason style={{ marginTop: 10, font: F.chk(600, 11), letterSpacing: '.1em', color: colourOf('lobby-no-override-forceproof') }}>
-        </div>
-      )}
-      {!allReady && players.length > 0 && !readyOpen && (
-        <div data-ready-closed={state.phase} style={{ marginTop: 8, font: F.mono(500, 11), letterSpacing: '.12em', color: colourOf('lobby-ready-closed-note'), lineHeight: 1.5 }}>
         </div>
       )}
       {!allReady && players.length > 0 && (

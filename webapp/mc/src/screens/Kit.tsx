@@ -468,7 +468,7 @@ export function Kit() {
                 {!focusItem ? (
                   <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, minHeight: 150 }}>
                     <div style={{ font: F.osw(700, 26), letterSpacing: '.08em', color: T.dim }}>
-                      {slot === 'perk' ? (perkRule?.choice === 'off' ? 'PERKS ARE OFF FOR THIS GAME' : 'NO PERK') : secRule?.choice === 'off' ? 'SECONDARY IS OFF FOR THIS GAME' : 'NO SECONDARY'}
+                      {slot === 'perk' ? (perkRule?.choice === 'off' ? 'Perks are off for this game. Change it in BUILD.' : 'NO PERK') : secRule?.choice === 'off' ? 'Secondary is off for this game. Change it in BUILD.' : 'NO SECONDARY'}
                     </div>
                   </div>
                 ) : 'weapon_id' in focusItem ? (

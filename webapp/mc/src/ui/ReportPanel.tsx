@@ -108,7 +108,7 @@ export function ReportPanel({ onClose }: { onClose: () => void }) {
           {phase === 'idle' || phase === 'error' ? (
             <>
               <p data-alert="frame-report-idle" data-sev="neutral" style={{ font: F.chk(600, 13), lineHeight: 1.5, color: T.ink, margin: 0 }}>
-                <HelpNote label="Report privacy" infoTestid="help2-report-info" keep="Reports may contain names you typed. Check the file before posting it publicly." />
+                <HelpNote label="Report privacy" infoTestid="help2-report-info" keep="Anything you type here goes into a public GitHub issue." />
               </p>
               {phase === 'error' && <FaultPill id="frame-report-error" short="Report failed" why={error ?? ''} />}
               <span>

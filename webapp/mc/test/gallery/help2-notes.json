@@ -5,9 +5,9 @@
     "line": 121,
     "screen": "LIVE",
     "current": "NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0.",
-    "proposal": "CUT",
-    "wording": "",
-    "reason": "Empty state is clear"
+    "proposal": "INLINE",
+    "wording": "No match is live.",
+    "reason": "The LIVE screen needs an empty state and a LOBBY link."
   },
   {
     "id": "live-order-held",
@@ -126,7 +126,7 @@
     "screen": "ITEMS picker",
     "current": "POWERUPS ARE OFF ON THIS MC (--no-powerups): THIS STATION ARMS WITH NO ITEM. TO GIVE IT ONE, RESTART MC: {POWERUPS_RESTART}",
     "proposal": "INFO",
-    "wording": "Power-ups are disabled for this MC. Restart MC with power-ups enabled to assign an item.",
+    "wording": "Power-ups are disabled for this MC. Restart MC with ./start.sh (no --no-powerups flag) to assign an item.",
     "reason": "Required to restore the unavailable feature"
   },
   {
@@ -255,9 +255,9 @@
     "line": 590,
     "screen": "LOBBY",
     "current": "MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {phase}, NOT LOBBY.",
-    "proposal": "CUT",
-    "wording": "",
-    "reason": "Phase and disabled state explain the gate"
+    "proposal": "INLINE",
+    "wording": "Push config first.",
+    "reason": "The button is unavailable before the first push."
   },
   {
     "id": "operator-not-in-play",
@@ -306,7 +306,7 @@
     "screen": "ITEMS hill setup",
     "current": "NO STATION HAS SAID HELLO YET. ON A PHONE, HOLD THE SEVEN-TAP GESTURE ON THE IDLE HUD TO SWITCH IT TO A UTILITY STATION, OR POWER ON A STICKS3. IT THEN APPEARS HERE TO ASSIGN AS CONTROL.",
     "proposal": "INFO",
-    "wording": "No station is available yet. Switch an idle phone to utility station mode, or power on a StickS3.",
+    "wording": "Power on a StickS3 or tap an idle phone seven times to switch it to utility station mode.",
     "reason": "Explains how to add the missing station"
   },
   {
@@ -386,8 +386,8 @@
     "screen": "Game editor",
     "current": "Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) and volume stay. Nothing is sent until Save.",
     "proposal": "INFO",
-    "wording": "Changing mode replaces game rules and teams; venue and volume stay. Save sends changes and applies the selected volume to every gun.",
-    "reason": "Prevents surprising changes to the draft"
+    "wording": "Changing mode resets the time limit, respawn, health and weapon rules to that mode's defaults, and moves players onto its teams. Day/night and volume stay. Nothing is sent until SAVE. SAVE updates MC; guns get the config when it is pushed. The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.",
+    "reason": "The one editor INFO covers mode, push timing, volume and health rules."
   },
   {
     "id": "game-edit-volume",
@@ -406,7 +406,7 @@
     "screen": "Report panel",
     "current": "This makes a report from this session. Names, tagger ids, IP addresses and the access code are removed. GitHub issues are public, so open the file and check it before you post it. Short names, numbers and text you typed (team and game names) are not changed, so check the file before you post it.",
     "proposal": "INFO",
-    "wording": "Reports may contain names you typed. Check the file before posting it publicly.",
+    "wording": "Anything you type here goes into a public GitHub issue.",
     "reason": "Privacy details affect the posting decision"
   },
   {
@@ -448,16 +448,6 @@
     "proposal": "CUT",
     "wording": "",
     "reason": "PLAY already has mode notes"
-  },
-  {
-    "id": "health-preset-note",
-    "file": "src/screens/HealthPresetEditor.tsx",
-    "line": 61,
-    "screen": "Game editor health",
-    "current": "the shield recharges only in a game with no armour · a player's own POOL override (on KIT) still wins over HP/armour",
-    "proposal": "INFO",
-    "wording": "The shield recharges only when the game has no armour. A player's pool override on KIT takes priority over HP and armour.",
-    "reason": "Explains two non-obvious health rules"
   },
   {
     "id": "debug-token-prompt",

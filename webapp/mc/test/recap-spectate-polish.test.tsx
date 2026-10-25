@@ -214,7 +214,7 @@ describe('3 · SPECTATE rows stay readable', () => {
   it('carries the team-kill note when a K is below zero', async () => {
     const m = await spectate([liveRow(0, 2), liveRow(1, -1)]);
     const note = m.find('[data-spectate="team-kill-note"]')[0];
-    expect(strip(note?.textContent ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(note?.textContent?.trim()).toBe('A team kill costs one kill, so K and K/D can fall below zero.');
     expect(parseFloat(getComputedStyle(note).fontSize), 'nothing on the board under 16 px').toBeGreaterThanOrEqual(16);
     m.unmount();
     const clean = await spectate([liveRow(0, 2)]);
