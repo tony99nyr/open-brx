@@ -3005,9 +3005,13 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
         for branch in B.HEAT_COOLING_BRANCHES:
             branch_mb, branch_mc = matrices[branch]
             branch_rules = rule_branches[branch]
-            flips = [key for key, values in verdict["heat_rules"].items()
+            cells = verdict["heat_rules"].items()
+            flips = [key for key, values in cells
                      if (values[branch]["shipped"]["pass"] or values[branch]["baseline"]["pass"])
                      and not values[branch]["candidate"]["pass"]]
+            flips += [key for key, values in cells if key not in flips   # F610: a flip at the ceiling counts too
+                      and (_ceiling_pass(values[branch]["shipped"], key) or _ceiling_pass(values[branch]["baseline"], key))
+                      and not _ceiling_pass(values[branch]["candidate"], key)]
             before_dom = domination_verdict(branch_mb, branch_mb)["numbers"]
             after_dom = domination_verdict(branch_mb, branch_mc)["numbers"]
             if _new_dominance_kits(before_dom, after_dom):
@@ -3095,6 +3099,12 @@ def _last_cell_material_loss(mb: dict, mc: dict, old_name: str, new_name: str) -
     return all(material)
 
 
+def _ceiling_pass(cell: dict, key: str) -> bool:
+    """A rule cell's pass at the 0.9 ceiling (F610); a cell without a ceiling value passes there."""
+    v, bar = cell.get("ceiling_value"), cell["bar"]
+    return True if v is None else (v < bar if key.split("|", 1)[1].startswith("R10a") else v >= bar)
+
+
 def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict, subject: str | None,
                  side: dict | None = None, *, haze_failure: bool = False) -> dict:
     """Rule cells fail when, at either aim (real or the 0.9 ceiling), they pass in the shipped catalogue but fail in
@@ -3105,11 +3115,8 @@ def balance_kept(rules_s: dict, rules_b: dict, rules_c: dict, mb: dict, mc: dict
         return [k for k in rules_c if (passes(rules_b, k) and not passes(rules_c, k))
                 or (passes(rules_s, k) and not (passes(rules_b, k) and passes(rules_c, k)))]
 
-    def ceiling_passes(rules, k):
-        v, bar = rules[k].get("ceiling_value"), rules[k]["bar"]
-        return True if v is None else (v < bar if k.split("|", 1)[1].startswith("R10a") else v >= bar)
-
     flips = flipped(lambda rules, k: rules[k]["pass"])
+    ceiling_passes = lambda rules, k: _ceiling_pass(rules[k], k)  # noqa: E731
     # F610: a cell the shipped catalogue already fails at real aim can still be broken at the 0.9 ceiling
     ceiling_flips = [k for k in flipped(ceiling_passes) if k not in flips]
     flips += ceiling_flips
