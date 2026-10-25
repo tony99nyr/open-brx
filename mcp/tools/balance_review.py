@@ -358,10 +358,14 @@ def compiled_pools(world: "World") -> dict:
     """{perk or "none": {preset: [health, armour, shield]}} through compile's own armed_armor/armed_shield, with
     the world's grant for each perk (F604)."""
     grants = _compile_mod.max_armor_grants(world.perks)
+    compiler = _compile_mod.Compiler(perks=world.perks)
     out = {}
     for pid in [None] + fieldable_perks(world.perks):
         out[str(pid or "none")] = {}
         for preset in ("standard", "shields"):
+            if pid and compiler.preset_block(pid, preset):
+                out[str(pid)][preset] = None          # refused on this preset: no player can field it
+                continue
             hp, arm, sh = HEALTH_PRESETS[preset]
             out[str(pid or "none")][preset] = [hp, _compile_mod.armed_armor(arm, pid, arm == 0, grants),
                                                _compile_mod.armed_shield(sh, pid, arm == 0, grants)]
@@ -3641,6 +3645,15 @@ def report_markdown(v: dict) -> str:
             numbers = result["numbers"]
             out.append(f"| {branch} | {_num(numbers['kills_per_stock'])} | "
                        f"{_num(numbers['median_ttk_ms'])} | {result['pass']} |")
+        out.append("")
+    if v.get("compiled_pools"):
+        out += ["## Compiled pools (health / armour / shield)", "",
+                "What the compiler arms for each fieldable perk in the candidate world (F604). Refused: the preset "
+                "refuses the perk.", "", "| perk | standard | shields |", "|---|---|---|"]
+        for pid, by_preset in v["compiled_pools"].items():
+            cells = [" / ".join(map(str, by_preset[p])) if by_preset.get(p) else "refused"
+                     for p in ("standard", "shields")]
+            out.append(f"| {pid} | {cells[0]} | {cells[1]} |")
         out.append("")
     rs, rb, rc = v["rules"]["shipped"], v["rules"]["baseline"], v["rules"]["candidate"]
     out += ["## Balance rules", "",

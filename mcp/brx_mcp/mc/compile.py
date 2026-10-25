@@ -2021,6 +2021,7 @@ class Compiler:
                  distinct_weapon_cells: bool = False) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
+        self._grants = max_armor_grants(self.perks)   # F604: this compiler's own catalogue arms the pools
         # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
         self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
         # F312: None = the shipped fn-28 row. A number = `--bench-capture-row`: the `<15,0>` row's function.
@@ -2109,11 +2110,11 @@ class Compiler:
             # measured that far). Keep the cap, but do not "fix" it believing the hardware requires
             # it. In a base-armour-0 game (`shields`) the grant compiles into SHIELD instead — see
             # `armed_armor()`/`armed_shield()`.
-            armor=armed_armor(armor_base, pid, shields),
+            armor=armed_armor(armor_base, pid, shields, self._grants),
             # S45: `shield_base` is now the HOST'S OWN `health.max_shield` (was a fixed constant every
             # game armed regardless of what the host asked for) -- `armed_shield()` still redirects a
             # `max_armor_add` perk's grant here in a shields-preset game (S50), on top of that number.
-            shield=armed_shield(shield_base, pid, shields),
+            shield=armed_shield(shield_base, pid, shields, self._grants),
             alt_reload=bool(ov.get("easy_reload")),          # S50: moved from the perk slot to the per-player override; $BMAP,1,97
         )
 
@@ -2214,9 +2215,9 @@ class Compiler:
             pe["swap_ms"] = v
         # max_hp is never moved by any current perk — never populated, which is the correct "absent"
         # per the wire contract, not an oversight.
-        if (v := pair(armor_base, armed_armor(armor_base, pid, shields))) is not None:
+        if (v := pair(armor_base, armed_armor(armor_base, pid, shields, self._grants))) is not None:
             pe["max_armor"] = v
-        if (v := pair(shield_base, armed_shield(shield_base, pid, shields))) is not None:
+        if (v := pair(shield_base, armed_shield(shield_base, pid, shields, self._grants))) is not None:
             pe["max_shield"] = v
         return pe
 

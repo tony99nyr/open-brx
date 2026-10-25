@@ -179,3 +179,7 @@ def test_the_armour_grant_has_one_source_perks_json():
     rows = [dict(r, effects=dict(r.get("effects") or {})) for r in PerkCatalog()._rows]
     next(r for r in rows if r["perk_id"] == "body_armor")["effects"]["max_armor_add"] = 40
     assert C.max_armor_grants(PerkCatalog(rows))["body_armor"] == 40
+    # a Compiler built on that catalogue writes its grant on the literal $PSET frame, not the module's
+    config, player = _cfg(45, 70), _player("assault_rifle", "body_armor")
+    assert _pset_pool(C.Compiler(perks=PerkCatalog(rows)), config, player) == 45 + 70 + 40
+    assert _pset_pool(C.Compiler(), config, player) == 45 + 70 + 25
