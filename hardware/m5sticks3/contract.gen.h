@@ -340,6 +340,8 @@ constexpr size_t TEAM_INK_HEX_COUNT = 4;
 // A12: the weapon role labels a person sees (the HUD's weapon card, the console's class tag).
 constexpr StrPair ROLE_LABELS[] = {{"assault", "ASSAULT"}, {"cqb", "CLOSE RANGE"}, {"marksman", "SNIPER"}, {"support", "SUPPORT"}, {"power", "HEAVY"}, {"melee", "MELEE"}, {"sidearm", "SIDEARM"}};
 constexpr size_t ROLE_LABELS_COUNT = 7;
+// F596 (Tony 2026-10-24): a row with no progress this long is stuck, and FINALISE turns prominent
+constexpr int32_t SYNC_STUCK_S = 120;
 // contracts.md §5 "Size cap" (the retired net.md §8)
 constexpr int32_t MAX_ENVELOPE_BYTES = 65536;
 // log_data chunk cap (fits under the envelope cap)

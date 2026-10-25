@@ -423,7 +423,8 @@ class FakeNet:
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
                        app_ver: str | None = None, platform: str = "android", via: str | None = None,
                        prior_utility_node_id: str | None = None, node_key: str | None = None,
-                       seq_next: int | None = None, gun_tail: str | None = None, device: str | None = None) -> dict | None:
+                       seq_next: int | None = None, gun_tail: str | None = None, device: str | None = None,
+                       pending: object = None) -> dict | None:
         """A phone's hello. Returns Session's welcome node, or None when net.py would refuse the hello (`_hello_gate`):
         pass `node_key=""` for a phone that lost its storage, and `seq_next` for one whose seq counter restarted."""
         tail = gun_tail if gun_tail is not None else (gun_name.rsplit("-", 1)[-1] if "-" in gun_name else "")
@@ -443,6 +444,8 @@ class FakeNet:
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
         if via:
             hello["via"] = via
+        if pending is not None:
+            hello["pending"] = pending
         if prior_utility_node_id:
             hello["prior_utility_node_id"] = prior_utility_node_id
         node = self._hydrate(hello) if self._hydrate else None

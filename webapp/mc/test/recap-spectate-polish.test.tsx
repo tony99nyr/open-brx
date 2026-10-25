@@ -44,8 +44,12 @@ describe('1 · a KOTH RECAP headlines held time', () => {
 
   it('F556: two hills get a note that held time adds them up; one hill gets none', async () => {
     let m = await recap({}, { possession: { ...HELD, by_team: { blue: 95, yellow: 457 }, sites: 2 } });
-    expect(strip(m.find('[data-alert="recap-possession-sites"]')[0]?.textContent ?? ''))
-      .toContain('HELD TIME ADDS UP OVER THE 2 HILLS THAT REPORTED, SO A TEAM CAN HOLD UP TO 10:00 IN A 5:00 MATCH.');
+    // F596: the possession caveat sentences are gone from RECAP; the summed time itself is on the headline
+    expect(m.find('[data-alert="recap-possession-sites"]').length).toBe(0);
+    expect(strip(m.text())).not.toContain('HELD TIME ADDS UP');
+    // positive: what the page says instead is the numbers themselves, per team, in the possession panel
+    const panel = strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '');
+    expect(panel).toContain('1:35'); expect(panel).toContain('7:37');
     expect(strip(m.find('[data-testid="recap-headline"]')[0]?.textContent ?? ''), 'the summed time is on the same screen').toContain('7:37');
     m.unmount();
     m = await recap({}, { possession: HELD });
@@ -56,7 +60,9 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     const d = await demo();
     const target = { config: { ...d.state!.config, mode: 'koth', scoring: { ...d.state!.config.scoring, win_by: 'objective' as const, hold_target_s: 120 } } };
     let m = await recap(target, { possession: { ...HELD, by_team: { blue: 50, yellow: 70 }, sites: 2 } });
-    expect(strip(m.find('[data-alert="recap-possession-sites"]')[0]?.textContent ?? '')).toContain('THE 2:00 HOLD TARGET IS SUMMED ACROSS HILLS.');
+    expect(m.find('[data-alert="recap-possession-sites"]').length, 'F596: no sentence').toBe(0);
+    expect(strip(m.text())).not.toContain('SUMMED ACROSS HILLS');
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? ''), 'positive: both teams\' held times are still shown').toMatch(/0:50.*1:10|1:10.*0:50/);
     m.unmount();
     m = await recap(target, { possession: HELD });
     expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '')).not.toContain('SUMMED ACROSS HILLS');
@@ -64,24 +70,27 @@ describe('1 · a KOTH RECAP headlines held time', () => {
 
   it('milestone 2026-10-18: a station-counted hill gets the station line and no floor caveat; a mixed match one floor line', async () => {
     let m = await recap({}, { possession: { ...HELD, station_sites: 1, phones_by_team: { yellow: 200 } } });
-    const line = strip(m.find('[data-alert="recap-possession-station"]')[0]?.textContent ?? '');
-    expect(line).toContain('THE HILL COUNTED ITS OWN HOLD TIME. PHONES SAW');
-    expect(line).toContain('3:20');
+    expect(m.find('[data-alert="recap-possession-station"]').length, 'F596: no station-counted sentence').toBe(0);
+    expect(strip(m.text())).not.toContain('COUNTED ITS OWN HOLD TIME');
     expect(m.find('[data-alert="recap-possession-thin"]').length, 'no floor caveat').toBe(0);
+    expect(strip(m.find('[data-testid="possession"]')[0]?.textContent ?? ''), 'positive: the station-counted times are the ones on the bars').toContain('3:32');
     m.unmount();
     m = await recap({}, { possession: { ...HELD, sites: 2, station_sites: 1, phones_by_team: { yellow: 200 } } });
-    expect(strip(m.find('[data-alert="recap-possession-station"]')[0]?.textContent ?? '')).toContain('1 OF 2 HILLS COUNTED THEIR OWN HOLD TIME');
+    expect(strip(m.text())).not.toContain('COUNTED THEIR OWN HOLD TIME');
     const floors = strip(m.find('[data-testid="possession"]')[0]?.textContent ?? '').match(/FLOOR/g) ?? [];
-    expect(floors.length, 'mixed: exactly one floor line').toBe(1);
+    expect(floors.length, 'F596: mixed: no floor line at all').toBe(0);
     m.unmount();
     m = await recap({}, { possession: HELD });
     expect(m.find('[data-alert="recap-possession-station"]').length).toBe(0);
-    expect(m.find('[data-alert="recap-possession-thin"]').length, 'a phone-only hill keeps the caveat').toBe(1);
+    expect(m.find('[data-alert="recap-possession-thin"]').length, 'a phone-only hill prints no caveat either').toBe(0);
   });
 
   it('F586: no hill reported a hold reading (sites 0) still shows the floor caveat, as LIVE does', async () => {
     const m = await recap({}, { possession: { ...HELD, sites: 0, station_sites: 0 } });
-    expect(m.find('[data-alert="recap-possession-thin"]').length, 'sites 0 keeps the caveat').toBe(1);
+    expect(m.find('[data-alert="recap-possession-thin"]').length, 'F596: sites 0 prints no caveat').toBe(0);
+    expect(strip(m.text())).not.toContain('BEST COVERAGE');
+    expect(m.find('[data-testid="possession"]').length, 'positive: the panel still renders its bars').toBe(1);
+    expect(m.find('[data-poss-bar]').length).toBe(2);
     m.unmount();
   });
 
@@ -117,14 +126,18 @@ describe('2 · RECAP during LIVE is not a finished match', () => {
   });
 });
 
-describe('4 · a negative K carries the team-kill note', () => {
-  it('RECAP says why K is below zero', async () => {
+describe('4 · a negative K carries a team-kill icon (F596: no note line)', () => {
+  it('RECAP puts a small icon beside the negative K, with the reason as its hover', async () => {
     const m = await recap();
-    expect(strip(m.find('[data-testid="team-kill-note"]')[0]?.textContent ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(m.find('[data-testid="team-kill-note"]').length, 'the full-width note is gone').toBe(0);
+    const icons = m.find('[data-testid="team-kill-icon"]');
+    expect(icons.length).toBe(1);
+    expect(strip(icons[0].getAttribute('title') ?? '')).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    expect(icons[0].closest('[data-cell="k"]')?.textContent, 'beside the negative number').toContain('-1');
   });
-  it('RECAP says nothing when no K is below zero', async () => {
+  it('RECAP draws no icon when no K is below zero', async () => {
     const m = await recap({}, { rows: [RECAP.rows[0]] });
-    expect(m.find('[data-testid="team-kill-note"]').length).toBe(0);
+    expect(m.find('[data-testid="team-kill-icon"]').length).toBe(0);
   });
 });
 
