@@ -66,7 +66,7 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
     # S50 (2026-09-17): easy_reload left the perk slot (-> loadout.overrides.easy_reload); armor_piercing,
     # armor_piercing joined. motion_tracker and second_wind are in the catalogue but HIDDEN (2026-09-18): they are
     # node-local, the phone half is not built, and a visible perk that does nothing is worse than a missing one.
-    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"]
+    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "fast_hands", "armor_piercing"]
     assert all(not p["hidden"] for p in PK)
     full = PerkCatalog()
     assert full.has("med_kit") and full.row("med_kit")["hidden"] and full.row("med_kit")["mechanism"] == "slot_frame"
@@ -111,13 +111,13 @@ def test_presets_and_pools():
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
     assert not (_SUPPORT & set(lp["primary"])), "a support weapon must never be offered as a primary"
-    assert len(lp["primary"]) == _OPEN_PRIMARY and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
+    assert len(lp["primary"]) == _OPEN_PRIMARY and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 4   # 4 VISIBLE perks: the two node-local ones are hidden until the phone half is built
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
     # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
     # lands on the same count as `open`.
     assert len(lp["primary"]) == _OPEN_PRIMARY and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
-    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 4
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
     assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": [],
@@ -162,7 +162,7 @@ def test_validate_and_apply_matrix():
     ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "smg"}]}, W, PK)
     assert not ok and why == "No secondary this game"
     # A14: a perk rides beside a secondary weapon
-    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "usp"}], "perk": "quick_switch"}, W, PK) == (True, None)
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "usp"}], "perk": "fast_hands"}, W, PK) == (True, None)
     # apply: fixed → set, off → cleared, out-of-pool → replaced
     assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
@@ -307,27 +307,27 @@ def test_compile_perk_effects():
     assert "$AMMO,0,64,384,1,*" in b["spawn"] and "$AMMO,0,64,384,1,*" in b["revive"]
     assert _tok(f, 18) == _tok(w0, 18)                                   # reload untouched
     assert int(_tok(f, 15)) == round(int(_tok(w0, 15)) * 1.3)            # S50 cost
-    # quick_hands: reload halved (t18), PLUS its S50 cost -- ×0.8 mag (t16/t39; keep t39==t16).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_hands"}), TEAMS)
+    # Fast Hands halves reload time and keeps the full magazine.
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "fast_hands"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2
-    assert int(_tok(f, 16)) == max(1, round(int(_tok(w0, 16)) * 0.8)) == int(_tok(f, 39))
-    # body_armor: S50's flat grant on $PSET armor (token 4) -- +25 (docs/perk-design.md §2, Tony
+    assert int(_tok(f, 16)) == int(_tok(w0, 16)) == int(_tok(f, 39))
+    # body_armor: S50's flat grant on $PSET armor (token 4) -- +20 (docs/perk-design.md §2, Tony
     # 2026-09-17: "maybe 50 is too much armor and it should be 25", down from a flat +50) -- hp
     # untouched, PLUS its S50 cost -- ×1.25 reload (t18).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[3] == "45" and pset[4] == "95"                           # 70 + 25
+    assert pset[3] == "45" and pset[4] == "90"                           # 70 + 20
     assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == round(int(_tok(w0, 18)) * 1.25)
-    # quick_switch: half the swap delay (t15) on every slot, PLUS its S50 cost -- a small NEGATIVE
-    # armour grant, -20 flat (docs/perk-design.md §2).
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), TEAMS)
+    # Fast Hands halves swap time without an armour cost.
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "fast_hands"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[4] == "50"                                              # 70 - 20
+    assert pset[4] == "70"                                              # unchanged armour
+
     # armor_piercing (S50): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP cell and
     # its damage (t5) replaced by the weapon's own `ap_dmg`. Secondary/melee untouched (primary only).
     # 2026-09-18: `ap_dmg` is a PER-WEAPON number, not the old 0.4 multiplier, because 45/115 is 0.39 so
@@ -351,6 +351,38 @@ def test_compile_perk_effects():
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial
     tut = C.tutorial_frames({"weapon_id": "assault_rifle"}, "indoor")
     assert any(f == "$AMMO,0,32,384,1,*" for f in tut)
+
+
+def test_extended_mags_shields_override_reaches_the_frame_and_effect_report():
+    lo = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}
+    player = _player(lo)
+    standard = _cfg()
+    shields = _cfg()
+    shields["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 105, "preset": "shields"}
+    hardcore = _cfg()
+    hardcore["health"] = {"max_hp": 45, "max_armor": 0, "max_shield": 0, "preset": "hardcore"}
+    for config, mag in ((standard, 64), (shields, 48), (hardcore, 64)):
+        bundle = C.compile(config, player, TEAMS)
+        frame = next(x for x in bundle["head"] if x.startswith("$WEAP,0"))
+        assert int(_tok(frame, 16)) == mag
+        assert bundle["perk_effects"]["mag"] == {"base": 32, "resolved": mag}
+
+def test_old_perk_ids_from_live_clients_are_fast_hands_not_refused():
+    """Review 2026-10-25: `_check_loadout` and `check_request` tested the raw id, so a live client's quick_hands /
+    quick_switch was refused as unknown after the merge."""
+    for old_id in ("quick_hands", "quick_switch"):
+        s, net, clock, ps = mk_loadout_session(1, compiler=Compiler())
+        online(s, net, clock, ps[0], 0)
+        pid = ps[0]["player_id"]
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": old_id})
+        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
+        s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}]})
+        _req(net, 0, "perk", "perk", old_id)
+        ack = _last_ack(net, 0)
+        assert ack["ok"] is True, (old_id, ack)
+        assert s.players[pid]["loadout"]["perk"] == "fast_hands", old_id
+    ok, why = P.check_request(P.effective(None, "tdm"), s.loadout_pool(), "perk", "perk", "quick_hands", s._catalog_rows()[0], s._catalog_rows()[1])
+    assert ok, why
 
 
 def test_extended_mags_doubles_a_reserve_below_the_ceiling_and_stops_at_it():
@@ -650,11 +682,11 @@ def test_easy_reload_is_refused_beside_a_chain_reload_weapon():
     assert P.chain_conflict(bad, W) == {"weapon": "shotgun"}
     # every perk is still fine on the shotgun (none of them claim the ALT button any more), and the
     # override is fine on every magazine weapon
-    for pid in ("body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"):
+    for pid in ("body_armor", "extended_mags", "fast_hands", "armor_piercing"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "shotgun"}], "perk": pid}, W, PK)[0], pid
     for wid in ("assault_rifle", "smg", "sniper_rifle", "amr", "charge_rifle"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "overrides": {"easy_reload": True}}, W, PK)[0], wid
-    assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "quick_hands"}, W) is None
+    assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "fast_hands"}, W) is None
 
 
 def test_a_chain_reload_pick_drops_the_override_and_the_ALT_conflict_is_host_only_now():
@@ -738,7 +770,7 @@ def test_assign_and_welcome_carry_catalog_and_policy():
     assert {w["weapon_id"] for w in a["catalog"]["weapons"]} >= {"smg", "rail_gun"} and all("tags" in w for w in a["catalog"]["weapons"])
     # S50: easy_reload left the perk slot and armor_piercing joined. The two node-local perks stay hidden until
     # the phone half is built, so a pushed catalogue never offers a perk that does nothing.
-    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"]
+    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "fast_hands", "armor_piercing"]
     pol = a["policy"]
     assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
     assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]
@@ -1130,17 +1162,17 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
     assert r["provisional"] is not None            # whatever it is, `settling` did not decide it
 
 
-def test_swap_delay_token_and_quick_switch():
-    """tok15 is the weapon-swap delay (bench 2026-09-04). Stock 850 on both slots; quick_switch halves it on
+def test_swap_delay_token_and_fast_hands():
+    """tok15 is the weapon-swap delay (bench 2026-09-04). Stock 850 on both slots; fast_hands halves it on
     EVERY slot because the gun enforces the larger of the two; the bundle reports the enforced value."""
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}), TEAMS)
     f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f1 = [x for x in b["head"] if x.startswith("$WEAP,1")][0]
     assert _tok(f0, 15) == "850" and _tok(f1, 15) == "850" and b["swap_ms"] == 850
-    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), TEAMS)
+    b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "fast_hands"}), TEAMS)
     f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f4 = [x for x in b["head"] if x.startswith("$WEAP,4")][0]
     assert _tok(f0, 15) == "425" and b["swap_ms"] == 425
     assert _tok(f4, 15) == "50"                                          # melee's 100 scales too (every slot)
-    assert _tok(f0, 18) == "1400"                                       # reload untouched by a swap perk
+    assert _tok(f0, 18) == "700"                                        # Fast Hands halves reload too
 
 
 def test_a_phone_pick_never_moves_overrides_S50():
@@ -1190,52 +1222,30 @@ def _pool(policy_patch):
     return pol, P.pool(pol, W, PK)
 
 
-def test_s37_quick_switch_leaves_the_perk_pool_when_there_is_no_secondary():
-    """Tony, field 2026-09-12: "if either weapon slot is disabled, the Quick Switch perk must be
-    disabled/hidden too — it is the $WEAP tok15 swap delay; with one weapon there is nothing to swap."
-    Taking it out of the POOL is what makes it vanish from both UIs, and `apply()` clears a stored one,
-    with no second rule anywhere."""
-    _, open_pool = _pool({})
-    assert "quick_switch" in open_pool["perks"]
-    for patch in ({"secondary": P._rule("off", ("weapon",))},                       # slot switched off
-                  {"secondary": P._rule("player", ("weapon",), exclude_tags=(       # filtered to nothing
-                      "assault", "cqb", "marksman", "sniper", "support", "power", "heavy",
-                      "sidearm", "pistol", "melee"))}):
+def test_fast_hands_stays_available_without_a_secondary():
+    for patch in ({"secondary": P._rule("off", ("weapon",))},
+                  {"secondary": P._rule("player", ("weapon",), only_ids=("missing",))}):
         pol, lp = _pool(patch)
-        assert lp["secondary_weapons"] == [], patch
-        assert "quick_switch" not in lp["perks"], lp["perks"]
-        # every OTHER perk is untouched — this is one perk's rule, not a blanket
-        assert {"body_armor", "extended_mags", "quick_hands"} <= set(lp["perks"]), lp["perks"]
+        assert not lp["secondary_weapons"]
+        assert "fast_hands" in lp["perks"]
+        held = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "fast_hands"}
+        assert P.apply(pol, lp, held, W, PK)["perk"] == "fast_hands"
+        assert P.validate_loadout(pol, lp, held, W, PK) == (True, None)
 
 
-def test_s37_a_stored_quick_switch_is_cleared_by_apply_and_refused_by_validate():
-    pol, lp = _pool({"secondary": P._rule("off", ("weapon",))})
-    held = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}
-    assert P.apply(pol, lp, held, W, PK).get("perk") is None
-    ok, why = P.validate_loadout(pol, lp, held, W, PK)
-    assert ok is False and "second weapon" in why, why
-
-
-def test_s37_the_phones_pick_is_refused_with_a_reason_that_says_why():
-    """`loadout_ack.reason` is shown verbatim on the HUD, so "Quick Switch isn't allowed in this game"
-    (what the generic pool rejection said) is not good enough: the operator did not ban the perk, the
-    ruleset left nothing to switch to."""
+def test_fast_hands_phone_pick_without_secondary():
     s, net, clock, ps = mk_loadout_session(1)
     s.set_config({"loadout_policy": {"preset": "custom", "secondary": {"choice": "off"}}})
     online(s, net, clock, ps[0], 0)
-    _req(net, 0, "perk", "perk", "quick_switch")
-    ack = _last_ack(net, 0)
-    assert ack["ok"] is False and ack["slot"] == "perk"
-    assert "Quick Switch" in ack["reason"] and "second weapon" in ack["reason"], ack["reason"]
-    assert s.players[ps[0]["player_id"]]["loadout"].get("perk") is None
-    # the pool the phone reads no longer offers it, so the control disappears on its own
-    assert "quick_switch" not in s.loadout_pool()["perks"]
+    _req(net, 0, "perk", "perk", "fast_hands")
+    assert _last_ack(net, 0)["ok"] is True
+    assert s.players[ps[0]["player_id"]]["loadout"]["perk"] == "fast_hands"
 
 
 def test_s37_the_rule_is_asked_of_the_effect_not_of_the_perk_id():
     """`swaps_weapons` reads `effects.switch_mult`, the way `takes_alt` reads `effects.alt_reload`, so
     a second swap perk is covered the day it exists."""
-    assert P.swaps_weapons({"perk_id": "quick_switch", "effects": {"switch_mult": 0.5}}) is True
+    assert P.swaps_weapons({"perk_id": "swap_only", "effects": {"switch_mult": 0.5}}) is True
     assert P.swaps_weapons({"perk_id": "future_swap", "effects": {"switch_mult": 0.25}}) is True
     assert P.swaps_weapons({"perk_id": "body_armor", "effects": {"max_armor_add": 50}}) is False
     assert P.swaps_weapons(None) is False
@@ -1431,8 +1441,8 @@ def test_an_empty_slot_says_WHICH_control_emptied_it():
 
     # the bug: secondary off, and the only allowed perk was the swap perk
     r = pl({"secondary": P._rule("off", ("weapon",)),
-            "perk": P._rule("player", ("perk",), only_ids=("quick_switch",))})
-    assert r["perks"] == [] and r["reasons"]["perks"] == "needs_secondary", r
+            "perk": P._rule("player", ("perk",), only_ids=("fast_hands",))})
+    assert r["perks"] == ["fast_hands"], r
     assert r["reasons"]["secondary_weapons"] == "off"
 
     # every other cause keeps its own code
@@ -1585,3 +1595,50 @@ def test_f282_a_silenced_games_tryout_pushes_the_quiet_weapon_frame():
         frames = net.pushes("tutorial", "node0")[-1][2]["frames"]
         weap = next(f for f in frames if f.startswith("$WEAP")).split(",")
         assert (weap[26:29] == [t25, t26, t27]) is quiet, (preset, weap[26:29])
+
+
+def test_legacy_fast_hands_session_and_policy_migration():
+    import json
+    import pathlib
+    import tempfile
+
+    for old_id in ("quick_hands", "quick_switch"):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "session.json"
+            s, _, _, ps = mk_loadout_session(1, compiler=Compiler())
+            s._persist_path = path
+            s.players[ps[0]["player_id"]]["loadout"]["perk"] = "fast_hands"
+            s._persist()
+            snap = json.loads(path.read_text())
+            snap["players"][0]["loadout"]["perk"] = old_id
+            snap["config"]["loadout_policy"]["perk"]["only_ids"] = [old_id]
+            path.write_text(json.dumps(snap))
+            restored = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+            restored._persist_path = path
+            assert restored.restore_snapshot() == 1
+            assert next(iter(restored.players.values()))["loadout"]["perk"] == "fast_hands"
+            assert restored.loadout_pool()["perks"] == ["fast_hands"]
+
+
+def test_legacy_fast_hands_piece_migration():
+    import json
+    import pathlib
+    import tempfile
+    from brx_mcp.mc.pieces import BUILTIN_IDS, PieceStore
+    from brx_mcp.mc.favourites import FavouriteStore
+
+    for old_id in ("quick_hands", "quick_switch"):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "pieces.json"
+            store = PieceStore(path)
+            row = store.create("perks", "Legacy handling", "", {"choice": "fixed", "fixed_id": "fast_hands", "only_ids": ["fast_hands"]})
+            path.write_text(path.read_text().replace('"fast_hands"', json.dumps(old_id)))
+            favourite_path = pathlib.Path(tmp) / "favourites.json"
+            pick = {"pieces": {**BUILTIN_IDS, "perks": row["piece_id"]},
+                    "match": {"time_limit_s": 600, "frag_limit": None, "night": False, "silenced": False}}
+            favourite = FavouriteStore(favourite_path).create("Legacy game", 30, pick)
+            saved_pick = FavouriteStore(favourite_path).get(favourite["favourite_id"])["pick"]
+            loaded = PieceStore(path).get(saved_pick["pieces"]["perks"])
+            assert "invalid" not in loaded
+            assert loaded["value"]["fixed_id"] == "fast_hands"
+            assert loaded["value"]["only_ids"] == ["fast_hands"]

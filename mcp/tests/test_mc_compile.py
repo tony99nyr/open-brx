@@ -18,6 +18,45 @@ from _session import match_config
 C = Compiler()
 
 
+def test_ap_rekey_zeroes_a_crit_primary_without_changing_plain_crit():
+    """AP takes away the gun's t6 roll even on a crit row the current AP guard refuses."""
+    crit = WeaponCatalog._T["crit"] + 1
+    for weapon_id in ("amr", "burst_rifle"):
+        assert C._ap_block(weapon_id) is not None
+        plain = C.catalog.resolve(weapon_id, 0)
+        assert int(plain.split(",")[crit]) > 0
+        assert C._rekey(plain, None).split(",")[crit] == plain.split(",")[crit]
+        ap = C._rekey(plain, compile_mod._AP_CELL, zero_crit=True)
+        assert ap.split(",")[crit] == "0"
+        assert ap.split(",")[4:6] == list(compile_mod._AP_CELL)
+
+
+def test_compile_zeroes_the_crit_chance_of_an_armour_piercing_primary():
+    """Review 2026-10-25: the test above calls `_rekey` directly. This one goes through `compile()`: the AP guard is
+    lifted on this instance only (AMR and Burst stay refused until the F618 bench row), so a crit primary reaches the
+    AP rekey, and the compiled $WEAP slot 0 must carry crit 0 where the plain compile of the same weapon does not."""
+    from _session import TEAMS
+    crit = WeaponCatalog._T["crit"] + 1
+    compiler = Compiler()
+    compiler._ap_block = lambda weapon_id: None
+    pairs = {"amr": (10, 399), "burst_rifle": (7, 430)}   # the approved but unbenched pairs, on a test-only row copy
+    for weapon_id, (dmg, fire_ms) in pairs.items():
+        row = compiler.catalog._row(weapon_id)
+        compiler.catalog._by_id[weapon_id] = {**row, "ap_dmg": dmg, "ap_fire_ms": fire_ms}
+    for weapon_id in pairs:
+        def head(perk):
+            lo = {"weapons": [{"weapon_id": weapon_id}]}
+            if perk:
+                lo["perk"] = perk
+            player = {"player_id": "p1", "player_num": 1, "display": "A", "team_id": "blue", "node_id": None, "gun_id": None,
+                      "voice": "male", "ready": True, "loadout": lo}
+            return next(f for f in compiler.compile(_cfg(), player, TEAMS)["head"] if f.startswith("$WEAP,0")).split(",")
+        plain, ap = head(None), head("armor_piercing")
+        assert int(plain[crit]) > 0, weapon_id
+        assert ap[crit] == "0", (weapon_id, ap)
+        assert ap[4:6] == list(compile_mod._AP_CELL), "the AP cell is on the frame, so this IS the AP path"
+
+
 def test_validate_rejects_an_untyped_win_by_typo():
     cfg = _cfg()
     cfg["scoring"]["win_by"] = "kils"
@@ -1448,15 +1487,15 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
         t = next(f for f in head if f.startswith("$PSET")).split(",")
         return int(t[3]) + int(t[4])
 
-    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now a flat +25, not a flat +50.
-    assert armed_pool(None) == 115 and armed_pool("body_armor") == 140
+    # Part A: body_armor adds 20 to the armed pool.
+    assert armed_pool(None) == 115 and armed_pool("body_armor") == 135
 
     # F146 (field 2026-09-12): the one-magazine GUARD no longer reads the armed pool — see
     # `test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon` for why one
     # player's perk must not re-grade a weapon for the whole field. The two ARMING arithmetics above
     # are unchanged and still pinned to each other; what the guard quotes is the BASE pool, clamped
     # the same way.
-    hi = dict(cfg, health={"max_hp": 45, "max_armor": 254})       # a 299 base; +25 perk -> capped 255 armed
+    hi = dict(cfg, health={"max_hp": 45, "max_armor": 254})       # a 299 base; +20 perk -> capped 255 armed
     head = c.compile(hi, roster("body_armor")[0], hi["teams"])["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     assert int(t[4]) == 255, "armour is capped at the policy ceiling"

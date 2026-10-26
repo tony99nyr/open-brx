@@ -5,8 +5,29 @@ import { apply } from '../src/mock/policy';
 import { mergeModeParams } from '../src/rules/modeParams';
 import { defaultPresentation, mergePresentation, profileFromPreset } from '../src/rules/presentation';
 import { perkEffectsResolved, roundHalfEven } from '../src/rules/perkEffects';
+import { isShieldsHealth } from '../src/rules/health';
+import { perkForHealth } from '../src/screens/kit/art';
 
 describe('generated server rule inputs', () => {
+  it('shows the health-specific Extended Mags trade in Standard and Shields', async () => {
+    const perks = await new MockBackend().getPerks();
+    const extendedMags = perks.find(perk => perk.perk_id === 'extended_mags')!;
+
+    expect(perkForHealth(extendedMags, { max_armor: 70, max_shield: 0 }).gain).toContain('×2 MAG');
+    expect(perkForHealth(extendedMags, { max_armor: 0, max_shield: 105 }).gain).toContain('×1.5 MAG');
+  });
+
+  it('applies the Extended Mags Shields override only when the numbers ARE the Shields preset, as the server does', async () => {
+    const perks = await new MockBackend().getPerks();
+    const extendedMags = perks.find(perk => perk.perk_id === 'extended_mags')!;
+    const gain = (h: { max_hp: number; max_armor: number; max_shield: number }) => perkForHealth(extendedMags, h).gain;
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 105 })).toContain('×1.5 MAG');
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 50 })).toContain('×2 MAG');   // custom, not Shields
+    expect(gain({ max_hp: 45, max_armor: 0, max_shield: 0 })).toContain('×2 MAG');    // Hardcore
+    expect(isShieldsHealth({ max_hp: 45, max_armor: 0 })).toBe(false);                // legacy: no max_shield
+    expect(isShieldsHealth(undefined)).toBe(false);
+  });
+
   it('keeps an unchanged headset and gun preset, and merges a nested readout', () => {
     const current = profileFromPreset('standard');
     const unchanged = mergePresentation(current, { headset: structuredClone(current.headset), gun: structuredClone(current.gun) });
@@ -82,13 +103,13 @@ describe('generated server rule inputs', () => {
       player.loadout = { weapons: [{ weapon_id: weaponId }], perk };
       return perkEffectsResolved(state.config, player, weapons, perks);
     };
-    for (const perk of ['extended_mags', 'quick_hands']) {
+    for (const perk of ['extended_mags', 'fast_hands']) {
       const r = resolved('sniper_rifle', perk);
       expect(r?.mag, perk).toBeUndefined();
       expect(r?.reserve, perk).toBeUndefined();
       expect(r?.reload_ms, perk).toBeUndefined();
     }
-    expect(resolved('assault_rifle', 'quick_hands')?.reload_ms).toBeDefined();   // control: a magazine weapon moves
+    expect(resolved('assault_rifle', 'fast_hands')?.reload_ms).toBeDefined();   // control: a magazine weapon moves
   });
 
   it('keeps a hidden primary from throwing during a state snapshot', async () => {
@@ -96,7 +117,7 @@ describe('generated server rule inputs', () => {
     const state = await backend.getState();
     const hidden = WEAPON_MOCK_FIELDS.find(row => row.weapon_id === 'bolt_rifle')!;
     const player = structuredClone(state.players[0]);
-    player.loadout = { weapons: [{ weapon_id: hidden.weapon_id }], perk: 'quick_hands' };
+    player.loadout = { weapons: [{ weapon_id: hidden.weapon_id }], perk: 'fast_hands' };
     const weapons = await backend.getWeapons(), perks = await backend.getPerks();
     expect(() => perkEffectsResolved(state.config, player, weapons, perks)).not.toThrow();
   });

@@ -34,6 +34,84 @@ def test_older_verdict_rep_scale_matches_main():
     assert REPS_SCALE == 0.01
 
 
+def test_burst_keeps_a_loaded_primary_when_deagle_needs_a_landed_hit():
+    plain = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    fast = R.replace(plain, name="fast", swap_ms=plain.swap_ms / 2,
+                     guns=(R.replace(plain.guns[0], reload_ms=plain.guns[0].reload_ms / 2), plain.guns[1]))
+    rng = random.Random(7)
+    fighter = R.Fighter(fast, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+    target = R.Fighter(plain, (5, 0, 0), 0, R.DIST["mid"], rng)
+    fighter.targets = [target]
+    fighter.gs[0].ammo = 16
+    fighter.gs[0].count = 20
+
+    assert fighter._finish_ms(0, target, 4643) < fast.swap_ms + fighter._finish_ms(1, target, 4643)
+    assert not fighter._maybe_swap(4643)
+    assert fighter.active == 0
+
+
+def test_finish_estimate_counts_whole_landed_shots():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    deagle = kit.guns[1]
+    hit = deagle.gun_dmg + deagle.head_dmg
+    est = {}
+    for health in (hit + 4, 2 * hit):
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+        target = R.Fighter(kit, (health, 0, 0), 0, R.DIST["mid"], rng)
+        fighter.targets = [target]
+        est[health] = fighter._finish_ms(1, target, 0)
+    # Both need two landed Deagle hits, so a mean-damage count must not call the first one quicker.
+    assert est[hit + 4] == est[2 * hit]
+
+
+def test_a_last_round_that_kills_if_it_lands_is_a_finish():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    rng = random.Random(7)
+    fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["close"], rng)
+    target = R.Fighter(kit, (5, 0, 0), 0, R.DIST["close"], rng)
+    fighter.targets = [target]
+    fighter.gs[1].ammo, fighter.gs[1].reserve = 1, 0
+    # Whole landed shots must not turn a likely one-round kill into "never".
+    assert 0.5 < fighter._hit_chance(1) < 1
+    assert fighter._finish_ms(1, target, 0) < float("inf")
+
+
+def test_a_zero_success_cell_is_never_near_top():
+    # Every kit is within 0.05 of a 0.011 top, but zero wins add no value.
+    assert not R._near_top("hill hold", 0.0, 0.011)
+    assert R._near_top("hill hold", 0.01, 0.011)
+
+
+def _dry_deagle_estimate(pool, chance, rounds):
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    return R.finish_estimate(deagle, pool=pool, chance=chance, ammo=rounds, reserve=0, reload_amount=0,
+                             ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
+                             overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=True, count=0, dist=R.DIST["mid"],
+                             heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+
+
+def test_a_dry_gun_finishes_only_when_its_rounds_likely_land_the_kill():
+    # Two 26-damage rounds at 0.9 against 30 health: two hits are needed and land 81% of the time.
+    assert _dry_deagle_estimate(30, 0.9, 2) < float("inf")
+    # One round at 0.05 against 5 health: a likely miss is not a finish.
+    assert _dry_deagle_estimate(5, 0.05, 1) == float("inf")
+    # One round, two hits needed: never.
+    assert _dry_deagle_estimate(30, 0.9, 1) == float("inf")
+
+
+def test_the_dry_estimate_is_monotonic_in_reserve_and_never_overflows():
+    # Two hits at 0.2 land with even odds by round 9, with or without a reserve behind them.
+    dry = _dry_deagle_estimate(30, 0.2, 9)
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    stocked = R.finish_estimate(deagle, pool=30, chance=0.2, ammo=9, reserve=96, reload_amount=0, ready_at=0.0,
+                                locked_until=0.0, t=0.0, pull_ms=R.PULL_MS, overshoot_ms=R.FIGHT_OVERSHOOT_MS,
+                                charged=True, count=0, dist=R.DIST["mid"], heat=0.0, heat_t=0.0,
+                                heat_cool_while_firing=True)
+    assert dry == stocked < float("inf")
+    assert _dry_deagle_estimate(30 * 26, 0.02, 1200) == float("inf")
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
@@ -105,7 +183,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
 
 def test_field_score_is_zero_when_one_team_size_gets_no_kills():
     shipped = R.shipped_world()
-    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=1)   # F601: at 3 the fixed swap lets its Deagle finish in every team size
+    # F601: at 3 the fixed swap let its Deagle finish in every team size. F617: whole-hit estimates moved the seed-7
+    # draws, so at 1 it now scores in every size; 2 keeps one size with no kills
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=2)
     world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
              R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
@@ -642,19 +722,23 @@ def test_rule_tables_gate_at_real_aim_and_report_the_ceiling():
 
 
 def test_op_rule_gates_on_the_crit_pull_and_on_every_fieldable_perk():
-    """Rule 7. A 70-damage row with a 40% crit lands 105 on a crit, over the 95 Quick Switch pool. A visible perk
+    """Rule 7. A row 10 under the lowest fieldable Standard pool, with a 40% crit, passes on its plain pull and
+    one-shots on a crit (115 today: no shipped perk costs armour since Fast Hands, 2026-10-25). A visible perk
     with an unmodelled key still sets a pool: -30 armour beside Armour Piercing drops Standard to 85, so a 90 row
     one-shots. A pickup is exempt. Break it once (gate on the plain pull, or use modelled perks) and watch one pass."""
+    low = R.lowest_pools(PerkCatalog())["standard"]
+    crit_dmg = low - 10
+    assert crit_dmg < low <= int(crit_dmg * B.CRIT_MULT)
     perks = copy.deepcopy(PerkCatalog()._rows)
     perks.append({"perk_id": "test_glass", "name": "Glass", "effects": {"max_armor_add": -30, "armor_piercing": True}})
     rows = WeaponCatalog()._rows + [
-        dict(_copy("amr", "test_crit", "Test crit", dmg=70), crit_pct=40),
+        dict(_copy("amr", "test_crit", "Test crit", dmg=crit_dmg), crit_pct=40),
         _copy("assault_rifle", "test_90", "Test 90", dmg=90),
         dict(_copy("assault_rifle", "test_pickup", "Test pickup", dmg=150), pickup_only=True)]
     plain = R.World(WeaponCatalog(rows), PerkCatalog())
     glass = R.World(WeaponCatalog(rows), PerkCatalog(perks))
     op = R.op_check(plain, ["test_crit", "test_90", "test_pickup", "sniper_rifle"])
-    assert op["test_crit"]["crit_pull"] == 105 and not op["test_crit"]["pass"]
+    assert op["test_crit"]["crit_pull"] == int(crit_dmg * B.CRIT_MULT) and not op["test_crit"]["pass"]
     assert op["test_90"]["pass"] and op["test_pickup"]["pass"] and op["sniper_rifle"]["pass"]
     assert R.op_check(glass, ["test_90"])["test_90"]["lowest_pool"]["standard"] == 85
     assert not R.op_check(glass, ["test_90"])["test_90"]["pass"]
@@ -897,8 +981,12 @@ def test_hill_hold_scores_both_kits_and_overwatch_has_no_escape():
     shotgun = kits["Shotgun"]
     sniper = R.make_kit(world, "Sniper", "sniper_rifle")
     shotgun_hold = R.hill_hold(shotgun, ar, 1000)
-    ar_hold = R.hill_hold(kits["Assault Rifle"], ar, 1000)
-    assert 0 < shotgun_hold < 1 and 0 < ar_hold < 1, (shotgun_hold, ar_hold)
+    # The second fraction was the Body Armor AR holding against two plain ARs. That hold was always about 0.1%
+    # (2 of 1000 on main), and Body Armor at +20 (2026-10-25) drops it to about 0.02%, so 1000 reps read 0.0. The
+    # same Shotgun against the plain SMG reference attacker holds about 17%: a second kit pairing, well inside (0, 1).
+    smg = R.make_kit(world, "smg (plain)", "smg", R.SECONDARY)
+    smg_hold = R.hill_hold(shotgun, smg, 1000)
+    assert 0 < shotgun_hold < 1 and 0 < smg_hold < 1, (shotgun_hold, smg_hold)
     first_only = R.hill_hold(shotgun, ar, 1000, second_attacker=False)
     with mock.patch.object(R, "HILL_SECOND_ATTACKER_MS", 0):
         both_at_once = R.hill_hold(shotgun, ar, 1000)
@@ -1013,7 +1101,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 22
+    assert R.SCENARIO_VERSION == 23
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1307,23 +1395,23 @@ def test_candidate_files_round_trip_and_every_path_must_move_something():
         base, cand = R.build_worlds(diff)
         assert base.cat.damage("sniper_rifle") == 75 and cand.cat.damage("sniper_rifle") == 57
         assert base.cat.tap_damage("charge_rifle") == cand.cat.tap_damage("charge_rifle") == 12
-        assert R.make_kit(cand, "x", "sniper_rifle", perk="quick_hands").guns[0].reload_ms == 1700
+        assert R.make_kit(cand, "x", "sniper_rifle", perk="fast_hands").guns[0].reload_ms == 1700
         assert R.make_kit(cand, "x", "sniper_rifle", perk="extended_mags").guns[0].mag == 1
-        assert R.make_kit(base, "x", "assault_rifle", perk="quick_hands").guns[0].reload_ms == 700
+        assert R.make_kit(base, "x", "assault_rifle", perk="fast_hands").guns[0].reload_ms == 700
 
         row = R.load_candidate(write(_copy("assault_rifle", "test_ar_new", "Test AR new", dmg=10)))
         base, cand = R.build_worlds(row)
         assert "test_ar_new" in cand.cat._by_id and "test_ar_new" not in base.cat._by_id
 
-        perk = R.load_candidate(write({"perk_id": "quick_hands", "changes": {"reload_mult": 0.4}}))
+        perk = R.load_candidate(write({"perk_id": "fast_hands", "changes": {"reload_mult": 0.4}}))
         base, cand = R.build_worlds(perk)
-        assert base.fx("quick_hands")["reload_mult"] == 0.5 and cand.fx("quick_hands")["reload_mult"] == 0.4
+        assert base.fx("fast_hands")["reload_mult"] == 0.5 and cand.fx("fast_hands")["reload_mult"] == 0.4
 
         for bad, text in ((({"tap_dmg": 14}), "tap_dmg"), ({"mag": 2, "wire.dmgg": 61}, "wire.dmgg"),
                           ({"mag": 2, "wire.dmg": 75}, "wire.dmg"), ({"wire.range_outdoor_pct": 90}, "range_outdoor")):
             c = R.load_candidate(write({"weapon_id": "sniper_rifle", "changes": bad}))
             _raises(lambda: R.build_worlds(c), text)
-        _raises(lambda: R.build_worlds(R.load_candidate(write({"perk_id": "quick_hands", "changes": {"reload_mult": 0.5}}))),
+        _raises(lambda: R.build_worlds(R.load_candidate(write({"perk_id": "fast_hands", "changes": {"reload_mult": 0.5}}))),
                 "already")
         _raises(lambda: R.load_candidate({"weapon_id": "sniper_rifle", "changes": {"mag": 1}, "sim": {"perk_exempt": True}}),
                 "reload_type")
@@ -1384,14 +1472,18 @@ def test_armour_piercing_uses_health_only_and_refuses_an_ineligible_primary():
     w = R.shipped_world()
     ap = R.make_kit(w, "AP AR", "assault_rifle", perk="armor_piercing")
     plain = R.make_kit(w, "AR", "assault_rifle")
-    assert ap.guns[0].gun_dmg == w.cat._row("assault_rifle")["ap_dmg"]
-    assert ap.guns[0].fire_ms == w.cat._row("assault_rifle")["ap_fire_ms"]
+    row = w.cat._row("assault_rifle")
+    assert ap.guns[0].gun_dmg == row["ap_dmg"]
+    assert ap.guns[0].fire_ms == row["ap_fire_ms"]
     assert ap.guns[0].head_dmg == 0
     victim = R.Fighter(plain, (45, 70, 0), 0, 1, random.Random(2))
     shooter = R.Fighter(ap, (45, 70, 0), 1, 1, random.Random(2), pull_ms=0)
     victim.next_t = math.inf
-    n = math.ceil(45 / ap.guns[0].gun_dmg)
-    R.fight(random.Random(2), [shooter], [victim], cap_ms=n * ap.guns[0].fire_ms)
+    n = math.ceil(45 / row["ap_dmg"])
+    # The AR fires controlled bursts (BURST_LEN rounds, then a BURST_PAUSE_MS pause), so n rounds at ap_fire_ms
+    # also need the worst-case pauses. Without them a fast AP cycle runs out of time, not out of health.
+    pauses = math.ceil(n / R.BURST_LEN[0]) * R.BURST_PAUSE_MS[1]
+    R.fight(random.Random(2), [shooter], [victim], cap_ms=n * row["ap_fire_ms"] + pauses)
     assert shooter.shots == n
     assert not victim.alive and victim.armour == 70
     plain_victim = R.Fighter(plain, (45, 70, 0), 0, 1, random.Random(2))

@@ -1429,7 +1429,7 @@ def test_the_takeover_is_as_long_as_THIS_weapon_not_a_flat_1_5s():
     """engine.js `_reloadPulled` times the takeover from the ACTIVE slot's catalog `reload_s`, then the
     perk's `reload_mult` on slot 0. The stage hardcoded 1.5 s for every gun and every perk, so the bench
     predicted a deadline the phone would never use -- on the Shotgun (0.4 s per shell) by a factor of
-    nearly four, and on a quick_hands AR (0.7 s) by more than two."""
+    nearly four, and on a fast_hands AR (0.7 s) by more than two."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
@@ -1443,27 +1443,27 @@ def test_the_takeover_is_as_long_as_THIS_weapon_not_a_flat_1_5s():
         assert st.reloading["s"] == 0.4, f"slot 1 is the Shotgun (reload_ms 400): {st.reloading}"
         # a reload perk shrinks slot 0 only -- compile writes `reload_mult` into slot 0's $WEAP and nowhere else
         st._end_reload("fired")
-        st.player["loadout"]["perk"] = "quick_hands"
+        st.player["loadout"]["perk"] = "fast_hands"
         st.reload(); await settle(st)
         assert st.reloading["s"] == 0.4, "slot 1 does not get the perk's multiplier"
         st._end_reload("fired"); st.active_slot = 0
         st.reload(); await settle(st)
-        assert st.reloading["s"] == 0.7, f"quick_hands halves the AR's 1.4 s: {st.reloading}"
+        assert st.reloading["s"] == 0.7, f"fast_hands halves the AR's 1.4 s: {st.reloading}"
     asyncio.run(go())
 
 
 def test_a_reload_perk_never_shortens_a_bolt():
     """F587 (brx3 review 2026-10-24): compile (`_ammo`) and ammo.js `_reloadPulled` skip `reload_mult` for a bolt
-    (F573 review). The stage multiplied every slot-0 reload, so a Sniper with Quick Hands got a 1.1 s deadline
+    (F573 review). The stage multiplied every slot-0 reload, so a Sniper with Fast Hands got a 1.1 s deadline
     against the phone's 2.2 s, and the bench predicted a RELOAD DID NOT TAKE the phone never shows."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.player["loadout"]["weapons"][0] = {"weapon_id": "sniper_rifle"}
-        st.player["loadout"]["perk"] = "quick_hands"
+        st.player["loadout"]["perk"] = "fast_hands"
         st.alcd(mag=1, reserve=20); await settle(st)
         st.reload(); await settle(st)
-        assert st.reloading["s"] == 2.2, f"the bolt keeps its 2.2 s under quick_hands: {st.reloading}"
+        assert st.reloading["s"] == 2.2, f"the bolt keeps its 2.2 s under fast_hands: {st.reloading}"
     asyncio.run(go())
 
 

@@ -23,12 +23,12 @@ async function kitFor(pid: string) {
 }
 
 describe('KIT · perk slot (A14)', () => {
-  it('shows three slot cards and the demo three-slot kit (AR + Desert Eagle + Quick Switch)', async () => {
+  it('shows three slot cards and the demo three-slot kit (AR + Desert Eagle + Fast Hands)', async () => {
     const { m, state } = await kitFor('p1');
     const p1 = state.players.find(p => p.player_id === 'p1')!;
-    expect(p1.loadout).toEqual({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'deagle' }], perk: 'quick_switch' });
+    expect(p1.loadout).toEqual({ weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'deagle' }], perk: 'fast_hands' });
     const t = m.text();
-    for (const s of ['PRIMARY', 'SECONDARY', 'PERK', 'ASSAULT RIFLE', 'DESERT EAGLE', 'QUICK SWITCH']) expect(t).toContain(s);
+    for (const s of ['PRIMARY', 'SECONDARY', 'PERK', 'ASSAULT RIFLE', 'DESERT EAGLE', 'FAST HANDS']) expect(t).toContain(s);
     expect(m.find('[aria-label="clear perk"]').length, 'the perk card has its own ✕ CLEAR').toBe(1);
     expect(m.el.querySelector('[title^="Pull REAPER out of the lobby"]')?.getAttribute('title')).toBe('Pull REAPER out of the lobby, kept on STANDBY, PLAY puts them back');
     m.unmount();
@@ -36,12 +36,12 @@ describe('KIT · perk slot (A14)', () => {
 
   it('uses sentence punctuation in the ALT conflict tooltip', async () => {
     const d = await demo();
-    const perks: PerkView[] = d.perks.map(k => k.perk_id === 'quick_switch'
+    const perks: PerkView[] = d.perks.map(k => k.perk_id === 'fast_hands'
       ? { ...k, effects: { ...k.effects, alt_reload: true } }
       : k);
     const m = await mountScreen(<Kit />, { ...d, view: 'kit', selPlayer: 'p1', perks });
     await m.click('PERK');
-    expect(m.el.querySelector('[aria-label^="Quick Switch perk"]')?.getAttribute('title')).toBe('Takes the ALT button: drops their Desert Eagle');
+    expect(m.el.querySelector('[aria-label^="Fast Hands perk"]')?.getAttribute('title')).toBe('Takes the ALT button: drops their Desert Eagle');
     m.unmount();
   });
 
@@ -111,12 +111,13 @@ describe('KIT · perk slot (A14)', () => {
   // gain_cost_lines`) — pin that the equipped slot card and the picker's own row show BOTH halves,
   // worded exactly as the server sent them, not a re-derivation that could disagree again.
   it('the equipped perk card shows the GAIN and the COST, not just one number with the wrong word', async () => {
-    const { m } = await kitFor('p1');   // demo kit: Quick Switch (switch_mult 0.5, max_armor_add -20)
+    const { m } = await kitFor('p1');   // demo kit: Fast Hands speeds both reloads and swaps
     const cards = m.find('[data-slot-ammo="1"]').map(el => el.textContent ?? '');
-    const card = cards.find(t => t.includes('ARMOR'));
-    expect(card, `no slot card mentions ARMOR — cards were ${JSON.stringify(cards)}`).toBeDefined();
+    const card = cards.find(t => t.includes('SWAPS'));
+    expect(card, `no slot card mentions SWAPS: ${JSON.stringify(cards)}`).toBeDefined();
     expect(card).toContain('SWAPS 2× FASTER');
-    expect(card).toContain('-20 ARMOR');
+    expect(card).toContain('RELOADS 2× FASTER');
+    expect(card).not.toContain('ARMOR');
     m.unmount();
   });
 

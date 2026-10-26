@@ -67,17 +67,17 @@ Every player carries three slots.
 | Secondary | Any of the fourteen, including the two pistols and the support weapons | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
-Five perks are offered today, and every one of them costs something. Body Armor gives 25 extra armour and
-slows your reload by a quarter. Extended Mags doubles the primary's magazine, and its reserve up to
-384 rounds, and slows your weapon swap. Quick Hands halves the reload time and cuts your magazine by a fifth. Quick Switch
-halves the swap delay, 0.85 s down to 0.43 s, and takes 20 armour off you. Armour Piercing sends your
-primary straight through armour and shields to health, at about 40 percent of its normal damage.
+Four perks are offered today. Body Armor gives 20 extra armour and
+slows your reload by a quarter. Extended Mags doubles the primary's magazine in Standard, or increases
+it by half in Shields. The reserve grows up to 384 rounds, and weapon swaps take 30% longer. Fast Hands
+halves reload and swap times, except for the Sniper Rifle bolt. It leaves ammunition and armour unchanged.
+Armour Piercing sends your
+primary straight through armour and shields to health, with damage and cycle costs set per weapon.
 Four more are in the catalogue and not yet offered. Motion Tracker puts nearby enemies on your HUD.
 Second Wind lets you survive the hit that would finish you, once a life. Med Kit heals a teammate you
 tag. Concussion jams an enemy's weapon for a few seconds. The last two wait for a hardware test.
 
-The point is that no perk is a free upgrade. Body Armor buys survival with reload speed, Quick Hands
-buys reload speed with ammunition, and Armour Piercing is the answer to Body Armor: against a bare
+Body Armor buys survival with reload speed. Armour Piercing counters Body Armor: against a bare
 target it kills no faster than a normal rifle, and against a heavily armoured one it ignores the
 armour entirely.
 

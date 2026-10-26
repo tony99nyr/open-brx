@@ -21,7 +21,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
    - a diff on a shipped row: `{"title": ..., "weapon_id": "sniper_rifle", "changes": {"wire.dmg": 57, "mag": 1}}`;
    - a new row: a full `weapons.json` row (a copy of the row it is based on, with a new `weapon_id` and `name`),
      bare or as `{"title": ..., "row": {...}}`;
-   - a perk change: `{"perk_id": "quick_hands", "changes": {"reload_mult": 0.4}}`, or `{"perk": {...row...}}`.
+   - a perk change: `{"perk_id": "fast_hands", "changes": {"reload_mult": 0.4}}`, or `{"perk": {...row...}}`.
 
    Optional keys: `"with": [...]` holds other pending changes that apply to BOTH worlds (for example "with the
    Charge Rifle at 55/14"). Nothing escapes judgement that way: the rule cells and the one-shot check also run

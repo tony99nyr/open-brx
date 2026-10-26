@@ -1,6 +1,8 @@
 """Session snapshot persistence and restore."""
 from __future__ import annotations
 
+from .perks import canonical_perk_id
+
 import copy
 import json
 import logging
@@ -104,7 +106,15 @@ class SnapshotCodec:
         self.defaults = defaults
         self.mvp_modes = mvp_modes
         self.migrate_teams = migrate_teams
-        self.migrate_player = migrate_player
+        def migrate_saved_player(raw: Any) -> Any:
+            player = migrate_player(raw)
+            loadout = player.get("loadout") or {}
+            perk = loadout.get("perk")
+            if isinstance(perk, str):
+                loadout["perk"] = canonical_perk_id(perk)
+            return player
+
+        self.migrate_player = migrate_saved_player
         self.snapshot_failures = FailureTrack("session snapshot", host.now_ms)
         self.restore_failed: RestoreFailedView | None = None
         self._demo_over_real_logged = False
@@ -238,7 +248,7 @@ class SnapshotCodec:
         if perk is not None:
             if not isinstance(perk, str):
                 return None
-            loadout["perk"] = perk
+            loadout["perk"] = canonical_perk_id(perk)
         overrides = raw_lo.get("overrides")
         if overrides is not None:
             if not isinstance(overrides, dict):

@@ -57,7 +57,7 @@ contracts §3 `FrameBundle` fields like this:
 | `panic` | `PANIC_SEQUENCE` | `$CLEAR,*` → `$SP,99,*` |
 | `team_flip?` | `$TID,<tid>` per other team | **infection** only: the frames that move *this* gun to the infected team on death. Node writes `team_flip[<tid>]` then `revive` and emits **`team_change{tid}`** (A5.8). A live `$TID` write flips hit resolution immediately (bench 2026-08-25). |
 | `cues` / `leds` / `gun` / `headset` / `presentation` | `mc/presentation.py` (A11) | one pre-composed `$PLAY` per event that carries a sound (`""` = mute), the tuned `$GLED` burst per event, the gun-body and headset sequences — contracts §3. |
-| `swap_ms` | `max($WEAP tok15)` after perks | 850 stock, 425 with `quick_switch`. |
+| `swap_ms` | `max($WEAP tok15)` after perks | 850 stock, 425 with Fast Hands. |
 
 - `_PSET_HEAD` is `["PSET", str(player_num), "0"]` with `player_num ∈ 1..63` — **token 2 stays `0`** (bench
   2026-08-25: inert). Token 1 = `0` is written **only** by `tutorial_frames` (§4): "no identity", which MC never
