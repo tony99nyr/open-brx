@@ -61,7 +61,11 @@ const E2E = [
 const E2E_TASKS = { play: 300 };
 
 const REGISTRY = [
-  { name: 'mcp', cwd: 'mcp', secs: 33, inputs: ['.'],   // docs hygiene and suite registration read the whole repo
+  // F621: `secs` is the time INSIDE a gate, not alone. Alone it takes about 70 s (2026-10-25, load 4, -j 16), bounded by
+  // single ~60 s shards (a test_balance_review function, test_land); under a full gate those stretch 4 to 8 times.
+  // 70 gate runs on 2026-10-25 passed at a median of about 300 s, up to 556 s; at 33 the timeout was the 600 s floor
+  // and six runs hit it. 300 gives deriveTimeoutS 900. `mb` (150 + 70 a worker) still fits: 1246 MB peak PSS at -j 16.
+  { name: 'mcp', cwd: 'mcp', secs: 300, inputs: ['.'],   // docs hygiene and suite registration read the whole repo
     sized: s => ({ cmd: [s.python, 'run_tests.py', '-j', String(s.pyJ), '--exclude', 'chaos', ...s.noSkip], mb: 150 + 70 * s.pyJ, cores: s.pyJ }) },
   // Chaos testing (docs/chaos-testing.md): the fixed CI seeds of every scenario, each a full match on the real MC
   // stack with a field of MockNodes. Its own job so a red chaos run reads as one, not as "mcp". It runs only the chaos
