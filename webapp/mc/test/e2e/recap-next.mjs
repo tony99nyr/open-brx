@@ -32,9 +32,10 @@ const serverLength = s => {
   return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
 };
 
-/** The length part of "[ A8 // MATCH COMPLETE · TDM · 2:13 OF 10:00 ]", as "· 2:13 OF 10:00". */
+/** The length part of "[ A8 // MATCH COMPLETE · TDM · 2:13 OF 10:00 ]", as "· 2:13 OF 10:00". While the result waits
+ *  for phones the status reads "MATCH OVER · WAITING FOR RESULTS" (F633), and the length follows it the same way. */
 const headerLength = body => {
-  const m = /MATCH COMPLETE · [A-Z]+( · [^\]]*?)? \]/.exec(body);
+  const m = /(?:MATCH COMPLETE|MATCH OVER · WAITING FOR RESULTS) · [A-Z]+( · [^\]]*?)? \]/.exec(body);
   return m ? (m[1] || '').trim() : null;
 };
 
@@ -142,7 +143,7 @@ try {
     c.expect(!after.live, 'no live match is left over');
     const games = await H.bodyText(pg);
     c.expect(/CONTINUE TO KIT/.test(games), 'PLAY offers CONTINUE TO KIT');
-    c.expect(!/MATCH COMPLETE/.test(games), 'the RECAP is gone from the screen');
+    c.expect(!/MATCH COMPLETE|WAITING FOR RESULTS/.test(games), 'the RECAP is gone from the screen');
     await H.shot(pg, SHOTS, 'games-after-next-1440');
     await pg.context().close();
   }
@@ -178,7 +179,7 @@ try {
       ws.onMessage(m => server.send(m));
     });
     await pg.goto(`${vite.base}/#recap`, { waitUntil: 'domcontentloaded' });
-    await c.until(async () => /MATCH COMPLETE/.test(await H.bodyText(pg)), 15000, 'the RECAP header');
+    await c.until(async () => /MATCH COMPLETE|MATCH OVER · WAITING FOR RESULTS/.test(await H.bodyText(pg)), 15000, 'the RECAP header');
     const head = headerLength(await H.bodyText(pg));
     console.log(`      header "${head}"`);
     c.expect(/^· LIMIT \d+:\d\d$/.test(head), 'with nothing to measure from, the header says LIMIT, not a length');

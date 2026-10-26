@@ -399,3 +399,108 @@ def test_a_phone_that_drains_after_the_release_gets_the_settled_recap():
     _beat(s, net, clock, 1, ps[1]["player_id"])
     told = net.pushes("result", "node1")
     assert len(told) == 1 and told[0][2]["provisional"] is False
+
+
+def _released_four():
+    s, net, clock, mono, ps, info = _ended(n=4, kills=[(0, 1), (0, 1), (2, 3)])   # enough play for an honours roll
+    for i, p in enumerate(ps):
+        _beat(s, net, clock, i, p["player_id"])
+    assert s.match.released and s.last_recap["honors"]
+    return s, net, clock, ps
+
+
+def test_a_debrief_rename_reaches_every_phone_holding_the_result_at_once():
+    """brx4's case 6: the new name waited for the next late fact. The rename re-takes the recap and re-sends it."""
+    s, net, clock, ps = _released_four()
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMEDA")
+    told = net.pushes("result")
+    assert sorted(p[0] for p in told) == ["node0", "node1", "node2", "node3"]
+    assert all(any(r["display"] == "RENAMEDA" for r in p[2]["rows"]) for p in told)
+
+
+def test_a_rejoin_tells_only_the_rejoining_phone_and_never_a_stale_result():
+    """brx4's rerun B: a phone rejoining in RECAP made MC re-push the STORED recap to every online phone (the pre-rename
+    names, the old winner), then the right one 14 ms later. The rejoin re-takes the recap first; with no news it tells
+    only itself, and no frame anywhere carries a stored copy older than the facts."""
+    s, net, clock, ps = _released_four()
+    s._result_pushed.clear()                             # as after a restart: MC holds no delivery record
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    welcome = net.simulate_hello("node2", f"GUN-C-{tail}", pending=0)
+    assert [p[0] for p in net.pushes("result") if p[0] != "node2"] == [], "a rejoin with no news broadcast"
+    assert net.pushes("result", "node2"), "the rejoining phone is told (MC had no record of telling it)"
+    assert welcome is not None and welcome["result"]["rows"], "the rejoining phone gets the result in its welcome"
+    import copy
+    stale = copy.deepcopy(s.last_recap)                  # a stored recap that some path has not re-taken yet
+    for row in stale["rows"]:
+        row["display"] = "STALE " + row["display"]
+    s.last_recap = stale
+    net.pushed.clear()
+    welcome = net.simulate_hello("node2", f"GUN-C-{tail}", pending=0)
+    sent = [row for p in net.pushes("result") for row in p[2]["rows"]] + welcome["result"]["rows"]
+    assert not any(r["display"].startswith("STALE ") for r in sent), "the rejoin sent the stored recap, not a re-take"
+
+def test_a_rejoin_whose_re_take_moves_the_result_tells_every_phone():
+    """F633, the other side: when the rejoin itself settles the recap (the missing phone now counts as flushed, so the
+    result stops being provisional), that is news for every phone, not only the rejoining one."""
+    s, net, clock, ps, info = go_live_stored(3, "tdm")
+    mono = {"t": 1_000_000}
+    s.mono_ms = lambda: mono["t"]
+    s.control("end")
+    _beat(s, net, clock, 2, ps[2]["player_id"])           # ended and empty (a real phone's shape), then it drops
+    net.simulate_disconnect("node2")
+    s.match.scorer.stats[ps[2]["player_id"]].flushed = False   # never seen flushed by a recap read: provisional
+    clock["t"] += 31_000                                 # older than the 30 s a quiet phone still counts as flushed
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    assert all(p[2]["provisional"] is True for p in net.pushes("result")), "released while node2 was away"
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail}", pending=0)
+    net.simulate_status("node2", after_end(s, {"player_id": ps[2]["player_id"], "pending": 0}), clock["t"])
+    told = {p[0] for p in net.pushes("result") if p[2]["provisional"] is False}
+    assert told == {"node0", "node1", "node2"}, told
+
+
+def test_rerun_b_end_to_end_one_right_frame_per_phone_and_none_stale():
+    """brx4's rerun B as one sequence: a debrief rename, then a late phone rejoins owing facts, its batch flips the
+    winner, and its drain beat follows. No phone is ever sent the old winner after the rejoin; the others get the flip
+    once, and the late phone gets one result, the right one, after its drain."""
+    s, net, clock, ps, info = go_live_stored(4, "tdm")           # ps0/ps2 red, ps1/ps3 blue
+    mono = {"t": 1_000_000}
+    s.mono_ms = lambda: mono["t"]
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    kill(s, net, clock, ps, 0, 1, info, seq=2)                    # red 2 : blue 0
+    net.simulate_status("node2", {"player_id": ps[2]["player_id"], "pending": 0, "arm_state": "live",
+                                  "match_id": info["match_id"]}, clock["t"])   # a fresh empty-queue beat, then it drops
+    net.simulate_disconnect("node2")
+    s.control("end")
+    clock["t"] += 31_000                                          # node2's last beat is now stale (over 30 s)
+    for i in (0, 1, 3):
+        _beat(s, net, clock, i, ps[i]["player_id"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    red = s.recap()["winner"]
+    assert _sync(s)["released_by"] == "timeout" and red == {"team_id": ps[0]["team_id"]}
+    s.patch_player(ps[0]["player_id"], display="RENAMEDA")       # a player with honours: the body really changes
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    welcome = net.simulate_hello("node2", f"GUN-C-{tail}", pending=3)
+    assert welcome is not None and "result" not in welcome
+    assert net.pushes("result") == [], "the rejoin of a phone still owing facts tells nobody"
+    clock["t"] += 1
+    net.simulate_batch("node2", [{"type": "death", "seq": 10 + n, "t": s.match.scorer.end_t - 3000 + n * 100,
+                                  "match_id": info["match_id"], "player_id": ps[2]["player_id"],
+                                  "shooter_num": ps[3]["player_num"], "shooter_team": 2} for n in range(3)], clock["t"])
+    blue = s.recap()["winner"]
+    assert blue == {"team_id": ps[1]["team_id"]}, blue
+    others = net.pushes("result")
+    assert sorted(p[0] for p in others) == ["node0", "node1", "node3"] and all(p[2]["winner"] == blue for p in others)
+    _beat(s, net, clock, 2, ps[2]["player_id"])
+    late = net.pushes("result", "node2")
+    assert len(late) == 1 and late[0][2]["winner"] == blue
+    assert all(p[2]["winner"] == blue for p in net.pushes("result")), "no frame after the rejoin carried the old winner"
+    assert any(r["display"] == "RENAMEDA" for r in late[0][2]["rows"])
