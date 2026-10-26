@@ -6,16 +6,18 @@ import json
 import pathlib
 import tempfile
 
-from _session import after_end, go_live_stored, restart_no_repersist, restart_session
+from _session import after_end, go_live_stored, kill, restart_no_repersist, restart_session
 from brx_mcp.mc.fakes import demo_armory
-from brx_mcp.mc.types import SYNC_STUCK_S
+from brx_mcp.mc.types import STALE_LIVE_RETELL_MS, SYNC_STUCK_S
 
 BOUND_MS = SYNC_STUCK_S * 1000
 
 
-def _ended(n=2, mode="tdm", persist=False):
+def _ended(n=2, mode="tdm", persist=False, kills=()):
     """A match ended with a mocked monotonic clock, so the bound can be walked without the wall clock."""
     s, net, clock, ps, info = go_live_stored(n, mode)
+    for seq, (killer, victim) in enumerate(kills, start=1):
+        kill(s, net, clock, ps, killer, victim, info, seq=seq)
     mono = {"t": 1_000_000}
     s.mono_ms = lambda: mono["t"]
     if persist:
@@ -196,7 +198,8 @@ def test_a_phone_rejoining_after_a_moved_result_gets_the_moved_result_in_its_wel
                                   "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                   "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
     tail = demo_armory()[1]["ble"]["tail"]
-    welcome = net.simulate_hello("node1", f"GUN-B-{tail}")
+    # Its batch is acked, so the queue is empty. A hello with no `pending` (older than A78) owes until its next status.
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=0)
     assert welcome is not None and welcome["result"]["winner"] == s.recap()["winner"] != first
     assert "result_changed" not in welcome["result"]
 
@@ -256,3 +259,90 @@ def test_a_silent_field_walks_the_whole_bound_with_nothing_pushed_until_the_rele
     mono["t"] += 1_000
     s.tick()
     assert _sync(s)["released_by"] == "timeout" and len(net.pushes("result")) == 2
+
+
+def _late_kill(net, clock, info, ps, seq=51):
+    clock["t"] += 1
+    net.simulate_batch("node1", [{"type": "death", "seq": seq, "t": clock["t"] - 2,
+                                  "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
+
+
+def test_a_late_phone_gets_one_result_after_its_own_facts_never_the_stale_one():
+    """brx4's end-to-end check: a phone that rejoins still owing facts must not adopt the released result and then flip
+    to RESULT UPDATED when its own facts land. It waits on RESULT PENDING and gets the result its facts make, once."""
+    s, net, clock, mono, ps, info = _ended()
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    _beat(s, net, clock, 1, ps[1]["player_id"], pending=3)
+    mono["t"] += BOUND_MS
+    s.tick()
+    assert _sync(s)["released_by"] == "timeout"
+    first = s.recap()["winner"]
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "a phone still sending is not told the released result"
+    tail = demo_armory()[1]["ble"]["tail"]
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=3)
+    assert welcome is not None and "result" not in welcome, "the welcome withholds it too"
+    net.pushed.clear()
+    _late_kill(net, clock, info, ps)
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "the flip reaches the phone that saw the first result"
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    to_late = [p for p in net.pushes("result") if p[0] == "node1"]
+    assert s.recap()["winner"] != first, "the late facts really moved the winner"
+    assert len(to_late) == 1 and to_late[0][2]["winner"] == s.recap()["winner"]
+
+
+def test_a_phone_that_rejoins_with_an_empty_queue_gets_the_result_in_its_welcome():
+    s, net, clock, mono, ps, info = _ended()
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    tail = demo_armory()[1]["ble"]["tail"]
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=0)
+    assert welcome is not None and welcome["result"]["winner"] == s.recap()["winner"]
+
+
+def test_a_phone_that_missed_the_end_is_ended_first_and_told_after_it_drains():
+    """Fable: the A34 stale-live door must not hand the released result to a phone that has not ended yet; it ends, books
+    its end facts, drains, and only then hears the result."""
+    s, net, clock, mono, ps, info = _ended()
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    net.simulate_status("node1", {"player_id": ps[1]["player_id"], "pending": 0, "arm_state": "live",
+                                  "match_id": info["match_id"]}, clock["t"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "the release skipped the phone whose last beat is live"
+    net.pushed.clear()
+    clock["t"] += STALE_LIVE_RETELL_MS + 1       # the A34 door answers again: it re-sends the END
+    net.simulate_status("node1", {"player_id": ps[1]["player_id"], "pending": 3, "arm_state": "live",
+                                  "match_id": info["match_id"]}, clock["t"])
+    assert [p[2]["cmd"] for p in net.pushes("control", "node1")] == ["end"], "the stale-live door ran"
+    assert net.pushes("result", "node1") == [], "still live: no result before its own end"
+    tail = demo_armory()[1]["ble"]["tail"]
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=0)
+    assert welcome is not None and "result" not in welcome, "an empty queue is not enough while it has not ended"
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    assert len(net.pushes("result", "node1")) == 1
+
+
+def test_a_phone_still_sending_gets_no_victory_cue_at_an_early_finalise():
+    s, net, clock, mono, ps, info = _ended(kills=[(1, 0)])     # player 2's side wins
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    _beat(s, net, clock, 1, ps[1]["player_id"], pending=2)
+    mono["t"] += 5_000
+    s.finalise_recap()
+    s.tick()
+    cued = [p[2]["player_id"] for p in net.pushes("feedback") if p[2].get("kind") == "victory"]
+    assert s.recap()["winner"].get("team_id") == ps[1]["team_id"], "the winner is the phone still sending"
+    assert ps[1]["player_id"] not in cued
+
+
+def test_a_drained_winner_is_cued_at_an_early_finalise():
+    """The positive control for the test above: the same win, every phone drained, and the cue goes out."""
+    s, net, clock, mono, ps, info = _ended(kills=[(1, 0)])
+    _beat(s, net, clock, 0, ps[0]["player_id"], pending=1)
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    mono["t"] += 5_000
+    s.finalise_recap()
+    s.tick()
+    cued = [p[2]["player_id"] for p in net.pushes("feedback") if p[2].get("kind") == "victory"]
+    assert ps[1]["player_id"] in cued

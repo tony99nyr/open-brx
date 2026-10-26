@@ -508,6 +508,8 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 1},
         {"type": "death", "t": g + 900, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 2}]}, clock["t"])
+    # A83: the sender's own result waits for its queue to drain.
+    net.simulate_status("node2", after_end(s, {"player_id": ps[2]["player_id"], "pending": 0}), clock["t"])
 
     s.finalise_recap()
     got = results(net)

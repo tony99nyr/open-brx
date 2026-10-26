@@ -3072,6 +3072,25 @@ class Session:
                 entry["changed_mono"] = self.mono_ms()
             entry["stage"] = stage
 
+    def _sync_owes(self, nid: str) -> bool:
+        """A83 (brx4's end-to-end check): this node still owes facts for the match in hand, by its own count or a late
+        batch with no fresh zero after it. MC withholds its `result` until they are in, so a late phone's first result is
+        the one its own facts made: it shows RESULT PENDING, never a stale result and then RESULT UPDATED. A node that
+        rejoins with an empty queue owes nothing and gets the result in its welcome as before."""
+        entry = self._sync_entry(nid)
+        if entry is None or entry.get("received"):
+            return False
+        # A phone that has not ended this match (its last beat still armed or live: it missed the END) has its end facts
+        # to book, whatever its queue says now.
+        if self.nodes.get(nid, {}).get("arm_state") in ("armed", "live"):
+            return True
+        pending = entry.get("pending")
+        if isinstance(pending, int) and not isinstance(pending, bool) and pending > 0:
+            return True
+        # Any empty-queue claim (a hello or a status) after the last late batch clears what that batch owed.
+        event_rev = entry.get("event_rev", 0)
+        return event_rev > 0 and entry.get("zero_rev", -1) < event_rev
+
     def _sync_hello(self, nid: str, pending: object) -> None:
         entry = self._sync_entry(nid)
         if entry is None:
@@ -3084,6 +3103,8 @@ class Session:
             entry["pending"] = pending
             if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
+            elif pending == 0:
+                entry["zero_rev"] = entry.get("event_rev", 0)
         else:
             entry.pop("pending", None)
         if entry.get("pending") != old:
@@ -3092,7 +3113,7 @@ class Session:
         self._sync_update(nid, self.now_ms())
 
     def _sync_status(self, nid: str, pending: object, at: int, *, match_id: object = None,
-                     arm_state: object = None) -> None:
+                     arm_state: object = None, owed: bool | None = None) -> None:
         entry = self._sync_entry(nid)
         sc = self._m().scorer
         if entry is None or sc is None:
@@ -3100,6 +3121,8 @@ class Session:
         # A beat the phone sent before its own end (still "armed"/"live", or naming no match or another one) read its
         # outbox before the end facts were booked. Its count stands, but it is not a drained claim for this match.
         ended_here = match_id == sc.match_id and arm_state not in ("armed", "live")
+        if owed is None:
+            owed = self._sync_owes(nid)
         if _is_count(pending):
             if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
@@ -3107,6 +3130,8 @@ class Session:
                 entry["changed_t"] = at
                 entry["changed_mono"] = self.mono_ms()
             entry["pending"] = pending
+            if pending == 0 and ended_here:
+                entry["zero_rev"] = entry.get("event_rev", 0)
         if _is_count(pending) and ended_here:
             entry["status_t"] = at
             entry["status_rev"] = entry.get("event_rev", 0)
@@ -3114,6 +3139,10 @@ class Session:
             entry.pop("status_t", None)
             entry.pop("status_rev", None)
         self._sync_update(nid, at)
+        # The beat that drains a withheld node sends its result now: nothing else would (no late fact may follow).
+        if (owed and self.match is not None and self.match.released and not self.match.release_pending
+                and not self._sync_owes(nid)):
+            self._push_result()
 
     def _sync_events(self, nid: str, events: list[Event], at: int) -> None:
         entry = self._sync_entry(nid)
@@ -3845,7 +3874,8 @@ class Session:
             if row:
                 node["score"] = dict(row, board=self._score_board(sc), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
         if (self.phase == "recap" and self.match is not None and self.match.released
-                and self.last_recap and self._played_this_match(p["player_id"])):
+                and self.last_recap and self._played_this_match(p["player_id"])
+                and not self._sync_owes(str(hello.get("node_id", "")))):
             # A24/A81: a returning phone gets the released result even if it missed the push.
             # A player added DURING the debrief was not in it, so there is no result to carry.
             node["result"] = self._result_body(self.last_recap, p)
@@ -3946,8 +3976,10 @@ class Session:
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
+        owed = self._sync_owes(nid)          # A83: read before the beat's own arm_state lands in the node view
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
-        self._sync_status(nid, body.get("pending"), t_recv, match_id=body.get("match_id"), arm_state=body.get("arm_state"))
+        self._sync_status(nid, body.get("pending"), t_recv, match_id=body.get("match_id"), arm_state=body.get("arm_state"),
+                          owed=owed)
         # O6/O10: the loss counts are scoped AT THE SOURCE: the phone names the match its count belongs to
         # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
         # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
@@ -4363,7 +4395,8 @@ class Session:
         told_result = False
         current_pending = current_match is not None and not current_match.released
         roster = (current_match.played if current_match else ended.get("players") if ended else None) or self.players
-        if p and recap and not current_pending and (current_match or ended) and p["player_id"] in roster:
+        if (p and recap and not current_pending and (current_match or ended) and p["player_id"] in roster
+                and not (current_match and self._sync_owes(nid))):   # A83: it ends first, and drains before its result
             self.net.push(nid, "result", self._result_body(recap, p, match_id=mid, roster=roster))
             told_result = True
         # The `start` is the E5 hot join, and it is NOT sent in the same breath as a `result`: `startAt`
@@ -5548,8 +5581,8 @@ class Session:
         for pid in roster:
             p = self.players.get(pid)
             node_id = p.get("node_id") if p else None
-            if p is None or not node_id:
-                continue
+            if p is None or not node_id or self._sync_owes(node_id):
+                continue   # A83: a node still sending gets the result its facts make, once they are in
             body = self._result_body(self.last_recap, p)
             key = {k: v for k, v in body.items() if k != "t"}
             delivery = (pid, node_id)
@@ -7674,8 +7707,9 @@ class Session:
         played_roster = self._m().played
         for pid, played in (played_roster if played_roster is not None else self.players).items():
             p = self.players.get(pid)
-            if not p or not p.get("node_id"):
-                continue
+            node_id = p.get("node_id") if p else None
+            if not p or not node_id or self._sync_owes(node_id):
+                continue   # A83: a phone still sending gets no cue its own facts could contradict
             won = (wt is not None and played.get("team_id") == wt) or (wp is not None and pid == wp)
             if won:
                 # feedback.player_id is required by the envelope contract (contracts §5)

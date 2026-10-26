@@ -113,7 +113,7 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     expect(icon, 'the hill is an icon in the strip').toBeTruthy();
     expect(icon.getAttribute('data-stage')).toBe('unlinked');
     expect(icon.querySelector('[data-strip-unlinked]'), 'with the not-linked badge').toBeTruthy();
-    expect((m.find('[data-testid="waiting-for"]')[0].textContent ?? '').toUpperCase()).toContain('1 HILL');
+    expect((m.find('[data-testid="waiting-for"]')[0].textContent ?? '').toUpperCase()).toContain('CONTROL POINT 1');   // A83: the waiting line names it
     m.unmount();
   });
 

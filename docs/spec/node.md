@@ -489,7 +489,8 @@ settle window (30 s) passes with no MC link and no link since the whistle; it is
 (totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
 never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
 `HISTORY` list (per session, from `localStorage['brx.history']`) reopen it. A83: after the release MC may re-send `result`
-for the same match when a late sync changes it. The phone decides what to show: RESULT UPDATED only when it already
+for the same match when a late sync changes it, and sends none to a phone that still owes facts for it (the phone stays
+on RESULT PENDING until its queue drains). The phone decides what to show: RESULT UPDATED only when it already
 held a result for that `match_id` whose `winner` or `outcome` differs.
 
 ### 3.14 Background log sync (contracts A25) — game sync has priority
