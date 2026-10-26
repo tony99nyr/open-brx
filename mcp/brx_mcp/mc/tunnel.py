@@ -88,9 +88,14 @@ async def _resolves(host: str) -> bool:
         log.debug("DoH query for %s failed", host, exc_info=True)
         return False
 
-INSTALL_HINT = ("cloudflared is not on PATH — install it (macOS: `brew install cloudflared`; "
+# Cloudflare's advice, 2026-10: run this cloudflared version or later. `./start.sh` (scripts/lib/cloudflared.mjs)
+# reads this constant out of the file text, so keep it a plain string literal on one line.
+CLOUDFLARED_MIN_VERSION = "2026.10.2"
+
+INSTALL_HINT = ("cloudflared is not on PATH: install it (macOS: `brew install cloudflared`; "
                 "Linux: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
-                "downloads/) and restart Mission Control")
+                f"downloads/), version {CLOUDFLARED_MIN_VERSION} or later, and restart Mission Control. "
+                "`./start.sh` installs it on request and keeps it up to date")
 
 
 class TunnelError(RuntimeError):

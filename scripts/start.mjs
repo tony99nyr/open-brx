@@ -5,7 +5,7 @@
 //   1. Offer to update the clone when GitHub has newer commits.
 //   2. Find Python 3.11 or later, make .venv, and install the Mission Control package into it.
 //   3. Install the console's npm packages and build the console.
-//   4. Ask once about the optional cloudflared (phones on mobile data).
+//   4. Keep the optional cloudflared (phones on mobile data) up to date, or ask once about installing it.
 //   5. Start Mission Control (scripts/mc.mjs) and open it in the browser.
 //
 // Every step checks before it acts, so the second run skips straight to step 5.
@@ -14,13 +14,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { ensureCloudflared, minVersionFromText, realDeps } from './lib/cloudflared.mjs';
 import { installStamp, isWindows, npm, npmInstallState, phonesWarning, root, uiStale, venvPython, which, NODE_FLOOR } from './lib/launcher.mjs';
 
 const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Windows: start.cmd)
 
   --demo           run a demo: 8 pretend players and phones, no taggers, nothing saved
   --setup-only     set everything up, then stop instead of starting Mission Control
-  --no-update      do not check GitHub for a newer version
+  --no-update      do not check GitHub for a newer version (also skips the cloudflared update)
   --yes            accept the default answer to every question (it never deletes a broken .venv)
   --cloudflared    ask about cloudflared again, even if you said no before
   --report [SESSION]  make a bug report zip for a session (default: the newest) and open a
@@ -264,7 +265,18 @@ function consoleUi() {
 // ---- 4. cloudflared -------------------------------------------------------------------------------
 async function cloudflared() {
   step('Optional: cloudflared, for phones on mobile data');
-  if (which('cloudflared')) return ok('cloudflared is installed. Turn it on from the console when you need it.');
+  // Installed: keep it at Cloudflare's minimum version or later. This never stops the start.
+  let tunnelText = '';
+  try { tunnelText = readFileSync(join(root, 'mcp', 'brx_mcp', 'mc', 'tunnel.py'), 'utf8'); } catch (_) { /* no minimum then */ }
+  const minVersion = minVersionFromText(tunnelText);
+  const found = await ensureCloudflared(realDeps(home), { minVersion, noUpdate: opt('--no-update') });
+  if (!found.missing) {
+    for (const line of found.lines) {
+      if (line.level === 'loud') console.log(paint('1;31', `!!! ${line.text}`));
+      else (line.level === 'ok' ? ok : note)(line.text);
+    }
+    return;
+  }
   const prefs = readPrefs();
   if (prefs.cloudflared === 'declined' && !opt('--cloudflared')) {
     return note('not installed (you said no before; run with --cloudflared to be asked again)');

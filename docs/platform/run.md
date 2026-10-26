@@ -46,7 +46,7 @@ For Mission Control plus phones, all of the above, and:
   **before** match day. Install it at home, where there is internet.
 - The armory map for your taggers (`~/.brx-mcp/armory.json`) on the machine that will host.
 - Optional, for phones that have a data plan: internet at the laptop and `cloudflared` installed (the
-  start script offers to install it for you). See *Reaching phones over the internet* below.
+  start script offers to install it for you and keeps it at version 2026.10.2 or later). See *Reaching phones over the internet* below.
 
 Every `python -m brx_mcp` command on this page runs through the virtual environment the install step
 created: `.venv/bin/python` on macOS and Linux, `.venv\Scripts\python.exe` on Windows, or activate the
