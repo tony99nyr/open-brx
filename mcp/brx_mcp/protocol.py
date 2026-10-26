@@ -170,7 +170,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
     "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
     "DDFU": "the v2.x DFU entry [disasm]",
-    "CLEARDEVICE": "clears the paired-device record (the headset pairing) [disasm]",
+    "CLEARDEVICE": "wipes the radio's pair list (the headset pairing) and formats the radio's file system [disasm]",
     "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
     "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
     "DEV": "developer-mode toggle, persistence unknown [disasm]",
@@ -190,7 +190,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "PIN": "v2.x Bluetooth PIN [disasm]",
     "INQ": "HC-05 radio inquiry [disasm]",
     "ZOM": "zombie headset mode [sheet]",
-    "ZTOG": "zombie mode toggle [sheet]",
+    "ZTOG": "zombie mode toggle: `$ZTOG,1` turns zombie mode on, keeps it across a power cycle and stops the gun's $HIT reports [sheet, disasm]",
     "ZON": "zombie mode on [disasm: headset vocabulary]",
     "ZOFF": "zombie mode off [disasm: headset vocabulary]",
     "BOOM": "zombie 'boomer' headset command [sheet]",
@@ -269,14 +269,31 @@ def arity_note(command: str) -> str | None:
     return None
 
 
+# Safety guard B (brx-rea firmware pass 2, a code read): the gun keeps twelve `$WEAP` slots (0-11) and holds a
+# weapon's damage (t5) in one byte. A larger value writes past what the gun holds, so no sender may send one.
+WEAP_SLOT_MAX = 11
+WEAP_DAMAGE_MAX = 255
+
+
+def _weap_range_error(command: str) -> str | None:
+    toks = tokenize(command)
+    for i, name, top in ((1, "slot", WEAP_SLOT_MAX), (6, "damage (t5)", WEAP_DAMAGE_MAX)):
+        v = toks[i].strip() if i < len(toks) else ""
+        if v and re.fullmatch(r"-?\d+", v) and not 0 <= int(v) <= top:
+            return f"$WEAP {name} {v} is outside 0-{top}: the gun cannot hold it"
+    return None
+
+
 def validate_frame(command: str) -> str | None:
-    """Return an error string if the frame is malformed, else None."""
+    """Return an error string if the frame is malformed or writes a `$WEAP` value the gun cannot hold, else None."""
     if not command.startswith("$"):
         return "frame must start with '$'"
     if not command.endswith(",*"):
         return "frame must end with ',*'"
     if not _FRAME_RE.match(command):
         return "frame failed pattern check ($NAME,tokens...,*)"
+    if command_name(command) == "WEAP":
+        return _weap_range_error(command)
     return None
 
 

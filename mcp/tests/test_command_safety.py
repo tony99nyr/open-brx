@@ -207,3 +207,40 @@ def test_a_denied_word_cannot_hide_behind_a_star_or_whitespace():
     for frame in ("$FACTORY*", "$DPLAY*", "$ FACTORY,*", "$FACTORY\t,*", "$dplay *"):
         assert protocol.deny_reason(frame), frame
     assert protocol.deny_reason("$PLAY,U37,3,10,,,,,*") is None
+
+
+def test_ztog_and_cleardevice_are_denied_and_free_needs_confirm():
+    """Safety guard A (brx-rea firmware pass 2, a code read): $ZTOG,1 turns zombie mode on, keeps it across a power
+    cycle and stops the gun's $HIT reports. $CLEARDEVICE wipes the radio's pair list. $FREE is a read-only query of
+    the audio-channel busy flags: not denied, so it takes the unknown-command path and needs confirm=true."""
+    for f in ("$ZTOG,1,*", "$ZTOG,0,*", "$CLEARDEVICE,*"):
+        assert protocol.is_denied(f), f
+    assert "power cycle" in protocol.deny_reason("$ZTOG,1,*")
+    assert "ZTOG" in E.NODE_DENIED_COMMANDS and "CLEARDEVICE" in E.NODE_DENIED_COMMANDS, "the node refuses them too"
+    assert not protocol.is_denied("$FREE,*") and not protocol.is_known_safe("$FREE,*")
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        result = run(server.send("t1", "$ZTOG,1,*", confirm=True))
+        assert result["error"].startswith("refused, confirm or not:"), result
+        result = run(server.send("t1", "$FREE,*"))
+        assert "confirm=true" in result["error"], result
+        assert len(mgr.sessions["t1"].buffer) == 0
+        result = run(server.send("t1", "$FREE,*", confirm=True))
+        assert result.get("sent") == "$FREE,*", result
+
+def test_validate_frame_refuses_a_weap_slot_above_11_and_a_damage_above_255():
+    """Safety guard B (brx-rea firmware pass 2, a code read): the gun keeps twelve weapon slots and one byte of
+    damage, so a $WEAP slot above 11 or a t5 above 255 writes past what the gun holds. Every sender refuses it."""
+    head = "$WEAP,{slot},1,5,1,2,{dmg},0,*"
+    assert protocol.validate_frame(head.format(slot=11, dmg=255)) is None
+    assert protocol.validate_frame(head.format(slot=0, dmg="")) is None, "an empty token leaves the value alone"
+    for slot, dmg, word in ((12, 45, "slot"), (255, 45, "slot"), (0, 256, "damage"), (3, 1000, "damage")):
+        why = protocol.validate_frame(head.format(slot=slot, dmg=dmg))
+        assert why and word in why, (slot, dmg, why)
+    for f in ("$WEAP,-1,1,5,1,2,45,0,*", "$WEAP,0,1,5,1,2,-3,0,*"):
+        assert protocol.validate_frame(f), f
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        result = run(server.send("t1", head.format(slot=0, dmg=300), confirm=True))
+        assert "error" in result and "damage" in result["error"], result
+        assert len(mgr.sessions["t1"].buffer) == 0
