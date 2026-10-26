@@ -109,8 +109,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 25   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo; 25: a kit can pick no perk (F625)
+SCENARIO_VERSION = 26   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo; 25: a kit can pick no perk (F625); 26: a charge finish needs whole landed hits (F619)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -571,6 +571,25 @@ def _median_rounds(hits: int, chance: float) -> int | None:
 MEDIAN_ROUNDS_CAP = 5000   # more rounds than any magazine and reserve hold
 
 
+@functools.lru_cache(maxsize=None)
+def _median_charge_rounds(pool: int, chance: float, first: int, tap: int) -> int | None:
+    """F619: `_median_rounds` for a charge gun, whose first round deals `first` (the opener, or a tap) and every later
+    round `tap`. The round by which the landed damage reaches `pool` with even odds, or None past any magazine."""
+    if tap <= 0:
+        return 1 if first >= pool and chance >= 0.5 else None
+    after_opener = max(0, math.ceil((pool - first) / tap))   # tap hits still needed when the first round landed
+    after_miss = math.ceil(pool / tap)                        # tap hits needed when it missed (or was a tap that missed)
+    top = max(after_opener, after_miss)
+    taps = [1.0] + [0.0] * top          # taps[j]: exactly j tap hits among the later rounds (j == top: top or more)
+    for n in range(1, MEDIAN_ROUNDS_CAP + 1):
+        done = chance * sum(taps[after_opener:]) + (1 - chance) * sum(taps[after_miss:])
+        if done >= 0.5:
+            return n
+        taps = [taps[0] * (1 - chance)] + [taps[j] * (1 - chance) + taps[j - 1] * chance for j in range(1, top)] + \
+            [taps[top] + taps[top - 1] * chance] if top else taps
+    return None
+
+
 def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
                     t, pull_ms, overshoot_ms, charged, count, dist, heat, heat_t,
                     heat_cool_while_firing, cooling_started=False):
@@ -592,7 +611,7 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     # undercounted them: a 5-health target read as killed by 26 x 0.20 = 5.2 expected Deagle damage.
     hits_needed = math.ceil(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
     median = _median_rounds(hits_needed, min(1.0, chance)) if hits_needed else None
-    fired = 0
+    fired, charge_median = 0, -1        # -1: the charge median waits for the first round's damage (F619)
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -638,7 +657,15 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         fired_at = elapsed
         was_charged = mode == "charge" and charged
         ammo -= cost
-        if hits_needed:
+        if mode == "charge" and pool > 0:
+            # F619: whole landed hits for a charge gun too. The first round is the opener or a tap, and every
+            # later round is a tap (the estimate never recharges), so its median is fixed at the first round.
+            fired += 1
+            if charge_median == -1:
+                charge_median = _median_charge_rounds(int(math.ceil(pool)), min(1.0, chance), int(dmg), int(tap))
+            if charge_median is not None and fired >= charge_median:
+                return elapsed
+        elif hits_needed:
             fired += 1
             if median is not None and fired >= median:
                 return elapsed

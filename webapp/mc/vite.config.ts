@@ -16,9 +16,12 @@ export default defineConfig({
   cacheDir: '.vite-cache',
   plugins: [react()],
   server: {
+    // 127.0.0.1, not localhost (F574): MC binds IPv4 (`--host`, 0.0.0.0 by default), and where localhost also
+    // names ::1 (a GitHub runner), the proxy tried ::1 first and reached whatever held that port there: another
+    // test's vite, in CI run 38268828276.
     proxy: {
-      '/api': `http://localhost:${MC}`,
-      '/ui-ws': { target: `ws://localhost:${MC}`, ws: true },
+      '/api': `http://127.0.0.1:${MC}`,
+      '/ui-ws': { target: `ws://127.0.0.1:${MC}`, ws: true },
     },
   },
   build: { outDir: 'dist', emptyOutDir: true },

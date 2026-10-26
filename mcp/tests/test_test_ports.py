@@ -17,6 +17,7 @@ PORTS = (REPO / "scripts" / "lib" / "ports.mjs").as_uri()
 JOBS = (REPO / "scripts" / "lib" / "jobs.mjs").as_uri()
 E2E = REPO / "webapp" / "mc" / "test" / "e2e"
 RANGE = Path("/proc/sys/net/ipv4/ip_local_port_range")
+BLOCK = 40   # ports.mjs BLOCK_SIZE
 
 
 def _node(body: str) -> dict:
@@ -40,7 +41,7 @@ _HOLD = ("const hold = p => new Promise((ok, no) => { const s = net.createServer
 
 
 def _block(env: dict) -> int:
-    return int(env["BRX_PORT_END"]) - 32
+    return int(env["BRX_PORT_END"]) - BLOCK
 
 
 def test_job_blocks_sit_below_the_ephemeral_range_and_never_share_a_port():
@@ -50,7 +51,7 @@ def test_job_blocks_sit_below_the_ephemeral_range_and_never_share_a_port():
                 " const envs = []; for (let i = 0; i < 6; i++) envs.push(await next());"
                 " return { envs, hi: m.portHi(), size: m.BLOCK_SIZE };")
     eph_lo = int(RANGE.read_text().split()[0]) if RANGE.exists() else 49152
-    assert out["hi"] < eph_lo and out["size"] == 32
+    assert out["hi"] < eph_lo and out["size"] == BLOCK
     seen = set()
     for env in out["envs"]:
         named = [int(env[k]) for k in ("MC_PORT", "MC_WS_PORT", "VITE_PORT")]
@@ -69,7 +70,7 @@ def test_two_runs_at_once_never_get_the_same_block():
     out = _node(_HOLD + " const probe = async () => true; const a = alloc({ probe }), b = alloc({ probe });"
                 " const [ea, eb] = await Promise.all([a(), b()]);"
                 " return { lo, a: ea, b: eb };")
-    assert {_block(out["a"]), _block(out["b"])} == {out["lo"], out["lo"] + 32}
+    assert {_block(out["a"]), _block(out["b"])} == {out["lo"], out["lo"] + BLOCK}
 
 
 def test_two_processes_claiming_at_once_never_share_a_block():
@@ -112,7 +113,7 @@ def test_a_block_with_a_port_held_by_another_socket_is_skipped():
                 " const t = await hold(Number(env[k])); binds.push(Number(env[k])); t.close(); }"
                 " s.close(); return { lo, env, binds };")
     lo = out["lo"]
-    assert out["binds"] == [lo + 32, lo + 33, lo + 34]
+    assert out["binds"] == [lo + BLOCK, lo + BLOCK + 1, lo + BLOCK + 2]
 
 
 def test_free_port_walks_the_jobs_block_skips_a_held_port_and_says_when_the_block_is_spent():
@@ -124,6 +125,20 @@ def test_free_port_walks_the_jobs_block_skips_a_held_port_and_says_when_the_bloc
     lo = out["lo"]
     assert out["got"] == [lo, lo + 2, lo + 3]
     assert "no free test port left" in out["err"]
+
+
+def test_a_port_held_on_the_ipv6_loopback_is_not_free():
+    # F574 (Opus review): vite binds `localhost`, which is ::1 on a GitHub runner, so a port held there is taken even
+    # though 127.0.0.1 binds. CI run 38268828276 gave such a port to MC, and a vite could get one and exit.
+    out = _node(_HOLD + " const s = net.createServer(); s.unref();"
+                " const v6 = await new Promise(ok => { s.once('error', () => ok(false)); s.listen(lo + 5, '::1', () => ok(true)); });"
+                " const held = v6 ? await m.canBind(lo + 5) : null; const free = await m.canBind(lo + 6);"
+                " const env = { BRX_PORT_NEXT: String(lo + 5), BRX_PORT_END: String(lo + 8) };"
+                " const next = v6 ? await m.freePort({ env }) : null; s.close(); return { lo, v6, held, free, next };")
+    needs(out["v6"], "an IPv6 loopback (::1)")
+    assert out["held"] is False, out
+    assert out["free"] is True, out
+    assert out["next"] == out["lo"] + 6, out
 
 
 def test_free_port_outside_test_all_still_returns_a_port():
