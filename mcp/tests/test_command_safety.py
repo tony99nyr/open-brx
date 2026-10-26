@@ -247,19 +247,21 @@ def test_validate_frame_refuses_a_weap_slot_above_11_and_a_damage_above_255():
         assert len(mgr.sessions["t1"].buffer) == 0
 
 
-
 def test_every_writer_refuses_an_out_of_range_weap_and_reads_the_leading_integer_as_the_gun_does():
     """Guard B on the writers that do not call validate_frame (the CLI, the stage, the soak and tools write through
     the BLE manager), and on raw bytes. The gun reads a token's leading integer, so `+12` and `300.0` are refused."""
     from brx_mcp.rawbytes import plan_from_stream, validate_plan
     for f in ("$WEAP,+12,1,5,1,2,45,0,*", "$WEAP,0,1,5,1,2,300.0,0,*", "$WEAP,0,1,5,1,2,300x,0,*", "$WEAP, 13,1,5,1,2,45,0,*"):
         assert protocol.weap_range_error(f) and protocol.validate_frame(f), f
+    assert protocol.weap_range_error("$!WEAP,12,1,5,1,2,45,0,*"), "a Gen1 prefix does not hide the write"
     for f in ("$WEAP,<slot>,1,5,1,2,45,0,*", "$WEAP,11,1,5,1,2,+255,0,*", "$PSET,0,0,999,70,70,50,*"):
         assert protocol.weap_range_error(f) is None, f
     bad = "$WEAP,12,1,5,1,2,45,0,*"
     try:
         from brx_mcp.ble import ConnectionManager
-    except ImportError:                      # system python has no bleak: the real manager cannot load here
+    except ModuleNotFoundError as e:         # system python has no bleak: the real manager cannot load here
+        if e.name != "bleak":
+            raise
         ConnectionManager = None
     if ConnectionManager is not None:
         writes: list[bytes] = []

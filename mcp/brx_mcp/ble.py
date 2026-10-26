@@ -19,10 +19,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bleak import BleakClient, BleakScanner
-
-from . import protocol
 from bleak.exc import BleakError
 
+from . import protocol
 from .protocol import (
     NUS_RX_CHAR_UUID,
     NUS_SERVICE_UUID,
@@ -85,7 +84,6 @@ class Session:
                 f.write(json.dumps({"wall_ts": time.time(), **ev.to_dict()}) + "\n")
         self.new_event.set()
         return ev
-
 
 
 class ConnectionManager:

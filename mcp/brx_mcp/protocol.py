@@ -280,9 +280,9 @@ _LEADING_INT = re.compile(r"\s*([+-]?\d+)")
 def weap_range_error(command: str) -> str | None:
     """Why a `$WEAP` frame carries a slot or a damage the gun cannot hold, else None (and None for any other frame).
     Every writer calls it: `validate_frame`, the BLE manager's writes and the raw-bytes plan check."""
-    if command_name(command).strip().upper() != "WEAP":
-        return None
     toks = tokenize(command)
+    if toks[0].lstrip("!").strip().upper() != "WEAP":   # not command_name(): a Gen1 `!` must not hide a write
+        return None
     for i, name, top in ((1, "slot", WEAP_SLOT_MAX), (6, "damage (t5)", WEAP_DAMAGE_MAX)):
         m = _LEADING_INT.match(toks[i]) if i < len(toks) else None
         if m and not 0 <= int(m.group(1)) <= top:
