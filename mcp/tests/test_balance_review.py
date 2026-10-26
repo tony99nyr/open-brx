@@ -77,6 +77,39 @@ def test_a_last_round_that_kills_if_it_lands_is_a_finish():
     assert fighter._finish_ms(1, target, 0) < float("inf")
 
 
+def test_the_charge_median_matches_an_exact_count():
+    """F619: the opener-then-taps median equals a brute-force sum over every hit pattern."""
+    import itertools
+    for pool, chance, first, tap in ((5, 0.2, 40, 12), (45, 0.5, 40, 12), (60, 0.35, 12, 12), (100, 0.6, 40, 12),
+                                     (30, 0.9, 0, 10)):
+        n = 1
+        while True:
+            p = 0.0
+            for hits in itertools.product((0, 1), repeat=n):
+                dmg = hits[0] * first + sum(hits[1:]) * tap
+                if dmg >= pool:
+                    p += chance ** sum(hits) * (1 - chance) ** (n - sum(hits))
+            if p >= 0.5 - 1e-12:
+                break
+            n += 1
+        assert R._median_charge_rounds(pool, chance, first, tap) == n, (pool, chance, first, tap, n)
+
+
+def test_a_charge_finish_needs_whole_landed_taps():
+    """F619: at a low pool and a low hit chance the Charge Rifle does not finish on its first tap; it needs the
+    rounds by which one tap has landed with even odds."""
+    cr = R.make_kit(R.shipped_world(), "plain", "charge_rifle").guns[0]
+    def est(pool, chance):
+        return R.finish_estimate(cr, pool=pool, chance=chance, ammo=cr.mag, reserve=0, reload_amount=0,
+                                 ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
+                                 overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=False, count=0, dist=R.DIST["mid"],
+                                 heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+    sure, unlikely = est(5, 1.0), est(5, 0.2)
+    # 1 - 0.8**n >= 0.5 first at n = 4: three more tap cadences than a sure first tap.
+    assert unlikely == sure + 3 * R.CHARGE_TAP_CADENCE_MS, (sure, unlikely)
+    assert est(5, 0.2) < est(2 * cr.tap, 0.2) < float("inf")
+
+
 def test_a_zero_success_cell_is_never_near_top():
     # Every kit is within 0.05 of a 0.011 top, but zero wins add no value.
     assert not R._near_top("hill hold", 0.0, 0.011)
@@ -1170,7 +1203,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 25
+    assert R.SCENARIO_VERSION == 26
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
