@@ -134,16 +134,19 @@ cd mcp && python3 run_tests.py            # everything
 cd mcp && python3 run_tests.py modes cs   # only files matching these substrings
 cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs every file in one process, streamed
 cd mcp && python3 run_tests.py chaos      # chaos testing only (its own `chaos` job in test:all; docs/chaos-testing.md)
+cd mcp && python3 run_tests.py --group sim          # only a named group of files (GROUPS in run_tests.py)
+cd mcp && python3 run_tests.py --exclude-group sim  # everything except that group
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
 missing rather than failing the run. `test:all` runs this suite under the repo `.venv` (or `MC_PY`), so it never
 shows a missing-extra import. When you import an optional extra, also run `cd mcp && python3 run_tests.py` under
-system python, as CI's first pass does. Two places refuse such skips (`run_tests.py --no-skip <name>`): CI's second
-pass, after it installs the extras, and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc`
-extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
+system python, as CI's `mcp` job does. CI runs three jobs in parallel (F627): `mcp` (system python) and
+`mcp-extras` (with the extras) each run everything but the `sim` group, and `mcp-sim` runs that group once. Three
+places refuse such skips (`run_tests.py --no-skip <name>`): `mcp-extras`, after it installs the extras; `mcp-sim`,
+whose group needs none; and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc` extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
 once (the WSL venv already has it), then `cd mcp && python3 -m pyright` for the full list of errors.
 `run_tests.py pyright` is what actually gates the suite — it SKIPS cleanly where pyright isn't
-installed (the bench box's system python), and CI installs pyright for its second, with-extras pass.
+installed (the bench box's system python), and CI installs pyright for its `mcp-extras` job.
 
 **Phone app (`app/`)**, native Capacitor app for Android + iOS:
 ```bash
