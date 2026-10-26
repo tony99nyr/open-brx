@@ -190,6 +190,7 @@ export class Transport {
     this.backhaulGiveupMs = backhaulGiveupMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
     this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
     this.urgent = false;        // F595: setUrgent()
+    this._rcReclaim = false; this._rcDueAt = 0;   // F595: the pending redial's kind and due time (_armReconnect)
     this._idVolatile = false;   // restore r1 #4: true when the id read failed, so this process's identity is never stored
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
@@ -756,7 +757,7 @@ export class Transport {
       // full welcome window, measured from now.
       this._armConnectTimeout(this.reclaimRetryMs + this.welcomeTimeoutMs);
       this._setState('offline');
-      if (!this._rcTimer) this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, this.reclaimRetryMs);
+      if (!this._rcTimer) this._armReconnect(this.reclaimRetryMs, true);   // F595 review: setUrgent never shortens this wait
       return;
     }
     if (code === 4001 || code === 4003) {
@@ -782,8 +783,20 @@ export class Transport {
     if (on === this.urgent) return;
     this.urgent = on;
     if (!on) return;
-    if (this.state === 'bound') { if (this.ring.size === 0) this._beatNow(); }
-    else if (this._rcTimer) { this.timers.clearTimeout(this._rcTimer); this._rcTimer = null; this.attempt--; this.reconnects--; this._scheduleReconnect(); }
+    if (this.state === 'bound') { if (this.ring.size === 0) this._beatNow(); return; }
+    // Review (Opus, Fable): only an ordinary backoff due more than the urgent cap away is brought forward. The 4003 reclaim
+    // wait is left alone (its early retry would meet the same stale holder and end in a permanent refusal), and the
+    // attempt counters do not move: this is the same attempt, sooner.
+    if (this._rcTimer && !this._rcReclaim && this._rcDueAt - this.now() > URGENT_RECONNECT_CAP_MS) {
+      this.timers.clearTimeout(this._rcTimer); this._rcTimer = null;
+      this._armReconnect(URGENT_RECONNECT_CAP_MS * (1 - this.backoff.jitter + 2 * this.backoff.jitter * this.random()));
+    }
+  }
+  /** One pending redial: `reclaim` marks the 4003 stale-holder wait, which setUrgent must not shorten.
+   *  @param {number} delay @param {boolean} [reclaim] */
+  _armReconnect(delay, reclaim = false) {
+    this._rcReclaim = reclaim; this._rcDueAt = this.now() + delay;
+    this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, delay);
   }
   _scheduleReconnect() {
     if (this.closed || this._rcTimer) return;
@@ -791,8 +804,7 @@ export class Transport {
     const { baseMs, jitter } = this.backoff;
     const capMs = this.urgent ? Math.min(this.backoff.capMs, URGENT_RECONNECT_CAP_MS) : this.backoff.capMs;
     const raw = Math.min(capMs, baseMs * 2 ** Math.min(this.attempt - 1, 16));
-    const delay = raw * (1 - jitter + 2 * jitter * this.random());
-    this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, delay);
+    this._armReconnect(raw * (1 - jitter + 2 * jitter * this.random()));
   }
   /** @param {TransportEnvelope} env @param {TransportSocket|null} [ws] @returns {boolean} */
   _sendRaw(env, ws = this._ws) {

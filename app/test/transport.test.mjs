@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
+import { syncUrgent, SYNC_URGENT_MAX_MS } from '../src/hud/synctrack.js';
 import { Clock } from '../src/transport/clock.js';
 import { Transport, DELIVERED, clearConsumedPriorUtilityHandoff, priorUtilityReconnectUrl, debounceBound, BOUND_DEBOUNCE_POLLS, PRIOR_UTILITY_HANDOFF_MAX_AGE_MS } from '../src/transport/transport.js';
 import { APP_VER, setDeviceModel, deviceModel } from '../src/build.js';
@@ -807,8 +808,36 @@ test('F564: the hello and every status name the device once Device.getInfo has a
   assert.equal(deviceModel().length, 64, 'a model string is capped');
 });
 
-test('F595: the app sets the transport urgent from the end until the result is in', () => {
-  // app.js's sync poll is a timer in the app shell, not a unit; read its source, as advert-director.test.mjs does
+test('F595: the app sets the transport urgent through syncUrgent, which ends with the result or after 10 minutes', () => {
   const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(src, /transport\.setUrgent\(!!es\.ended && !es\.result\)/, 'the sync poll no longer drives setUrgent');
+  assert.match(src, /transport\.setUrgent\(syncUrgent\(es, engine\.now\(\)\)\)/, 'the sync poll no longer drives setUrgent');
+  const T = 1_000_000;
+  assert.equal(syncUrgent({ ended: true, result: null, endedAt: T }, T + 1000), true);
+  assert.equal(syncUrgent({ ended: true, result: { winner: 'red' }, endedAt: T }, T + 1000), false, 'the result is in');
+  assert.equal(syncUrgent({ ended: false, result: null, endedAt: null }, T), false, 'no match has ended');
+  assert.equal(syncUrgent({ ended: true, result: null, endedAt: T }, T + SYNC_URGENT_MAX_MS - 1), true);
+  assert.equal(syncUrgent({ ended: true, result: null, endedAt: T }, T + SYNC_URGENT_MAX_MS), false, 'a result that never comes stops the urgent dials');
+  assert.equal(syncUrgent({ ended: true, result: null }, T), false, 'no end time, no urgency');
+});
+
+test('F595 review: setUrgent never shortens the 4003 reclaim wait, and leaves a redial that is nearly due', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 't' }, backoff: { baseMs: 500, capMs: 10000, jitter: 0 }, reclaimRetryMs: 9500 });
+  ctx.after(() => t.close());
+  t.connect({ url: 'ws://x/ws', trusted: false }).catch(() => {});
+  sockets[0].open();
+  sockets[0].onclose && sockets[0].onclose({ code: 4003, reason: 'gun or node in use' });   // MC still holds our stale record
+  assert.equal(t.state, 'offline', 'setup: the reclaim wait, not a refusal');
+  t.setUrgent(true);                                       // the end arrives during the wait
+  await advance(9000);
+  assert.equal(sockets.length, 1, 'no early retry: it would meet the same stale holder and end refused for good');
+  await advance(600);
+  assert.equal(sockets.length, 2, 'the one retry goes at the end of the wait');
+  t.setUrgent(false);
+  sockets[1].close();                                      // an ordinary drop: the first backoff is 500 ms
+  t.setUrgent(true);
+  await advance(600);
+  assert.equal(sockets.length, 3, 'a redial due sooner than the urgent cap is left as it is');
 });
