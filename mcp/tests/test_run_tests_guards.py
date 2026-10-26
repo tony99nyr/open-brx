@@ -88,6 +88,9 @@ def test_every_group_names_real_test_files():
     for name, stems in groups.items():
         for stem in stems:
             assert (MCP / "tests" / f"{stem}.py").exists(), (name, stem)
+    # a new balance test belongs with the sim, or it puts sim CPU back into both CI passes (Fable)
+    balance = {p.stem for p in (MCP / "tests").glob("test_balance_*.py")}
+    assert balance <= set(groups["sim"]), sorted(balance - set(groups["sim"]))
 
 
 def _ci_job(name: str) -> str:
@@ -113,19 +116,34 @@ def _mcp_runs() -> list[str]:
 
 
 def test_ci_checks_followups_freshness_on_main_push_only():
+    # the two passes run test_docs_hygiene, the only reader; mcp-sim does not
     runs = _mcp_runs()
     assert len(runs) == 3, runs
-    for run in runs:
+    for run in runs[:2]:
         assert "BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}" in run, run
+
+
+def _positionals(line: str) -> list[str]:
+    """The file filters on a run_tests.py command line: every token that is not a flag or a flag's value."""
+    tokens, out = iter(line.split("run_tests.py", 1)[1].split()), []
+    for t in tokens:
+        if t in ("--group", "--exclude-group", "--exclude", "--no-skip", "-j", "--jobs"):
+            next(tokens, None)
+        elif not t.startswith("-"):
+            out.append(t)
+    return out
 
 
 def test_ci_runs_every_test_file_in_both_passes_or_in_the_sim_job():
     # F627: the system-python and extras passes leave out only the sim group, and mcp-sim runs exactly that group with
     # the extras pass's --no-skip list, so a sim test that starts needing an extra fails there instead of skipping.
     system, extras, sim = (r.split("\n")[0] for r in _mcp_runs())
-    assert system.endswith("run_tests.py --exclude-group sim"), system
-    assert "--exclude-group sim" in extras and "--no-skip" in extras and "--group" not in extras.replace("--exclude-group", ""), extras
-    assert "--group sim" in sim and "--exclude" not in sim, sim
+    # parse the selections, not substrings: a second --exclude-group would drop that group from every job (Fable)
+    picked = lambda line, flag: re.findall(rf"(?:^|\s){flag} (\S+)", line)
+    for line in (system, extras):
+        assert picked(line, "--exclude-group") == ["sim"] and not picked(line, "--group") and not picked(line, "--exclude"), line
+        assert not _positionals(line), ("a positional filter narrows a pass", line)
+    assert picked(sim, "--group") == ["sim"] and not picked(sim, "--exclude-group") and not picked(sim, "--exclude"), sim
     flags = lambda line: sorted(re.findall(r"--no-skip \S+", line))
     assert flags(sim) == flags(extras) and flags(extras), (sim, extras)
     # the no-skip list proves the sim needs no extra only while that job installs none

@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     # F627 (2026-10-26): one job ran both passes and the balance sim twice, 14.8 min median and 19.7 p90 against a
     # 20 min cap, so 19 of 61 main runs from 2026-10-19 were cancelled. The passes now run in parallel, and the sim
-    # group (about 60% of the suite's CPU) runs once, in mcp-sim. Each cap is about 4x its job's expected p90 (OP14).
+    # group (about 60% of the suite's CPU) runs once, in mcp-sim. Each cap is 4x or more its job's expected p90 (OP14).
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -59,8 +59,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: cd mcp && python3 run_tests.py --group sim --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
-        env:
-          BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
 
   webapp-mc:
     name: Mission Control web UI
