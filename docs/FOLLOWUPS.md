@@ -12,10 +12,9 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 99.** Desk 4 · bench 91 · decision 4.
+**MVP open: 97.** Desk 2 · bench 91 · decision 4.
 
-**MVP DESK (4),** a keyboard is enough:
-- 🟠 **F628** · **F629**
+**MVP DESK (2),** a keyboard is enough:
 - 🟢 **F626** · **F627**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -48,8 +47,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F628 🟠 THE LATE PHONE ALSO SHOWS RESULT UPDATED.** brx4, 2026-10-26 (the A81 + A83 + F595 + RESULT UPDATED end-to-end check, case 3, main `7d6b3b96e`; real MC, four real phone HUDs). When a phone that missed the 120 s auto-release reconnects, MC's welcome carries the released result (`state.py` `welcome.node.result`), and the phone adopts it (`engine.js` `onResultPush`). The phone probably shows the old winner for a few seconds. When its own facts drain and flip the winner, MC re-sends `result`, and the phone counts that as a change to a result it held: RESULT UPDATED. Tony's rule is that the late phone just shows the result. Fix options: MC withholds `welcome.node.result` from a node whose own sync is still pending (preferred, so the late phone never flashes the old winner; brx3), or the phone does not count a result adopted while its queue was non-empty as shown (brx4). brx1 decides. Before the 0.4.30 cut. `desk`.
-- **F629 🟠 THE FINAL IN LINE DOES NOT NAME THE MISSING PHONE.** brx4, 2026-10-26 (the same end-to-end check, case 2). During the A83 wait the console reads "WAITING FOR 1 PHONE · FINAL IN m:ss" (`webapp/mc/src/screens/SyncStrip.tsx` `waitingLine`) and never names the phone; the phone appears only as a dimmed row in the stats table. brx1's check expected the line to name it. Owner brx3. Before the 0.4.30 cut. `desk`.
 - **F626 🟢 GATE: A DOCS-ONLY CHANGE RUNS THE WHOLE `mcp` JOB.** brx2 for brx1, 2026-10-26. `test_docs_hygiene` and the other docs tests live in the `mcp` job, so `--changed` runs all of `mcp` (300 s registered, about 5 to 9 min in a gate) for a docs-only diff, and the job can time out under outside load. On 2026-10-26, the F595 row close (two jobs) went red on an `mcp` TIMEOUT at 900 s with every shard passed. (1) Give the docs tests a registry job of their own in `scripts/lib/jobs.mjs`, with `inputs` that `--changed` selects for a docs-only diff, and keep them out of `mcp` so nothing runs twice; a docs land then gates in seconds. (2) Split the `test_balance_review` shards into their own job, so a sim change does not carry the rest of `mcp` and `mcp` alone stays well inside its timeout. Owner brx2. `build`.
 - **F627 🟢 CI: THE `mcp` JOB HITS ITS 20-MINUTE CAP.** brx5 for brx1, 2026-10-26. 17 of 57 main runs of the CI `mcp` job since 2026-10-24 were cancelled at its 20-minute cap. Split the CI job into the same groups as F626's local gate split, from one shared definition (the run_tests.py groups), so a red reads as its group and no group nears the cap. Owner brx5. `build`.
 
