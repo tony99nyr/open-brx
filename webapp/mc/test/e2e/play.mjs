@@ -29,6 +29,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,17 +63,18 @@ const killGroup = proc => new Promise(done => {
   setTimeout(() => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* gone */ } finish(); }, 3000).unref();
 });
 
-async function startVite(mcProxyPort) {
+async function startVite(mcProxyPort, { env: extraEnv = {}, host } = {}) {
   // Always a FRESH free port, never `process.env.VITE_PORT`: the `real-*` steps below each start their
   // own vite (one per step, so they can run alone under `ONLY=`), and a single job-level env var (as
   // `scripts/test-all.mjs`'s `e2e()` sets, once per job) would make every one of them race for the
   // SAME port instead of each getting its own -- the failure mode this comment used to invite.
   const port = await freePort();
-  const proc = spawn(process.execPath, [path.join(MC, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
+  const proc = spawn(process.execPath, [path.join(MC, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort',
+    ...(host ? ['--host', host] : [])],
     { cwd: MC, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
-      env: mcProxyPort ? { ...process.env, MC_PROXY_PORT: String(mcProxyPort) } : process.env });
+      env: { ...process.env, ...(mcProxyPort ? { MC_PROXY_PORT: String(mcProxyPort) } : {}), ...extraEnv } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
-  const base = `http://localhost:${port}`;
+  const base = `http://${host ?? 'localhost'}:${port}`;
   for (let i = 0; i < 300; i++) {
     try { const r = await fetch(base); if (r.ok) { console.log(`  vite dev: ${base}`); return { base, stop: () => killGroup(proc) }; } } catch { /* not yet */ }
     if (proc.exitCode != null) break;
@@ -136,10 +138,12 @@ async function open(browser, base, query, width, height = 900) {
   await pg.waitForTimeout(300);
   return pg;
 }
-/** Same as `open()`, against a REAL MC (no `window.__MC_MOCK__` handle to wait for). */
-async function openReal(browser, base, query, width, height = 900) {
+/** Same as `open()`, against a REAL MC (no `window.__MC_MOCK__` handle to wait for). `before(pg)` runs before the
+ *  page loads (a route that slows one answer). */
+async function openReal(browser, base, query, width, height = 900, { before } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
+  if (before) await before(pg);
   pg.on('pageerror', e => failures.push(`${current}: [pageerror] ${e.message}`));
   pg.on('console', m => { if (m.type() === 'error') failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(`${base}/${query}`, { waitUntil: 'domcontentloaded' });
@@ -715,6 +719,36 @@ step('hold', async ({ browser, base }) => {
 // F540 (bench A.7, 2026-10-16): after an MC restart the open tab kept the OLD token; every write was refused and the
 // console only flickered. Now a refused write shows a RED line with the cure, the refused socket backs off instead of
 // reconnecting twice a second, and pasting the new token under TOKEN ▸ makes the next write land.
+step('real-proxy-family', async () => {
+  // F574: CI run 38268828276 gave the real MC 127.0.0.1:44349 while the mock steps' vite still listened on
+  // localhost:44349 over IPv6 (a port-0 pick checks IPv4 only). vite proxied to `localhost:<MC>`, reached that
+  // other vite over ::1, and the whole step saw 502s and closed sockets. Here a decoy holds [::1]:P and the real MC
+  // holds 127.0.0.1:P: the proxy must reach MC, which binds IPv4 (`--host`, 0.0.0.0 by default).
+  const port = await freePort();
+  const decoy = http.createServer((req, res) => { res.writeHead(502); res.end('decoy'); });
+  decoy.on('upgrade', (req, socket) => socket.destroy());
+  const bound = await new Promise(resolve => { decoy.once('error', () => resolve(false)); decoy.listen(port, '::1', () => resolve(true)); });
+  if (!bound) { ok('skipped: no IPv6 loopback here, so the two families cannot collide'); return; }
+  const mc = await startRealMC({ port });
+  // resolve localhost as the runner does (::1 first), so this proves the target on any box
+  const preload = path.join(HERE, 'lib', 'localhost-v6-first.mjs');
+  const vite = await startVite(mc.port, { host: '127.0.0.1', env: { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${preload}`.trim() } });
+  try {
+    const r = await fetch(`${vite.base}/api/state`);
+    const body = await r.text();
+    expect(r.ok && /"phase"/.test(body), `REST through the proxy reaches MC, not [::1]:${port} (saw ${r.status} ${body.slice(0, 40)})`);
+    const snapshot = await new Promise(resolve => {
+      const ws = new WebSocket(`${vite.base.replace(/^http/, 'ws')}/ui-ws`);
+      const done = v => { clearTimeout(timer); try { ws.close(); } catch { /* closed */ } resolve(v); };
+      const timer = setTimeout(() => done(false), 15000);
+      ws.onmessage = ev => { try { if (JSON.parse(ev.data).kind === 'snapshot') done(true); } catch { /* not JSON */ } };
+      ws.onclose = () => done(false);
+    });
+    expect(snapshot, 'the console socket through the proxy gets a snapshot from MC');
+    ok(`the dev proxy reaches MC on IPv4 while another server holds [::1]:${port}`);
+  } finally { await vite.stop(); await mc.stop(); await new Promise(r => decoy.close(r)); }
+});
+
 step('real-stale-token', async ({ browser }) => {
   let mc = await startRealMC({ token: 'tok-before' });
   const vite = await startVite(mc.port);
@@ -760,9 +794,14 @@ step('real-fresh', async ({ browser }) => {
   const mc = await startRealMC();
   const vite = await startVite(mc.port);
   try {
-    const pg = await openReal(browser, vite.base, '#build', 1280);
+    // F574: CI run 38122943216 read the page once, as PICK GAME showed, before the pieces had arrived. The pieces
+    // answer comes 2 s late here, so a read that does not wait for it fails every time.
+    const pg = await openReal(browser, vite.base, '#build', 1280, 900,
+      { before: p => p.route('**/api/pieces', route => setTimeout(() => route.continue(), 2000)) });
+    const pickers = t => /GAME MODE/.test(t) && /LIFE/.test(t) && /SPAWN/.test(t);
+    await until(() => text(pg).then(pickers), 15000, 'the three fresh-install pickers against a real MC');
     const t = await text(pg);
-    expect(/GAME MODE/.test(t) && /LIFE/.test(t) && /SPAWN/.test(t), 'the three fresh-install pickers show against a real MC');
+    expect(pickers(t), 'the three fresh-install pickers show against a real MC');
     expect(/10 MIN/.test(t) && /NO KILL LIMIT/.test(t), 'the strip shows');
     ok(`fresh install renders against a real MC   ${await shot(pg, 'real-fresh')}`);
     await pg.context().close();
