@@ -5298,8 +5298,8 @@ test('an infection survivor plays survivors_win itself at time-expiry; a turned 
 });
 test('a reload-speed perk shortens the RELOADING takeover to match the gun', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'quick_hands' } }, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [{ perk_id: 'quick_hands', name: 'Quick Hands', effects: { reload_mult: 0.5 } }] } } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { reload_mult: 0.5 } }] } } });
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
 });
@@ -5331,10 +5331,10 @@ test('F542 review: a lever 100 ms after ALT keeps its old-slot reload alive unti
   assert.equal(h.eng.state().activeSlot, 1, 'the late old-slot reload does not pull the trigger back');
   assert.equal(h.eng.state().reloadOutcome?.slot, 0); assert.equal(h.eng.state().reloadOutcome?.ok, true);
 });
-test('the Quick Switch perk assumes the swap after 425 ms', () => {
+test('the Fast Hands perk assumes the swap after 425 ms', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' } }, team: h.team, roster: h.roster,
-    catalog: { weapons: [], perks: [{ perk_id: 'quick_switch', name: 'Quick Switch', effects: { switch_mult: 0.5 } }] } } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { switch_mult: 0.5 } }] } } });
   delete h.eng.frames.swap_ms;                       // an older MC: no enforced value in the bundle → the node applies the perk itself
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
@@ -8257,12 +8257,12 @@ test('BOLT: with no chambered round by the deadline the cue ends as a failed rel
   assert.equal(s.bolt, false, 'not left up');
   assert.equal(s.reloadOutcome && s.reloadOutcome.ok, false); assert.equal(s.reloadOutcome.why, 'timeout');
 });
-test('F573 review: Quick Hands leaves the bolt alone on the phone, as compile does on the gun', () => {
+test('F573 review: Fast Hands leaves the bolt alone on the phone, as compile does on the gun', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'quick_hands' } }, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Sniper Rifle', clip: 1, reserve: 48, reload_s: 2.2, reload_type: 'bolt' }], perks: [{ perk_id: 'quick_hands', name: 'Quick Hands', effects: { reload_mult: 0.5 } }] } } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Sniper Rifle', clip: 1, reserve: 48, reload_s: 2.2, reload_type: 'bolt' }], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { reload_mult: 0.5 } }] } } });
   h.frame('$ALCD,0,100,0,48,0,*'); h.frame('$BUT,2,1,*');
-  assert.equal(h.eng.state().reloadTotalMs, 2200, 'the bolt keeps its 2.2 s under Quick Hands');
+  assert.equal(h.eng.state().reloadTotalMs, 2200, 'the bolt keeps its 2.2 s under Fast Hands');
 });
 test('F573 review: a bolt round gets no shot-ready cue (the BOLT cue covers it); a slow non-bolt round still does', () => {
   for (const bolt of [true, false]) {

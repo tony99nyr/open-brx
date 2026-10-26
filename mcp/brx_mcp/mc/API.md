@@ -184,12 +184,8 @@ State {
   players: Player[], teams: Team[],
   kit: { kitted: number, total: number, trying: { [player_id]: weapon_id }, browsing: { [player_id]: t_ms } },   // A10 browsing = HUD has its loadout browser open ("PICKING…"), 60 s expiry
   loadout_pool: { primary: string[], secondary_weapons: string[], perks: string[] },   // A10/A14: allowed ids per slot under config.loadout_policy (server-computed; render, don't re-derive)
-                                               // S37 (field 2026-09-12): with `secondary_weapons` empty, a perk that only
-                                               // does something with a SECOND weapon (`effects.switch_mult` — Quick Switch,
-                                               // the $WEAP tok15 swap delay) is NOT in `perks`. Render the pool and the
-                                               // control disappears by itself; a phone that picks it anyway is answered
-                                               // `loadout_ack {ok:false, reason:"Quick Switch switches between two weapons,
-                                               // and there is no second weapon this game"}`
+                                               // With `secondary_weapons` empty, a perk whose only benefit is faster
+                                               // swapping leaves the pool. Fast Hands stays because it also halves reload time.
   lobby: { ready: number, updating?: number, total: number, pushed: boolean, all_acked: boolean,
            acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string, config_id?: string } } },
                                               // F178 (2026-09-23): `ready` is the players' intent. `updating` is the part of

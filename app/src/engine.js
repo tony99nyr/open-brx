@@ -29,6 +29,7 @@ import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
 import { Ammo, TRIGGER_NO_FIRE_MS } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
+import { perkForHealth } from './health.js';   // the one Shields rule: the console and the server read the same three numbers
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
@@ -597,7 +598,7 @@ function ammoHost(e) {
     get activeSlot() { return e.activeSlot; }, get frames() { return e.frames; }, get phase() { return e.phase; },
     get alive() { return e.alive; }, get recoil() { return e._recoil; },
     log: (line, cls) => e.log(line, cls), changed: () => e._changed(), reloadGlance: () => e._gunReadoutReloadGlance(),
-    weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id),
+    weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id), perkEffects: id => e.perkEffects(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
@@ -1926,6 +1927,9 @@ export class Engine {
   weaponNameOf(id) { const row = this.weaponRow(id); return (row && row.name) || id; }
   weaponRow(id) { const c = this.catalog; return (c && c.weapons && c.weapons.find(w => w.weapon_id === id)) || null; }
   perkRow(id) { const c = this.catalog; return (c && c.perks && c.perks.find(w => w.perk_id === id)) || null; }
+  /** A perk's effects as THIS game resolves them: the Shields variant (Extended Mags x1.5) when the game's health is the
+   *  Shields preset, the plain row otherwise. The game's health is the bundle config's, else the briefing's. */
+  perkEffects(id) { const p = perkForHealth(this.perkRow(id), (this.config && this.config.health) || (this.game && this.game.health)); return (p && p.effects) || {}; }
   /** S56 "what hit me": name the weapon behind a latched `$HIR`. NEVER guesses -- two candidates that the
    *  latch cannot tell apart come back `ambiguous`, with `weapon_id: null`, rather than a coin-flip pick that
    *  could name the wrong gun. Returns `null` (no claim at all, not even "unknown") when there is nothing to

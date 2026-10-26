@@ -119,8 +119,8 @@ Set `verified: true` only after that. Record the result in `docs/experiment-log/
 
 ## Dogfood: Body Armor
 
-Body Armor is catalogue id `body_armor`. Its row carries `max_armor_add: 25` and `reload_mult: 1.25`: 25
-more armour (about a fifth more pool), and reloads a quarter slower as the cost. `_MAX_ARMOR_ADD` holds the same 25, and
+Body Armor is catalogue id `body_armor`. Its row carries `max_armor_add: 20` and `reload_mult: 1.25`: 20
+more armour (about a sixth more Standard pool), and reloads a quarter slower as the cost. `_MAX_ARMOR_ADD` holds the same 20, and
 `armed_armor()` adds it to `$PSET` armour, or to the shield in a game with no base armour. `gain_cost_lines()`
 prints the armour as the gain and the slower reload as the cost, and both UIs render those two lines. Each UI
 has its own `body_armor` glyph.

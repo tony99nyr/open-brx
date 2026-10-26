@@ -25,6 +25,7 @@ from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — 
 from . import config_merge as _config_merge
 from . import configcheck as _check
 from .snapshot_codec import SnapshotCodec, is_aborted_row
+from .perks import canonical_perk_id
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
 from . import policy as _policy
@@ -1229,8 +1230,7 @@ class Session:
         """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:
         a config with 45/0/105 and no preset key is Shields, and edited numbers are custom. The console's
         `healthPresetOf` derives it the same way (brx3 review). `health` defaults to the game's own."""
-        h = _compile.normalize_health(health if isinstance(health, dict) else self.config.get("health"))
-        return _compile.resolve_health_preset(h["max_hp"], h["max_armor"], h["max_shield"])
+        return _compile.derived_health_preset(health if isinstance(health, dict) else self.config.get("health"))
 
     def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
@@ -1964,6 +1964,7 @@ class Session:
             if not isinstance(perk, str):
                 raise ValueError("loadout.perk must be a perk_id string or null")
             _, perks = self._catalog_rows()
+            perk = canonical_perk_id(perk)                # a live client may still send quick_hands / quick_switch
             if perks and perk not in {r.get("perk_id") for r in perks}:
                 raise ValueError(f"unknown perk_id {perk!r}")
             w0 = weapons[0]["weapon_id"]
@@ -6389,6 +6390,8 @@ class Session:
         p = self.players[pid]
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
+        if rid and slot == "perk" and kind == "perk":
+            rid = canonical_perk_id(rid)                # a live client may still say quick_hands / quick_switch
         weapons, perks = self._catalog_rows()
         # F123: the last argument is the player's CURRENT kit. Only one rule needs it -- `easy_reload` on a
         # chain-reload weapon -- and without it the phone's pick came back ok:true and then silently did not

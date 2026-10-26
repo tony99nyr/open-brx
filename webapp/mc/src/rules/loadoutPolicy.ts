@@ -37,12 +37,11 @@ export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] => {
 };
 /** A14: does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can ride with it (policy.py `takes_alt`). */
 export const takesAlt = (k?: PerkView | null) => !!k?.effects?.alt_reload;
-/** S37: does this perk do NOTHING without a second weapon (`effects.switch_mult` — Quick Switch,
- *  which compiles to the $WEAP tok15 swap delay)? Mirrors policy.py `swaps_weapons`, asked of the
- *  EFFECT rather than the perk id so a second swap perk is covered the day it exists. */
+/** A swap-only perk does nothing without a second weapon. Fast Hands also speeds reloads. */
 export const swapsWeapons = (k?: PerkView | null) => {
   const switchMult = k?.effects?.switch_mult;
-  return !!switchMult && switchMult < 1;
+  const reloadMult = k?.effects?.reload_mult;
+  return !!switchMult && switchMult < 1 && !(reloadMult && reloadMult < 1);
 };
 
 /** Why `_filter`/the choice left this slot with nothing — mirrors policy.py `_empty_code` exactly,
@@ -98,7 +97,7 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
     sw = sw.filter(w => !(fixed?.blocked_secondary ?? []).includes(w));
     perkEmptiedPrim = hadPrim && !prim.length; perkEmptiedSw = hadSw && !sw.length;
   }
-  // S37 (field 2026-09-12): a swap perk (Quick Switch) with no legal secondary has nothing to switch
+  // S37: a swap-only perk with no legal secondary has nothing to switch
   // to — pruned from the pool itself, the same way apply()/a stored loadout drops it, so it disappears
   // from both UIs with no extra rule. `neededSecondary` records whether THIS is why `sp` went empty,
   // which the perk slot's own `_empty_code` must never be blamed for instead (policy.py pool()).

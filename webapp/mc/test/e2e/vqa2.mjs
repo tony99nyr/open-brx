@@ -361,6 +361,35 @@ try {
     const menu = pg.locator(`[data-operator-menu="${pid}"]`);
     const inView = async () => { const bb = await box(menu); return !!bb && bb.y >= 0 && bb.y + bb.height <= 900; };
     expect(await until(inView, 4000, 'the menu in view'), `the last row's operator menu is fully on screen (${JSON.stringify(await box(menu))})`);
+    // F615: under load a line can land above the board after the menu opened (the lander's failures had the menu
+    // revealed, then pushed about 55 px below the fold). The open menu must come back into view.
+    try {
+      // the menu's bottom read in the same task as the insert, before any reveal can run
+      const pushed = await pg.evaluate(id => {
+        const strip = document.querySelector('[data-testid="station-alerts"]');
+        if (!strip) return null;
+        const late = document.createElement('div');
+        late.setAttribute('data-e2e-late-line', '1');
+        late.style.height = '60px';
+        strip.before(late);
+        return document.querySelector(`[data-operator-menu="${id}"]`)?.getBoundingClientRect().bottom ?? null;
+      }, pid);
+      expect(pushed != null && pushed > 900, `control: the late line pushes the menu below the fold (bottom ${pushed && Math.round(pushed)})`);
+      expect(await until(inView, 4000, 'the menu back in view'),
+        `a line that lands above the board after the menu opened does not leave it off screen (${JSON.stringify(await box(menu))})`);
+      // once the operator scrolls the page, a later line moves the menu with the board and does not pull the page back
+      const shown = (await box(menu))?.y ?? 0;
+      await pg.mouse.move(700, 300);
+      await pg.mouse.wheel(0, -120);
+      await until(async () => ((await box(menu))?.y ?? 0) > shown + 60, 3000, 'the wheel to scroll the page');
+      const before = (await box(menu))?.y ?? 0;
+      await pg.evaluate(() => { const late = document.querySelector('[data-e2e-late-line]'); if (late) late.style.height = '120px'; });
+      await pg.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));   // a reveal runs before this paint
+      const moved = ((await box(menu))?.y ?? 0) - before;
+      expect(Math.abs(moved - 60) <= 2, `after the operator scrolled, the menu moves with the board (moved ${Math.round(moved)} px, want 60)`);
+    } finally {
+      await pg.evaluate(() => document.querySelector('[data-e2e-late-line]')?.remove());
+    }
     await shot(pg, 'menu-fold-1440');
     // polish r1: the compact strips must not scroll sideways at phone width
     await pg.setViewportSize({ width: 393, height: 852 });

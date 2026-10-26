@@ -423,9 +423,9 @@ export function startDemo({ engine, log }) {
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
       twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
-      fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'quick_switch' }; ev.assign(); },   // A14: AR + pistol + Quick Switch
+      fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'fast_hands' }; ev.assign(); },   // A14: AR + pistol + Fast Hands
       empPerk: () => { player.loadout = { ...player.loadout, perk: 'emp' }; bundle.emp = { cooldown_s: 45, duration_s: 3 }; ev.assign(); },   // the hidden EMP perk; MC ships `emp` on every bundle of a match with a holder
-      quickSwitch: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'quick_switch' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
+      fastHands: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'fast_hands' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
       chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },
@@ -630,7 +630,7 @@ export function startDemo({ engine, log }) {
       'loadout-secondary': [...kitted, [400, () => ev.openLoadout('secondary')]],
       'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'smg')]],
       'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
-      'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'quick_hands')]],
+      'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'fast_hands')]],
       'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
       'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
       // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.
@@ -751,7 +751,7 @@ export function startDemo({ engine, log }) {
       // F416: the revive write is lost and the demo gun (like a silent one) never answers the check: GUN MAY NOT BE SPAWNED
       'live-spawn-lost':   [...live, [2300, 'die'], [2500, () => { ev.failWrites(/^\$SPAWN/, 1); engine._revive(false); }]],
       'live-switch-shot':  [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle'], [3000, () => ev.fire(1)]],
-      'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
+      'live-switch-perk':  [[0, 'fastHands'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
       'down-find':         [[0, () => ev.scanner(3)], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
       'down-find-presence': [[0, () => ev.scanner(3, 'presence')], ...live, [2300, 'die'], [2400, () => ev.station(null)]],
