@@ -58,13 +58,12 @@ jobs:
       - run: cd app && npm ci && npx playwright install --with-deps chromium && npm run typecheck && npm test
 
   mc-play:
-    name: Console browser gate (mc-play, non-blocking)
+    name: Console browser gate (mc-play)
     runs-on: ubuntu-latest
     # T17 (2026-10-11): the one browser gate in CI. The lander runs every browser gate before a land, so this covers
     # what skips it: an emergency direct push, a fork's PR, and ubuntu-vs-WSL drift. play.mjs is the whole operator
-    # path on a real MC (start, lobby, arm, live, end): 45 s locally, no flake in 7 days.
-    # Non-blocking from 2026-10-11 (FOLLOWUPS F512): make it blocking after 7 green days on main.
-    continue-on-error: true
+    # path on a real MC (start, lobby, arm, live, end): 45 s locally. Non-blocking from 2026-10-11, blocking from
+    # 2026-10-26 (F512): green on every main run since 2026-10-12, and F574 fixed the two earlier failures' causes.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
