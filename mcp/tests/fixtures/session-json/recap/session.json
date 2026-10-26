@@ -1015,7 +1015,9 @@
         "voice": "male"
       }
     },
+    "release_due_in_ms": 120000,
     "release_pending": false,
+    "release_reason": null,
     "released": false,
     "result_changed": false,
     "seq": 1,

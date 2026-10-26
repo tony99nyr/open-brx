@@ -19,7 +19,7 @@ from brx_mcp.mc import compile as C
 from brx_mcp.mc.fakes import demo_armory
 from brx_mcp.mc.scoring import rows_csv
 from brx_mcp.mc.types import CLOCK_TIE_MS
-from _session import go_live_stored, kill, mk_stored_session, online, results
+from _session import after_end, go_live_stored, kill, mk_stored_session, online, results
 
 
 # ---------------------------------------------------------------------------------------------
@@ -58,8 +58,8 @@ def test_the_result_releases_once_every_whistle_phone_has_reported():
     assert s.recap()["sync"]["pending"] is True, "the late batch reopened its row"
     for i, player in enumerate(ps):
         clock["t"] += 1_000
-        net.simulate_status(f"node{i}", {"player_id": player["player_id"], "shots": 0,
-                                         "alive": True, "synced": True, "pending": 0}, clock["t"])
+        net.simulate_status(f"node{i}", after_end(s, {"player_id": player["player_id"], "shots": 0,
+                                                      "alive": True, "synced": True, "pending": 0}), clock["t"])
     assert s.recap()["sync"]["pending"] is False
     assert s.match.released is True
 

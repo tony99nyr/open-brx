@@ -492,6 +492,9 @@ export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
 export type SyncStage = 'unlinked' | 'linked' | 'sending' | 'received';
 export type SyncTransport = 'wifi' | 'cellular' | 'backhaul';
+/** Tony 2026-10-26: what ended the A81 wait. "sync" every row received, "timeout" SYNC_STUCK_S after the whistle
+ *  without them, "finalise" the operator's FINALISE. */
+export type ReleaseReason = 'sync' | 'timeout' | 'finalise';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
@@ -2178,12 +2181,16 @@ export interface RecapSyncRow {
   stuck: boolean;
 }
 
-/** F596: whether the result can be shown. `pending` while any row is not received and the operator has not
- *  finalised. `result_changed` once the winner differs from the one first shown as final. */
+/** F596: whether the result can be shown. `pending` while any row is not received, the operator has not
+ *  finalised and SYNC_STUCK_S has not passed since the whistle. `result_changed` once the winner differs from the
+ *  one first shown as final. `released_by` says what ended the wait (null while pending); `release_in_s` is the
+ *  whole seconds left until the timeout releases it, sent only while pending. */
 export interface RecapSyncView {
   pending: boolean;
   finalised: boolean;
   result_changed: boolean;
+  released_by: ReleaseReason | null;
+  release_in_s?: number;
   rows: RecapSyncRow[];
 }
 

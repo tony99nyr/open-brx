@@ -1959,12 +1959,21 @@ class RecapSyncRow(TypedDict):
     stuck: bool                      # idle_s >= SYNC_STUCK_S and not received
 
 
+# Tony 2026-10-26: what ended the A81 wait. "sync" every row received, "timeout" SYNC_STUCK_S after the whistle
+# without them, "finalise" the operator's FINALISE.
+ReleaseReason = Literal["sync", "timeout", "finalise"]
+
+
 class RecapSyncView(TypedDict):
-    """F596: whether the result can be shown. `pending` while any row is not received and the operator has not
-    finalised. `result_changed` once the winner differs from the one first shown as final."""
+    """F596: whether the result can be shown. `pending` while any row is not received, the operator has not
+    finalised and SYNC_STUCK_S has not passed since the whistle. `result_changed` once the winner differs from the
+    one first shown as final. `released_by` says what ended the wait (null while pending); `release_in_s` is the
+    whole seconds left until the timeout releases it, sent only while pending."""
     pending: bool
     finalised: bool
     result_changed: bool
+    released_by: ReleaseReason | None
+    release_in_s: NotRequired[int]
     rows: list[RecapSyncRow]
 
 

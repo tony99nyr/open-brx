@@ -97,7 +97,7 @@ union, never a replacement: if the diff's own fail-safe already picked everythin
 nothing, it never narrows the run back down to just the names typed. The line printed just before the jobs
 start lists the final selection and why each job is in it (from the diff, or named on the command line).
 `--changed` adds `--ui` itself whenever the selection includes a UI-only job. CI runs only `mc-play` of the browser gates, as a
-non-blocking job (F512), and does not run `site`. The lander runs all UI gates, but a red result costs a batch.
+blocking job (F512), and does not run `site`. The lander runs all UI gates, but a red result costs a batch.
 The full `--ui` gate stays the rule before the FIRST push of a UI change in a branch.
 
 **After you edit a generator's source**, run `node scripts/regen.mjs --check`. It names each stale output and the
