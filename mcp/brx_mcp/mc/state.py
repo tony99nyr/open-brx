@@ -1365,7 +1365,10 @@ class Session:
                 # believed". That is exactly how a benched player whose phone locked or walked out of
                 # range before the operator tapped PLAY came back still SITTING OUT, with no frames, no
                 # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
-                "standby": p["player_id"] in self.standby}
+                "standby": p["player_id"] in self.standby,
+                # F632: a RECAP assign (a debrief re-team or rename, F631) says so, and the phone keeps its results on
+                # it. Any other assign after an end (NEW SESSION's re-assign above all) leaves them, as before.
+                **({"recap": True} if self.phase == "recap" else {})}
 
     def _send_assign(self, p: Player, extra: dict | None = None) -> bool:
         """Push `assign` to `p`'s node and record that this phone has been told the ANNOUNCED game.

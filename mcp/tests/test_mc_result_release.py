@@ -365,3 +365,36 @@ def test_resuming_recap_flag_clears_if_finish_raises():
     finally:
         s._scorer_recap = old
     assert s._resuming_recap is False
+
+
+def test_f632_a_recap_assign_says_recap_and_a_new_session_assign_does_not():
+    """F632: MC re-sends `assign` on every debrief edit (F631) and on NEW SESSION. The phone keeps its results only on
+    the RECAP one, so only that one says `recap: true`; NEW SESSION's re-assign, the "new session exists" signal, does
+    not. Any route that builds the body in RECAP carries it, a phone handed to a new node included (`_assign_body`)."""
+    s, net, clock, ps, info = _end_pending()
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMED")          # a debrief rename
+    debrief = net.pushes("assign")
+    assert debrief and all(a[2].get("recap") is True for a in debrief), debrief
+    assert s._assign_body(ps[1]).get("recap") is True, "every RECAP body says so, whichever node it goes to"
+    s.finalise_recap()                                              # the host releases, then starts the next session
+    net.pushed.clear()
+    s.new_session(keep_roster=True)                                 # NEW MATCH: muster, kit still closed
+    fresh = net.pushes("assign")
+    assert fresh, "NEW SESSION re-assigns every bound phone"
+    assert all("recap" not in a[2] for a in fresh), fresh
+    assert "recap" not in s._assign_body(ps[1])
+
+
+def test_f632_recall_from_recap_sends_no_recap_flag_and_the_phone_reads_the_same_key():
+    """F632 review: RECALL from RECAP returns the field to KIT, so its assigns carry no flag and the phones leave their
+    results. The key is pinned across the two sides: the phone's `_assign` reads the same `recap` MC writes."""
+    import pathlib
+    s, net, clock, ps, info = _end_pending()
+    s.finalise_recap()
+    net.pushed.clear()
+    s.control("recall", confirm=True)
+    after = net.pushes("assign")
+    assert after and all("recap" not in a[2] for a in after), after
+    eng = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    assert "if (this.ended && recap !== true) this._leaveEnded(" in eng, "the phone no longer reads `recap` from assign"
