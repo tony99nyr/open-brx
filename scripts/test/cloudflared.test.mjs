@@ -11,11 +11,12 @@ const MIN = '2026.10.2';
 const out = v => `cloudflared version ${v} (built 2026-10-20-1200 UTC)\n`;
 
 /** Fake dependencies. `state.version` is what `cloudflared --version` prints; an upgrade command can change it. */
-function make({ platform = 'darwin', arch = 'x64', version = '2026.9.0', latest = '2026.10.3', tools = ['cloudflared', 'brew', 'winget'], owned = true, upgrade = {}, cache = null, writable = false } = {}) {
+function make({ platform = 'darwin', arch = 'x64', version = '2026.9.0', latest = '2026.10.3', tools = ['cloudflared', 'brew', 'winget', 'dpkg'], owned = true, upgrade = {}, cache = null, writable = false, kind = 'file', dpkgOwns = false } = {}) {
   const state = { version, calls: [], fetches: 0, cache, clock: 1_000_000, files: [], downloads: [] };
   const deps = {
     platform, arch, fs: {
       isWritable: () => writable,
+      kind: () => kind,
       download: async (url, dest) => { state.downloads.push([url, dest]); if (upgrade.downloadFails) throw new Error('HTTP 404'); state.files.push(dest); },
       chmod: (path, mode) => state.calls.push(['chmod', path, mode]),
       rename: (from, to) => { state.calls.push(['rename', from, to]); state.version = upgrade.to ?? state.version; },
@@ -29,6 +30,8 @@ function make({ platform = 'darwin', arch = 'x64', version = '2026.9.0', latest 
     run(cmd, args) {
       state.calls.push([cmd, ...args]);
       if (cmd === 'cloudflared') return { status: 0, stdout: out(state.version), stderr: '' };
+      if (cmd === 'dpkg') return { status: dpkgOwns ? 0 : 1, stdout: '', stderr: '' };
+      if (cmd.endsWith('.download')) return { status: 0, stdout: upgrade.downloadOutput ?? out(upgrade.to ?? state.version), stderr: '' };
       if (args[0] === 'list') {
         if (owned === 'timeout') return { status: null, stdout: '', stderr: '', error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }) };
         return owned ? { status: 0, stdout: cmd === 'brew' ? 'cloudflared 2026.9.0\n' : 'Cloudflare.cloudflared\n', stderr: '' } : { status: 1, stdout: '', stderr: '' };
@@ -41,7 +44,7 @@ function make({ platform = 'darwin', arch = 'x64', version = '2026.9.0', latest 
   };
   return { deps, state };
 }
-const upgrades = state => state.calls.filter(call => call[0] !== 'cloudflared' && call[1] !== 'list');
+const upgrades = state => state.calls.filter(call => !['cloudflared', 'dpkg'].includes(call[0]) && call[1] !== 'list' && !call[0].endsWith('.download'));
 const text = result => result.lines.map(line => `${line.level}: ${line.text}`).join('\n');
 
 test('parseCloudflaredVersion reads real output and rejects garbage', () => {
@@ -119,7 +122,8 @@ test('a failed upgrade gives one clear line and does not throw', async () => {
 test('an upgrade that times out gives a clear line and does not throw', async () => {
   const { deps } = make({ version: '2026.10.2', upgrade: { error: true } });
   const result = await ensureCloudflared(deps, { minVersion: MIN });
-  assert.match(text(result), /could not update cloudflared 2026.10.2 to 2026.10.3: it took too long/);
+  assert.match(text(result), /the cloudflared update took too long and was stopped. Run `brew link cloudflared`, then `brew upgrade cloudflared`/);
+  assert.ok(!/could not update|To update by hand/.test(text(result)));
 });
 
 test('below the minimum after a failed upgrade: a loud message with the exact command', async () => {
@@ -218,7 +222,7 @@ test('a failed download removes the temp file and the old binary stays', async (
 
 test('replaceBinary rethrows after cleaning up', async () => {
   const { deps } = make({ upgrade: { downloadFails: true } });
-  await assert.rejects(replaceBinary({ url: 'u', binPath: '/b/cloudflared' }, deps), /HTTP 404/);
+  await assert.rejects(replaceBinary({ url: 'u', binPath: '/b/cloudflared' }, deps, '2026.9.0'), /HTTP 404/);
 });
 
 test('Linux without write access: no sudo, a manual dpkg instruction', async () => {
@@ -238,7 +242,7 @@ test('no package manager: a manual instruction pointing at the downloads page', 
 
 for (const [platform, manager, listArgs, upgradeCmd] of [
   ['darwin', 'brew', ['list', '--versions', 'cloudflared'], 'brew upgrade cloudflared'],
-  ['win32', 'winget', ['list', '-e', '--id', 'Cloudflare.cloudflared'], 'winget upgrade -e --id Cloudflare.cloudflared'],
+  ['win32', 'winget', ['list', '-e', '--id', 'Cloudflare.cloudflared', '--accept-source-agreements', '--disable-interactivity'], 'winget upgrade -e --id Cloudflare.cloudflared'],
 ]) {
   test(`${manager} owns cloudflared: the ownership check is bounded and the upgrade runs`, async () => {
     const { deps, state } = make({ platform, upgrade: { to: '2026.10.3' } });
@@ -296,4 +300,102 @@ test('a failed check with no cache is remembered too', async () => {
   assert.equal(await latestRelease(deps), null);
   assert.equal(state.fetches, 1);
   assert.deepEqual(state.cache, { checked_at: 1_000_000, latest: null, failed: true });
+});
+
+test('a brew upgrade that exits 0 with no change is a calm note, and the next start inside 24 h runs nothing', async () => {
+  const { deps, state } = make({ version: '2026.10.2' });
+  const first = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(upgrades(state).length, 1);
+  assert.match(text(first), /note: brew has no newer build yet/);
+  assert.ok(!/could not update|To update by hand/.test(text(first)));
+  assert.equal(state.cache.attempted, '2026.10.3');
+  state.clock += 3600_000;
+  state.calls.length = 0;
+  const second = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(upgrades(state), []);
+  assert.match(text(second), /Not trying again for a day/);
+  state.clock += 24 * 3600_000;
+  state.calls.length = 0;
+  state.cache.checked_at = state.clock;
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(upgrades(state).length, 1);
+});
+
+test('winget says there is no applicable update: a calm note', async () => {
+  const { deps } = make({ platform: 'win32', version: '2026.10.2', upgrade: { status: 0x8A15002B } });
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.match(text(result), /note: winget has no newer build yet/);
+});
+
+test('below the minimum while brew lags: the loud line points at the download, not at brew', async () => {
+  const { deps } = make({ version: '2026.9.0' });
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.match(text(result), /loud: Download the newest cloudflared from/);
+  assert.ok(!/loud: Run: brew/.test(text(result)));
+});
+
+test('brew runs without a Homebrew refresh', async () => {
+  const { deps } = make({ upgrade: { to: '2026.10.3' } });
+  let seen = null;
+  const run = deps.run;
+  deps.run = (cmd, args, opts) => { if (cmd === 'brew' && args[0] === 'upgrade') seen = opts; return run(cmd, args, opts); };
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(seen.env, { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' });
+  assert.equal(seen.timeout, 300000);
+});
+
+test('an upgrade stopped by a signal gets the winget line on Windows and no generic line', async () => {
+  const { deps } = make({ platform: 'win32', version: '2026.10.2' });
+  const run = deps.run;
+  deps.run = (cmd, args, opts) => (cmd === 'winget' && args[0] === 'upgrade' ? { status: null, signal: 'SIGTERM', stdout: '', stderr: '' } : run(cmd, args, opts));
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.match(text(result), /Run the winget upgrade again: winget upgrade -e --id Cloudflare.cloudflared/);
+  assert.ok(!/could not update/.test(text(result)));
+});
+
+test('a garbage download keeps the old binary and says so once', async () => {
+  const { deps, state } = make({ platform: 'linux', writable: true, upgrade: { downloadOutput: '<html>Not Found</html>' } });
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.ok(!state.calls.some(call => call[0] === 'rename'));
+  assert.deepEqual(state.calls.filter(call => call[0] === 'remove'), [['remove', '/usr/local/bin/cloudflared.download']]);
+  assert.match(text(result), /the file did not run as a newer cloudflared/);
+});
+
+test('a download that is not newer than the installed version is not swapped in', async () => {
+  const { deps, state } = make({ platform: 'linux', writable: true, upgrade: { to: '2026.9.0' } });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.ok(!state.calls.some(call => call[0] === 'rename'));
+});
+
+test('a symlinked Linux binary gets the manual line and no download', async () => {
+  const { deps, state } = make({ platform: 'linux', writable: true, kind: 'symlink' });
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(state.downloads, []);
+  assert.match(text(result), /On Debian or Ubuntu, run: curl/);
+});
+
+test('a dpkg-owned Linux binary gets the manual line and no download', async () => {
+  const { deps, state } = make({ platform: 'linux', writable: true, dpkgOwns: true });
+  const result = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(state.downloads, []);
+  assert.ok(state.calls.some(call => call[0] === 'dpkg' && call[1] === '-S'));
+  assert.match(text(result), /On other distributions, download it from https:\/\/developers\.cloudflare\.com/);
+});
+
+test('a cache with a bad latest counts as no cache', async () => {
+  const { deps, state } = make({ cache: { checked_at: 1_000_000, latest: 'banana' } });
+  assert.equal(await latestRelease(deps), '2026.10.3');
+  assert.equal(state.fetches, 1);
+});
+
+test('a checked_at in the future counts as expired but the version is still the fallback', async () => {
+  const { deps, state } = make({ latest: 'throw', cache: { checked_at: 1_000_000 + 5 * 86400_000, latest: '2026.10.1' } });
+  assert.equal(await latestRelease(deps), '2026.10.1');
+  assert.equal(state.fetches, 1);
+});
+
+test('an attempted_at in the future does not block an upgrade', async () => {
+  const { deps, state } = make({ version: '2026.9.0', upgrade: { to: '2026.10.3' }, cache: { checked_at: 1_000_000, latest: '2026.10.3', attempted: '2026.10.3', attempted_at: 1_000_000 + 86400_000 } });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(upgrades(state).length, 1);
 });

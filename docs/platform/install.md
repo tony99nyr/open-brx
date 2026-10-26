@@ -35,9 +35,10 @@ to install it (Homebrew on a Mac, winget on Windows). Then it prints five number
 3. It installs and builds the Mission Control console, the web page you open in your browser.
 4. It asks once whether to install the optional `cloudflared` tool, for reaching phones over the
    internet. The default answer is no. It remembers your answer in `~/.brx-mcp/start.json`. If
-   `cloudflared` is already installed, the script updates it to Cloudflare's minimum version
-   (2026.10.2) or later on every start. It checks for a newer release at most once a day. A failed
-   update never stops the start.
+   `cloudflared` is already installed through Homebrew or winget, the script updates it to the newest
+   release on every start. Otherwise it prints the command to run. It warns when the installed
+   version is below Cloudflare's minimum (2026.10.2). It checks for a newer release at most once a
+   day. A failed update never stops the start.
 5. It starts Mission Control and opens it in your browser.
 
 Run the script again for every match. It skips every step it already did.
@@ -156,12 +157,13 @@ directly: scan, connect, send, wait for events, read diagnostics, and panic.
 
 Optional, and only needed for players whose phone has a data plan but no Wi-Fi. Reaching phones over
 the internet needs `cloudflared` on the Mission Control laptop. The start script above offers to
-install it for you and keeps it at version 2026.10.2 or later. By hand it is `brew install cloudflared`
+install it for you and keeps it current (version 2026.10.2 or later). By hand it is `brew install cloudflared`
 on a Mac, or `winget install Cloudflare.cloudflared` on Windows. To update it by hand, run
 `brew upgrade cloudflared` on a Mac or `winget upgrade -e --id Cloudflare.cloudflared` on Windows. On
-Linux, download the `.deb` for your CPU from the
+Debian or Ubuntu, download the `.deb` for your CPU from the
 [cloudflared releases](https://github.com/cloudflare/cloudflared/releases/latest) and run
-`sudo dpkg -i` on it. No account is needed. See
+`sudo dpkg -i` on it. On other Linux distributions, use the
+[Cloudflare downloads page](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/). No account is needed. See
 [Running a match](/docs/run-a-game/).
 
 ## The Android app

@@ -2,7 +2,7 @@
 // The decision logic takes every outside effect through a `deps` object, so the tests fake all of it.
 // Nothing here may throw into the start script or block a game start for long.
 import { spawnSync } from 'node:child_process';
-import { accessSync, chmodSync, constants, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { accessSync, chmodSync, constants, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { root, which } from './launcher.mjs';
 
@@ -11,6 +11,8 @@ const RETRY_MS = 60 * 60 * 1000; // a failed check is tried again after an hour
 const RELEASES_API = 'https://api.github.com/repos/cloudflare/cloudflared/releases/latest';
 const RELEASES = 'https://github.com/cloudflare/cloudflared/releases';
 export const DOWNLOADS_PAGE = 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/';
+const UPGRADE_CAP_MS = 300000; // the longest an upgrade may run before it is stopped
+const VERSION_RE = /^\d+(\.\d+)+$/;
 const LINUX_ARCH = { x64: 'amd64', arm64: 'arm64', arm: 'arm', ia32: '386' };
 
 /** The minimum version, read from the text of `mcp/brx_mcp/mc/tunnel.py` (like appVersion). Null when it does not parse. */
@@ -37,19 +39,47 @@ export function compareVersions(a, b) {
 }
 
 /**
+ * The cache, checked on read. A `latest` that is not a version means no cache. A time in the future (the clock
+ * stepped back) counts as expired: the version stays usable as a fallback, but it is never fresh.
+ */
+function loadCache(deps) {
+  let raw = null;
+  try { raw = deps.readCache(); } catch (_) { return null; }
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.latest != null && !(typeof raw.latest === 'string' && VERSION_RE.test(raw.latest))) return null;
+  const now = deps.now();
+  const past = value => (Number.isFinite(value) && value <= now ? value : null);
+  const attempted = typeof raw.attempted === 'string' && VERSION_RE.test(raw.attempted) ? raw.attempted : null;
+  return {
+    checked_at: past(raw.checked_at), latest: raw.latest ?? null, failed: Boolean(raw.failed),
+    attempted, attempted_at: attempted ? past(raw.attempted_at) : null,
+  };
+}
+
+/**
  * The newest released version. Asks the network at most once a day after a success and once an hour after a
  * failure (the attempt time is stored either way). A failure keeps the cached version, or gives null.
  */
 export async function latestRelease(deps) {
-  let cache = null;
-  try { cache = deps.readCache(); } catch (_) { /* no cache yet */ }
+  const cache = loadCache(deps);
   const window = cache?.failed ? RETRY_MS : DAY_MS;
-  if (cache && Number.isFinite(cache.checked_at) && deps.now() - cache.checked_at < window) return cache.latest ?? null;
+  if (cache && cache.checked_at !== null && deps.now() - cache.checked_at < window) return cache.latest;
   let latest = null;
   try { latest = await deps.fetchLatest(); } catch (_) { /* offline */ }
-  const record = latest ? { checked_at: deps.now(), latest } : { checked_at: deps.now(), latest: cache?.latest ?? null, failed: true };
+  if (latest && !VERSION_RE.test(latest)) latest = null;
+  const tried = cache?.attempted_at != null ? { attempted: cache.attempted, attempted_at: cache.attempted_at } : {};
+  const record = latest ? { ...tried, checked_at: deps.now(), latest } : { ...tried, checked_at: deps.now(), latest: cache?.latest ?? null, failed: true };
   try { deps.writeCache(record); } catch (_) { /* a missing cache only costs one more request */ }
   return record.latest;
+}
+
+/** Remember that an upgrade to `latest` was tried, so the same release is not tried again for a day. */
+function recordAttempt(deps, latest) {
+  try {
+    const cache = loadCache(deps) || {};
+    const { checked_at = deps.now(), latest: known = latest, failed } = cache;
+    deps.writeCache({ checked_at, latest: known, ...(failed ? { failed: true } : {}), attempted: latest, attempted_at: deps.now() });
+  } catch (_) { /* the next start tries again */ }
 }
 
 /** What to run by hand on this platform. Used in the loud message and when an upgrade cannot run itself. */
@@ -63,7 +93,7 @@ export function manualInstruction({ platform, arch, latest, binPath, owned }) {
   if (platform === 'linux' && debArch) {
     const url = `${RELEASES}/${latest ? `download/${latest}` : 'latest/download'}/cloudflared-linux-${debArch}.deb`;
     const command = `curl -fLO ${url} && sudo dpkg -i cloudflared-linux-${debArch}.deb`;
-    return { command, text: `Run: ${command}` };
+    return { command, text: `On Debian or Ubuntu, run: ${command}. On other distributions, download it from ${DOWNLOADS_PAGE}` };
   }
   return { command: null, text: `Download the newest cloudflared from ${DOWNLOADS_PAGE}` };
 }
@@ -87,12 +117,18 @@ export function upgradePlan({ platform, brew, winget, binPath, arch, latest, wri
   return { kind: 'manual', ...manualInstruction({ platform, arch, latest, binPath }) };
 }
 
-/** Download the release binary next to the old one, then rename it over the old one. Throws on any failure. */
-export async function replaceBinary(plan, deps) {
+/**
+ * Download the release binary next to the old one, check that it runs and is newer than `installed`, then
+ * rename it over the old one. Throws on any failure and removes the temp file.
+ */
+export async function replaceBinary(plan, deps, installed) {
   const temp = `${plan.binPath}.download`;
   try {
     await deps.fs.download(plan.url, temp);
     deps.fs.chmod(temp, 0o755);
+    const check = deps.run(temp, ['--version'], { timeout: 10000 });
+    const version = check.error || check.status !== 0 ? null : parseCloudflaredVersion(`${check.stdout || ''}\n${check.stderr || ''}`);
+    if (!version || (installed && compareVersions(version, installed) <= 0)) throw new Error('the file did not run as a newer cloudflared');
     deps.fs.rename(temp, plan.binPath);
   } catch (error) {
     try { deps.fs.remove(temp); } catch (_) { /* nothing to clean */ }
@@ -102,16 +138,28 @@ export async function replaceBinary(plan, deps) {
 
 /** Why a command did not succeed, in a few words, or null when it did. */
 function failure(result) {
-  if (result.error) return result.error.code === 'ETIMEDOUT' ? 'it took too long' : `it could not run (${result.error.code || result.error.message})`;
+  if (killed(result)) return 'it took too long';
+  if (result.error) return `it could not run (${result.error.code || result.error.message})`;
   if (result.status !== 0) return `it exited with code ${result.status}`;
   return null;
+}
+
+/** True when the time cap stopped the command. */
+function killed(result) {
+  return Boolean(result.signal) || result.error?.code === 'ETIMEDOUT';
+}
+
+/** True when the package manager said there is no newer build to install (winget exits 0x8A15002B for this). */
+function noNewerBuild(result) {
+  const said = `${result.stdout || ''}\n${result.stderr || ''}`;
+  return result.status === 0 || result.status === 0x8A15002B || result.status === (0x8A15002B | 0) || /no (applicable|newer)/i.test(said);
 }
 
 /** True when brew (macOS) or winget (Windows) owns the cloudflared install. A failed or slow check means no. */
 function ownedByManager(deps) {
   let result;
   if (deps.platform === 'darwin' && deps.which('brew')) result = deps.run('brew', ['list', '--versions', 'cloudflared'], { timeout: 30000 });
-  else if (deps.platform === 'win32' && deps.which('winget')) result = deps.run('winget', ['list', '-e', '--id', 'Cloudflare.cloudflared'], { timeout: 30000 });
+  else if (deps.platform === 'win32' && deps.which('winget')) result = deps.run('winget', ['list', '-e', '--id', 'Cloudflare.cloudflared', '--accept-source-agreements', '--disable-interactivity'], { timeout: 30000 });
   else return false;
   if (result.error || result.status !== 0) return false;
   return deps.platform === 'win32' || /cloudflared/i.test(result.stdout || '');
@@ -136,34 +184,63 @@ export async function ensureCloudflared(deps, opts = {}) {
     const min = opts.minVersion || null;
     const latest = opts.noUpdate ? null : await latestRelease(deps);
     let upgraded = false;
-    let problem = null;
+    // 'lag' means the package manager has no newer build yet; 'quiet' means the message already says what to do.
+    let outcome = null;
     // Ask the package manager only when the answer is needed: an up-to-date start runs no extra command.
     let owned = null;
     const isOwned = () => (owned ??= ownedByManager(deps));
+    const manager = deps.platform === 'darwin' ? 'brew' : 'winget';
     if (installed && latest && compareVersions(installed, latest) < 0) {
-      const dir = dirname(binPath);
-      const plan = upgradePlan({
-        platform: deps.platform, brew: deps.which('brew'), winget: deps.which('winget'), binPath, arch: deps.arch, latest,
-        writable: deps.platform === 'linux' && deps.fs.isWritable(dir), owned: isOwned(),
-      });
-      if (plan.kind === 'manual') {
-        problem = 'it cannot update itself here';
-      } else if (plan.kind === 'download') {
-        try { await replaceBinary(plan, deps); } catch (error) { problem = `the download failed (${error.message || error})`; }
+      const cache = loadCache(deps);
+      if (cache?.attempted === latest && cache.attempted_at !== null && deps.now() - cache.attempted_at < DAY_MS) {
+        outcome = 'skipped';
+        say('note', `cloudflared ${latest} is out, but the last try to update to it changed nothing. Not trying again for a day.`);
       } else {
-        problem = failure(deps.run(plan.cmd, plan.args, { timeout: 120000, show: true }));
-      }
-      const after = readVersion(deps);
-      if (after) {
-        upgraded = compareVersions(after, installed) > 0;
-        if (upgraded) problem = null;
-        const before = installed;
-        installed = after;
-        if (upgraded) say('ok', `updated cloudflared from ${before} to ${installed}`);
-      }
-      if (!upgraded) {
-        problem = problem || 'the version did not change';
-        say('note', `could not update cloudflared ${installed} to ${latest}: ${problem}. Mission Control works without it.`);
+        let problem = null;
+        let result = null;
+        const dir = dirname(binPath);
+        // The Linux swap needs a plain file in a writable folder that dpkg does not own.
+        const swappable = deps.platform === 'linux' && deps.fs.isWritable(dir) && deps.fs.kind(binPath) === 'file'
+          && !(deps.which('dpkg') && deps.run('dpkg', ['-S', binPath], { timeout: 10000 }).status === 0);
+        const plan = upgradePlan({
+          platform: deps.platform, brew: deps.which('brew'), winget: deps.which('winget'), binPath, arch: deps.arch, latest,
+          writable: swappable, owned: isOwned(),
+        });
+        if (plan.kind === 'manual') {
+          problem = 'it cannot update itself here';
+        } else {
+          if (plan.kind === 'download') {
+            try { await replaceBinary(plan, deps, installed); } catch (error) { problem = `the download failed (${error.message || error})`; }
+          } else {
+            result = deps.run(plan.cmd, plan.args, {
+              timeout: UPGRADE_CAP_MS, show: true, ...(plan.cmd === 'brew' ? { env: { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' } } : {}),
+            });
+            problem = failure(result);
+          }
+          recordAttempt(deps, latest);
+        }
+        const after = readVersion(deps);
+        if (after) {
+          upgraded = compareVersions(after, installed) > 0;
+          if (upgraded) problem = null;
+          const before = installed;
+          installed = after;
+          if (upgraded) say('ok', `updated cloudflared from ${before} to ${installed}`);
+        }
+        if (!upgraded) {
+          if (result && killed(result)) {
+            outcome = 'quiet';
+            say('note', manager === 'brew'
+              ? 'the cloudflared update took too long and was stopped. Run `brew link cloudflared`, then `brew upgrade cloudflared`.'
+              : 'the cloudflared update took too long and was stopped. Run the winget upgrade again: winget upgrade -e --id Cloudflare.cloudflared');
+          } else if (result && noNewerBuild(result)) {
+            outcome = 'lag';
+            say('note', `${manager} has no newer build yet (cloudflared ${latest} is out). Mission Control works without the update.`);
+          } else {
+            problem = problem || 'the version did not change';
+            say('note', `could not update cloudflared ${installed} to ${latest}: ${problem}. Mission Control works without it.`);
+          }
+        }
       }
     } else if (installed) {
       say('ok', `cloudflared ${installed} is installed${latest ? ' and up to date' : ''}. Turn it on from the console when you need it.`);
@@ -173,13 +250,14 @@ export async function ensureCloudflared(deps, opts = {}) {
       say('note', 'could not read the cloudflared version');
     }
     const belowMin = Boolean(installed && min && compareVersions(installed, min) < 0);
+    // When the package manager is behind, its command cannot help: point at the download instead.
+    const manual = () => manualInstruction({ platform: deps.platform, arch: deps.arch, latest, binPath, owned: outcome === 'lag' ? false : isOwned() });
     if (belowMin) {
       say('loud', `cloudflared ${installed} is older than ${min}, the minimum Cloudflare asks for.`);
       say('loud', 'The internet tunnel may stop working until you update it.');
-      say('loud', manualInstruction({ platform: deps.platform, arch: deps.arch, latest, binPath, owned: isOwned() }).text);
-    } else if (lines.some(line => line.level === 'note' && line.text.startsWith('could not update'))) {
-      const manual = manualInstruction({ platform: deps.platform, arch: deps.arch, latest, binPath, owned: isOwned() });
-      say('note', manual.command ? `To update by hand, run: ${manual.command}` : manual.text);
+      say('loud', manual().text);
+    } else if (!outcome && lines.some(line => line.level === 'note' && line.text.startsWith('could not update'))) {
+      say('note', manual().text);
     }
     return { missing: false, installed, latest, upgraded, belowMin, lines };
   } catch (error) {
@@ -196,9 +274,9 @@ export function realDeps(home) {
     arch: process.arch,
     which,
     now: () => Date.now(),
-    run(cmd, cmdArgs, { timeout, show = false } = {}) {
-      const result = spawnSync(cmd, cmdArgs, { cwd: root, encoding: 'utf8', timeout, stdio: show ? 'inherit' : ['ignore', 'pipe', 'pipe'] });
-      return { status: result.status, stdout: result.stdout || '', stderr: result.stderr || '', error: result.error };
+    run(cmd, cmdArgs, { timeout, show = false, env } = {}) {
+      const result = spawnSync(cmd, cmdArgs, { cwd: root, encoding: 'utf8', timeout, stdio: show ? 'inherit' : ['ignore', 'pipe', 'pipe'], env: env ? { ...process.env, ...env } : process.env });
+      return { status: result.status, signal: result.signal, stdout: result.stdout || '', stderr: result.stderr || '', error: result.error };
     },
     async fetchLatest() {
       const response = await fetch(RELEASES_API, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-brx-start' }, signal: AbortSignal.timeout(5000) });
@@ -212,6 +290,7 @@ export function realDeps(home) {
       writeFileSync(cachePath, JSON.stringify(data) + '\n');
     },
     fs: {
+      kind(path) { try { const st = lstatSync(path); return st.isSymbolicLink() ? 'symlink' : st.isFile() ? 'file' : 'other'; } catch (_) { return 'other'; } },
       isWritable(dir) { try { accessSync(dir, constants.W_OK); return true; } catch (_) { return false; } },
       async download(url, dest) {
         const response = await fetch(url, { signal: AbortSignal.timeout(110000) });

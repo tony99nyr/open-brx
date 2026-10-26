@@ -263,20 +263,25 @@ function consoleUi() {
 }
 
 // ---- 4. cloudflared -------------------------------------------------------------------------------
+// --no-update skips the cloudflared network check too, except on the restart after a git update: that
+// restart passes --no-update only to skip the git check.
+const noCloudflaredUpdate = opt('--no-update') && !process.env.OPEN_BRX_JUST_UPDATED;
+/** Check the installed cloudflared and print what it found. Returns the result ({missing:true} when not installed). */
+async function checkCloudflared({ noUpdate }) {
+  let tunnelText = '';
+  try { tunnelText = readFileSync(join(root, 'mcp', 'brx_mcp', 'mc', 'tunnel.py'), 'utf8'); } catch (_) { /* no minimum then */ }
+  const found = await ensureCloudflared(realDeps(home), { minVersion: minVersionFromText(tunnelText), noUpdate });
+  for (const line of found.lines) {
+    if (line.level === 'loud') console.log(paint('1;31', `!!! ${line.text}`));
+    else (line.level === 'ok' ? ok : note)(line.text);
+  }
+  return found;
+}
 async function cloudflared() {
   step('Optional: cloudflared, for phones on mobile data');
   // Installed: keep it at Cloudflare's minimum version or later. This never stops the start.
-  let tunnelText = '';
-  try { tunnelText = readFileSync(join(root, 'mcp', 'brx_mcp', 'mc', 'tunnel.py'), 'utf8'); } catch (_) { /* no minimum then */ }
-  const minVersion = minVersionFromText(tunnelText);
-  const found = await ensureCloudflared(realDeps(home), { minVersion, noUpdate: opt('--no-update') });
-  if (!found.missing) {
-    for (const line of found.lines) {
-      if (line.level === 'loud') console.log(paint('1;31', `!!! ${line.text}`));
-      else (line.level === 'ok' ? ok : note)(line.text);
-    }
-    return;
-  }
+  if (opt('--demo') && which('cloudflared')) return note('skipped in a demo: a demo never opens a tunnel');
+  if (!(await checkCloudflared({ noUpdate: noCloudflaredUpdate })).missing) return;
   const prefs = readPrefs();
   if (prefs.cloudflared === 'declined' && !opt('--cloudflared')) {
     return note('not installed (you said no before; run with --cloudflared to be asked again)');
@@ -299,7 +304,8 @@ async function cloudflared() {
   if (isWindows) refreshWindowsPath();
   delete prefs.cloudflared;
   writePrefs(prefs);
-  ok('cloudflared is installed');
+  // Show the version line, and the minimum check, for the copy that was just installed.
+  if ((await checkCloudflared({ noUpdate: true })).missing) ok('cloudflared is installed');
 }
 
 // ---- 5. start -------------------------------------------------------------------------------------

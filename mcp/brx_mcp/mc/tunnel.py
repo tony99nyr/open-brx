@@ -92,10 +92,10 @@ async def _resolves(host: str) -> bool:
 # reads this constant out of the file text, so keep it a plain string literal on one line.
 CLOUDFLARED_MIN_VERSION = "2026.10.2"
 
-INSTALL_HINT = ("cloudflared is not on PATH: install it (macOS: `brew install cloudflared`; "
-                "Linux: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
-                f"downloads/), version {CLOUDFLARED_MIN_VERSION} or later, and restart Mission Control. "
-                "`./start.sh` installs it on request and keeps it up to date")
+INSTALL_HINT = (f"cloudflared is not on PATH: install version {CLOUDFLARED_MIN_VERSION} or later "
+                "(macOS: `brew install cloudflared`; Windows: `winget install Cloudflare.cloudflared`; Linux: "
+                "https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) "
+                "and restart Mission Control. `./start.sh` or `start.cmd` can install it and keeps it up to date")
 
 
 class TunnelError(RuntimeError):
