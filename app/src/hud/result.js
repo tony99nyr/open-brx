@@ -122,9 +122,9 @@ export function _result(st) {
       : `<span class="rh1 p"><span class="unskew">${wait === 'unreached' ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING'}</span></span>`;
     const modeName = String((R && R.mode) || st.mode || '').toUpperCase().replace(/_/g, ' ');
     const tilesHidden = recapTilesHidden(tab, rows, myId);
-    // A81 bounded wait: MC released without a late phone, and that phone's sync changed the winner (`result_changed`
-    // latches true). It leads the line: a player who saw the old outcome must see that it changed.
-    const meta = [(R && R.result_changed === true) ? 'RESULT UPDATED' : null, modeName || null,
+    // A81 bounded wait: this phone showed an earlier result and MC has since changed the winner (engine.onResultPush
+    // `_updated`). It leads the line: a player who saw the old outcome must see that it changed.
+    const meta = [(R && R._updated === true) ? 'RESULT UPDATED' : null, modeName || null,
       (R && R.win_by) ? 'WIN BY ' + String(R.win_by).toUpperCase().replace(/_/g, ' ') : null,
       (R && R.provisional) ? 'PROVISIONAL · SCORES STILL ARRIVING' : null,
       tilesHidden && tab === 'player' ? recapShotsNote(st, hold) : null].filter(Boolean).join(' · ');
@@ -274,7 +274,7 @@ export function _history(st) {
         ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
       return `<div class="hr"><span class="c t tab">${clock12(g.t)}</span>
         <span class="c m">${esc(String(g.mode || '—').toUpperCase())}</span>
-        <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}${w && g.result_changed === true ? ' · UPDATED' : ''}</span>
+        <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}${w && g.result_updated === true ? ' · UPDATED' : ''}</span>
         <span class="c s">${scores || '—'}</span>
         <span class="c k tab">${num(g.kills) == null ? '—' : g.kills} · ${num(g.deaths) == null ? '—' : g.deaths} · ${num(g.assists) == null ? '—' : g.assists}</span>
         <span class="c b tab">${num(g.best_streak) == null ? '—' : g.best_streak}</span></div>`;

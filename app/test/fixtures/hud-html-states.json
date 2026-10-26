@@ -22967,7 +22967,7 @@
       }
     },
     "result-updated": {
-      "now": 1793033370595,
+      "now": 1793034320720,
       "state": {
         "clockSkew": 0,
         "phase": "kitted",
@@ -23111,8 +23111,8 @@
         "kills": 3,
         "assists": 1,
         "accuracy": 41,
-        "scoreAt": 1793033370074,
-        "lastMcMsgAt": 1793033370573,
+        "scoreAt": 1793034320193,
+        "lastMcMsgAt": 1793034320692,
         "poolStale": null,
         "cure": null,
         "gunLocked": false,
@@ -23194,8 +23194,8 @@
         "lastButton": {
           "id": 0,
           "state": 0,
-          "at": 1793033369979,
-          "heldMs": 2
+          "at": 1793034320094,
+          "heldMs": 1
         },
         "hits": 11,
         "board": {
@@ -23216,7 +23216,7 @@
         "fragLimit": 25,
         "lives": null,
         "result": {
-          "match_id": "stage-1793033368675",
+          "match_id": "stage-1793034318793",
           "outcome": "lose",
           "winner": {
             "team_id": "yellow"
@@ -23372,20 +23372,20 @@
             }
           },
           "provisional": false,
-          "t": 1793033370573,
-          "result_changed": true
+          "t": 1793034320692,
+          "_updated": true
         },
-        "resultAt": 1793033370573,
+        "resultAt": 1793034320692,
         "resultWait": "in",
-        "endedAt": 1793033370177,
+        "endedAt": 1793034320294,
         "moment": {
           "kind": "match_over",
-          "at": 1793033370179
+          "at": 1793034320294
         },
         "card": null,
         "ended": true,
         "endAck": false,
-        "matchId": "stage-1793033368675",
+        "matchId": "stage-1793034318793",
         "synced": true,
         "headEcho": "$LCD,45,70,0,0,32,384,*",
         "configRefused": true,
@@ -23548,7 +23548,7 @@
           "dealtPartial": false,
           "shots": 0,
           "kills": 0,
-          "aliveMs": 416,
+          "aliveMs": 426,
           "finalHit": null
         },
         "lastLife": null

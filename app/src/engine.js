@@ -2215,13 +2215,17 @@ export class Engine {
       this.log(`result for ${mid}: that end was real after all — showing the results`, 'li');
     }
     this._noMatchEnd = null;
-    // Bounded A81 wait: MC released without a late phone, and its sync changed the winner. Most players have tapped OK
-    // by then, so the results screen opens again, once, when the flag first turns true.
-    const updated = body.result_changed === true && !(this.result && this.result.result_changed === true);
-    if (updated && this.endAck) this.endAck = false;
-    this.result = body; this.resultAt = this.now();
-    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}${body.result_changed === true ? ' · updated' : ''}`, 'lk');
-    try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }
+    // Bounded A81 wait: MC released without a late phone, and its sync changed the result, so MC re-sends `result`.
+    // Tony (2026-10-26): RESULT UPDATED shows only on a phone that already showed an earlier result for this match, and
+    // the phone decides (brx3/brx4, option A: no wire field): the winner or my outcome differs from the one it holds. A
+    // score-only re-send differs in neither. The verdict is kept in `_updated`, saved and cleared with the result. Most
+    // players have tapped OK by then, so the results screen opens again, once, when the verdict first turns true.
+    const prev = this.result && this.result.match_id === mid ? this.result : null;
+    const updated = !!prev && (prev.outcome !== body.outcome || JSON.stringify(prev.winner ?? null) !== JSON.stringify(body.winner ?? null));
+    if (updated && !prev._updated && this.endAck) this.endAck = false;
+    this.result = updated || (prev && prev._updated) ? { ...body, _updated: true } : body; this.resultAt = this.now();
+    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}${this.result._updated ? ' · updated' : ''}`, 'lk');
+    try { if (this.onResult) this.onResult(this.result); } catch (_) { /* history is best-effort */ }
     this._changed();
     return { ok: true };
   }

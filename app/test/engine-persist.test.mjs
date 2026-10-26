@@ -963,3 +963,29 @@ test('F566: an expired persisted context logs "expired" after construction, neve
   assert.ok(logs.some(m => m === 'persisted context expired'), JSON.stringify(logs));
   assert.ok(!logs.some(m => /unreadable/.test(m)), JSON.stringify(logs));
 });
+
+test('bounded A81 wait: RESULT UPDATED only on a phone that held an earlier verdict, kept across a relaunch', () => {
+  const h = match({ stun: undefined });
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  const mid = h.eng.matchId;
+  const win = { match_id: mid, outcome: 'win', winner: { team_id: 'blue' }, provisional: false };
+  h.eng.onResultPush(win);
+  assert.equal(h.eng.result._updated, undefined, 'a first result is never an update');
+  h.eng.ackEnd();
+  h.eng.onResultPush({ ...win, rows: [] });                      // a score-only re-send: same winner, same outcome
+  assert.equal(h.eng.result._updated, undefined, 'a score-only re-send is not an update');
+  assert.equal(h.eng.endAck, true, 'and it does not reopen the results screen');
+  h.eng.onResultPush({ ...win, outcome: 'lose', winner: { team_id: 'yellow' } });
+  assert.equal(h.eng.result._updated, true, 'the winner changed under a result this phone held');
+  assert.equal(h.eng.endAck, false, 'the results screen opens again for a player who tapped OK');
+  h.eng.ackEnd();
+  h.eng.onResultPush({ ...win, outcome: 'lose', winner: { team_id: 'yellow' }, rows: [] });
+  assert.equal(h.eng.result._updated, true, 'the verdict stays on a later re-send');
+  assert.equal(h.eng.endAck, true, 'but the screen reopens only once');
+  h.eng._save(); h.restart();
+  assert.equal(h.eng.result._updated, true, 'a relaunch keeps the verdict');
+  const late = match({ stun: undefined });                        // the late phone: its first result is the corrected one
+  late.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  late.eng.onResultPush({ ...win, match_id: late.eng.matchId, outcome: 'lose', winner: { team_id: 'yellow' } });
+  assert.equal(late.eng.result._updated, undefined, 'a phone that showed no earlier result just shows the result');
+});
