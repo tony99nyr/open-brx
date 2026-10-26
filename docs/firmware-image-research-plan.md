@@ -171,7 +171,7 @@ claim that names which command reaches a routine is unproven unless this section
    polls `$RADSK` every 3 s, and only an inbound `$RADSK` or `$HADSK` answer refreshes the timer. Other phone
    commands do not refresh it, and a blocking `$DPLAY` clip can starve it. The code does not prove that one pulse
    drops both radio links. The radio module's own
-   firmware is absent. The pin selector yields GPIO 3 or 31 for the mapped hardware IDs. **Bench:** record that
+   firmware is absent. The pin selector picks the radio module's reset line for the mapped hardware IDs. **Bench:** record that
    GPIO, both link states and Android Bluetooth logs across
    several 5–12 s drops. A low pulse before each joint drop would identify a gun-driven reset. If there is no
    pulse, investigate the radio and Android path.
@@ -212,14 +212,14 @@ No firmware, sound file, decompile or disassembly was added to the repo, and no 
 
 **Native-mode follow-up (2026-09-23):** v4.32 `$AS` stores base mode and rules in separate RAM bytes. The
 initialisation path groups modes 0–2, 3–4 and 5–6; modes 0–2 and 5–6 use different five-value default
-writers. The values and addresses are in the native setup entry of
+writers. The values are in the native setup entry of
 [`experiment-log/2026-09.md`](experiment-log/2026-09.md). Two values feed armour and health recovery.
 At zero additional modifiers, the nonzero value adds 33 or 34 units per permitted one-second call.
 The shared `200` drains about two shield units per allowed call, and `100` bounds the shield path.
 The active-state gates remain partly open. Both menu and `$AS` action-1 starts enable same-team hits
 for FFA and clear them for TDM and Survival. Remote TDM/Survival team choice can depend on prior scratch
 state. Do not promote the menu descriptions to firmware-derived defaults.
-The `$AS` lighting field can be replaced by stored setting 199 under an unresolved selector.
+The `$AS` lighting field can be replaced by a stored setting under an unresolved selector.
 Capture `$QUERY` and IR after setting up native FFA, Death Match and Survival on a gun.
 
 **Mode field refinement:** FFA selects one shared team value, 1, and enables a same-team hit flag. TDM
@@ -233,7 +233,7 @@ compiled branches, with a separate branch for protocol 15; no nine-field stock `
 on that path. Native death queues an eleven-field serial request containing protocol 15, magnitude 2,
 and the killer ID and team. The 2026-10-26 re-check identifies it as an `$IRTX` frame to the gun's own headset.
 The killer gun has a matching receive-and-credit branch. Modes 5–6 have a one-time death branch that writes
-team 3 and rebuilds the loadout. The native hit entry of the experiment log records guards and addresses.
+team 3 and rebuilds the loadout. The native hit entry of the experiment log records the guards.
 That entry now has a bounded map of protocols 0–14. The gun formats `$IRTX` and eleven numeric fields; the
 September `M` reading was a mislabel. The headset has both serial and autonomous fatal-hit transmit paths, and
 the autonomous one runs only in zombie mode. Its `$IRTX` parser loads those fields into the IR encoder. One
@@ -264,7 +264,7 @@ does not mean identical range behaviour. No older gun was bench-tested.
 
 The v4.32 gun decoder routes protocol-15 words in native mode to a separate protocol-15 branch. A magnitude-2 word
 must pass the active/running state, team and player-ID checks. It also passes a 161 ms repeat gate before the gun
-updates a native string field and toggles GPIO 8/7. Hosted reception instead follows the hosted handler. This joins the
+updates a native string field and toggles two output lines. Hosted reception instead follows the hosted handler. This joins the
 headset death-word finding above, but the exact native game effect remains unproved. Keep protocol 15 reserved
 for native signalling until its word meanings and dead-state forwarding are benched.
 
