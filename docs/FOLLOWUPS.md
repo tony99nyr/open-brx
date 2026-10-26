@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 97.** Desk 2 · bench 91 · decision 4.
+**MVP open: 98.** Desk 3 · bench 91 · decision 4.
 
-**MVP DESK (2),** a keyboard is enough:
-- 🟢 **F626** · **F627**
+**MVP DESK (3),** a keyboard is enough:
+- 🟢 **F626** · **F627** · **F630**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -31,7 +31,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F630 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F631 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -47,6 +47,7 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
+- **F630 🟢 MC PUSHES AN IDENTICAL SECOND `result` WHEN A HILL COMES BACK WITH THE SAME TALLY.** brx3, 2026-10-26 (brx4's A83 end-to-end rerun). A missing KOTH hill that reported after the release with an unchanged tally made MC re-send the same `result` to all four phones. The phone ignores it, but MC should push only when the result changes. After the 0.4.30 cut. Owner brx3. `build`.
 - **F626 🟢 GATE: A DOCS-ONLY CHANGE RUNS THE WHOLE `mcp` JOB.** brx2 for brx1, 2026-10-26. `test_docs_hygiene` and the other docs tests live in the `mcp` job, so `--changed` runs all of `mcp` (300 s registered, about 5 to 9 min in a gate) for a docs-only diff, and the job can time out under outside load. On 2026-10-26, the F595 row close (two jobs) went red on an `mcp` TIMEOUT at 900 s with every shard passed. (1) Give the docs tests a registry job of their own in `scripts/lib/jobs.mjs`, with `inputs` that `--changed` selects for a docs-only diff, and keep them out of `mcp` so nothing runs twice; a docs land then gates in seconds. (2) Split the `test_balance_review` shards into their own job, so a sim change does not carry the rest of `mcp` and `mcp` alone stays well inside its timeout. Owner brx2. `build`.
 - **F627 🟢 CI: THE `mcp` JOB HITS ITS 20-MINUTE CAP.** brx5 for brx1, 2026-10-26. 17 of 57 main runs of the CI `mcp` job since 2026-10-24 were cancelled at its 20-minute cap. Split the CI job into the same groups as F626's local gate split, from one shared definition (the run_tests.py groups), so a red reads as its group and no group nears the cap. Owner brx5. `build`.
 
