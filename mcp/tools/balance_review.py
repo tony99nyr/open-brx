@@ -2249,7 +2249,9 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
         best[wid] = {}
         for preset in OP_GATED_PRESETS:
             # F625: None is the "no perk" option, so "not chosen yet" needs its own sentinel. `options` lists None
-            # first, so no perk wins an exact tie; a perk that scores higher by noise alone still wins.
+            # first, so no perk wins an exact tie; a perk that scores higher by noise alone still wins. No noise
+            # margin, on purpose: Tony's comfort-pick rule asks a small-upgrade perk only to be never OP and never
+            # worse than no perk, and a margin would fail such a perk on noise (brx1, 2026-10-26).
             top = unset = object()
             for perk in options:
                 if str(perk) not in scores[wid][preset]:
