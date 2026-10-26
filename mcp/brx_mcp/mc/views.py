@@ -110,7 +110,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         # F614: the kill waits for the headset word when the last gun word does not finish it, as `time_to_kill()`
         gun_hit = _num(st.get("gun_hit"))
         if real_hit and gun_hit is not None:
-            ttk_ms += headset_lag_ms(pool, htk, real_hit, gun_hit)
+            ttk_ms += headset_lag_ms(pool, int(htk), real_hit, gun_hit)
     else:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was
         # published for, and is a lie at any other. Show nothing rather than the wrong number.
