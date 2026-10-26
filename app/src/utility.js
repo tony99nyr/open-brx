@@ -62,6 +62,9 @@ const settings = (() => { try { return migrateThreshold({ ...DEFAULTS, ...JSON.p
  *  clock stepped back cannot hold MC's relative whistle off or score past it. It catches up whenever wall time runs
  *  ahead of it: `performance.now()` stops while a phone deep-sleeps, and a sleep is real time the hill must not lose.
  *  A forward wall step therefore still moves the whistle, as before; nothing on the phone can tell it from a sleep.
+ *  F598 (2): wall time gained after a step back is not caught up either: the phone cannot tell a sleep from the step
+ *  being undone. Counting it would move the whistle early, which nothing corrects; skipping it errs late, and MC's END
+ *  and its re-sent relative times correct that.
  *  It starts at wall time, so a saved time read back after a restart lands where a Date.now() value did. A value
  *  another module compares with its own Date.now() (the HUD handoff, the auto-join guard, the A58 lock) stays on it. */
 const ratchetClock = (() => {
@@ -273,7 +276,7 @@ function applyHillClock(cfg, now, sameStation = true) {
   const frozenAtWhistle = () => settings.hillEndsAt != null && Math.max(now, point.at ?? -Infinity) >= settings.hillEndsAt;
   const wasFrozen = frozenAtWhistle();
   // A whistle that passed before any tick stepped to it is settled first: the last stretch up to it is the match's.
-  if (wasFrozen && point.at != null && point.at < settings.hillEndsAt) controlTick(now);
+  if (wasFrozen) settleWhistle(now);
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
@@ -506,7 +509,7 @@ async function startScan() {
   // froze on the player side (app.js, hardware 2026-09-04), and the station reads player adverts through
   // the same starved radio (S6). A station is usually stationary/plugged, so the battery cost is fine.
   scanGuard.reset(stationNow());
-  try { await link.scan(hit => { if (hit.uuids && hit.uuids.length) presence.observe(hit.uuids, hit.rssi, stationNow()); }, { scanMode: SCAN_MODES[_scanModeIdx], onRaw: () => scanGuard.hit(stationNow()) }); _lastScanRestart = stationNow(); log('watching for players'); }
+  try { await link.scan(scanHit, { scanMode: SCAN_MODES[_scanModeIdx], onRaw: () => scanGuard.hit(stationNow()) }); _lastScanRestart = stationNow(); log('watching for players'); }
   catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
 }
 // S6: stop+start to recover a scan whose callbacks Android silently paused (advertise+scan on one radio
@@ -541,6 +544,7 @@ function tick() {
   }
   presence.defaultThreshold = thr();
   presence.game = settings.game;
+  settleWhistle(now);   // F598 (1): a throttled tick that crossed the whistle steps to it on presence as of the whistle
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
   // can tell "never heard him" from "heard him and did not count him".
@@ -613,6 +617,28 @@ function powerupTick(now) {
 }
 
 // ---------- kind 5: the control point ----------
+/** F598 (1): the last step to a whistle that passed since the point's last step, on presence aged to the whistle, not
+ *  to now. A player heard just before it counts; one who left during a throttled gap does not; after a deep sleep across
+ *  it the point banks nothing for the sleep, as tick() would. It runs before the first sighting after the whistle
+ *  (`onSighting`), so a player who arrives after it cannot contest the stretch before it. A last step still in the
+ *  countdown counts from go-live, as controlTick does. Dwell and exit grace for a threshold crossed in the gap then run
+ *  from the whistle: the point is frozen by then, so only the HEARD log lines and the advert headcount see it. Not
+ *  across a restart: the restored point has no last step, so the stretch since the last save is not banked (F593). */
+function settleWhistle(now) {
+  const last = point.at ?? (_hillWaited ? settings.hillStartsAt : null);
+  if (settings.kind !== 'control' || settings.hillEndsAt == null || last == null) return;
+  if (last >= settings.hillEndsAt || now < settings.hillEndsAt) return;
+  presence.tick(settings.hillEndsAt);
+  controlTick(now);
+}
+/** One advert heard: the hill settles a passed whistle first (F598 (1)), then presence takes the sighting. Every
+ *  station sighting goes through here, never straight to presence.observe. */
+/** The scan callback: one BLE result. */
+function scanHit(hit) { if (hit.uuids && hit.uuids.length) onSighting(hit.uuids, hit.rssi); }
+function onSighting(uuids, rssi, now = stationNow()) {
+  settleWhistle(now);
+  presence.observe(uuids, rssi, now);
+}
 /** One step of the point (control.js does the arithmetic), then its log lines, its save and its advert.
  *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
 let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0;
@@ -1226,7 +1252,7 @@ function wireExit() {
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset, controlTick, clampPace,
-    tick, stationNow, useStationClock };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    tick, onSighting, scanHit, stationNow, useStationClock };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
@@ -1266,7 +1292,7 @@ function seedDemo() {
   setInterval(() => {
     const now = stationNow();
     // A56: `bits`/`value` let a stage step make a fake phone CLAIM a powerup station (`claiming`/`claim_ready`, station id)
-    for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
+    for (const f of fake) onSighting([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
   }, 250);
   window.brxUtilityFake = fake;
 }
