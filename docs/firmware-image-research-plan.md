@@ -24,8 +24,7 @@ A member of the BRX Facebook group posted a Google Drive folder called `Firmware
 
 The first quick pass (strings only, no disassembly) found:
 
-- The images are ARM Cortex-M code. An 8-byte updater header comes before the vector table. Map the full file at
-  `0x8000`; the vector table then starts at `0x8008`. The v4.32 main processor is a Kinetis/Teensy-class MCU;
+- The images are ARM Cortex-M code. An 8-byte updater header comes before the vector table. The v4.32 main processor is a Kinetis/Teensy-class MCU;
   the "NRF52 v1 retail" and "NRF52 v2 retail" strings describe the separate radio module, not the main processor.
 - The first `strings` pass reported 103 distinct `$` command names, but that tool's four-character floor silently
   omitted short real names such as `$AS` and `$SP`. T1's byte-level bounded scan finds 111 command-shaped names
@@ -159,10 +158,10 @@ comparisons pointed into neighbouring strings. **2026-10-26 re-check:** both the
 used here were off by one fixed shift, which explains those comparisons. Code flow and arithmetic below stand. Any
 claim that names which command reaches a routine is unproven unless this section restates it from the re-check.
 
-1. **S48, indoor IR control.** The v4.32 emitter routine at `0xc984` computes the gun carrier as
+1. **S48, indoor IR control.** The v4.32 emitter routine computes the gun carrier as
    `38000 - 125 × (100 - range)` Hz below range 100. It selects one of two fixed output settings from the gun's
-   indoor-level flag. The v2.08b routine at `0xb160` has the same range slope and output settings. Startup at
-   `0x16c10` initialises that flag from stored mode 0, 1 or 2. This supports the earlier finding that changing
+   indoor-level flag. The v2.08b emitter routine has the same range slope and output settings. Startup code
+   initialises that flag from stored mode 0, 1 or 2. This supports the earlier finding that changing
    `$WEAP` t2 detunes the carrier; it does not scale emitted power. The current code read does not establish a safe
    per-game serial control for the output setting. **Bench:** keep `$WEAP` t2 at 100, scope carrier and IR duty in
    each physical mode, then repeat with the documented `$GSET` t2 and `$IRLVL` controls. Run aimed and bounced
@@ -197,7 +196,7 @@ claim that names which command reaches a routine is unproven unless this section
    The RAM-table loading path and headset/controller routing still need tracing. Keep the existing screamer bench
    steps and test selected `$SIR` effects with the receiving controller present.
 6. **Headset version difference.** The protocol-15 magnitude-2 death word is already present in headset v1.27
-   (`0x7c60`) and remains in v1.34 (`0x8e60`). V1.34 also reads stored identity slot `0x15c` and compares it with
+   and remains in v1.34. V1.34 also reads a stored identity slot and compares it with
    an incoming player ID; v1.27 uses fixed `0x3f` or `0x7f` selectors. The gameplay effect is unproved. **Bench:**
    vary the configured headset ID and send matching and different player IDs with equal team and magnitude.
    **2026-10-26 re-check:** both death-word paths sit inside the headset's zombie-mode block, so neither runs in
@@ -225,12 +224,12 @@ Capture `$QUERY` and IR after setting up native FFA, Death Match and Survival on
 
 **Mode field refinement:** FFA selects one shared team value, 1, and enables a same-team hit flag. TDM
 selects team 0 or 1. Survival selects team 0 or 3; its death branch later writes team 3. The remote
-`$AS` path sets the same mode flag through `0x1c95c`; its other team choices can use prior scratch state. The selected
+`$AS` path sets the same mode flag through native setup; its other team choices can use prior scratch state. The selected
 game time becomes an end timestamp; a zero time disables that timer. The timeout path does not compare
-scores before choosing its result/audio code. See the experiment log for addresses and limits.
+scores before choosing its result/audio code. See the experiment log for the limits.
 
-**Native hit follow-up:** the hosted IR handler at `0x24aec` reads a RAM `$SIR`-style table. Native hits take
-compiled branches at `0x21dcc`, with protocol 15 at `0x26338`; no nine-field stock `$SIR` rows were found
+**Native hit follow-up:** the hosted IR handler reads a RAM `$SIR`-style table. Native hits take
+compiled branches, with a separate branch for protocol 15; no nine-field stock `$SIR` rows were found
 on that path. Native death queues an eleven-field serial request containing protocol 15, magnitude 2,
 and the killer ID and team. The 2026-10-26 re-check identifies it as an `$IRTX` frame to the gun's own headset.
 The killer gun has a matching receive-and-credit branch. Modes 5–6 have a one-time death branch that writes
@@ -251,44 +250,44 @@ All five also contain a death-path call with the same eleven numeric arguments f
 magnitude 2 and the killer identity. In v4.32 that call formats an `$IRTX` frame (2026-10-26 re-check). The
 other versions' prefix and per-version gates remain unverified.
 
-| Gun version | Range step below 100 | Emitter routine |
-|---|---:|---|
-| 2.01U | 300 Hz per point | `0xb704` |
-| 2.02c | 75 Hz per point | `0xb2ec` |
-| 2.02e | 125 Hz per point | `0xb2ec` |
-| 2.08b | 125 Hz per point | `0xb160` |
-| 4.32 | 125 Hz per point | `0xc984` |
+| Gun version | Range step below 100 |
+|---|---:|
+| 2.01U | 300 Hz per point |
+| 2.02c | 75 Hz per point |
+| 2.02e | 125 Hz per point |
+| 2.08b | 125 Hz per point |
+| 4.32 | 125 Hz per point |
 
 Each routine caps the carrier at 38 kHz when the range setting reaches 100. The same two output settings appear
 in these routines. This is a code-level reason to calibrate an older gun separately: identical `$WEAP` vocabulary
 does not mean identical range behaviour. No older gun was bench-tested.
 
-The v4.32 gun decoder at `0x233c8` routes protocol-15 words in native mode to `0x26338`. A magnitude-2 word
+The v4.32 gun decoder routes protocol-15 words in native mode to a separate protocol-15 branch. A magnitude-2 word
 must pass the active/running state, team and player-ID checks. It also passes a 161 ms repeat gate before the gun
-updates a native string field and toggles GPIO 8/7. Hosted reception instead follows `0x24aec`. This joins the
+updates a native string field and toggles GPIO 8/7. Hosted reception instead follows the hosted handler. This joins the
 headset death-word finding above, but the exact native game effect remains unproved. Keep protocol 15 reserved
 for native signalling until its word meanings and dead-state forwarding are benched.
 
-Native death increments telemetry byte `0x1fffae14`; setup clears it, while spoken-number and event paths
+Native death increments a telemetry byte; setup clears it, while spoken-number and event paths
 read it. No inspected read compares it to a winning score. The timeout/end routine also has two command
 callers, but its body reads no score. The missing radio module could hold further match logic.
 
-The v4.32 hit processor at `0x21dcc` applies distinct 55, 125, 160 and 250 ms suppression checks before hit
+The v4.32 hit processor applies distinct 55, 125, 160 and 250 ms suppression checks before hit
 effects. The checks compare different combinations of source ID, team, protocol, magnitude and subtype. The
 timer is the SysTick millisecond counter. These gates can make rapid repeated IR words disappear even when the
 receiver sees every pulse.
 
-The hosted handler `0x24aec` has four direct callers. The gun IR decoder passes source 4, while the `$HIT`
+The hosted handler has four direct callers. The gun IR decoder passes source 4, while the `$HIT`
 parser passes a dynamic source value. A second parser branch also passes a dynamic byte; the periodic
 caller passes 0. Functions 30, 36 and 37 use that source value. The code supports source values below 4,
 but the automatic headset-to-gun forwarding route remains unproved. The generic seven-field hit record
-goes to `0x24aec` in hosted mode and compiled native handler `0x21dcc` in native mode.
+goes to the hosted handler in hosted mode and to the compiled native handler in native mode.
 
-Headset v1.34 separates 20-interval and 25-interval IR frames at `0x98cc`; both paths check parity. The
+Headset v1.34 separates 20-interval and 25-interval IR frames; both paths check parity. The
 25-interval path can apply a hit after a health check. Protocols 9 and 10 start another IR output sequence.
 The v1.34 encoder copies the incoming protocol, ID, team and magnitude into a 25-bit word, sets an extra bit,
 and selects subtype 0 in the 6-bit ID layout. Its game meaning and on-air repeat count remain open.
-The headset transmitter at `0x7920` blocks another emission within 51 clock
+The headset transmitter blocks another emission within 51 clock
 ticks, probably milliseconds. V1.34 adds a stored mode-5 death branch absent from v1.27: it sets the configured
 LED colour immediately; another branch sets a delayed LED state. Its duration and visible effect need a bench check.
 

@@ -1477,3 +1477,33 @@ def test_the_command_table_check_can_actually_fail():
         "$VOL: the manual quotes `$VOL,65,0,*`, brx-protocol.md does not",
         "$ZOOM: the manual's table names it, brx-protocol.md has no row for it",
     ], _command_table_problems(bad, protocol)
+
+
+# F622 / F324: firmware code addresses, RAM locations and offsets never go in the public docs. A firmware fact is written
+# at behaviour level. Two-digit values (HCI reason codes, PMIC registers, frame bytes) are not addresses and never match.
+_FW_ADDR = re.compile(r"\b0x(?:1fff[0-9A-Fa-f]{4}|[0-9A-Fa-f]{4,6})\b")
+_FW_ADDR_ALLOWED = {"0x303a", "0x3412"}   # the Stick's USB vendor id; the updater header's fixed half (a value, not an address)
+
+
+def _fw_addr_files() -> list[pathlib.Path]:
+    out = sorted((DOCS / "experiment-log").glob("*.md")) + [DOCS / "firmware-image-research-plan.md"]
+    for d in (DOCS / "manual", DOCS / "spec", REPO / "protocol"):
+        out += sorted(d.glob("*.md"))
+    return out
+
+
+def test_f622_no_firmware_address_in_the_public_docs():
+    hits = []
+    for path in _fw_addr_files():
+        fenced = False
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("```"):
+                fenced = not fenced
+                continue
+            if fenced:
+                continue
+            for m in _FW_ADDR.finditer(line):
+                if m.group(0).lower() not in _FW_ADDR_ALLOWED:
+                    hits.append(f"{path.relative_to(REPO)}:{n}: {m.group(0)}")
+    assert not hits, ("a firmware address in the public docs (F324: write the behaviour, not the address): "
+                      + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
