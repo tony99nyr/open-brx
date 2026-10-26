@@ -989,3 +989,50 @@ test('bounded A81 wait: RESULT UPDATED only on a phone that held an earlier verd
   late.eng.onResultPush({ ...win, match_id: late.eng.matchId, outcome: 'lose', winner: { team_id: 'yellow' } });
   assert.equal(late.eng.result._updated, undefined, 'a phone that showed no earlier result just shows the result');
 });
+
+// F632 (e2e 2026-10-26): MC re-sends `assign` on every player edit during the debrief (normal since F631). The phone treated
+// any assign after the end as a new match and wiped the result, so a re-teamed player who won after a late flip never saw it.
+// brx1: leave the results only on a real new-match signal (kit_open turning true, or MC's config for the next match).
+function debrief() {
+  const h = match({ stun: undefined });
+  const blue = h.config.teams[0], yellow = h.config.teams[1];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: blue, policy: { kit_open: false } } });   // the match: kit closed
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  const mid = h.eng.matchId;
+  h.eng.onResultPush({ match_id: mid, outcome: 'win', winner: { team_id: 'blue' }, provisional: false });
+  return { h, mid, blue, yellow };
+}
+
+test('F632: a re-team during the debrief keeps the result, and a later corrected result still lands', () => {
+  const { h, mid, yellow } = debrief();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, team_id: 'yellow' }, team: yellow, policy: { kit_open: false } } });
+  assert.equal(h.eng.ended, true, 'still on the results');
+  assert.equal(h.eng.matchId, mid);
+  assert.equal(h.eng.result && h.eng.result.outcome, 'win', 'the result is kept');
+  assert.equal(h.eng.team.team_id, 'yellow', 'the edit itself is applied');
+  const r = h.eng.onResultPush({ match_id: mid, outcome: 'lose', winner: { team_id: 'yellow' }, provisional: false });
+  assert.equal(r.ok, true, 'the corrected result is accepted, not dropped as no_match');
+  assert.equal(h.eng.result._updated, true);
+});
+
+test('F632: a rename during the debrief keeps the result and shows the new name', () => {
+  const { h, mid, blue } = debrief();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false } } });
+  assert.equal(h.eng.ended, true);
+  assert.equal(h.eng.matchId, mid);
+  assert.equal(h.eng.result && h.eng.result.outcome, 'win');
+  assert.equal(h.eng.player.display, 'RENAMED');
+});
+
+test('F632: the next match still clears the result, on the kit opening or on its config', () => {
+  const a = debrief();
+  a.h.eng.onMcMessage({ kind: 'assign', body: { player: a.h.player, team: a.blue, policy: { kit_open: true } } });   // the host opens KIT
+  assert.equal(a.h.eng.ended, false, 'the kit opening leaves the results');
+  assert.equal(a.h.eng.result, null);
+  assert.equal(a.h.eng.matchId, null);
+  const b = debrief();
+  b.h.eng.onMcMessage({ kind: 'config', body: { config: b.h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });   // a phone that missed KIT: the next match's lobby push
+  assert.equal(b.h.eng.ended, false, 'the next config leaves the results');
+  assert.equal(b.h.eng.result, null, 'and takes the old result with it');
+  assert.equal(b.h.eng.matchId, null);
+});

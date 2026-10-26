@@ -2274,7 +2274,10 @@ export class Engine {
     // false→true EDGE above — but an MC that never sends `kit_open:false` (and an older MC with no
     // `policy` at all) never gives that edge, so the latch survived into every later lobby and the screen
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
-    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
+    // F632: MC re-sends `assign` on every player edit, the debrief's re-team and rename included (F631), so an assign alone
+    // is not a new match: it updates the player and team below and keeps the result. The kit opening is (MC opens KIT only
+    // for the next match), and so is the next match's config (`_applyConfig`) or start (`startAt`).
+    if (this.ended && !wasOpen && this.kitOpen()) this._leaveEnded('MC opened the kit for the next match');
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     // Bench 2026-09-17: MARK ALL READY (MC's roster-wide `host_override`) marks a player ready who
     // never tapped READY UP themselves, and `setReady` is the phone's ONLY other writer of `this.ready`
@@ -2289,7 +2292,15 @@ export class Engine {
     if (this.browsing && !this.canPick('primary') && !this.canPick('secondary') && !this.canPick('perk')) this.browse(false);   // A10: rules locked every slot while the browser was open
   }
 
+  /** F632: leave the match-complete screen for the next match, taking this match's result with it. */
+  _leaveEnded(why) {
+    this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false;
+    this.log(`new match from MC (${why}) — leaving the match-complete screen`, 'lk');
+  }
   _applyConfig({ config, frames, roster }, why) {
+    // F632: MC's config after an end is the next match's lobby push (a phone that missed the kit opening gets no other
+    // signal before the start). A relink or rehydrate re-write is not.
+    if (this.ended && why === 'config') this._leaveEnded('the next match\'s config');
     // T2-B item 2: a benched player is never on the roster `push_config`/`_repush_lobby_config` loop, so
     // this should not arrive at all -- guarded anyway, belt-and-braces, since "no gun frames written"
     // while sitting out is the whole point of the state.
