@@ -101,7 +101,7 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS.parent))
 import balance_sim as B  # noqa: E402
 from brx_mcp.mc.compile import CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEALTH_PRESETS, PULL_SIGMA, WeaponCatalog  # noqa: E402
-from brx_mcp.mc.perks import PerkCatalog  # noqa: E402
+from brx_mcp.mc.perks import PerkCatalog, canonical_perk_id  # noqa: E402
 from brx_mcp.mc import compile as _compile_mod  # noqa: E402
 from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS  # noqa: E402
 
@@ -109,8 +109,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 23   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617)
+SCENARIO_VERSION = 24   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -178,7 +178,7 @@ AMMO_STRESS_FIGHT_CAP_MS = 120_000.0  # allow slow mid-range kits to finish a fi
 PISTOL_FINISH_RANGE = "close"  # the chipped target is at close range
 # Mixed kits that open with the first gun's big round and finish with the second (Tony 2026-10-17).
 COMBO_KITS = (("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor"),
-              ("CR+Sniper+QS", "charge_rifle", "sniper_rifle", "quick_switch"))
+              ("CR+Sniper+FH", "charge_rifle", "sniper_rifle", "fast_hands"))
 
 COLUMNS = ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact", "peek mid", "field", "ambush", "shields", "hill hold", "ammo stress")
 # Near-top margin: a kit within this of the column's best is "near the top". The duel columns are win
@@ -340,8 +340,8 @@ class World:
     def style(self, wid: str) -> str:
         return (self.styles or {}).get(wid) or ("full" if wid in FULL_AUTO else "burst")
 
-    def fx(self, perk: str | None) -> dict:
-        return self.perks.effects(perk)
+    def fx(self, perk: str | None, preset: str | None = None) -> dict:
+        return self.perks.effects(perk, preset)
 
 
 def pool_parts(preset: str, fx: dict) -> tuple[int, int, int]:
@@ -498,14 +498,16 @@ def _bolt_exempt_sim_only(world: World) -> list[str]:
 
 
 def make_kit(world: World, name: str, primary: str, secondary: str | None = None, perk: str | None = None,
-             plan: str = "single") -> Kit:
-    cat, fx = world.cat, world.fx(perk)
+             plan: str = "single", preset: str | None = None) -> Kit:
+    """`preset` picks the perk's per-preset effects (0.4.31: Extended Mags is x1.5 on Shields); the kit's pools
+    still carry both presets."""
+    cat, fx = world.cat, world.fx(perk, preset)
     g0 = make_gun(cat, primary, _ammo_mods(world, primary, fx))
     if fx.get("armor_piercing"):
         row = cat._row(primary)
         if row.get("ap_dmg") is None or row.get("ap_fire_ms") is None:
             raise ValueError(f"{primary}: Armour Piercing needs ap_dmg and ap_fire_ms")
-        g0 = replace(g0, gun_dmg=int(row["ap_dmg"]), head_dmg=0,
+        g0 = replace(g0, gun_dmg=int(row["ap_dmg"]), head_dmg=0, crit=0,   # compile's AP rekey drops the crit roll
                      fire_ms=float(row["ap_fire_ms"]), ap=True)
     sw = {"switch_mult": fx["switch_mult"]} if "switch_mult" in fx else None
     guns, swap = (g0,), 0.0
@@ -1848,14 +1850,14 @@ def field_kit(world: World, name: str, primary: str, secondary: str | None = Non
     A perk the preset refuses (Armour Piercing or an armour grant on Shields) raises, as MC refuses it."""
     if perk and (why := _compile_mod.Compiler(perks=world.perks).preset_block(perk, preset)):
         raise ValueError(f"{perk} on {preset}: {why}")
-    fx = world.fx(perk)
+    fx = world.fx(perk, preset)
     models, swap = (_wm(world, primary, fx),), 0.0
     ap = bool(fx.get("armor_piercing"))
     if ap:
         row = world.cat._row(primary)
         if row.get("ap_dmg") is None or row.get("ap_fire_ms") is None:
             raise ValueError(f"{primary}: Armour Piercing needs ap_dmg and ap_fire_ms")
-        models = (replace(models[0], gun_dmg=int(row["ap_dmg"]), headset_dmg=0,
+        models = (replace(models[0], gun_dmg=int(row["ap_dmg"]), headset_dmg=0, crit_pct=0,
                           fire_ms=float(row["ap_fire_ms"])),)
     if secondary:
         models += (_wm(world, secondary, None),)
@@ -2224,8 +2226,8 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
             if perk and world.fx(perk).get("armor_piercing") and \
                     any(world.cat._row(wid).get(k) is None for k in ("ap_dmg", "ap_fire_ms")):
                 continue
-            k = make_kit(world, f"{_name(world, wid)}|{perk}", wid, SECONDARY, perk)
             for preset in OP_GATED_PRESETS:
+                k = make_kit(world, f"{_name(world, wid)}|{perk}", wid, SECONDARY, perk, preset=preset)
                 for d in DIST:
                     jobs.append(("duel", k, plain_ar, d, preset, AIM, FIGHT_CAP_MS, False, reps,
                                  heat_cool_while_firing))
@@ -2309,7 +2311,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     kits = {s.name: make_kit(world, s.name, s.primary, s.secondary, s.perk, "combo" if s.combo else "single")
             for s in specs}
     shields_kits = {s.name: make_kit(world, s.name, s.primary, s.secondary,
-                                    s.perk if s.combo else s.shield_perk, "combo" if s.combo else "single")
+                                    s.perk if s.combo else s.shield_perk, "combo" if s.combo else "single", "shields")
                     for s in specs}
     fks = {s.name: field_kit(world, s.name, s.primary, s.secondary, s.perk, s.combo) for s in specs}
     names = [s.name for s in specs]
@@ -2710,7 +2712,9 @@ def apply_entry(rows: list, perk_rows: list, entry: dict) -> tuple[list, list]:
             rows[idx] = new
         WeaponCatalog(rows).resolve(new["weapon_id"], 0)   # refuses a row the compiler cannot build
     elif k == "perk_diff":
-        row = next((r for r in perk_rows if r["perk_id"] == entry["perk_id"]), None)
+        # An old perk id (quick_hands, quick_switch) names the perk that replaced it, as stored loadouts do.
+        pid = canonical_perk_id(entry["perk_id"])
+        row = next((r for r in perk_rows if r["perk_id"] == pid), None)
         if row is None:
             raise ValueError(f"perk diff on an unknown perk {entry['perk_id']!r}")
         for key, value in entry["changes"].items():
@@ -2719,6 +2723,7 @@ def apply_entry(rows: list, perk_rows: list, entry: dict) -> tuple[list, list]:
         row.setdefault("effects", {}).update(entry["changes"])
     elif k == "perk_row":
         new = copy.deepcopy(entry["row"])
+        new["perk_id"] = canonical_perk_id(new["perk_id"])
         idx = next((i for i, r in enumerate(perk_rows) if r["perk_id"] == new["perk_id"]), None)
         if idx is None:
             perk_rows.append(new)
