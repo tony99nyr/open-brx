@@ -552,6 +552,38 @@ def test_a_hand_reorder_or_an_odd_stamp_on_their_side_is_still_a_conflict():
             assert "resolved it" not in r.stdout, (name, r.stdout)
 
 
+def test_shapes_a_lane_really_writes_resolve_and_keep_their_order():
+    # F624 (round 3). Controls for the refusals above, and two shapes a lane writes for real:
+    # - plain: the new-first fixture without the hand reorder (the generator appended Z6 last), so the refusal there
+    #   is the reorder check, not the merge (Opus);
+    # - only-new: two new rows under a marker the section had no line for, a line of only new ids (Fable);
+    # - their-order: two new rows the branch ordered by hand among themselves, kept as the branch wrote them (Fable).
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    Z6 = "- **Z6 🟡 A NEW ROW PLACED FIRST.** text\n"
+    Z7, Z8 = "- **Z7 🔴 A NEW RED ROW.** text\n", "- **Z8 🔴 ANOTHER NEW RED ROW.** text\n"
+    for name in ("plain", "only-new", "their-order"):
+        with Lane() as t:
+            seed = _followups(t, Z1 + Z5, updated="2026-10-25")
+            _seed_followups(t, seed)
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z5 + Z2, updated="2026-10-27")})
+            if name == "plain":
+                theirs = _regenerated(t, seed.replace(Z1, Z6 + Z1).replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))
+                want = "- 🟡 **Z1** · **Z5** · **Z6**"
+            else:
+                theirs = _regenerated(t, seed.replace("## MVP BENCH\n", "## MVP BENCH\n" + Z7 + Z8))
+                want = "- 🔴 **Z7** · **Z8**"
+                if name == "their-order":
+                    theirs = theirs.replace(want, "- 🔴 **Z8** · **Z7**")
+                    want = "- 🔴 **Z8** · **Z7**"
+            assert want in theirs, (name, theirs)
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": theirs})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a, b)
+            assert f"land: {b}: the conflict was only in" in r.stdout, (name, r.stdout)
+            assert want in _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote), name
+
+
 def test_two_stamps_that_conflict_land_with_the_later_date():
     # F624: a lane that works across midnight stamps tomorrow's date while the branch landed before it kept today's.
     # The lander takes the later date, whichever side it is on, and regenerates the index too.

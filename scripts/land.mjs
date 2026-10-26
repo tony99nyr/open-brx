@@ -504,8 +504,8 @@ function reordered(base, theirs) {
   for (const id of blockLines(base).flat()) if (!rank.has(id)) rank.set(id, rank.size);
   return blockLines(theirs).some(ids => {
     const known = ids.filter(id => rank.has(id)).map(id => rank.get(id));
-    const lastKnown = ids.findLastIndex(id => rank.has(id));
-    return known.some((r, i) => i > 0 && r < known[i - 1]) || ids.slice(0, lastKnown).some(id => !rank.has(id));
+    const lastKnown = ids.findLastIndex(id => rank.has(id));   // -1 on a line of only new ids: nothing to check
+    return known.some((r, i) => i > 0 && r < known[i - 1]) || ids.slice(0, Math.max(lastKnown, 0)).some(id => !rank.has(id));
   });
 }
 const indexBlock = text => text.slice(text.indexOf(INDEX_START) + INDEX_START.length, text.indexOf(INDEX_END));
@@ -544,8 +544,9 @@ async function resolveIndexConflict(id, files) {
     // we keep our block's order (the bench plan), so their hand reorder of it would be lost: leave that to a person
     if (reordered(indexBlock(raws[1]), indexBlock(raws[3]))) return false;
     let merged = fs.readFileSync(stage[0], 'utf8');
-    // put our block back before the generator runs: it keeps the ids' order from the block it reads (the bench plan)
-    const block = indexBlock(raws[2]);
+    // put our block back before the generator runs: it keeps the ids' order from the block it reads (the bench plan).
+    // Their block follows it, so their new ids keep the order they wrote; for an id in both, ours comes first and wins.
+    const block = indexBlock(raws[2]) + indexBlock(raws[3]);
     if (merged.split(INDEX_START).length !== 2 || merged.split(INDEX_END).length !== 2) return false;
     const at = merged.indexOf(INDEX_START) + INDEX_START.length;
     merged = merged.slice(0, at) + block + merged.slice(at);
