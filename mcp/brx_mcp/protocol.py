@@ -170,7 +170,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
     "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
     "DDFU": "the v2.x DFU entry [disasm]",
-    "CLEARDEVICE": "wipes the radio's pair list (the headset pairing) and formats the radio's file system [disasm]",
+    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage; which link must pair again is not in the code [disasm]",
     "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
     "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
     "DEV": "developer-mode toggle, persistence unknown [disasm]",
@@ -190,7 +190,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "PIN": "v2.x Bluetooth PIN [disasm]",
     "INQ": "HC-05 radio inquiry [disasm]",
     "ZOM": "zombie headset mode [sheet]",
-    "ZTOG": "zombie mode toggle: `$ZTOG,1` turns zombie mode on, keeps it across a power cycle and stops the gun's $HIT reports [sheet, disasm]",
+    "ZTOG": "a headset command (the gun has no handler, so the path from our link is unknown): `$ZTOG,1` stores the headset's zombie mode across a power cycle and stops its $HIT reports to the gun [sheet, disasm]",
     "ZON": "zombie mode on [disasm: headset vocabulary]",
     "ZOFF": "zombie mode off [disasm: headset vocabulary]",
     "BOOM": "zombie 'boomer' headset command [sheet]",
@@ -269,19 +269,31 @@ def arity_note(command: str) -> str | None:
     return None
 
 
-# Safety guard B (brx-rea firmware pass 2, a code read): the gun keeps twelve `$WEAP` slots (0-11) and holds a
-# weapon's damage (t5) in one byte. A larger value writes past what the gun holds, so no sender may send one.
+# Safety guard B (brx-rea firmware pass 2, a code read): the gun has twelve `$WEAP` slots (0-11) and keeps a weapon's
+# damage (t5) in one byte. Slot 12 writes past its tables, slot 13 or more lands on slot 0, and a damage above 255 wraps
+# to its low byte (300 lands as 44). The gun reads a token's leading integer and ignores the rest, so the check does too.
 WEAP_SLOT_MAX = 11
 WEAP_DAMAGE_MAX = 255
+_LEADING_INT = re.compile(r"\s*([+-]?\d+)")
 
 
-def _weap_range_error(command: str) -> str | None:
+def weap_range_error(command: str) -> str | None:
+    """Why a `$WEAP` frame carries a slot or a damage the gun cannot hold, else None (and None for any other frame).
+    Every writer calls it: `validate_frame`, the BLE manager's writes and the raw-bytes plan check."""
+    if command_name(command).strip().upper() != "WEAP":
+        return None
     toks = tokenize(command)
     for i, name, top in ((1, "slot", WEAP_SLOT_MAX), (6, "damage (t5)", WEAP_DAMAGE_MAX)):
-        v = toks[i].strip() if i < len(toks) else ""
-        if v and re.fullmatch(r"-?\d+", v) and not 0 <= int(v) <= top:
-            return f"$WEAP {name} {v} is outside 0-{top}: the gun cannot hold it"
+        m = _LEADING_INT.match(toks[i]) if i < len(toks) else None
+        if m and not 0 <= int(m.group(1)) <= top:
+            return f"$WEAP {name} {toks[i].strip()} is outside 0-{top}: the gun cannot hold it"
     return None
+
+
+def refuse_out_of_range(command: str) -> None:
+    """Guard B for a writer that has no error channel of its own: raise ValueError for a `$WEAP` the gun cannot hold."""
+    if (why := weap_range_error(command)) is not None:
+        raise ValueError(f"refused: {why}")
 
 
 def validate_frame(command: str) -> str | None:
@@ -292,9 +304,7 @@ def validate_frame(command: str) -> str | None:
         return "frame must end with ',*'"
     if not _FRAME_RE.match(command):
         return "frame failed pattern check ($NAME,tokens...,*)"
-    if command_name(command) == "WEAP":
-        return _weap_range_error(command)
-    return None
+    return weap_range_error(command)
 
 
 def command_name(command: str) -> str:

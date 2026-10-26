@@ -229,8 +229,9 @@ def test_ztog_and_cleardevice_are_denied_and_free_needs_confirm():
         assert result.get("sent") == "$FREE,*", result
 
 def test_validate_frame_refuses_a_weap_slot_above_11_and_a_damage_above_255():
-    """Safety guard B (brx-rea firmware pass 2, a code read): the gun keeps twelve weapon slots and one byte of
-    damage, so a $WEAP slot above 11 or a t5 above 255 writes past what the gun holds. Every sender refuses it."""
+    """Safety guard B (brx-rea firmware pass 2, a code read): the gun has twelve weapon slots and one byte of damage.
+    Slot 12 writes past its tables, 13 or more lands on slot 0, and a damage above 255 wraps. validate_frame refuses
+    them; the BLE manager and the raw-bytes plan check are pinned in the next test."""
     head = "$WEAP,{slot},1,5,1,2,{dmg},0,*"
     assert protocol.validate_frame(head.format(slot=11, dmg=255)) is None
     assert protocol.validate_frame(head.format(slot=0, dmg="")) is None, "an empty token leaves the value alone"
@@ -244,3 +245,50 @@ def test_validate_frame_refuses_a_weap_slot_above_11_and_a_damage_above_255():
         result = run(server.send("t1", head.format(slot=0, dmg=300), confirm=True))
         assert "error" in result and "damage" in result["error"], result
         assert len(mgr.sessions["t1"].buffer) == 0
+
+
+
+def test_every_writer_refuses_an_out_of_range_weap_and_reads_the_leading_integer_as_the_gun_does():
+    """Guard B on the writers that do not call validate_frame (the CLI, the stage, the soak and tools write through
+    the BLE manager), and on raw bytes. The gun reads a token's leading integer, so `+12` and `300.0` are refused."""
+    from brx_mcp.rawbytes import plan_from_stream, validate_plan
+    for f in ("$WEAP,+12,1,5,1,2,45,0,*", "$WEAP,0,1,5,1,2,300.0,0,*", "$WEAP,0,1,5,1,2,300x,0,*", "$WEAP, 13,1,5,1,2,45,0,*"):
+        assert protocol.weap_range_error(f) and protocol.validate_frame(f), f
+    for f in ("$WEAP,<slot>,1,5,1,2,45,0,*", "$WEAP,11,1,5,1,2,+255,0,*", "$PSET,0,0,999,70,70,50,*"):
+        assert protocol.weap_range_error(f) is None, f
+    bad = "$WEAP,12,1,5,1,2,45,0,*"
+    try:
+        from brx_mcp.ble import ConnectionManager
+    except ImportError:                      # system python has no bleak: the real manager cannot load here
+        ConnectionManager = None
+    if ConnectionManager is not None:
+        writes: list[bytes] = []
+
+        class _Session:
+            seq = 0; write_lock = None; client = None
+            def record(self, *a): pass
+
+        mgr = ConnectionManager()
+        mgr._get = lambda alias: _Session()
+        async def _write(client, data, lock, *a, **k): writes.append(data)
+        mgr._write = _write
+        for call in (lambda: mgr.send("t1", bad), lambda: mgr.send_batch("t1", ["$PING,*", bad]),
+                     lambda: mgr.send_phone_paced("t1", bad, chunk_gap_ms=20, frame_gap_ms=0)):
+            try:
+                run(call())
+                raise AssertionError("the BLE manager wrote an out-of-range $WEAP")
+            except ValueError as e:
+                assert "slot" in str(e), e
+        assert writes == [], "nothing reached the gun, not even the $PING before it"
+    with fake_server_manager([FakeTagger("AA:1")]) as fake:
+        run(fake.connect("AA:1", "t1"))
+        try:
+            run(fake.send("t1", bad))
+            raise AssertionError("the fake manager wrote what the real one refuses")
+        except ValueError as e:
+            assert "slot" in str(e), e
+    try:
+        validate_plan(plan_from_stream(bad.encode()), confirm=True)
+        raise AssertionError("a raw-bytes plan carried an out-of-range $WEAP")
+    except ValueError as e:
+        assert "slot" in str(e), e
