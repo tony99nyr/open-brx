@@ -440,6 +440,9 @@ export class Transport {
   dialNow() {
     if (this.closed || this.state === 'bound' || this.state === 'open' || this.state === 'rejected') return false;
     if (!this.url && !this.pub) return false;
+    // F595 review (Fable): a network change does not change the stale holder on MC, so the 4003 reclaim wait stays.
+    // Dialling now would meet that holder again and end refused for good.
+    if (this._rcTimer && this._rcReclaim) return false;
     this._abortInFlight();
     this.attempt = 0;
     this._log('dial now (network change / manual)');
@@ -784,12 +787,13 @@ export class Transport {
     this.urgent = on;
     if (!on) return;
     if (this.state === 'bound') { if (this.ring.size === 0) this._beatNow(); return; }
-    // Review (Opus, Fable): only an ordinary backoff due more than the urgent cap away is brought forward. The 4003 reclaim
+    // Review (Opus, Fable): only an ordinary backoff due later than the urgent delay is brought forward. The 4003 reclaim
     // wait is left alone (its early retry would meet the same stale holder and end in a permanent refusal), and the
     // attempt counters do not move: this is the same attempt, sooner.
-    if (this._rcTimer && !this._rcReclaim && this._rcDueAt - this.now() > URGENT_RECONNECT_CAP_MS) {
+    const d = URGENT_RECONNECT_CAP_MS * (1 - this.backoff.jitter + 2 * this.backoff.jitter * this.random());
+    if (this._rcTimer && !this._rcReclaim && this._rcDueAt - this.now() > d) {   // only ever sooner, jitter included
       this.timers.clearTimeout(this._rcTimer); this._rcTimer = null;
-      this._armReconnect(URGENT_RECONNECT_CAP_MS * (1 - this.backoff.jitter + 2 * this.backoff.jitter * this.random()));
+      this._armReconnect(d);
     }
   }
   /** One pending redial: `reclaim` marks the 4003 stale-holder wait, which setUrgent must not shorten.

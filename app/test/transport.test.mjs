@@ -837,7 +837,24 @@ test('F595 review: setUrgent never shortens the 4003 reclaim wait, and leaves a 
   assert.equal(sockets.length, 2, 'the one retry goes at the end of the wait');
   t.setUrgent(false);
   sockets[1].close();                                      // an ordinary drop: the first backoff is 500 ms
-  t.setUrgent(true);
+  await advance(300);
+  t.setUrgent(true);                                       // 200 ms left: sooner than the urgent delay
+  await advance(250);
+  assert.equal(sockets.length, 3, 'a redial due sooner than the urgent delay is left as it is');
+});
+
+test('F595 review: a network change during the 4003 reclaim wait does not redial early', async ctx => {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 't' }, backoff: { baseMs: 500, capMs: 10000, jitter: 0 }, reclaimRetryMs: 9500 });
+  ctx.after(() => t.close());
+  t.connect({ url: 'ws://x/ws', trusted: false }).catch(() => {});
+  sockets[0].open();
+  sockets[0].onclose && sockets[0].onclose({ code: 4003, reason: 'gun or node in use' });
+  assert.equal(t.dialNow(), false, 'Wi-Fi to cellular inside the wait: the stale holder on MC has not changed');
+  await advance(9000);
+  assert.equal(sockets.length, 1);
   await advance(600);
-  assert.equal(sockets.length, 3, 'a redial due sooner than the urgent cap is left as it is');
+  assert.equal(sockets.length, 2, 'the one retry still goes at the end of the wait');
 });
