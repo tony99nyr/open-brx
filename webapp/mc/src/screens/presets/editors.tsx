@@ -10,6 +10,7 @@ import type {
 import { STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT, WEAPON_DELAY_MS_OPTIONS } from '../../api/contract.gen';
 import { BTN_RESET, Micro, OutlineTag, Seg, SEG_PAD_44, ValueBox } from '../../ui';
 import { F, T } from '../../tokens';
+import { HelpNote } from '../../ui/Compact';
 import {
   guardSpawnDelay, idsForType, spawnBuiltinValue, toggleTypeIds, typeChipState, typesOf, WEAPON_TYPES,
   type ClassableItem,
@@ -24,7 +25,7 @@ export function weaponDelayOptions(): { value: string; label: string }[] {
   return WEAPON_DELAY_MS_OPTIONS.map(ms => ({ value: String(ms), label: `${ms / 1000} S` }));
 }
 
-function Row({ label, children, note, testId }: { label: string; children: ReactNode; note?: string; testId?: string }) {
+function Row({ label, children, note, testId }: { label: string; children: ReactNode; note?: ReactNode; testId?: string }) {
   return (
     <div data-testid={testId} style={{ display: 'flex', flexDirection: 'column', gap: 6, borderBottom: `1px solid ${T.line}`, padding: '10px 0' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -109,7 +110,9 @@ export function SpawnFields({ value, onChange, builtins }: { value: Respawn; onC
         <Seg value={station ? 'scanner' : 'auto'} label="respawn type" pad={SEG_PAD_44}
           options={[{ value: 'auto', label: 'AUTO' }, { value: 'scanner', label: 'STATION' }]} onChange={setType} />
       </Row>
-      <Row label="DELAY" note="1S OR 2S IS NOT ALLOWED — IT WEDGES THE HEADSET, SO IT SNAPS UP TO 3S">
+      <HelpNote label="Spawn info" testid="spawn-info-note" infoTestid="help2-spawn-info"
+        keep="One or two seconds can wedge the headset. The delay snaps to three seconds. The station gate is not supported; only the trigger is bench-proven." />
+      <Row label="DELAY">
         <ValueBox label="respawn delay seconds" unit="S" min={0} max={300}
           value={value.delay_s} onChange={v => onChange({ ...value, delay_s: guardSpawnDelay(v) })} />
       </Row>
@@ -136,7 +139,7 @@ export function SpawnFields({ value, onChange, builtins }: { value: Respawn; onC
           </Row>
           {/* games-presets.md §13: `gate` is a shipped default, not a bench-proven control — read-only,
               never a segmented choice. */}
-          <Row label="GATE" note="NOT YET SUPPORTED — ONLY TRIGGER IS BENCH-PROVEN">
+          <Row label="GATE">
             <OutlineTag color={T.dim} border={T.line2}>TRIGGER</OutlineTag>
           </Row>
         </>
@@ -180,7 +183,7 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
           })} />
       </Row>
       {value.choice === 'fixed' && (
-        <Row label="FIXED ITEM" note={!value.fixed_id ? 'PICK ONE TO SAVE THIS PRESET' : undefined}>
+        <Row label="FIXED ITEM" note={!value.fixed_id ? 'Pick an item to save this preset.' : undefined}>
           <Seg value={value.fixed_id ?? ''} label="fixed item" wrap pad={SEG_PAD_44}
             options={catalogue.map(c => ({ value: c.id, label: c.name.toUpperCase() }))}
             onChange={id => onChange({ ...value, fixed_id: id })} />
@@ -191,7 +194,7 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
           {types.length > 0 && (
             // QA-23 (visual QA round 1): plain uppercase words, no doc reference on screen (the
             // "why" lives in helpers.ts's own comment, `idsForType`'s snapshot note).
-            <Row label="TYPE" testId="slot-type-row" note="A SNAPSHOT — DOES NOT UPDATE IF A NEW WEAPON OF THIS TYPE IS ADDED LATER">
+            <Row label="TYPE" testId="slot-type-row">
               {types.map(t => {
                 const meta = WEAPON_TYPES.find(w => w.id === t)!;
                 const ids = idsForType(catalogue, t);
@@ -202,7 +205,7 @@ export function SlotFields({ slotKind, value, onChange, catalogue, offAllowed }:
               })}
             </Row>
           )}
-          <Row label="ONLY THESE" testId="slot-only-row" note={value.only_ids.length === 0 ? 'EMPTY = ANY OF THE ABOVE' : undefined}>
+          <Row label="ONLY THESE" testId="slot-only-row" note={value.only_ids.length === 0 ? <HelpNote label="Selection rule" infoTestid="help2-only-these-info" keep="Leave this empty to allow any listed item." /> : undefined}>
             {catalogue.map(c => (
               <Chip key={c.id} label={c.name.toUpperCase()} on={value.only_ids.includes(c.id)} onClick={() => toggleOnly(c.id)} />
             ))}
@@ -225,7 +228,8 @@ export function MiscLoadoutsFields({ value, onChange }: { value: MiscLoadoutsPie
           "unless that slot already excludes its own" caveat is games-presets.md §3's own rule
           (the slot piece wins over this blanket) -- kept in the note so an operator who picks OFF
           and still sees a heavy is not left guessing why. */}
-      <Row label="HEAVIES" note="OFF EXCLUDES HEAVY WEAPONS FROM PRIMARY AND SECONDARY, UNLESS THAT SLOT ALREADY EXCLUDES ITS OWN">
+      <Row label="HEAVIES" note={<HelpNote label="Loadout info" testid="misc-loadout-info-note" infoTestid="help2-loadout-info"
+        keep="When off, heavy weapons are excluded from primary and secondary, unless that slot already excludes them." />}>
         <BigToggle on={value.heavies} onChange={v => onChange({ ...value, heavies: v })} label="heavies" />
         <span style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.dim }}>{value.heavies ? 'ON (PICKUP ONLY)' : 'OFF'}</span>
       </Row>

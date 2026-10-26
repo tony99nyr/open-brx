@@ -405,7 +405,7 @@ describe('GameEditPanel — a session from before loadout policy existed (OLD DA
       const store = makeStore({ ...d, state, view }, { modes: [] });   // an older server: no /api/modes rows either
       const m = await mount(<StoreCtx.Provider value={store}><Screen /></StoreCtx.Provider>);
       await click(m.find('[data-testid="game-edit-toggle"]')[0]);
-      expect(m.text()).toContain('mode list unavailable');
+      expect(m.text()).toContain('Mode list unavailable');
       expect(m.find('[aria-label*="allowed"], [aria-label*="off"]').length, 'the weapon pool still renders from the OPEN fallback').toBeGreaterThan(0);
       m.unmount();
     }

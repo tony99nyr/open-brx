@@ -53,12 +53,11 @@ describe('Report a problem', () => {
     const m = await openPanel(async () => RESULT);
     const p = panel(m);
     expect(p.getAttribute('data-report-phase')).toBe('idle');
-    const t = p.textContent ?? '';
-    expect(t.toLowerCase()).toMatch(/names, tagger ids, ip addresses and the access code are removed/);
-    expect(t.toLowerCase()).toMatch(/github issues are public/);
-    // the scrub is not total: team/game names typed by the operator survive, and the panel says so
-    expect(t.toLowerCase()).toMatch(/short names, numbers and text you typed/);
-    expect(t.toLowerCase()).toMatch(/team and game names/);
+    const info = p.querySelector('[data-testid="help2-report-info"]') as HTMLButtonElement;
+    expect(info.getAttribute('aria-expanded')).toBe('false');
+    await m.click('Report privacy');
+    expect(info.getAttribute('aria-expanded')).toBe('true');
+    expect((p.textContent ?? '')).toContain('Names you typed in the console stay in the report, and it goes to a public GitHub issue.');
     expect(m.find('[data-testid="report-panel"] button').some(b => (b.textContent ?? '').includes('MAKE REPORT'))).toBe(true);
     m.unmount();
   });
@@ -177,7 +176,7 @@ describe('Report a problem', () => {
     expect(panel(m), 'the panel must still be up, with something the operator can read').toBeTruthy();
     expect(panel(m).getAttribute('data-report-phase')).toBe('error');
     await m.click('Why?');
-    expect((panel(m).textContent ?? '').toLowerCase()).toMatch(/could not open the token screen/);
+    expect((panel(m).textContent ?? '')).toContain('Could not open the token screen from this tab. Enter the token from another tab, then try again.');
     m.unmount();
   });
 

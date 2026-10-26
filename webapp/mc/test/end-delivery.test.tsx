@@ -63,6 +63,7 @@ const strip = (s: string) => s.replace(/\s+/g, ' ').toUpperCase();
 describe('A42 · LIVE tells the operator who has not confirmed the end', () => {
   it('names the straggler and says it is still trying', async () => {
     const m = await liveWith(STRAGGLER);
+    expect(m.find('[data-cell="status"][data-end-confirm="pending"]')[0].title).toBe('This HUD has not confirmed the end. That tagger may still be in the match.');
     const el = m.find('[data-testid="end-delivery"]')[0];
     expect(el, 'the notice is on the screen').toBeTruthy();
     const t = strip(el.textContent ?? '');

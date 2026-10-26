@@ -157,16 +157,12 @@ step('one-not-ready', async ({ browser, base }) => {
   await pg.context().close();
 });
 
-// QA-04: the same operator note PLAY shows (games-redesign.md §9) survives onto LOBBY and ARMED, as an
-// SVG info icon (QA-05: the ⓘ glyph is tofu in every bundled face).
+// QA-04: the operator note remains on ARMED, while LOBBY uses its visible phase and controls without a duplicate note.
 step('operator-note', async ({ browser, base }) => {
   const pg = await open(browser, base, '?mock#lobby', 1280);   // default mode is TDM
   await until(() => pg.locator('text=Team Assignment').count().then(n => n > 0), 8000, 'LOBBY');
   const lobbyNote = pg.getByTestId('operator-note');
-  await until(() => lobbyNote.count().then(n => n === 1), 6000, 'the operator note on LOBBY');
-  expect((await lobbyNote.innerText()).toUpperCase().includes("TEAM HITS DON'T COUNT"), 'the TDM note shows on LOBBY');
-  expect(await lobbyNote.locator('svg[data-icon="info"]').count() === 1, 'an SVG info icon, not the ⓘ glyph');
-  expect(!(await lobbyNote.innerText()).includes('ⓘ'), 'the ⓘ glyph itself never reaches the DOM text');
+  expect(await lobbyNote.count() === 0, 'LOBBY has no duplicate TDM operator note');
 
   await pg.evaluate(async () => {
     const api = window.__MC_MOCK__;
@@ -179,7 +175,7 @@ step('operator-note', async ({ browser, base }) => {
   await until(() => armedNote.count().then(n => n === 1), 6000, 'the operator note on ARMED');
   expect((await armedNote.innerText()).toUpperCase().includes("TEAM HITS DON'T COUNT"), 'the same note shows on ARMED');
   expect(await armedNote.locator('svg[data-icon="info"]').count() === 1, 'an SVG info icon on ARMED too');
-  ok(`the operator note, with an SVG icon, on LOBBY and ARMED   ${await shot(pg, 'operator-note-armed-1280')}`);
+  ok(`the TDM operator note remains on ARMED   ${await shot(pg, 'operator-note-armed-1280')}`);
   await pg.context().close();
 });
 
@@ -214,11 +210,15 @@ step('koth-no-stations', async ({ browser, base }) => {
   await until(() => pg.locator('text=Readiness Board').count().then(n => n > 0), 6000, 'ARMORY');
   const focus = pg.getByTestId('items-hill-focus');
   await until(() => focus.count().then(n => n === 1), 6000, 'the focus callout, even with no stations');
+  const stationInfo = focus.getByTestId('help2-items-hill-info');
+  expect(await stationInfo.getAttribute('aria-expanded') === 'false', 'the station explanation starts closed');
+  await stationInfo.click();
   const t = (await focus.innerText()).toUpperCase();
-  expect(t.includes('NO STATION HAS SAID HELLO'), `the callout says nothing is on the net yet (saw "${t}")`);
-  expect(t.includes('SEVEN-TAP') || t.includes('STICKS3'), 'the callout says how to make one (a phone or a Stick)');
+  expect(t.includes('TAP AN IDLE PHONE SEVEN TIMES'), `the opened detail gives the phone gesture (saw "${t}")`);
+  expect(t.includes('UTILITY STATION MODE') && t.includes('STICKS3'), 'the opened detail says how to make a station');
   const back = focus.getByTestId('items-back-to-play');
   await until(() => back.count().then(n => n === 1), 4000, 'CONTINUE TO PLAY inside the callout');
+  await back.scrollIntoViewIfNeeded();
   const box = await settledBox(back);
   const vh = pg.viewportSize().height;
   expect(!!box && box.y >= 0 && box.y + box.height <= vh, `CONTINUE TO PLAY is on screen after the scroll (box=${JSON.stringify(box)}, viewport height ${vh})`);

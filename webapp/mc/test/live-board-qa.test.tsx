@@ -13,7 +13,7 @@
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { NEVER_SEEN_MS, type LiveRow, type LiveView, type State, type StationView } from '../src/api/types';
-import { Live, holdOrder } from '../src/screens/Live';
+import { Live, TEAM_KILL_NOTE, holdOrder } from '../src/screens/Live';
 import { Spectate } from '../src/screens/Spectate';
 import { StoreCtx, type Store } from '../src/store';
 import { demo, makeStore, mount } from './harness';
@@ -207,10 +207,10 @@ describe('M6 · the order holds while the operator is on the board', () => {
     await act(async () => { rows.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); });
     await m.update(<StoreCtx.Provider value={store(mk(5, 9))}><Live /></StoreCtx.Provider>);
     expect(order(), 'held under the pointer').toEqual(['va', 'gh']);
-    expect(m.find('[data-testid="order-held"]').length, 'and the screen says so').toBe(1);
+    expect(m.find('[data-live-rows="1"]')[0].getAttribute('data-order-held')).toBe('1');
     await act(async () => { rows.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })); });
     expect(order(), 're-sorted once the pointer leaves').toEqual(['gh', 'va']);
-    expect(m.find('[data-testid="order-held"]').length).toBe(0);
+    expect(m.find('[data-live-rows="1"]')[0].getAttribute('data-order-held')).toBe('0');
     m.unmount();
   });
 });
@@ -249,19 +249,28 @@ describe('M7 · MC offline', () => {
 });
 
 describe('M24 · a team-kill penalty is explained', () => {
-  it('a negative K carries the note on the cell and in a legend line', async () => {
+  it('a negative K carries the note on both score cells', async () => {
     const { m } = await board('live', {}, [row({ kills: -1, kd: -1 }), row({ player_id: 'p2', display: 'GHOST' })]);
+    expect(TEAM_KILL_NOTE).toBe('A team kill costs the shooter one kill, so K and K/D can go below zero.');
     const k = m.find('[data-cell="k"]').find(e => e.textContent === '-1')!;
-    expect(k.title).toContain('TEAM KILL');
-    expect(m.find('[data-cell="kd"]').find(e => e.textContent === '-1.0')!.title).toContain('TEAM KILL');
-    expect(m.find('[data-testid="team-kill-note"]')[0]?.textContent).toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
-    expect(m.find('[data-col-head="k"]')[0].title).toContain('TEAM KILL');
+    expect(k.title).toBe(TEAM_KILL_NOTE);
+    expect(m.find('[data-cell="kd"]').find(e => e.textContent === '-1.0')!.title).toBe(TEAM_KILL_NOTE);
+    expect(m.text()).not.toContain(TEAM_KILL_NOTE);
+    expect(m.find('[data-col-head="k"]')[0].title).toBe(TEAM_KILL_NOTE);
+    expect(m.find('[data-col-head="kd"]')[0].title).toBe(TEAM_KILL_NOTE);
     m.unmount();
   });
 
   it('no legend line when nobody is below zero', async () => {
     const { m } = await board('live', {}, [row()]);
-    expect(m.find('[data-testid="team-kill-note"]').length).toBe(0);
+    const k = m.find('[data-cell="k"]')[0];
+    expect(k.textContent).toBe('9');
+    expect(k.title).toBe('');
+    expect(m.text()).not.toContain(TEAM_KILL_NOTE);
     m.unmount();
+    const negative = await board('live', {}, [row({ kills: -1, kd: -1 })]);
+    expect(negative.m.find('[data-cell="k"]')[0].title).toBe(TEAM_KILL_NOTE);
+    expect(negative.m.text()).not.toContain('A TEAM KILL COSTS THE SHOOTER ONE KILL');
+    negative.m.unmount();
   });
 });

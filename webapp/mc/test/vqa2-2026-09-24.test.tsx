@@ -4,7 +4,7 @@
 // asserted here on the styles and the structure that produce the layout. The pixel half is the browser
 // gate `test/e2e/vqa2.mjs`, against a real demo MC with station and phone stand-ins.
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { Api, LiveRow, LiveView, RecapView, State, StationView } from '../src/api/types';
 import { Armory } from '../src/screens/Armory';
 import { Games } from '../src/screens/Games';
@@ -215,16 +215,18 @@ describe('M6 · a row whose gun pools are wrong reads POOLS WRONG and sorts firs
 
 describe('M7 · LIVE keeps the board and the operator menu in view', () => {
   it('an opened operator menu scrolls itself into view', async () => {
-    const spy = vi.fn();
-    const orig = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = spy;
-    try {
-      const { m } = await screen(<Live />, { phase: 'live', live: liveView([row()]) });
-      await act(async () => { m.find('[data-live-row-toggle="p1"]')[0].click(); });
-      await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
-      expect(spy, 'the menu asked to be scrolled into view').toHaveBeenCalledTimes(1);
-      m.unmount();
-    } finally { Element.prototype.scrollIntoView = orig; }
+    const { m } = await screen(<main style={{ overflowY: 'auto' }}><Live /></main>,
+      { phase: 'live', live: liveView([row()]) });
+    await act(async () => { m.find('[data-live-row-toggle="p1"]')[0].click(); });
+    const main = m.find('main')[0];
+    const menu = m.find('[data-operator-menu]')[0];
+    Object.defineProperty(main, 'scrollHeight', { configurable: true, value: 1200 });
+    Object.defineProperty(main, 'clientHeight', { configurable: true, value: 900 });
+    main.getBoundingClientRect = () => DOMRect.fromRect({ y: 0, height: 900 });
+    menu.getBoundingClientRect = () => DOMRect.fromRect({ y: 780, height: 170 });
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+    expect(main.scrollTop, 'the menu moves into the visible screen').toBeGreaterThanOrEqual(58);
+    m.unmount();
   });
   it('LIVE renders the station alerts compact', async () => {
     const { m } = await screen(<Live />, { phase: 'live', live: liveView([row()]), stations: [station('a', { attention: ['STATION #1 RESTARTED'] })] });

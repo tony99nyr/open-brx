@@ -390,7 +390,7 @@ const step = (name, fn) => steps.push({ name, fn });
 // changing PLAY's kicker from `[ A2 // PLAY ]` to `[ 02 // PLAY ]` (kit-continue.mjs does the same).
 step('boot', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'build');
-  expect(await pg.locator('text=Pick Game').count() > 0, 'the header title reads PICK GAME');
+  expect(await until(() => pg.getByText('Pick Game', { exact: true }).first().isVisible(), 8000, 'the Pick Game title'), 'the header title reads PICK GAME');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'no error-boundary crash on first paint');
   expect(await pg.locator('nav button:has-text("PLAY")').count() > 0, 'the PLAY nav tab is present');
   ok(`PLAY renders  ${await shot(pg, '01-play')}`);
@@ -1098,7 +1098,9 @@ step('stale-server', async ({ browser, base }) => {
     ws.onMessage(m => s.send(m));
   });
   await go(pg, 'build');
+  const staleState = await pg.evaluate(async () => (await fetch('/api/state')).json());
   expect(stripped > 0, 'REST bodies were actually stripped (the interception is live)');
+  expect(staleState.config?.mode === 'tdm', 'the intercepted REST response is the active TDM snapshot');
   // mc-koth went red twice in a week on the PIECES wait under a full parallel gate and passed alone. The pieces alert
   // shows only while the console's WebSocket (here through the stale-server proxy) is connected (`Games.tsx`:
   // `piecesRes.error && connected`); the catalogue alert has no such guard. Both stay condition waits: 30 s only bounds

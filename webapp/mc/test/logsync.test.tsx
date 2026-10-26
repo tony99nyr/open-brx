@@ -45,7 +45,7 @@ describe('A25 · the LOG SYNC switch', () => {
     const sw = m.find('[data-logsync]')[0];
     expect(sw, 'the LOG SYNC control is on the muster header').toBeTruthy();
     expect(sw.getAttribute('data-logsync')).toBe('auto');
-    expect(m.text()).toContain('LOG SYNC');
+    expect(m.text()).toContain('Log sync');
     m.unmount();
   });
 
@@ -70,16 +70,18 @@ describe('A25 · the LOG SYNC switch', () => {
     m.unmount();
   });
 
-  // Bench 2026-09-17 (Tony): no legend under the switch. Each mode is explained by a short tooltip on
-  // the LOG SYNC label, and the tooltip says the LOGS button works in AUTO.
-  it('shows no legend under the switch, and explains each mode in the label tooltip', async () => {
+  // The INFO button explains both modes when the operator opens it.
+  it('shows no legend under the switch, and opens the approved explanation', async () => {
     for (const mode of ['auto', 'manual'] as const) {
       const d = await demo();
       const state: State = { ...d.state, options: { log_sync: mode } };
       const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
       expect(m.find('[data-logsync] [data-logsync-legend]').length, `no ${mode} legend`).toBe(0);
-      const title = m.find('[data-logsync] [data-logsync-label]')[0].getAttribute('title') ?? '';
-      expect(title, `the ${mode} tooltip`).toMatch(mode === 'auto' ? /after the match.*LOGS button always works/ : /only when you press LOGS/);
+      const info = m.find('[data-testid="help2-log-sync-info"]')[0];
+      expect(info.getAttribute('aria-expanded')).toBe('false');
+      await m.click('Log sync');
+      expect(info.getAttribute('aria-expanded')).toBe('true');
+      expect(m.find('[data-testid="armory-log-sync-note"]')[0].textContent).toBe('Auto collects logs after the match. Manual collects a log when you press Logs.');
       m.unmount();
     }
   });

@@ -34,6 +34,84 @@ def test_older_verdict_rep_scale_matches_main():
     assert REPS_SCALE == 0.01
 
 
+def test_burst_keeps_a_loaded_primary_when_deagle_needs_a_landed_hit():
+    plain = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    fast = R.replace(plain, name="fast", swap_ms=plain.swap_ms / 2,
+                     guns=(R.replace(plain.guns[0], reload_ms=plain.guns[0].reload_ms / 2), plain.guns[1]))
+    rng = random.Random(7)
+    fighter = R.Fighter(fast, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+    target = R.Fighter(plain, (5, 0, 0), 0, R.DIST["mid"], rng)
+    fighter.targets = [target]
+    fighter.gs[0].ammo = 16
+    fighter.gs[0].count = 20
+
+    assert fighter._finish_ms(0, target, 4643) < fast.swap_ms + fighter._finish_ms(1, target, 4643)
+    assert not fighter._maybe_swap(4643)
+    assert fighter.active == 0
+
+
+def test_finish_estimate_counts_whole_landed_shots():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    deagle = kit.guns[1]
+    hit = deagle.gun_dmg + deagle.head_dmg
+    est = {}
+    for health in (hit + 4, 2 * hit):
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+        target = R.Fighter(kit, (health, 0, 0), 0, R.DIST["mid"], rng)
+        fighter.targets = [target]
+        est[health] = fighter._finish_ms(1, target, 0)
+    # Both need two landed Deagle hits, so a mean-damage count must not call the first one quicker.
+    assert est[hit + 4] == est[2 * hit]
+
+
+def test_a_last_round_that_kills_if_it_lands_is_a_finish():
+    kit = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle")
+    rng = random.Random(7)
+    fighter = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["close"], rng)
+    target = R.Fighter(kit, (5, 0, 0), 0, R.DIST["close"], rng)
+    fighter.targets = [target]
+    fighter.gs[1].ammo, fighter.gs[1].reserve = 1, 0
+    # Whole landed shots must not turn a likely one-round kill into "never".
+    assert 0.5 < fighter._hit_chance(1) < 1
+    assert fighter._finish_ms(1, target, 0) < float("inf")
+
+
+def test_a_zero_success_cell_is_never_near_top():
+    # Every kit is within 0.05 of a 0.011 top, but zero wins add no value.
+    assert not R._near_top("hill hold", 0.0, 0.011)
+    assert R._near_top("hill hold", 0.01, 0.011)
+
+
+def _dry_deagle_estimate(pool, chance, rounds):
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    return R.finish_estimate(deagle, pool=pool, chance=chance, ammo=rounds, reserve=0, reload_amount=0,
+                             ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
+                             overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=True, count=0, dist=R.DIST["mid"],
+                             heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
+
+
+def test_a_dry_gun_finishes_only_when_its_rounds_likely_land_the_kill():
+    # Two 26-damage rounds at 0.9 against 30 health: two hits are needed and land 81% of the time.
+    assert _dry_deagle_estimate(30, 0.9, 2) < float("inf")
+    # One round at 0.05 against 5 health: a likely miss is not a finish.
+    assert _dry_deagle_estimate(5, 0.05, 1) == float("inf")
+    # One round, two hits needed: never.
+    assert _dry_deagle_estimate(30, 0.9, 1) == float("inf")
+
+
+def test_the_dry_estimate_is_monotonic_in_reserve_and_never_overflows():
+    # Two hits at 0.2 land with even odds by round 9, with or without a reserve behind them.
+    dry = _dry_deagle_estimate(30, 0.2, 9)
+    deagle = R.make_kit(R.shipped_world(), "plain", "burst_rifle", "deagle").guns[1]
+    stocked = R.finish_estimate(deagle, pool=30, chance=0.2, ammo=9, reserve=96, reload_amount=0, ready_at=0.0,
+                                locked_until=0.0, t=0.0, pull_ms=R.PULL_MS, overshoot_ms=R.FIGHT_OVERSHOOT_MS,
+                                charged=True, count=0, dist=R.DIST["mid"], heat=0.0, heat_t=0.0,
+                                heat_cool_while_firing=True)
+    assert dry == stocked < float("inf")
+    assert _dry_deagle_estimate(30 * 26, 0.02, 1200) == float("inf")
+
+
 def _copy(src: str, weapon_id: str, name: str, **wire) -> dict:
     row = copy.deepcopy(WeaponCatalog()._row(src))
     row.update(weapon_id=weapon_id, name=name)
@@ -105,7 +183,9 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
 
 def test_field_score_is_zero_when_one_team_size_gets_no_kills():
     shipped = R.shipped_world()
-    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=1)   # F601: at 3 the fixed swap lets its Deagle finish in every team size
+    # F601: at 3 the fixed swap let its Deagle finish in every team size. F617: whole-hit estimates moved the seed-7
+    # draws, so at 1 it now scores in every size; 2 keeps one size with no kills
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=2)
     world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
              R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
@@ -1013,7 +1093,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 21
+    assert R.SCENARIO_VERSION == 23
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True

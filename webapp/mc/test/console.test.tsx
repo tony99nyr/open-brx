@@ -271,7 +271,8 @@ describe('the ARSENAL quotes the game that is actually set up', () => {
     // whatever the host had set health to (docs/weapon-design.md §2.5).
     const d = await demo();
     const m = await mountScreen(<Catalog />, { ...d, weapons: arsenal(200), view: 'catalog' });
-    expect(m.text()).toContain('200 POOL');
+    const hits = m.find('th[role="columnheader"]').find(h => h.textContent?.includes('HITS / PULLS TO KILL'));
+    expect(hits?.title).toContain("this game's 200 pool");
     expect(m.text()).toContain('23');
     m.unmount();
   });
@@ -279,6 +280,8 @@ describe('the ARSENAL quotes the game that is actually set up', () => {
   it('says nothing about a pool the server did not send', async () => {
     const d = await demo();
     const m = await mountScreen(<Catalog />, { ...d, weapons: arsenal(undefined), view: 'catalog' });
+    const hits = m.find('th[role="columnheader"]').find(h => h.textContent?.includes('HITS / PULLS TO KILL'));
+    expect(hits?.title).toBe('');
     expect(m.text()).not.toMatch(/POOL \(HP/);
     m.unmount();
   });

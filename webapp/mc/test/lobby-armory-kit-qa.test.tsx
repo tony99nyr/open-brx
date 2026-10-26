@@ -58,9 +58,22 @@ describe('H5 · LOBBY outside the lobby phase', () => {
     expect(m.find('[data-lobby-primary="push"]').length, 'the push is still offered').toBe(1);
     expect(btnText(m).some(l => l.includes('MARK ALL READY')), 'ready_all refuses outside LOBBY').toBe(false);
     expect(m.find('[data-mark-ready="1"]').length, 'the per-player MARK READY stays').toBe(1);
-    expect(m.find('[data-ready-closed]')[0]?.textContent).toContain('MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT BUILD');
+    expect(m.text()).toContain('Push config first.');
+    expect(m.text()).not.toContain('MARK ALL READY OPENS ONCE');
     m.unmount();
   });
+
+  for (const phase of ['kit', 'muster'] as const) {
+    it(`explains the missing config when MARK ALL READY is hidden in ${phase.toUpperCase()}`, async () => {
+      const d = await demo();
+      const state: State = { ...d.state, phase, players: d.state.players.map((p, i) => ({ ...p, ready: i !== 0 })),
+        lobby: { ...d.state.lobby, pushed: false } };
+      const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+      expect(btnText(m).some(l => l.includes('MARK ALL READY')), 'the phase hides the roster-wide action').toBe(false);
+      expect(m.find('[data-mark-all-ready-reason="1"]')[0]?.textContent).toBe('Push config first.');
+      m.unmount();
+    });
+  }
 });
 
 describe('M2 · LOBBY not-ready rows and MARK ALL READY', () => {

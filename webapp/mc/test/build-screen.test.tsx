@@ -63,7 +63,7 @@ describe('round 2 (1): BUILD’s own ◂ BACK TO PLAY leaves on the SECOND tap, 
       nameInput.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await m.click('◂ BACK TO PLAY');   // tap 1: BUILD's own local confirm
-    expect(m.text(), 'tap 1 shows the confirm and stays put').toContain('UNSAVED CHANGES');
+    expect(m.text(), 'tap 1 shows the confirm and stays put').toContain('UNSAVED CHANGES · TAP AGAIN TO LEAVE WITHOUT SAVING');
     expect(m.find('[data-testid="other-screen"]').length).toBe(0);
     await m.click('◂ BACK TO PLAY');   // tap 2: confirmed -- this used to still be blocked by the
                                        // store's OWN guard (dirty had not reached it yet) and need a third

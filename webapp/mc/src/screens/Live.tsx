@@ -62,7 +62,7 @@ export function holdOrder<R extends { player_id: string }>(ranked: R[], prev: st
 
 /** Visual QA M24 (2026-09-23): a team kill costs the shooter one kill (scoring.py), so K and K/D can go
  *  below zero. Said where the number is, not left for the operator to guess. */
-export const TEAM_KILL_NOTE = 'A TEAM KILL COSTS THE SHOOTER ONE KILL, SO K AND K/D CAN GO BELOW ZERO.';
+export const TEAM_KILL_NOTE = 'A team kill costs the shooter one kill, so K and K/D can go below zero.';
 
 /** F119: `accuracy` is computed from hits that arrive per EVENT against a shot count that arrives on a
  *  ~2 s heartbeat, so a young row can spike and even exceed 100 %. `acc_provisional` says it has not
@@ -71,7 +71,7 @@ function Acc({ r }: { r: { accuracy: number | null; acc_provisional?: boolean } 
   const prov = !!r.acc_provisional;
   return (
     <span data-cell="acc" data-provisional={prov ? '1' : '0'}
-      title={prov ? 'Still settling — hits arrive per event, shots only on the ~2s heartbeat' : undefined}
+      title={prov ? 'Still settling: hits arrive per event, shots only on the ~2s heartbeat' : undefined}
       style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...edge('acc') }}>
       {/* the mark LEADS the number: "35%~" reads as a unit nobody uses, "~35%" is how an approximate
           value is written everywhere else (review 2026-09-12) */}
@@ -115,10 +115,11 @@ export function Live() {
   if (!state) return null;
   const lv = state.live;
   if (!lv) {
+    if (state.orphan_match) return <div className="screen"><OrphanMatch /></div>;
     return (
-      <div className="screen" data-alert="live-no-match" data-sev="neutral" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: colourOf('live-no-match') }}>
-        <OrphanMatch />
-        NO MATCH LIVE: THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
+      <div className="screen" style={{ padding: 20, font: F.chk(600, 14), color: T.body }}>
+        <p>No match is live.</p>
+        <GhostButton onClick={() => setView('lobby')}>LOBBY ▸</GhostButton>
       </div>
     );
   }
@@ -155,7 +156,6 @@ export function Live() {
   const teamScore = (id: string, side: 'left' | 'right') => objective
     ? <TeamScore key={id} id={id} side={side} value={fmtHeld(heldSeconds(lv, id))} sub={`KILLS ${lv.score[id] ?? 0}`} />
     : <TeamScore key={id} id={id} side={side} value={<Num value={lv.score[id] ?? 0} />} />;
-  const anyTeamKill = rows.some(r => r.kills < 0);
   const offline = !connected;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
   // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
@@ -185,7 +185,7 @@ export function Live() {
             laptop and drags the other window to the projector; navigating this one away would take END and RECALL
             with it. `search` is carried so `?mock` opens a mock spectator board. */}
         <a data-spectate-link="1" href={`${location.pathname}${location.search}#spectate`} target="_blank" rel="noopener"
-          className="hov-acc" title="Open the read-only spectator board in a new tab — no controls, safe on a projector"
+          className="hov-acc" title="Open the read-only spectator board in a new tab. There are no controls, so it is safe on a projector."
           style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.dim, textDecoration: 'none',
                    border: `1px solid ${T.line2}`, padding: '9px 16px', minHeight: 40, display: 'inline-flex', alignItems: 'center' }}>
           SPECTATE ↗
@@ -282,16 +282,6 @@ export function Live() {
                 </div>
               ))}
             </div>
-            {held && (
-              <div data-testid="order-held" data-alert="live-order-held" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-order-held'), marginTop: 8 }}>
-                ORDER HELD WHILE THE POINTER IS ON THE BOARD OR A MENU IS OPEN. IT RE-SORTS WHEN YOU MOVE AWAY.
-              </div>
-            )}
-            {anyTeamKill && (
-              <div data-testid="team-kill-note" data-alert="live-team-kill-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-team-kill-note'), marginTop: 8 }}>
-                K BELOW ZERO: {TEAM_KILL_NOTE}
-              </div>
-            )}
             <HelpNote label="Tap a player for more" keep="Tap a player for resync, respawn or relink." />
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
@@ -305,7 +295,7 @@ export function Live() {
                   title={offline ? OFFLINE_WHY : 'Early end: reaches only nodes in range; the rest end at the time limit (confirm step)'}>END MATCH EARLY</GhostButton>
               )}
               {recallConfirm ? (<>
-                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => control('recall')); if (r) setNotice(`RECALLED${reachTxt(r)}`, short(r)); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
+                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => control('recall')); if (r) setNotice(`RECALLED${reachTxt(r)}`, short(r)); }}>CONFIRM RECALL: REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
                 <GhostButton onClick={() => setRecallConfirm(false)}>CANCEL</GhostButton>
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} disabled={offline}
@@ -324,7 +314,6 @@ export function Live() {
             <span style={{ font: F.chk(700, 11), letterSpacing: '.24em', color: T.dim }}>EVENT FEED // LIVE</span>
           </div>
           <div role="status" aria-live="polite" aria-relevant="additions" style={{ border: `1px solid ${T.line}`, background: T.panelDeep, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {feed.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.faint, padding: 6 }}>WAITING FOR THE FIRST SYNC POINT…</div>}
             {feed.map((ev, i) => {
               // F118: an `alert` is MC's own global-state call, in the OPERATOR's third-person copy —
               // a different KIND of line from a kill, and it has to look like one. WITHHELD is the
@@ -361,12 +350,7 @@ export function Live() {
                 rather than train the operator to read a dashed row as noise. */}
             {feed.some(e => e.tag === 'WITHHELD') && (
               <div data-alert="live-feed-withheld-note" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-feed-withheld-note'), padding: '6px 10px', lineHeight: 1.5 }}>
-                WITHHELD = MC RECORDED IT BUT DID NOT CALL IT TO THE PLAYERS.
-              </div>
-            )}
-            {feed.some(e => e.tag === 'AFTER WHISTLE') && (
-              <div data-testid="feed-after-whistle-note" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, padding: '6px 10px', lineHeight: 1.5 }}>
-                AFTER WHISTLE = A KILL AFTER THE END. IT IS NOT IN THE SCORE, THE RESULTS, THE AWARDS OR THE MEDALS.
+                <HelpNote label="Feed notes" infoTestid="help2-live-feed-info" keep="Withheld means MC recorded the event but did not call it to players." />
               </div>
             )}
           </div>
@@ -432,7 +416,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
           );
         }) : (
           <div data-hill-none="1" data-alert="live-hill-none" data-sev="neutral" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: colourOf('live-hill-none'), lineHeight: 1.5 }}>
-            NO PHONE HAS REPORTED POSSESSION YET. THE {word} TIME SHOWS HERE WHEN ONE DOES; UNTIL THEN THE WINNER IS THE HOST'S CALL.
+            <HelpNote label="Possession" infoTestid="help2-live-hill-info" keep="No phone has reported possession. The host decides the winner until one does." />
           </div>
         )}
         {p && (
@@ -555,7 +539,7 @@ function Row({ r, endUnconfirmed, open, onToggle, offline }: { r: LiveRow; endUn
           : poolsWrong ? 'live-row-status-poolswrong' : stale ? 'live-row-status-last-known' : dead ? 'live-row-status-respawn' : undefined}
         data-sev={offline ? 'neutral' : endUnconfirmed ? 'amber' : poolsWrong ? 'red' : stale ? 'amber' : dead ? 'neutral' : undefined}
         title={offline ? 'MC is offline: this is the last snapshot, not the current state'
-          : endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match'
+          : endUnconfirmed ? 'This HUD has not confirmed the end. That tagger may still be in the match.'
           : never ? 'MC has not heard from this phone since MC started' : undefined}
         style={{ font: F.chk(700, 11), letterSpacing: '.12em',
           color: offline ? colourOf('live-row-status-unknown') : endUnconfirmed ? colourOf('live-row-status-end-not-confirmed')

@@ -1,4 +1,4 @@
-import { FaultPill, ItemChip, BackhaulStatus, autoOf } from '../ui/Compact';
+import { FaultPill, ItemChip, BackhaulStatus, autoOf, HelpNote } from '../ui/Compact';
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
 import { armoryGate, backhaulOffer, cureAlertId, cureLabel, GUN_LOCKED_ALERT_ID, poolStaleAlertId, gunLockedLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
@@ -181,11 +181,8 @@ export function Armory() {
             // Bench 2026-09-17 (Tony): the always-visible legend under this switch was noise. What each mode does
             // is a short tooltip on the LOG SYNC label; the LOGS button works in both modes.
             <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <span data-logsync-label="1"
-                title={state.options.log_sync === 'auto'
-                  ? 'Auto: MC collects each phone log after the match. The LOGS button always works.'
-                  : 'Manual: MC collects a log only when you press LOGS.'}
-                style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro, cursor: 'help' }}>LOG SYNC</span>
+              <HelpNote label="Log sync" testid="armory-log-sync-note" infoTestid="help2-log-sync-info"
+                keep="Auto collects logs after the match. Manual collects a log when you press Logs." />
               <Seg label="log sync" value={state.options.log_sync}
                 options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
                 onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
@@ -243,7 +240,7 @@ export function Armory() {
         <JoinPanel />
         <div style={{ flex: '1 1 520px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12, alignContent: 'start' }}>
           {problemsFirst(board).map(g => <GunCard key={g.sticker} g={g} />)}
-          {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
+          {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>No players yet. Add operators in KIT.</div>}
         </div>
       </div>
       <StationAlerts unlockOnly />
@@ -257,7 +254,7 @@ export function Armory() {
            full connected count on the page for anything that needs to know a phone exists at all. */
         <div style={{ marginTop: 20 }} data-nodes={visiblePhones.length} data-phones-total={phones.length}>
           {visiblePhones.length > 0 && (<>
-            <SectionRule label={`PHONES ON THE NET // ${visiblePhones.length}`} hint="WITH OR WITHOUT A GUN" />
+            <SectionRule label={`PHONES ON THE NET // ${visiblePhones.length}`} />
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
               {visiblePhones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
             </div>
@@ -273,7 +270,7 @@ export function Armory() {
       )}
       {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <SectionRule label="KNOWN GUNS — NOT SEEN" hint="POWERED OFF, OUT OF RANGE, OR NOT YET CLAIMED BY A PHONE" />
+          <SectionRule label="KNOWN GUNS · NOT SEEN" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
             {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).map(r => <GhostCard key={r.gun_id} r={r} />)}
           </div>
@@ -281,7 +278,7 @@ export function Armory() {
       )}
       {readiness.unclaimed.length > 0 && (
         <div style={{ marginTop: 22 }}>
-          <SectionRule label={`UNCLAIMED // ${readiness.unclaimed.length} GUNS ADVERTISING, NO NODE`} hint="HAND THEM OUT — A PHONE MUST CLAIM EACH GUN" />
+          <SectionRule label={`UNCLAIMED // ${readiness.unclaimed.length} GUNS ADVERTISING, NO NODE`} hint="Give each gun to a phone user." />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {readiness.unclaimed.map(u => (
               <span key={u.tail} style={{ background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px', display: 'inline-flex', gap: 10, alignItems: 'baseline' }}>

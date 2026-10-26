@@ -13,12 +13,10 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // the single clearest colour-vs-rule mismatch the audit found. Now a red banner in the LIVE
   // screen's own words (MC_OFFLINE, imported, never re-typed).
   'armed-offline-synced': { sev: 'neutral', text: 'OFFLINE', why: 'the frame already shows the RED MC OFFLINE banner on every screen; a second red sentence on ARMED said one fact twice, so the countdown only notes OFFLINE as status (F221 round 2)' },
-  'armed-reminder-line': { sev: 'neutral', text: 'GUNS COUNT DOWN ON THEIR OWN. PLAYERS MAY SCATTER OUT OF RANGE. ALL GO LIVE AT T-0. RESCHEDULE FURTHER OUT BEFORE THE WALK. AN ABORT REACHES ONLY NODES IN RANGE.' },
   // Sweep: an unacked node during the countdown, AND a node that acked but has since gone stale (no
   // longer reporting), are the same gun-link risk mid-match — Tony's RED example names exactly this.
   'armed-retrying': { sev: 'red', text: 'RETRYING · LAST SEEN {AGE}' },
   'armed-unsynced-suffix': { sev: 'amber', text: 'UNSYNCED' },
-  'armed-no-schedule': { sev: 'neutral', text: 'NO SCHEDULE: PUSH CONFIG AND ARM FROM THE LOBBY.' },
 
   // ---- shared coverage chip (LOBBY header, ARMED header, ui/index.tsx) --------------------------
   'lobby-coverage-tag': { sev: 'neutral', text: 'INTERNET: {N} OF {M} PHONES', also: ['armed-coverage-tag'] },
@@ -49,9 +47,7 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   // before the next match" fact, not covered by the audit's single captured shot.
   'lobby-balance-tag-unbalanced': { sev: 'amber', text: '{A} V {B}: UNBALANCED' },
   'lobby-no-players-tag': { sev: 'neutral', text: 'NO PLAYERS YET' },
-  'lobby-no-override-forceproof': { sev: 'neutral', text: 'CANNOT BE OVERRIDDEN: RE-PUSH CONFIG BEFORE THE COUNTDOWN' },
   'lobby-roster-no-override': { sev: 'neutral', text: 'CANNOT BE OVERRIDDEN: FIX THE ROSTER FIRST' },
-  'lobby-ready-closed-note': { sev: 'neutral', text: 'MARK ALL READY OPENS ONCE THE CONFIG IS PUSHED. MC IS AT {PHASE}, NOT LOBBY.' },
   'lobby-inplay-banner': { sev: 'neutral', text: 'THE COUNTDOWN IS RUNNING. THIS LOBBY IS READ-ONLY.' },
   'lobby-no-phone-chip': { sev: 'neutral', text: 'NO PHONE' },
   'lobby-reach-lan-chip': { sev: 'neutral', text: 'LAN / INTERNET' },
@@ -79,7 +75,6 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
   'frame-orphan-match': { sev: 'amber', text: '{N} PHONE(S) {IS|ARE} IN A MATCH THIS MC DID NOT START' },
 
   // ---- GameEditPanel ------------------------------------------------------------------------------
-  'frame-bench-volume-override': { sev: 'neutral', text: 'BENCH VOLUME {N} OVERRIDES THIS ON THIS RUN: EVERY GUN PLAYS AT {PLAYS}.' },
   'frame-game-edit-dirty': { sev: 'neutral', text: 'UNSAVED: {FIELDS} / NO CHANGES YET' },
   'frame-game-edit-locked': { sev: 'amber', text: 'THE MATCH IS {PHASE}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.' },
 
@@ -108,6 +103,11 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 /** Audit ids this lane retired as alerts: id -> why (removed, merged into another id's words, or now
  *  positive/data status). */
 export const LOBBY_RETIRED: Record<string, string> = {
+  'armed-reminder-line': 'the long countdown reminder no longer renders on ARMED.',
+  'armed-no-schedule': 'the empty schedule note no longer renders on ARMED.',
+  'frame-bench-volume-override': 'the bench volume fact moved into the game settings INFO.',
+  'lobby-no-override-forceproof': 'the explanatory note was removed from LOBBY.',
+  'lobby-ready-closed-note': 'the old phase explanation was replaced by the short inline instruction, Push config first.',
   'frame-game-sent-nobody': 'drawn only by GameSentStatus, which no screen rendered; the component was deleted as dead code (A19, 2026-10-10).',
   'frame-game-sent-partial': 'the same GameSentStatus line, deleted with it (A19, 2026-10-10).',
   'lobby-unassigned-heading': 'a column header, not a fact about any one player — restyled off T.warn to plain ink; the audit itself flagged the borrowed amber as unearned.',

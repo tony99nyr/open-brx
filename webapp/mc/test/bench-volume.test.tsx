@@ -10,7 +10,7 @@ describe('the bench volume tag', () => {
     const m = await mountScreen(<CommandBar />, { ...d, state: { ...d.state, bench_volume: 55 }, view: 'muster' });
     const tag = m.el.querySelector('[data-testid="bench-volume"]');
     expect(tag?.textContent).toMatch(/BENCH VOL 55/);
-    expect(tag?.getAttribute('title')).toMatch(/not for a real game/i);
+    expect(tag?.getAttribute('title')).toBeNull();
     m.unmount();
   });
 

@@ -46,7 +46,6 @@ export function Armed() {
             {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
             <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
           </>} />
-        <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: colourOf('armed-no-schedule') }}>NO SCHEDULE: PUSH CONFIG AND ARM FROM THE LOBBY.</div>
       </div>
     );
   }
