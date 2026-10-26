@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 104.** Desk 7 · bench 93 · decision 4.
+**MVP open: 103.** Desk 6 · bench 93 · decision 4.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (6),** a keyboard is enough:
 - 🟠 **F595**
-- 🟡 **F547** · **F619** · **F622**
+- 🟡 **F547** · **F619**
 - 🟢 **F512** · **F544** · **F574**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F625 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F626 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -56,7 +56,6 @@ A keyboard is enough. Highest value first.
 - **F547 🟡 HUD: THE TOXIN RIFLE'S AMMO PIPS BECOME A BAR.** brx1, 2026-10-16 (bench C.12). Tony: the pips are broken, too many, and they take a lot of screen; use a bar. HUD lane (brx-hud): show Tony a static before and after gallery first (`ui-review-static-gallery`), then build. Owner brx4 with the HUD lane. `build`. **Decided 2026-10-24 (Tony, option C):** "i only like the pips when it represents the shots 1:1. I think I prefer the bar otherwise". `AMMO_PIP_MAX` 30 → 20, so the Toxin Rifle gets the bar (amber when low, no number); mags of 20 or fewer keep one pip per round, and Extended Mags moves the AMR, Glock, Bolt Rifle and Stinger to the bar. **Built 2026-10-24** (brx4, `e99300011`). Left: Tony's pick on a thinner bar from brx1's gallery.
 
 - **F574 🟢 THE `mc-play` BROWSER GATE FAILED TWICE ON ITS REAL-MC STEPS.** brx2, 2026-10-18 (the F512 check). Two main CI failures in 7 days, both in `webapp/mc/test/e2e/play.mjs` steps that start a real MC, and neither recurred on later runs: `real-fresh` "the three fresh-install pickers show against a real MC" (run `38122943216`, 2026-10-11) and `real-teams-hold` "timed out waiting for the first snapshot", then the PLAY screen and the TEAMS item (run `38268828276`, 2026-10-12). Not yet shown to be flakes: no rerun of either. brx3 widened the real-MC waits in `koth.mjs` for the `mc-koth` flake (`f5b7a4d39`); `play.mjs` has the same pattern and no such change. Read both steps' waits against that fix. F512 waits on this or on a green window. `desk`.
-- **F622 🟡 SWEEP THE SEPTEMBER FIRMWARE HEX ADDRESSES OUT OF THE CURRENT DOCS (PART OF [F324](post-mvp.md)).** brx2 for brx1, 2026-10-26; brx4 owns the sweep after its firmware-guards branch lands. About 110 older lines in `docs/` still carry September firmware hex addresses, mostly in `docs/experiment-log/2026-09.md` and `docs/firmware-image-research-plan.md`. They are also wrong: they predate the image base-address correction, so each one is off by that shift. This row names no address on purpose. Remove them from the current tree, or replace them with behaviour-level text, in line with F324. The sweep cannot clean git history: the old lines stay in past commits until Tony decides on a history purge. Done when no current doc carries a September firmware address.
 
 ## MVP BENCH
 
