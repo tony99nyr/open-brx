@@ -133,7 +133,8 @@ def test_a_beat_sent_before_the_phones_own_end_is_not_received():
     pid = ps[0]["player_id"]
     net.simulate_status("node0", {"player_id": pid, "pending": 0, "arm_state": "live",
                                   "match_id": info["match_id"]}, clock["t"])
-    assert _row(s, pid)["stage"] != "received", "still live: its end facts were not booked yet"
+    # Not a drained claim: the phone is still sending for this match, not linked and idle.
+    assert _row(s, pid)["stage"] == "linked", "still live: its end facts were not booked yet"
     net.simulate_status("node0", {"player_id": pid, "pending": 0, "arm_state": "armed",
                                   "match_id": info["match_id"]}, clock["t"])
     assert _row(s, pid)["stage"] != "received"
@@ -156,7 +157,6 @@ def test_a_restart_keeps_the_time_left_on_the_bound():
     s._persist_last = 0.0
     s._persist()
     assert json.loads(s._persist_path.read_text())["match"]["release_due_in_ms"] == 30_000
-    clock["t"] += 3_600_000              # MC is down an hour; the wall clock is not used to time the rest
     s2, _ = restart_session(s, clock)
     mono2 = {"t": 50}
     s2.mono_ms = lambda: mono2["t"]
@@ -226,3 +226,20 @@ def test_a_crash_without_a_fresh_write_keeps_the_time_left_from_the_countdown():
     mono2 = {"t": 0}
     s2.mono_ms = lambda: mono2["t"]
     assert s2.resume_match() == "recap" and _sync(s2)["release_in_s"] == 10
+
+
+def test_the_time_mc_was_down_counts_against_the_bound():
+    s, net, clock, mono, ps, _ = _ended(persist=True)
+    mono["t"] += BOUND_MS - 30_000
+    s._persist_last = 0.0
+    s.tick()
+    clock["t"] += 20_000                 # MC is down 20 s
+    s2, _ = restart_no_repersist(s, clock)
+    mono2 = {"t": 0}
+    s2.mono_ms = lambda: mono2["t"]
+    assert s2.resume_match() == "recap" and _sync(s2)["release_in_s"] == 10
+    s3, _ = restart_no_repersist(s, {"t": clock["t"] + 3_600_000})
+    s3.mono_ms = lambda: 0
+    assert s3.resume_match() == "recap"
+    s3.tick()
+    assert _sync(s3)["released_by"] == "timeout", "down past the bound: it releases at once"

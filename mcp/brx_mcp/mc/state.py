@@ -4676,10 +4676,13 @@ class Session:
             match.release_reason = (cast(ReleaseReason, reason) if reason in _RELEASE_REASONS else
                                     "finalise" if match.finalised else "sync" if match.released else None)
             if not match.released:
-                # The bounded wait resumes with the time it had left. A snapshot from before the bound is timed from end_t.
+                # The bounded wait resumes with the time it had left at the write, less the time MC was down (a wall step
+                # back counts as none). A snapshot from before the bound is timed from end_t.
                 due_in = m.get("release_due_in_ms")
                 if not isinstance(due_in, int) or isinstance(due_in, bool) or due_in < 0:
                     due_in = max(0, SYNC_STUCK_S * 1000 - max(0, self.now_ms() - (scorer.end_t or self.now_ms())))
+                elif isinstance(saved_ms, int) and not isinstance(saved_ms, bool):
+                    due_in = max(0, due_in - max(0, self.now_ms() - saved_ms))
                 match.release_due_mono = self.mono_ms() + due_in
             frozen = m.get("frozen_stations")
             if isinstance(frozen, list):
