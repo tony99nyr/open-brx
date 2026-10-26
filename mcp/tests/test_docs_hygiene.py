@@ -1477,3 +1477,47 @@ def test_the_command_table_check_can_actually_fail():
         "$VOL: the manual quotes `$VOL,65,0,*`, brx-protocol.md does not",
         "$ZOOM: the manual's table names it, brx-protocol.md has no row for it",
     ], _command_table_problems(bad, protocol)
+
+
+# F622 / F324: firmware code addresses, RAM locations, offsets and decompiler labels never go in the public docs. A
+# firmware fact is written at behaviour level. Two-digit values (HCI reason codes, PMIC registers, frame bytes) never
+# match. A legitimate longer value is allowed per file, with its reason, so it cannot excuse an address elsewhere.
+_FW_ADDR = re.compile(r"(?i)\b0x[0-9a-f]{3,8}\b|\b(?:FUN|LAB|DAT|PTR|sub)_[0-9a-f]{4,8}\b")
+_FW_ADDR_ALLOWED = {
+    ("docs/firmware-image-research-plan.md", "0x3412"): "the updater header's fixed half: a value, not an address",
+    ("docs/experiment-log/2026-08.md", "0x09090909"): "an Il2CppDumper error about the phone app, not the gun",
+    ("protocol/callsign-extract/protocol-classes.md", "0x09090909"): "the same Il2CppDumper error",
+}
+
+
+def _fw_addr_files() -> list[pathlib.Path]:
+    out = sorted((DOCS / "experiment-log").rglob("*.md")) + [DOCS / "firmware-image-research-plan.md"]
+    for d in (DOCS / "manual", DOCS / "spec", REPO / "protocol"):
+        out += sorted(d.rglob("*.md"))
+    return out
+
+
+def _fw_addr_problems(rel: str, text: str) -> list[str]:
+    """Every firmware-address-like token in `text`, fenced code included, minus the per-file allow-list."""
+    return [f"{rel}:{n}: {m.group(0)}" for n, line in enumerate(text.splitlines(), 1)
+            for m in _FW_ADDR.finditer(line) if (rel, m.group(0).lower()) not in _FW_ADDR_ALLOWED]
+
+
+def test_f622_no_firmware_address_in_the_public_docs():
+    hits = []
+    for path in _fw_addr_files():
+        hits += _fw_addr_problems(path.relative_to(REPO).as_posix(), path.read_text(encoding="utf-8"))
+    assert not hits, ("a firmware address in the public docs (F324: write the behaviour, not the address; a value "
+                      "that is not an address goes in _FW_ADDR_ALLOWED with its reason): "
+                      + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
+
+
+def test_the_firmware_address_scan_can_actually_fail():
+    rel = "docs/experiment-log/2026-09.md"
+    # Invented values in each shape the sweep removed (never a real address: this file is public too).
+    for bad in ("calls 0x1abcd", "RAM 0x1FFF1234", "padded 0x0001abcd", "upper 0X1ABCD", "slot 0x123",
+                "label FUN_0001abcd", "```\nfenced 0x7a7a\n", "```\nunclosed 0x8b8b"):
+        assert _fw_addr_problems(rel, bad), bad
+    assert _fw_addr_problems(rel, "header 0x3412"), "an allowed value is allowed in its own file only"
+    assert not _fw_addr_problems("docs/firmware-image-research-plan.md", "header 0x3412")
+    assert not _fw_addr_problems(rel, "HCI reason 0x3E, PMIC 0x49, byte 0xFF, sha 9bd77564d")
