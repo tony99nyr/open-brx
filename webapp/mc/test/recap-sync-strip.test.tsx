@@ -200,6 +200,15 @@ describe('F596 · FINALISE', () => {
 
 describe('A83 · the bounded wait', () => {
   const rows = [phone('p1'), phone('p2', { stage: 'unlinked', stuck: true, idle_s: 130 })];
+  it('while pending the status says it is waiting, not MATCH COMPLETE; released, it is complete', async () => {
+    const m = await recapOf(syncOf(rows, { release_in_s: 72 }));
+    expect(strip(m.find('[data-testid="recap-status"]')[0].textContent ?? '')).toBe('MATCH OVER · WAITING FOR RESULTS');
+    m.unmount();
+    const done = await recapOf(syncOf(rows, { pending: false, released_by: 'timeout' }));
+    expect(strip(done.find('[data-testid="recap-status"]')[0].textContent ?? '')).toBe('MATCH COMPLETE');
+    done.unmount();
+  });
+
   it('while pending, the header counts down to the release', async () => {
     const m = await recapOf(syncOf(rows, { release_in_s: 72 }));
     expect(strip(m.find('[data-testid="release-in"]')[0]?.textContent ?? '')).toBe('FINAL IN 1:12');

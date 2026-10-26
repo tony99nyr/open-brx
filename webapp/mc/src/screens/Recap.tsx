@@ -225,7 +225,7 @@ export function Recap() {
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : pendingResults ? 'MATCH OVER · WAITING FOR RESULTS' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]
         {past && <span data-testid="recap-archived" title={`ARCHIVED MATCH${past.ended_t ? `, ENDED ${new Date(past.ended_t).toLocaleString()}` : ''}. READ ONLY.`}
           style={{ marginLeft: 12, padding: '2px 8px', border: `1px solid ${T.line2}`, color: T.micro, letterSpacing: '.14em' }}>ARCHIVED</span>}
       </div>

@@ -1908,6 +1908,8 @@ class Session:
         played = self.match.played if self.match is not None else None
         if "display" in fields and fields["display"] is not None and played and pid in played:
             played[pid]["display"] = p["display"]
+            if self.phase == "recap":
+                self._restore_recap()   # every phone holding the result gets the new name now, not on the next fact
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
@@ -3797,7 +3799,10 @@ class Session:
         self._prune_unbound_nodes()
         self._changed()
         if p and self.phase == "recap" and self.match is not None and self.match.released:
-            self._push_result()   # a restarted MC has no prior delivery record for this returning socket
+            # A restarted MC has no prior delivery record for this returning socket. Re-take the recap first and tell
+            # only this node: a rejoin is no news for the phones already holding the result (brx4's rerun B).
+            self._restore_recap(push=False)
+            self._push_result(only=nid)
             self._push_scores()   # welcome carries the score; this also retries a failed release push
         return self.node_player.get(nid)
 
@@ -3881,8 +3886,11 @@ class Session:
                 and self.last_recap and self._played_this_match(p["player_id"])
                 and not self._sync_owes(str(hello.get("node_id", "")))):
             # A24/A81: a returning phone gets the released result even if it missed the push.
-            # A player added DURING the debrief was not in it, so there is no result to carry.
-            node["result"] = self._result_body(self.last_recap, p)
+            # A player added DURING the debrief was not in it, so there is no result to carry. The recap is re-taken
+            # first, so a welcome never carries a stored copy older than the facts (brx4's rerun B).
+            self._restore_recap(push=False)
+            if self.last_recap:
+                node["result"] = self._result_body(self.last_recap, p)
         return node
 
     def _node_seq_hi(self, nid: str) -> int | None:
@@ -5426,7 +5434,7 @@ class Session:
         self._push_scores()
         self._changed()
 
-    def _restore_recap(self) -> None:
+    def _restore_recap(self, *, push: bool = True) -> None:
         """Re-write the stored recap when a fact lands AFTER the match ended.
 
         `_finish()` wrote it once. Facts held in a node's store-and-forward outbox arrive later — that
@@ -5448,7 +5456,7 @@ class Session:
                 self._ended[sc.match_id]["recap"] = self.last_recap
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
-            if self._m().released:
+            if push and self._m().released:
                 self._push_result()      # A81: late facts cannot reveal a pending result
         except Exception:
             import logging
@@ -5567,7 +5575,7 @@ class Session:
                 body[k] = value
         return body
 
-    def _push_result(self) -> int:
+    def _push_result(self, *, only: str | None = None) -> int:
         """A24: push `result` to every BOUND player node, best-effort, and again whenever it changes.
 
         Sent when the result releases and re-sent on every late fact that moves the recap — including the A24/M2
@@ -5586,7 +5594,7 @@ class Session:
         for pid in roster:
             p = self.players.get(pid)
             node_id = p.get("node_id") if p else None
-            if p is None or not node_id or self._sync_owes(node_id):
+            if p is None or not node_id or (only is not None and node_id != only) or self._sync_owes(node_id):
                 continue   # A83: a node still sending gets the result its facts make, once they are in
             body = self._result_body(self.last_recap, p)
             key = {k: v for k, v in body.items() if k != "t"}

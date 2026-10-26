@@ -399,3 +399,42 @@ def test_a_phone_that_drains_after_the_release_gets_the_settled_recap():
     _beat(s, net, clock, 1, ps[1]["player_id"])
     told = net.pushes("result", "node1")
     assert len(told) == 1 and told[0][2]["provisional"] is False
+
+
+def _released_four():
+    s, net, clock, mono, ps, info = _ended(n=4, kills=[(0, 1), (0, 1), (2, 3)])   # enough play for an honours roll
+    for i, p in enumerate(ps):
+        _beat(s, net, clock, i, p["player_id"])
+    assert s.match.released and s.last_recap["honors"]
+    return s, net, clock, ps
+
+
+def test_a_debrief_rename_reaches_every_phone_holding_the_result_at_once():
+    """brx4's case 6: the new name waited for the next late fact. The rename re-takes the recap and re-sends it."""
+    s, net, clock, ps = _released_four()
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMEDA")
+    told = net.pushes("result")
+    assert sorted(p[0] for p in told) == ["node0", "node1", "node2", "node3"]
+    assert all(any(r["display"] == "RENAMEDA" for r in p[2]["rows"]) for p in told)
+
+
+def test_a_rejoin_tells_only_the_rejoining_phone_and_never_a_stale_result():
+    """brx4's rerun B: a phone rejoining in RECAP made MC re-push the STORED recap to every online phone (the pre-rename
+    names, the old winner), then the right one 14 ms later. The rejoin re-takes the recap first, and tells only itself."""
+    s, net, clock, ps = _released_four()
+    import copy
+    stale = copy.deepcopy(s.last_recap)                  # a stored recap that some path has not re-taken yet
+    for row in stale["rows"]:
+        row["display"] = "STALE " + row["display"]
+    s.last_recap = stale
+    s._result_pushed.clear()                             # as after a restart: MC holds no delivery record
+    net.pushed.clear()
+    tail = demo_armory()[2]["ble"]["tail"]
+    welcome = net.simulate_hello("node2", f"GUN-C-{tail}", pending=0)
+    assert [p[0] for p in net.pushes("result") if p[0] != "node2"] == [], "a rejoin broadcast to the phones holding it"
+    told = [row for p in net.pushes("result", "node2") for row in p[2]["rows"]]
+    assert told, "the rejoining phone is told (MC had no record of telling it)"
+    assert welcome is not None and welcome["result"]["rows"], "the rejoining phone gets the result in its welcome"
+    assert not any(r["display"].startswith("STALE ") for r in told + welcome["result"]["rows"]), \
+        "the rejoin sent the stored recap, not a re-take"
