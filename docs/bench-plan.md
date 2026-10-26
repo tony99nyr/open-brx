@@ -27,13 +27,13 @@ Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting*
 
 ### NEXT: the bench after 0.4.31 (2026-10-26)
 
-Every open bench row in [`FOLLOWUPS.md`](FOLLOWUPS.md) (93 on 2026-10-26) in one ordered list, plus the unrun fix
-checks of the 0.4.24 and 0.4.26 sheets. It replaces both NEXT blocks below. The groups run in rig order, one-gun
-groups first, so the rig changes as few times as possible. The Stick group (G) and the network group (H) need one gun
-only, but they come after the two-gun groups because each replaces the rig: the Sticks on USB with their own MC
-set-up, and a field router with no uplink. Each step gives its minutes, its control, its A/B/A, the result that closes
-the row, and the result that reopens it. A step marked "read only" is a measurement with no A/B/A, and says why. The
-procedure stays in the sheet each step cites. Short names: 0422, 0424, 0426 and 1017 are
+Every open bench row in [`FOLLOWUPS.md`](FOLLOWUPS.md) (91 on 2026-10-26, after Q13 and F537 closed) in one ordered
+list, plus the unrun fix checks of the 0.4.24 and 0.4.26 sheets. It replaces both NEXT blocks below. The groups run in
+rig order, one-gun groups first, so the rig changes as few times as possible. The Stick group (G) and the network
+group (H) need one gun only, but they come after the two-gun groups because each replaces the rig: the Sticks on USB
+with their own MC set-up, and a field router with no uplink. Each step gives its minutes, its control, its A/B/A, the
+result that closes the row, and the result that reopens it. A step marked "read only" is a measurement with no A/B/A,
+and says why. The procedure stays in the sheet each step cites. Short names: 0422, 0424, 0426 and 1017 are
 [`bench-rebench-0422.md`](bench-rebench-0422.md), [`bench-rebench-0424.md`](bench-rebench-0424.md),
 [`bench-0426.md`](bench-0426.md) and [`bench-field-1017.md`](bench-field-1017.md); runbook is
 [`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 23
@@ -152,10 +152,10 @@ A).
 
 19. **F548**, the SMG through MC (5 min). Control: an AR primary kit acks first try. A/B/A: AR kit, SMG kit, AR kit.
    Closes: the SMG push acks first try with a real `$ALCD` echo, and the SMG fires and reloads. (1017 L1)
-20. **F533** and **F416**, a lost spawn write at go-live (20 min). Desk pre-check first: the 2026-10-17 morning bench
-   passed the relink at go-live (0.6 s, or 17.5 s in 2 of 5), so read its raw notes (outside the repo); if they meet
-   F541's pass rule (back within about 20 s, a tap mid-relink logs the restart), skip F541 here and close it through
-   brx2. Open: no start yet hit the repair path. Control: a start with no relink. A/B/A: control; 5 starts with
+20. **F533**, **F416** and the tap half of **F541**, a lost spawn write at go-live (20 min). F541's relink half passed
+   on 2026-10-17 (5 of 5 back inside 20 s); only the tap is open. In one start that hits the slow timeout ladder, tap
+   TO RECONNECT mid-relink. Closes F541: the log shows the restart line. Open for F533: no start yet hit the repair
+   path. Control: a start with no relink. A/B/A: control; 5 starts with
    `window.brx.link.relink()` about 1 s before go-live, then 3 with the phone about 10 m from its gun; control. Closes
    F533: each start that logs `write err` fires at go-live or heals once, and no life starts at 0/0. F416: a lost
    write logs the re-send and a closing match. A start with no `write err` tests neither: say so. (0426 P1.3, 0424
@@ -296,12 +296,9 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 
 #### Group F: hills and stations in a 12 m hall (2 guns, both player phones, the grey Pixel and the Pixel 10 Pro as stations, about 125 min)
 
-54. **F525** and **F537**, two hill points (15 min). Desk pre-check first: the 2026-10-17 morning bench passed F537's
-   hill presence, so read its raw notes (outside the repo); if they meet F537's pass rule, skip the F537 half and
-   close it through brx2. Control: both points on, player 1 on A for 60 s with no "different point" line. 5 runs.
-   Closes F525: `different point` 2 to 3 s after A stops (never over 4 s), and the HUD moves to B's owner. F537, if
-   still open: no "left" line in any contested stand; read `window.brx.presence.stations()` at any "left" line; a run
-   with no `scan closed` line does not test it. (0424 P2.1, 0422 C.34)
+54. **F525**, two hill points (15 min). F537 closed on 2026-10-26 from the 2026-10-17 bench. Control: both points on,
+   player 1 on A for 60 s with no "different point" line. 5 runs. Closes F525: `different point` 2 to 3 s after A
+   stops (never over 4 s), and the HUD moves to B's owner. (0424 P2.1)
 55. **F526**, a taken station beside a claimable one (15 min). Control: with both items there, player 1 claims the
    louder station. 5 runs. Closes: player 1's claim ring runs at station 1, and the item is granted. (0422 C.35)
 56. **F440** and **F383**, the hill off the ground (20 min). Control: 1 m clear reads IN at the start and end of each
@@ -460,7 +457,7 @@ first.
 
 F444 is blocked too: it waits for the enemy-captured card build.
 
-**Not in this sheet.** Q13: 0422 C.1 confirmed check 1 on 2026-10-16, check 2 is post-MVP, and check 3 is step 38.
+**Not in this sheet.** Q13 and F537 closed on 2026-10-26 (brx2, from the 2026-10-16 and 2026-10-17 logs).
 F595 is a desk row; its bench half is step 85.
 
 ### NEXT: the re-bench on APK 0.4.24
