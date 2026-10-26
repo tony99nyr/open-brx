@@ -87,6 +87,7 @@ def test_late_batch_changes_released_result_without_second_victory():
         "type": "death", "t": s.match.scorer.end_t - 1, "match_id": info["match_id"],
         "player_id": ps[0]["player_id"], "shooter_num": ps[1]["player_num"],
         "shooter_team": 1, "seq": 2}]}, clock["t"])
+    _status(s, net, clock, ps, 0)        # A83: the sender's own result waits for its queue to drain
     assert len(net.pushes("result")) == 4
     assert net.pushes("result")[2][2] != first
     assert len(_victories(net)) == 1

@@ -196,7 +196,7 @@ def test_a_phone_rejoining_after_a_moved_result_gets_the_moved_result_in_its_wel
                                   "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                   "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
     tail = demo_armory()[1]["ble"]["tail"]
-    welcome = net.simulate_hello("node1", f"GUN-B-{tail}")
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=0)   # its batch is acked: the queue is empty
     assert welcome is not None and welcome["result"]["winner"] == s.recap()["winner"] != first
     assert "result_changed" not in welcome["result"]
 
@@ -256,3 +256,41 @@ def test_a_silent_field_walks_the_whole_bound_with_nothing_pushed_until_the_rele
     mono["t"] += 1_000
     s.tick()
     assert _sync(s)["released_by"] == "timeout" and len(net.pushes("result")) == 2
+
+
+def _late_kill(net, clock, info, ps, seq=51):
+    clock["t"] += 1
+    net.simulate_batch("node1", [{"type": "death", "seq": seq, "t": clock["t"] - 2,
+                                  "match_id": info["match_id"], "player_id": ps[1]["player_id"],
+                                  "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
+
+
+def test_a_late_phone_gets_one_result_after_its_own_facts_never_the_stale_one():
+    """brx4's end-to-end check: a phone that rejoins still owing facts must not adopt the released result and then flip
+    to RESULT UPDATED when its own facts land. It waits on RESULT PENDING and gets the result its facts make, once."""
+    s, net, clock, mono, ps, info = _ended()
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    _beat(s, net, clock, 1, ps[1]["player_id"], pending=3)
+    mono["t"] += BOUND_MS
+    s.tick()
+    assert _sync(s)["released_by"] == "timeout"
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "a phone still sending is not told the released result"
+    tail = demo_armory()[1]["ble"]["tail"]
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=3)
+    assert welcome is not None and "result" not in welcome, "the welcome withholds it too"
+    net.pushed.clear()
+    _late_kill(net, clock, info, ps)
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "the flip reaches the phone that saw the first result"
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    to_late = [p for p in net.pushes("result") if p[0] == "node1"]
+    assert len(to_late) == 1 and to_late[0][2]["winner"] == s.recap()["winner"]
+
+
+def test_a_phone_that_rejoins_with_an_empty_queue_gets_the_result_in_its_welcome():
+    s, net, clock, mono, ps, info = _ended()
+    _beat(s, net, clock, 0, ps[0]["player_id"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    tail = demo_armory()[1]["ble"]["tail"]
+    welcome = net.simulate_hello("node1", f"GUN-B-{tail}", pending=0)
+    assert welcome is not None and welcome["result"]["winner"] == s.recap()["winner"]
