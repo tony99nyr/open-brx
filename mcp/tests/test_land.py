@@ -524,6 +524,27 @@ def test_a_resolved_index_keeps_the_order_main_had():
         assert "- 🟡 **Z5** · **Z1**" in landed and "- 🟢 **Z3**" in landed and "- 🟠 **Z2**" in landed, landed
 
 
+def test_a_hand_reorder_or_an_odd_stamp_on_their_side_is_still_a_conflict():
+    # F624 (Opus round 2): the resolver keeps our block's order and blanks only a stamp it can read. A branch that
+    # reorders the bench plan by hand, or writes a stamp the pattern does not match, must not be overwritten silently.
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    for name in ("reorder", "odd-stamp"):
+        with Lane() as t:
+            seed = _followups(t, Z1 + Z5, updated="2026-10-25")
+            _seed_followups(t, seed)
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z5 + Z2, updated="2026-10-27")})
+            theirs = _followups(t, Z1 + Z5, Z3, updated="2026-10-25")
+            theirs = (theirs.replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**") if name == "reorder"
+                      else theirs.replace("Updated: 2026-10-25.", "Updated: 2026-10-26 (late)."))
+            assert theirs != _followups(t, Z1 + Z5, Z3, updated="2026-10-25"), name
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": theirs})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a)
+            assert t.result(b)["status"] == "conflict", (name, t.result(b))
+            assert "resolved it" not in r.stdout, (name, r.stdout)
+
+
 def test_two_stamps_that_conflict_land_with_the_later_date():
     # F624: a lane that works across midnight stamps tomorrow's date while the branch landed before it kept today's.
     # The lander takes the later date, whichever side it is on, and regenerates the index too.

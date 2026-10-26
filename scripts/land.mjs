@@ -495,6 +495,18 @@ function withoutStamp(text) {
   if (found.length !== 1) return { text, date: null };
   return { text: text.replace(STAMP, NO_STAMP), date: found[0][1] };
 }
+/** The ids of an index block, one list per line, in the order the block lists them. */
+const blockLines = block => block.split('\n').map(line => [...line.matchAll(/\*\*([A-Z]\d+)\*\*/g)].map(m => m[1]));
+/** True if `theirs` lists, on some line, two ids of `base` in the other order: a hand reorder of the bench plan. */
+function reordered(base, theirs) {
+  const rank = new Map();
+  for (const id of blockLines(base).flat()) if (!rank.has(id)) rank.set(id, rank.size);
+  return blockLines(theirs).some(ids => {
+    const known = ids.filter(id => rank.has(id)).map(id => rank.get(id));
+    return known.some((r, i) => i > 0 && r < known[i - 1]);
+  });
+}
+const indexBlock = text => text.slice(text.indexOf(INDEX_START) + INDEX_START.length, text.indexOf(INDEX_END));
 /** F624: a merge in progress whose only conflict is inside the FOLLOWUPS index block or its `Updated:` date. Every
  *  land that touches FOLLOWUPS changes that generated block, so each queued FOLLOWUPS branch used to conflict there.
  *  Merge the three versions again with the block emptied and the stamp's date blanked: a clean merge means nothing
@@ -504,8 +516,7 @@ async function resolveIndexConflict(id, files) {
   if (files.length !== 1 || files[0] !== FOLLOWUPS || !fs.existsSync(path.join(WT, 'scripts/followups-index.mjs'))) return false;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-land-index-'));
   try {
-    const stage = [], dates = [];
-    let ours = null;
+    const stage = [], dates = [], raws = {};
     for (const n of [2, 1, 3]) {   // ours, base, theirs: the order `git merge-file` takes
       // a missing stage (added on one side, deleted on the other) throws: not an index conflict
       let raw;
@@ -513,12 +524,14 @@ async function resolveIndexConflict(id, files) {
         raw = execFileSync('git', ['show', `:${n}:${FOLLOWUPS}`],
           { cwd: WT, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
       } catch { return false; }
-      if (n === 2) ours = raw;
-      // a criss-cross merge's virtual base can carry conflict markers of its own: leave that to a person
-      if (n === 1 && raw.includes('\n<<<<<<< ')) return false;
+      raws[n] = raw;
+      // a criss-cross merge's virtual base can carry conflict markers of its own (longer ones deeper down): leave
+      // that to a person
+      if (n === 1 && /^<{7,} /m.test(raw)) return false;
       const stamp = withoutStamp(raw);
       const text = withoutIndex(stamp.text);
-      if (text === null) return false;
+      // every version needs one block and one stamp: a side that kept a real stamp line could win the merge unseen
+      if (text === null || stamp.date === null) return false;
       if (n !== 1) dates.push(stamp.date);
       stage.push(path.join(tmp, `${n}.md`));
       fs.writeFileSync(stage.at(-1), text);
@@ -526,17 +539,16 @@ async function resolveIndexConflict(id, files) {
     // histogram, as ort merges: Myers could align a hunk outside the block differently. A git without the flag refuses
     // it, and that is a conflict, as before.
     if ((await git(['merge-file', '--diff-algorithm=histogram', ...stage], { cwd: WT, ok: true })).code !== 0) return false;
+    // we keep our block's order (the bench plan), so their hand reorder of it would be lost: leave that to a person
+    if (reordered(indexBlock(raws[1]), indexBlock(raws[3]))) return false;
     let merged = fs.readFileSync(stage[0], 'utf8');
     // put our block back before the generator runs: it keeps the ids' order from the block it reads (the bench plan)
-    const block = ours.slice(ours.indexOf(INDEX_START) + INDEX_START.length, ours.indexOf(INDEX_END));
-    if (merged.split(INDEX_START).length !== 2) return false;
+    const block = indexBlock(raws[2]);
+    if (merged.split(INDEX_START).length !== 2 || merged.split(INDEX_END).length !== 2) return false;
     const at = merged.indexOf(INDEX_START) + INDEX_START.length;
     merged = merged.slice(0, at) + block + merged.slice(at);
-    if (merged.includes(NO_STAMP)) {
-      // blanked on every side that has one stamp: a side with none or two kept its text, so the merge kept the blank
-      if (dates.includes(null) || merged.split(NO_STAMP).length !== 2) return false;
-      merged = merged.replace(NO_STAMP, `Updated: ${dates.sort().at(-1)}.`);
-    }
+    if (merged.split(NO_STAMP).length !== 2) return false;   // a line that holds the blank in a version's own text
+    merged = merged.replace(NO_STAMP, `Updated: ${dates.sort().at(-1)}.`);
     fs.writeFileSync(path.join(WT, FOLLOWUPS), merged);
     try { execFileSync(process.execPath, ['scripts/followups-index.mjs'], { cwd: WT, stdio: ['ignore', 'pipe', 'pipe'] }); }
     catch { return false; }

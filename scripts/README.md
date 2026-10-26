@@ -85,8 +85,9 @@ that works past midnight stamps a later date. When `docs/FOLLOWUPS.md` is the on
 three versions has one index block and one `Updated: YYYY-MM-DD.` line, the lander merges the three again with the
 block emptied and the date blanked. If that merge is clean, the lander writes it with the later of the two dates,
 regenerates the block, and commits the merge as `Land <id>`. It prints `land: <id>: the conflict was only in the
-FOLLOWUPS index or its Updated stamp; resolved it`. Any other conflict fails as before: a row or a line of prose that
-both branches changed, a conflict in another file as well, or a generator that refuses the merged rows.
+FOLLOWUPS index or its Updated stamp; resolved it`. The block keeps `main`'s order (the bench plan). Any other
+conflict fails as before: a row or a line of prose that both branches changed, a conflict in another file as well, a
+generator that refuses the merged rows, or a branch that reordered the block by hand.
 
 ### What the lander does
 
