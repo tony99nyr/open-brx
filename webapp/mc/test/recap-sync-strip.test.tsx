@@ -22,7 +22,7 @@ const ROWS = [score('p2', 'BRAVO', 9), score('p4', 'DELTA', 6), score('p1', 'ALP
 const HONOR: Honor = { award: 'MVP', key: 'mvp', player_id: 'p2', stat: '9 K' };
 const phone = (id: string, over: Partial<RecapSyncRow> = {}): RecapSyncRow => ({ kind: 'phone', id, name: NAMES[Number(id.slice(1)) - 1], team_id: 'blue',
   stage: 'received', transport: null, end_unconfirmed: false, idle_s: 0, stuck: false, ...over });
-const STATION: RecapSyncRow = { kind: 'station', id: '1', name: 'HILL 1', team_id: null, stage: 'unlinked', transport: null, end_unconfirmed: false, idle_s: 20, stuck: false };
+const STATION: RecapSyncRow = { kind: 'station', id: '1', name: 'CONTROL POINT 1', team_id: null, stage: 'unlinked', transport: null, end_unconfirmed: false, idle_s: 20, stuck: false };
 
 interface SyncOver { pending?: boolean; finalised?: boolean; result_changed?: boolean; released_by?: string | null; release_in_s?: number }
 const syncOf = (rows: RecapSyncRow[], o: SyncOver = {}) => {
@@ -214,7 +214,7 @@ describe('A83 · the bounded wait', () => {
     const m = await recapOf(syncOf([...rows, STATION], { pending: false, released_by: 'timeout' }));
     expect(strip(m.text())).toMatch(/WINS/);
     const line = m.find('[data-testid="final-without"]')[0];
-    expect(strip(line.textContent ?? '')).toBe('FINAL AFTER 2 MIN WITHOUT 1 PHONE (BRAVO) AND 1 HILL (HILL 1)');
+    expect(strip(line.textContent ?? '')).toBe('FINAL AFTER 2 MIN WITHOUT 1 PHONE (BRAVO) AND 1 HILL (CONTROL POINT 1)');
     expect(line.dataset.releasedBy).toBe('timeout');
     expect(m.find('[data-testid="release-in"]').length).toBe(0);
     m.unmount();
@@ -237,18 +237,18 @@ describe('A83 · the bounded wait', () => {
     m.unmount();
     // KOTH, every phone in and only the hill missing: the hill is named.
     const hill = await recapOf(syncOf([phone('p1'), phone('p2'), STATION], { release_in_s: 30 }));
-    expect(strip(hill.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR HILL 1');
+    expect(strip(hill.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR CONTROL POINT 1');
     hill.unmount();
   });
 
-  it('falls back to a count when the names do not fit, with every name in the title', async () => {
+  it('shortens past three names as the released line does, and counts when even that does not fit', async () => {
     const four = ['p1', 'p2', 'p3', 'p4'].map(id => phone(id, { stage: 'unlinked' }));
     const m = await recapOf(syncOf([...four, STATION]));
     const line = m.find('[data-testid="waiting-for"]')[0];
-    expect(strip(line.textContent ?? '')).toBe('WAITING FOR 4 PHONES · 1 HILL');
-    expect(line.title).toBe('Waiting for ALPHA, BRAVO, CHARLIE, DELTA, HILL 1');
+    expect(strip(line.textContent ?? '')).toBe('WAITING FOR ALPHA, BRAVO, CHARLIE +2 MORE');
+    expect(line.title).toBe('Waiting for ALPHA, BRAVO, CHARLIE, DELTA, CONTROL POINT 1');
     m.unmount();
-    const long = await recapOf(syncOf([phone('p1', { stage: 'unlinked', name: 'A VERY LONG CALLSIGN INDEED' }), phone('p2', { stage: 'unlinked', name: 'ANOTHER LONG ONE' })]));
+    const long = await recapOf(syncOf([phone('p1', { stage: 'unlinked', name: 'A VERY LONG CALLSIGN INDEED' }), phone('p2', { stage: 'unlinked', name: 'ANOTHER RATHER LONG ONE' })]));
     expect(strip(long.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR 2 PHONES');
     long.unmount();
   });
