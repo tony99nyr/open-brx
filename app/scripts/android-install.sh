@@ -5,6 +5,7 @@
 #   npm run android:install                              # one phone attached: build + install + launch
 #   ADB_DEVICE=192.168.0.149:38939 npm run android:install   # pick a phone when several are attached
 #   ADB_CONNECT=192.168.0.149:38939 npm run android:install  # `adb connect` first (wireless debugging)
+#   ADB_CONNECT=192.168.0.149 npm run android:install        # the same, with the port found by mDNS (F544)
 #   APK=/path/to/some.apk npm run android:install        # skip the build, install that file
 #
 # The build is `android-apk.sh` with APK_OUT_DIR pointed away from webapp/download/, so the site's
@@ -15,9 +16,11 @@
 #   here:  adb pair <ip>:<PAIRING port> <6-digit code>
 # then per session, with the phone's Wireless debugging screen open:
 #   adb connect <ip>:<CONNECT port>     # the port on the main Wireless debugging screen, NOT the pairing one
-# On macOS `adb mdns services` finds the phone by itself; inside WSL2 mDNS does not cross the NAT,
-# so read the connect port off the phone (or scan: seq 30000 49999 | xargs -P300 -I{} sh -c
-# 'nc -z -w1 <ip> {} && echo {}').
+# The connect port changes on every Wi-Fi reconnect (F544). Give ADB_CONNECT the phone's IP alone, or an
+# old ip:port that no longer answers, and this script reads the current port from `adb mdns services`.
+# Inside WSL2 mDNS does not cross the NAT, so it asks Windows' adb.exe for the port instead (it only
+# reads the advert; the connect is still this adb's). Without either, read the port off the phone's
+# Wireless debugging screen. The phone's settings are never touched.
 #
 # Debug apks are signed with THIS machine's ~/.android/debug.keystore. A phone that holds a build
 # from another machine refuses the upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE). Either copy that
@@ -37,8 +40,33 @@ if [ -z "${ADB:-}" ]; then
 fi
 [ -n "$ADB" ] && [ -x "$ADB" ] || { echo "error: adb not found (set ADB=/path/to/adb, or brew install android-platform-tools)" >&2; exit 1; }
 
+# F544: the phone's current wireless-debugging connect port for an IP, from an mDNS advert, or nothing.
+mdns_port() {
+  local ip="$1" a out
+  for a in "$ADB" "${ADB_EXE:-}" "$(command -v adb.exe 2>/dev/null || true)"; do
+    [ -n "$a" ] && [ -x "$a" ] || continue
+    out="$("$a" mdns services 2>/dev/null | tr -d '\r' |
+           awk -v ip="$ip" '$2 ~ /_adb-tls-connect/ { split($3, hp, ":"); if (hp[1] == ip) { print hp[2]; exit } }')"
+    [ -n "$out" ] && { echo "$out"; return 0; }
+  done
+  return 1
+}
+
 if [ -n "${ADB_CONNECT:-}" ]; then
-  "$ADB" connect "$ADB_CONNECT" | sed 's/^/==> /'
+  ip="${ADB_CONNECT%%:*}"
+  said=""
+  [ "$ip" = "$ADB_CONNECT" ] || { said="$("$ADB" connect "$ADB_CONNECT" 2>&1 || true)"; echo "==> $said"; }
+  case "$said" in
+    "connected to"*|"already connected"*) ;;
+    *)
+    port="$(mdns_port "$ip" || true)"
+    [ -n "$port" ] || { echo "error: no wireless-debugging advert for $ip. Open Wireless debugging on the phone, or read the" >&2
+                        echo "       port off that screen: ADB_CONNECT=$ip:<port>" >&2; exit 1; }
+    echo "==> $ip: connect port $port (mDNS)"
+    ADB_CONNECT="$ip:$port"
+    "$ADB" connect "$ADB_CONNECT" | sed 's/^/==> /' ;;
+  esac
+  [ -n "${ADB_DEVICE:-}" ] || ADB_DEVICE="$ADB_CONNECT"
 fi
 
 # --- pick the phone ----------------------------------------------------------------------------
