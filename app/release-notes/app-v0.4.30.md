@@ -6,9 +6,9 @@ This build installs over 0.4.6 or later. It includes everything in 0.4.29. The S
 
 - **Your phone shows its own sync after the whistle.** A track on the phone shows what Mission Control sees: NOT LINKED, LINKED, SENDING with the count left, then RECEIVED. If it stalls, the phone says why in one line (no Wi-Fi to Mission Control, Mission Control not answering, mobile data, no progress) and what to do. The lobby shows the same state as a small chip.
 - **The phone shows "Result pending" until Mission Control releases the result** (A81). No winner shows at the whistle. The result arrives when every phone and hill is in, or when the host presses FINALISE. The victory sound plays only if that happens within 30 s of the whistle.
-- **[PENDING A83] Mission Control releases the result by itself 120 s after the whistle,** if phones or hills are still missing. _Fill in at cut time._
+- **The result never waits more than 2 minutes** (A83). If a phone or hill still has not reported 2 minutes after the whistle, Mission Control releases the result without it. The console counts down with FINAL IN, and the host can still press FINALISE sooner.
 - **The result reaches every phone sooner** (F595). After the whistle, the phone reports to Mission Control at once and reconnects within 2 s, instead of waiting up to 10 s. Mission Control waits for every phone before it releases the result, so one slow phone used to delay it for everyone.
-- **[PENDING] A result that changes after release shows RESULT UPDATED on the phone.** _Fill in at cut time._
+- **Your phone shows RESULT UPDATED if a late phone changes the winner or your outcome.** The results screen opens again, once, and the match history marks the match. A change to the scores alone does not count.
 - **Perks and weapons (the 0.4.31 balance set):**
   - **Fast Hands replaces Quick Hands and Quick Switch.** It halves your reload and swap times, with no ammo or armour cost. A saved loadout with either old perk gets Fast Hands.
   - **Body Armor gives 20 extra armour,** down from 25. It still makes your reload a quarter slower.
