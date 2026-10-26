@@ -59,13 +59,17 @@ export function applyResult(history, r, { ended = true, mode = null, session = n
   const my = r.my && typeof r.my === 'object' ? r.my : null;
   const was = h[i];
   const keep = (v, old) => (v != null ? v : (old != null ? old : null));
+  // A changed result this phone already showed an earlier verdict for (engine `_updated`, bounded A81 wait) is a new
+  // verdict: take what it sends, an empty medal list included.
+  const changed = r._updated === true;
   h[i] = { ...was,
-    outcome: r.outcome || null, win_by: r.win_by || was.win_by || null,
-    team_scores: Array.isArray(r.team_scores) ? r.team_scores : (was.team_scores || null),
+    outcome: r.outcome || null, win_by: r.win_by || (changed ? null : was.win_by) || null,
+    team_scores: Array.isArray(r.team_scores) ? r.team_scores : (changed ? null : (was.team_scores || null)),
+    ...(changed ? { result_updated: true } : {}),
     kills: keep(my && my.kills, was.kills), assists: keep(my && my.assists, was.assists),
     accuracy: keep(my && my.accuracy, was.accuracy),
     best_streak: keep(my && my.best_streak, was.best_streak),
-    medals: (my && Array.isArray(my.medals) && my.medals.length) ? my.medals : (was.medals || null) };
+    medals: (my && Array.isArray(my.medals) && (my.medals.length || changed)) ? my.medals : (was.medals || null) };
   while (h.length > HISTORY_MAX) h.shift();
   return { history: h, changed: true, appended };
 }
