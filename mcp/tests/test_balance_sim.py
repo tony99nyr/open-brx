@@ -21,7 +21,7 @@ sys.path.insert(0, str(TOOLS))
 
 import balance_sim as B  # noqa: E402
 import balance_review as R  # noqa: E402
-from brx_mcp.mc.compile import WeaponCatalog  # noqa: E402
+from brx_mcp.mc.compile import WeaponCatalog, headset_lag_ms  # noqa: E402
 
 SEED = 7
 CAT = WeaponCatalog()
@@ -574,7 +574,8 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
         assert n_hits == htk, (weapon_id, n_hits, htk)
         # F614: a kill by the headset word lands 88 ms after its pull, and the published time says so
         assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
-        assert by_word == (weapon_id == "shotgun"), (weapon_id, by_word)
+        lags = headset_lag_ms(pool_pts, htk, CAT.damage_per_pull(weapon_id), CAT.damage(weapon_id)) > 0
+        assert by_word == lags, (weapon_id, by_word, lags)   # the Shotgun at 115, today
 
 
 def test_legacy_sampled_pull_gaps_match_the_renewal_estimate():
