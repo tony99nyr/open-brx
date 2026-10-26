@@ -99,15 +99,20 @@ def test_a_charge_finish_needs_whole_landed_taps():
     """F619: at a low pool and a low hit chance the Charge Rifle does not finish on its first tap; it needs the
     rounds by which one tap has landed with even odds."""
     cr = R.make_kit(R.shipped_world(), "plain", "charge_rifle").guns[0]
-    def est(pool, chance):
-        return R.finish_estimate(cr, pool=pool, chance=chance, ammo=cr.mag, reserve=0, reload_amount=0,
-                                 ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
-                                 overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=False, count=0, dist=R.DIST["mid"],
+    def est(pool, chance, charged=False, ammo=None):
+        return R.finish_estimate(cr, pool=pool, chance=chance, ammo=cr.mag if ammo is None else ammo, reserve=0,
+                                 reload_amount=0, ready_at=0.0, locked_until=0.0, t=0.0, pull_ms=R.PULL_MS,
+                                 overshoot_ms=R.FIGHT_OVERSHOOT_MS, charged=charged, count=0, dist=R.DIST["mid"],
                                  heat=0.0, heat_t=0.0, heat_cool_while_firing=True)
     sure, unlikely = est(5, 1.0), est(5, 0.2)
     # 1 - 0.8**n >= 0.5 first at n = 4: three more tap cadences than a sure first tap.
     assert unlikely == sure + 3 * R.CHARGE_TAP_CADENCE_MS, (sure, unlikely)
     assert est(5, 0.2) < est(2 * cr.tap, 0.2) < float("inf")
+    # A charged opener that kills alone finishes on the first round at even odds, and later below them.
+    assert cr.gun_dmg + cr.head_dmg >= 60
+    assert est(60, 0.5, charged=True) == 0.0 < est(60, 0.4, charged=True)
+    # Too few rounds for a charge: the first round is a tap, priced as one.
+    assert est(5, 0.2, charged=True, ammo=cr.rpc - 1) == est(5, 0.2, ammo=cr.rpc - 1)
 
 
 def test_a_zero_success_cell_is_never_near_top():
