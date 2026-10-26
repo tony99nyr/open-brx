@@ -479,7 +479,44 @@ async function resetWorktree(base) {
     await git(['clean', '-fdq'], { cwd: WT });   // not -x: keep the ignored node_modules
   }
 }
-/** base + each branch in order, as --no-ff merge commits. A conflicting branch is aborted and left out. */
+const FOLLOWUPS = 'docs/FOLLOWUPS.md';
+const INDEX_START = '<!-- index:start -->\n', INDEX_END = '<!-- index:end -->';
+/** `text` with the generated index block emptied, or null unless it has exactly one start and one end marker. */
+function withoutIndex(text) {
+  const start = text.indexOf(INDEX_START), end = text.indexOf(INDEX_END);
+  if (start < 0 || end < start + INDEX_START.length || text.indexOf(INDEX_START, start + 1) >= 0 ||
+      text.indexOf(INDEX_END, end + 1) >= 0) return null;
+  return text.slice(0, start + INDEX_START.length) + text.slice(end);
+}
+/** F624: a merge in progress whose only conflict is inside the FOLLOWUPS index block. Every land that touches
+ *  FOLLOWUPS changes that generated block, so each queued FOLLOWUPS branch used to conflict there. Merge the three
+ *  versions again with the block emptied: a clean merge means nothing outside the block conflicts, so write it,
+ *  regenerate the block, and commit the merge. Anything else returns false, and the branch is a conflict as before. */
+async function resolveIndexConflict(id, files) {
+  if (files.length !== 1 || files[0] !== FOLLOWUPS || !fs.existsSync(path.join(WT, 'scripts/followups-index.mjs'))) return false;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-land-index-'));
+  try {
+    const stage = [];
+    for (const n of [2, 1, 3]) {   // ours, base, theirs: the order `git merge-file` takes
+      const r = await git(['cat-file', '-e', `:${n}:${FOLLOWUPS}`], { cwd: WT, ok: true });
+      if (r.code !== 0) return false;   // added on one side, or deleted on one: not an index conflict
+      const text = withoutIndex(execFileSync('git', ['show', `:${n}:${FOLLOWUPS}`], { cwd: WT, encoding: 'utf8', maxBuffer: 64 << 20 }));
+      if (text === null) return false;
+      stage.push(path.join(tmp, `${n}.md`));
+      fs.writeFileSync(stage.at(-1), text);
+    }
+    if ((await git(['merge-file', ...stage], { cwd: WT, ok: true })).code !== 0) return false;
+    fs.copyFileSync(stage[0], path.join(WT, FOLLOWUPS));
+    try { execFileSync(process.execPath, ['scripts/followups-index.mjs'], { cwd: WT, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch { return false; }
+    await git(['add', '--', FOLLOWUPS], { cwd: WT });
+    // -m, not --no-edit: the merge message would keep git's `# Conflicts:` lines
+    return (await git(['commit', '-q', '-m', `Land ${id}`], { cwd: WT, ok: true })).code === 0;
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+/** base + each branch in order, as --no-ff merge commits. A conflicting branch is aborted and left out, unless its only
+ *  conflict is in the generated FOLLOWUPS index (resolveIndexConflict). */
 async function buildCandidate(base, ids, tips) {
   await resetWorktree(base);
   const merged = [], conflicts = [];
@@ -487,6 +524,11 @@ async function buildCandidate(base, ids, tips) {
     const r = await git(['merge', '--no-ff', '--no-edit', '-q', '-m', `Land ${id}`, tips[id]], { cwd: WT, ok: true });
     if (r.code === 0) { merged.push(id); continue; }
     const files = lines(await gitOut(['diff', '--name-only', '--diff-filter=U'], { cwd: WT }));
+    if (await resolveIndexConflict(id, files)) {
+      console.log(`land: ${id}: the conflict was only in the FOLLOWUPS index block; regenerated it`);
+      merged.push(id);
+      continue;
+    }
     await git(['merge', '--abort'], { cwd: WT, ok: true });
     conflicts.push({ id, files });
   }

@@ -451,6 +451,81 @@ def test_missing_followups_inputs_do_not_stop_a_land():
             _assert_landed(t, id_)
 
 
+def _followups(t: Lane, desk: str, bench: str = "", updated: str = "today") -> str:
+    """A FOLLOWUPS.md with these rows and the index block the real generator writes for them."""
+    path = t.dir / "followups-draft.md"
+    path.write_text(f"Updated: {updated}.\n\n<!-- index:start -->\n<!-- index:end -->\n\n## MVP DESK\n" + desk +
+                    "\nDesk notes stay here.\n\n## MVP BENCH\n" + bench + "\nBench notes stay here.\n\n## MVP DECISION\n")
+    subprocess.run([NODE, str(REPO / "scripts" / "followups-index.mjs"), str(path)], check=True)
+    return path.read_text()
+
+
+def _seed_followups(t: Lane, text: str):
+    seed = t.dir / "mover"
+    _git("pull", "-q", "origin", "main", cwd=seed)
+    (seed / "docs").mkdir(exist_ok=True)
+    (seed / "scripts").mkdir(exist_ok=True)
+    (seed / "docs" / "FOLLOWUPS.md").write_text(text)
+    shutil.copyfile(REPO / "scripts" / "followups-index.mjs", seed / "scripts" / "followups-index.mjs")
+    _git("add", "-A", cwd=seed)
+    _git("commit", "-q", "-m", "index seed", cwd=seed)
+    _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+
+
+Z1 = "- **Z1 🟡 A ROW.** text\n"
+Z2 = "- **Z2 🟠 A DESK ROW.** text\n"
+Z3 = "- **Z3 🟢 A BENCH ROW.** text\n"
+
+
+def test_two_rows_that_conflict_only_in_the_index_block_both_land_with_one_index():
+    # F624 (2026-10-26): every land that touched FOLLOWUPS made each queued FOLLOWUPS branch conflict on the
+    # generated index block, three land retries in one day. Each branch here adds a row in its own section, and each
+    # commits the index its generator wrote, so the two index blocks differ line by line and git conflicts there.
+    with Lane() as t:
+        _seed_followups(t, _followups(t, Z1))
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2)})
+        b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _followups(t, Z1, Z3)})
+        assert subprocess.run([GIT, "merge-tree", "--write-tree", f"origin/land/{a}", f"origin/land/{b}"], cwd=t.dev,
+                              capture_output=True).returncode == 1, "the fixture must conflict (control)"
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        assert f"land: {b}: the conflict was only in the FOLLOWUPS index block; regenerated it" in r.stdout, r.stdout
+        landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote) + "\n"
+        assert landed == _followups(t, Z1 + Z2, Z3), landed
+        assert "<<<<<<<" not in landed
+        # the merge commit itself carries the whole index, not only the batch's regenerate commit after it
+        land_b = _git("log", "--format=%H", f"--grep=^Land {b}$", "main", cwd=t.remote)
+        assert _git("show", f"{land_b}:docs/FOLLOWUPS.md", cwd=t.remote) + "\n" == landed
+
+
+def test_a_followups_conflict_outside_the_index_block_still_fails():
+    # F624: only the generated block is the lander's to resolve. A row both branches edited is a real conflict, even
+    # when the index block conflicts too, and so are two stamps, and a conflict in FOLLOWUPS beside another file's.
+    for name, a_files, b_files, files in (
+            ("stamp", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2, updated="monday")},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3, updated="tuesday")}, ["docs/FOLLOWUPS.md"]),
+            ("same-row", {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from a") + Z2)},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from b"), Z3)}, ["docs/FOLLOWUPS.md"]),
+            ("other-file", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2), "same.txt": "from a\n"},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3), "same.txt": "from b\n"}, ["docs/FOLLOWUPS.md", "same.txt"])):
+        with Lane() as t:
+            _seed_followups(t, _followups(t, Z1))
+            a = t.submit(f"{name}-a", {f: v(t) if callable(v) else v for f, v in a_files.items()})
+            b = t.submit(f"{name}-b", {f: v(t) if callable(v) else v for f, v in b_files.items()})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a)
+            res = t.result(b)
+            assert res["status"] == "conflict" and sorted(res["conflict_files"]) == files, (name, res)
+            assert "regenerated it" not in r.stdout, (name, r.stdout)
+
+
+def _followups_text(desk: str, bench: str = "", updated: str = "today"):
+    """A file value for the table above: built inside the Lane, because the generator writes to its temp dir."""
+    return lambda t: _followups(t, desk, bench, updated)
+
+
 def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():
     # E3 (2026-10-10): 21% of lands changed only docs and each paid for every job. A docs-only candidate runs
     # test-all's own --changed selection (the jobs that read docs) against the base it was merged onto.
