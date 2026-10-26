@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-25. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-26. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -12,12 +12,12 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 107.** Desk 10 · bench 93 · decision 4.
+**MVP open: 105.** Desk 8 · bench 93 · decision 4.
 
-**MVP DESK (10),** a keyboard is enough:
+**MVP DESK (8),** a keyboard is enough:
 - 🟠 **F595**
-- 🟡 **F547** · **F614** · **F619**
-- 🟢 **F512** · **F544** · **F574** · **F598** · **F615** · **F621**
+- 🟡 **F547** · **F619**
+- 🟢 **F512** · **F544** · **F574** · **F598** · **F621**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -49,8 +49,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F614 🟡 THE PUBLISHED TIME-TO-KILL ENDS AT THE LAST PULL, NOT AT THE HEADSET WORD.** brx2, 2026-10-25 (brx1's call; Opus review of F602). `WeaponCatalog.time_to_kill()` (and the `ttk_ms`/`bars.ttk` it feeds) counts a kill at its last pull. When that kill needs the pull's headset word, it lands about 88 ms later on the wire (the Shotgun against 115 always does). Add the delay to the published number. A correctness fix, not a balance change; after the sim fixes and the phase C pass 6 and 7 re-runs. Owner: whoever owns compile then. `build`.
-- **F615 🟢 GATE: `mc-vqa2`'s menu-fold step times out under load.** brx2, 2026-10-25. The lander lists `mc-vqa2` as a flake twice in seven days, and it failed three of brx2's local gates on 2026-10-25, each time at `menu-fold: timed out after 4000 ms waiting for the menu in view`; alone it passes in about 35 s. Wait for the condition, not a fixed 4 s (CONTRIBUTING.md, parallel-safe tests). Owner: whoever owns the MC e2e scripts. `build`.
 - **F619 🟡 SIM: A CHARGE GUN'S FINISH ESTIMATE STILL COUNTS A FRACTION OF A HIT.** brx2, 2026-10-25 (Opus review of F617). F617 made a fixed-damage finish need whole landed hits, but charge mode (opener and taps of different damage) still spends `damage * chance` against the pool in `balance_review.finish_estimate`. At a low pool, a Charge Rifle reads "finishes in one tap" at any hit chance, so the duel and field swap choices keep it over an honestly scored secondary. Give charge mode a whole-hit floor (for example `ceil(pool / tap)` landed rounds). After the F578 phase C re-runs. Owner: brx2. `build`.
 - **F621 🟢 GATE: THE `mcp` JOB TIMES OUT UNDER LOAD.** brx2, 2026-10-25 (brx1's call). The lander lists `mcp` as a 600 s TIMEOUT in the last 7 days, and on 2026-10-25 it recorded main 9d4c881d2 as red for it with no failing test; only a `--fix-main` submit could restart the queue. Cause: `scripts/lib/jobs.mjs` registers `mcp` at `secs: 33`, but measured runs on 2026-10-25 took 262 to 547 s at load 12 to 37, so a busy box reaches `JOB_TIMEOUT_S` (600). Smallest fix: re-measure the job and set its `secs` (and so its timeout) from the measured time, or split the slowest files (the balance_review pair) into their own job. After the F578 phase C re-runs. Owner: whoever owns the gate scripts. `build`.
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.

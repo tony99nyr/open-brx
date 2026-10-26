@@ -5,7 +5,7 @@ import math
 
 from typing import Sequence
 
-from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, cells_from_weap, hir_from_weap
+from .compile import CHARGE_TAP_CADENCE_MS, DEFAULT_POOL, HEADSET_WORD_LAG_MS, cells_from_weap, headset_lag_ms, hir_from_weap
 from .policy import chain_reload
 from .types import Weapon, WeaponView
 
@@ -107,6 +107,10 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         ttk_ms = (htk - 1) * CHARGE_TAP_CADENCE_MS
     elif htk and cycle and "charged" in st:
         ttk_ms = int(round(cycle * (htk if st["charged"] else htk - 1)))
+        # F614: the kill waits for the headset word when the last gun word does not finish it, as `time_to_kill()`
+        gun_hit = _num(st.get("gun_hit"))
+        if real_hit and gun_hit is not None:
+            ttk_ms += headset_lag_ms(pool, int(htk), real_hit, gun_hit)
     else:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was
         # published for, and is a lie at any other. Show nothing rather than the wrong number.
@@ -178,9 +182,12 @@ def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[We
         A one-shot weapon stores `ttk_ms: 0` (it is `(htk-1) * fire_ms`, and htk is 1). Ranked as a
         number that reads as *instant*, which handed the Energy Launcher — the weapon flagged as
         dealing no damage at all — a full 100 KILL SPEED bar. A weapon that kills in one hit has no
-        time-to-kill to compare; it shows no bar rather than the best one.
+        time-to-kill to compare; it shows no bar rather than the best one. F614: nor does a one-shot whose
+        only time is its own headset word's lag.
         """
         t = v.get("ttk_ms")
+        if v.get("htk") == 1 and t == HEADSET_WORD_LAG_MS:
+            return None
         return None if not t else t
 
     for v in views:
