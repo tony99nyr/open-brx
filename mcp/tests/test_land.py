@@ -451,11 +451,11 @@ def test_missing_followups_inputs_do_not_stop_a_land():
             _assert_landed(t, id_)
 
 
-def _followups(t: Lane, desk: str, bench: str = "", updated: str = "today") -> str:
+def _followups(t: Lane, desk: str, bench: str = "", updated: str = "2026-10-25", notes: str = "stay here") -> str:
     """A FOLLOWUPS.md with these rows and the index block the real generator writes for them."""
     path = t.dir / "followups-draft.md"
     path.write_text(f"Updated: {updated}.\n\n<!-- index:start -->\n<!-- index:end -->\n\n## MVP DESK\n" + desk +
-                    "\nDesk notes stay here.\n\n## MVP BENCH\n" + bench + "\nBench notes stay here.\n\n## MVP DECISION\n")
+                    f"\nDesk notes {notes}.\n\n## MVP BENCH\n" + bench + "\nBench notes stay here.\n\n## MVP DECISION\n")
     subprocess.run([NODE, str(REPO / "scripts" / "followups-index.mjs"), str(path)], check=True)
     return path.read_text()
 
@@ -490,7 +490,7 @@ def test_two_rows_that_conflict_only_in_the_index_block_both_land_with_one_index
         r = t.land("run")
         assert r.returncode == 0, r.stdout + r.stderr
         _assert_landed(t, a, b)
-        assert f"land: {b}: the conflict was only in the FOLLOWUPS index block; regenerated it" in r.stdout, r.stdout
+        assert f"land: {b}: the conflict was only in the FOLLOWUPS index or its Updated stamp; resolved it" in r.stdout, r.stdout
         landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote) + "\n"
         assert landed == _followups(t, Z1 + Z2, Z3), landed
         assert "<<<<<<<" not in landed
@@ -499,12 +499,28 @@ def test_two_rows_that_conflict_only_in_the_index_block_both_land_with_one_index
         assert _git("show", f"{land_b}:docs/FOLLOWUPS.md", cwd=t.remote) + "\n" == landed
 
 
+def test_two_stamps_that_conflict_land_with_the_later_date():
+    # F624: a lane that works across midnight stamps tomorrow's date while the branch landed before it kept today's.
+    # The lander takes the later date, whichever side it is on, and regenerates the index too.
+    for first, second in (("2026-10-27", "2026-10-26"), ("2026-10-26", "2026-10-27")):
+        with Lane() as t:
+            _seed_followups(t, _followups(t, Z1))
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2, updated=first)})
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _followups(t, Z1, Z3, updated=second)})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a, b)
+            landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote) + "\n"
+            assert landed == _followups(t, Z1 + Z2, Z3, updated="2026-10-27"), (first, landed)
+
+
 def test_a_followups_conflict_outside_the_index_block_still_fails():
     # F624: only the generated block is the lander's to resolve. A row both branches edited is a real conflict, even
-    # when the index block conflicts too, and so are two stamps, and a conflict in FOLLOWUPS beside another file's.
+    # when the index block conflicts too, and so is a line of prose both changed, and a conflict in FOLLOWUPS beside
+    # another file's.
     for name, a_files, b_files, files in (
-            ("stamp", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2, updated="monday")},
-             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3, updated="tuesday")}, ["docs/FOLLOWUPS.md"]),
+            ("prose", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2, notes="from a")},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3, notes="from b")}, ["docs/FOLLOWUPS.md"]),
             ("same-row", {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from a") + Z2)},
              {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from b"), Z3)}, ["docs/FOLLOWUPS.md"]),
             ("other-file", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2), "same.txt": "from a\n"},
@@ -518,12 +534,28 @@ def test_a_followups_conflict_outside_the_index_block_still_fails():
             _assert_landed(t, a)
             res = t.result(b)
             assert res["status"] == "conflict" and sorted(res["conflict_files"]) == files, (name, res)
-            assert "regenerated it" not in r.stdout, (name, r.stdout)
+            assert "resolved it" not in r.stdout, (name, r.stdout)
 
 
-def _followups_text(desk: str, bench: str = "", updated: str = "today"):
+def test_a_generator_that_refuses_the_merged_rows_is_a_conflict_and_the_next_branch_still_lands():
+    # F624 (Opus review): the resolver writes and stages FOLLOWUPS before the generator runs. When the generator refuses
+    # the merged rows, the branch is a conflict as before, and the abort leaves the worktree clean for the next one.
+    with Lane() as t:
+        _seed_followups(t, _followups(t, Z1))
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2)})
+        unmarked = _followups(t, Z1, Z3).replace("## MVP BENCH\n", "## MVP BENCH\n- **Z4 A ROW WITH NO MARKER.** text\n")
+        b = t.submit("b-bad-row", {"docs/FOLLOWUPS.md": unmarked})
+        c = t.submit("c-clean", {"other.txt": "c\n"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, c)
+        assert t.result(b)["status"] == "conflict", t.result(b)
+        assert "resolved it" not in r.stdout, r.stdout
+
+
+def _followups_text(desk: str, bench: str = "", updated: str = "2026-10-25", notes: str = "stay here"):
     """A file value for the table above: built inside the Lane, because the generator writes to its temp dir."""
-    return lambda t: _followups(t, desk, bench, updated)
+    return lambda t: _followups(t, desk, bench, updated, notes)
 
 
 def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():

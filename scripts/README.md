@@ -6,7 +6,7 @@
 | `mc.mjs` (`pnpm mc`) | Start Mission Control from an environment that is already set up. It stops MC gracefully on Ctrl+C, SIGTERM or SIGHUP, and passes MC's start-up exit code through (2 means a home lock or busy port). It redacts `mc.log` by line (rules: `mcp/brx_mcp/mc/redact_patterns.json`, shared with `report.py`), prints the size of `~/.brx-mcp/sessions`, and removes launch folders that are both outside the newest 30 and older than 30 days, logging each (`BRX_MC_KEEP_SESSIONS`, `BRX_MC_KEEP_DAYS`; `--keep-all` skips the prune). Never touches this launch, a folder younger than 10 minutes, a session whose manifest says running with a live process (protected for at most 7 days after the manifest was written), a symlinked root, or anything outside the root |
 | `test-all.mjs` (`pnpm run test:all`) | Every test suite at once, inside a memory budget (`CONTRIBUTING.md` → *Running things*) |
 | `land.mjs` | The land lane: the queue that puts branches onto `main` (below) |
-| `followups-index.mjs` | Generate the index block in `docs/FOLLOWUPS.md`. The lander regenerates it, so locally run it with `--check` only and do not commit a regenerated block. The lander resolves a conflict confined to the block (F624), but nothing else in the file. |
+| `followups-index.mjs` | Generate the index block in `docs/FOLLOWUPS.md`. The lander regenerates it, so locally run it with `--check` only and do not commit a regenerated block. The lander resolves a conflict confined to the block or the `Updated:` date (F624), but nothing else in the file. |
 | `regen.mjs` + `generated.json` | The one list of generated files and their generators. `node scripts/regen.mjs --check` exits 1 and names each stale output; `--write [name...]` rewrites them. Exit 2 means a generator failed. |
 | `lib/` | Shared logic for the scripts above. The test-all lock, pool and budget are described in `CONTRIBUTING.md` → *Running things*; they are tested from `mcp/tests/test_test_all_*.py`. |
 | `test/` | Node tests and fixtures for the scripts (`jobs-snapshot.mjs <fixture>` rewrites the fixture of `mcp/tests/test_test_all_jobs.py`). |
@@ -79,12 +79,14 @@ flake summary. Like `wait`, it runs the lander when none runs and the queue is n
 After the merges, the lander regenerates the FOLLOWUPS index block (`scripts/followups-index.mjs`) and commits it.
 Do not edit the block by hand.
 
-A merge conflict confined to that block is not a conflict (F624). Every land that touches `docs/FOLLOWUPS.md` changes
-the block, so each queued branch that also changes it used to conflict there. When `docs/FOLLOWUPS.md` is the only
-conflicting file, the lander merges its three versions again with the block emptied. If that merge is clean, the lander
-writes it, regenerates the block and commits the merge as `Land <id>`. It prints `land: <id>: the conflict was only in
-the FOLLOWUPS index block; regenerated it`. Any other conflict fails as before: a row or the `Updated:` stamp that both
-branches changed, a conflict in another file as well, or a generator that refuses the merged rows.
+A merge conflict confined to that block or to the `Updated:` date is not a conflict (F624). Every land that touches
+`docs/FOLLOWUPS.md` changes the block, so each queued branch that also changes it used to conflict there, and a lane
+that works past midnight stamps a later date. When `docs/FOLLOWUPS.md` is the only conflicting file, and each of its
+three versions has one index block and one `Updated: YYYY-MM-DD.` line, the lander merges the three again with the
+block emptied and the date blanked. If that merge is clean, the lander writes it with the later of the two dates,
+regenerates the block, and commits the merge as `Land <id>`. It prints `land: <id>: the conflict was only in the
+FOLLOWUPS index or its Updated stamp; resolved it`. Any other conflict fails as before: a row or a line of prose that
+both branches changed, a conflict in another file as well, or a generator that refuses the merged rows.
 
 ### What the lander does
 
