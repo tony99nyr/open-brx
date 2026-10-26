@@ -12,11 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 101.** Desk 4 · bench 93 · decision 4.
+**MVP open: 99.** Desk 2 · bench 93 · decision 4.
 
-**MVP DESK (4),** a keyboard is enough:
+**MVP DESK (2),** a keyboard is enough:
 - 🟠 **F595**
-- 🟡 **F547** · **F619**
 - 🟢 **F544**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -49,10 +48,8 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F619 🟡 SIM: A CHARGE GUN'S FINISH ESTIMATE STILL COUNTS A FRACTION OF A HIT.** brx2, 2026-10-25 (Opus review of F617). F617 made a fixed-damage finish need whole landed hits, but charge mode (opener and taps of different damage) still spends `damage * chance` against the pool in `balance_review.finish_estimate`. At a low pool, a Charge Rifle reads "finishes in one tap" at any hit chance, so the duel and field swap choices keep it over an honestly scored secondary. Give charge mode a whole-hit floor (for example `ceil(pool / tap)` landed rounds). After the F578 phase C re-runs. Owner: brx2. `build`.
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.
 - **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
-- **F547 🟡 HUD: THE TOXIN RIFLE'S AMMO PIPS BECOME A BAR.** brx1, 2026-10-16 (bench C.12). Tony: the pips are broken, too many, and they take a lot of screen; use a bar. HUD lane (brx-hud): show Tony a static before and after gallery first (`ui-review-static-gallery`), then build. Owner brx4 with the HUD lane. `build`. **Decided 2026-10-24 (Tony, option C):** "i only like the pips when it represents the shots 1:1. I think I prefer the bar otherwise". `AMMO_PIP_MAX` 30 → 20, so the Toxin Rifle gets the bar (amber when low, no number); mags of 20 or fewer keep one pip per round, and Extended Mags moves the AMR, Glock, Bolt Rifle and Stinger to the bar. **Built 2026-10-24** (brx4, `e99300011`). Left: Tony's pick on a thinner bar from brx1's gallery.
 
 
 ## MVP BENCH
