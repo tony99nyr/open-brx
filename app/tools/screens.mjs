@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-reload-failed', 'live-bolt', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-updated', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2010,6 +2010,17 @@ for (const view of VIEWS) {
     must(/\bwin\b/.test(r.cls), 'headline is not marked as a win: ' + r.cls);
     must(r.fs >= 30, 'the headline is not the biggest thing on the screen: ' + r.fs);
     must(/TDM/.test(r.meta) && /WIN BY KILLS/.test(r.meta), 'the screen is not mode-aware: ' + r.meta);
+  });
+  // Bounded A81 wait (brx3 2026-10-26): MC releases without a late phone, then re-sends `result` with result_changed when
+  // that phone's sync changes the winner. The player who saw WIN must see that it changed, not a silent swap.
+  await step(`${view.name} A81 result-updated: a changed result says RESULT UPDATED, and an unchanged one does not`, async () => {
+    const meta = async st => { const pg = await open(view, st);
+      const r = await pg.evaluate(() => ({ h: document.querySelector('.result .rh1').textContent.trim(),
+        meta: (document.querySelector('.result .rmeta') || {}).textContent || '' })); await pg.close(); return r; };
+    const upd = await meta('result-updated'), win = await meta('result-win-team');
+    must(upd.h === 'LOSE', 'the updated headline is the new outcome: ' + upd.h);
+    must(/^RESULT UPDATED\b/.test(upd.meta), 'the meta line does not lead with RESULT UPDATED: ' + upd.meta);
+    must(!/RESULT UPDATED/.test(win.meta), 'a first result claims it was updated: ' + win.meta);
   });
   for (const [stage, word] of [['result-draw', 'DRAW'], ['result-undecided', 'UNDECIDED']]) {
     await step(`${view.name} A24 ${stage}: the headline reads ${word}`, async () => {

@@ -2216,7 +2216,7 @@ export class Engine {
     }
     this._noMatchEnd = null;
     this.result = body; this.resultAt = this.now();
-    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}`, 'lk');
+    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}${body.result_changed === true ? ' · updated' : ''}`, 'lk');
     try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }
     this._changed();
     return { ok: true };

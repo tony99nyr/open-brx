@@ -806,6 +806,8 @@ export function startDemo({ engine, log }) {
       'result-sync-mc-silent': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 40_000; syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'wifi', unboundAt: 1 }); /* off the link for 40 s */ }], [2500, () => ev.result('win')]],
       'over-sync-unlinked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'cellular' })], [2600, 'endOk']],
       'result-win-team':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')]],
+      // A81 bounded wait: MC released WIN without a late phone, whose sync then changed the winner (result_changed)
+      'result-updated':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2800, () => ev.result('lose', { result_changed: true })]],
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
       'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],
