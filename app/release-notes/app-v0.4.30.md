@@ -14,7 +14,7 @@ This build installs over 0.4.6 or later. It includes everything in 0.4.29. The S
   - **Body Armor gives 20 extra armour,** down from 25. It still makes your reload a quarter slower.
   - **Extended Mags gives half again as many rounds on the Shields preset** (×1.5). On Standard it still doubles the magazine.
   - **The AMR fires more slowly:** 450 ms between shots, up from 350 ms.
-  - **Armour Piercing rounds are rebalanced.** The Assault Rifle, SMG and Energy Rifle fire lighter AP rounds faster. The Suppressor fires heavier AP rounds more slowly. The Shotgun's AP round cycles a little faster. An Armour Piercing round never crits.
+  - **Armour Piercing rounds are rebalanced.** The Assault Rifle, SMG and Energy Rifle fire lighter AP rounds faster. The Suppressor fires heavier AP rounds more slowly. The Shotgun's AP round cycles a little faster.
 - **Kill-speed numbers include the headset hit** (F614). When a kill needs the headset to register the last hit, the published time to kill now counts it. The Shotgun reads 0.97 s, up from 0.89 s. The game itself did not change.
 - **The Mission Control console has fewer long help notes** (F599, a Mission Control change). The report, push and locked-kit messages are clearer.
 
