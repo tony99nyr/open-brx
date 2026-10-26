@@ -131,7 +131,8 @@ brew install android-platform-tools openjdk@21     # adb + the JDK Capacitor 8 w
 *Pair device with pairing code*; then `adb pair <ip>:<pairing port> <code>`. On a Mac `adb mdns
 services` then finds the phone by itself; if not, `adb connect <ip>:<connect port>`, where the connect
 port is the one on the main Wireless debugging screen (it is not the pairing port, and it changes
-when the phone reboots). USB works too, once the phone trusts the Mac.
+when the phone reboots or reconnects to Wi-Fi). `ADB_CONNECT=<ip> npm run android:install` reads the
+current port from mDNS itself (F544). USB works too, once the phone trusts the Mac.
 
 **Copy `~/.android/debug.keystore` from the Windows machine** (`C:\Users\Tony\.android\debug.keystore`;
 it is the same file WSL uses) before the first Mac build. A debug apk is signed with the building

@@ -34,7 +34,7 @@ run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session
 - **Indoor IR range is bounce.** On 2026-10-24 a receiver flat on the floor heard a gun at 3 m indoors (30/30) and
   nothing outdoors (0/10): the ceiling carried the hit. Every range claim in this sheet is measured outdoors, in P3.
 - **A range claim needs a BRX headset as the receiver.** The U002 receiver bounds the emitter only (F580).
-- **A player phone's adb port changes on every Wi-Fi reconnect** (F544). Read the `ip:port` again before a CDP read.
+- **A player phone's adb port changes on every Wi-Fi reconnect** (F544). Reconnect with `ADB_CONNECT=<ip> npm run android:install`, or read the port with `adb.exe mdns services`, before a CDP read.
 - **MC accepts ABORT only while ARMED.** Once LIVE, the operator's end is END.
 
 ## Kit
