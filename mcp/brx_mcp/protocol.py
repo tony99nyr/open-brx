@@ -155,10 +155,10 @@ KNOWN_SAFE_COMMANDS = frozenset(KNOWN_COMMANDS)
 # Known names whose corrected v4.32 shape/effect conflicts with older evidence. They use the same
 # explicit-confirm path as an unknown command until the discriminating bench step settles the version.
 CONFIRM_REQUIRED_COMMANDS: dict[str, CommandInfo] = {
-    "PRES": _c(None, False, "v4.30 says per-cell damage modifier; corrected v4.32 handler unresolved"),
-    "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; corrected v4.32 handler unresolved"),
-    "BHIT": _c(None, False, "v4.30/sheet say seven-field injected hit; corrected v4.32 consumes one event byte"),
-    "FIREX": _c(None, False, "v4.30 says one slot; corrected v4.32 consumes five fields and forwards them"),
+    "PRES": _c(None, False, "a per-cell damage percent on the $SIR cells, zeroed by $CLEAR [disasm, 2026-10-26 re-check]; not bench-proven"),
+    "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; the v4.32 handler label is unproven after the 2026-10-26 re-check"),
+    "BHIT": _c(None, False, "v4.30/sheet say seven-field injected hit; the v4.32 one-byte reading is label-unproven after the 2026-10-26 re-check"),
+    "FIREX": _c(None, False, "v4.30 says one slot; the v4.32 five-field reading is label-unproven after the 2026-10-26 re-check"),
 }
 
 # Refused outright by the instrument (confirm=true does NOT override) and by the node. Names from
@@ -170,7 +170,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
     "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
     "DDFU": "the v2.x DFU entry [disasm]",
-    "CLEARDEVICE": "clears the paired-device record (the headset pairing) [disasm]",
+    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage; which link must pair again is not in the code [disasm]",
     "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
     "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
     "DEV": "developer-mode toggle, persistence unknown [disasm]",
@@ -190,7 +190,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "PIN": "v2.x Bluetooth PIN [disasm]",
     "INQ": "HC-05 radio inquiry [disasm]",
     "ZOM": "zombie headset mode [sheet]",
-    "ZTOG": "zombie mode toggle [sheet]",
+    "ZTOG": "a headset command (the gun has no handler, so the path from our link is unknown): `$ZTOG,1` stores the headset's zombie mode across a power cycle and stops its $HIT reports to the gun [sheet, disasm]",
     "ZON": "zombie mode on [disasm: headset vocabulary]",
     "ZOFF": "zombie mode off [disasm: headset vocabulary]",
     "BOOM": "zombie 'boomer' headset command [sheet]",
@@ -269,15 +269,42 @@ def arity_note(command: str) -> str | None:
     return None
 
 
+# Safety guard B (brx-rea firmware pass 2, a code read): the gun has twelve `$WEAP` slots (0-11) and keeps a weapon's
+# damage (t5) in one byte. Slot 12 writes past its tables, slot 13 or more lands on slot 0, and a damage above 255 wraps
+# to its low byte (300 lands as 44). The gun reads a token's leading integer and ignores the rest, so the check does too.
+WEAP_SLOT_MAX = 11
+WEAP_DAMAGE_MAX = 255
+_LEADING_INT = re.compile(r"\s*([+-]?\d+)")
+
+
+def weap_range_error(command: str) -> str | None:
+    """Why a `$WEAP` frame carries a slot or a damage the gun cannot hold, else None (and None for any other frame).
+    Every writer calls it: `validate_frame`, the BLE manager's writes and the raw-bytes plan check."""
+    toks = tokenize(command)
+    if toks[0].lstrip("!").strip().upper() != "WEAP":   # not command_name(): a Gen1 `!` must not hide a write
+        return None
+    for i, name, top in ((1, "slot", WEAP_SLOT_MAX), (6, "damage (t5)", WEAP_DAMAGE_MAX)):
+        m = _LEADING_INT.match(toks[i]) if i < len(toks) else None
+        if m and not 0 <= int(m.group(1)) <= top:
+            return f"$WEAP {name} {toks[i].strip()} is outside 0-{top}: the gun cannot hold it"
+    return None
+
+
+def refuse_out_of_range(command: str) -> None:
+    """Guard B for a writer that has no error channel of its own: raise ValueError for a `$WEAP` the gun cannot hold."""
+    if (why := weap_range_error(command)) is not None:
+        raise ValueError(f"refused: {why}")
+
+
 def validate_frame(command: str) -> str | None:
-    """Return an error string if the frame is malformed, else None."""
+    """Return an error string if the frame is malformed or writes a `$WEAP` value the gun cannot hold, else None."""
     if not command.startswith("$"):
         return "frame must start with '$'"
     if not command.endswith(",*"):
         return "frame must end with ',*'"
     if not _FRAME_RE.match(command):
         return "frame failed pattern check ($NAME,tokens...,*)"
-    return None
+    return weap_range_error(command)
 
 
 def command_name(command: str) -> str:
