@@ -256,6 +256,8 @@ export class Hud {
       st.tryoutUnconfirmed && st.tryoutUnconfirmed.tab, st.tryoutUnconfirmed && st.tryoutUnconfirmed.kind,
       this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
       st.kitOpen, st.briefSeen, st.kitLocked, st.standby, st.game && st.game.name, st.game && st.game.loadout_line,
+      // the Extended Mags plate reads the game's health (Shields halves its gain): a host switch must rebuild it
+      st.game && st.game.health && [st.game.health.max_hp, st.game.health.max_armor, st.game.health.max_shield].join(','),
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
       !!(st.loadout && st.loadout.overrides && st.loadout.overrides.easy_reload),

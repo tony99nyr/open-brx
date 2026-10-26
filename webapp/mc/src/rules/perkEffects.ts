@@ -1,4 +1,5 @@
 import type { GameConfig, PerkEffectsResolved, PerkView, Player, ValuePair, WeaponView } from '../api/types';
+import { isShieldsHealth } from './health';
 import { RESERVE_PROVEN_MAX, WEAPON_MOCK_FIELDS } from '../api/contract.gen';
 
 /** Python round(): nearest integer, with an exact midpoint going to the even integer. */
@@ -13,7 +14,8 @@ export function perkEffectsResolved(config: GameConfig, player: Player, weapons:
   perks: readonly PerkView[]): PerkEffectsResolved | null {
   const perkId = player.loadout?.perk;
   if (!perkId) return null;
-  const effects = perks.find(perk => perk.perk_id === perkId)?.effects ?? {};
+  const perk = perks.find(perk => perk.perk_id === perkId);
+  const effects = (isShieldsHealth(config.health) ? perk?.variants?.shields : undefined)?.effects ?? perk?.effects ?? {};
   const primaryId = player.loadout.weapons[0]?.weapon_id ?? 'assault_rifle';
   const secondaryId = player.loadout.weapons[1]?.weapon_id;
   const primary = weapons.find(weapon => weapon.weapon_id === primaryId);

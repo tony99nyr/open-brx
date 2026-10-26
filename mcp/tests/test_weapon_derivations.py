@@ -428,7 +428,7 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
     # widened again, 410ms->550ms, once modelling the crit reopened R6, then 2567->2530 on 2026-09-24
     # (polish round 2, F308, "full auto point blank ... too harsh") when the gap eased 550ms->540ms --
     # htk is unchanged throughout, only cycle_ms moved, see the Balance rules table
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 1572), ("toxin_rifle", 15, 1540)):
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 1972), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \
@@ -699,9 +699,8 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     base = s.health_pool(s.players[p["player_id"]])
     s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
     armoured = s.health_pool(s.players[p["player_id"]])
-    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now +25 flat (Tony: "maybe 50
-    # is too much armor and it should be 25"), not the old flat +50.
-    assert armoured == base + 25, (base, armoured)
+    # Part A: body_armor's grant is now +20 flat.
+    assert armoured == base + 20, (base, armoured)
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 

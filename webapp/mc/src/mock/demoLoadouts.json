@@ -1,5 +1,5 @@
 [
-  { "weapons": [{ "weapon_id": "assault_rifle" }, { "weapon_id": "deagle" }], "perk": "quick_switch" },
+  { "weapons": [{ "weapon_id": "assault_rifle" }, { "weapon_id": "deagle" }], "perk": "fast_hands" },
   { "weapons": [{ "weapon_id": "assault_rifle" }, { "weapon_id": "shotgun" }], "perk": null },
   { "weapons": [{ "weapon_id": "burst_rifle" }], "perk": "body_armor" },
   { "weapons": [{ "weapon_id": "smg" }], "perk": null },

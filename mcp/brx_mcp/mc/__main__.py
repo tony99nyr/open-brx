@@ -439,7 +439,7 @@ def build(args):
             {"weapons": [{"weapon_id": "amr"}, {"weapon_id": "energy_rifle"}]},
             {"weapons": [{"weapon_id": "suppressor"}], "perk": "armor_piercing"},   # S50: easy_reload left the perk slot
             {"weapons": [{"weapon_id": "charge_rifle"}]},
-            {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "deagle"}], "perk": "quick_switch"},   # A14: all three slots
+            {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "deagle"}], "perk": "fast_hands"},   # A14: all three slots
         ]
         for i, name in enumerate(DEMO_NAMES):
             # F413: TDM's own default teams (red + blue) -- was blue/yellow before every team mode

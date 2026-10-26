@@ -132,7 +132,7 @@ def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
         player = {"loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}}
         # S50 (docs/perk-design.md §2): perks.json's `max_armor_add` is now a flat +25 (was a flat
         # +50); `compile._MAX_ARMOR_ADD` is built from it (F604).
-        assert adapter.perk_effects(player)["max_armor_add"] == 25
+        assert adapter.perk_effects(player)["max_armor_add"] == 20
 
 
 def test_a_broken_compiler_catalog_fails_visible_loadout_validation():

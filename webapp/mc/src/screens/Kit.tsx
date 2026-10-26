@@ -450,7 +450,7 @@ export function Kit() {
                   item={secondaryW} kind={secondaryW ? 'weapon' : 'none'}
                   overridden={locked ? null : overridden('secondary')} onReapply={reapply}
                   onClear={secondaryW && !slotLocked('secondary') && !locked ? clearSecondary : undefined} />
-                <SlotCard matchLocked={locked} label="PERK" slot="perk" active={slot === 'perk'} onClick={() => setSlot('perk')} rule={perkRule}
+                <SlotCard matchLocked={locked} label="PERK" slot="perk" active={slot === 'perk'} onClick={() => setSlot('perk')} rule={perkRule} health={state.config.health}
                   item={perk} kind={perk ? 'perk' : 'none'}
                   overridden={locked ? null : overridden('perk')} onReapply={reapply}
                   onClear={perk && !slotLocked('perk') && !locked ? clearPerk : undefined} />
@@ -474,7 +474,7 @@ export function Kit() {
                 ) : 'weapon_id' in focusItem ? (
                   <WeaponHero w={focusItem} slot={slot} sp={sp} tryingId={locked ? undefined : trying[sp.player_id]} pushed={state.lobby.pushed} verdicts={verdicts} setVerdicts={setVerdicts} />
                 ) : (
-                  <PerkHero k={focusItem} />
+                  <PerkHero k={focusItem} health={state.config.health} />
                 )}
               </Brackets>
             </div>
@@ -552,7 +552,7 @@ export function Kit() {
                             {/* F221: a confidence fact about our own build, not something the operator can fix tonight — NEUTRAL. */}
                             {!k.verified && <span title="Effect not yet proven on hardware" style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: colourOf('kit-perk-unproven') }}>UNPROVEN</span>}
                           </span>
-                          <PerkTrade k={k} style={{ font: F.mono(600, 11), letterSpacing: '.1em' }} />
+                          <PerkTrade k={k} health={state.config.health} style={{ font: F.mono(600, 11), letterSpacing: '.1em' }} />
                         </span>
                       </div>
                     );

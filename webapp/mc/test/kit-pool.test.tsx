@@ -201,7 +201,7 @@ describe('KIT · per-player Easy Reload', () => {
 
   it('switching it on beside a second weapon is a two-tap that names the weapon it drops', async () => {
     // ALT cannot reload and swap: the server refuses the pair (policy.conflict), so the console asks
-    // before it sends rather than collecting a 400. p1 is AR + Desert Eagle + Quick Switch.
+    // before it sends rather than collecting a 400. p1 is AR + Desert Eagle + Fast Hands.
     const { m, patches, easy } = await kitFor('p1');
     await easy('ON');
     expect(patches.length, 'the first tap sends nothing').toBe(0);
@@ -209,7 +209,7 @@ describe('KIT · per-player Easy Reload', () => {
     await easy('ON');
     expect(patches.length, 'the second tap sends').toBe(1);
     expect(patches[0].weapons, 'the second weapon is dropped with it').toEqual([{ weapon_id: 'assault_rifle' }]);
-    expect(patches[0].perk, 'the perk is not the thing that owns the button, so it stays').toBe('quick_switch');
+    expect(patches[0].perk, 'the perk is not the thing that owns the button, so it stays').toBe('fast_hands');
     expect(patches[0].overrides).toEqual({ easy_reload: true });
     m.unmount();
   });
