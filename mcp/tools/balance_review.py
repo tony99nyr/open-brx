@@ -2248,7 +2248,8 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
     for wid in primaries:
         best[wid] = {}
         for preset in OP_GATED_PRESETS:
-            # F625: None is the "no perk" option, so "not chosen yet" needs its own sentinel; no perk wins a tie.
+            # F625: None is the "no perk" option, so "not chosen yet" needs its own sentinel. `options` lists None
+            # first, so no perk wins an exact tie; a perk that scores higher by noise alone still wins.
             top = unset = object()
             for perk in options:
                 if str(perk) not in scores[wid][preset]:
@@ -2412,7 +2413,7 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     near = {n: [c for c in COLUMNS if _near_top(c, cols[n][c], top[c])] for n in names}
     keys = {s.name: (s.name if s.combo else s.primary) for s in specs}   # stable ids: weapon_id, or the combo name
     return {"kits": names, "keys": keys, "specs": {s.name: {"primary": s.primary, "secondary": s.secondary, "perk": s.perk,
-                                               "shields_perk": s.shield_perk,
+                                               "shields_perk": shields_kits[s.name].perk,   # what it fights with there
                                                "combo": s.combo} for s in specs},
             "columns": cols, "top": top, "near_top": near, "duels": duel, "duel_censored": censored,
             "field_counts": field_counts,
