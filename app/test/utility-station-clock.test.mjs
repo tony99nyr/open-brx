@@ -142,3 +142,108 @@ test('F593: a new game that starts live begins its first step from a cleared clo
   api.controlTick(t0 + 30_000);                                // its first step, long after the old game's last
   assert.equal(api.point.holdMs[RED] || 0, 0, 'the new game banked the old game\'s time in its first step');
 });
+
+// F598 (1): the whistle settle steps to the whistle on presence aged to the whistle: not as of the last step (a player who
+// left during a throttled gap counted to it), and not as of the END's arrival (a player heard just before it dropped).
+async function throttledHill() {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
+  delete api.presence.players;                                 // the real presence table, not the stub
+  api.presence.game = game;
+  const clock = { t: api.stationNow() };
+  api.useStationClock(() => clock.t);
+  const red = api.encodeUuid({ role: 'player', id: 4, kind: 0, team: RED, state: 1, value: 0, seq: 0, game });
+  for (const end = clock.t + 2_000; clock.t <= end; clock.t += 250) { api.presence.observe([red], -40, clock.t); api.presence.tick(clock.t); api.controlTick(clock.t); }
+  api.point.owner = RED; api.point.progress = 100;
+  api.controlTick(clock.t);                                    // RED holds the point, heard at this step
+  return { clock, red, held: api.point.holdMs[RED] || 0 };
+}
+
+/** RED heard, presence aged and the point stepped every 250 ms until `until`: the last step is at `until`. */
+function heardUntil(clock, red, until) {
+  const step = () => { api.presence.observe([red], -40, clock.t); api.presence.tick(clock.t); api.controlTick(clock.t); };
+  for (; clock.t < until; clock.t += 250) step();
+  clock.t = until; step();
+}
+
+test('F598 (1): the whistle settle does not count a player who left during a throttled gap', async () => {
+  const { clock, held } = await throttledHill();
+  try {
+    clock.t = api.settings.hillEndsAt + 5_000;                 // RED walked away; no step until MC's END, 5 s after the whistle
+    await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });
+    const banked = (api.point.holdMs[RED] || 0) - held;
+    assert.ok(banked <= 250, `the settle banked ${banked} ms for a player last heard 28 s before the whistle`);
+  } finally { api.useStationClock(null); }
+});
+
+test('F598 (1): the whistle settle counts a player heard just before the whistle, however late the END', async () => {
+  const { clock, red } = await throttledHill();
+  try {
+    const W = api.settings.hillEndsAt;
+    heardUntil(clock, red, W - 3_000);                         // RED heard and stepped until 3 s before the whistle
+    const held = api.point.holdMs[RED] || 0;
+    for (; clock.t < W - 500; clock.t += 250) api.presence.observe([red], -40, clock.t);   // heard, but the tick loop is throttled
+    clock.t = W + 60_000;                                      // MC's END, a minute after the whistle
+    await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });
+    const banked = (api.point.holdMs[RED] || 0) - held;
+    assert.ok(banked >= 2_900 && banked <= 3_100, `the settle banked ${banked} ms of RED's last 3 s to the whistle`);
+  } finally { api.useStationClock(null); }
+});
+
+test('F598 (1): a throttled tick that crosses the whistle counts on presence as of the whistle', async () => {
+  const { clock, red } = await throttledHill();
+  try {
+    const W = api.settings.hillEndsAt;
+    heardUntil(clock, red, W - 3_000);                         // RED heard and stepped until 3 s before the whistle
+    const held = api.point.holdMs[RED] || 0;
+    for (; clock.t < W - 500; clock.t += 250) api.presence.observe([red], -40, clock.t);
+    clock.t = W + 60_000; api.tick();                          // the next tick, a minute on
+    const banked = (api.point.holdMs[RED] || 0) - held;
+    assert.ok(banked >= 2_900 && banked <= 3_100, `the tick banked ${banked} ms of RED's last 3 s to the whistle`);
+  } finally { api.useStationClock(null); }
+});
+
+test('F598 (1): a player first heard after the whistle does not contest the stretch before it', async () => {
+  const { clock, red } = await throttledHill();
+  try {
+    const W = api.settings.hillEndsAt;
+    heardUntil(clock, red, W - 3_000);
+    const held = api.point.holdMs[RED] || 0;
+    for (; clock.t < W - 500; clock.t += 250) api.onSighting([red], -40, clock.t);
+    const blue = api.encodeUuid({ role: 'player', id: 5, kind: 0, team: 1, state: 1, value: 0, seq: 0, game });
+    for (clock.t = W + 2_000; clock.t < W + 3_000; clock.t += 250) api.scanHit({ uuids: [blue], rssi: -40 });   // BLUE runs in after the whistle
+    clock.t = W + 5_000;
+    await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });
+    const banked = (api.point.holdMs[RED] || 0) - held;
+    assert.ok(banked >= 2_900 && banked <= 3_100, `RED banked ${banked} ms of its last 3 s; BLUE arrived after the whistle`);
+    assert.equal(api.point.contested, false, 'the point froze contested by a player who came after the whistle');
+  } finally { api.useStationClock(null); }
+});
+
+test('F598 (1): a hill still in its countdown at its last step settles from go-live', async () => {
+  await armFresh({ starts_in_ms: -1_000, ends_in_ms: 30_000 });
+  const clock = { t: api.stationNow() };
+  api.useStationClock(() => clock.t);
+  try {
+    await api.applyStationConfig({ ...hill, game, starts_in_ms: 1_000, ends_in_ms: 10_000 });   // START: a 1 s countdown
+    api.controlTick(clock.t);                                  // the last step, in the countdown
+    const W = api.settings.hillEndsAt;
+    clock.t = W + 60_000;                                      // no step until MC's END, long after the whistle
+    await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });
+    assert.equal(api.point.at, W, 'the settle did not step a countdown hill to its whistle');
+  } finally { api.useStationClock(null); }
+});
+
+test('F598 (2): a wall step back that is later undone moves the station clock by real time only', () => {
+  const realNow = Date.now, realPerf = performance.now;
+  let wall = realNow(), mono = realPerf.call(performance);
+  Date.now = () => wall; performance.now = () => mono;
+  try {
+    api.useStationClock(null);
+    const a = api.stationNow();
+    wall -= 3_600_000; mono += 1_000; wall += 1_000;           // the wall clock steps back an hour; a second awake
+    api.stationNow();
+    wall += 3_600_000; mono += 1_000; wall += 1_000;           // network time puts it right again; another second
+    const b = api.stationNow();
+    assert.ok(b - a >= 1_999 && b - a <= 2_001, `two awake seconds moved the station clock ${b - a} ms`);
+  } finally { Date.now = realNow; performance.now = realPerf; }
+});
