@@ -37,15 +37,17 @@ export function portHi(lo = ephemeralLo()) {
   return hi;
 }
 
-/** True when a listener can bind `port` on `host` now. A host this machine lacks (no IPv6) counts as free. */
-const bindsOn = (port, host) => new Promise(resolve => {
+/** True when a listener can bind `port` on `host` now. With `heldOnly`, only a port in use counts as taken: a family
+ *  this machine lacks or refuses (no IPv6, a sandbox) is free. */
+const bindsOn = (port, host, heldOnly = false) => new Promise(resolve => {
   const s = net.createServer(); s.unref();
-  s.once('error', e => resolve(e.code === 'EADDRNOTAVAIL' || e.code === 'EAFNOSUPPORT'));
+  s.once('error', e => resolve(heldOnly && e.code !== 'EADDRINUSE'));
   s.listen(port, host, () => s.close(() => resolve(true)));
 });
 /** True when a listener can bind `port` on 127.0.0.1 and on ::1 now. F574: vite binds `localhost`, which is ::1 on a
- *  GitHub runner, so a port free on IPv4 alone can still be another test's (CI run 38268828276). */
-export const canBind = async port => (await bindsOn(port, '127.0.0.1')) && bindsOn(port, '::1');
+ *  GitHub runner, so a port free on IPv4 alone can still be another test's (CI run 38268828276). Loopback only: a
+ *  socket on a LAN address does not show here, and no block job binds a wildcard. */
+export const canBind = async port => (await bindsOn(port, '127.0.0.1')) && bindsOn(port, '::1', true);
 
 const pick0once = () => new Promise((resolve, reject) => {
   const s = net.createServer(); s.unref(); s.on('error', reject);

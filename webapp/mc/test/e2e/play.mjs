@@ -46,7 +46,8 @@ const MC_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-play-home-'));
 
 let failures = [], current = '', stepFailedAt = 0;
 const expect = (cond, what) => { if (cond) return true; failures.push(`${current}: ${what}`); console.log(`    ✗ ${what}`); return false; };
-const ok = what => console.log(failures.length > stepFailedAt ? `    ⊘ ${what} (step already failed)` : `    ✓ ${what}`);
+// only this step's own failures: a page an earlier step leaked files its errors under that step
+const ok = what => console.log(failures.slice(stepFailedAt).some(f => f.startsWith(`${current}:`)) ? `    ⊘ ${what} (step already failed)` : `    ✓ ${what}`);
 const until = async (pred, ms, what) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -724,7 +725,7 @@ step('real-proxy-family', async () => {
   // F574: CI run 38268828276 gave the real MC 127.0.0.1:44349 while the mock steps' vite still listened on
   // localhost:44349 over IPv6 (a port-0 pick checked IPv4 only; ports.mjs now checks both). vite proxied to `localhost:<MC>`, reached that
   // other vite over ::1, and the whole step saw 502s and closed sockets. Here a decoy holds [::1]:P and the real MC
-  // holds 127.0.0.1:P: the proxy must reach MC, which binds IPv4 (`--host`, 0.0.0.0 by default).
+  // holds 127.0.0.1:P: the proxy must reach MC, which binds 127.0.0.1 here and IPv4 (0.0.0.0) by default.
   const port = await freePort();
   const decoy = http.createServer((req, res) => { res.writeHead(502); res.end('decoy'); });
   decoy.on('upgrade', (req, socket) => socket.destroy());
