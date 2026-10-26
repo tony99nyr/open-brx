@@ -280,7 +280,7 @@ async function checkCloudflared({ noUpdate }) {
 async function cloudflared() {
   step('Optional: cloudflared, for phones on mobile data');
   // Installed: keep it at Cloudflare's minimum version or later. This never stops the start.
-  if (opt('--demo') && which('cloudflared')) return note('skipped in a demo: a demo never opens a tunnel');
+  if (opt('--demo')) return note('skipped in a demo: a demo never opens a tunnel');
   if (!(await checkCloudflared({ noUpdate: noCloudflaredUpdate })).missing) return;
   const prefs = readPrefs();
   if (prefs.cloudflared === 'declined' && !opt('--cloudflared')) {

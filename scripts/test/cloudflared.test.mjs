@@ -122,7 +122,8 @@ test('a failed upgrade gives one clear line and does not throw', async () => {
 test('an upgrade that times out gives a clear line and does not throw', async () => {
   const { deps } = make({ version: '2026.10.2', upgrade: { error: true } });
   const result = await ensureCloudflared(deps, { minVersion: MIN });
-  assert.match(text(result), /the cloudflared update took too long and was stopped. Run `brew link cloudflared`, then `brew upgrade cloudflared`/);
+  assert.match(text(result), /the cloudflared update took too long and was stopped. Run `brew upgrade cloudflared` yourself/);
+  assert.ok(!/brew link/.test(text(result)));
   assert.ok(!/could not update|To update by hand/.test(text(result)));
 });
 
@@ -330,17 +331,17 @@ test('winget says there is no applicable update: a calm note', async () => {
 test('below the minimum while brew lags: the loud line points at the download, not at brew', async () => {
   const { deps } = make({ version: '2026.9.0' });
   const result = await ensureCloudflared(deps, { minVersion: MIN });
-  assert.match(text(result), /loud: Download the newest cloudflared from/);
+  assert.match(text(result), /loud: Wait for brew to publish it, or download it from/);
   assert.ok(!/loud: Run: brew/.test(text(result)));
 });
 
-test('brew runs without a Homebrew refresh', async () => {
+test('brew keeps its own refresh, so it can see a new formula, and hides env hints', async () => {
   const { deps } = make({ upgrade: { to: '2026.10.3' } });
   let seen = null;
   const run = deps.run;
   deps.run = (cmd, args, opts) => { if (cmd === 'brew' && args[0] === 'upgrade') seen = opts; return run(cmd, args, opts); };
   await ensureCloudflared(deps, { minVersion: MIN });
-  assert.deepEqual(seen.env, { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' });
+  assert.deepEqual(seen.env, { HOMEBREW_NO_ENV_HINTS: '1' });
   assert.equal(seen.timeout, 300000);
 });
 
@@ -398,4 +399,52 @@ test('an attempted_at in the future does not block an upgrade', async () => {
   const { deps, state } = make({ version: '2026.9.0', upgrade: { to: '2026.10.3' }, cache: { checked_at: 1_000_000, latest: '2026.10.3', attempted: '2026.10.3', attempted_at: 1_000_000 + 86400_000 } });
   await ensureCloudflared(deps, { minVersion: MIN });
   assert.equal(upgrades(state).length, 1);
+});
+
+test('a killed upgrade is remembered with its own wording, and does not retry on the next start', async () => {
+  const { deps, state } = make({ version: '2026.10.2', upgrade: { error: true } });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(state.cache.reason, 'stopped');
+  state.clock += 3600_000;
+  state.calls.length = 0;
+  const second = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(upgrades(state), []);
+  assert.match(text(second), /the last cloudflared update was stopped after 5 minutes. Trying again tomorrow/);
+  assert.ok(!/no newer build/.test(text(second)));
+});
+
+test('a lag skip says so in its own words', async () => {
+  const { deps, state } = make({ version: '2026.10.2' });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(state.cache.reason, 'lag');
+  state.clock += 3600_000;
+  const second = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.match(text(second), /brew has no newer build yet \(cloudflared 2026.10.3 is out\). Not trying again for a day/);
+  assert.ok(!/stopped/.test(text(second)));
+});
+
+test('a failed Linux download is not blamed on the package manager and is retried after an hour', async () => {
+  const { deps, state } = make({ platform: 'linux', writable: true, upgrade: { downloadFails: true } });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(state.cache.reason, 'download');
+  state.clock += 1800_000;
+  state.downloads.length = 0;
+  const soon = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(state.downloads, []);
+  assert.match(text(soon), /the last cloudflared download did not work. Trying again in an hour/);
+  state.clock += 1800_000;
+  await ensureCloudflared(deps, { minVersion: MIN });
+  assert.equal(state.downloads.length, 1);
+});
+
+test('after a lag skip, a below-minimum start routes to the download text with no brew call', async () => {
+  const { deps, state } = make({ version: '2026.9.0' });
+  await ensureCloudflared(deps, { minVersion: MIN });
+  state.clock += 3600_000;
+  state.calls.length = 0;
+  const second = await ensureCloudflared(deps, { minVersion: MIN });
+  assert.deepEqual(state.calls.filter(call => call[0] === 'brew'), []);
+  assert.ok(!/Run: brew upgrade/.test(text(second)));
+  assert.match(text(second), /loud: Wait for brew to publish it, or download it from https:\/\/developers\.cloudflare\.com\/.* and put it earlier on PATH/);
+  assert.ok(!/replace \/usr\/local\/bin/.test(text(second)));
 });

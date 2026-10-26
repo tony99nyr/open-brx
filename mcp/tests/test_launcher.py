@@ -342,7 +342,7 @@ def test_npm_install_state_tracks_declared_and_installed_markers():
         assert installed and len(installed) == 64
 
 
-def _cloudflared_run(version: str, extra_args: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
+def _cloudflared_run(version: str, extra_args: tuple[str, ...] = (), installed: bool = True) -> subprocess.CompletedProcess:
     """Run start.mjs --setup-only through the cloudflared step. A fake python, npm and cloudflared are
     on PATH, and a fresh cloudflared.json (latest == the installed version) means no network call and no upgrade.
     --setup-only ends the run before Mission Control starts."""
@@ -371,12 +371,21 @@ def _cloudflared_run(version: str, extra_args: tuple[str, ...] = ()) -> subproce
         cfd = bin_dir / "cloudflared"
         cfd.write_text(f"#!/bin/sh\necho 'cloudflared version {version} (built 2026-10-20-1200 UTC)'\n", encoding="utf-8")
         cfd.chmod(0o755)
+        if not installed:
+            cfd.unlink()
         home = base / "home"
         home.mkdir()
-        (home / "cloudflared.json").write_text(json.dumps({"checked_at": int(time.time() * 1000), "latest": version}), encoding="utf-8")
-        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(home), "NO_COLOR": "1"}
-        return subprocess.run([str(bin_dir / "node"), str(base / "scripts" / "start.mjs"), "--setup-only", *extra_args],
-                              cwd=base, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        # An hour old, and the release already "attempted": even a clock that stepped back cannot start an upgrade.
+        stamp = int(time.time() * 1000) - 3600_000
+        (home / "cloudflared.json").write_text(json.dumps(
+            {"checked_at": stamp, "latest": version, "attempted": version, "attempted_at": stamp, "reason": "lag"}), encoding="utf-8")
+        # Port 9 refuses connections: a fetch the cache did not prevent fails at once instead of reaching GitHub.
+        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(home), "NO_COLOR": "1",
+               "OPEN_BRX_CLOUDFLARED_API": "http://127.0.0.1:9/"}
+        res = subprocess.run([str(bin_dir / "node"), str(base / "scripts" / "start.mjs"), "--setup-only", *extra_args],
+                             cwd=base, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        assert not list(bin_dir.glob("*.download")), "no upgrade may download anything"
+        return res
     finally:
         shutil.rmtree(base, ignore_errors=True)
 
@@ -405,3 +414,9 @@ def test_the_cloudflared_step_is_skipped_in_a_demo():
     needs(NODE and os.name != "nt", "node on a POSIX shell")
     out = _cloudflared_run("2026.9.0", ("--demo",)).stdout
     assert "skipped in a demo" in out and "!!!" not in out, out
+
+
+def test_a_demo_skips_the_cloudflared_offer_when_it_is_missing():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    out = _cloudflared_run("2026.9.0", ("--demo",), installed=False).stdout
+    assert "skipped in a demo" in out and "Install cloudflared?" not in out, out

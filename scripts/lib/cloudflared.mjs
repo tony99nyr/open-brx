@@ -12,6 +12,8 @@ const RELEASES_API = 'https://api.github.com/repos/cloudflare/cloudflared/releas
 const RELEASES = 'https://github.com/cloudflare/cloudflared/releases';
 export const DOWNLOADS_PAGE = 'https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/';
 const UPGRADE_CAP_MS = 300000; // the longest an upgrade may run before it is stopped
+// Why the last upgrade did not install the release, and how long to wait before trying that release again.
+const RETRY_AFTER = { lag: DAY_MS, failed: DAY_MS, stopped: DAY_MS, download: RETRY_MS };
 const VERSION_RE = /^\d+(\.\d+)+$/;
 const LINUX_ARCH = { x64: 'amd64', arm64: 'arm64', arm: 'arm', ia32: '386' };
 
@@ -53,6 +55,7 @@ function loadCache(deps) {
   return {
     checked_at: past(raw.checked_at), latest: raw.latest ?? null, failed: Boolean(raw.failed),
     attempted, attempted_at: attempted ? past(raw.attempted_at) : null,
+    reason: Object.hasOwn(RETRY_AFTER, raw.reason) ? raw.reason : 'failed',
   };
 }
 
@@ -67,23 +70,25 @@ export async function latestRelease(deps) {
   let latest = null;
   try { latest = await deps.fetchLatest(); } catch (_) { /* offline */ }
   if (latest && !VERSION_RE.test(latest)) latest = null;
-  const tried = cache?.attempted_at != null ? { attempted: cache.attempted, attempted_at: cache.attempted_at } : {};
+  const tried = cache?.attempted_at != null ? { attempted: cache.attempted, attempted_at: cache.attempted_at, reason: cache.reason } : {};
   const record = latest ? { ...tried, checked_at: deps.now(), latest } : { ...tried, checked_at: deps.now(), latest: cache?.latest ?? null, failed: true };
   try { deps.writeCache(record); } catch (_) { /* a missing cache only costs one more request */ }
   return record.latest;
 }
 
-/** Remember that an upgrade to `latest` was tried, so the same release is not tried again for a day. */
-function recordAttempt(deps, latest) {
+/** Remember that an upgrade to `latest` did not install it, and why, so the same release is not tried again at once. */
+function recordAttempt(deps, latest, reason) {
   try {
     const cache = loadCache(deps) || {};
     const { checked_at = deps.now(), latest: known = latest, failed } = cache;
-    deps.writeCache({ checked_at, latest: known, ...(failed ? { failed: true } : {}), attempted: latest, attempted_at: deps.now() });
+    deps.writeCache({ checked_at, latest: known, ...(failed ? { failed: true } : {}), attempted: latest, attempted_at: deps.now(), reason });
   } catch (_) { /* the next start tries again */ }
 }
 
 /** What to run by hand on this platform. Used in the loud message and when an upgrade cannot run itself. */
-export function manualInstruction({ platform, arch, latest, binPath, owned }) {
+export function manualInstruction({ platform, arch, latest, binPath, owned, lag }) {
+  // brew's file is a symlink into the Cellar: never tell anyone to replace it.
+  if (platform === 'darwin' && lag) return { command: null, text: `Wait for brew to publish it, or download it from ${DOWNLOADS_PAGE} and put it earlier on PATH` };
   if (platform === 'darwin' && owned) return { command: 'brew upgrade cloudflared', text: 'Run: brew upgrade cloudflared' };
   if (platform === 'win32' && owned) return { command: 'winget upgrade -e --id Cloudflare.cloudflared', text: 'Run: winget upgrade -e --id Cloudflare.cloudflared' };
   if (platform === 'darwin' || platform === 'win32') {
@@ -192,12 +197,19 @@ export async function ensureCloudflared(deps, opts = {}) {
     const manager = deps.platform === 'darwin' ? 'brew' : 'winget';
     if (installed && latest && compareVersions(installed, latest) < 0) {
       const cache = loadCache(deps);
-      if (cache?.attempted === latest && cache.attempted_at !== null && deps.now() - cache.attempted_at < DAY_MS) {
-        outcome = 'skipped';
-        say('note', `cloudflared ${latest} is out, but the last try to update to it changed nothing. Not trying again for a day.`);
+      if (cache?.attempted === latest && cache.attempted_at !== null && deps.now() - cache.attempted_at < RETRY_AFTER[cache.reason]) {
+        outcome = cache.reason === 'lag' ? 'lag' : 'skipped';
+        const why = {
+          lag: `${manager} has no newer build yet (cloudflared ${latest} is out). Not trying again for a day.`,
+          stopped: 'the last cloudflared update was stopped after 5 minutes. Trying again tomorrow.',
+          download: 'the last cloudflared download did not work. Trying again in an hour.',
+          failed: 'the last cloudflared update failed. Trying again tomorrow.',
+        };
+        say('note', why[cache.reason]);
       } else {
         let problem = null;
         let result = null;
+        let reason = null;
         const dir = dirname(binPath);
         // The Linux swap needs a plain file in a writable folder that dpkg does not own.
         const swappable = deps.platform === 'linux' && deps.fs.isWritable(dir) && deps.fs.kind(binPath) === 'file'
@@ -210,14 +222,14 @@ export async function ensureCloudflared(deps, opts = {}) {
           problem = 'it cannot update itself here';
         } else {
           if (plan.kind === 'download') {
-            try { await replaceBinary(plan, deps, installed); } catch (error) { problem = `the download failed (${error.message || error})`; }
+            try { await replaceBinary(plan, deps, installed); } catch (error) { problem = `the download failed (${error.message || error})`; reason = 'download'; }
           } else {
             result = deps.run(plan.cmd, plan.args, {
-              timeout: UPGRADE_CAP_MS, show: true, ...(plan.cmd === 'brew' ? { env: { HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' } } : {}),
+              timeout: UPGRADE_CAP_MS, show: true, ...(plan.cmd === 'brew' ? { env: { HOMEBREW_NO_ENV_HINTS: '1' } } : {}),
             });
             problem = failure(result);
+            reason = killed(result) ? 'stopped' : noNewerBuild(result) ? 'lag' : 'failed';
           }
-          recordAttempt(deps, latest);
         }
         const after = readVersion(deps);
         if (after) {
@@ -227,11 +239,12 @@ export async function ensureCloudflared(deps, opts = {}) {
           installed = after;
           if (upgraded) say('ok', `updated cloudflared from ${before} to ${installed}`);
         }
+        if (!upgraded && reason) recordAttempt(deps, latest, reason);
         if (!upgraded) {
           if (result && killed(result)) {
             outcome = 'quiet';
             say('note', manager === 'brew'
-              ? 'the cloudflared update took too long and was stopped. Run `brew link cloudflared`, then `brew upgrade cloudflared`.'
+              ? 'the cloudflared update took too long and was stopped. Run `brew upgrade cloudflared` yourself.'
               : 'the cloudflared update took too long and was stopped. Run the winget upgrade again: winget upgrade -e --id Cloudflare.cloudflared');
           } else if (result && noNewerBuild(result)) {
             outcome = 'lag';
@@ -251,7 +264,7 @@ export async function ensureCloudflared(deps, opts = {}) {
     }
     const belowMin = Boolean(installed && min && compareVersions(installed, min) < 0);
     // When the package manager is behind, its command cannot help: point at the download instead.
-    const manual = () => manualInstruction({ platform: deps.platform, arch: deps.arch, latest, binPath, owned: outcome === 'lag' ? false : isOwned() });
+    const manual = () => manualInstruction({ platform: deps.platform, arch: deps.arch, latest, binPath, owned: outcome === 'lag' ? false : isOwned(), lag: outcome === 'lag' });
     if (belowMin) {
       say('loud', `cloudflared ${installed} is older than ${min}, the minimum Cloudflare asks for.`);
       say('loud', 'The internet tunnel may stop working until you update it.');
@@ -279,7 +292,9 @@ export function realDeps(home) {
       return { status: result.status, signal: result.signal, stdout: result.stdout || '', stderr: result.stderr || '', error: result.error };
     },
     async fetchLatest() {
-      const response = await fetch(RELEASES_API, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-brx-start' }, signal: AbortSignal.timeout(5000) });
+      // OPEN_BRX_CLOUDFLARED_API is set only by tests, so that they cannot reach GitHub.
+      const api = process.env.OPEN_BRX_CLOUDFLARED_API || RELEASES_API;
+      const response = await fetch(api, { headers: { accept: 'application/vnd.github+json', 'user-agent': 'open-brx-start' }, signal: AbortSignal.timeout(5000) });
       if (!response.ok) return null;
       const tag = (await response.json()).tag_name;
       return typeof tag === 'string' && /^v?\d+(\.\d+)+$/.test(tag) ? tag.replace(/^v/, '') : null;
