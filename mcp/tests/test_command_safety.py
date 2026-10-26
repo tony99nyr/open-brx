@@ -207,3 +207,90 @@ def test_a_denied_word_cannot_hide_behind_a_star_or_whitespace():
     for frame in ("$FACTORY*", "$DPLAY*", "$ FACTORY,*", "$FACTORY\t,*", "$dplay *"):
         assert protocol.deny_reason(frame), frame
     assert protocol.deny_reason("$PLAY,U37,3,10,,,,,*") is None
+
+
+def test_ztog_and_cleardevice_are_denied_and_free_needs_confirm():
+    """Safety guard A (brx-rea firmware pass 2, a code read): $ZTOG,1 turns zombie mode on, keeps it across a power
+    cycle and stops the gun's $HIT reports. $CLEARDEVICE wipes the radio's pair list. $FREE is a read-only query of
+    the audio-channel busy flags: not denied, so it takes the unknown-command path and needs confirm=true."""
+    for f in ("$ZTOG,1,*", "$ZTOG,0,*", "$CLEARDEVICE,*"):
+        assert protocol.is_denied(f), f
+    assert "power cycle" in protocol.deny_reason("$ZTOG,1,*")
+    assert "ZTOG" in E.NODE_DENIED_COMMANDS and "CLEARDEVICE" in E.NODE_DENIED_COMMANDS, "the node refuses them too"
+    assert not protocol.is_denied("$FREE,*") and not protocol.is_known_safe("$FREE,*")
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        result = run(server.send("t1", "$ZTOG,1,*", confirm=True))
+        assert result["error"].startswith("refused, confirm or not:"), result
+        result = run(server.send("t1", "$FREE,*"))
+        assert "confirm=true" in result["error"], result
+        assert len(mgr.sessions["t1"].buffer) == 0
+        result = run(server.send("t1", "$FREE,*", confirm=True))
+        assert result.get("sent") == "$FREE,*", result
+
+def test_validate_frame_refuses_a_weap_slot_above_11_and_a_damage_above_255():
+    """Safety guard B (brx-rea firmware pass 2, a code read): the gun has twelve weapon slots and one byte of damage.
+    Slot 12 writes past its tables, 13 or more lands on slot 0, and a damage above 255 wraps. validate_frame refuses
+    them; the BLE manager and the raw-bytes plan check are pinned in the next test."""
+    head = "$WEAP,{slot},1,5,1,2,{dmg},0,*"
+    assert protocol.validate_frame(head.format(slot=11, dmg=255)) is None
+    assert protocol.validate_frame(head.format(slot=0, dmg="")) is None, "an empty token leaves the value alone"
+    for slot, dmg, word in ((12, 45, "slot"), (255, 45, "slot"), (0, 256, "damage"), (3, 1000, "damage")):
+        why = protocol.validate_frame(head.format(slot=slot, dmg=dmg))
+        assert why and word in why, (slot, dmg, why)
+    for f in ("$WEAP,-1,1,5,1,2,45,0,*", "$WEAP,0,1,5,1,2,-3,0,*"):
+        assert protocol.validate_frame(f), f
+    with fake_server_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        result = run(server.send("t1", head.format(slot=0, dmg=300), confirm=True))
+        assert "error" in result and "damage" in result["error"], result
+        assert len(mgr.sessions["t1"].buffer) == 0
+
+
+def test_every_writer_refuses_an_out_of_range_weap_and_reads_the_leading_integer_as_the_gun_does():
+    """Guard B on the writers that do not call validate_frame (the CLI, the stage, the soak and tools write through
+    the BLE manager), and on raw bytes. The gun reads a token's leading integer, so `+12` and `300.0` are refused."""
+    from brx_mcp.rawbytes import plan_from_stream, validate_plan
+    for f in ("$WEAP,+12,1,5,1,2,45,0,*", "$WEAP,0,1,5,1,2,300.0,0,*", "$WEAP,0,1,5,1,2,300x,0,*", "$WEAP, 13,1,5,1,2,45,0,*"):
+        assert protocol.weap_range_error(f) and protocol.validate_frame(f), f
+    assert protocol.weap_range_error("$!WEAP,12,1,5,1,2,45,0,*"), "a Gen1 prefix does not hide the write"
+    for f in ("$WEAP,<slot>,1,5,1,2,45,0,*", "$WEAP,11,1,5,1,2,+255,0,*", "$PSET,0,0,999,70,70,50,*"):
+        assert protocol.weap_range_error(f) is None, f
+    bad = "$WEAP,12,1,5,1,2,45,0,*"
+    try:
+        from brx_mcp.ble import ConnectionManager
+    except ModuleNotFoundError as e:         # system python has no bleak: the real manager cannot load here
+        if e.name != "bleak":
+            raise
+        ConnectionManager = None
+    if ConnectionManager is not None:
+        writes: list[bytes] = []
+
+        class _Session:
+            seq = 0; write_lock = None; client = None
+            def record(self, *a): pass
+
+        mgr = ConnectionManager()
+        mgr._get = lambda alias: _Session()
+        async def _write(client, data, lock, *a, **k): writes.append(data)
+        mgr._write = _write
+        for call in (lambda: mgr.send("t1", bad), lambda: mgr.send_batch("t1", ["$PING,*", bad]),
+                     lambda: mgr.send_phone_paced("t1", bad, chunk_gap_ms=20, frame_gap_ms=0)):
+            try:
+                run(call())
+                raise AssertionError("the BLE manager wrote an out-of-range $WEAP")
+            except ValueError as e:
+                assert "slot" in str(e), e
+        assert writes == [], "nothing reached the gun, not even the $PING before it"
+    with fake_server_manager([FakeTagger("AA:1")]) as fake:
+        run(fake.connect("AA:1", "t1"))
+        try:
+            run(fake.send("t1", bad))
+            raise AssertionError("the fake manager wrote what the real one refuses")
+        except ValueError as e:
+            assert "slot" in str(e), e
+    try:
+        validate_plan(plan_from_stream(bad.encode()), confirm=True)
+        raise AssertionError("a raw-bytes plan carried an out-of-range $WEAP")
+    except ValueError as e:
+        assert "slot" in str(e), e

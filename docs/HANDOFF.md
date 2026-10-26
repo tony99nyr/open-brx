@@ -76,11 +76,12 @@ touched Python tests, pyright, the full system suite (4,374 passed, 195 optional
 **Next:** review and land this worktree. Brx4 owns the A81 row in `docs/spec/contracts.md`.
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-16):** the post-push desk work is landed: F517, F520, F522 (with brx5), the Games and Kit split, F525
-and F526 (a silent hill point yields after 2 s; a taken pickup station hides no claimable one), and F528 (a station
-that names a taker starts no claim, even with no countdown yet). Nothing was flashed.
-**Next (bench, run first):** F519 and F521 together on one Stick flash; F525 and F526 in Sitting C (C.34, C.35, on
-0.4.22); F511 and F501. F518 closed 2026-10-16: the fakes now send the live shield in a `$QUERY` `$LCD` t3. F500 closed 2026-10-16: a tap recharges every energy weapon, so the HUD says RECHARGE. F530 (fast respawn headset stop) desk half done 2026-10-16, bench re-check open. F529 phone half done 2026-10-16 (an end for the match the phone aborted is ignored, and a start after a teardown re-writes the head); the MC half is brx3's, and F511 parts 1 and 2 wait for it.
+**State (2026-10-26):** F598 is landed (the hill's last step counts presence as of the whistle; the clock ratchet
+stays as it was). The firmware safety guards are on `brx4-fwguards`: `$ZTOG` and `$CLEARDEVICE` denied, every writer
+refuses a `$WEAP` slot above 11 or a damage above 255, and the September firmware labels are corrected or marked
+unproven. Nothing was flashed.
+**Next (bench):** the code-read leads on F264, F277, F293 and F300. The older bench list (F519, F521, F525, F526,
+F511, F501, F530) still stands.
 **Blocked:** none.
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews

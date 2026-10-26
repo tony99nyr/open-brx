@@ -278,6 +278,9 @@ Other field issues:
   token from that console line. **MC OFFLINE with the server clearly running** → almost always a wrong or
   stale token (a bookmark without `#tok=`, or the server was restarted and minted a new one) — open the
   freshly printed link.
+- **A gun lost its config after someone held its buttons** → lead only, unproven (2026-10-26 code read): the gun
+  may have been reset from its own menu. The on-screen restore-defaults option and a long button hold can both
+  reset it with no serial command. Re-stamp its name if it reverted, then push the config again.
 
 ---
 

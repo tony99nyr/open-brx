@@ -98,3 +98,18 @@ def test_a_try_out_refuses_a_malformed_frame_too():
     except ValueError as e:
         assert "COMPILED FRAME REFUSED" in str(e), e
     assert all(validate_frame(f) is None for f in Compiler().tutorial_frames(w, "outdoor"))
+
+
+def test_the_compiler_refuses_a_weapon_damage_above_255():
+    """Safety guard B: t5 is one byte on the gun, and compile.py writes `wire.dmg` unclamped, so the rail refuses it."""
+    rows = [dict(r) for r in WC._rows]
+    for r in rows:
+        if r["weapon_id"] == "assault_rifle":
+            r["wire"] = {**(r.get("wire") or {}), "dmg": 300}
+    c = Compiler()
+    c.catalog = WeaponCatalog(rows)
+    try:
+        c.compile(match_config("tdm", teams=TEAMS), _player(("assault_rifle", "shotgun")), TEAMS)
+        raise AssertionError("a bundle with a 300-damage $WEAP compiled")
+    except ValueError as e:
+        assert "$WEAP" in str(e) and "damage" in str(e), e

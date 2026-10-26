@@ -218,6 +218,8 @@ def validate_plan(plan: RawPlan, *, max_chunk: int = MAX_CHUNK_BYTES,
         reason = protocol.deny_reason(frame)   # allow_hang defaults False: no override, ever, here
         if reason:
             raise ValueError(f"refused, confirm or not: {reason}")
+        if (why := protocol.weap_range_error(frame)) is not None:   # safety guard B: a slot or damage the gun cannot hold
+            raise ValueError(f"refused: {why}")
         if not protocol.is_known_safe(frame) and not confirm:
             raise ValueError(
                 f"'{protocol.command_name(frame)}' is not in the known-safe command list; "

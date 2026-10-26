@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from .protocol import BufferedEvent, parse_event
+from .protocol import BufferedEvent, parse_event, refuse_out_of_range
 
 # F259/S42 (bench 2026-09-17): a $WEAP/$AMMO write does not land on the gun instantly -- the
 # bench measured 30-90 ms. Modelled at the midpoint the node's own tests use for the same
@@ -583,6 +583,7 @@ class FakeConnectionManager:
         return {"matched": False}
 
     async def send(self, alias: str, command: str, reply_window_ms: int = 0) -> dict:
+        refuse_out_of_range(command)         # as ConnectionManager.send does (guard B)
         if alias in self.dropped:            # writing to a dropped link fails (real BLE raises)
             raise ConnectionError(f"link dropped: {alias}")
         s = self.sessions[alias]
