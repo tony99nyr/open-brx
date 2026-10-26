@@ -87,7 +87,8 @@ block emptied and the date blanked. If that merge is clean, the lander writes it
 regenerates the block, and commits the merge as `Land <id>`. It prints `land: <id>: the conflict was only in the
 FOLLOWUPS index or its Updated stamp; resolved it`. The block keeps `main`'s order (the bench plan). Any other
 conflict fails as before: a row or a line of prose that both branches changed, a conflict in another file as well, a
-generator that refuses the merged rows, or a branch that reordered the block by hand.
+generator that refuses the merged rows, or a branch that reordered the block by hand. Two branches that add a row at
+the same place in one section are a row conflict too: add a new row at the end of its section.
 
 ### What the lander does
 

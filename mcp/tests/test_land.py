@@ -526,17 +526,24 @@ def test_a_resolved_index_keeps_the_order_main_had():
 
 def test_a_hand_reorder_or_an_odd_stamp_on_their_side_is_still_a_conflict():
     # F624 (Opus round 2): the resolver keeps our block's order and blanks only a stamp it can read. A branch that
-    # reorders the bench plan by hand, or writes a stamp the pattern does not match, must not be overwritten silently.
+    # reorders the bench plan by hand, places its new row ahead of old ones (Fable round 2), or writes a stamp the
+    # pattern does not match, must not be overwritten silently.
     Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
-    for name in ("reorder", "odd-stamp"):
+    Z6 = "- **Z6 🟡 A NEW ROW PLACED FIRST.** text\n"
+    for name in ("new-first", "reorder", "odd-stamp"):
         with Lane() as t:
             seed = _followups(t, Z1 + Z5, updated="2026-10-25")
             _seed_followups(t, seed)
             a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z5 + Z2, updated="2026-10-27")})
-            theirs = _followups(t, Z1 + Z5, Z3, updated="2026-10-25")
-            theirs = (theirs.replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**") if name == "reorder"
-                      else theirs.replace("Updated: 2026-10-25.", "Updated: 2026-10-26 (late)."))
-            assert theirs != _followups(t, Z1 + Z5, Z3, updated="2026-10-25"), name
+            if name == "new-first":
+                # Z6's row sits at the top of the section, far from a's row; the block lists it first by hand
+                plain = _regenerated(t, seed.replace(Z1, Z6 + Z1).replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))
+                theirs = plain.replace("- 🟡 **Z1** · **Z5** · **Z6**", "- 🟡 **Z6** · **Z1** · **Z5**")
+            else:
+                plain = _followups(t, Z1 + Z5, Z3, updated="2026-10-25")
+                theirs = (plain.replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**") if name == "reorder"
+                          else plain.replace("Updated: 2026-10-25.", "Updated: 2026-10-26 (late)."))
+            assert theirs != plain, name
             b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": theirs})
             r = t.land("run")
             assert r.returncode == 0, r.stdout + r.stderr

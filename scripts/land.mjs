@@ -497,13 +497,15 @@ function withoutStamp(text) {
 }
 /** The ids of an index block, one list per line, in the order the block lists them. */
 const blockLines = block => block.split('\n').map(line => [...line.matchAll(/\*\*([A-Z]\d+)\*\*/g)].map(m => m[1]));
-/** True if `theirs` lists, on some line, two ids of `base` in the other order: a hand reorder of the bench plan. */
+/** True if `theirs` lists, on some line, two ids of `base` in the other order, or a new id ahead of one of base's: a
+ *  hand edit of the bench plan. The generator only ever appends a new id after the old ones. */
 function reordered(base, theirs) {
   const rank = new Map();
   for (const id of blockLines(base).flat()) if (!rank.has(id)) rank.set(id, rank.size);
   return blockLines(theirs).some(ids => {
     const known = ids.filter(id => rank.has(id)).map(id => rank.get(id));
-    return known.some((r, i) => i > 0 && r < known[i - 1]);
+    const lastKnown = ids.findLastIndex(id => rank.has(id));
+    return known.some((r, i) => i > 0 && r < known[i - 1]) || ids.slice(0, lastKnown).some(id => !rank.has(id));
   });
 }
 const indexBlock = text => text.slice(text.indexOf(INDEX_START) + INDEX_START.length, text.indexOf(INDEX_END));
