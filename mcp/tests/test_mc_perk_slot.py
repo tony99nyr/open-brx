@@ -1,4 +1,4 @@
-"""A14 (2026-09-04): a perk is its OWN slot — AR + pistol + Quick Switch is a legal kit.
+"""A14 (2026-09-04): a perk is its OWN slot — AR + pistol + Fast Hands is a legal kit.
 
 Pins: the three-rule policy + pool shape, the pre-A14 migration (`secondary.kinds` holding "perk"),
 the one hardware exception (an ALT-button perk cannot ride with a second weapon: the pick that arrives
@@ -51,8 +51,8 @@ def test_three_rules_and_the_pool_has_a_perks_list():
     # the perk rule filters like any other: exclude_ids / only_ids / fixed
     pol = P.merge(P.preset_rules("open"), {"perk": {"exclude_ids": ["easy_reload"]}})
     assert "easy_reload" not in P.pool(pol, W, PK)["perks"] and pol["preset"] == "custom"
-    pol = P.merge(P.preset_rules("open"), {"perk": {"only_ids": ["quick_switch", "body_armor"]}})
-    assert P.pool(pol, W, PK)["perks"] == ["body_armor", "quick_switch"]          # catalog order
+    pol = P.merge(P.preset_rules("open"), {"perk": {"only_ids": ["fast_hands", "body_armor"]}})
+    assert P.pool(pol, W, PK)["perks"] == ["body_armor", "fast_hands"]          # catalog order
     # a perk rule never admits weapons; a weapon slot never admits perks — the pre-A14 spelling is an error, not a shim (S6)
     assert P.merge(P.preset_rules("open"), {"perk": {"kinds": ["weapon"]}})["perk"]["kinds"] == ["perk"]
     for bad in ({"secondary": {"kinds": ["weapon", "perk"]}}, {"secondary": {"kinds": ["perk"]}}, {"primary": {"kinds": ["perk"]}}):
@@ -63,13 +63,13 @@ def test_three_rules_and_the_pool_has_a_perks_list():
     assert P.normalize({**P.preset_rules("open"), "secondary": {**P.preset_rules("open")["secondary"], "kinds": ["weapon", "perk"]}}, "ffa")["preset"] == "no_heavies"   # unreadable → the mode default
 
 
-def test_ar_plus_pistol_plus_quick_switch_is_legal_everywhere():
+def test_ar_plus_pistol_plus_fast_hands_is_legal_everywhere():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    lo = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "usp"}], "perk": "quick_switch"}
+    lo = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "usp"}], "perk": "fast_hands"}
     assert P.validate_loadout(op, lp, lo, W, PK) == (True, None)
     assert P.apply(op, lp, lo, W, PK) == lo
     s, net, clock, p = _mk()                                 # the fake compiler's catalog has no pistols: the SMG stands in
-    lo2 = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "quick_switch"}
+    lo2 = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "fast_hands"}
     assert s.patch_player(p["player_id"], loadout=lo2)["loadout"] == lo2
     # the phone builds it one slot at a time
     _req(net, "secondary", "weapon", "shotgun")
@@ -87,7 +87,7 @@ def test_easy_reload_and_a_second_weapon_cannot_both_be_stored_by_the_host():
     assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
                        "overrides": {"easy_reload": True}}) == {"weapon": "smg"}
     assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
-                       "perk": "quick_switch"}) is None
+                       "perk": "fast_hands"}) is None
     assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}],
                        "overrides": {"easy_reload": True}}) is None
     s, net, clock, p = _mk()
@@ -126,7 +126,7 @@ def test_apply_policy_never_touches_the_easy_reload_override():
     resets everyone's perk must leave a stored override alone."""
     s, net, clock, p = _mk()
     pid = p["player_id"]
-    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch",
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "fast_hands",
                                  "overrides": {"easy_reload": True}})
     s.set_config({"loadout_policy": {"perk": {"choice": "fixed", "fixed_id": "body_armor"}}})
     assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor",
@@ -149,7 +149,7 @@ def test_pool_preview_route_returns_the_perk_list():
     r = c.post("/api/loadout/pool", json={"loadout_policy": {"perk": {"choice": "off"}}})
     assert r.status_code == 200 and r.json()["pool"]["perks"] == [] and r.json()["policy"]["perk"]["choice"] == "off"
     r = c.post("/api/loadout/pool", json={"loadout_policy": {"preset": "no_heavies"}})
-    assert len(r.json()["pool"]["perks"]) == 5 and "secondary_perks" not in r.json()["pool"]
+    assert len(r.json()["pool"]["perks"]) == 4 and "secondary_perks" not in r.json()["pool"]
 
 
 # ---------------------------------------------------------------- what the phone is told
@@ -160,7 +160,7 @@ def test_node_view_and_brief_carry_the_perk_rule():
     assert pol["perk"] == {"choice": "player", "allowed_perk_ids": [k["perk_id"] for k in PK]}
     assert "allowed_perk_ids" not in pol["secondary"] and "perk" not in pol["secondary"]["kinds"]
     line = s.game_brief()["loadout_line"]
-    assert "a perk of your choice (5)" in line and "slot 2: a second weapon" in line
+    assert "a perk of your choice (4)" in line and "slot 2: a second weapon" in line
     s.set_config({"loadout_policy": {"perk": {"choice": "fixed", "fixed_id": "body_armor"}}})
     assert "everyone gets Body Armor" in s.game_brief()["loadout_line"]
     s.set_config({"loadout_policy": {"perk": {"choice": "off"}}})
@@ -177,7 +177,7 @@ def test_node_view_and_brief_carry_the_perk_rule():
 def test_every_effect_key_is_handled_by_gain_cost_lines():
     """A new key in `EFFECT_KEYS` with no matching branch in `gain_cost_lines` must fail here, not ship
     a perk whose gain/cost line is silently blank."""
-    sample = {"max_armor_add": 25, "ammo_mult": 2.0, "ammo_mult_pistol": 1.5, "reload_mult": 0.5,
+    sample = {"max_armor_add": 20, "ammo_mult": 2.0, "ammo_mult_pistol": 1.5, "reload_mult": 0.5,
               "alt_reload": True, "switch_mult": 0.5, "armor_piercing": True, "crit_pct_add": 10,
               "cooldown_s": 45, "stun_duration_s": 3}
     assert set(sample) == EFFECT_KEYS, "this test's sample has drifted from perks.EFFECT_KEYS"
@@ -199,12 +199,12 @@ def test_every_effect_key_is_handled_by_gain_cost_lines():
 def test_gain_cost_lines_reads_the_sign_not_just_the_key():
     """The bug this replaces: a multiplier over 1 always printed as a gain ('faster'), because the old
     code never checked which side of 1 it fell on. body_armor's `reload_mult: 1.25` (heavier rig, slower
-    reload) must land in `cost`, and quick_hands' `reload_mult: 0.5` in `gain`."""
-    gain, cost = gain_cost_lines("body_armor", {"max_armor_add": 25, "reload_mult": 1.25})
-    assert gain == ["+25 ARMOR"]
+    reload) must land in `cost`, and fast_hands' `reload_mult: 0.5` in `gain`."""
+    gain, cost = gain_cost_lines("body_armor", {"max_armor_add": 20, "reload_mult": 1.25})
+    assert gain == ["+20 ARMOR"]
     assert cost == ["RELOADS 1.2× SLOWER"]
 
-    gain, cost = gain_cost_lines("quick_hands", {"reload_mult": 0.5, "ammo_mult": 0.8})
+    gain, cost = gain_cost_lines("fast_hands", {"reload_mult": 0.5, "ammo_mult": 0.8})
     assert gain == ["RELOADS 2× FASTER"]
     assert cost == ["×0.8 AMMO"]
 
@@ -227,12 +227,50 @@ def test_every_passive_perk_row_yields_gain_and_cost_where_it_trades():
             continue
         view = PerkCatalog.view(row)
         assert view["gain"], f"{row['perk_id']}: no gain line"
-        if row.get("effects"):
+        if row.get("effects") and row["perk_id"] != "fast_hands":
             assert view["cost"], f"{row['perk_id']}: trades a lever but has no cost line"
 
 
 def test_perk_view_ships_gain_and_cost_on_the_catalog():
     pk = default_perks().all()
-    quick_switch = next(k for k in pk if k["perk_id"] == "quick_switch")
-    assert quick_switch["gain"] == ["SWAPS 2× FASTER"]
-    assert quick_switch["cost"] == ["-20 ARMOR"]
+    fast_hands = next(k for k in pk if k["perk_id"] == "fast_hands")
+    assert fast_hands["gain"] == ["RELOADS 2× FASTER", "SWAPS 2× FASTER"]
+    assert fast_hands["cost"] == []
+
+
+def test_extended_mags_resolves_preset_override_and_compiles_it():
+    """The Shields preset uses its own magazine effect, and the compiler passes it to the frame."""
+    from brx_mcp.mc.compile import Compiler, WeaponCatalog
+
+    perks = default_perks()
+    assert perks.effects("extended_mags") == {
+        "ammo_mult": 2, "ammo_mult_pistol": 1.5, "switch_mult": 1.3,
+    }
+    assert perks.effects("extended_mags", "shields") == {
+        "ammo_mult": 1.5, "ammo_mult_pistol": 1.5, "switch_mult": 1.3,
+    }
+    extended = next(p for p in perks.all() if p["perk_id"] == "extended_mags")
+    assert extended["gain"] == ["×2 MAG"]
+    assert extended["variants"]["shields"]["gain"] == ["×1.5 MAG"]
+    assert extended["variants"]["shields"]["cost"] == extended["cost"]
+
+    cat = WeaponCatalog()
+    for wid, mods, expected in (
+        ("assault_rifle", perks.effects("extended_mags"), 64),
+        ("assault_rifle", perks.effects("extended_mags", "shields"), 48),
+        ("usp", perks.effects("extended_mags"), 18),
+    ):
+        frame = cat.resolve(wid, 0, mods).split(",")
+        assert int(frame[WeaponCatalog._T["mag"] + 1]) == expected, (wid, mods, frame)
+
+    compiler = Compiler()
+    assert compiler.perks.effects("extended_mags", "shields") == perks.effects("extended_mags", "shields")
+
+
+def test_old_perk_ids_resolve_current_effects_for_saved_consumers():
+    catalog = default_perks()
+    for old_id in ("quick_hands", "quick_switch"):
+        assert catalog.effects(old_id) == catalog.effects("fast_hands")
+        assert catalog.has(old_id)
+        assert catalog.row(old_id)["perk_id"] == "fast_hands"
+        assert old_id not in catalog.visible_ids()

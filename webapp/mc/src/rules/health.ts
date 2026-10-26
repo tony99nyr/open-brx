@@ -13,3 +13,10 @@ export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shiel
   }
   return 'custom';
 }
+
+/** The one console rule for "this game is on Shields": the server's `compile.derived_health_preset` (the same call decides
+ *  the Body Armor / Armour Piercing refusal and the Extended Mags override). A health with no `max_shield` is a legacy
+ *  (custom) pool, never Shields. */
+export function isShieldsHealth(h?: { max_hp?: number; max_armor?: number; max_shield?: number } | null): boolean {
+  return !!h && h.max_shield !== undefined && healthPresetOf({ max_hp: h.max_hp ?? 45, max_armor: h.max_armor ?? 0, max_shield: h.max_shield }) === 'shields';
+}

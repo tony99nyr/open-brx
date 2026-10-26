@@ -462,9 +462,9 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 - **S28 🟡 RETUNE EVERY WEAPON WITH THE PROBABILITY MODEL.** Tony 2026-09-12 ("I like the new probability research folded in, probably needs a retune for all weapons"): the sidearm pass (S22, 2026-09-12) balanced on IDEAL ttk + expected ttk at p=0.7 + one-mag-kill probability + sustained DPS + kills per kit, with a no-strict-dominance check across all 22 weapons (`docs/reference/ttk-model.md` → *Shipped 2026-09-12*). Do the same for the 19 primaries: publish the 22-row table, decide the intended tiers (assault / burst / bolt / heavies / snipers) by EXPECTED ttk at a stated field accuracy rather than by ideal ttk alone, keep the captured `$WEAP` frames and change only `wire` tokens, and gate it on the bench (a body, not a spreadsheet — ttk-model.md's own caution). Prerequisite worth doing first: one measured field accuracy (hits / shots from a real match's `ScoreRow`, now that `shots` and `hits` are both booked). **→ 2026-09-17:** Tony approved the arsenal cuts (S44) and "AR back to 100 ms, sustained fire costs accuracy". Bench data for the retune: at 100 ms with `t22` = 50 live accuracy steps 10 per 1-2 shots and reaches the floor in 9-11 rounds; recovery after release runs at about 10 points per 0.15 s and completes within 2 s, and the walk-down varies from burst to burst (step 11 to never within 19 shots) on the gun that decays (F230: one of our two guns barely decays at all). The dominance test should drop "kills per kit" (a respawn refills ammo). Arsenal review page and `archive/bench-weapons-2026-09-17.md`.
 
-- **F281 🟡 QUICK HANDS MUST MOVE TO THE MODIFIER SYSTEM IN ONE PIECE, OR NOT AT ALL.** Filed 2026-09-18 from the
-  `$TMP` traces. Quick Hands is `reload_mult: 0.5` and `ammo_mult: 0.8`: halve the reload, pay a fifth of the
-  magazine. The trace found **t6 is a reload-time percentage**, so the BENEFIT half can become a live modifier. The
+- **F281 🟡 FAST HANDS MUST MOVE TO THE MODIFIER SYSTEM IN ONE PIECE, OR NOT AT ALL.** Filed 2026-09-18 from the
+  `$TMP` traces, as Quick Hands (merged into Fast Hands on 2026-10-25, which no longer pays an ammo cost). Quick Hands was `reload_mult: 0.5` and `ammo_mult: 0.8`: halve the reload, pay a fifth of the
+  magazine. Fast Hands is now `reload_mult: 0.5` and `switch_mult: 0.5` with `ammo_mult: 1.0`, so the cost half below no longer exists. The trace found **t6 is a reload-time percentage**, so the BENEFIT half can become a live modifier. The
   cost half is a frame value with no traced equivalent. If only the benefit moves, a perk applied mid-life grants
   the reload speed immediately and collects the magazine cut only at the next arming, which is a free perk for one
   life. **Either both halves move or neither does.** Also unmeasured and load-bearing: whether t6 is absolute or
@@ -1058,7 +1058,7 @@ The bench-sheet aliases that used to sit in FOLLOWUPS §9, for post-MVP rows. Th
 - **F27** per weapon, `$BUT,2` → `$ALCD` up, versus `reload_ms`.
 - **P4** `$AS,1,0,0,0,0,0,0,99,*` and `$UP,1,*` on a live gun: any behaviour change?
 - **A10a** kit an EMPTY secondary (no perk), press ALT: expect nothing, then fire still works; **A10d** Easy Reload: ALT on
-  an empty mag reloads; **A10 Quick Hands** vs the D-family reload chain: listen for clipping (floor t18 at the chain length if ugly).
+  an empty mag reloads; **A10 Quick Hands** (now Fast Hands) vs the D-family reload chain: listen for clipping (floor t18 at the chain length if ugly).
 - **S7** dead-player rejoin (force-close while DOWN → come back DOWN at the real `deadAt`); gap-death re-arm.
 - **S-A12.2** pistol semi-auto cadence.
 

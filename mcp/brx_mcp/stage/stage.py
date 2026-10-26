@@ -30,7 +30,7 @@ from ..gameconfig import VOICE_PACKS
 from ..irbridge import encode_word
 from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
-from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, resolve_health_preset
+from ..mc.compile import _SIR_GRANT, _SIR_NO_POOL, HEALTH_PRESETS, Compiler, derived_health_preset, resolve_health_preset
 from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS, STATION_ID_MAX
 from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
@@ -5666,8 +5666,7 @@ class GunStage:
         ms = self.bundle.get("swap_ms")
         if ms and float(ms) > 0:
             return float(ms) / 1000
-        pk = self._catalog_row("perk_catalog", "perk_id", ((self.player or {}).get("loadout") or {}).get("perk"))
-        sm = ((pk or {}).get("effects") or {}).get("switch_mult")
+        sm = self.perk_effects(((self.player or {}).get("loadout") or {}).get("perk")).get("switch_mult")
         return self.SWITCH_MAX_S * (float(sm) if sm and float(sm) > 0 else 1.0)
 
     def _switch_tick(self) -> None:
@@ -6481,7 +6480,7 @@ class GunStage:
         exactly that slot. Floored at 0.3 s, as the phone floors its `ms` at 300.
 
         A hardcoded 1.5 s here (every weapon, every perk) was the divergence: the phone's shotgun
-        takeover runs 2.4 s and its quick_hands AR runs 0.7 s, so the bench predicted a timeout the field
+        takeover runs 2.4 s and its fast_hands AR runs 0.7 s, so the bench predicted a timeout the field
         would never see, and missed the one it would (polish review 2026-09-12).
         """
         secs = 1.5
@@ -6492,12 +6491,20 @@ class GunStage:
         ms = ((row or {}).get("stats") or {}).get("reload_ms")
         if ms:
             secs = round(ms / 1000, 1)
-        pk = self._catalog_row("perk_catalog", "perk_id", lo.get("perk"))
-        rm = ((pk or {}).get("effects") or {}).get("reload_mult")
+        rm = self.perk_effects(lo.get("perk")).get("reload_mult")
         # compile applies reload_mult to slot 0 only, and never to a bolt (ammo.js `_reloadPulled`, F573 review; F587)
         if rm and float(rm) > 0 and float(rm) != 1 and self.active_slot == 0 and (row or {}).get("reload_type") != "bolt":
             secs *= float(rm)
         return max(0.3, round(secs * 1000) / 1000)
+
+    def perk_effects(self, perk_id: str | None) -> dict:
+        """engine.js `perkEffects(id)`: a perk's effects as THIS game resolves them. The Shields variant (Extended Mags
+        x1.5) replaces the plain row when the game's health numbers ARE the Shields preset, the rule the console and the
+        server use too (`compile.derived_health_preset`). {} when the row is unknown."""
+        pk = self._catalog_row("perk_catalog", "perk_id", perk_id)
+        if pk and derived_health_preset(self.config.get("health")) == "shields":
+            pk = {**pk, **((pk.get("variants") or {}).get("shields") or {})}
+        return dict((pk or {}).get("effects") or {})
 
     def _catalog_row(self, fn: str, key: str, rid: str | None) -> dict | None:
         """One row out of the compiler's catalog (engine.js `weaponRow`/`perkRow`). A compiler that does

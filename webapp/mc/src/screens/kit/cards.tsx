@@ -10,11 +10,11 @@ import { PRESET_LABELS } from '../../api/contract.gen';
 import { FaultPill } from '../../ui/Compact';
 import { useDraftCommit } from '../../ui/useDraftCommit';
 import { poolOf, type Slot } from './helpers';
-import { Lock, WeaponArt, PerkGlyph, PerkTrade } from './art';
+import { Lock, WeaponArt, PerkGlyph, PerkTrade, perkForHealth } from './art';
 
-export function SlotCard({ label, slot, active, onClick, rule, item, kind, required, onClear, overridden, onReapply, matchLocked }:
+export function SlotCard({ label, slot, active, onClick, rule, item, kind, required, onClear, overridden, onReapply, matchLocked, health }:
   { matchLocked?: boolean; label: string; slot: Slot; active: boolean; onClick: () => void; rule?: { choice: string } | null; item?: WeaponView | PerkView; kind: 'weapon' | 'perk' | 'none'; required?: boolean; onClear?: () => void;
-    overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void }) {
+    overridden?: { slot: Slot; id: string | null; label: string } | null; onReapply?: (h: { slot: Slot; id: string | null }) => void; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
   const choice = rule?.choice ?? 'player';
   const locked = matchLocked || choice === 'fixed' || choice === 'off';
   const empty = kind === 'none';
@@ -66,7 +66,7 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
           <span style={{ width: 48, height: 48, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${PERK_COLOR}` }}><PerkGlyph id={item.perk_id} size={28} color={PERK_COLOR} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
-            <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', lineHeight: 1.35 }}><span style={{ color: PERK_COLOR }}>PERK</span> · <PerkTrade k={item} /></span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 11), letterSpacing: '.1em', lineHeight: 1.35 }}><span style={{ color: PERK_COLOR }}>PERK</span> · <PerkTrade k={item} health={health} /></span>
           </span>
         </div>
       )}
@@ -173,7 +173,8 @@ export function WeaponHero({ w, slot, sp, tryingId, pushed, verdicts, setVerdict
   );
 }
 
-export function PerkHero({ k }: { k: PerkView }) {
+export function PerkHero({ k, health }: { k: PerkView; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
+  k = perkForHealth(k, health);
   const gain = k.gain ?? [], cost = k.cost ?? [];
   return (
     <>

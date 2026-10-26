@@ -50,6 +50,12 @@ def test_every_apply_case_auto_fixes_as_the_server_does():
 
 def test_the_cases_reach_every_empty_code():
     codes = {code for c in DOC["pool"] for code in (c["expect"].get("reasons") or {}).values()}
+    # Fast Hands has a reload benefit. Exercise the reserved swap-only reason with a synthetic perk.
+    swap_only = {"perk_id": "swap_only", "effects": {"switch_mult": 0.5}}
+    policy = P.merge(P.preset_rules("open"), {"secondary": {"choice": "off"}})
+    result = P.pool(policy, DOC["weapons"], [swap_only])
+    assert result["reasons"]["perks"] == "needs_secondary"
+    codes.update(result["reasons"].values())
     assert codes == set(P.POOL_EMPTY_CODES), codes ^ set(P.POOL_EMPTY_CODES)
     assert any(c["expect"]["chain_conflict"] for c in DOC["easy_reload"])
     assert any(c["expect"]["conflict"] for c in DOC["easy_reload"])

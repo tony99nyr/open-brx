@@ -73,11 +73,12 @@
   ],
   "perks": [
     {
-      "perk_id": "quick_switch",
-      "name": "Quick Switch",
+      "perk_id": "fast_hands",
+      "name": "Fast Hands",
       "tags": [],
       "effects": {
-        "switch_mult": 0.5
+        "switch_mult": 0.5,
+        "reload_mult": 0.5
       }
     },
     {
@@ -169,7 +170,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -233,7 +234,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -289,7 +290,7 @@
       }
     },
     {
-      "name": "secondary off prunes the swap perk, but not a perk that only pays a swap cost",
+      "name": "secondary off retains Fast Hands for its reload benefit and a perk that only pays a swap cost",
       "policy": {
         "preset": "open",
         "hud_select": true,
@@ -335,6 +336,7 @@
         ],
         "secondary_weapons": [],
         "perks": [
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -345,7 +347,7 @@
       }
     },
     {
-      "name": "secondary off and only the swap perk allowed: perks empty for want of a secondary",
+      "name": "secondary off and only Fast Hands allowed: its reload benefit keeps it",
       "policy": {
         "preset": "open",
         "hud_select": true,
@@ -377,7 +379,7 @@
           "exclude_tags": [],
           "exclude_ids": [],
           "only_ids": [
-            "quick_switch"
+            "fast_hands"
           ],
           "fixed_id": null
         }
@@ -392,10 +394,11 @@
           "shotgun"
         ],
         "secondary_weapons": [],
-        "perks": [],
+        "perks": [
+          "fast_hands"
+        ],
         "reasons": {
-          "secondary_weapons": "off",
-          "perks": "needs_secondary"
+          "secondary_weapons": "off"
         }
       }
     },
@@ -448,7 +451,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -503,7 +506,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -561,7 +564,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -619,7 +622,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -676,6 +679,7 @@
         ],
         "secondary_weapons": [],
         "perks": [
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -735,7 +739,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -794,6 +798,7 @@
         ],
         "secondary_weapons": [],
         "perks": [
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -857,7 +862,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -913,7 +918,7 @@
           "glock"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -979,7 +984,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour"
         ]
@@ -1215,6 +1220,7 @@
         ],
         "secondary_weapons": [],
         "perks": [
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -1443,7 +1449,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "stealth"
         ]
@@ -1566,7 +1572,7 @@
           "stripper"
         ],
         "perks": [
-          "quick_switch",
+          "fast_hands",
           "extended_mags",
           "armour",
           "stealth"
@@ -1912,7 +1918,7 @@
       }
     },
     {
-      "name": "apply: secondary off clears the secondary and the swap perk",
+      "name": "apply: secondary off clears the secondary and keeps Fast Hands",
       "policy": {
         "preset": "open",
         "hud_select": true,
@@ -1956,14 +1962,15 @@
             "weapon_id": "glock"
           }
         ],
-        "perk": "quick_switch"
+        "perk": "fast_hands"
       },
       "expect": {
         "weapons": [
           {
             "weapon_id": "smg"
           }
-        ]
+        ],
+        "perk": "fast_hands"
       }
     },
     {

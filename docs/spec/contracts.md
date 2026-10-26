@@ -100,7 +100,7 @@ Team { team_id: string, name: string, color: "blue"|"yellow"|"red"|"purple"|stri
 Loadout {
   weapons: WeaponSel[],      // ordered; index maps to the gun's weapon slots: [primary] or [primary, secondary]. NEVER empty —
                              // a primary is required; an EMPTY slot 1 is legal (no $WEAP,1 / $AMMO,1; ALT falls back to reload) [A10.1]
-  perk?: string | null,      // [A14.1] the PERK slot — a perk_id beside the weapons (AR + pistol + Quick Switch is a legal kit).
+  perk?: string | null,      // [A14.1] the PERK slot — a perk_id beside the weapons (AR + pistol + Fast Hands is a legal kit).
   overrides?: { max_hp?: number, max_armor?: number, easy_reload?: boolean }
                              // [S50] `easy_reload` is a per-player accessibility switch (ALT button = RELOAD), host-set only, not
                              // a perk pick. The one pairing the gun cannot do: `easy_reload` + a second weapon (loadout.md §2)
@@ -420,7 +420,7 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                        //   countdown: "$PLAY,VA81,4,6,,,,,*", kill: "$PLAY,,4,6,VAA,,,,*". Open map; a missing key is skipped, never guessed.
                        //   A $PLAY needs tokens 2-3 = `4,6` to be audible; the empty-token form is SILENT (bench 2026-08-25), so
                        //   there is no token-1-only SFX form (retracts the A5.10 note).
-  swap_ms?: int,                     // 2026-09-04 (additive): the swap delay the gun enforces between slots 0/1 = max $WEAP tok15 after perks (850 stock; quick_switch 425). The HUD's SWITCHING takeover runs for exactly this; older MCs omit it and the node assumes 850 × perk
+  swap_ms?: int,                     // 2026-09-04 (additive): the swap delay the gun enforces between slots 0/1 = max $WEAP tok15 after perks (850 stock; Fast Hands 425). The HUD's SWITCHING takeover runs for exactly this; older MCs omit it and the node assumes 850 × perk
   cue_pools?: { [event]: string[] }, // [A15.1] VARIETY: for an event whose sound is `voice:<role>` with several takes (kill = 3 kill confirms + 2 taunts,
                                      //   pain = 6), every frame it may play. The node picks ONE at random per event; `cues[event]` stays the
                                      //   deterministic first for a reader without pools. Absent for single-line roles and muted events.
