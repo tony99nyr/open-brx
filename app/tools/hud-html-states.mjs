@@ -13,7 +13,7 @@ console.warn('Warning: --write-golden replaces the HUD stage-state and HTML gold
 const stages = ['idle', 'idle-noisy-open', 'connected', 'connected-join-new', 'setup', 'briefing',
   'kitted', 'loadout-primary', 'loadout-perk', 'lobby', 'standby-from-lobby', 'armed',
   'live', 'live-lowammo', 'live-shields-full', 'live-scores-koth', 'down-full',
-  'result-win-team', 'result-players', 'history', 'diag-live', 'live-kill-lead-hill',
+  'result-win-team', 'result-updated', 'result-players', 'history', 'diag-live', 'live-kill-lead-hill',
   // A16 DOM golden: stages that reach the moments, lanes, down screen and score board.
   'live-hit', 'live-switch', 'live-reload', 'live-gun-locked', 'live-stunned', 'live-smoke', 'live-alert', 'live-medals',
   'down-recap', 'down-hill', 'down-ffa', 'down-pickup', 'down-hold', 'live-pu-rockets', 'live-hill-lost', 'live-koth',

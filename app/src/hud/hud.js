@@ -266,7 +266,10 @@ export class Hud {
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
       // message arriving — nothing else in the signature moves at that moment.
       this.view, this.rtab, st.resultWait,
-      this.board, this.board && st.scoreAt, this.board && st.fragLimit,   // bench 2026-09-17: the scores overlay rebuilds on a new MC push while it is open st.result && st.result.match_id, st.result && st.result.outcome,
+      // bench 2026-09-17: the scores overlay rebuilds on a new MC push while it is open. F595 review: the result fields
+      // were inside this comment, so a changed result redrew only because app.js cleared the signature.
+      this.board, this.board && st.scoreAt, this.board && st.fragLimit,
+      st.result && st.result.match_id, st.result && st.result.outcome, st.result && st.result._updated === true,
       st.result && st.result.provisional, st.result && st.result.rows && st.result.rows.length,
       this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // synced / headEcho stay patched in place (F137: wsState moved INTO the signature above — see the note there)
     const panel = st.phase === 'kitted' && ((st.ended && (!st.endAck || !!this.view)) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
