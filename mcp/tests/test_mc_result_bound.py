@@ -1,6 +1,7 @@
 """A83 (Tony 2026-10-26): the A81 result wait is bounded. SYNC_STUCK_S after the whistle, on MC's monotonic clock,
-MC releases the result without the phones and hills still missing; a late sync then merges in, and `result_changed`
-reaches the console and the phones. A pending-0 beat counts only when the phone sent it after its own end."""
+MC releases the result without the phones and hills still missing; a late sync then merges in, re-sends `result`
+(the phone decides whether to say RESULT UPDATED) and latches RESULT CHANGED on the console. A pending-0 beat counts
+only when the phone sent it after its own end."""
 import json
 import pathlib
 import tempfile
@@ -105,23 +106,24 @@ def test_a_silent_hill_no_longer_blocks_the_result_past_the_bound():
     assert next(r for r in sync["rows"] if r["kind"] == "station")["stage"] != "received"
 
 
-def test_a_late_sync_after_the_bound_merges_and_tells_the_phones_result_changed():
+def test_a_late_sync_after_the_bound_merges_and_re_sends_the_result():
     s, net, clock, mono, ps, info = _ended()
     _beat(s, net, clock, 0, ps[0]["player_id"])
     mono["t"] += BOUND_MS
     s.tick()
     first = s.recap()["winner"]
     assert _sync(s)["released_by"] == "timeout" and not _sync(s)["result_changed"]
-    assert all(p[2]["result_changed"] is False for p in net.pushes("result"))
+    assert [p[2]["winner"] for p in net.pushes("result")] == [first, first]
     net.pushed.clear()
     clock["t"] += 1
     net.simulate_batch("node1", [{"type": "death", "seq": 51, "t": clock["t"] - 2,
                                   "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                   "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
-    # The late fact pushes before any snapshot re-reads the recap: the push itself must carry the flag.
+    moved = s.recap()["winner"]
+    assert moved != first
+    # The phone compares this with the result it holds; MC sends no flag of its own (brx4, option A).
     pushed = net.pushes("result")
-    assert pushed and all(p[2]["result_changed"] is True for p in pushed)
-    assert s.recap()["winner"] != first
+    assert pushed and all(p[2]["winner"] == moved and "result_changed" not in p[2] for p in pushed)
     sync = _sync(s)
     assert sync["result_changed"] and sync["released_by"] == "timeout" and not sync["pending"]
 
@@ -183,19 +185,44 @@ def test_a_snapshot_from_before_the_bound_is_timed_from_the_whistle():
     assert _sync(s2)["pending"] and 19 <= _sync(s2)["release_in_s"] <= 20
 
 
-def test_a_phone_rejoining_after_a_moved_result_keeps_the_flag_in_its_welcome():
+def test_a_phone_rejoining_after_a_moved_result_gets_the_moved_result_in_its_welcome():
     s, net, clock, mono, ps, info = _ended()
     _beat(s, net, clock, 0, ps[0]["player_id"])
     mono["t"] += BOUND_MS
     s.tick()
-    tail = demo_armory()[1]["ble"]["tail"]
-    welcome = net.simulate_hello("node1", f"GUN-B-{tail}")
-    assert welcome is not None and welcome["result"]["result_changed"] is False
+    first = s.recap()["winner"]
     clock["t"] += 1
     net.simulate_batch("node1", [{"type": "death", "seq": 51, "t": clock["t"] - 2,
                                   "match_id": info["match_id"], "player_id": ps[1]["player_id"],
                                   "shooter_num": ps[0]["player_num"], "shooter_team": 1}], clock["t"])
-    net.pushed.clear()
     tail = demo_armory()[1]["ble"]["tail"]
     welcome = net.simulate_hello("node1", f"GUN-B-{tail}")
-    assert welcome is not None and welcome["result"]["result_changed"] is True
+    assert welcome is not None and welcome["result"]["winner"] == s.recap()["winner"] != first
+    assert "result_changed" not in welcome["result"]
+
+
+def test_the_countdown_is_a_change_each_second_while_the_field_is_silent():
+    s, net, clock, mono, ps, _ = _ended()
+    seen = []
+    s._listeners.append(lambda: seen.append(_sync(s).get("release_in_s")))
+    s.tick()
+    mono["t"] += 400
+    s.tick()                             # the same second: no new change
+    assert seen == [120]
+    mono["t"] += 600
+    s.tick()
+    mono["t"] += 1_000
+    s.tick()
+    assert seen == [120, 119, 118]
+
+
+def test_a_crash_without_a_fresh_write_keeps_the_time_left_from_the_countdown():
+    s, net, clock, mono, ps, _ = _ended(persist=True)
+    mono["t"] += BOUND_MS - 10_000
+    s._persist_last = 0.0                # the debounce runs on real time; let the tick's own change write
+    s.tick()
+    assert json.loads(s._persist_path.read_text())["match"]["release_due_in_ms"] == 10_000
+    s2, _ = restart_no_repersist(s, clock)
+    mono2 = {"t": 0}
+    s2.mono_ms = lambda: mono2["t"]
+    assert s2.resume_match() == "recap" and _sync(s2)["release_in_s"] == 10

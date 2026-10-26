@@ -73,5 +73,6 @@ export function galleryState(base: State, frame: string): State {
   const recap = { winner: view.pending ? null : { team_id: f.winner }, score, rows, honors: [], provisional: false, missing: [], played_s: 300,
     settling: false, awaiting: [], since_end_ms: 60_000, post_end: 0, post_end_facts: 0, parked: 0, sync: view } as unknown as RecapView;
   return { ...base, phase: 'recap', players, nodes: [], recap, end_delivery: undefined, orphan_match: undefined, warnings: [],
-    config: { ...base.config, mode: 'tdm', time_limit_s: 300 }, t: (base.t ?? Date.now()) } as State;
+    // A hill row exists only in KOTH (`_recap_sync` keeps control stations), so a frame with one is a KOTH match.
+    config: { ...base.config, mode: toks.some(t => t.startsWith('S')) ? 'koth' : 'tdm', time_limit_s: 300 }, t: (base.t ?? Date.now()) } as State;
 }

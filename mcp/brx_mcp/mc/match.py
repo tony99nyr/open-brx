@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from .scoring import Scorer
-from .types import (FrameBundle, GameConfig, Player, RecapStationRow, STATION_ID_MAX,
+from .types import (FrameBundle, GameConfig, Player, RecapStationRow, ReleaseReason, STATION_ID_MAX,
                     STATION_TEAM_ANY, is_station_kind)
 
 
@@ -118,7 +118,8 @@ class Match:
     whistle_wall_ms: int | None = None
     # Tony 2026-10-26: the wait is bounded. At this monotonic time MC releases without the rows still missing.
     release_due_mono: int | None = None
-    release_reason: str | None = None  # "sync" | "timeout" | "finalise": what ended the wait (RecapSyncView.released_by)
+    release_reason: ReleaseReason | None = None  # what ended the wait (RecapSyncView.released_by)
+    release_in_told: int | None = None  # the whole seconds left last broadcast; in process only
     result_changed: bool = False
     end_reason: str | None = None
     ended_head: dict | None = None

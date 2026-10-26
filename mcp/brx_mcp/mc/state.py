@@ -3202,7 +3202,7 @@ class Session:
             self.persist_now()
         view: RecapSyncView = {"rows": rows, "pending": pending, "finalised": match.finalised,
                                "result_changed": match.result_changed,
-                               "released_by": cast(ReleaseReason, match.release_reason) if match.released else None}
+                               "released_by": match.release_reason if match.released else None}
         if pending and match.release_due_mono is not None:
             view["release_in_s"] = max(0, -(-(match.release_due_mono - self.mono_ms()) // 1000))
         return view
@@ -4673,7 +4673,7 @@ class Session:
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
             reason = m.get("release_reason")
-            match.release_reason = (reason if reason in _RELEASE_REASONS else
+            match.release_reason = (cast(ReleaseReason, reason) if reason in _RELEASE_REASONS else
                                     "finalise" if match.finalised else "sync" if match.released else None)
             if not match.released:
                 # The bounded wait resumes with the time it had left. A snapshot from before the bound is timed from end_t.
@@ -5517,9 +5517,6 @@ class Session:
                         "display": display.get(h.get("player_id")) or h.get("player_id"), "stat": h.get("stat")}
                        for h in (recap.get("honors") or [])],
             "provisional": bool(recap.get("provisional")),
-            # Tony 2026-10-26: the phone says "result updated" once a late sync moves the winner after release. The
-            # console's RESULT CHANGED latch, read here too: a late fact pushes before any snapshot re-reads recap().
-            "result_changed": (match_id is None or (sc is not None and match_id == sc.match_id)) and self._result_moved(winner),
             "t": self.now_ms(),
         }
         for k in ("possession", "after_end"):
@@ -5560,24 +5557,22 @@ class Session:
             sent += 1
         return sent
 
-    def _result_moved(self, winner: object) -> bool:
-        """Latch `result_changed` when `winner` differs from the one first shown as final (the recap's own check)."""
-        match = self.match
-        if match is None:
-            return False
-        if (not match.result_changed and match.final_winner is not None and isinstance(winner, dict) and winner
-                and winner != match.final_winner):
-            match.result_changed = True
-            self._persist_dirty = True
-        return match.result_changed
-
     def _release_on_timeout(self) -> None:
         """Tony 2026-10-26: the A81 wait is bounded. SYNC_STUCK_S after the whistle, on MC's monotonic clock, the result
-        releases without the phones and hills still missing. Their rows stay on the sync track; a late sync merges in
-        and `result_changed` says so if it moves the winner."""
+        releases without the phones and hills still missing. Their rows stay on the sync track; a late sync merges in,
+        re-sends `result`, and RESULT CHANGED says so on the console if it moves the winner."""
         match = self.match
         if (self.phase != "recap" or match is None or match.scorer is None or match.released
-                or match.release_due_mono is None or self.mono_ms() < match.release_due_mono):
+                or match.release_due_mono is None):
+            return
+        left_ms = match.release_due_mono - self.mono_ms()
+        if left_ms > 0:
+            # A silent field changes nothing else, so each second left is a change of its own: the console's FINAL IN
+            # counts down, and the snapshot keeps the time left within the persist debounce for a crash.
+            left_s = -(-left_ms // 1000)
+            if left_s != match.release_in_told:
+                match.release_in_told = left_s
+                self._changed()
             return
         match.release_pending = True
         match.release_reason = "timeout"

@@ -488,8 +488,9 @@ screen (§4.4) shows "RESULT PENDING" beside the sync track until the push, whic
 settle window (30 s) passes with no MC link and no link since the whistle; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
 (totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
 never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
-`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it. A83: a `result` with `result_changed: true`
-means a late sync moved the winner after the release; the phone says RESULT UPDATED.
+`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it. A83: after the release MC may re-send `result`
+for the same match when a late sync changes it. The phone decides what to show: RESULT UPDATED only when it already
+held a result for that `match_id` whose `winner` or `outcome` differs.
 
 ### 3.14 Background log sync (contracts A25) — game sync has priority
 
