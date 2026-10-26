@@ -1036,3 +1036,28 @@ test('F632: the next match still clears the result, on the kit opening or on its
   assert.equal(b.h.eng.result, null, 'and takes the old result with it');
   assert.equal(b.h.eng.matchId, null);
 });
+
+test('F632 review: a phone that dropped in the debrief and rejoins in KIT leaves the results and can kit', () => {
+  const { h } = debrief();
+  h.eng.hydrate({ player: h.player, team: h.config.teams[0], policy: { kit_open: true } });   // MC's KIT welcome: no assign follows
+  assert.equal(h.eng.ended, false, 'the open kit in the welcome is the next match');
+  assert.equal(h.eng.result, null);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.config.teams[0], policy: { kit_open: true } } });
+  assert.equal(h.eng.ended, false, 'and a later assign keeps it out');
+  const r = debrief();                                       // control: the debrief welcome keeps the results
+  r.h.eng.hydrate({ player: r.h.player, team: r.blue, policy: { kit_open: false } });
+  assert.equal(r.h.eng.ended, true);
+  assert.equal(r.h.eng.result && r.h.eng.result.outcome, 'win');
+});
+
+test('F632 review: leaving the results on the next config raises no host kit lock (an older MC with no policy)', () => {
+  const h = match({ stun: undefined });                      // no policy at all: kitOpen() reads true
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.eng.onResultPush({ match_id: h.eng.matchId, outcome: 'win', winner: { team_id: 'blue' }, provisional: false });
+  const moments = []; const was = h.eng._changed.bind(h.eng);
+  h.eng._changed = () => { if (h.eng.moment) moments.push(h.eng.moment.kind); return was(); };
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: { ...golden, player_id: 'p1' }, roster: [] } });
+  assert.equal(h.eng.ended, false, 'the next config leaves the results');
+  assert.equal(h.eng.kitLocked, false, 'and it is not a host lock');
+  assert.ok(!moments.includes('kit_locked_by_host'), 'no lock moment: ' + moments.join(','));
+});

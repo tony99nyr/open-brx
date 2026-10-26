@@ -2114,6 +2114,10 @@ export class Engine {
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
     if (node.policy) this.policy = node.policy;
     if (node.game) this.game = node.game;
+    // F632 review (Opus, Fable): a phone that dropped in the debrief and rejoins in KIT gets the open kit in this welcome,
+    // and no assign follows it. MC opens the kit only for the next match, so an explicit open kit while ended leaves the
+    // results (a KIT welcome carries no result to lose).
+    if (this.ended && node.policy && node.policy.kit_open === true) this._leaveEnded('the welcome finds the kit open');
     const heldMatch = this.matchId;
     // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
     // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first
@@ -2275,9 +2279,11 @@ export class Engine {
     // `policy` at all) never gives that edge, so the latch survived into every later lobby and the screen
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
     // F632: MC re-sends `assign` on every player edit, the debrief's re-team and rename included (F631), so an assign alone
-    // is not a new match: it updates the player and team below and keeps the result. The kit opening is (MC opens KIT only
-    // for the next match), and so is the next match's config (`_applyConfig`) or start (`startAt`).
-    if (this.ended && !wasOpen && this.kitOpen()) this._leaveEnded('MC opened the kit for the next match');
+    // is not a new match: it updates the player and team below and keeps the result. An open kit is (MC opens KIT only for
+    // the next match, and never in RECAP), and so is the next match's config (`_applyConfig`) or start (`startAt`).
+    // The level, not the edge (review): a policy that already read open (a KIT welcome) gives no edge. An explicit open kit
+    // is enough; an assign with no policy (an older MC) leaves through the config or the start instead.
+    if (this.ended && policy && policy.kit_open === true) this._leaveEnded('MC opened the kit for the next match');
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     // Bench 2026-09-17: MARK ALL READY (MC's roster-wide `host_override`) marks a player ready who
     // never tapped READY UP themselves, and `setReady` is the phone's ONLY other writer of `this.ready`
@@ -2300,7 +2306,8 @@ export class Engine {
   _applyConfig({ config, frames, roster }, why) {
     // F632: MC's config after an end is the next match's lobby push (a phone that missed the kit opening gets no other
     // signal before the start). A relink or rehydrate re-write is not.
-    if (this.ended && why === 'config') this._leaveEnded('the next match\'s config');
+    const leftEnded = this.ended && why === 'config';
+    if (leftEnded) this._leaveEnded('the next match\'s config');
     // T2-B item 2: a benched player is never on the roster `push_config`/`_repush_lobby_config` loop, so
     // this should not arrive at all -- guarded anyway, belt-and-braces, since "no gun frames written"
     // while sitting out is the whole point of the state.
@@ -2310,7 +2317,7 @@ export class Engine {
     // lobby screen leads with "THE HOST LOCKED KITS". A player who had already readied up asked for this.
     // Opus review: MC's first config push after a no-result end is the next game's lobby, not a host locking kits.
     const afterNoMatch = this._skipKitLock && why !== 'hydrate' && why !== 'relink'; if (afterNoMatch) this._skipKitLock = false;
-    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && !afterNoMatch && this.kitOpen() && (this.browsing || !this.ready)) {
+    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && !leftEnded && !afterNoMatch && this.kitOpen() && (this.browsing || !this.ready)) {   // F632 review: leaving the results is not a host lock
       this._cancelPick();
       this.kitLocked = true;
       this.kitLockedFor = (config && config.config_id) || null;

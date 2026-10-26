@@ -2647,7 +2647,7 @@ test('A27: a new match from MC retires the lock notice from the match-complete s
   h.adv(600000); h.eng.tick();                       // the clock runs out
   assert.equal(h.eng.state().ended, true);
   h.eng.kitLocked = true;                            // a latch that outlived its lobby by any route reaches here
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: POL } });   // F632: the next kit opens
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: { ...POL, kit_open: true } } });   // F632: the next kit opens (MC always sends kit_open)
   assert.equal(h.eng.state().ended, false, 'the new match leaves the match-complete screen');
   assert.equal(h.eng.state().kitLocked, false, 'and takes last match\'s lock notice with it');
 });
