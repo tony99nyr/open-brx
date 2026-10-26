@@ -499,6 +499,31 @@ def test_two_rows_that_conflict_only_in_the_index_block_both_land_with_one_index
         assert _git("show", f"{land_b}:docs/FOLLOWUPS.md", cwd=t.remote) + "\n" == landed
 
 
+def _regenerated(t: Lane, text: str) -> str:
+    """`text` with its index block regenerated in place, as a lane's own --check fix does: the kept order stays."""
+    path = t.dir / "followups-draft.md"
+    path.write_text(text)
+    subprocess.run([NODE, str(REPO / "scripts" / "followups-index.mjs"), str(path)], check=True)
+    return path.read_text()
+
+
+def test_a_resolved_index_keeps_the_order_main_had():
+    # F624 (Fable review): the generator keeps the ids' order from the block it reads ("the order is the bench plan").
+    # A resolver that regenerated from an emptied block put every list back in row order, and nobody saw it move.
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    with Lane() as t:
+        seed = _followups(t, Z1 + Z5).replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**")
+        assert "- 🟡 **Z5** · **Z1**" in seed, seed
+        _seed_followups(t, seed)
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _regenerated(t, seed.replace(Z5, Z5 + Z2))})
+        b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _regenerated(t, seed.replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote)
+        assert "- 🟡 **Z5** · **Z1**" in landed and "- 🟢 **Z3**" in landed and "- 🟠 **Z2**" in landed, landed
+
+
 def test_two_stamps_that_conflict_land_with_the_later_date():
     # F624: a lane that works across midnight stamps tomorrow's date while the branch landed before it kept today's.
     # The lander takes the later date, whichever side it is on, and regenerates the index too.

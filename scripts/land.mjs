@@ -505,12 +505,15 @@ async function resolveIndexConflict(id, files) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-land-index-'));
   try {
     const stage = [], dates = [];
+    let ours = null;
     for (const n of [2, 1, 3]) {   // ours, base, theirs: the order `git merge-file` takes
-      const r = await git(['cat-file', '-e', `:${n}:${FOLLOWUPS}`], { cwd: WT, ok: true });
-      if (r.code !== 0) return false;   // added on one side, or deleted on one: not an index conflict
+      // a missing stage (added on one side, deleted on the other) throws: not an index conflict
       let raw;
-      try { raw = execFileSync('git', ['show', `:${n}:${FOLLOWUPS}`], { cwd: WT, encoding: 'utf8', maxBuffer: 64 << 20 }); }
-      catch { return false; }
+      try {
+        raw = execFileSync('git', ['show', `:${n}:${FOLLOWUPS}`],
+          { cwd: WT, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch { return false; }
+      if (n === 2) ours = raw;
       // a criss-cross merge's virtual base can carry conflict markers of its own: leave that to a person
       if (n === 1 && raw.includes('\n<<<<<<< ')) return false;
       const stamp = withoutStamp(raw);
@@ -524,6 +527,11 @@ async function resolveIndexConflict(id, files) {
     // it, and that is a conflict, as before.
     if ((await git(['merge-file', '--diff-algorithm=histogram', ...stage], { cwd: WT, ok: true })).code !== 0) return false;
     let merged = fs.readFileSync(stage[0], 'utf8');
+    // put our block back before the generator runs: it keeps the ids' order from the block it reads (the bench plan)
+    const block = ours.slice(ours.indexOf(INDEX_START) + INDEX_START.length, ours.indexOf(INDEX_END));
+    if (merged.split(INDEX_START).length !== 2) return false;
+    const at = merged.indexOf(INDEX_START) + INDEX_START.length;
+    merged = merged.slice(0, at) + block + merged.slice(at);
     if (merged.includes(NO_STAMP)) {
       // blanked on every side that has one stamp: a side with none or two kept its text, so the merge kept the blank
       if (dates.includes(null) || merged.split(NO_STAMP).length !== 2) return false;
