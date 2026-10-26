@@ -12,11 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 99.** Desk 2 · bench 93 · decision 4.
+**MVP open: 98.** Desk 1 · bench 93 · decision 4.
 
-**MVP DESK (2),** a keyboard is enough:
+**MVP DESK (1),** a keyboard is enough:
 - 🟠 **F595**
-- 🟢 **F544**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -49,7 +48,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 A keyboard is enough. Highest value first.
 
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.
-- **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
 
 
 ## MVP BENCH

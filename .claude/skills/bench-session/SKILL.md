@@ -52,6 +52,9 @@ Tony's words: "im not convinced you are being scientific about these findings. y
 - Arm from the bench sheet's recipe (for example "Roles and arming" in `docs/bench-firmware-levers-2026-09-19.md`) or
   from `compile.resolve()`. The CLI commands `startgame`, `deathmatch`, `arena` and `fieldstart` also arm MC's compiled
   head. Never arm from a capture.
+- A player phone's wireless-debugging port changes on every Wi-Fi reconnect (F544). Reconnect with
+  `ADB_CONNECT=<ip> npm run android:install`, which reads the port from mDNS (in WSL, through `adb.exe`), or
+  `adb.exe mdns services` for a manual `adb connect`. Never change a phone's settings to keep the port.
 - Poll a gun that may be dead with `$LIFE,*`, not `$QUERY`.
 - `$TMP` frames carry all 12 commas.
 - Never end on a bare `$CLEAR` (`CLAUDE.md` hard rules, F11). Power-cycle the gun at the end, and disconnect the MCP
