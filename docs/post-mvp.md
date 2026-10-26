@@ -53,6 +53,12 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   Domination: several hills active at once, and the winner is whoever holds the most of them at the whistle,
   rather than KOTH's single running clock. Design later: how hold-time and hill-count interact if at all, and
   whether it needs its own scorer or a flag on the existing KOTH one. `design` (post-MVP).
+- **F623 🟡 POST-MVP KOTH OPTION: A RATE-OF-FIRE BOOST FOR THE HILL HOLDER.** brx1 for Tony, 2026-10-26. In stock
+  Battle Company play, the hill holder gets a faster rate of fire while in the hill, probably applied by the app.
+  Tony played our KOTH on 2026-10-26 and got no boost, so our armed guns do not get it, and the sim's hill-hold
+  numbers stand. Our KOTH could offer the boost as an option. Design later: the size of the boost, how the phone
+  applies it (a fire-rate change on entry and on exit), and its price in the balance sim and the catalogue.
+  `design` (post-MVP).
 
 - **S60 🟡 POST-MVP MODE: GUN GAME.** Tony 2026-09-24: "game mode where every time you spawn you get a new gun. you have to get a kill with each gun to win". Each spawn arms the next gun in a set (no repeats, only the guns you still need); a kill with the current gun ticks it off; the first player to tick off the whole set wins. Design questions for later: the set (every catalogue weapon, or a host-picked list), order (fixed or random), whether a death without a kill keeps or skips the gun, and the HUD tracker. Needs no props (Tier 0): the phone writes the life's `$WEAP` at spawn. Voice line VA8O "GUN GAME!" exists. Listed in docs/game-modes.md. `design` (post-MVP).
 
