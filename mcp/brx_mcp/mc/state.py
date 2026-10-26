@@ -3799,10 +3799,12 @@ class Session:
         self._prune_unbound_nodes()
         self._changed()
         if p and self.phase == "recap" and self.match is not None and self.match.released:
-            # A restarted MC has no prior delivery record for this returning socket. Re-take the recap first and tell
-            # only this node: a rejoin is no news for the phones already holding the result (brx4's rerun B).
+            # A restarted MC has no prior delivery record for this returning socket. Re-take the recap first (after the
+            # bind, so a node that rejoined with nothing pending now counts as flushed) and tell only this node, unless
+            # the re-take itself moved the recap: then that is news for every phone (F633).
+            before = self.last_recap
             self._restore_recap(push=False)
-            self._push_result(only=nid)
+            self._push_result(only=None if self.last_recap != before else nid)
             self._push_scores()   # welcome carries the score; this also retries a failed release push
         return self.node_player.get(nid)
 
@@ -3887,7 +3889,8 @@ class Session:
                 and not self._sync_owes(str(hello.get("node_id", "")))):
             # A24/A81: a returning phone gets the released result even if it missed the push.
             # A player added DURING the debrief was not in it, so there is no result to carry. The recap is re-taken
-            # first, so a welcome never carries a stored copy older than the facts (brx4's rerun B).
+            # first, so a welcome never carries a stored copy older than the facts (F633). The bind callback re-takes
+            # it again once this node counts as bound.
             self._restore_recap(push=False)
             if self.last_recap:
                 node["result"] = self._result_body(self.last_recap, p)
@@ -4402,6 +4405,8 @@ class Session:
         p = self.players.get(pid) if pid else None
         current_match = (self.match if self.phase == "recap" and self.match is not None
                          and self.match.scorer is not None and self.match.scorer.match_id == mid else None)
+        if current_match is not None and current_match.released:
+            self._restore_recap(push=False)   # F633: the recap as it stands, never the stored copy
         recap = ((self.last_recap if current_match.released else None) if current_match else
                  (ended.get("recap") if ended and ended.get("released") else None))
         told_result = False
@@ -5456,8 +5461,9 @@ class Session:
                 self._ended[sc.match_id]["recap"] = self.last_recap
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
-            if push and self._m().released:
-                self._push_result()      # A81: late facts cannot reveal a pending result
+            m = self._m()
+            if push and m.released and not m.release_pending:
+                self._push_result()      # A81: late facts cannot reveal a pending result; the release flush sends its own
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
@@ -7912,7 +7918,9 @@ class Session:
             p = self.players.get(pid) or {}
             nv = self.nodes.get(p.get("node_id") or "", {})
             fresh = nv and (now - nv.get("last_seen_ms", 0)) < 30_000
-            if fresh and nv.get("pending") == 0:
+            # F633: a node that still owes facts for the match (its hello's count, which the node view never holds) is
+            # not flushed, whatever its last status said.
+            if fresh and nv.get("pending") == 0 and not self._sync_owes(p.get("node_id") or ""):
                 st.flushed = True
 
     def settling(self) -> dict:
