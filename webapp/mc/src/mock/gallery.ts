@@ -13,7 +13,7 @@ import type { RecapSyncRow, RecapSyncStage, RecapSyncView } from '../api/recapSy
 // trailing `^` = END not confirmed.
 const NAMES = ['VIPER', 'HAWK', 'RAVEN', 'COBRA', 'GHOST', 'NOVA', 'TALON', 'ECHO', 'RIFT', 'JACKAL', 'MAMBA', 'ORION', 'SABLE', 'KESTREL', 'DRIFT', 'BISON'];
 
-interface Frame { spec: string; winner: 'blue' | 'red'; finalised?: boolean; changed?: boolean }
+interface Frame { spec: string; winner: 'blue' | 'red'; finalised?: boolean; changed?: boolean; timeout?: boolean; releaseIn?: number }
 const rep = (n: number) => Array.from({ length: n }, (_, k) => ['R', 'R', 'R', 'W3', 'R', 'C4', 'R', 'B2', 'U', 'R', 'W', 'R', 'R', 'W6!', 'RL3', 'R'][k % 16]).join(' ');
 const F8 = (spec: string, winner: 'blue' | 'red' = 'blue', extra: Partial<Frame> = {}): Frame => ({ spec, winner, ...extra });
 export const GALLERY_FRAMES: Record<string, Frame> = {
@@ -28,6 +28,8 @@ export const GALLERY_FRAMES: Record<string, Frame> = {
   g: F8('R R R R R R R R'),                                    // all received (the strip holds, then collapses)
   lost: F8('R RL12 R R R R R R^'),                             // all received, one lost and one END open: they keep a badge
   fin1: F8('R R R R R R R U', 'blue', { finalised: true }),    // finalised without one phone
+  tmo: F8('R R R R R R R U ST', 'blue', { timeout: true }),   // released by the 2 min bound without one phone and the hill
+  tmo1: F8('R R R R R R W2 U', 'blue', { releaseIn: 9 }),     // 9 s before the bound releases it
   late: F8('R R R W3 R R R U', 'red', { finalised: true, changed: true }), // a released result, one row sending again
   chg: F8('R R R R R R R R', 'red', { changed: true }),        // the winner flipped after the first final
 };
@@ -65,7 +67,9 @@ export function galleryState(base: State, frame: string): State {
     shots: 80, shots_total: 80, hits: 30, accuracy: 34 + (i % 5) * 3, kd: 1.5, streak: 0, medals: [], best_streak: 3, multi_best: 0, first_blood: false }));
   const score = f.winner === 'blue' ? { blue: 23, red: 19 } : { blue: 21, red: 22 };
   const open = sync.filter(r => r.stage !== 'received').length > 0;
-  const view: RecapSyncView = { rows: sync, pending: open && !f.finalised, finalised: !!f.finalised, result_changed: !!f.changed };
+  const pending = open && !f.finalised && !f.timeout;
+  const view: RecapSyncView = { rows: sync, pending, finalised: !!f.finalised, result_changed: !!f.changed,
+    released_by: pending ? null : f.finalised ? 'finalise' : f.timeout ? 'timeout' : 'sync', ...(pending ? { release_in_s: f.releaseIn ?? 72 } : {}) };
   const recap = { winner: view.pending ? null : { team_id: f.winner }, score, rows, honors: [], provisional: false, missing: [], played_s: 300,
     settling: false, awaiting: [], since_end_ms: 60_000, post_end: 0, post_end_facts: 0, parked: 0, sync: view } as unknown as RecapView;
   return { ...base, phase: 'recap', players, nodes: [], recap, end_delivery: undefined, orphan_match: undefined, warnings: [],

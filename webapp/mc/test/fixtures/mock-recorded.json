@@ -355,7 +355,7 @@
    ["set","/readiness/board/7/echo",null],
    ["set","/readiness/t",1700000030000],
    ["set","/recap/played_s",20],
-   ["set","/recap/sync",{"rows":[{"kind":"phone","id":"00000007","name":"NOMAD","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"00000008","name":"GHOST","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000a","name":"SABLE","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"00000009","name":"HAVOC","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000b","name":"ONYX","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000d","name":"ALPHA","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000e","name":"BRAVO","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false}],"pending":true,"finalised":false,"result_changed":false}],
+   ["set","/recap/sync",{"rows":[{"kind":"phone","id":"00000007","name":"NOMAD","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"00000008","name":"GHOST","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000a","name":"SABLE","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"00000009","name":"HAVOC","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000b","name":"ONYX","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000d","name":"ALPHA","team_id":"yellow","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false},{"kind":"phone","id":"0000000e","name":"BRAVO","team_id":"blue","stage":"linked","linked":true,"transport":"wifi","end_unconfirmed":false,"idle_s":0,"stuck":false}],"pending":true,"finalised":false,"result_changed":false,"released_by":null,"release_in_s":120}],
    ["delete","/recap/missing/6"],
    ["set","/recap/since_end_ms",0],
    ["set","/recap/stations/0/synced",false],
@@ -369,8 +369,10 @@
    ["set","/t",1700000030000]
   ]},
   {"script":"happy","step":"finalise","patch":[
+   ["delete","/recap/sync/release_in_s"],
    ["set","/recap/sync/finalised",true],
    ["set","/recap/sync/pending",false],
+   ["set","/recap/sync/released_by","finalise"],
    ["set","/recap/winner",{"team_id":null,"tie":["blue","yellow"]}]
   ]},
   {"script":"happy","step":"next match","patch":[

@@ -43,7 +43,7 @@ from .types import ROSTER_PHASES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, Event, FeedEntry,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, ReleaseReason, Event, FeedEntry,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, TunnelAuto, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
@@ -87,6 +87,7 @@ END_RETRY_MS = (2_000, 5_000, 10_000, 20_000, 40_000, 60_000)
 # for why the absence of a denial must never be read as one.
 END_CONFIRM_PHASES = ("kitted",)
 VICTORY_STING_MAX_S = 30
+_RELEASE_REASONS = get_args(ReleaseReason)
 
 
 def release_app_version() -> str | None:
@@ -3090,10 +3091,15 @@ class Session:
             entry["changed_mono"] = self.mono_ms()
         self._sync_update(nid, self.now_ms())
 
-    def _sync_status(self, nid: str, pending: object, at: int) -> None:
+    def _sync_status(self, nid: str, pending: object, at: int, *, match_id: object = None,
+                     arm_state: object = None) -> None:
         entry = self._sync_entry(nid)
-        if entry is None:
+        sc = self._m().scorer
+        if entry is None or sc is None:
             return
+        # A beat the phone sent before its own end (still "armed"/"live", or naming no match or another one) read its
+        # outbox before the end facts were booked. Its count stands, but it is not a drained claim for this match.
+        ended_here = match_id == sc.match_id and arm_state not in ("armed", "live")
         if _is_count(pending):
             if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
@@ -3101,6 +3107,7 @@ class Session:
                 entry["changed_t"] = at
                 entry["changed_mono"] = self.mono_ms()
             entry["pending"] = pending
+        if _is_count(pending) and ended_here:
             entry["status_t"] = at
             entry["status_rev"] = entry.get("event_rev", 0)
         else:
@@ -3122,7 +3129,7 @@ class Session:
     def _recap_sync(self, winner: WinnerView | None, stations: list[RecapStationRow]) -> RecapSyncView:
         match = self.match
         if match is None or match.scorer is None:
-            return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
+            return {"rows": [], "pending": False, "finalised": False, "result_changed": False, "released_by": None}
         now = self.now_ms()
         unconfirmed = {r["player_id"] for r in (self._end_delivery_view() or {}).get("unconfirmed", [])}
         rows: list[RecapSyncRow] = []
@@ -3185,6 +3192,7 @@ class Session:
         if not pending:
             if not match.released:
                 match.release_pending = True
+                match.release_reason = "sync"
                 changed = True
             match.released = True
             if match.scorer.match_id in self._ended:
@@ -3192,8 +3200,12 @@ class Session:
         if changed:
             self._persist_dirty = True
             self.persist_now()
-        return {"rows": rows, "pending": pending, "finalised": match.finalised,
-                "result_changed": match.result_changed}
+        view: RecapSyncView = {"rows": rows, "pending": pending, "finalised": match.finalised,
+                               "result_changed": match.result_changed,
+                               "released_by": cast(ReleaseReason, match.release_reason) if match.released else None}
+        if pending and match.release_due_mono is not None:
+            view["release_in_s"] = max(0, -(-(match.release_due_mono - self.mono_ms()) // 1000))
+        return view
 
     def _station_hold(self, nid: str) -> tuple[str, dict, int | None] | None:
         """F555: (site, hold_ms) of a control station's tally for THIS match, else None. Only the tally `_keep_tally` keyed
@@ -3935,7 +3947,7 @@ class Session:
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
-        self._sync_status(nid, body.get("pending"), t_recv)
+        self._sync_status(nid, body.get("pending"), t_recv, match_id=body.get("match_id"), arm_state=body.get("arm_state"))
         # O6/O10: the loss counts are scoped AT THE SOURCE: the phone names the match its count belongs to
         # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
         # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
@@ -4660,6 +4672,15 @@ class Session:
             self.end_reason = match.end_reason
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
+            reason = m.get("release_reason")
+            match.release_reason = (reason if reason in _RELEASE_REASONS else
+                                    "finalise" if match.finalised else "sync" if match.released else None)
+            if not match.released:
+                # The bounded wait resumes with the time it had left. A snapshot from before the bound is timed from end_t.
+                due_in = m.get("release_due_in_ms")
+                if not isinstance(due_in, int) or isinstance(due_in, bool) or due_in < 0:
+                    due_in = max(0, SYNC_STUCK_S * 1000 - max(0, self.now_ms() - (scorer.end_t or self.now_ms())))
+                match.release_due_mono = self.mono_ms() + due_in
             frozen = m.get("frozen_stations")
             if isinstance(frozen, list):
                 match.frozen_stations = [row for raw in frozen
@@ -5496,6 +5517,9 @@ class Session:
                         "display": display.get(h.get("player_id")) or h.get("player_id"), "stat": h.get("stat")}
                        for h in (recap.get("honors") or [])],
             "provisional": bool(recap.get("provisional")),
+            # Tony 2026-10-26: the phone says "result updated" once a late sync moves the winner after release. The
+            # console's RESULT CHANGED latch, read here too: a late fact pushes before any snapshot re-reads recap().
+            "result_changed": (match_id is None or (sc is not None and match_id == sc.match_id)) and self._result_moved(winner),
             "t": self.now_ms(),
         }
         for k in ("possession", "after_end"):
@@ -5535,6 +5559,34 @@ class Session:
             self._result_pushed[delivery] = key
             sent += 1
         return sent
+
+    def _result_moved(self, winner: object) -> bool:
+        """Latch `result_changed` when `winner` differs from the one first shown as final (the recap's own check)."""
+        match = self.match
+        if match is None:
+            return False
+        if (not match.result_changed and match.final_winner is not None and isinstance(winner, dict) and winner
+                and winner != match.final_winner):
+            match.result_changed = True
+            self._persist_dirty = True
+        return match.result_changed
+
+    def _release_on_timeout(self) -> None:
+        """Tony 2026-10-26: the A81 wait is bounded. SYNC_STUCK_S after the whistle, on MC's monotonic clock, the result
+        releases without the phones and hills still missing. Their rows stay on the sync track; a late sync merges in
+        and `result_changed` says so if it moves the winner."""
+        match = self.match
+        if (self.phase != "recap" or match is None or match.scorer is None or match.released
+                or match.release_due_mono is None or self.mono_ms() < match.release_due_mono):
+            return
+        match.release_pending = True
+        match.release_reason = "timeout"
+        match.released = True
+        if match.scorer.match_id in self._ended:
+            self._ended[match.scorer.match_id]["released"] = True
+        self.recap()  # capture the winner shown when the wait ends, as FINALISE does
+        self._changed()
+        self.persist_now()
 
     def _flush_result_release(self) -> None:
         """Send an A81 release marked by recap sync, after the caller leaves its getter."""
@@ -7659,6 +7711,7 @@ class Session:
             match.end_reason = self.end_reason
             match.whistle_mono_ms = self.mono_ms()
             match.whistle_wall_ms = self.now_ms()
+            match.release_due_mono = match.whistle_mono_ms + SYNC_STUCK_S * 1000
         if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}
@@ -7728,6 +7781,7 @@ class Session:
         # A42: ABOVE the head gate on purpose. `_finish()` clears the head, and RECAP is the
         # only phase an end re-delivery ever runs in. Below the gate it would be dead code.
         self._retry_end_delivery(self.now_ms())
+        self._release_on_timeout()
         self._flush_result_release()
         head = self._m().head
         if not head:
@@ -7775,6 +7829,7 @@ class Session:
             self.match.finalised = True
             if not self.match.released:
                 self.match.release_pending = True
+                self.match.release_reason = "finalise"
             self.match.released = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()
