@@ -5628,7 +5628,10 @@ class Session:
         match = self.match
         if match is None or not match.release_pending or self._resuming_recap:
             return
-        self._push_result()
+        # F630: release the recap as it stands now. The stored one can predate the phones' last beats (the bound
+        # releases minutes after the whistle), and a stale copy made a later, unchanged report push a second result.
+        self._restore_recap()
+        self._push_result()   # deduplicated: a no-op when the re-store already sent it
         self._score_pushed.clear()
         self._push_scores(release_flush=True)
         if (match.whistle_mono_ms is not None and match.whistle_wall_ms is not None

@@ -43,9 +43,9 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     assert {t["team_id"] for t in b["team_scores"]} == {"red", "blue"}
     assert len(b["rows"]) == 4, "every player's row rides along, not just the recipient's"
     assert b["my"]["player_id"] == ps[0]["player_id"] and got["node1"]["my"]["player_id"] == ps[1]["player_id"]
-    # `provisional` is a REAL claim, so assert the real value: at the whistle only the victim's node
-    # had flushed a fact, so three of four players are still `missing` and the sheet can still move.
-    assert b["provisional"] is True, s.last_recap.get("missing")
+    # `provisional` is a REAL claim, so assert the real value. F630: the release sends the recap as it stands at the
+    # release, not the copy stored at the whistle: every phone is connected and seen flushed by then, as the console says.
+    assert b["provisional"] is False and b["provisional"] == s.recap()["provisional"], s.last_recap.get("missing")
     assert isinstance(b["t"], int)
 
 

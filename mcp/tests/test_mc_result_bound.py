@@ -13,11 +13,22 @@ from brx_mcp.mc.types import STALE_LIVE_RETELL_MS, SYNC_STUCK_S
 BOUND_MS = SYNC_STUCK_S * 1000
 
 
-def _ended(n=2, mode="tdm", persist=False, kills=()):
-    """A match ended with a mocked monotonic clock, so the bound can be walked without the wall clock."""
+def _ended(n=2, mode="tdm", persist=False, kills=(), hill_tally=False):
+    """A match ended with a mocked monotonic clock, so the bound can be walked without the wall clock. `hill_tally`: the
+    KOTH hill reports a red hold, then drops off before the whistle (`s._test_hill` is its node, id and tally)."""
     s, net, clock, ps, info = go_live_stored(n, mode)
     for seq, (killer, victim) in enumerate(kills, start=1):
         kill(s, net, clock, ps, killer, victim, info, seq=seq)
+    if hill_tally:
+        hill = "util-hill"
+        sid = s.station_registry.stations[hill]["assigned"]["id"]
+        red = s.config["teams"][0]
+        ctl = {"owner": red["tid"], "progress": 100, "contested": False, "hold_ms": {str(red["tid"]): 20_000}}
+        clock["t"] += 3_000
+        net.simulate_status(hill, {"role": "utility", "kind": "control", "station_id": sid, "control": ctl}, clock["t"])
+        clock["t"] += 30_000
+        net.simulate_disconnect(hill)
+        s._test_hill = (hill, sid, ctl)
     mono = {"t": 1_000_000}
     s.mono_ms = lambda: mono["t"]
     if persist:
@@ -346,3 +357,25 @@ def test_a_drained_winner_is_cued_at_an_early_finalise():
     s.tick()
     cued = [p[2]["player_id"] for p in net.pushes("feedback") if p[2].get("kind") == "victory"]
     assert ps[1]["player_id"] in cued
+
+
+def test_a_hill_back_with_the_same_tally_after_the_bound_pushes_no_second_result():
+    """F630 (brx4's case 5): the bound released the stored recap, written before the phones' final beats flushed them,
+    so the result said provisional. The hill's late, unchanged tally re-stored it and pushed a second result that
+    differed only there. The release must push the recap as it stands, and an unchanged late report pushes nothing."""
+    s, net, clock, mono, ps, info = _ended(mode="koth", hill_tally=True)
+    for i, p in enumerate(ps):
+        _beat(s, net, clock, i, p["player_id"])
+    mono["t"] += BOUND_MS
+    s.tick()
+    first = net.pushes("result")
+    assert len(first) == 2 and all(p[2]["provisional"] is False for p in first), "the release sends the settled recap"
+    net.pushed.clear()
+    hill, sid, ctl = s._test_hill
+    clock["t"] += 1
+    net.simulate_utility_hello(hill, node_key=net.nodes[hill].node_key)
+    clock["t"] += 3_000
+    net.simulate_status(hill, {"role": "utility", "kind": "control", "station_id": sid, "control": ctl}, clock["t"])
+    s.tick()
+    assert next(r for r in _sync(s)["rows"] if r["kind"] == "station")["stage"] == "received"
+    assert net.pushes("result") == [], "the same tally changes nothing, so nothing is pushed"
