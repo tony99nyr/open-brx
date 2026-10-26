@@ -32,6 +32,12 @@ the match. ARM never waits for it. Phones stay on the Wi-Fi and use the tunnel o
 Pass `--no-tunnel` (`pnpm mc -- --no-tunnel`) to keep it manual. A dev run with `--demo`, `--ephemeral` or
 `--fake-net` never starts it.
 
+**Keeping `cloudflared` current.** `./start.sh` installs `cloudflared` on request. On every start it updates the
+copy that brew installed to the newest release, with `brew upgrade cloudflared`, and warns in red when the version is
+below Cloudflare's minimum (2026.10.2). It asks GitHub for the newest release at most once a day, and `--no-update`
+skips that check. If brew did not install it, or brew has no newer build yet, the script prints what to do by hand.
+A failed update never blocks the start.
+
 **Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
 and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
 in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
