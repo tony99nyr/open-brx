@@ -108,7 +108,7 @@ command that rewrites it (`--write <name>`). The list of generators is `scripts/
 
 - **Ports.** A `webapp/mc/test/e2e/` script reads `MC_PORT`, `MC_WS_PORT` and `VITE_PORT` from its environment and
   takes every other port from `await freePort()` in `scripts/lib/ports.mjs`. test-all gives each of these jobs its own
-  block of 32 ports below the kernel's ephemeral range (`env: jobBlockEnv` in `scripts/lib/jobs.mjs`), because a
+  block of 40 ports below the kernel's ephemeral range (`env: jobBlockEnv` in `scripts/lib/jobs.mjs`), because a
   port-0 pick can go to another listener first (F523: a job lost its port under load, and a repro saw 11 of 200 picks
   handed out again). A new job of that kind takes the
   same `env`. Outside test-all, `freePort()` falls back to a port-0 pick. Any other test may listen on 0 or read the
