@@ -12,10 +12,9 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 100.** Desk 3 · bench 93 · decision 4.
+**MVP open: 99.** Desk 2 · bench 93 · decision 4.
 
-**MVP DESK (3),** a keyboard is enough:
-- 🟠 **F595**
+**MVP DESK (2),** a keyboard is enough:
 - 🟢 **F512** · **F544**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -48,7 +47,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`. **→ 2026-10-18 (checked, not assumed):** not yet. Of 151 main CI runs from 2026-10-11, `mc-play` passed 132 and failed 2 (16 had no `mc-play` job; 1 still ran): 2026-10-11 run `38122943216` ("the three fresh-install pickers show against a real MC") and 2026-10-12 run `38268828276` ("timed out waiting for the first snapshot", then the PLAY screen). Both are F574. The earliest clean 7-day window ends 2026-10-19 at about 15:17 UTC; check again then.
 - **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
 
