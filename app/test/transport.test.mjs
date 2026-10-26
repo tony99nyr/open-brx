@@ -122,6 +122,51 @@ test('F595: the hello carries the unsent count; an ack that empties the ring sen
   assert.equal(beats().length, n + 1, 'a partial prune waits for the next beat');
 });
 
+// F595 (desk measurement 2026-10-26): with the Mac awake the result waited up to 2 s for the next beat (no beat at the
+// end, and a single fact's ack sends none), and after a Mac sleep up to 10 s for the reconnect backoff's cap.
+async function boundTransport(ctx, backoff = { baseMs: 1, capMs: 2, jitter: 0 }) {
+  const advance = useClock(ctx);
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 't' }, backoff });
+  ctx.after(() => t.close());
+  t.setStatusProvider(() => ({ arm_state: 'ended' }));
+  const p = t.connect({ url: 'ws://x/ws' });
+  sockets[0].open();
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 })); await p;
+  await advance(1);
+  return { t, sockets, advance, beats: () => sockets.at(-1).sent.filter(e => e.kind === 'status') };
+}
+
+test('F595: after the end the phone beats at once, and every ack that empties the ring beats', async ctx => {
+  const { t, beats } = await boundTransport(ctx);
+  const n = beats().length;
+  t.setUrgent(true);                                    // the end: nothing queued, so MC hears pending 0 now
+  assert.equal(beats().length, n + 1, 'a beat at the end, not on the next 2 s tick');
+  assert.equal(beats().at(-1).body.pending, 0);
+  t.setUrgent(true);
+  assert.equal(beats().length, n + 1, 'the same end beats once');
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });   // one late fact
+  t._ws.recv(E.makeEnvelope('ack', { seq_hi: 1 }));
+  assert.equal(beats().length, n + 2, 'the late fact\'s own ack beats after the end');
+  t.setUrgent(false);                                   // the result is in: back to the live rule
+  t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
+  t._ws.recv(E.makeEnvelope('ack', { seq_hi: 2 }));
+  assert.equal(beats().length, n + 2, 'a single fact\'s ack sends no beat once the result is in');
+});
+
+test('F595: after the end the phone reconnects on a 2 s cap, not the 10 s one', async ctx => {
+  const { t, sockets, advance } = await boundTransport(ctx, { baseMs: 500, capMs: 10000, jitter: 0 });
+  t.attempt = 6;                                        // a long outage: the next delay is the 10 s cap
+  sockets.at(-1).close();
+  const before = sockets.length;
+  await advance(2500);
+  assert.equal(sockets.length, before, 'setup: the ordinary backoff waits the full cap');
+  t.setUrgent(true);                                    // the end arrives while offline
+  await advance(2500);
+  assert.equal(sockets.length, before + 1, 'the urgent cap redials within about 2 s');
+});
+
 test('phone sync track: drainedAt is when a status with nothing pending last reached the socket', async ctx => {
   const advance = useClock(ctx);
   const sockets = [];
@@ -760,4 +805,10 @@ test('F564: the hello and every status name the device once Device.getInfo has a
   assert.ok(!deviceModel().includes('Tony'), 'the user-set name is never part of it');
   setDeviceModel({ manufacturer: '', model: 'x'.repeat(200) });
   assert.equal(deviceModel().length, 64, 'a model string is capped');
+});
+
+test('F595: the app sets the transport urgent from the end until the result is in', () => {
+  // app.js's sync poll is a timer in the app shell, not a unit; read its source, as advert-director.test.mjs does
+  const src = readFileSync(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.match(src, /transport\.setUrgent\(!!es\.ended && !es\.result\)/, 'the sync poll no longer drives setUrgent');
 });

@@ -820,6 +820,8 @@ setInterval(() => { try {
     unboundAt: o && o.unboundAt != null ? o.unboundAt : _syncUnboundAt, whistleAt: _syncWhistleAt };
   // A81: once MC has this phone's post-whistle report (the track's RECEIVED), MC NOT REACHED would be false
   if (es.ended && drainedAt && drainedAt >= (_syncWhistleAt || es.endedAt) && !(pending > 0)) engine.markReached();
+  // F595: from the end until the result is in, the transport beats as soon as its ring is empty and redials on a 2 s cap
+  if (transport) transport.setUrgent(!!es.ended && !es.result);
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 

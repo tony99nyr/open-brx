@@ -171,6 +171,9 @@ export const RECLAIM_RETRY_MS = E.STALE_AFTER_MS + 1500;
 /** A60: trust keys kept per node_id, one per MC install this phone joined (a laptop swap keeps both). */
 export const TRUST_KEYS_MAX = 4;
 
+/** F595: the reconnect backoff's cap from the end until the result arrives (the ordinary cap is 10 s). */
+export const URGENT_RECONNECT_CAP_MS = 2000;
+
 export class Transport {
   /**
    * @param {TransportOptions} [o] options
@@ -186,6 +189,7 @@ export class Transport {
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
     this.backhaulGiveupMs = backhaulGiveupMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
     this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
+    this.urgent = false;        // F595: setUrgent()
     this._idVolatile = false;   // restore r1 #4: true when the id read failed, so this process's identity is never stored
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
@@ -763,10 +767,29 @@ export class Transport {
     }
     const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct; this._setState('offline'); this._scheduleReconnect();
   }
+  /** F595: one status beat now, from the provider's current body (a fresh body, never a replay), when bound. */
+  _beatNow() {
+    if (!this.statusProvider || this.state !== 'bound') return;
+    /** @type {StatusBody} */ let b = {};
+    try { b = this.statusProvider() || {}; } catch (e) { this._log('statusProvider', e); }
+    this.status(b);
+  }
+  /** F595: true from the end until the result arrives (app.js). MC holds every phone's result until this phone reports
+   *  pending 0 after the whistle, so the phone beats as soon as its ring is empty and redials on a short cap.
+   *  @param {boolean} on */
+  setUrgent(on) {
+    on = !!on;
+    if (on === this.urgent) return;
+    this.urgent = on;
+    if (!on) return;
+    if (this.state === 'bound') { if (this.ring.size === 0) this._beatNow(); }
+    else if (this._rcTimer) { this.timers.clearTimeout(this._rcTimer); this._rcTimer = null; this.attempt--; this.reconnects--; this._scheduleReconnect(); }
+  }
   _scheduleReconnect() {
     if (this.closed || this._rcTimer) return;
     this.attempt++; this.reconnects++;
-    const { baseMs, capMs, jitter } = this.backoff;
+    const { baseMs, jitter } = this.backoff;
+    const capMs = this.urgent ? Math.min(this.backoff.capMs, URGENT_RECONNECT_CAP_MS) : this.backoff.capMs;
     const raw = Math.min(capMs, baseMs * 2 ** Math.min(this.attempt - 1, 16));
     const delay = raw * (1 - jitter + 2 * jitter * this.random());
     this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, delay);
@@ -792,11 +815,8 @@ export class Transport {
       // F595: the beat that rode with the batch read the ring before this ack, so MC would hear pending 0 only on the next
       // 2 s beat. An ack that empties a BATCH (more than one fact) sends a fresh beat at once, from the provider's body now.
       // Review (Opus): a live fact is alone in the ring, so its own ack empties it too; that one waits for the next beat.
-      if (before > 1 && this.ring.size === 0 && this.statusProvider && this.state === 'bound') {
-        /** @type {StatusBody} */ let b = {};
-        try { b = this.statusProvider() || {}; } catch (e) { this._log('statusProvider', e); }
-        this.status(b);
-      }
+      // After the end (`urgent`), a single late fact's ack beats too: MC holds every result until this phone reads 0.
+      if ((before > 1 || (this.urgent && before > 0)) && this.ring.size === 0) this._beatNow();
       return;
     }
     if (kind === 'control' && body.cmd === 'clock_resync') { this._clockResync(); return; }   // F474: about the clock, not the game
