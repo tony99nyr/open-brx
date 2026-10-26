@@ -1185,6 +1185,10 @@ CHARGE_TAP_CADENCE_MS = 285
 # unproven ships. The bench row in `bench-field-1017.md` (a reserve of 1200 and 2400) lifts it.
 RESERVE_PROVEN_MAX = 384
 
+# F614: a dual-emitter pull's headset word (t12) lands about 88 ms after its gun word (Callsign capture cap30,
+# 2026-09-18; `damage_per_pull()`). A kill the last gun word does not finish lands on that headset word.
+HEADSET_WORD_LAG_MS = 88
+
 # The field's 126 press gaps under 1 s from four players had a 271 ms median, 325 ms mean, and
 # log-sigma 0.56 (field 2026-10-17). SEMI_PULL_MS models the bolt lever and the press after it.
 # Legacy pull sampling also uses it. Ordinary single-shot fights use the fitted overshoot below.
@@ -1203,6 +1207,16 @@ _LEGACY_SYNTHETIC_TEMPLATES: dict[str, str] = {
     "ar":     ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
     "charge": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
 }
+
+
+def headset_lag_ms(pool: int, htk: int, per_pull: float, gun: float) -> int:
+    """F614: `HEADSET_WORD_LAG_MS` when the killing pull needs its headset word, else 0. After `htk - 1` full
+    pulls (`per_pull`, gun plus headset word), the last pull's gun word (`gun`) must cover what is left of
+    `pool`; when it does not, the kill lands on the headset word. A weapon with no headset word has
+    `per_pull == gun` and never lags. `views.weapon_view()` uses the same rule at the host's pool."""
+    if not htk or per_pull <= gun:
+        return 0
+    return HEADSET_WORD_LAG_MS if pool - (htk - 1) * per_pull > gun else 0
 
 
 class WeaponCatalog:
@@ -1234,6 +1248,8 @@ class WeaponCatalog:
                       # would disagree with the server's (2026-09-18: a Shotgun view derived htk 6
                       # from a t5-only dmg_hit of 20, against the server's own htk 3 off 40).
                       "dmg_hit": self.damage_per_pull(w["weapon_id"]),
+                      # F614: the gun word alone, so the views add the same headset-word lag `time_to_kill()` does
+                      "gun_hit": self.damage(w["weapon_id"]),
                       # the PLAYER-paced cycle (`paced_cycle_ms`), so the views' ttk at a host pool agrees
                       # with `time_to_kill()`; only the views read it, never the wire (field 2026-10-17)
                       "cycle_ms": self.paced_cycle_ms(w["weapon_id"]),
@@ -1847,8 +1863,9 @@ class WeaponCatalog:
 
     def time_to_kill(self, weapon_id: str, pool: int, pull_ms: float = SEMI_PULL_MS) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
-        one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
-        on an fn 36/37 weapon lands sooner than this.
+        one-shots on its gun word (a one-shot that needs the headset word publishes the 88 ms lag, F614).
+        Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill on an fn 36/37
+        weapon lands sooner than this. Perks are not modelled: Armour Piercing zeroes the headset word.
 
         (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge/hold weapon with NO
         tap (Rail Gun, Laser Cannon: `mode` in `_CHARGE_MODES`), where the first shot has to be charged
@@ -1860,7 +1877,10 @@ class WeaponCatalog:
         only the taps that follow cost time.
 
         A single-shot weapon's cycle is player-paced (`paced_cycle_ms`, field 2026-10-17); `pull_ms` 0 gives
-        the old gun-limited number, a press every t14."""
+        the old gun-limited number, a press every t14.
+
+        F614: on a dual-emitter weapon, a kill that the last pull's gun word does not finish lands on its
+        headset word, `HEADSET_WORD_LAG_MS` later (`headset_lag_ms()`)."""
         htk = self.hits_to_kill(weapon_id, pool)
         if not htk:
             return 0
@@ -1869,7 +1889,8 @@ class WeaponCatalog:
             taps = htk - 1
             return taps * self.CHARGE_TAP_CADENCE_MS
         charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
-        return int(round(self.paced_cycle_ms(weapon_id, pull_ms) * (htk if charged else htk - 1)))
+        cycles = int(round(self.paced_cycle_ms(weapon_id, pull_ms) * (htk if charged else htk - 1)))
+        return cycles + headset_lag_ms(pool, htk, self.damage_per_pull(weapon_id), self.damage(weapon_id))
 
     def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
         """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""
