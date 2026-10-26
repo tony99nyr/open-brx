@@ -77,11 +77,13 @@ through the confirm path in `protocol.py`; a firmware string alone never makes a
 **Screamers and untested-levers passes complete 2026-09-21.** The v4.32 code-read confirms the blocking audio wait, two 1,024-slot
 UART rings (1,023 usable bytes), split-frame persistence with no parser timeout, and `$*`'s all-token cleanup.
 The second pass found two direct contradictions (`$BHIT` is a one-byte event path, and `$SPAWN` does not read a
-shield argument) and several boundaries where the gun image only forwards state to another controller. The evidence
+shield argument; both labels are unproven after the 2026-10-26 re-check) and several boundaries where the gun image only forwards state to another controller. The evidence
 and precise bench checks are in the 2026-09 experiment log and the two bench sheets. The hosted function
 switch is now code-mapped for IDs 0–52. The RAM-table loading path, `$TMP` and F264 questions remain open.
 
-The Ghidra read mapped the full v4.32 file at `0x8000`, leaving the vector table at `0x8008`. T1 found 111
+**2026-10-26 re-check:** the September Ghidra read placed the v4.32 file at the wrong base. Every absolute pointer,
+and so every string-to-command label, was off by one fixed shift. Code-flow and arithmetic readings stand. A command
+label from this pass is unproven unless the re-check restates it. T1 found 111
 command-shaped names in v4.32; name presence does not prove an inbound handler. The completed pass covered:
 
 1. **Screamers (P0).** Why does `$DPLAY` on a loop sound hang the gun? How big is the serial receive buffer? What
@@ -144,16 +146,18 @@ Company's own update tool expects. Tony decides whether we ever flash, and only 
 The second word has a fixed low half `0x3412` and a version-varying high half with no verified meaning.
 The `$CDFU` spelling is present, but adjacent literal references do not establish an inbound handler or a
 bootloader call. The documented USB programming disk uses SELECT plus power and a root `.BIN`; no updater
-executable is available locally to inspect its validation. Keep `$CDFU` unsent. Research can continue from
+executable is available locally to inspect its validation. Keep `$CDFU` unsent.
+**2026-10-26 re-check (code read):** `$CDFU` has a handler. It holds the radio module's boot line low and pulses its
+reset line, which is the usual way to put a radio module into its own updater. It does not reach the gun's updater.
+`$CDFU` stays denied. Research can continue from
 official updater material if it becomes available; any flash remains a separate decision.
 
 ## 2026-09-23 desk findings, ranked
 
-These are code readings from the stock v4.32 tagger and v1.34 headset, not bench proof. The headset analysis uses
-flash base `0x4000`. The tagger analysis uses the original `0x8000` file mapping: its reset vector reaches a valid
-initialisation path there. A trial import that removed the 8-byte updater header reached the middle of that path,
-so its results were discarded. Some tagger command comparisons point into neighbouring strings. Do not assign a
-handler from a literal address alone.
+These are code readings from the stock v4.32 tagger and v1.34 headset, not bench proof. Some tagger command
+comparisons pointed into neighbouring strings. **2026-10-26 re-check:** both the headset and the tagger mappings
+used here were off by one fixed shift, which explains those comparisons. Code flow and arithmetic below stand. Any
+claim that names which command reaches a routine is unproven unless this section restates it from the re-check.
 
 1. **S48, indoor IR control.** The v4.32 emitter routine at `0xc984` computes the gun carrier as
    `38000 - 125 × (100 - range)` Hz below range 100. It selects one of two fixed output settings from the gun's
@@ -163,17 +167,21 @@ handler from a literal address alone.
    per-game serial control for the output setting. **Bench:** keep `$WEAP` t2 at 100, scope carrier and IR duty in
    each physical mode, then repeat with the documented `$GSET` t2 and `$IRLVL` controls. Run aimed and bounced
    shots against a shaded receiver, discarding the first two pulls of each group (F198/F231/F232).
-2. **F293, joint Bluetooth drops.** The ordinary v4.32 loop calls `0x20f5c`. That routine checks a 6,000 ms
-   timer and drives a selected GPIO low, then high after more than 500 ms. The code does not prove that the pin
-   resets both radio links, or identify the inbound frame that refreshes the timer. The radio module's own
+2. **F293, joint Bluetooth drops.** The ordinary v4.32 loop checks a 6,000 ms timer and drives a selected GPIO
+   low, then high after more than 500 ms. **2026-10-26 re-check:** the pin is a radio-module reset line. The gun
+   polls `$RADSK` every 3 s, and only an inbound `$RADSK` or `$HADSK` answer refreshes the timer. Other phone
+   commands do not refresh it, and a blocking `$DPLAY` clip can starve it. The code does not prove that one pulse
+   drops both radio links. The radio module's own
    firmware is absent. The pin selector yields GPIO 3 or 31 for the mapped hardware IDs. **Bench:** record that
    GPIO, both link states and Android Bluetooth logs across
    several 5–12 s drops. A low pulse before each joint drop would identify a gun-driven reset. If there is no
    pulse, investigate the radio and Android path.
-3. **Protocol-15 callouts.** In the v1.34 headset, the corrected `0x8e60` hit path emits a
+3. **Protocol-15 callouts.** In the v1.34 headset, a fatal-hit path emits a
    25-bit word after a fatal hit. One stored mode selects protocol 15, the incoming player/team IDs and magnitude
-   2; another selects protocol 8. This is a candidate explanation for the captured native TDM post-kill word,
-   not proof of its source. A dead headset skips local hit application, but this read does not settle whether
+   2; another selects protocol 8. **2026-10-26 re-check:** that headset path runs only in a stored zombie mode
+   that the gun never sets. In normal play the victim's gun sends the word instead: on a native death it commands
+   its own headset, through `$IRTX`, to emit protocol 15, magnitude 2 with the killer's ID and team. This is a
+   candidate explanation for the captured native TDM post-kill word, not proof of its source. A dead headset skips local hit application, but this read does not settle whether
    the gun forwards a received word as `$HIR`. **Bench:** place an IR receiver beside the victim headset during
    native and hosted kills. Record the full word and both `$HIR` sensor IDs. Reserve protocol-15 magnitude 2
    until its native role is confirmed. Deduplicate one word across sensor 0 and sensor 4: a previous capture
@@ -183,9 +191,8 @@ handler from a literal address alone.
    without ordering data. **Bench:** capture raw, timestamped frames through short bursts and full auto. Check
    each release against the final `$ALCD` for that burst.
 5. **Screamers and `$SIR`.** T2 already established the blocking `$DPLAY` wait, 1,023-byte usable receive rings,
-   persistent split frames and `$*` cleanup. A five-field forwarding function at `0x9470` can use a second
-   destination. Independent literal decoding found an empty appended string. The initial runtime string
-   remains unidentified, so the adjacent `$SIR` literal does not identify this function.
+   persistent split frames and `$*` cleanup. The September "five-field forwarding function" builds the headset
+   `$BLINK` frame (2026-10-26 re-check). It has nothing to do with `$SIR`.
    The recovered v4.32 switch maps hosted function IDs 0–52, including timed IDs 24–27 and inert IDs 39–49.
    The RAM-table loading path and headset/controller routing still need tracing. Keep the existing screamer bench
    steps and test selected `$SIR` effects with the receiving controller present.
@@ -193,11 +200,14 @@ handler from a literal address alone.
    (`0x7c60`) and remains in v1.34 (`0x8e60`). V1.34 also reads stored identity slot `0x15c` and compares it with
    an incoming player ID; v1.27 uses fixed `0x3f` or `0x7f` selectors. The gameplay effect is unproved. **Bench:**
    vary the configured headset ID and send matching and different player IDs with equal team and magnitude.
-7. **Undocumented commands and recovery.** A branch adjacent to `$CLEARDEVICE` appears to call `0x19760`, which
-   changes stored bytes and resets firmware state. The command mapping is provisional, but its potential effect
-   supports the existing deny rule. `$FREE` has no confirmed handler; a nearby branch belongs to `$SFLASH`.
-   The `$CDFU` spelling alone does not prove a callable updater entry. Keep all three commands unsent. T5 records
-   the firmware header facts and the separate official USB programming path.
+   **2026-10-26 re-check:** both death-word paths sit inside the headset's zombie-mode block, so neither runs in
+   normal play.
+7. **Undocumented commands and recovery.** **2026-10-26 re-check:** `$FACTORY`, not `$CLEARDEVICE`, reaches the
+   routine that resets the gun's stored settings. `$CLEARDEVICE` sends the radio module a sequence that clears its
+   pair list, formats its storage and resets it, so the phone and headset must pair again. Both stay denied.
+   `$FREE` is a read-only query: the gun answers `$CHAN` with the busy flag of each of its four audio channels.
+   `$CDFU` puts the radio module into its updater (T5) and stays denied. T5 records the firmware header facts and
+   the separate official USB programming path.
 
 No firmware, sound file, decompile or disassembly was added to the repo, and no command was sent to a gun.
 
@@ -222,14 +232,13 @@ scores before choosing its result/audio code. See the experiment log for address
 **Native hit follow-up:** the hosted IR handler at `0x24aec` reads a RAM `$SIR`-style table. Native hits take
 compiled branches at `0x21dcc`, with protocol 15 at `0x26338`; no nine-field stock `$SIR` rows were found
 on that path. Native death queues an eleven-field serial request containing protocol 15, magnitude 2,
-and the killer ID and team. The full serial command prefix remains unresolved.
+and the killer ID and team. The 2026-10-26 re-check identifies it as an `$IRTX` frame to the gun's own headset.
 The killer gun has a matching receive-and-credit branch. Modes 5–6 have a one-time death branch that writes
 team 3 and rebuilds the loadout. The native hit entry of the experiment log records guards and addresses.
-That entry now has a bounded map of protocols 0–14. The gun formatter appends `M` and
-eleven numeric fields after an unresolved runtime string. The headset has both serial and autonomous
-fatal-hit transmit paths. Its serial parser can load those fields into the IR encoder, but the command
-match is unresolved. One parser branch requests one send; another can request an immediate send plus
-repeats. A victim-side capture should identify the route and count the frames.
+That entry now has a bounded map of protocols 0–14. The gun formats `$IRTX` and eleven numeric fields; the
+September `M` reading was a mislabel. The headset has both serial and autonomous fatal-hit transmit paths, and
+the autonomous one runs only in zombie mode. Its `$IRTX` parser loads those fields into the IR encoder. One
+parser branch requests one send; another can request an immediate send plus repeats. A victim-side capture should identify the route and count the frames.
 
 ## 2026-09-23 broader pass: additional code findings
 
@@ -239,7 +248,8 @@ functions decompiled, but many branches still need interpretation and bench chec
 All five sampled tagger versions have the same two native five-value default sequences:
 `100,3333,3333,200,15000` and `100,0,0,200,6000`. Their runtime gates may differ by version.
 All five also contain a death-path call with the same eleven numeric arguments for protocol 15,
-magnitude 2 and the killer identity. The serial prefix and per-version gates remain unverified.
+magnitude 2 and the killer identity. In v4.32 that call formats an `$IRTX` frame (2026-10-26 re-check). The
+other versions' prefix and per-version gates remain unverified.
 
 | Gun version | Range step below 100 | Emitter routine |
 |---|---:|---|
