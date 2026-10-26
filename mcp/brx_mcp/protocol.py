@@ -155,10 +155,10 @@ KNOWN_SAFE_COMMANDS = frozenset(KNOWN_COMMANDS)
 # Known names whose corrected v4.32 shape/effect conflicts with older evidence. They use the same
 # explicit-confirm path as an unknown command until the discriminating bench step settles the version.
 CONFIRM_REQUIRED_COMMANDS: dict[str, CommandInfo] = {
-    "PRES": _c(None, False, "v4.30 says per-cell damage modifier; corrected v4.32 handler unresolved"),
-    "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; corrected v4.32 handler unresolved"),
-    "BHIT": _c(None, False, "v4.30/sheet say seven-field injected hit; corrected v4.32 consumes one event byte"),
-    "FIREX": _c(None, False, "v4.30 says one slot; corrected v4.32 consumes five fields and forwards them"),
+    "PRES": _c(None, False, "a per-cell damage percent on the $SIR cells, zeroed by $CLEAR [disasm, 2026-10-26 re-check]; not bench-proven"),
+    "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; the v4.32 handler label is unproven after the 2026-10-26 re-check"),
+    "BHIT": _c(None, False, "v4.30/sheet say seven-field injected hit; the v4.32 one-byte reading is label-unproven after the 2026-10-26 re-check"),
+    "FIREX": _c(None, False, "v4.30 says one slot; the v4.32 five-field reading is label-unproven after the 2026-10-26 re-check"),
 }
 
 # Refused outright by the instrument (confirm=true does NOT override) and by the node. Names from

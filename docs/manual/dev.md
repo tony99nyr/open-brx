@@ -69,7 +69,7 @@ $ + COMMAND + (, + token)* + ,*
 1. **`KNOWN_COMMANDS`.** The instrument sends these with no confirm. Each row records the agreed token count when
    available, whether the effect is bench-proven on v4.32, and an evidence note. Examples include `$STUN,<ms>`,
    `$BUMP` in its 5-field shape, `$TMP`, `$DIE`, `$TEAM`, `$PID`, `$IRTX` and `$RADSK`.
-2. **`CONFIRM_REQUIRED_COMMANDS`.** Recognised names with version-conflicted evidence: `$PRES`, `$INVU`, `$BHIT`
+2. **`CONFIRM_REQUIRED_COMMANDS`.** Recognised names whose shape or effect is not bench-proven on v4.32: `$PRES`, `$INVU`, `$BHIT`
    and `$FIREX`. They remain unsupported until the named bench checks settle their shape and effect.
 3. **`DENIED_COMMANDS`.** Refused even with `confirm=true`, each with a reason: factory restore (`$FACTORY`); DFU (`$CDFU`, `$HEADDFU`, `$DDFU`); pairing (`$PAIR`, `$PIN`, `$CLEARDEVICE`, `$INQ`, `$GPAIR`, `$GPAIRX`); the gun's own radio-module control frames (`$!…`, `$^…`, `$&…`); the IR word-format switch (`$IRT`); factory and hardware tests (`$FTST`, `$BURN`, `$DUTY` the laser duty cycle, `$SOL`, `$MUZ`); provisioning writes (`$DTYPE`, `$DEV`, `$SITE`, `$TSTRNAME`); `$VIBTOGGLE`; `$ASKSN` (prints the headset PIN); `$RESET`; the zombie headset family (`$ZOM`, `$ZTOG`, `$ZON`, `$ZOFF`, `$BOOM`, `$ZombieKeyActive`); and the USB console word `SETUP`. **`HANG_PRONE_COMMANDS`** is a separate list, today only `$DPLAY`: the `send` tool passes it only with `confirm=true` and `allow_hang=true` together, one frame at a time, so a supervised bench run can try to make a lock-up on demand. Both lists reach the phone app as `NODE_DENIED_COMMANDS`, and the phone refuses to write any of them.
 4. **Anything else** needs `confirm=true`.
