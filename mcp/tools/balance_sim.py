@@ -125,8 +125,8 @@ from dataclasses import dataclass, field, replace
 
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
 from brx_mcp.mc import state as _state  # noqa: E402
-from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEALTH_PRESETS, PULL_SIGMA, SEMI_PULL_MS,  # noqa: E402
-                                WeaponCatalog)
+from brx_mcp.mc.compile import (CHARGE_TAP_CADENCE_MS, FIGHT_OVERSHOOT_MS, HEADSET_WORD_LAG_MS, HEALTH_PRESETS,  # noqa: E402
+                                PULL_SIGMA, SEMI_PULL_MS, WeaponCatalog)
 from brx_mcp.mc.types import RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG  # noqa: E402
 from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS  # noqa: E402
 
@@ -153,7 +153,7 @@ DEFAULT_BAND = "mid"
 # Slot-kind anchors: a weapon is compared with an anchor of its own kind (`anchor_for()`).
 ROLE_ANCHORS = {"sidearm": "usp"}
 CRIT_MULT = 1.5
-HEADSET_WORD_DELAY_MS = 88.0   # the headset word lands this long after the gun word (Callsign capture cap30, compile.py; F602)
+HEADSET_WORD_DELAY_MS = float(HEADSET_WORD_LAG_MS)   # the headset word lands this long after the gun word (compile.py; F602, F614)
 INITIAL_JITTER_MS = 500.0    # avoids lock-step artefacts at match start
 DEFAULT_ANCHOR = "assault_rifle"
 DEFAULT_N = tuple(range(2, 11))

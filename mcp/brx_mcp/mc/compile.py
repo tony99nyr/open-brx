@@ -303,8 +303,8 @@ def play_volume(environment: str | None) -> int:
 
 
 # S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
-# `max_armor_add` perk carries. Body Armor +25 (was +50 -- "maybe 50 is too much armor and it should
-# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). The number
+# `max_armor_add` perk carries. Body Armor is +20 (down from S50's +25 on 2026-10-25);
+# Fast Hands has no armour cost. The number
 # lives once, in `perks.json`'s `effects.max_armor_add`; the arithmetic runs here (`armed_armor`,
 # `armed_shield`). F604 (Astra sim review #11): this used to be a second, hand-kept table, so a
 # perks.json-only change was simulated by the balance review but never reached the gun.
@@ -387,12 +387,19 @@ def resolve_health_preset(max_hp: int, max_armor: int, max_shield: int) -> Healt
     return "custom"
 
 
+def derived_health_preset(health: object) -> HealthPreset:
+    """The preset a `health` blob's NUMBERS are (`resolve_health_preset`), never its stored `preset` string, and
+    "standard" numbers for a config with no `health` at all. The one rule for "is this game on Shields": the Body Armor /
+    Armour Piercing refusal (`preset_block`) and the Extended Mags override (`_perk_effects_for`) both ask it, so a custom
+    0-armour 50-shield game gets neither or both."""
+    h = normalize_health(health if isinstance(health, dict) else None)
+    return resolve_health_preset(h["max_hp"], h["max_armor"], h["max_shield"])
+
+
 def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False, grants: dict[str, int] | None = None) -> int:
     """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
     floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
-    `_to_gc()`; both bounds are our own policy choice). The floor matters now that a cost perk
-    (Quick Switch, docs/perk-design.md §2) carries a NEGATIVE grant -- `armed_armor()` used to only
-    cap, never floor, before S50 (docs/perk-design.md §5.4).
+    `_to_gc()`; both bounds are our own policy choice). The floor also handles negative grants in candidate catalogues.
 
     One arithmetic, called wherever the armed armour is needed -- it drifted into three disagreeing
     copies once already (review 2026-09-01: a `body_armor` player was armed at a 165 pool while a
@@ -1178,6 +1185,10 @@ CHARGE_TAP_CADENCE_MS = 285
 # unproven ships. The bench row in `bench-field-1017.md` (a reserve of 1200 and 2400) lifts it.
 RESERVE_PROVEN_MAX = 384
 
+# F614: a dual-emitter pull's headset word (t12) lands about 88 ms after its gun word (Callsign capture cap30,
+# 2026-09-18; `damage_per_pull()`). A kill the last gun word does not finish lands on that headset word.
+HEADSET_WORD_LAG_MS = 88
+
 # The field's 126 press gaps under 1 s from four players had a 271 ms median, 325 ms mean, and
 # log-sigma 0.56 (field 2026-10-17). SEMI_PULL_MS models the bolt lever and the press after it.
 # Legacy pull sampling also uses it. Ordinary single-shot fights use the fitted overshoot below.
@@ -1196,6 +1207,16 @@ _LEGACY_SYNTHETIC_TEMPLATES: dict[str, str] = {
     "ar":     ",,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*",
     "charge": ",,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,9999999,75,,*",
 }
+
+
+def headset_lag_ms(pool: int, htk: int, per_pull: float, gun: float) -> int:
+    """F614: `HEADSET_WORD_LAG_MS` when the killing pull needs its headset word, else 0. After `htk - 1` full
+    pulls (`per_pull`, gun plus headset word), the last pull's gun word (`gun`) must cover what is left of
+    `pool`; when it does not, the kill lands on the headset word. A weapon with no headset word has
+    `per_pull == gun` and never lags. `views.weapon_view()` uses the same rule at the host's pool."""
+    if not htk or per_pull <= gun:
+        return 0
+    return HEADSET_WORD_LAG_MS if pool - (htk - 1) * per_pull > gun else 0
 
 
 class WeaponCatalog:
@@ -1227,6 +1248,8 @@ class WeaponCatalog:
                       # would disagree with the server's (2026-09-18: a Shotgun view derived htk 6
                       # from a t5-only dmg_hit of 20, against the server's own htk 3 off 40).
                       "dmg_hit": self.damage_per_pull(w["weapon_id"]),
+                      # F614: the gun word alone, so the views add the same headset-word lag `time_to_kill()` does
+                      "gun_hit": self.damage(w["weapon_id"]),
                       # the PLAYER-paced cycle (`paced_cycle_ms`), so the views' ttk at a host pool agrees
                       # with `time_to_kill()`; only the views read it, never the wire (field 2026-10-17)
                       "cycle_ms": self.paced_cycle_ms(w["weapon_id"]),
@@ -1377,7 +1400,7 @@ class WeaponCatalog:
         """
         w = self._row(weapon_id)
         if w.get("reload_type") == "bolt":
-            # Tony, 2026-10-17: perks leave a bolt action alone. Quick Hands, Body Armor and Extended Mags would
+            # Tony, 2026-10-17: perks leave a bolt action alone. Fast Hands, Body Armor and Extended Mags would
             # otherwise halve, slow or double the bolt (its reload_ms) and its one-round magazine.
             mods = None
         pistol_mult = mods.get("ammo_mult_pistol") if mods and self._is_pistol(w) else None
@@ -1840,8 +1863,9 @@ class WeaponCatalog:
 
     def time_to_kill(self, weapon_id: str, pool: int, pull_ms: float = SEMI_PULL_MS) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
-        one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
-        on an fn 36/37 weapon lands sooner than this.
+        one-shots on its gun word (a one-shot that needs the headset word publishes the 88 ms lag, F614).
+        Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill on an fn 36/37
+        weapon lands sooner than this. Perks are not modelled: Armour Piercing zeroes the headset word.
 
         (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge/hold weapon with NO
         tap (Rail Gun, Laser Cannon: `mode` in `_CHARGE_MODES`), where the first shot has to be charged
@@ -1853,7 +1877,10 @@ class WeaponCatalog:
         only the taps that follow cost time.
 
         A single-shot weapon's cycle is player-paced (`paced_cycle_ms`, field 2026-10-17); `pull_ms` 0 gives
-        the old gun-limited number, a press every t14."""
+        the old gun-limited number, a press every t14.
+
+        F614: on a dual-emitter weapon, a kill that the last pull's gun word does not finish lands on its
+        headset word, `HEADSET_WORD_LAG_MS` later (`headset_lag_ms()`)."""
         htk = self.hits_to_kill(weapon_id, pool)
         if not htk:
             return 0
@@ -1862,7 +1889,8 @@ class WeaponCatalog:
             taps = htk - 1
             return taps * self.CHARGE_TAP_CADENCE_MS
         charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
-        return int(round(self.paced_cycle_ms(weapon_id, pull_ms) * (htk if charged else htk - 1)))
+        cycles = int(round(self.paced_cycle_ms(weapon_id, pull_ms) * (htk if charged else htk - 1)))
+        return cycles + headset_lag_ms(pool, htk, self.damage_per_pull(weapon_id), self.damage(weapon_id))
 
     def spawn_ammo(self, weapon_id: str, mods: dict | None = None) -> tuple[int, int]:
         """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""
@@ -2054,6 +2082,12 @@ class Compiler:
         pid = ((player or {}).get("loadout") or {}).get("perk")
         return self.perks.effects(pid) if pid else {}
 
+    def _perk_effects_for(self, config: GameConfig, player: Player | None) -> dict:
+        """Use the Shields override only when the game's health IS the Shields preset (`derived_health_preset`, the
+        same rule the Body Armor / Armour Piercing refusal uses)."""
+        preset = "shields" if derived_health_preset(config.get("health")) == "shields" else None
+        return self.perks.effects(self._perk_id(player), preset)
+
     @staticmethod
     def _perk_id(player: Player | None) -> str | None:
         return ((player or {}).get("loadout") or {}).get("perk")
@@ -2103,7 +2137,7 @@ class Compiler:
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=team_damage_on(config),     # Q13: see `team_damage_on`
             hp=hp,
-            # S50 (docs/perk-design.md §2): body_armor / quick_switch's `max_armor_add` (`_MAX_ARMOR_
+            # S50 (docs/perk-design.md §2): body_armor's `max_armor_add` (`_MAX_ARMOR_
             # ADD`), capped at the wire's 255 and floored at 0 — NOTE: 255 is OUR POLICY CEILING, not
             # a device limit. Bench 2026-08-27: $PSET pools are not 8-bit -- armor and HP store and
             # decrement exactly to at least 1000, clamping at zero with no wrap (shield was never
@@ -2189,7 +2223,7 @@ class Compiler:
         pid = self._perk_id(player)
         if not pid or player is None:
             return None
-        fx = self.perk_effects(player)
+        fx = self._perk_effects_for(config, player)
         w0, w1 = self._weapon_ids(player)
         _hp, armor_base, shield_base = self._base_health(config, player)
         shields = is_shields_preset(config)
@@ -2502,13 +2536,15 @@ class Compiler:
             warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
                             "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")
     @staticmethod
-    def _rekey(frame: str, cell) -> str:
-        """`$WEAP` with tok3/tok4 (the IR word's B and U fields) pointed at `cell`. Nothing else moves."""
+    def _rekey(frame: str, cell, *, zero_crit: bool = False) -> str:
+        """Point tok3/tok4 at `cell`; an AP rekey also removes the primary's crit roll."""
         if cell is None:
             return frame
         t = frame.split(",")
         if len(t) > 5:
             t[4], t[5] = cell[0], cell[1]
+        if zero_crit:
+            t[WeaponCatalog._T["crit"] + 1] = "0"
         return ",".join(t)
 
     def _ap_block(self, weapon_id: str) -> str | None:
@@ -2680,7 +2716,7 @@ class Compiler:
                 "broadcasts, so this gun would read every uncaptured point as its own and take no hill "
                 "damage. Move the player to tid 0, 1 or 3.")
         w0, w1 = self._weapon_ids(player)
-        fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
+        fx = self._perk_effects_for(config, player)      # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
         if prof.get("silent_weapons"):
@@ -2748,7 +2784,7 @@ class Compiler:
                 *venue_mode_frames(_gset, env),
                 build.gc._pset(build.pnum, build.player.get("voice"), build.voice_slots, team=build.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
                 self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env), build.plan.cell_for(build.w0)),
-                            _AP_CELL if build.armor_piercing else None)]
+                            _AP_CELL if build.armor_piercing else None, zero_crit=build.armor_piercing)]
         if build.w1:
             ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
         ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env), build.plan.cell_for("melee")))

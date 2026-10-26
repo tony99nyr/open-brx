@@ -41,8 +41,8 @@
    "tags": [
     "assault"
    ],
-   "ap_dmg": 7,
-   "ap_fire_ms": 225,
+   "ap_dmg": 4,
+   "ap_fire_ms": 131,
    "notes": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 384 in reserve: 32 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check. 2026-09-23 (F291, the recoil duel sim): Tony deepened the ladder from degraded 80/heavy 60 to degraded 70/heavy 40, with `after_heavy` declared at 8 so heavy only starts once a burst holds past 7 rounds -- `after_shots` still derives to 6 from the reference dmg (unchanged). This is an explicit, deliberate exception to the SMG/Suppressor/Stinger 60 floor: those weapons stop at a mild penalty, the anchor rifle earns a real one for holding the trigger down, which is what makes short controlled bursts beat full auto in the duel sim. **2026-09-23 (R7, F308):** `after_heavy` tightened 8 → 7 (heavy now starts on round 7, not round 8 -- degraded is still round 6 alone) so the Burst Rifle, weakened for R6, still loses to a full-auto Assault Rifle less often (R7): a full-auto AR earns its own penalty one round sooner, which is what makes room for the Burst Rifle to beat it. **2026-09-24 (F308, polish round 2, bench 4.3 \"too harsh\"):** `heavy` eased 40 → 45; R7 now holds at its own 55% bar. See the Balance rules table."
   },
   {
@@ -232,8 +232,8 @@
    "tags": [
     "cqb"
    ],
-   "ap_dmg": 5,
-   "ap_fire_ms": 184,
+   "ap_dmg": 4,
+   "ap_fire_ms": 131,
    "notes": "A close-combat hose. The gun word deals 7 and the deliberately added headset word deals 2, for 9 per pull when both emissions land: thirteen pulls and 1200ms against the standard pool -- htk/ttk are unchanged by the 2026-09-23 split, since the close-range total still holds at 9. The magazine moves from 72 to 54, preserving four standard kills per reload so the Suppressor keeps its larger-magazine advantage. Covering the gun emitter in the 2026-09-20 playtest proved the old frame sent no headset damage at all; a Shotgun control did. The cycle moves from 95 to 100ms so the bonus stays inside the arsenal's 1.2-3.5s balance band. 2026-09-23 (R5, F308): the split moved 8+1 to 7+2 so the gun word ALONE (past the headset word's own reach, F275) drops from 8 to 7, which a bursting AR's own 9 beats more often -- see the Balance rules table."
   },
   {
@@ -254,7 +254,7 @@
    "range_band": "close",
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
-   "ttk_ms": 886,
+   "ttk_ms": 974,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -280,7 +280,7 @@
     "cqb"
    ],
    "ap_dmg": 15,
-   "ap_fire_ms": 500,
+   "ap_fire_ms": 467,
    "notes": "Shell by shell, and the fastest recovery on the board. One pull sends two words: 19 from the gun and 20 from the shooter's own headset, 39 together when both land -- the headset word's own range is unmeasured (F275), so at range this is 19 from the gun alone, at its 30% outdoor reach. Three hits drop a target at close range, six in the tube and a 400ms shell reload. 2026-09-23 (R8, docs/weapon-design.md Balance rules table): the pump gap (t14, gun-enforced, not a recoil model) tightened 800ms to 700ms -- the slowest of the sweep {800,750,700,650,600} that gets the Shotgun to beat the SMG on full auto at close range most of the time (R8), confirmed not to also let it beat the rifles at mid range (R5/R9 unaffected). 2026-10-17 (field; Tony: \"shotgun is kinda weak\"): the pump gap 700ms to 400ms under the player-paced single-shot model (Balance rules row 14), so it wins close range against every rifle (R11) and still loses past headset range (R12); the pull stayed 20+20, because 45 or more would one-shot the 45-health presets. 2026-10-24 (F579, Tony): the gun word 20 to 19, so past headset range a kill needs 7 gun hits, more than the tube, and the rifles win there at field pace (R9, R12). Sustained pressure from one of the shallowest ammo pools outside the power tier. Range: F291's outdoor 100% widened it past its own headset word's proven shelf; 2026-09-23 set it to the SMG's own 30%, so the two close-range weapons share one outdoor reach (R4/R5)."
   },
   {
@@ -426,12 +426,12 @@
    "reserve": 112,
    "reload_ms": 1400,
    "dmg": 23,
-   "rof": 21,
+   "rof": 17,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
    "htk": 5,
-   "ttk_ms": 1572,
+   "ttk_ms": 1972,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -444,7 +444,7 @@
    },
    "wire": {
     "dmg": 26,
-    "fire_ms": 350,
+    "fire_ms": 450,
     "range_outdoor_pct": 85
    },
    "crit_pct": 30,
@@ -460,7 +460,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 350ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it."
+   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 450ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it. 2026-10-25 (Tony's balance sign-off, 0.4.31): fire interval t14 350 -> 450ms."
   },
   {
    "weapon_id": "suppressor",
@@ -500,8 +500,8 @@
    "tags": [
     "assault"
    ],
-   "ap_dmg": 3,
-   "ap_fire_ms": 155,
+   "ap_dmg": 6,
+   "ap_fire_ms": 314,
    "notes": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48\u219275 -- the family-scoped dominance test (\u00a72.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.\n\n2026-09-18: the description used to claim \"no muzzle flash\". WITHDRAWN as unproven (F282): $WEAP t25/t26 are not in the APK field table, which jumps 24 to 27, and the only thing naming them muzzle flash is an unsourced comment in compile.py. We never write them; they are inherited from the capture, where the Suppressor carries 2/50 and the AR carries none. Set-versus-empty does not say which way. The quiet half is grounded: t27 is Q06 against the AR's R01, so it genuinely plays a different sound, but nobody has judged it by ear on our compiled weapons."
   },
   {
@@ -559,8 +559,8 @@
    "tags": [
     "assault"
    ],
-   "ap_dmg": 8,
-   "ap_fire_ms": 405,
+   "ap_dmg": 4,
+   "ap_fire_ms": 170,
    "notes": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats \u2014 full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it. The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: about +3 net a shot, a lockout at 99, no passive cooling, and the reload lever vents about 35 a pull."
   },
   {

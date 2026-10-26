@@ -602,6 +602,9 @@
                   "switch_mult": {
                     "type": "number"
                   },
+                  "reload_mult": {
+                    "type": "number"
+                  },
                   "ammo_mult": {
                     "type": "number"
                   }

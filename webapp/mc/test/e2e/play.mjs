@@ -198,7 +198,7 @@ step('extra-pieces', async ({ browser, base }) => {
     await pg.evaluate(async () => {
       const api = window.__MC_MOCK__;
       await api.createPiece({ kind: 'primary', name: 'SNIPERS', value: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' } });
-      await api.createPiece({ kind: 'perks', name: 'CURATED', value: { choice: 'player', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: ['body_armor', 'quick_switch'], fixed_id: null } });
+      await api.createPiece({ kind: 'perks', name: 'CURATED', value: { choice: 'player', kinds: ['perk'], exclude_tags: [], exclude_ids: [], only_ids: ['body_armor', 'fast_hands'], fixed_id: null } });
     });
     await pg.evaluate(() => { location.hash = '#muster'; });
     await pg.evaluate(() => { location.hash = '#build'; });

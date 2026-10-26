@@ -219,6 +219,35 @@ def test_damage_per_pull_adds_the_declared_headset_dmg_and_damage_stays_gun_body
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), f"{wid}: gained a headset word it never declared"
 
 
+def test_time_to_kill_waits_for_the_headset_word_when_the_kill_needs_it():
+    """F614: a dual-emitter pull lands its headset word about 88 ms after the gun word. When the last
+    pull's gun word alone does not finish the target, the kill lands on the headset word, so the
+    published time-to-kill carries that lag (the Shotgun against 115 always does). A kill the gun
+    word finishes keeps the old number, and the views redo the same rule at the host's pool."""
+    from brx_mcp.mc.compile import HEADSET_WORD_LAG_MS
+    assert HEADSET_WORD_LAG_MS == 88
+    shotgun = CAT.paced_cycle_ms("shotgun")
+    assert CAT.hits_to_kill("shotgun", DEFAULT_POOL) == 3
+    assert CAT.time_to_kill("shotgun", DEFAULT_POOL) == int(round(shotgun * 2)) + HEADSET_WORD_LAG_MS
+    sniper = CAT.paced_cycle_ms("plasma_sniper")
+    # 115 = 3 x 35 + 10, and the gun word (25) covers the last 10: no lag
+    assert CAT.time_to_kill("plasma_sniper", DEFAULT_POOL) == int(round(sniper * 3))
+    # 100 = 2 x 35 + 30, and the gun word (25) leaves 5 for the headset word
+    assert CAT.time_to_kill("plasma_sniper", 100) == int(round(sniper * 2)) + HEADSET_WORD_LAG_MS
+    for pool in range(20, 205, 5):
+        views = {v["weapon_id"]: v for v in weapon_views(CAT.all(), pool)}
+        for w in ROWS:
+            wid = w["weapon_id"]
+            if wid not in views or not CAT.hits_to_kill(wid, pool):
+                continue
+            assert views[wid]["ttk_ms"] == CAT.time_to_kill(wid, pool), (
+                f"{wid} at {pool}: the view's ttk {views[wid]['ttk_ms']} is not the catalogue's "
+                f"{CAT.time_to_kill(wid, pool)}")
+    # a one-shot whose only time is the lag (the Rocket Launcher at 120) shows no KILL SPEED bar, like any one-shot
+    rocket = {v["weapon_id"]: v for v in weapon_views(CAT.all(), 120)}["rocket_launcher"]
+    assert rocket["htk"] == 1 and rocket["ttk_ms"] == HEADSET_WORD_LAG_MS and rocket["bars"]["ttk"] is None, rocket["bars"]
+
+
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier
     frequency, not its power (2026-09-18, protocol/brx-protocol.md), so these values are a shipped
@@ -428,7 +457,7 @@ def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
     # widened again, 410ms->550ms, once modelling the crit reopened R6, then 2567->2530 on 2026-09-24
     # (polish round 2, F308, "full auto point blank ... too harsh") when the gap eased 550ms->540ms --
     # htk is unchanged throughout, only cycle_ms moved, see the Balance rules table
-    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 1572), ("toxin_rifle", 15, 1540)):
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 2530), ("amr", 5, 1972), ("toxin_rifle", 15, 1540)):
         assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
         assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
         assert CAT.damage_per_pull(wid) == CAT.damage(wid), \
@@ -699,9 +728,8 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     base = s.health_pool(s.players[p["player_id"]])
     s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
     armoured = s.health_pool(s.players[p["player_id"]])
-    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now +25 flat (Tony: "maybe 50
-    # is too much armor and it should be 25"), not the old flat +50.
-    assert armoured == base + 25, (base, armoured)
+    # Part A: body_armor's grant is now +20 flat.
+    assert armoured == base + 20, (base, armoured)
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 

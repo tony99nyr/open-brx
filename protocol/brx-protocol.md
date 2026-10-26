@@ -181,7 +181,7 @@ second write replace the first value or add another effect? A confirmed token ef
 | `t3` | shield maximum bonus | **UNMEASURED** | no shipped writer; do not build a repeated writer | V4_30 code read only; levers §21 steps 12–14 remain open |
 | `t4` | accuracy modifier | **ABSOLUTE** | the phone owns recoil; re-send after `$SPAWN`, not after a `$LIFE` revive; pause during fn 23 smoke and re-send after its timer | repeated values replaced the live accuracy; S55 owns the smoke collision |
 | `t5` | full-auto fire-interval percentage | **UNMEASURED** | no shipped writer; do not build a repeated writer | effect confirmed on full auto, but repeated-write behaviour was not measured |
-| `t6` | reload-time percentage | **UNMEASURED** | no shipped writer; F281 Quick Hands remains blocked | effect confirmed at +50%; send t6 = 50 twice and time one reload |
+| `t6` | reload-time percentage | **UNMEASURED** | no shipped writer; F281 Fast Hands (was Quick Hands) remains blocked | effect confirmed at +50%; send t6 = 50 twice and time one reload |
 | `t7` | outgoing barrel-damage percentage | **UNMEASURED** | no shipped writer; do not build a repeated writer | effect confirmed before the IR word leaves the shooter; repeated-write behaviour was not measured |
 | `t8` | incoming-damage percentage | **ABSOLUTE** | the spawn-protection owner writes after `$SPAWN`; a `$LIFE` revive preserves the current value | −50 and −100 replaced the live modifier; `$SPAWN` reset it to 0 |
 | `t9` | magazine bonus in raw rounds (`clip × t9 / 100`) | **ADDITIVE, ONE-SHOT** | no shipped writer; a future owner writes once per life and never blind-replays a full `$TMP` vector | sending the same value again added rounds again; `$AMMO` set ignores the raised cap |

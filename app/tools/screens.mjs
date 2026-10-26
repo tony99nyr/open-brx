@@ -1050,7 +1050,7 @@ for (const view of VIEWS) {
     await pg.waitForTimeout(1800); /* fixed on purpose: still up while its medal lines play */ const r2 = await pg.evaluate(() => !!document.querySelector('#lanes .lh:not(.out)')); await pg.close();
     must(r && r.big === 'KILLING SPREE' && JSON.stringify(r.ladder) === '["DOUBLE KILL"]', JSON.stringify(r)); must(r2, 'the hero must still be up while its medal lines play');
   });
-  await step(`${view.name} #43 Quick Switch perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
+  await step(`${view.name} #43 Fast Hands perk halves the swap window (425 ms, then ACTIVE · READY)`, async () => {
     const pg = await open(view, 'live-switch-perk', '', 2950); const r = await pg.evaluate(() => ({ win: window.brx.engine.state().switchWindowMs, up: !!document.querySelector('.mo.switching') }));
     await pg.waitForTimeout(950); /* fixed on purpose: past the 425 ms window, the next 250 ms engine tick, and the gun's reply */ const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { up: !!document.querySelector('.mo.switching'), lab: m ? m.querySelector('.s').textContent : null, slot: window.brx.engine.state().activeSlot }; }); await pg.close();
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));   // bench 2026-10-17: no $QUERY after ALT, so the closed card is the assumed READY
@@ -1070,7 +1070,7 @@ for (const view of VIEWS) {
     must(r.ps.length === 3 && r.ps.map(p => p.k.replace(/[▸\s]+$/, '')).join('|') === 'PRIMARY|SECONDARY|PERK', 'plates: ' + JSON.stringify(r.ps));
     must(new Set(r.ps.map(p => p.top)).size === 1, 'plates wrapped onto two rows: ' + JSON.stringify(r.ps)); must(r.ps.every(p => p.right <= r.fright), 'a plate leaves the frame');
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
-    must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
+    must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'FAST HANDS', 'AR + pistol + Fast Hands expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
     must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
   });
   await step(`${view.name} #53 PERK tab: three tabs on one line, one row per shipped perk + NONE, tapping a perk keeps the second weapon`, async () => {
@@ -1085,7 +1085,7 @@ for (const view of VIEWS) {
     // would not move it), so unhiding a perk moves this step with it instead of breaking it.
     const wantPerks = DEMO_PERKS.filter(p => !p.hidden).length;
     must(wantPerks >= 4, 'the perk catalogue collapsed to ' + wantPerks + ': this step cannot mean anything below 4');
-    must(r.chips[0] === 'PERKS · ' + wantPerks && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === wantPerks && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' want ' + wantPerks + ' ' + r.eq);
+    must(r.chips[0] === 'PERKS · ' + wantPerks && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === wantPerks && r.eq === 'FAST HANDS', 'rows/equipped: ' + r.rows + ' want ' + wantPerks + ' ' + r.eq);
     // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
     must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
@@ -1100,7 +1100,9 @@ for (const view of VIEWS) {
       sec: window.brx.engine.state().loadout.secondary && window.brx.engine.state().loadout.secondary.weapon_id,
     })); await pg.close();
     must(!r.ids.includes('easy_reload'), 'Easy Reload is still in the perk picker: ' + JSON.stringify(r.ids));
-    must(r.ids.length >= 5, 'the perk list is too short to be the shipped catalogue: ' + JSON.stringify(r.ids));
+    const offered = DEMO_PERKS.filter(p => !p.hidden).map(p => p.perk_id);
+    must(JSON.stringify([...r.ids].sort()) === JSON.stringify(offered.sort()),
+      'the perk picker must show every shipped perk: ' + JSON.stringify(r.ids));
     must(r.sec === 'smg' && r.warned.length === 0, 'a two-weapon kit must raise no perk conflict now: ' + JSON.stringify(r));
   });
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {

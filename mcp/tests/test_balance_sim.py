@@ -21,7 +21,7 @@ sys.path.insert(0, str(TOOLS))
 
 import balance_sim as B  # noqa: E402
 import balance_review as R  # noqa: E402
-from brx_mcp.mc.compile import WeaponCatalog  # noqa: E402
+from brx_mcp.mc.compile import WeaponCatalog, headset_lag_ms  # noqa: E402
 
 SEED = 7
 CAT = WeaponCatalog()
@@ -521,7 +521,7 @@ def _kill_trace(m: "B.WeaponModel", cfg: "B.SimConfig", seed: int):
     `contact_end` (see the `nxt <= p.contact_end` guard), so a short window silently truncates a fight
     otherwise. Returns (hit count, ms of the killing hit) -- what `WeaponCatalog.hits_to_kill()` and
     `time_to_kill()` publish -- and whether the kill came from a headset word, which lands
-    `HEADSET_WORD_DELAY_MS` after its pull (F602), so such a kill comes that much after the published time."""
+    `HEADSET_WORD_DELAY_MS` after its pull (F602). The published time includes that lag since F614."""
     dummy = B.weapon_model(B.catalogue_with(CAT, "assault_rifle", {"wire.dmg": 0}), "assault_rifle")
     players = [B.Player(0, 0, m, cfg.pool), B.Player(1, 1, dummy, cfg.pool)]
     rng = B.cell_rng(seed, "ttk", m.weapon_id)
@@ -572,8 +572,10 @@ def test_shot_mechanics_reproduce_hits_and_time_to_kill():
         ttk = CAT.time_to_kill(weapon_id, pool_pts, pull_ms=0)
         n_hits, kill_ms, by_word = _kill_trace(m, cfg, SEED)
         assert n_hits == htk, (weapon_id, n_hits, htk)
-        late = B.HEADSET_WORD_DELAY_MS if by_word else 0.0   # F602: the word lands 88 ms after its pull
-        assert kill_ms is not None and round(kill_ms - late) == ttk, (weapon_id, kill_ms, ttk)
+        # F614: a kill by the headset word lands 88 ms after its pull, and the published time says so
+        assert kill_ms is not None and round(kill_ms) == ttk, (weapon_id, kill_ms, ttk)
+        lags = headset_lag_ms(pool_pts, htk, CAT.damage_per_pull(weapon_id), CAT.damage(weapon_id)) > 0
+        assert by_word == lags, (weapon_id, by_word, lags)   # the Shotgun at 115, today
 
 
 def test_legacy_sampled_pull_gaps_match_the_renewal_estimate():

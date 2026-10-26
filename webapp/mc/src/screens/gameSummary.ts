@@ -44,7 +44,7 @@ export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: P
   switch (code) {
     case 'fixed_missing': return `${slot}'S FIXED PICK IS NOT IN THIS GAME: CHOOSE A DIFFERENT ONE.`;
     case 'only_ids_missing': return `${slot}'S ALLOW-LIST NAMES NOTHING THIS GAME HAS: ADD A VALID ID OR CLEAR IT.`;
-    case 'needs_secondary': return 'QUICK SWITCH NEEDS A SECONDARY: TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
+    case 'needs_secondary': return 'THIS PERK NEEDS A SECONDARY: TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
     // round-3 UX-2: NAMES the weapon. `name` is the catalogue row's name where the caller has it (the
     // rule only carries an id); without one the sentence still says the right thing about the slot.
     case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED: ITS HIT ROW DEALS NO DAMAGE (CATALOGUE), PICK ANOTHER WEAPON.`;
@@ -109,4 +109,3 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
   if (!lp.hud_select) out.push('NO PHONE PICKS');
   return out.join(' · ');
 }
-

@@ -12,17 +12,17 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 106.** Desk 10 · bench 92 · decision 4.
+**MVP open: 105.** Desk 8 · bench 93 · decision 4.
 
-**MVP DESK (10),** a keyboard is enough:
+**MVP DESK (8),** a keyboard is enough:
 - 🟠 **F595**
-- 🟡 **F547** · **F614** · **F619**
-- 🟢 **F512** · **F544** · **F574** · **F598** · **F615** · **F621**
+- 🟡 **F547** · **F619**
+- 🟢 **F512** · **F544** · **F574** · **F598** · **F621**
 
-**MVP BENCH (92),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
 - 🟠 **F391** · **F562** · **F563** · **F157** · **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F50** · **F449** · **Q13** · **F448** · **F450** · **F293** · **F340** · **F345** · **F311** · **F275** · **F231** · **F541** · **F580**
-- 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537** · **F606**
+- 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F537** · **F606** · **F618**
 - 🟢 **F538** · **F545** · **F592**
 
 **MVP DECISION (4),** awaiting Tony:
@@ -49,8 +49,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F614 🟡 THE PUBLISHED TIME-TO-KILL ENDS AT THE LAST PULL, NOT AT THE HEADSET WORD.** brx2, 2026-10-25 (brx1's call; Opus review of F602). `WeaponCatalog.time_to_kill()` (and the `ttk_ms`/`bars.ttk` it feeds) counts a kill at its last pull. When that kill needs the pull's headset word, it lands about 88 ms later on the wire (the Shotgun against 115 always does). Add the delay to the published number. A correctness fix, not a balance change; after the sim fixes and the phase C pass 6 and 7 re-runs. Owner: whoever owns compile then. `build`.
-- **F615 🟢 GATE: `mc-vqa2`'s menu-fold step times out under load.** brx2, 2026-10-25. The lander lists `mc-vqa2` as a flake twice in seven days, and it failed three of brx2's local gates on 2026-10-25, each time at `menu-fold: timed out after 4000 ms waiting for the menu in view`; alone it passes in about 35 s. Wait for the condition, not a fixed 4 s (CONTRIBUTING.md, parallel-safe tests). Owner: whoever owns the MC e2e scripts. `build`.
 - **F619 🟡 SIM: A CHARGE GUN'S FINISH ESTIMATE STILL COUNTS A FRACTION OF A HIT.** brx2, 2026-10-25 (Opus review of F617). F617 made a fixed-damage finish need whole landed hits, but charge mode (opener and taps of different damage) still spends `damage * chance` against the pool in `balance_review.finish_estimate`. At a low pool, a Charge Rifle reads "finishes in one tap" at any hit chance, so the duel and field swap choices keep it over an honestly scored secondary. Give charge mode a whole-hit floor (for example `ceil(pool / tap)` landed rounds). After the F578 phase C re-runs. Owner: brx2. `build`.
 - **F621 🟢 GATE: THE `mcp` JOB TIMES OUT UNDER LOAD.** brx2, 2026-10-25 (brx1's call). The lander lists `mcp` as a 600 s TIMEOUT in the last 7 days, and on 2026-10-25 it recorded main 9d4c881d2 as red for it with no failing test; only a `--fix-main` submit could restart the queue. Cause: `scripts/lib/jobs.mjs` registers `mcp` at `secs: 33`, but measured runs on 2026-10-25 took 262 to 547 s at load 12 to 37, so a busy box reaches `JOB_TIMEOUT_S` (600). Smallest fix: re-measure the job and set its `secs` (and so its timeout) from the measured time, or split the slowest files (the balance_review pair) into their own job. After the F578 phase C re-runs. Owner: whoever owns the gate scripts. `build`.
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.
@@ -332,6 +330,8 @@ sitting* table points the rest at their sheets.
 ### Later: eyes on the LED language
 
 - **S10 🟡** LED language v2 (A16), the MVP half: the L10 hold. The build half closed (A16 shipped in app 0.1.8, `cfe2a8eb`, and passed state by state on a gun 2026-09-09; see the archive). The down signal: never send `$HLED,,6` in play, write nothing at death, and re-arm with one `$HLOOP,1,2500,*` (`0d58d92f`; it was `$HLOOP,2,750`; whether the slow loop reads as down is F296). **Left: L10** dim 2-of-3 **held 60 s** (the render itself is confirmed, only the long hold is not): on a spawned, blanked gun send `$GLED,3,3,9,0,1,,*`; pass is two clean green segments held 60 s, then the paint survives `$PLAY,VA81,4,6,,,,,*`, `$AMMO,0,30,90,1,*`, `$HLED,6,0,,,10,,*` and `$LED,9,1,1,1,*` sent one at a time. ⚠ F35: never leave the gun there. The ladder itself is `archive/bench-flash-control-2026-09-05.md` §6. The post-MVP parts ((a), (b), (d) and the `beacon`/`extracted` signals) are in `post-mvp.md`. Owner brx2. `eyes`.
+
+- **F618 🟡 AP GUARD LIFT ON THE AMR, BURST RIFLE AND USP: PROVE THE GUN SIDE.** brx3, 2026-10-25 (Tony approved the pairs AMR 10/399, Burst 7/430, USP 5/277; the fn 37 compiler guard in `compile.py` `_ap_block` stays until this passes). The receiver side is proven (fn 37 lands x1 at t7=0, U10), but nobody has fired one of these guns after the AP re-key (t3/t4 `<0,3>` to `<4,0>`). On each weapon: arm a victim with identical fn 1 rows at `<0,3>` and `<4,0>` at t7=0, fire frames that differ only in t3/t4, and capture the emitter, word count, decoded key, magnitude, crit bit, shot timing and `$HIR` sensor. Then fire the full AP frames against HP, armour and shield. Tony decided (2026-10-25) that crit chance is zero under AP, so fire the AMR and the Burst with AP and crit zeroed (t6=0); also fire t6=100 once to confirm the zeroing matters. Pass: the key change leaves emission and trigger behaviour intact, every AP word registers, fn 2 drains HP alone, and no crit lands under AP. Then lift the guard and add the three pairs. Owner: brx3 with Tony at the bench. `bench`.
 
 ## MVP DECISION: awaiting Tony
 

@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from 'react';
 import type { PerkView } from '../../api/types';
 import { PERK_COLOR, T } from '../../tokens';
+import { isShieldsHealth } from '../../rules/health';
 
 // F221 polish r2 (Low): a lock icon is not inherently a warning -- every call site passes its own
 // colour (amber only for a real fault); the default is the ordinary data colour, not T.warn.
@@ -32,9 +33,8 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
   switch (id) {
     case 'body_armor': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" /><path {...c} d="M12 3v18M4 12h16" opacity=".5" /></svg>;
     case 'extended_mags': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M8 3h8v18H8zM8 8h8M8 13h8M8 18h8" /><path {...c} d="M4 6v12M20 6v12" opacity=".5" /></svg>;
-    case 'quick_hands': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M13 2 5 13h6l-1 9 9-12h-6z" /></svg>;
+    case 'fast_hands': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M13 2 5 13h6l-1 9 9-12h-6z" /><path {...c} d="M3 7h4M17 18h4" /></svg>;
     case 'easy_reload': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M20 12a8 8 0 1 1-2.3-5.7" /><path {...c} d="M20 4v5h-5" /><circle cx="12" cy="12" r="2" fill={color} stroke="none" /></svg>;
-    case 'quick_switch': return <svg width={size} height={size} viewBox="0 0 24 24"><path {...c} d="M4 8h12l-3-3M20 16H8l3 3" /></svg>;
     case 'med_kit': return <svg width={size} height={size} viewBox="0 0 24 24"><rect {...c} x="3" y="6" width="18" height="14" rx="2" /><path {...c} d="M12 10v6M9 13h6M9 6V4h6v2" /></svg>;
     default: return <svg width={size} height={size} viewBox="0 0 24 24"><circle {...c} cx="12" cy="12" r="8" /><path {...c} d="M12 8v4l3 2" /></svg>;
   }
@@ -50,7 +50,8 @@ export function PerkGlyph({ id, size = 24, color = PERK_COLOR }: { id: string; s
  *  so the two kinds of fact read as different at a glance, not just by word order. Renders 'PASSIVE'
  *  plain when a perk (a node-local one with nothing compiled, or a stale server that has not shipped
  *  the two lists yet) carries neither. */
-export function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) {
+export function PerkTrade({ k, style, health }: { k: PerkView; style?: CSSProperties; health?: { max_hp?: number; max_armor?: number; max_shield?: number } }) {
+  k = perkForHealth(k, health);
   const gain = k.gain ?? [], cost = k.cost ?? [];
   if (!gain.length && !cost.length) return <span style={style}>PASSIVE</span>;
   return (
@@ -60,4 +61,10 @@ export function PerkTrade({ k, style }: { k: PerkView; style?: CSSProperties }) 
       {cost.length > 0 && <span style={{ color: T.body }}>{cost.join(' · ')}</span>}
     </span>
   );
+}
+
+export function perkForHealth(k: PerkView, health?: { max_hp?: number; max_armor?: number; max_shield?: number }): PerkView {
+  return isShieldsHealth(health) && k.variants?.shields
+    ? { ...k, ...k.variants.shields }
+    : k;
 }
