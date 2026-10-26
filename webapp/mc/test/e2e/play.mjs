@@ -128,8 +128,10 @@ async function startRealMC({ token, port: atPort, wsPort: atWsPort } = {}) {
 async function open(browser, base, query, width, height = 900) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
-  pg.on('pageerror', e => failures.push(`${current}: [pageerror] ${e.message}`));
-  pg.on('console', m => { if (m.type() === 'error') failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
+  // the step that opened the page owns its errors: a page a failed step leaked must not fail the steps after it
+  const owner = current;
+  pg.on('pageerror', e => failures.push(`${owner}: [pageerror] ${e.message}`));
+  pg.on('console', m => { if (m.type() === 'error') failures.push(`${owner}: [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(`${base}/${query}`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.evaluate(() => !!window.__MC_MOCK__), 10000, 'the mock backend handle');
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 10000, 'the PLAY screen');
@@ -144,8 +146,10 @@ async function openReal(browser, base, query, width, height = 900, { before } = 
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
   if (before) await before(pg);
-  pg.on('pageerror', e => failures.push(`${current}: [pageerror] ${e.message}`));
-  pg.on('console', m => { if (m.type() === 'error') failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
+  // the step that opened the page owns its errors: a page a failed step leaked must not fail the steps after it
+  const owner = current;
+  pg.on('pageerror', e => failures.push(`${owner}: [pageerror] ${e.message}`));
+  pg.on('console', m => { if (m.type() === 'error') failures.push(`${owner}: [console] ${m.text().slice(0, 300)}`); });
   await pg.goto(`${base}/${query}`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 15000, 'the first snapshot');
   await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 10000, 'the PLAY screen');
@@ -724,8 +728,9 @@ step('real-proxy-family', async () => {
   const port = await freePort();
   const decoy = http.createServer((req, res) => { res.writeHead(502); res.end('decoy'); });
   decoy.on('upgrade', (req, socket) => socket.destroy());
-  const bound = await new Promise(resolve => { decoy.once('error', () => resolve(false)); decoy.listen(port, '::1', () => resolve(true)); });
-  if (!bound) { ok('skipped: no IPv6 loopback here, so the two families cannot collide'); return; }
+  const bound = await new Promise(resolve => { decoy.once('error', e => resolve(e.code)); decoy.listen(port, '::1', () => resolve(true)); });
+  if (bound === 'EAFNOSUPPORT' || bound === 'EADDRNOTAVAIL') { ok('skipped: no IPv6 loopback here, so the two families cannot collide'); return; }
+  if (!expect(bound === true, `the decoy binds [::1]:${port} (saw ${bound})`)) return;
   const mc = await startRealMC({ port });
   // resolve localhost as the runner does (::1 first), so this proves the target on any box
   const preload = path.join(HERE, 'lib', 'localhost-v6-first.mjs');

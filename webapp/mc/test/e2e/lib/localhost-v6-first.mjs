@@ -1,7 +1,7 @@
 // F574: preload for a vite that must resolve `localhost` the way a GitHub runner does. The runner's /etc/hosts maps
 // localhost to ::1 as well as 127.0.0.1, and Node's happy-eyeballs connect tries ::1 first; many dev boxes map it to
-// 127.0.0.1 only, where a test of the proxy target can never see the collision. Only the all-addresses lookup a
-// connect makes is changed: a listen keeps the box's own answer.
+// 127.0.0.1 only, where a test of the proxy target can never see the collision. Only an all-addresses lookup with
+// no family changes, but Node's listen on `localhost` makes one too: start the vite with `--host 127.0.0.1`.
 import dns from 'node:dns';
 
 const lookup = dns.lookup;
