@@ -1005,7 +1005,7 @@ function debrief() {
 
 test('F632: a re-team during the debrief keeps the result, and a later corrected result still lands', () => {
   const { h, mid, yellow } = debrief();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, team_id: 'yellow' }, team: yellow, policy: { kit_open: false } } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, team_id: 'yellow' }, team: yellow, policy: { kit_open: false }, recap: true } });
   assert.equal(h.eng.ended, true, 'still on the results');
   assert.equal(h.eng.matchId, mid);
   assert.equal(h.eng.result && h.eng.result.outcome, 'win', 'the result is kept');
@@ -1017,7 +1017,7 @@ test('F632: a re-team during the debrief keeps the result, and a later corrected
 
 test('F632: a rename during the debrief keeps the result and shows the new name', () => {
   const { h, mid, blue } = debrief();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false } } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false }, recap: true } });
   assert.equal(h.eng.ended, true);
   assert.equal(h.eng.matchId, mid);
   assert.equal(h.eng.result && h.eng.result.outcome, 'win');
@@ -1062,14 +1062,11 @@ test('F632 review: leaving the results on the next config raises no host kit loc
   assert.ok(!moments.includes('kit_locked_by_host'), 'no lock moment: ' + moments.join(','));
 });
 
-test('F632 review: an assign with an open kit leaves the results even when the policy already read open (the level, not the edge)', () => {
-  const h = match({ stun: undefined });                      // no policy: kitOpen() already reads true, so there is no edge
-  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-  h.eng.onResultPush({ match_id: h.eng.matchId, outcome: 'win', winner: { team_id: 'blue' }, provisional: false });
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.config.teams[0], policy: { kit_open: false } } });
-  assert.equal(h.eng.ended, true, 'control: a closed kit keeps the results');
-  h.eng.policy = null;                                        // back to the no-edge state: the policy reads open
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.config.teams[0], policy: { kit_open: true } } });
-  assert.equal(h.eng.ended, false, 'an explicit open kit leaves the results');
+test('F632: NEW SESSION\'s re-assign (muster, kit still closed, no recap flag) leaves the results; a RECAP one keeps them', () => {
+  const { h, blue } = debrief();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: blue, policy: { kit_open: false }, recap: true } });
+  assert.equal(h.eng.ended, true, 'a debrief assign keeps the results');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: blue, policy: { kit_open: false } } });   // NEW SESSION -> muster
+  assert.equal(h.eng.ended, false, 'the new session leaves them (SETTING UP THE GAME)');
   assert.equal(h.eng.result, null);
 });

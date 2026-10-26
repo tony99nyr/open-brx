@@ -2417,16 +2417,11 @@ test('a fresh assign after match end leaves the MATCH COMPLETE screen (new-match
   const h = harness().kit().config_();
   h.adv(1600); h.echo(); h.eng.tick();
   h.start(0); h.eng.tick();
-  // F632: MC re-assigns on every kit flip. The lobby push closed the kit, and the NEXT match's kit opening is the new-match
-  // signal; a bare assign (a debrief edit) is not.
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, policy: { kit_open: false } } });
   h.eng._endLocal('test-end');
   h.eng.ackEnd();
   assert.equal(h.eng.ended, true);
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
-  assert.equal(h.eng.ended, true, 'a bare assign (a debrief edit) keeps the over screen');
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, policy: { kit_open: true } } });
-  assert.equal(h.eng.ended, false, 'the next match\'s kit opening resets the over screen');
+  assert.equal(h.eng.ended, false, 'assign resets the over screen');
   assert.equal(h.eng.phase, 'kitted');
 });
 
@@ -2640,14 +2635,13 @@ test('A27: START retires the lock notice — the countdown spends it, with no ki
 test('A27: a new match from MC retires the lock notice from the match-complete screen', () => {
   const h = kitA10();
   h.eng.browse(true);
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: { ...POL, kit_open: false } } });   // the lobby push closes the kit
   h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
   h.echo(); h.start(0); h.adv(10); h.eng.tick();
   assert.equal(h.eng.phase, 'live');
   h.adv(600000); h.eng.tick();                       // the clock runs out
   assert.equal(h.eng.state().ended, true);
   h.eng.kitLocked = true;                            // a latch that outlived its lobby by any route reaches here
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: { ...POL, kit_open: true } } });   // F632: the next kit opens (MC always sends kit_open)
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: POL } });
   assert.equal(h.eng.state().ended, false, 'the new match leaves the match-complete screen');
   assert.equal(h.eng.state().kitLocked, false, 'and takes last match\'s lock notice with it');
 });
@@ -7013,10 +7007,9 @@ test('A24 history: a result that beat the whistle is folded straight into the en
 
 test('A24: a NEW match retires the previous result before anyone can see it on a fresh DOWN screen', () => {
   const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, policy: { kit_open: false } } });   // the lobby push closed the kit
   h.eng.onMcMessage({ kind: 'result', body: RESULT('win') });
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
-  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, policy: { kit_open: true } } });   // F632: the next kit opens
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
   assert.equal(h.eng.state().result, null);
   assert.equal(h.eng.state().resultWait, 'pending');
 });

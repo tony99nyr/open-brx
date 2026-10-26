@@ -2247,7 +2247,7 @@ export class Engine {
     return 'pending';
   }
 
-  _assign({ player, team, roster, catalog, policy, game, standby }) {
+  _assign({ player, team, roster, catalog, policy, game, standby, recap }) {
     this.standby = !!standby;
     if (this.standby) {
       // T2-B item 2: benched. No frames, no kit browsing, no ready-up -- just SITTING OUT, wherever the
@@ -2278,12 +2278,10 @@ export class Engine {
     // false→true EDGE above — but an MC that never sends `kit_open:false` (and an older MC with no
     // `policy` at all) never gives that edge, so the latch survived into every later lobby and the screen
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
-    // F632: MC re-sends `assign` on every player edit, the debrief's re-team and rename included (F631), so an assign alone
-    // is not a new match: it updates the player and team below and keeps the result. An open kit is (MC opens KIT only for
-    // the next match, and never in RECAP), and so is the next match's config (`_applyConfig`) or start (`startAt`).
-    // The level, not the edge (review): a policy that already read open (a KIT welcome) gives no edge. An explicit open kit
-    // is enough; an assign with no policy (an older MC) leaves through the config or the start instead.
-    if (this.ended && policy && policy.kit_open === true) this._leaveEnded('MC opened the kit for the next match');
+    // F632: MC re-sends `assign` on every player edit, the debrief's re-team and rename included (F631). Those come in
+    // RECAP and say `recap: true`, and the phone keeps its results on them. Any other assign after an end leaves them, as
+    // it always did: NEW SESSION's re-assign is that signal (state.py new_session), and an older MC sends no flag.
+    if (this.ended && recap !== true) this._leaveEnded('a new session from MC');
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     // Bench 2026-09-17: MARK ALL READY (MC's roster-wide `host_override`) marks a player ready who
     // never tapped READY UP themselves, and `setReady` is the phone's ONLY other writer of `this.ready`
