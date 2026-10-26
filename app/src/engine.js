@@ -2114,6 +2114,13 @@ export class Engine {
     if (node.catalog) this.catalog = node.catalog;   // A10: a welcome may re-hydrate the catalog/policy too
     if (node.policy) this.policy = node.policy;
     if (node.game) this.game = node.game;
+    // F632 review (Opus, Fable): a phone that dropped in the debrief and rejoins in KIT gets the open kit in this welcome,
+    // and no assign follows it. MC opens the kit only for the next match, so an explicit open kit while ended leaves the
+    // results (a KIT welcome carries no result to lose).
+    // ...and so is a welcome that carries the next match's head (config and frames): MC clears `lobby_pushed` at the
+    // whistle, so a RECAP welcome never carries one (review: a phone that drops in the debrief and rejoins in LOBBY).
+    const nextLobby = !!(node.config && node.frames) || !!(node.policy && node.policy.kit_open === true);
+    if (this.ended && nextLobby && !node.result && !node.start) this._leaveEnded('the welcome is the next match\'s');
     const heldMatch = this.matchId;
     // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
     // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first
@@ -2215,9 +2222,17 @@ export class Engine {
       this.log(`result for ${mid}: that end was real after all — showing the results`, 'li');
     }
     this._noMatchEnd = null;
-    this.result = body; this.resultAt = this.now();
-    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}`, 'lk');
-    try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }
+    // Bounded A81 wait: MC released without a late phone, and its sync changed the result, so MC re-sends `result`.
+    // Tony (2026-10-26): RESULT UPDATED shows only on a phone that already showed an earlier result for this match, and
+    // the phone decides (brx3/brx4, option A: no wire field): the winner or my outcome differs from the one it holds. A
+    // score-only re-send differs in neither. The verdict is kept in `_updated`, saved and cleared with the result. Most
+    // players have tapped OK by then, so the results screen opens again, once, when the verdict first turns true.
+    const prev = this.result && this.result.match_id === mid ? this.result : null;
+    const updated = !!prev && (prev.outcome !== body.outcome || JSON.stringify(prev.winner ?? null) !== JSON.stringify(body.winner ?? null));
+    if (updated && !prev._updated && this.endAck) this.endAck = false;
+    this.result = updated || (prev && prev._updated) ? { ...body, _updated: true } : body; this.resultAt = this.now();
+    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}${this.result._updated ? ' · updated' : ''}`, 'lk');
+    try { if (this.onResult) this.onResult(this.result); } catch (_) { /* history is best-effort */ }
     this._changed();
     return { ok: true };
   }
@@ -2235,7 +2250,7 @@ export class Engine {
     return 'pending';
   }
 
-  _assign({ player, team, roster, catalog, policy, game, standby }) {
+  _assign({ player, team, roster, catalog, policy, game, standby, recap }) {
     this.standby = !!standby;
     if (this.standby) {
       // T2-B item 2: benched. No frames, no kit browsing, no ready-up -- just SITTING OUT, wherever the
@@ -2266,7 +2281,10 @@ export class Engine {
     // false→true EDGE above — but an MC that never sends `kit_open:false` (and an older MC with no
     // `policy` at all) never gives that edge, so the latch survived into every later lobby and the screen
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
-    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
+    // F632: MC re-sends `assign` on every player edit, the debrief's re-team and rename included (F631). Those come in
+    // RECAP and say `recap: true`, and the phone keeps its results on them. Any other assign after an end leaves them, as
+    // it always did: NEW SESSION's re-assign is that signal (state.py new_session), and an older MC sends no flag.
+    if (this.ended && recap !== true) this._leaveEnded('a new session from MC');
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     // Bench 2026-09-17: MARK ALL READY (MC's roster-wide `host_override`) marks a player ready who
     // never tapped READY UP themselves, and `setReady` is the phone's ONLY other writer of `this.ready`
@@ -2281,7 +2299,16 @@ export class Engine {
     if (this.browsing && !this.canPick('primary') && !this.canPick('secondary') && !this.canPick('perk')) this.browse(false);   // A10: rules locked every slot while the browser was open
   }
 
+  /** F632: leave the match-complete screen for the next match, taking this match's result with it. */
+  _leaveEnded(why) {
+    this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false;
+    this.log(`new match from MC (${why}) — leaving the match-complete screen`, 'lk');
+  }
   _applyConfig({ config, frames, roster }, why) {
+    // F632: MC's config after an end is the next match's lobby push (a phone that missed the kit opening gets no other
+    // signal before the start). A relink or rehydrate re-write is not.
+    const leftEnded = this.ended && why === 'config';
+    if (leftEnded) this._leaveEnded('the next match\'s config');
     // T2-B item 2: a benched player is never on the roster `push_config`/`_repush_lobby_config` loop, so
     // this should not arrive at all -- guarded anyway, belt-and-braces, since "no gun frames written"
     // while sitting out is the whole point of the state.
@@ -2291,7 +2318,7 @@ export class Engine {
     // lobby screen leads with "THE HOST LOCKED KITS". A player who had already readied up asked for this.
     // Opus review: MC's first config push after a no-result end is the next game's lobby, not a host locking kits.
     const afterNoMatch = this._skipKitLock && why !== 'hydrate' && why !== 'relink'; if (afterNoMatch) this._skipKitLock = false;
-    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && !afterNoMatch && this.kitOpen() && (this.browsing || !this.ready)) {
+    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && !leftEnded && !afterNoMatch && this.kitOpen() && (this.browsing || !this.ready)) {   // F632 review: leaving the results is not a host lock
       this._cancelPick();
       this.kitLocked = true;
       this.kitLockedFor = (config && config.config_id) || null;

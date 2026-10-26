@@ -187,7 +187,7 @@ describe('a recap that is still moving says so', () => {
     const p = await recapScreen({ ...rc, sync: { pending: true, finalised: false, result_changed: false, rows } } as unknown as RecapView);
     expect(p.find('[data-testid="results-pending"]').length).toBe(1);
     expect(p.find(`[data-strip-icon="${someone.player_id}"]`).length).toBe(1);
-    expect(p.text()).toMatch(/WAITING FOR 1 PHONE/);
+    expect(p.text().toUpperCase()).toContain(`WAITING FOR ${someone.display.toUpperCase()}`);   // A83: by name
     p.unmount();
   });
 

@@ -15,6 +15,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -166,7 +167,7 @@ def _update_prompt_run(minor_after: int) -> str:
         origin, clone = base / "origin", base / "clone"
         origin.mkdir()
         _git(origin, "init", "-q", "-b", "main")
-        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs"):
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs", "scripts/lib/cloudflared.mjs"):
             (origin / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, origin / rel)
         types = origin / "mcp" / "brx_mcp" / "mc" / "types.py"
@@ -214,7 +215,7 @@ def _offline_run(imports_ok: bool) -> subprocess.CompletedProcess:
     ("npm is missing") and never installs anything."""
     base = Path(tempfile.mkdtemp(prefix="brx-offline-test-"))
     try:
-        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs"):
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs", "scripts/lib/cloudflared.mjs"):
             (base / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, base / rel)
         (base / "mcp").mkdir()
@@ -339,3 +340,83 @@ def test_npm_install_state_tracks_declared_and_installed_markers():
         (modules / ".package-lock.json").write_text('{"lockfileVersion":3}')
         installed = run_node_json(expr, cwd=REPO)["installed"]
         assert installed and len(installed) == 64
+
+
+def _cloudflared_run(version: str, extra_args: tuple[str, ...] = (), installed: bool = True) -> subprocess.CompletedProcess:
+    """Run start.mjs --setup-only through the cloudflared step. A fake python, npm and cloudflared are
+    on PATH, and a fresh cloudflared.json (latest == the installed version) means no network call and no upgrade.
+    --setup-only ends the run before Mission Control starts."""
+    base = Path(tempfile.mkdtemp(prefix="brx-cfd-test-"))
+    try:
+        for rel in ("scripts/start.mjs", "scripts/lib/launcher.mjs", "scripts/lib/bundles.mjs", "scripts/lib/cloudflared.mjs",
+                    "mcp/brx_mcp/mc/tunnel.py"):
+            (base / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(REPO / rel, base / rel)
+        (base / "mcp" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        (base / "mcp" / "constraints.txt").write_text("bleak<3\n", encoding="utf-8")
+        (base / "webapp" / "mc").mkdir(parents=True)
+        py = base / ".venv" / "bin" / "python"
+        py.parent.mkdir(parents=True)
+        py.write_text("#!/bin/sh\ncase \"$*\" in\n  *'import sys'*) echo '3 12';;\n  *) exit 0;;\nesac\n", encoding="utf-8")
+        py.chmod(0o755)
+        bin_dir = base / "bin"
+        bin_dir.mkdir()
+        for tool in ("node", "mkdir", "sh"):
+            if not (bin_dir / tool).exists():
+                (bin_dir / tool).symlink_to(shutil.which(tool))
+        npm = bin_dir / "npm"
+        npm.write_text("#!/bin/sh\ncase \"$1\" in\n  --version) echo 10.0.0;;\n  ci) mkdir -p node_modules;;\n"
+                       "  run) mkdir -p dist; echo '<html></html>' > dist/index.html;;\nesac\n", encoding="utf-8")
+        npm.chmod(0o755)
+        cfd = bin_dir / "cloudflared"
+        cfd.write_text(f"#!/bin/sh\necho 'cloudflared version {version} (built 2026-10-20-1200 UTC)'\n", encoding="utf-8")
+        cfd.chmod(0o755)
+        if not installed:
+            cfd.unlink()
+        home = base / "home"
+        home.mkdir()
+        # An hour old, and the release already "attempted": even a clock that stepped back cannot start an upgrade.
+        stamp = int(time.time() * 1000) - 3600_000
+        (home / "cloudflared.json").write_text(json.dumps(
+            {"checked_at": stamp, "latest": version, "attempted": version, "attempted_at": stamp, "reason": "lag"}), encoding="utf-8")
+        # Port 9 refuses connections: a fetch the cache did not prevent fails at once instead of reaching GitHub.
+        env = {"PATH": str(bin_dir), "HOME": str(base), "BRX_MCP_HOME": str(home), "NO_COLOR": "1",
+               "OPEN_BRX_CLOUDFLARED_API": "http://127.0.0.1:9/"}
+        res = subprocess.run([str(bin_dir / "node"), str(base / "scripts" / "start.mjs"), "--setup-only", *extra_args],
+                             cwd=base, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120)
+        assert not list(bin_dir.glob("*.download")), "no upgrade may download anything"
+        return res
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+def test_the_cloudflared_step_reports_a_current_version():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _cloudflared_run("2026.10.3")
+    out = res.stdout + res.stderr
+    assert res.returncode == 0, out
+    assert "cloudflared 2026.10.3 is installed and up to date" in out, out
+    assert "!!!" not in out
+    assert "setup is complete" in out and "Mission Control opens in your browser" not in out
+
+
+def test_the_cloudflared_step_is_loud_below_the_minimum():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    res = _cloudflared_run("2026.9.0")
+    out = res.stdout + res.stderr
+    assert res.returncode == 0, out
+    assert "!!! cloudflared 2026.9.0 is older than 2026.10.2" in out, out
+    assert "!!! The internet tunnel may stop working" in out
+    assert "setup is complete" in out
+
+
+def test_the_cloudflared_step_is_skipped_in_a_demo():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    out = _cloudflared_run("2026.9.0", ("--demo",)).stdout
+    assert "skipped in a demo" in out and "!!!" not in out, out
+
+
+def test_a_demo_skips_the_cloudflared_offer_when_it_is_missing():
+    needs(NODE and os.name != "nt", "node on a POSIX shell")
+    out = _cloudflared_run("2026.9.0", ("--demo",), installed=False).stdout
+    assert "skipped in a demo" in out and "Install cloudflared?" not in out, out

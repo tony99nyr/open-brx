@@ -344,7 +344,10 @@ RecapView { winner: Winner|null, score: { [team_id]: number }, rows: ScoreRow[],
                            phones_by_team?: { [team_id]: number } /* F555: the phones' merge, the cross-check */ },
             stations?: RecapStationRow[],
             sync?: RecapSyncView /* F596, live match only; archived recaps omit it */ }
-RecapSyncView { pending: boolean, finalised: boolean, result_changed: boolean, rows: RecapSyncRow[] }
+RecapSyncView { pending: boolean, finalised: boolean, result_changed: boolean,
+                released_by: "sync"|"timeout"|"finalise"|null /* A83: what ended the wait; null while pending */,
+                release_in_s?: number /* A83: whole seconds until the 120 s bound releases it, only while pending */,
+                rows: RecapSyncRow[] }
 RecapSyncRow { kind: "phone"|"station", id: string /* player_id or station id */, name: string,
                team_id: string|null, stage: "unlinked"|"linked"|"sending"|"received",
                linked?: boolean /* phone socket link; receipt stays received when false */,

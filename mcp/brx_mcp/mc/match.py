@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from .scoring import Scorer
-from .types import (FrameBundle, GameConfig, Player, RecapStationRow, STATION_ID_MAX,
+from .types import (FrameBundle, GameConfig, Player, RecapStationRow, ReleaseReason, STATION_ID_MAX,
                     STATION_TEAM_ANY, is_station_kind)
 
 
@@ -116,6 +116,10 @@ class Match:
     release_pending: bool = False  # in-process flush pending; after restart delivery waits for reconnect
     whistle_mono_ms: int | None = None
     whistle_wall_ms: int | None = None
+    # Tony 2026-10-26: the wait is bounded. At this monotonic time MC releases without the rows still missing.
+    release_due_mono: int | None = None
+    release_reason: ReleaseReason | None = None  # what ended the wait (RecapSyncView.released_by)
+    release_in_told: int | None = None  # the whole seconds left last broadcast; in process only
     result_changed: bool = False
     end_reason: str | None = None
     ended_head: dict | None = None
@@ -190,6 +194,9 @@ class Match:
                     "finalised": self.finalised, "final_winner": self.final_winner,
                     "released": self.released, "end_reason": self.end_reason,
                     "release_pending": self.release_pending,
+                    "release_reason": self.release_reason,
+                    **({"release_due_in_ms": max(0, self.release_due_mono - sync_mono_ms)}
+                       if self.release_due_mono is not None and not self.released else {}),
                     "result_changed": self.result_changed,
                     "sync_nodes": {nid: {**{key: entry[key] for key in ("received", "status_received", "changed_t")
                                              if key in entry},

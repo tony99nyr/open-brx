@@ -34,12 +34,25 @@ const TRANSPORT_WORD = { wifi: 'Wi-Fi', cellular: 'cellular', backhaul: 'interne
 const transportIcon = (t: string | null | undefined, size: number) => (t && t in TRANSPORT_ICON ? TRANSPORT_ICON[t as keyof typeof TRANSPORT_ICON](size) : null);
 const transportWord = (t: string | null | undefined) => (t && t in TRANSPORT_WORD ? TRANSPORT_WORD[t as keyof typeof TRANSPORT_WORD] : null);
 
-/** The header's count: phones and hills apart ("WAITING FOR 2 PHONES · 1 HILL"). Empty when nothing is listed. */
-export function waitingLine(rows: RecapSyncRow[]): string {
+const WAIT_NAMES_MAX = 48;   // the pending header's room beside RESULTS PENDING and FINALISE at 1280 px
+const waitingRows = (rows: RecapSyncRow[]) => {
   const open = rows.filter(r => r.stage !== 'received');
-  const ph = open.filter(r => r.kind === 'phone').length, hills = open.filter(r => r.kind === 'station').length;
-  const parts = [ph ? plural(ph, 'PHONE') : '', hills ? plural(hills, 'HILL') : ''].filter(Boolean);
-  return parts.length ? `WAITING FOR ${parts.join(' · ')}` : '';
+  return [...open.filter(r => r.kind === 'phone'), ...open.filter(r => r.kind === 'station')];
+};
+export function waitingNames(rows: RecapSyncRow[]): string {
+  return waitingRows(rows).map(r => r.name).join(', ');
+}
+/** The header's wait, by name as the released line does ("WAITING FOR ECHO, CONTROL POINT 1"), phones first, shortened
+ *  the same way ("A, B, C +2 more"). A count, phones and hills apart ("WAITING FOR 5 PHONES · 1 HILL"), only when that
+ *  does not fit in WAIT_NAMES_MAX characters. SPECTATE passes `byName: false`: the public board lists no player.
+ *  `waitingNames` is the full list for the title. Names keep the case MC sends, as the released line does. */
+export function waitingLine(rows: RecapSyncRow[], { byName = true }: { byName?: boolean } = {}): string {
+  const open = waitingRows(rows);
+  if (!open.length) return '';
+  const names = shortNames(open.map(r => r.name)).replace(/ more$/, ' MORE');   // the header is upper case
+  if (byName && names.length <= WAIT_NAMES_MAX) return `WAITING FOR ${names}`;
+  const ph = open.filter(r => r.kind === 'phone').length, hills = open.length - ph;
+  return `WAITING FOR ${[ph ? plural(ph, 'PHONE') : '', hills ? plural(hills, 'HILL') : ''].filter(Boolean).join(' · ')}`;
 }
 
 /** Which catalogue id colours the END flag: amber while MC still re-delivers, red once the ladder is spent (a gun that may still be live). */

@@ -806,6 +806,12 @@ export function startDemo({ engine, log }) {
       'result-sync-mc-silent': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => { engine.endedAt = Date.now() - 40_000; syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'wifi', unboundAt: 1 }); /* off the link for 40 s */ }], [2500, () => ev.result('win')]],
       'over-sync-unlinked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'cellular' })], [2600, 'endOk']],
       'result-win-team':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')]],
+      // A81 bounded wait: MC released WIN without a late phone, whose sync then changed the winner (re-sent result)
+      // ...and a score-only re-send of the same verdict (a late phone's facts moved the totals, not the winner)
+      'result-rescored': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2800, () => ev.result('win', { provisional: false })]],
+      // ...and the common case: the player tapped OK on WIN long before the late phone synced
+      'result-updated-acked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => engine.ackEnd()], [2900, () => ev.result('lose', { my: { kills: 11, assists: 3, accuracy: 34, best_streak: 5, medals: [] } })]],
+      'result-updated':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2800, () => ev.result('lose')]],
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
       'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],

@@ -20,6 +20,13 @@ pass different knobs. Name genuinely different rosters for their specific purpos
 _MATCH_UNSET = object()
 
 
+def after_end(session, body: dict) -> dict:
+    """A phone's status beat sent after its own end: the phase has left live ("kitted") and the beat still names the
+    match it ended (app/src/engine.js `statusBody`). MC counts a pending-0 beat as received only in that shape."""
+    sc = session.match.scorer if session.match is not None else None
+    return {"arm_state": "kitted", "match_id": sc.match_id if sc is not None else None, **body}
+
+
 def head_of(session):
     """Return the current match head, including when no Match exists yet."""
     return session.match.head if session.match is not None else None

@@ -446,7 +446,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
   // no winner, no score and no ranking on the wall: only that results are pending, and the strip when it fits.
   const sync = recapSync(rc);
   if (sync?.pending) {
-    const line = waitingLine(sync.rows);
+    const line = waitingLine(sync.rows, { byName: false });   // the public board names no player
     return (
       <div data-spectate="pending" style={{ border: `1px solid ${T.line}`, borderLeft: `6px solid ${T.warn}`, padding: '24px 28px', flex: 'none', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 26, flexWrap: 'wrap' }}>

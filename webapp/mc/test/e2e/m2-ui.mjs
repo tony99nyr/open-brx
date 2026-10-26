@@ -382,7 +382,8 @@ async function runMock(browser, viteBase, vp, tag) {
   // RECAP: the same columns, plus A6.1's "after the whistle" block. END the demo match through the
   // control the operator actually presses, not by poking the backend.
   await pg.evaluate(async () => { await window.__MC_MOCK__.control('end'); });
-  await until(() => pg.locator('text=MATCH COMPLETE').count().then(n => n > 0), 15000, 'the RECAP screen');
+  // F633: while the result waits for phones the status reads MATCH OVER, WAITING FOR RESULTS.
+  await until(() => pg.locator('[data-testid="recap-status"]').count().then(n => n > 0), 15000, 'the RECAP screen');
   const rStk = await pg.locator('[data-cell="stk"]').evaluateAll(els => els.map(e => e.textContent.trim()));
   expect(rStk.length > 0 && rStk.every(v => /^\d+$/.test(v)), `RECAP's STK column renders (${rStk.join(',')})`);
   // F596: the after-the-whistle box is gone even though the demo records two late facts; RESULT CHANGED covers a flipped winner

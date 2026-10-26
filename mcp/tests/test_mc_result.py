@@ -19,7 +19,7 @@ from brx_mcp.mc import compile as C
 from brx_mcp.mc.fakes import demo_armory
 from brx_mcp.mc.scoring import rows_csv
 from brx_mcp.mc.types import CLOCK_TIE_MS
-from _session import go_live_stored, kill, mk_stored_session, online, results
+from _session import after_end, go_live_stored, kill, mk_stored_session, online, results
 
 
 # ---------------------------------------------------------------------------------------------
@@ -43,9 +43,9 @@ def test_result_is_pushed_to_every_node_with_a_per_recipient_outcome():
     assert {t["team_id"] for t in b["team_scores"]} == {"red", "blue"}
     assert len(b["rows"]) == 4, "every player's row rides along, not just the recipient's"
     assert b["my"]["player_id"] == ps[0]["player_id"] and got["node1"]["my"]["player_id"] == ps[1]["player_id"]
-    # `provisional` is a REAL claim, so assert the real value: at the whistle only the victim's node
-    # had flushed a fact, so three of four players are still `missing` and the sheet can still move.
-    assert b["provisional"] is True, s.last_recap.get("missing")
+    # `provisional` is a REAL claim, so assert the real value. F630: the release sends the recap as it stands at the
+    # release, not the copy stored at the whistle: every phone is connected and seen flushed by then, as the console says.
+    assert b["provisional"] is False and b["provisional"] == s.recap()["provisional"], s.last_recap.get("missing")
     assert isinstance(b["t"], int)
 
 
@@ -58,8 +58,8 @@ def test_the_result_releases_once_every_whistle_phone_has_reported():
     assert s.recap()["sync"]["pending"] is True, "the late batch reopened its row"
     for i, player in enumerate(ps):
         clock["t"] += 1_000
-        net.simulate_status(f"node{i}", {"player_id": player["player_id"], "shots": 0,
-                                         "alive": True, "synced": True, "pending": 0}, clock["t"])
+        net.simulate_status(f"node{i}", after_end(s, {"player_id": player["player_id"], "shots": 0,
+                                                      "alive": True, "synced": True, "pending": 0}), clock["t"])
     assert s.recap()["sync"]["pending"] is False
     assert s.match.released is True
 
@@ -508,6 +508,8 @@ def test_the_result_tells_a_re_teamed_player_the_outcome_of_the_side_they_wore()
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 1},
         {"type": "death", "t": g + 900, "match_id": info["match_id"], "player_id": ps[2]["player_id"],
          "shooter_num": ps[1]["player_num"], "shooter_team": 2, "seq": 2}]}, clock["t"])
+    # A83: the sender's own result waits for its queue to drain.
+    net.simulate_status("node2", after_end(s, {"player_id": ps[2]["player_id"], "pending": 0}), clock["t"])
 
     s.finalise_recap()
     got = results(net)
@@ -610,3 +612,35 @@ def test_late_team_kill_and_late_enemy_kill_give_the_same_board_in_either_arriva
     scores, _rows, end_rel, _post = a
     assert end_rel == 1500, f"the late enemy kill reached the cap first, so the end moves back to it: {a}"
     assert max(scores.values()) == 2, a
+
+
+def test_a_debrief_team_edit_never_moves_the_match_result_but_a_name_edit_shows():
+    """F631: the live Scorer took a RECAP team edit (meant for the next match) into this match's team scores, so the
+    console's winner flipped, and the next late fact re-stored and pushed the flipped winner to every phone. After the
+    whistle the result is the roster as played; a display-name edit is cosmetic and still shows."""
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    s.finalise_recap()
+    winner = s.recap()["winner"]
+    score = s.recap()["score"]
+    red, blue = ps[0]["team_id"], ps[1]["team_id"]
+    s.patch_player(ps[0]["player_id"], team_id=blue)        # the next match's teams
+    s.patch_player(ps[1]["player_id"], team_id=red)
+    s.patch_player(ps[0]["player_id"], display="NEWNAME")
+    recap = s.recap()
+    assert recap["winner"] == winner and recap["score"] == score, "a debrief team edit moved this match's result"
+    assert next(r for r in recap["rows"] if r["player_id"] == ps[0]["player_id"])["team_id"] == red
+    assert next(r for r in recap["rows"] if r["player_id"] == ps[0]["player_id"])["display"] == "NEWNAME"
+    net.pushed.clear()
+    clock["t"] += 1_000
+    net.simulate_node_message("node1", "event_batch", {"events": [{
+        "type": "hit_taken", "t": s.match.scorer.end_t - 500, "match_id": info["match_id"],
+        "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 9}]}, clock["t"])
+    pushed = net.pushes("result")
+    assert pushed and all(p[2]["winner"] == winner for p in pushed), "a late fact pushed the re-teamed winner"
+    body = next(p[2] for p in pushed if p[0] == "node0")
+    assert body["my"]["display"] == "NEWNAME" and body["my"]["team_id"] == red
+    # Honours, the replay and `_as_played` read the roster as played: it takes the name and keeps the team.
+    assert s.match.played[ps[0]["player_id"]]["display"] == "NEWNAME"
+    assert s.match.played[ps[0]["player_id"]]["team_id"] == red, "the roster as played keeps its team"

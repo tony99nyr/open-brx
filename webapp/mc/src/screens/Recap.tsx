@@ -3,6 +3,7 @@ import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } fro
 import { recapSync } from '../api/recapSync';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
+import { SYNC_STUCK_S } from '../api/contract.gen';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
@@ -12,7 +13,7 @@ import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.ge
 import { medalChip, medalIcon } from '../api/medalicons.gen';
 import { MC_OFFLINE, MC_OLDER, alertWords, colourOf, glyphed } from '../alerts';
 import { STATION_KIND_LABEL } from '../api/contract.gen';
-import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, shortNames, useSyncPhase, waitingLine } from './SyncStrip';
+import { EndAlertCtx, FinaliseButton, Icon, SyncCell, SyncStrip, plural, shortNames, useSyncPhase, waitingLine, waitingNames } from './SyncStrip';
 import type { RecapSyncRow } from '../api/recapSync';
 
 // S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
@@ -170,6 +171,8 @@ export function Recap() {
   const missPhones = unsynced.filter(r => r.kind === 'phone'), missHills = unsynced.filter(r => r.kind === 'station');
   const without = (rows: RecapSyncRow[], noun: string, full = false) => rows.length ? `${plural(rows.length, noun)} (${full ? rows.map(r => r.name).join(', ') : shortNames(rows.map(r => r.name))})` : '';
   const finalWithout = [without(missPhones, 'PHONE'), without(missHills, 'HILL')].filter(Boolean).join(' AND ');
+  // Tony 2026-10-26: the wait is bounded. A result the bound released says so, so the host knows why it shows.
+  const finalLead = sync?.released_by === 'timeout' && !sync.finalised ? `FINAL AFTER ${Math.round(SYNC_STUCK_S / 60)} MIN` : 'FINAL';
   const finalWithoutFull = [without(missPhones, 'PHONE', true), without(missHills, 'HILL', true)].filter(Boolean).join(' AND ');
   const syncById = new Map(syncRows.filter(r => r.kind === 'phone').map(r => [r.id, r]));
   const syncCol = syncRows.length > 0 && !(allIn && phase === 'line');   // the column collapses with the strip
@@ -222,7 +225,7 @@ export function Recap() {
       {/* the match length is a DURATION (a fixed span, over before this screen shows), not a clock still
           counting down, so it prints unpadded like every other span on this screen (fmtClock would pad
           it to "10:00" beside unpadded possession spans such as "7:21") */}
-      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // <span data-testid="recap-status" style={inPlay ? { color: colourOf('recap-status-inplay') } : undefined}>{inPlay ? 'IN PLAY · PROVISIONAL' : pendingResults ? 'MATCH OVER · WAITING FOR RESULTS' : 'MATCH COMPLETE'}</span> · {mode.toUpperCase()}<span data-testid="recap-length">{lengthLabel}</span> ]
         {past && <span data-testid="recap-archived" title={`ARCHIVED MATCH${past.ended_t ? `, ENDED ${new Date(past.ended_t).toLocaleString()}` : ''}. READ ONLY.`}
           style={{ marginLeft: 12, padding: '2px 8px', border: `1px solid ${T.line2}`, color: T.micro, letterSpacing: '.14em' }}>ARCHIVED</span>}
       </div>
@@ -230,7 +233,8 @@ export function Recap() {
         <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '8px 36px 8px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', marginBottom: 8 }}>
           <div data-testid="results-pending" style={{ font: F.osw(700, 30), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
           {waitingLine(syncRows) && <span aria-hidden="true" style={{ color: T.micro }}>·</span>}
-          {waitingLine(syncRows) && <div data-testid="waiting-for" style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(syncRows)}</div>}
+          {waitingLine(syncRows) && <div data-testid="waiting-for" title={`Waiting for ${waitingNames(syncRows)}`} style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(syncRows)}</div>}
+          {sync?.release_in_s != null && <div data-testid="release-in" title={`MC releases the result without the missing rows in ${fmtDuration(sync.release_in_s)}`} style={{ font: F.mono(700, 12), letterSpacing: '.12em', color: T.micro }}>FINAL IN {fmtDuration(sync.release_in_s)}</div>}
           <span style={{ flex: 1 }} />
           <FinaliseButton prominent={stuckAny} missingPhones={missPhones.length} missingHills={missHills.length} onFinalise={async () => { await api.finaliseRecap(); }} />
         </Brackets>
@@ -240,9 +244,9 @@ export function Recap() {
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
-          {sync?.finalised && unsynced.length > 0 && (
-            <div data-testid="final-without" title={`FINAL WITHOUT ${finalWithoutFull}`} style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
-              FINAL WITHOUT {finalWithout}
+          {(sync?.finalised || sync?.released_by === 'timeout') && unsynced.length > 0 && (
+            <div data-testid="final-without" data-released-by={sync.released_by ?? 'finalise'} title={`${finalLead} WITHOUT ${finalWithoutFull}`} style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
+              {finalLead} WITHOUT {finalWithout}
             </div>
           )}
           {sync?.result_changed && <div data-testid="result-changed" role="status" style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.14em', color: T.warn }}>RESULT CHANGED</div>}
