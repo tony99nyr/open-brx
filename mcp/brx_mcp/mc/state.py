@@ -1835,8 +1835,8 @@ class Session:
             # config head (compile.py), and A30 locks the head once the match starts -- so a mid-match
             # re-team used to move only the beacon/LED/scorer while combat kept resolving on the OLD team
             # (a same-team shot does no damage). MC must never let the roster's team and the gun's $TID
-            # silently disagree, so this is refused LOUDLY. The scorer's own re-team (below) is reached
-            # only in pre-start or recap now, where the head is free to be rewritten.
+            # silently disagree, so this is refused LOUDLY. Before the start the head is free to be rewritten; in
+            # RECAP the edit is for the next match and never reaches this match's scorer (F631).
             # F-5 (2026-09-13): an explicit `team_id: null` used to hit this same check -- `_check_team(None)`
             # is `None`, which reads as a "change" against any rostered player's real team and 409'd on
             # what a caller meant as NO instruction (some client always carries the field). `None` here
@@ -1901,11 +1901,13 @@ class Session:
                 p["voice_slots"] = fields["voice_slots"]
             else:
                 p.pop("voice_slots", None)
-        sc = self._m().scorer
-        if "team_id" in fields and sc and pid in sc.stats and self.in_play():
-            # Team scores and the friendly rule follow a MID-MATCH re-team. After the whistle a team edit is for the next
-            # match: this match's result stays the roster as played (F631), while a display-name edit still shows.
-            sc.stats[pid].team_id = p["team_id"]
+        # F631: the scorer is never re-teamed here. A35 refuses a real team change while a match is armed or live, and a
+        # team edit in RECAP is for the next match: this match's result stays the roster as played. A display-name edit
+        # is cosmetic, so it reaches the roster as played too (honours, the replay and the result all name the player
+        # the same way).
+        played = self.match.played if self.match is not None else None
+        if "display" in fields and fields["display"] is not None and played and pid in played:
+            played[pid]["display"] = p["display"]
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
@@ -3144,7 +3146,7 @@ class Session:
         # The beat that drains a withheld node sends its result now: nothing else would (no late fact may follow).
         if (owed and self.match is not None and self.match.released and not self.match.release_pending
                 and not self._sync_owes(nid)):
-            self._push_result()
+            self._restore_recap()   # F630: the recap as it stands now (it pushes, being released), not the stored copy
 
     def _sync_events(self, nid: str, events: list[Event], at: int) -> None:
         entry = self._sync_entry(nid)
@@ -5439,6 +5441,7 @@ class Session:
         sc = self._m().scorer
         if not sc:
             return
+        self._mark_flushed_live()   # F630: `provisional` as the console reads it, whichever path re-stores
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
             if sc.match_id in self._ended:

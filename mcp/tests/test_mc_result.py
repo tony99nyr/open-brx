@@ -637,4 +637,10 @@ def test_a_debrief_team_edit_never_moves_the_match_result_but_a_name_edit_shows(
     net.simulate_node_message("node1", "event_batch", {"events": [{
         "type": "hit_taken", "t": s.match.scorer.end_t - 500, "match_id": info["match_id"],
         "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 9}]}, clock["t"])
-    assert all(p[2]["winner"] == winner for p in net.pushes("result")), "a late fact pushed the re-teamed winner"
+    pushed = net.pushes("result")
+    assert pushed and all(p[2]["winner"] == winner for p in pushed), "a late fact pushed the re-teamed winner"
+    body = next(p[2] for p in pushed if p[0] == "node0")
+    assert body["my"]["display"] == "NEWNAME" and body["my"]["team_id"] == red
+    # Honours, the replay and `_as_played` read the roster as played: it takes the name and keeps the team.
+    assert s.match.played[ps[0]["player_id"]]["display"] == "NEWNAME"
+    assert s.match.played[ps[0]["player_id"]]["team_id"] == red, "the roster as played keeps its team"
