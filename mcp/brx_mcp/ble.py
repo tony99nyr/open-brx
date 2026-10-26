@@ -21,6 +21,7 @@ from typing import Any, Callable
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 
+from . import protocol
 from .protocol import (
     NUS_RX_CHAR_UUID,
     NUS_SERVICE_UUID,
@@ -289,6 +290,7 @@ class ConnectionManager:
 
     async def send(self, alias: str, command: str,
                    reply_window_ms: int = 500) -> dict[str, Any]:
+        protocol.refuse_out_of_range(command)   # guard B on every write, whoever calls (the CLI, the stage, the soak, tools)
         session = self._get(alias)
         seq_before = session.seq
         session.record("tx", command)
@@ -315,6 +317,7 @@ class ConnectionManager:
         bench run passes `True`/`False` to switch it for one call. Only a payload over `chunk_size`
         (one packet) is ever sent with response.
         """
+        protocol.refuse_out_of_range(command)
         session = self._get(alias)
         session.record("tx", command)
         payload = command.encode("utf-8")
@@ -345,6 +348,8 @@ class ConnectionManager:
 
     async def send_batch(self, alias: str, commands: list[str],
                          gap_ms: int = 100, on_start: Callable[[], None] | None = None) -> dict[str, Any]:
+        for cmd in commands:
+            protocol.refuse_out_of_range(cmd)
         session = self._get(alias)
         seq_before = session.seq
         for i, cmd in enumerate(commands):

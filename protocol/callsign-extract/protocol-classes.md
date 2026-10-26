@@ -359,7 +359,7 @@ positional sound set — each slot is a named game-event sound. Note fields are 
 | **HFIRE** | Range, CountIRPulses, RateOfFire, FlashLED | ⚠ **Partial and wrong on the wire.** The real shape has 11 fields: `Direction, BulletType, PlayerId, Team, Damage, IsCriticalShot, PowerLevel, Range, CountIRPulses, RateOfFire, FlashLED`; this 4-field guess emitted zero IR. Status: `../brx-protocol.md` §3 |
 | **IRTX** | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | ⚠ **Wrong on the wire.** This 4-field shape emitted zero IR. The real shape has 11 fields: `Direction, BulletType, PlayerId, ImmuneTeamColor, Damage, IsCriticalShot, PowerLevel, IrRange, ToggleIRLoop, TimeFireLoop, FlashLED`, bench-proven 2026-09-18. Status and fields: `../brx-protocol.md` §3 |
 | **LIFE** | addedHP, addedArmor, addedShields | grant health/armor/shields |
-| **BHIT** | damage, isCriticalShot, powerLevel | version-conflicted: v4.32 reads only one event byte, so no shape is promoted. Status: `../brx-protocol.md` §3 |
+| **BHIT** | damage, isCriticalShot, powerLevel | version-conflicted: a September v4.32 read found one event byte (label unproven after the 2026-10-26 re-check), so no shape is promoted. Status: `../brx-protocol.md` §3 |
 | **BUMP** | hP, armor, shields | adjust current pools. ⚠️ **Field order is WRONG on the wire**: Callsign sends `$BUMP,12,,1,,,*` to add 12 armour (cap30, 2026-09-18) |
 | **MELEE** | intensity | melee event |
 | **VIB** | isEnableVibration | haptics toggle |
