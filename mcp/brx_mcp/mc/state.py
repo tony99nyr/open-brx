@@ -3802,9 +3802,8 @@ class Session:
             # A restarted MC has no prior delivery record for this returning socket. Re-take the recap first (after the
             # bind, so a node that rejoined with nothing pending now counts as flushed) and tell only this node, unless
             # the re-take itself moved the recap: then that is news for every phone (F633).
-            before = self.last_recap
-            self._restore_recap(push=False)
-            self._push_result(only=None if self.last_recap != before else nid)
+            moved = self._restore_recap(push=False)
+            self._push_result(only=None if moved else nid)
             self._push_scores()   # welcome carries the score; this also retries a failed release push
         return self.node_player.get(nid)
 
@@ -3891,7 +3890,8 @@ class Session:
             # A player added DURING the debrief was not in it, so there is no result to carry. The recap is re-taken
             # first, so a welcome never carries a stored copy older than the facts (F633). The bind callback re-takes
             # it again once this node counts as bound.
-            self._restore_recap(push=False)
+            if self._restore_recap(push=False):
+                self._push_result()   # the re-take settled something: news for every phone holding the result
             if self.last_recap:
                 node["result"] = self._result_body(self.last_recap, p)
         return node
@@ -4405,8 +4405,10 @@ class Session:
         p = self.players.get(pid) if pid else None
         current_match = (self.match if self.phase == "recap" and self.match is not None
                          and self.match.scorer is not None and self.match.scorer.match_id == mid else None)
-        if current_match is not None and current_match.released:
-            self._restore_recap(push=False)   # F633: the recap as it stands, never the stored copy
+        if current_match is not None and current_match.released and self._restore_recap(push=False):
+            # F633: the recap as it stands, never the stored copy. A node outside the whistle roster is the one that is
+            # told here (a whistle phone still reporting live owes its end facts); a move is news for every phone.
+            self._push_result()
         recap = ((self.last_recap if current_match.released else None) if current_match else
                  (ended.get("recap") if ended and ended.get("released") else None))
         told_result = False
@@ -5439,7 +5441,7 @@ class Session:
         self._push_scores()
         self._changed()
 
-    def _restore_recap(self, *, push: bool = True) -> None:
+    def _restore_recap(self, *, push: bool = True) -> bool:
         """Re-write the stored recap when a fact lands AFTER the match ended.
 
         `_finish()` wrote it once. Facts held in a node's store-and-forward outbox arrive later — that
@@ -5450,10 +5452,11 @@ class Session:
         showing understated scores (review 2026-09-01).
         """
         if self.phase != "recap":
-            return
+            return False
         sc = self._m().scorer
         if not sc:
-            return
+            return False
+        before = self.last_recap
         self._mark_flushed_live()   # F630: `provisional` as the console reads it, whichever path re-stores
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
@@ -5467,6 +5470,7 @@ class Session:
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
+        return self.last_recap != before   # F633: did the re-take move the result?
 
     def _push_scores(self, *, release_flush: bool = False):
         """A7: push each player's ScoreRow to its node when it changed (best-effort; only reaches nodes in coverage)."""
