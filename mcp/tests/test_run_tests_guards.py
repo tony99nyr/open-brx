@@ -143,9 +143,8 @@ def test_split_keys_name_existing_files_and_have_multiple_chunks():
 
 
 def test_ci_browser_gate_is_blocking_exactly_when_f512_is_closed():
-    # T17 (2026-10-11): one browser gate in CI, non-blocking for its first week. The switch to blocking is a decision
-    # with a date, so the job and FOLLOWUPS F512 must change together: blocking only once F512 is closed. F512 closed
-    # 2026-10-26, so this now keeps the job blocking unless the row is reopened.
+    # T17 (2026-10-11): one browser gate in CI, made blocking when F512 closed (2026-10-26). The job and the row change
+    # together: this keeps the job blocking unless F512 is reopened.
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
     job = ci.split("\n  mc-play:\n")[1].split("\n\n  ")[0]
     assert "test/e2e/play.mjs" in job and "MC_PY=" in job and "timeout-minutes:" in job, job
