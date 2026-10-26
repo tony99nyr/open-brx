@@ -239,6 +239,8 @@ def main(argv: list[str]) -> int:
     stems = [f.stem for f in files]
     if not files:   # T7: a mistyped filter ran nothing, and that must not read as green
         print(f"error: no test file matches {' '.join(filters) or '(all)'}"
+              + (f" in --group {' '.join(groups)}" if groups else "")
+              + (f" after --exclude-group {' '.join(exclude_groups)}" if exclude_groups else "")
               + (f" after --exclude {' '.join(excludes)}" if excludes else ""), file=sys.stderr)
         return 2
 

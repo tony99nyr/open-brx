@@ -90,9 +90,15 @@ def test_every_group_names_real_test_files():
             assert (MCP / "tests" / f"{stem}.py").exists(), (name, stem)
 
 
-def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
+def _ci_job(name: str) -> str:
+    """One job's block of ci.yml, from `  <name>:` to the next top-level job."""
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
-    lines = ci.splitlines()
+    return re.split(r"\n  [a-z][\w-]*:\n", ci.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]
+
+
+def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
+    job = _ci_job("mcp-extras")
+    lines = job.splitlines()
     pip = next(i for i, l in enumerate(lines) if "pip install" in l and "starlette" in l)
     run = next(l for l in lines[pip + 1:] if "run_tests.py" in l)
     for extra in ("starlette", "uvicorn", "websockets", "httpx", "pyright", "bleak"):
@@ -122,6 +128,8 @@ def test_ci_runs_every_test_file_in_both_passes_or_in_the_sim_job():
     assert "--group sim" in sim and "--exclude" not in sim, sim
     flags = lambda line: sorted(re.findall(r"--no-skip \S+", line))
     assert flags(sim) == flags(extras) and flags(extras), (sim, extras)
+    # the no-skip list proves the sim needs no extra only while that job installs none
+    assert "pip install" not in _ci_job("mcp-sim") and "pip install" not in _ci_job("mcp"), "mcp and mcp-sim stay bare"
 
 
 def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
