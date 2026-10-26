@@ -20,7 +20,7 @@
 # old ip:port that no longer answers, and this script reads the current port from `adb mdns services`.
 # Inside WSL2 mDNS does not cross the NAT, so it asks Windows' adb.exe for the port instead (it only
 # reads the advert; the connect is still this adb's). Without either, read the port off the phone's
-# Wireless debugging screen. The phone's settings are never touched.
+# Wireless debugging screen. The phone's settings are never touched. IPv4 addresses only.
 #
 # Debug apks are signed with THIS machine's ~/.android/debug.keystore. A phone that holds a build
 # from another machine refuses the upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE). Either copy that
@@ -45,6 +45,7 @@ mdns_port() {
   local ip="$1" a out
   for a in "$ADB" "${ADB_EXE:-}" "$(command -v adb.exe 2>/dev/null || true)"; do
     [ -n "$a" ] && [ -x "$a" ] || continue
+    "$a" start-server >/dev/null 2>&1 || true   # a server that starts on the lookup itself has an empty cache
     out="$("$a" mdns services 2>/dev/null | tr -d '\r' |
            awk -v ip="$ip" '$2 ~ /_adb-tls-connect/ { split($3, hp, ":"); if (hp[1] == ip) { print hp[2]; exit } }')"
     [ -n "$out" ] && { echo "$out"; return 0; }
@@ -57,14 +58,15 @@ if [ -n "${ADB_CONNECT:-}" ]; then
   said=""
   [ "$ip" = "$ADB_CONNECT" ] || { said="$("$ADB" connect "$ADB_CONNECT" 2>&1 || true)"; echo "==> $said"; }
   case "$said" in
-    "connected to"*|"already connected"*) ;;
+    *"connected to"*) ;;   # also "already connected to"; adb may print its daemon start first
     *)
     port="$(mdns_port "$ip" || true)"
     [ -n "$port" ] || { echo "error: no wireless-debugging advert for $ip. Open Wireless debugging on the phone, or read the" >&2
                         echo "       port off that screen: ADB_CONNECT=$ip:<port>" >&2; exit 1; }
     echo "==> $ip: connect port $port (mDNS)"
     ADB_CONNECT="$ip:$port"
-    "$ADB" connect "$ADB_CONNECT" | sed 's/^/==> /' ;;
+    said="$("$ADB" connect "$ADB_CONNECT" 2>&1 || true)"; echo "==> $said"
+    case "$said" in *"connected to"*) ;; *) echo "error: adb could not connect to $ADB_CONNECT" >&2; exit 1 ;; esac ;;
   esac
   [ -n "${ADB_DEVICE:-}" ] || ADB_DEVICE="$ADB_CONNECT"
 fi
