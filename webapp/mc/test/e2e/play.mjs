@@ -762,7 +762,8 @@ step('real-stale-token', async ({ browser }) => {
     const pg = await openReal(browser, vite.base, '#build&tok=tok-before', 1280);
     // The refused writes below log their 401 as a console error; every other console error still fails the step.
     pg.removeAllListeners('console');
-    pg.on('console', m => { if (m.type() === 'error' && !/status of 401/.test(m.text())) failures.push(`${current}: [console] ${m.text().slice(0, 300)}`); });
+    const owner = current;
+    pg.on('console', m => { if (m.type() === 'error' && !/status of 401/.test(m.text())) failures.push(`${owner}: [console] ${m.text().slice(0, 300)}`); });
     await pickMode(pg, 'KING OF THE HILL');                     // CONTROL: the tab's token works before the restart
     await until(async () => (await mode()) === 'koth', 8000, 'the pick to land with the right token');
     await mc.stop();
@@ -996,7 +997,8 @@ step('real-hill', async ({ browser }) => {
     const strip = st => { if (st?.config) delete st.config.hill; return st; };
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
     const old = await ctx.newPage();
-    old.on('pageerror', e => failures.push(`${current}: [pageerror] ${e.message}`));
+    const owner = current;
+    old.on('pageerror', e => failures.push(`${owner}: [pageerror] ${e.message}`));
     await old.route('**/api/modes', async route => {
       const r = await route.fetch(); const modes = await r.json();
       for (const m of modes) if (m.mode === 'koth') m.match_items = (m.match_items || []).filter(k => k !== 'hill');

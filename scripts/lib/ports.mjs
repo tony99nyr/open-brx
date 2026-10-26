@@ -16,7 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pidAlive } from './proc.mjs';
 
-export const BLOCK_SIZE = 40;   // the most one script takes is 32: play.mjs's 3 named ports and 29 freePort() calls
+export const BLOCK_SIZE = 40;   // play.mjs takes the most: its 3 named ports and about 27 freePort() calls (F574)
 export const PORT_LO = 20000;
 const PORT_TOP = 32767;   // below Linux's default ephemeral range (32768-60999) and macOS's (49152-65535)
 
