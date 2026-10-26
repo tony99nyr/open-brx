@@ -64,3 +64,12 @@ export function chipHtml(t) {
   const why = t.reason || t.action ? `<div class="why">${t.reason || ''}${t.reason && t.action ? ' · ' : ''}${t.action ? `<span class="act">▸ ${t.action}</span>` : ''}</div>` : '';
   return `<div class="sychip ${t.tone}" data-sync="${t.stage}"><div class="l1">${mark} ${label}</div>${why}</div>`;
 }
+
+/** F595: how long after the whistle the phone stays urgent (a beat as soon as its ring empties, redials on a 2 s cap)
+ *  while no result has come. Past it the ordinary 10 s cap and the normal beats finish the job without the battery cost. */
+export const SYNC_URGENT_MAX_MS = 10 * 60 * 1000;
+/** F595: should the transport be urgent? From the end until the result arrives, for at most SYNC_URGENT_MAX_MS.
+ *  `es` is engine.state(); `now` is on the engine's clock, as `endedAt` is. */
+export function syncUrgent(es, now) {
+  return !!(es && es.ended && !es.result && es.endedAt && now - es.endedAt < SYNC_URGENT_MAX_MS);
+}
