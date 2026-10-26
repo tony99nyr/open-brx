@@ -109,8 +109,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 24   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo
+SCENARIO_VERSION = 25   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo; 25: a kit can pick no perk (F625)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -2248,13 +2248,14 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
     for wid in primaries:
         best[wid] = {}
         for preset in OP_GATED_PRESETS:
-            top = None
+            # F625: None is the "no perk" option, so "not chosen yet" needs its own sentinel; no perk wins a tie.
+            top = unset = object()
             for perk in options:
                 if str(perk) not in scores[wid][preset]:
                     continue
-                if top is None or scores[wid][preset][str(perk)] > scores[wid][preset][str(top)] + 1e-12:
+                if top is unset or scores[wid][preset][str(perk)] > scores[wid][preset][str(top)] + 1e-12:
                     top = perk
-            best[wid][preset] = top
+            best[wid][preset] = None if top is unset else top
     return best, scores
 
 
