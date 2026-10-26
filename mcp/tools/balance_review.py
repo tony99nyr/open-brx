@@ -86,6 +86,7 @@ import copy
 import datetime
 import hashlib
 import json
+import functools
 import math
 import os
 import subprocess
@@ -108,8 +109,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 22   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608)
+SCENARIO_VERSION = 23   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -551,6 +552,23 @@ def _heat_seed(mode):
     return "after_lockout" if branch == "after_lockout" else branch == "throughout"
 
 
+@functools.lru_cache(maxsize=None)
+def _median_rounds(hits: int, chance: float) -> int | None:
+    """F617: the round by which `hits` landed hits at `chance` a round have arrived with even odds, or None past any
+    magazine and reserve. Cached: a fight asks the same few (hits, chance) pairs on every shot (F620)."""
+    landed, done = [1.0] + [0.0] * (hits - 1), 0.0     # landed[j]: exactly j hits so far; done: all of them
+    for n in range(1, MEDIAN_ROUNDS_CAP + 1):
+        done += landed[-1] * chance
+        landed = [landed[0] * (1 - chance)] + [landed[j] * (1 - chance) + landed[j - 1] * chance
+                                               for j in range(1, hits)]
+        if done >= 0.5:
+            return n
+    return None
+
+
+MEDIAN_ROUNDS_CAP = 5000   # more rounds than any magazine and reserve hold
+
+
 def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, locked_until,
                     t, pull_ms, overshoot_ms, charged, count, dist, heat, heat_t,
                     heat_cool_while_firing, cooling_started=False):
@@ -567,6 +585,12 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
     burst_gap = g.burst_gap if is_gun else g.burst_gap_ms
     tap = g.tap if is_gun else g.tap_dmg
     damage = (g.gun_dmg + (g.head_dmg if headset_word_reaches(dist) and not g.ap else 0)) if is_gun else g.pull_dmg
+    # F617: a fixed-damage kill needs whole LANDED hits, and the finish is the round by which they have landed with
+    # even odds (the median, as time_to_kill and the finish batches report). Spending `damage * chance` a round
+    # undercounted them: a 5-health target read as killed by 26 x 0.20 = 5.2 expected Deagle damage.
+    hits_needed = math.ceil(pool / damage) if mode != "charge" and damage > 0 and pool > 0 else 0
+    median = _median_rounds(hits_needed, min(1.0, chance)) if hits_needed else None
+    fired = 0
     heat_rule = dict(g.heat)
     # F576: `overshoot_ms` is the field fit's median; a round waits its lognormal mean, as the sampled fight and
     # compile's published cycle do
@@ -612,9 +636,14 @@ def finish_estimate(g, *, pool, chance, ammo, reserve, reload_amount, ready_at, 
         fired_at = elapsed
         was_charged = mode == "charge" and charged
         ammo -= cost
-        pool -= dmg * chance
-        if pool <= 0:
-            return elapsed
+        if hits_needed:
+            fired += 1
+            if median is not None and fired >= median:
+                return elapsed
+        else:
+            pool -= dmg * chance
+            if pool <= 0:
+                return elapsed
         if mode == "bolt":
             if reserve <= 0:
                 return math.inf
@@ -859,7 +888,10 @@ class Fighter:
                     or (blocked and own == math.inf and ss.reserve > 0):
                 self._swap(1, t)
                 return True
-        elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)) or \
+        elif (ss.ammo == 0 and (ps.ammo > 0 or ps.reserve > 0)
+              # F617: the mirror of F608. An empty secondary with reserve reloads rather than return to a primary
+              # that cannot finish; it went back at once and the pair swapped to and fro.
+              and not (ss.reserve > 0 and self._finish_ms(0, target, t) == math.inf)) or \
                 (ps.ready_at <= t and ps.locked_until <= t and
                  self.kit.swap_ms + self._finish_ms(0, target, t) < self._finish_ms(1, target, t)):
             self._swap(0, t)
@@ -1927,7 +1959,9 @@ class KitMatch(B.Match):
         if p.active == 0 and (p.ammo <= 0 or p.w.heat and p.heat_lock_until > t) and p.stash[1][0] > 0 and \
                 current == math.inf:
             return 1
-        if p.active == 1 and p.ammo <= 0 and alternative < math.inf:
+        if p.active == 1 and p.ammo <= 0 and (alternative < math.inf or p.reserve <= 0 and
+                                               (p.stash[0][0] > 0 or p.stash[0][1] > 0)):
+            # F617: a spent secondary goes back to a primary that can still fire, even one that may not finish
             return 0
         return other if alternative < current else p.active
 
@@ -2253,6 +2287,9 @@ def _top(values) -> float:
 
 
 def _near_top(column: str, value: float, top: float) -> bool:
+    # A zero-success cell adds no value, even when every kit is within the absolute margin of zero.
+    if value <= 0:
+        return False
     if column == "ammo stress":
         return value >= top * (1 - NEAR_TOP_MARGIN[column])
     return value >= top - NEAR_TOP_MARGIN[column]

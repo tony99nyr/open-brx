@@ -307,3 +307,15 @@ def test_a_combo_leaves_its_finisher_after_the_last_round():
     match.heap = []
     match._shot(p, 1000.0, p.engage_id)
     assert p.shots == 1 and p.stash[1][0] == 0 and p.active == 0 and any(e[2] == match.SHOT for e in match.heap)
+
+
+def test_a_spent_secondary_returns_to_a_primary_that_can_still_fire():
+    # F617: one AR round cannot finish a full pool, so both finish estimates were infinite and the kit sat on a
+    # spent Glock for good
+    world = R.shipped_world()
+    match, p, q = _match(R.field_kit(world, "backup", "assault_rifle", "glock"))
+    match._swap_to(p, 1, 0.0)
+    p.ammo = p.reserve = 0
+    p.stash[0] = (1, 0) + tuple(p.stash[0][2:])
+    assert match._finish_ms(p, 0, 0.0, q.health + q.armour + q.shield) == math.inf
+    assert match._choose_slot(p, 0.0) == 0
