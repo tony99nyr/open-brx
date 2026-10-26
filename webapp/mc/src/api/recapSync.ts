@@ -1,12 +1,13 @@
 // F596/F597: the RECAP sync view (`mcp/brx_mcp/mc/types.py` `RecapSyncRow`/`RecapSyncView`, generated into contract.gen.ts).
 // `recapSync()` is the one place that reads the field. It tolerates an archived recap or an older MC with no `sync`,
 // and it never trusts a row: a pending view must never be read as "nothing to wait for" because a row was malformed.
-import type { RecapSyncRow, RecapSyncView, RecapView, SyncStage } from './types';
+import type { RecapSyncRow, RecapSyncView, RecapView, ReleaseReason, SyncStage } from './types';
 
 export type { RecapSyncRow, RecapSyncView };
 export type RecapSyncStage = SyncStage;
 
 const STAGES: readonly string[] = ['unlinked', 'linked', 'sending', 'received'];
+const RELEASE_REASONS: readonly ReleaseReason[] = ['sync', 'timeout', 'finalise'];
 const TRANSPORTS: readonly string[] = ['wifi', 'cellular', 'backhaul'];
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : undefined);
 
@@ -36,5 +37,9 @@ export function recapSync(rc: RecapView | null | undefined): RecapSyncView | und
   const pending = v.pending === true;
   if (!Array.isArray(v.rows) && !pending) return undefined;
   const rows = (Array.isArray(v.rows) ? v.rows : []).map(cleanRow).filter((r): r is RecapSyncRow => r !== null);
-  return { pending, finalised: v.finalised === true, result_changed: v.result_changed === true, rows };
+  const releasedBy = typeof v.released_by === 'string' && (RELEASE_REASONS as readonly string[]).includes(v.released_by) ? v.released_by as ReleaseReason : null;
+  const releaseIn = typeof v.release_in_s === 'number' && Number.isFinite(v.release_in_s) && v.release_in_s >= 0 ? Math.ceil(v.release_in_s) : undefined;
+  return { pending, finalised: v.finalised === true, result_changed: v.result_changed === true,
+    // An older MC has no bound and no reason: null, and no countdown.
+    released_by: pending ? null : releasedBy, ...(pending && releaseIn !== undefined ? { release_in_s: releaseIn } : {}), rows };
 }

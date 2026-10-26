@@ -8,6 +8,7 @@ import { Recap } from '../src/screens/Recap';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
 import type { Honor, RecapView, ScoreRow, State } from '../src/api/types';
+import { recapSync } from '../src/api/recapSync';
 import type { RecapSyncRow } from '../src/api/recapSync';
 import { demo, makeStore, mount, mountScreen } from './harness';
 
@@ -23,9 +24,14 @@ const phone = (id: string, over: Partial<RecapSyncRow> = {}): RecapSyncRow => ({
   stage: 'received', transport: null, end_unconfirmed: false, idle_s: 0, stuck: false, ...over });
 const STATION: RecapSyncRow = { kind: 'station', id: '1', name: 'HILL 1', team_id: null, stage: 'unlinked', transport: null, end_unconfirmed: false, idle_s: 20, stuck: false };
 
-interface SyncOver { pending?: boolean; finalised?: boolean; result_changed?: boolean }
-const syncOf = (rows: RecapSyncRow[], o: SyncOver = {}) => ({ pending: o.pending ?? rows.some(r => r.stage !== 'received'), finalised: o.finalised ?? false,
-  result_changed: o.result_changed ?? false, rows });
+interface SyncOver { pending?: boolean; finalised?: boolean; result_changed?: boolean; released_by?: string | null; release_in_s?: number }
+const syncOf = (rows: RecapSyncRow[], o: SyncOver = {}) => {
+  const pending = o.pending ?? rows.some(r => r.stage !== 'received');
+  const finalised = o.finalised ?? false;
+  return { pending, finalised, result_changed: o.result_changed ?? false,
+    released_by: o.released_by !== undefined ? o.released_by : pending ? null : finalised ? 'finalise' : 'sync',
+    ...(o.release_in_s !== undefined ? { release_in_s: o.release_in_s } : {}), rows };
+};
 
 async function stateWith(sync: unknown, rc: Partial<RecapView> = {}) {
   const d = await demo();
@@ -189,6 +195,45 @@ describe('F596 · FINALISE', () => {
     const none = await recapOf(syncOf([phone('p1'), phone('p2')]));
     expect(none.find('[data-testid="result-changed"]').length).toBe(0);
     none.unmount();
+  });
+});
+
+describe('A83 · the bounded wait', () => {
+  const rows = [phone('p1'), phone('p2', { stage: 'unlinked', stuck: true, idle_s: 130 })];
+  it('while pending, the header counts down to the release', async () => {
+    const m = await recapOf(syncOf(rows, { release_in_s: 72 }));
+    expect(strip(m.find('[data-testid="release-in"]')[0]?.textContent ?? '')).toBe('FINAL IN 1:12');
+    expect(m.find('[data-testid="results-pending"]').length).toBe(1);
+    m.unmount();
+    const old = await recapOf(syncOf(rows));
+    expect(old.find('[data-testid="release-in"]').length, 'an older MC sends no bound').toBe(0);
+    old.unmount();
+  });
+
+  it('a result the bound released says so, with what is still missing', async () => {
+    const m = await recapOf(syncOf([...rows, STATION], { pending: false, released_by: 'timeout' }));
+    expect(strip(m.text())).toMatch(/WINS/);
+    const line = m.find('[data-testid="final-without"]')[0];
+    expect(strip(line.textContent ?? '')).toBe('FINAL AFTER 2 MIN WITHOUT 1 PHONE (BRAVO) AND 1 HILL (HILL 1)');
+    expect(line.dataset.releasedBy).toBe('timeout');
+    expect(m.find('[data-testid="release-in"]').length).toBe(0);
+    m.unmount();
+  });
+
+  it('once the late rows arrive the line goes; FINALISE keeps its own words', async () => {
+    const all = await recapOf(syncOf([phone('p1'), phone('p2')], { pending: false, released_by: 'timeout' }));
+    expect(all.find('[data-testid="final-without"]').length).toBe(0);
+    all.unmount();
+    const fin = await recapOf(syncOf(rows, { pending: false, finalised: true }));
+    expect(strip(fin.find('[data-testid="final-without"]')[0].textContent ?? '')).toBe('FINAL WITHOUT 1 PHONE (BRAVO)');
+    fin.unmount();
+  });
+
+  it('recapSync never trusts a countdown on a released view or an unknown reason', () => {
+    const rc = (sync: unknown) => ({ sync }) as unknown as RecapView;
+    expect(recapSync(rc({ pending: false, finalised: false, result_changed: false, released_by: 'later', release_in_s: 5, rows: [] }))).toMatchObject({ released_by: null });
+    expect(recapSync(rc({ pending: false, finalised: false, result_changed: false, released_by: 'timeout', release_in_s: 5, rows: [] }))?.release_in_s).toBeUndefined();
+    expect(recapSync(rc({ pending: true, finalised: false, result_changed: false, released_by: 'timeout', release_in_s: 4.2, rows: [] }))).toMatchObject({ released_by: null, release_in_s: 5 });
   });
 });
 
@@ -357,6 +402,25 @@ describe('F596 · the mock mirrors the server', () => {
         expect(after.pending).toBe(false);
         expect(after.finalised).toBe(true);
       }
+    } finally { b.dispose(); }
+  });
+
+  it('?mock releases on the bound, two minutes after the whistle, as the server does', async () => {
+    vi.useFakeTimers();
+    const b = new MockBackend({ syncDemo: true });
+    try {
+      await b.pushLobby(true); await b.start(0, true);
+      await vi.advanceTimersByTimeAsync(3000);
+      await b.control('end');
+      type V = { pending: boolean; released_by: string | null; release_in_s?: number };
+      const first = (await b.getState()).recap!.sync as unknown as V;
+      expect(first).toMatchObject({ pending: true, released_by: null, release_in_s: 120 });
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(((await b.getState()).recap!.sync as unknown as V).pending, 'the quiet phone still holds it').toBe(true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const after = (await b.getState()).recap!.sync as unknown as V;
+      expect(after).toMatchObject({ pending: false, released_by: 'timeout' });
+      expect(after.release_in_s).toBeUndefined();
     } finally { b.dispose(); }
   });
 

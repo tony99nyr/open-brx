@@ -484,11 +484,13 @@ possession. The engine stores it as `state().result` (null until it arrives), fo
 on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
 message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
 screen (§4.4) shows "RESULT PENDING" beside the sync track until the push, which MC sends only at the release
-(A81: every phone and control hill in, or FINALISE), and "MC NOT REACHED · SEE MISSION CONTROL" once the
+(A81: every phone and control hill in, or FINALISE; A83: or 120 s after the whistle), and "MC NOT REACHED · SEE MISSION CONTROL" once the
 settle window (30 s) passes with no MC link and no link since the whistle; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
 (totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
 never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
-`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
+`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it. A83: after the release MC may re-send `result`
+for the same match when a late sync changes it. The phone decides what to show: RESULT UPDATED only when it already
+held a result for that `match_id` whose `winner` or `outcome` differs.
 
 ### 3.14 Background log sync (contracts A25) — game sync has priority
 
