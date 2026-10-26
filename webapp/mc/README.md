@@ -6,7 +6,7 @@ the 2026-08-25 Claude Design export (archived at `docs/archive/design/mc-export/
 
 ```
 npm install
-npm run dev                # http://localhost:5173, proxies /api + /ui-ws to the Python server on :8765
+npm run dev                # http://localhost:5173, proxies /api + /ui-ws to the Python server on 127.0.0.1:8765
                            #   (MC_PROXY_PORT=<port> points it at another MC)
 npm run dev -- --mode mock # or open http://localhost:5173/?mock — in-browser demo, no server needed
 npm run build              # tsc -b && vite build → dist/ (served by `python -m brx_mcp.mc` at /)

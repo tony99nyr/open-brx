@@ -12,12 +12,12 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 102.** Desk 5 · bench 93 · decision 4.
+**MVP open: 101.** Desk 4 · bench 93 · decision 4.
 
-**MVP DESK (5),** a keyboard is enough:
+**MVP DESK (4),** a keyboard is enough:
 - 🟠 **F595**
 - 🟡 **F547**
-- 🟢 **F512** · **F544** · **F574**
+- 🟢 **F512** · **F544**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -54,7 +54,6 @@ A keyboard is enough. Highest value first.
 - **F544 🟢 THE PLAYER PHONES' WIRELESS-DEBUG PORT CHANGES ON EVERY WI-FI RECONNECT.** brx1, 2026-10-16. Unplugged player phones reconnect to Wi-Fi often, and each time `adb` loses them until the port is re-read. `stay_on_while_plugged` only helps charging stations. Add to the bench-session skill and the sheet's kit step: re-pair or re-read the port after any Wi-Fi toggle, and keep a USB cable on the phone you must read. Owner brx1. `build`.
 - **F547 🟡 HUD: THE TOXIN RIFLE'S AMMO PIPS BECOME A BAR.** brx1, 2026-10-16 (bench C.12). Tony: the pips are broken, too many, and they take a lot of screen; use a bar. HUD lane (brx-hud): show Tony a static before and after gallery first (`ui-review-static-gallery`), then build. Owner brx4 with the HUD lane. `build`. **Decided 2026-10-24 (Tony, option C):** "i only like the pips when it represents the shots 1:1. I think I prefer the bar otherwise". `AMMO_PIP_MAX` 30 → 20, so the Toxin Rifle gets the bar (amber when low, no number); mags of 20 or fewer keep one pip per round, and Extended Mags moves the AMR, Glock, Bolt Rifle and Stinger to the bar. **Built 2026-10-24** (brx4, `e99300011`). Left: Tony's pick on a thinner bar from brx1's gallery.
 
-- **F574 🟢 THE `mc-play` BROWSER GATE FAILED TWICE ON ITS REAL-MC STEPS.** brx2, 2026-10-18 (the F512 check). Two main CI failures in 7 days, both in `webapp/mc/test/e2e/play.mjs` steps that start a real MC, and neither recurred on later runs: `real-fresh` "the three fresh-install pickers show against a real MC" (run `38122943216`, 2026-10-11) and `real-teams-hold` "timed out waiting for the first snapshot", then the PLAY screen and the TEAMS item (run `38268828276`, 2026-10-12). Not yet shown to be flakes: no rerun of either. brx3 widened the real-MC waits in `koth.mjs` for the `mc-koth` flake (`f5b7a4d39`); `play.mjs` has the same pattern and no such change. Read both steps' waits against that fix. F512 waits on this or on a green window. `desk`.
 
 ## MVP BENCH
 
