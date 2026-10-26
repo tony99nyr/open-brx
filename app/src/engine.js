@@ -2117,7 +2117,10 @@ export class Engine {
     // F632 review (Opus, Fable): a phone that dropped in the debrief and rejoins in KIT gets the open kit in this welcome,
     // and no assign follows it. MC opens the kit only for the next match, so an explicit open kit while ended leaves the
     // results (a KIT welcome carries no result to lose).
-    if (this.ended && node.policy && node.policy.kit_open === true && !node.result && !node.start) this._leaveEnded('the welcome finds the kit open');
+    // ...and so is a welcome that carries the next match's head (config and frames): MC clears `lobby_pushed` at the
+    // whistle, so a RECAP welcome never carries one (review: a phone that drops in the debrief and rejoins in LOBBY).
+    const nextLobby = !!(node.config && node.frames) || !!(node.policy && node.policy.kit_open === true);
+    if (this.ended && nextLobby && !node.result && !node.start) this._leaveEnded('the welcome is the next match\'s');
     const heldMatch = this.matchId;
     // T2 r2: a welcome that STARTS the match it names leaves `matchId` to `startAt`, so `startAt` decides "new match" from
     // the match this engine held before the welcome and runs the push path's reset and T-0 writes. Setting it here first

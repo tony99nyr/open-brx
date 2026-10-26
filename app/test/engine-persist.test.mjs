@@ -992,7 +992,8 @@ test('bounded A81 wait: RESULT UPDATED only on a phone that held an earlier verd
 
 // F632 (e2e 2026-10-26): MC re-sends `assign` on every player edit during the debrief (normal since F631). The phone treated
 // any assign after the end as a new match and wiped the result, so a re-teamed player who won after a late flip never saw it.
-// brx1: leave the results only on a real new-match signal (kit_open turning true, or MC's config for the next match).
+// The phone keeps its results only on an assign that says `recap: true` (MC sends it in RECAP only); NEW SESSION's
+// re-assign, a welcome for the next match (an open kit, or its head) and MC's next config leave them.
 function debrief() {
   const h = match({ stun: undefined });
   const blue = h.config.teams[0], yellow = h.config.teams[1];
@@ -1024,7 +1025,7 @@ test('F632: a rename during the debrief keeps the result and shows the new name'
   assert.equal(h.eng.player.display, 'RENAMED');
 });
 
-test('F632: the next match still clears the result, on the kit opening or on its config', () => {
+test('F632: the next match still clears the result, on its kit assign (no recap flag) or on its config', () => {
   const a = debrief();
   a.h.eng.onMcMessage({ kind: 'assign', body: { player: a.h.player, team: a.blue, policy: { kit_open: true } } });   // the host opens KIT
   assert.equal(a.h.eng.ended, false, 'the kit opening leaves the results');
@@ -1069,4 +1070,16 @@ test('F632: NEW SESSION\'s re-assign (muster, kit still closed, no recap flag) l
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: blue, policy: { kit_open: false } } });   // NEW SESSION -> muster
   assert.equal(h.eng.ended, false, 'the new session leaves them (SETTING UP THE GAME)');
   assert.equal(h.eng.result, null);
+});
+
+
+test('F632 review: a phone that drops in the debrief and rejoins in the next LOBBY leaves the results, gun linked or not', () => {
+  const { h } = debrief();
+  h.eng.hydrate({ player: h.player, config: h.config, frames: { ...golden, player_id: 'p1' }, policy: { kit_open: false } });
+  assert.equal(h.eng.ended, false, 'the next match\'s head in the welcome is the next lobby');
+  assert.equal(h.eng.result, null);
+  assert.equal(h.eng.matchId, null);
+  const r = debrief();                                       // control: a RECAP welcome (no head, closed kit) keeps them
+  r.h.eng.hydrate({ player: r.h.player, policy: { kit_open: false }, recap: true });
+  assert.equal(r.h.eng.ended, true);
 });
