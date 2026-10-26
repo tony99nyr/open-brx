@@ -274,7 +274,7 @@ export function _history(st) {
         ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
       return `<div class="hr"><span class="c t tab">${clock12(g.t)}</span>
         <span class="c m">${esc(String(g.mode || '—').toUpperCase())}</span>
-        <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}</span>
+        <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}${w && g.result_changed === true ? ' · UPDATED' : ''}</span>
         <span class="c s">${scores || '—'}</span>
         <span class="c k tab">${num(g.kills) == null ? '—' : g.kills} · ${num(g.deaths) == null ? '—' : g.deaths} · ${num(g.assists) == null ? '—' : g.assists}</span>
         <span class="c b tab">${num(g.best_streak) == null ? '—' : g.best_streak}</span></div>`;

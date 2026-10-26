@@ -2215,6 +2215,10 @@ export class Engine {
       this.log(`result for ${mid}: that end was real after all — showing the results`, 'li');
     }
     this._noMatchEnd = null;
+    // Bounded A81 wait: MC released without a late phone, and its sync changed the winner. Most players have tapped OK
+    // by then, so the results screen opens again, once, when the flag first turns true.
+    const updated = body.result_changed === true && !(this.result && this.result.result_changed === true);
+    if (updated && this.endAck) this.endAck = false;
     this.result = body; this.resultAt = this.now();
     this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}${body.result_changed === true ? ' · updated' : ''}`, 'lk');
     try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }

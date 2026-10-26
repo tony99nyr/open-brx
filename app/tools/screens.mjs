@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-reload-failed', 'live-bolt', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-updated', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-updated', 'result-updated-acked', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2021,6 +2021,14 @@ for (const view of VIEWS) {
     must(upd.h === 'LOSE', 'the updated headline is the new outcome: ' + upd.h);
     must(/^RESULT UPDATED\b/.test(upd.meta), 'the meta line does not lead with RESULT UPDATED: ' + upd.meta);
     must(!/RESULT UPDATED/.test(win.meta), 'a first result claims it was updated: ' + win.meta);
+  });
+  await step(`${view.name} A81 result-updated-acked: a player who tapped OK on the old outcome is shown the change`, async () => {
+    const pg = await open(view, 'result-updated-acked');
+    const r = await pg.evaluate(() => { const h = document.querySelector('.result .rh1');
+      return { h: h ? h.textContent.trim() : null, meta: (document.querySelector('.result .rmeta') || {}).textContent || '' }; });
+    await pg.close();
+    must(r.h === 'LOSE', 'the results screen did not open again on the changed result: ' + r.h);
+    must(/^RESULT UPDATED\b/.test(r.meta), 'the reopened screen does not say RESULT UPDATED: ' + r.meta);
   });
   for (const [stage, word] of [['result-draw', 'DRAW'], ['result-undecided', 'UNDECIDED']]) {
     await step(`${view.name} A24 ${stage}: the headline reads ${word}`, async () => {

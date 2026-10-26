@@ -85,3 +85,19 @@ test('history: appendEntry tags the session and drops the oldest past the cap', 
   assert.equal(out[0].match_id, 'm1', 'the oldest entry was not shifted out');
   assert.deepEqual(out[out.length - 1], { t: 2, match_id: 'new', session: 's1' });
 });
+
+test('bounded A81 wait: a changed result replaces the verdict in the one entry, medals and win_by included', () => {
+  let h = appendEntry([], { match_id: 'm1', mode: 'tdm', t: 1 });
+  h = applyResult(h, { match_id: 'm1', outcome: 'win', win_by: 'kills', team_scores: [{ team_id: 'a', score: 25 }],
+    my: { kills: 9, medals: ['mvp'] } }, { ended: true }).history;
+  h = applyResult(h, { match_id: 'm1', outcome: 'win', my: { kills: 9, medals: [] } }, { ended: true }).history;
+  assert.deepEqual(h[0].medals, ['mvp'], 'a score-only re-send with no medals keeps the old list, as before');
+  assert.equal(h[0].result_changed, undefined);
+  h = applyResult(h, { match_id: 'm1', outcome: 'lose', result_changed: true, my: { kills: 9, medals: [] } }, { ended: true }).history;
+  assert.equal(h.length, 1, 'still one entry for the match');
+  assert.equal(h[0].outcome, 'lose');
+  assert.deepEqual(h[0].medals, [], 'the changed verdict took the medal away');
+  assert.equal(h[0].win_by, null, 'a changed result keeps no field from the old verdict');
+  assert.equal(h[0].team_scores, null);
+  assert.equal(h[0].result_changed, true, 'MATCH HISTORY can mark it');
+});

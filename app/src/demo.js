@@ -807,6 +807,8 @@ export function startDemo({ engine, log }) {
       'over-sync-unlinked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2450, () => syncAs({ bound: false, pending: 3, drainedAt: 0, connType: 'cellular' })], [2600, 'endOk']],
       'result-win-team':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')]],
       // A81 bounded wait: MC released WIN without a late phone, whose sync then changed the winner (result_changed)
+      // ...and the common case: the player tapped OK on WIN long before the late phone synced
+      'result-updated-acked': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => engine.ackEnd()], [2900, () => ev.result('lose', { result_changed: true, my: { kills: 11, assists: 3, accuracy: 34, best_streak: 5, medals: [] } })]],
       'result-updated':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2800, () => ev.result('lose', { result_changed: true })]],
       'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
       'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
