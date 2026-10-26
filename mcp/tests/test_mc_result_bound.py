@@ -310,6 +310,7 @@ def test_a_phone_that_missed_the_end_is_ended_first_and_told_after_it_drains():
                                   "match_id": info["match_id"]}, clock["t"])
     mono["t"] += BOUND_MS
     s.tick()
+    assert [p[0] for p in net.pushes("result")] == ["node0"], "the release skipped the phone whose last beat is live"
     net.pushed.clear()
     clock["t"] += STALE_LIVE_RETELL_MS + 1       # the A34 door answers again: it re-sends the END
     net.simulate_status("node1", {"player_id": ps[1]["player_id"], "pending": 3, "arm_state": "live",
@@ -333,3 +334,15 @@ def test_a_phone_still_sending_gets_no_victory_cue_at_an_early_finalise():
     cued = [p[2]["player_id"] for p in net.pushes("feedback") if p[2].get("kind") == "victory"]
     assert s.recap()["winner"].get("team_id") == ps[1]["team_id"], "the winner is the phone still sending"
     assert ps[1]["player_id"] not in cued
+
+
+def test_a_drained_winner_is_cued_at_an_early_finalise():
+    """The positive control for the test above: the same win, every phone drained, and the cue goes out."""
+    s, net, clock, mono, ps, info = _ended(kills=[(1, 0)])
+    _beat(s, net, clock, 0, ps[0]["player_id"], pending=1)
+    _beat(s, net, clock, 1, ps[1]["player_id"])
+    mono["t"] += 5_000
+    s.finalise_recap()
+    s.tick()
+    cued = [p[2]["player_id"] for p in net.pushes("feedback") if p[2].get("kind") == "victory"]
+    assert ps[1]["player_id"] in cued

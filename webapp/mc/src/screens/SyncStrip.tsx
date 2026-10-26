@@ -49,7 +49,7 @@ export function waitingNames(rows: RecapSyncRow[]): string {
 export function waitingLine(rows: RecapSyncRow[], { byName = true }: { byName?: boolean } = {}): string {
   const open = waitingRows(rows);
   if (!open.length) return '';
-  const names = shortNames(open.map(r => r.name));
+  const names = shortNames(open.map(r => r.name)).replace(/ more$/, ' MORE');   // the header is upper case
   if (byName && names.length <= WAIT_NAMES_MAX) return `WAITING FOR ${names}`;
   const ph = open.filter(r => r.kind === 'phone').length, hills = open.length - ph;
   return `WAITING FOR ${[ph ? plural(ph, 'PHONE') : '', hills ? plural(hills, 'HILL') : ''].filter(Boolean).join(' · ')}`;

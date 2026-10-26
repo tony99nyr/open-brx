@@ -245,7 +245,7 @@ describe('A83 · the bounded wait', () => {
     const four = ['p1', 'p2', 'p3', 'p4'].map(id => phone(id, { stage: 'unlinked' }));
     const m = await recapOf(syncOf([...four, STATION]));
     const line = m.find('[data-testid="waiting-for"]')[0];
-    expect(strip(line.textContent ?? '')).toBe('WAITING FOR ALPHA, BRAVO, CHARLIE +2 MORE');
+    expect(line.textContent).toBe('WAITING FOR ALPHA, BRAVO, CHARLIE +2 MORE');   // raw: the header has no text-transform
     expect(line.title).toBe('Waiting for ALPHA, BRAVO, CHARLIE, DELTA, CONTROL POINT 1');
     m.unmount();
     const long = await recapOf(syncOf([phone('p1', { stage: 'unlinked', name: 'A VERY LONG CALLSIGN INDEED' }), phone('p2', { stage: 'unlinked', name: 'ANOTHER RATHER LONG ONE' })]));
