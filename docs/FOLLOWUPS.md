@@ -12,12 +12,12 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 104.** Desk 7 · bench 93 · decision 4.
+**MVP open: 105.** Desk 8 · bench 93 · decision 4.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (8),** a keyboard is enough:
 - 🟠 **F595**
 - 🟡 **F547** · **F619** · **F622**
-- 🟢 **F512** · **F544** · **F574**
+- 🟢 **F512** · **F544** · **F574** · **F624**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F623 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F625 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -57,6 +57,7 @@ A keyboard is enough. Highest value first.
 
 - **F574 🟢 THE `mc-play` BROWSER GATE FAILED TWICE ON ITS REAL-MC STEPS.** brx2, 2026-10-18 (the F512 check). Two main CI failures in 7 days, both in `webapp/mc/test/e2e/play.mjs` steps that start a real MC, and neither recurred on later runs: `real-fresh` "the three fresh-install pickers show against a real MC" (run `38122943216`, 2026-10-11) and `real-teams-hold` "timed out waiting for the first snapshot", then the PLAY screen and the TEAMS item (run `38268828276`, 2026-10-12). Not yet shown to be flakes: no rerun of either. brx3 widened the real-MC waits in `koth.mjs` for the `mc-koth` flake (`f5b7a4d39`); `play.mjs` has the same pattern and no such change. Read both steps' waits against that fix. F512 waits on this or on a green window. `desk`.
 - **F622 🟡 SWEEP THE SEPTEMBER FIRMWARE HEX ADDRESSES OUT OF THE CURRENT DOCS (PART OF [F324](post-mvp.md)).** brx2 for brx1, 2026-10-26; brx4 owns the sweep after its firmware-guards branch lands. About 110 older lines in `docs/` still carry September firmware hex addresses, mostly in `docs/experiment-log/2026-09.md` and `docs/firmware-image-research-plan.md`. They are also wrong: they predate the image base-address correction, so each one is off by that shift. This row names no address on purpose. Remove them from the current tree, or replace them with behaviour-level text, in line with F324. The sweep cannot clean git history: the old lines stay in past commits until Tony decides on a history purge. Done when no current doc carries a September firmware address.
+- **F624 🟢 LAND LANE: REGENERATE A CONFLICT THAT IS ONLY IN THE FOLLOWUPS INDEX BLOCK.** brx2 for brx1, 2026-10-26; owner brx5. The lander regenerates the FOLLOWUPS index block when it lands a batch, but a branch that edits FOLLOWUPS still conflicts on that block whenever another land changed it first. F621 went land-failed twice on 2026-10-26 this way (after brx5's F615, then F614), and each retry cost a merge and a regate. Fix in `scripts/land.mjs`: when every conflict hunk lies inside the generated index block, resolve it by running `scripts/followups-index.mjs` and go on. Refuse any other conflict, as today. Test: a branch whose only conflict is the index block lands; a branch with a conflict in a row still goes land-failed.
 
 ## MVP BENCH
 
