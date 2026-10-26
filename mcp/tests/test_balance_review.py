@@ -1054,6 +1054,20 @@ def test_no_kit_fights_on_shields_with_a_perk_mc_refuses_there():
     assert shields["AR EM"].guns[0].mag < standard["AR EM"].guns[0].mag, (shields["AR EM"], standard["AR EM"])
 
 
+def test_the_perk_choice_can_pick_no_perk():
+    """F625: `None` is the no-perk option, so it must be able to win the choice, and it wins a tie."""
+    world = R.shipped_world()
+    for winner in (None, "fast_hands"):
+        def fake(jobs, n_jobs=1, winner=winner):
+            return [1.0 if job[1].perk == winner else 0.5 for job in jobs]
+        with mock.patch.object(R, "run_cells", fake):
+            best, _ = R.choose_perks(world, [R.ANCHOR], 0.001, 1)
+        assert best[R.ANCHOR] == {"standard": winner, "shields": winner}, (winner, best)
+    with mock.patch.object(R, "run_cells", lambda jobs, n_jobs=1: [0.5] * len(jobs)):
+        best, _ = R.choose_perks(world, [R.ANCHOR], 0.001, 1)
+    assert best[R.ANCHOR] == {"standard": None, "shields": None}, best
+
+
 def test_a_hill_hold_counts_only_when_the_second_attacker_dies_too():
     world = R.shipped_world()
     holder, attacker = R.make_kit(world, "Holder", R.ANCHOR), R.make_kit(world, "AR", R.ANCHOR)
@@ -1156,7 +1170,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 24
+    assert R.SCENARIO_VERSION == 25
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
