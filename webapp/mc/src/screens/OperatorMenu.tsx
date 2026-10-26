@@ -19,6 +19,8 @@ const ACTIONS: { cmd: OperatorCmd; label: string; what: string; sent: string }[]
 ];
 
 const WORD: Record<OperatorCmd, string> = { resync: 'RESYNC', respawn: 'RESPAWN', relink: 'RELINK' };
+// F615: the keys that scroll the page; any other key (Tab, Enter on a button) leaves the menu following.
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
 
 /** The last action's outcome, in the operator's words. `null` = nothing sent this match. */
 export function operatorOutcome(r: LiveRow): { text: string; color: 'dim' | 'ok' | 'warn' } | null {
@@ -51,13 +53,24 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
   }, [armed]);
   useEffect(() => { setArmed(null); }, [r.status]);
   // A menu opened on the last row must move into the scrollable screen after its height settles.
+  // F615: and again when a line lands above it (content above grows one of its ancestors), until the operator scrolls
+  // the page themselves. The menu's own growth (a CONFIRM line, a notice) is always revealed.
   const box = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const menu = box.current;
     if (!menu) return;
-    const reveal = () => {
-      const ancestors: HTMLElement[] = [];
-      for (let parent = menu.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
+    const ancestors: HTMLElement[] = [];
+    for (let parent = menu.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
+    let follow = true;
+    // a press outside the menu (the scrollbar included), a wheel, a swipe or a scroll key
+    const stop = (e: Event) => {
+      if (e instanceof KeyboardEvent && !SCROLL_KEYS.has(e.key)) return;
+      // a press or a key inside the menu (Space on its own button) is the operator using it, not scrolling away
+      if ((e.type === 'pointerdown' || e.type === 'keydown') && e.target instanceof Node && menu.contains(e.target)) return;
+      follow = false;
+    };
+    const reveal = (entries?: ResizeObserverEntry[]) => {
+      if (!follow && !entries?.some(entry => entry.target === menu)) return;
       const scrollable = ancestors.find(parent =>
         parent.scrollHeight > parent.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(parent).overflowY));
       const screen = scrollable ?? document.scrollingElement;
@@ -69,10 +82,16 @@ export function OperatorMenu({ r, matchId, onClose }: { r: LiveRow; matchId: str
       if (bounds.bottom > frame.bottom - 4) screen.scrollTop += bounds.bottom - frame.bottom + 8;
       else if (bounds.top < frame.top + 4) screen.scrollTop -= frame.top - bounds.top + 8;
     };
-    const frame = requestAnimationFrame(reveal);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(reveal);
+    const frame = requestAnimationFrame(() => reveal());
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(entries => reveal(entries));
     observer?.observe(menu);
-    return () => { cancelAnimationFrame(frame); observer?.disconnect(); };
+    for (const parent of ancestors) observer?.observe(parent);
+    const input = ['wheel', 'touchmove', 'keydown', 'pointerdown'] as const;
+    for (const type of input) window.addEventListener(type, stop, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame); observer?.disconnect();
+      for (const type of input) window.removeEventListener(type, stop);
+    };
   }, []);
   const noRespawn = state?.config.respawn?.type === 'none';
   const outcome = operatorOutcome(r);
