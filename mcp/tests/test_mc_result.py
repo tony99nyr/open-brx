@@ -612,3 +612,29 @@ def test_late_team_kill_and_late_enemy_kill_give_the_same_board_in_either_arriva
     scores, _rows, end_rel, _post = a
     assert end_rel == 1500, f"the late enemy kill reached the cap first, so the end moves back to it: {a}"
     assert max(scores.values()) == 2, a
+
+
+def test_a_debrief_team_edit_never_moves_the_match_result_but_a_name_edit_shows():
+    """F631: the live Scorer took a RECAP team edit (meant for the next match) into this match's team scores, so the
+    console's winner flipped, and the next late fact re-stored and pushed the flipped winner to every phone. After the
+    whistle the result is the roster as played; a display-name edit is cosmetic and still shows."""
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    s.finalise_recap()
+    winner = s.recap()["winner"]
+    score = s.recap()["score"]
+    red, blue = ps[0]["team_id"], ps[1]["team_id"]
+    s.patch_player(ps[0]["player_id"], team_id=blue)        # the next match's teams
+    s.patch_player(ps[1]["player_id"], team_id=red)
+    s.patch_player(ps[0]["player_id"], display="NEWNAME")
+    recap = s.recap()
+    assert recap["winner"] == winner and recap["score"] == score, "a debrief team edit moved this match's result"
+    assert next(r for r in recap["rows"] if r["player_id"] == ps[0]["player_id"])["team_id"] == red
+    assert next(r for r in recap["rows"] if r["player_id"] == ps[0]["player_id"])["display"] == "NEWNAME"
+    net.pushed.clear()
+    clock["t"] += 1_000
+    net.simulate_node_message("node1", "event_batch", {"events": [{
+        "type": "hit_taken", "t": s.match.scorer.end_t - 500, "match_id": info["match_id"],
+        "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 1, "seq": 9}]}, clock["t"])
+    assert all(p[2]["winner"] == winner for p in net.pushes("result")), "a late fact pushed the re-teamed winner"

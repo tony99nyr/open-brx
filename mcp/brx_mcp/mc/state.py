@@ -1902,8 +1902,10 @@ class Session:
             else:
                 p.pop("voice_slots", None)
         sc = self._m().scorer
-        if "team_id" in fields and sc and pid in sc.stats:
-            sc.stats[pid].team_id = p["team_id"]   # team scores + friendly rule follow a mid-match re-team
+        if "team_id" in fields and sc and pid in sc.stats and self.in_play():
+            # Team scores and the friendly rule follow a MID-MATCH re-team. After the whistle a team edit is for the next
+            # match: this match's result stays the roster as played (F631), while a display-name edit still shows.
+            sc.stats[pid].team_id = p["team_id"]
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
