@@ -32,7 +32,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { freePort } from '../../../../scripts/lib/ports.mjs';   // F523: a port from this job's own block
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -716,12 +716,9 @@ step('hold', async ({ browser, base }) => {
 // ---------------------------------------------------------------- against a REAL MC (VQA round 1:
 // "no test renders PLAY against a real MC")
 
-// F540 (bench A.7, 2026-10-16): after an MC restart the open tab kept the OLD token; every write was refused and the
-// console only flickered. Now a refused write shows a RED line with the cure, the refused socket backs off instead of
-// reconnecting twice a second, and pasting the new token under TOKEN ▸ makes the next write land.
 step('real-proxy-family', async () => {
   // F574: CI run 38268828276 gave the real MC 127.0.0.1:44349 while the mock steps' vite still listened on
-  // localhost:44349 over IPv6 (a port-0 pick checks IPv4 only). vite proxied to `localhost:<MC>`, reached that
+  // localhost:44349 over IPv6 (a port-0 pick checked IPv4 only; ports.mjs now checks both). vite proxied to `localhost:<MC>`, reached that
   // other vite over ::1, and the whole step saw 502s and closed sockets. Here a decoy holds [::1]:P and the real MC
   // holds 127.0.0.1:P: the proxy must reach MC, which binds IPv4 (`--host`, 0.0.0.0 by default).
   const port = await freePort();
@@ -732,9 +729,9 @@ step('real-proxy-family', async () => {
   const mc = await startRealMC({ port });
   // resolve localhost as the runner does (::1 first), so this proves the target on any box
   const preload = path.join(HERE, 'lib', 'localhost-v6-first.mjs');
-  const vite = await startVite(mc.port, { host: '127.0.0.1', env: { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${preload}`.trim() } });
+  const vite = await startVite(mc.port, { host: '127.0.0.1', env: { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${pathToFileURL(preload).href}`.trim() } });
   try {
-    const r = await fetch(`${vite.base}/api/state`);
+    const r = await fetch(`${vite.base}/api/state`, { signal: AbortSignal.timeout(15000) });
     const body = await r.text();
     expect(r.ok && /"phase"/.test(body), `REST through the proxy reaches MC, not [::1]:${port} (saw ${r.status} ${body.slice(0, 40)})`);
     const snapshot = await new Promise(resolve => {
@@ -749,6 +746,9 @@ step('real-proxy-family', async () => {
   } finally { await vite.stop(); await mc.stop(); await new Promise(r => decoy.close(r)); }
 });
 
+// F540 (bench A.7, 2026-10-16): after an MC restart the open tab kept the OLD token; every write was refused and the
+// console only flickered. Now a refused write shows a RED line with the cure, the refused socket backs off instead of
+// reconnecting twice a second, and pasting the new token under TOKEN ▸ makes the next write land.
 step('real-stale-token', async ({ browser }) => {
   let mc = await startRealMC({ token: 'tok-before' });
   const vite = await startVite(mc.port);

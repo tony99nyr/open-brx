@@ -16,7 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pidAlive } from './proc.mjs';
 
-export const BLOCK_SIZE = 32;   // the most one script takes is 21: play.mjs's 3 named ports and 18 freePort() calls
+export const BLOCK_SIZE = 40;   // the most one script takes is 32: play.mjs's 3 named ports and 29 freePort() calls
 export const PORT_LO = 20000;
 const PORT_TOP = 32767;   // below Linux's default ephemeral range (32768-60999) and macOS's (49152-65535)
 
@@ -37,17 +37,25 @@ export function portHi(lo = ephemeralLo()) {
   return hi;
 }
 
-/** True when a listener can bind `port` on 127.0.0.1 now. */
-export const canBind = port => new Promise(resolve => {
+/** True when a listener can bind `port` on `host` now. A host this machine lacks (no IPv6) counts as free. */
+const bindsOn = (port, host) => new Promise(resolve => {
   const s = net.createServer(); s.unref();
-  s.once('error', () => resolve(false));
-  s.listen(port, '127.0.0.1', () => s.close(() => resolve(true)));
+  s.once('error', e => resolve(e.code === 'EADDRNOTAVAIL' || e.code === 'EAFNOSUPPORT'));
+  s.listen(port, host, () => s.close(() => resolve(true)));
 });
+/** True when a listener can bind `port` on 127.0.0.1 and on ::1 now. F574: vite binds `localhost`, which is ::1 on a
+ *  GitHub runner, so a port free on IPv4 alone can still be another test's (CI run 38268828276). */
+export const canBind = async port => (await bindsOn(port, '127.0.0.1')) && bindsOn(port, '::1');
 
-const pick0 = () => new Promise((resolve, reject) => {
+const pick0once = () => new Promise((resolve, reject) => {
   const s = net.createServer(); s.unref(); s.on('error', reject);
   s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); });
 });
+/** A port-0 pick that also binds on ::1 (canBind). */
+const pick0 = async () => {
+  for (let i = 0; i < 50; i++) { const port = await pick0once(); if (await canBind(port)) return port; }
+  throw new Error('scripts/lib/ports.mjs: no port-0 pick bound on both loopbacks in 50 tries');
+};
 
 export const claimDirName = (uid = os.userInfo().uid) => path.join('/tmp', `brx-test-ports-${uid}`);
 
