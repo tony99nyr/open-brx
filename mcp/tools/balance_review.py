@@ -2214,6 +2214,11 @@ def _name(world: World, wid: str) -> str:
     return world.cat._row(wid).get("name", wid)
 
 
+def preset_refuses(world: World, perk: str | None, preset: str) -> bool:
+    """MC's honest pickers refuse `perk` on `preset` (`compile.preset_block`), so no player fields it there."""
+    return bool(perk) and _compile_mod.Compiler(perks=world.perks).preset_block(perk, preset) is not None
+
+
 def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
                  anchor_world: World | None = None, heat_cool_while_firing=True) -> tuple[dict, dict]:
     """Choose each primary's perk on Standard and Shields against the baseline plain AR."""
@@ -2227,6 +2232,8 @@ def choose_perks(world: World, primaries: list[str], scale: float, n_jobs: int,
                     any(world.cat._row(wid).get(k) is None for k in ("ap_dmg", "ap_fire_ms")):
                 continue
             for preset in OP_GATED_PRESETS:
+                if preset_refuses(world, perk, preset):
+                    continue          # MC refuses it there (Armour Piercing or an armour grant on Shields)
                 k = make_kit(world, f"{_name(world, wid)}|{perk}", wid, SECONDARY, perk, preset=preset)
                 for d in DIST:
                     jobs.append(("duel", k, plain_ar, d, preset, AIM, FIGHT_CAP_MS, False, reps,
@@ -2310,8 +2317,10 @@ def dominance_matrix(world: World, specs: list[KitSpec], scale: float, n_jobs: i
     aw = anchor_world or world
     kits = {s.name: make_kit(world, s.name, s.primary, s.secondary, s.perk, "combo" if s.combo else "single")
             for s in specs}
+    # A combo's fixed perk that MC refuses on Shields (Body Armor's armour grant) fights there with no perk.
     shields_kits = {s.name: make_kit(world, s.name, s.primary, s.secondary,
-                                    s.perk if s.combo else s.shield_perk, "combo" if s.combo else "single", "shields")
+                                    (None if preset_refuses(world, s.perk, "shields") else s.perk) if s.combo
+                                    else s.shield_perk, "combo" if s.combo else "single", "shields")
                     for s in specs}
     fks = {s.name: field_kit(world, s.name, s.primary, s.secondary, s.perk, s.combo) for s in specs}
     names = [s.name for s in specs]
@@ -2657,10 +2666,14 @@ def normalise(entry: dict) -> dict:
         raise ValueError('sim.perk_exempt is gone: set "reload_type": "bolt" on the row (a bolt ignores the ammo and reload perks)')
     if set(sim) - {"style"}:
         raise ValueError(f"unknown sim keys {sorted(set(sim) - {'style'})}; the only one is style")
+    # An old perk id (quick_hands, quick_switch) names the perk that replaced it, as stored loadouts do, so every
+    # later step (the picks, the gains, the involved kits) reads the current id.
     if "perk_id" in entry and "changes" in entry:
-        return {"kind": "perk_diff", "perk_id": entry["perk_id"], "changes": dict(entry["changes"]), "sim": sim}
+        return {"kind": "perk_diff", "perk_id": canonical_perk_id(entry["perk_id"]), "changes": dict(entry["changes"]),
+                "sim": sim}
     if "perk" in entry:
-        return {"kind": "perk_row", "perk_id": entry["perk"]["perk_id"], "row": entry["perk"], "sim": sim}
+        row = dict(entry["perk"], perk_id=canonical_perk_id(entry["perk"]["perk_id"]))
+        return {"kind": "perk_row", "perk_id": row["perk_id"], "row": row, "sim": sim}
     if "weapon_id" in entry and "changes" in entry:
         return {"kind": "diff", "weapon_id": entry["weapon_id"], "changes": dict(entry["changes"]), "sim": sim}
     row = entry.get("row")

@@ -1017,6 +1017,43 @@ def test_hill_holder_does_not_hit_second_attacker_before_arrival():
     assert hits and min(hits) >= R.HILL_SECOND_ATTACKER_MS, hits
 
 
+def test_no_kit_fights_on_shields_with_a_perk_mc_refuses_there():
+    """Honest pickers: MC refuses Armour Piercing and an armour grant on Shields, so the Shields perk choice never
+    scores them there and a combo with Body Armor fights there with no perk. Shields kits carry the Shields effects."""
+    world = R.shipped_world()
+    refused = {p for p in R.modelled_perks(world.perks) if R.preset_refuses(world, p, "shields")}
+    assert {"body_armor", "armor_piercing"} <= refused, refused
+
+    class Stop(Exception):
+        pass
+
+    seen = []
+
+    def capture(jobs, n_jobs=1):
+        seen.extend(jobs)
+        raise Stop
+
+    with mock.patch.object(R, "run_cells", capture):
+        try:
+            R.choose_perks(world, [R.ANCHOR], 0.001, 1)
+        except Stop:
+            pass
+        shields_perks = {job[1].perk for job in seen if job[0] == "duel" and job[4] == "shields"}
+        assert shields_perks and not shields_perks & refused, shields_perks
+        assert {job[1].perk for job in seen if job[4] == "standard"} & refused   # still scored on Standard
+        seen.clear()
+        combo = R.KitSpec("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor", True)
+        em = R.KitSpec("AR EM", R.ANCHOR, R.SECONDARY, "extended_mags", False, "extended_mags")
+        try:
+            R.dominance_matrix(world, [combo, em], 0.001, 1)
+        except Stop:
+            pass
+    shields = {k.name: k for job in seen if job[0] == "duel" and job[4] == "shields" for k in job[1:3]}
+    standard = {k.name: k for job in seen if job[0] == "duel" and job[4] == "standard" for k in job[1:3]}
+    assert shields["CR+Sniper+BA"].perk is None and standard["CR+Sniper+BA"].perk == "body_armor"
+    assert shields["AR EM"].guns[0].mag < standard["AR EM"].guns[0].mag, (shields["AR EM"], standard["AR EM"])
+
+
 def test_a_hill_hold_counts_only_when_the_second_attacker_dies_too():
     world = R.shipped_world()
     holder, attacker = R.make_kit(world, "Holder", R.ANCHOR), R.make_kit(world, "AR", R.ANCHOR)
@@ -1419,9 +1456,9 @@ def test_candidate_files_round_trip_and_every_path_must_move_something():
         plain_mag = R.make_kit(base, "x", "assault_rifle").guns[0].mag
         em = {p: R.make_kit(base, "x", "assault_rifle", perk="extended_mags", preset=p).guns[0].mag
               for p in (None, "standard", "shields")}
-        assert em == {None: 2 * plain_mag, "standard": 2 * plain_mag, "shields": int(1.5 * plain_mag)}, (plain_mag, em)
+        assert em == {None: 2 * plain_mag, "standard": 2 * plain_mag, "shields": round(1.5 * plain_mag)}, (plain_mag, em)
         assert R.field_kit(base, "x", "assault_rifle", perk="extended_mags", preset="shields").models[0].mag == \
-            int(1.5 * plain_mag)
+            round(1.5 * plain_mag)
 
         row = R.load_candidate(write(_copy("assault_rifle", "test_ar_new", "Test AR new", dmg=10)))
         base, cand = R.build_worlds(row)
@@ -1431,7 +1468,9 @@ def test_candidate_files_round_trip_and_every_path_must_move_something():
         base, cand = R.build_worlds(perk)
         assert base.fx("fast_hands")["reload_mult"] == 0.5 and cand.fx("fast_hands")["reload_mult"] == 0.4
         for old_id in ("quick_hands", "quick_switch"):   # an old id names Fast Hands, as stored loadouts do
-            _, cand = R.build_worlds(R.load_candidate(write({"perk_id": old_id, "changes": {"reload_mult": 0.4}})))
+            old = R.load_candidate(write({"perk_id": old_id, "changes": {"reload_mult": 0.4}}))
+            assert old["entry"]["perk_id"] == "fast_hands", old   # the verdict's picks and gains read this id
+            _, cand = R.build_worlds(old)
             assert cand.fx("fast_hands")["reload_mult"] == 0.4, old_id
             fh = dict(next(r for r in base.perks._rows if r["perk_id"] == "fast_hands"), perk_id=old_id)
             _, cand = R.build_worlds(R.load_candidate(write({"perk": fh})))
@@ -2119,7 +2158,9 @@ def test_heat_ap_facts_and_shields_perk_selection():
     assert "heat" in facts and "ap_dmg" in facts and "ap_fire_ms" in facts
     best, scores = R.choose_perks(w, ["assault_rifle"], REPS_SCALE, 1, w)
     assert set(best["assault_rifle"]) == {"standard", "shields"}
-    assert "armor_piercing" in scores["assault_rifle"]["shields"]
+    # MC refuses Armour Piercing and an armour grant on Shields (honest pickers), so only Standard scores them.
+    assert {"armor_piercing", "body_armor"} <= set(scores["assault_rifle"]["standard"])
+    assert not {"armor_piercing", "body_armor"} & set(scores["assault_rifle"]["shields"])
 
 
 def test_op_rule_checks_ap_against_lowest_health():
