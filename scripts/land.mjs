@@ -479,7 +479,90 @@ async function resetWorktree(base) {
     await git(['clean', '-fdq'], { cwd: WT });   // not -x: keep the ignored node_modules
   }
 }
-/** base + each branch in order, as --no-ff merge commits. A conflicting branch is aborted and left out. */
+const FOLLOWUPS = 'docs/FOLLOWUPS.md';
+const INDEX_START = '<!-- index:start -->\n', INDEX_END = '<!-- index:end -->';
+/** `text` with the generated index block emptied, or null unless it has exactly one start and one end marker. */
+function withoutIndex(text) {
+  const start = text.indexOf(INDEX_START), end = text.indexOf(INDEX_END);
+  if (start < 0 || end < start + INDEX_START.length || text.indexOf(INDEX_START, start + 1) >= 0 ||
+      text.indexOf(INDEX_END, end + 1) >= 0) return null;
+  return text.slice(0, start + INDEX_START.length) + text.slice(end);
+}
+const STAMP = /^Updated: (\d{4}-\d{2}-\d{2})\./gm, NO_STAMP = 'Updated: 0000-00-00.';
+/** `text` with its one `Updated: YYYY-MM-DD.` date blanked, and that date; or the text unchanged and null. */
+function withoutStamp(text) {
+  const found = [...text.matchAll(STAMP)];
+  if (found.length !== 1) return { text, date: null };
+  return { text: text.replace(STAMP, NO_STAMP), date: found[0][1] };
+}
+/** The ids of an index block, one list per line, in the order the block lists them. */
+const blockLines = block => block.split('\n').map(line => [...line.matchAll(/\*\*([A-Z]\d+)\*\*/g)].map(m => m[1]));
+/** True if `theirs` lists, on some line, two ids of `base` in the other order, or a new id ahead of one of base's: a
+ *  hand edit of the bench plan. The generator only ever appends a new id after the old ones. */
+function reordered(base, theirs) {
+  const rank = new Map();
+  for (const id of blockLines(base).flat()) if (!rank.has(id)) rank.set(id, rank.size);
+  return blockLines(theirs).some(ids => {
+    const known = ids.filter(id => rank.has(id)).map(id => rank.get(id));
+    const lastKnown = ids.findLastIndex(id => rank.has(id));   // -1 on a line of only new ids: nothing to check
+    return known.some((r, i) => i > 0 && r < known[i - 1]) || ids.slice(0, Math.max(lastKnown, 0)).some(id => !rank.has(id));
+  });
+}
+const indexBlock = text => text.slice(text.indexOf(INDEX_START) + INDEX_START.length, text.indexOf(INDEX_END));
+/** F624: a merge in progress whose only conflict is inside the FOLLOWUPS index block or its `Updated:` date. Every
+ *  land that touches FOLLOWUPS changes that generated block, so each queued FOLLOWUPS branch used to conflict there.
+ *  Merge the three versions again with the block emptied and the stamp's date blanked: a clean merge means nothing
+ *  else conflicts, so write it with the later of the two dates (a lane that works past midnight stamps tomorrow),
+ *  regenerate the block, and commit the merge. Anything else returns false, and the branch is a conflict as before. */
+async function resolveIndexConflict(id, files) {
+  if (files.length !== 1 || files[0] !== FOLLOWUPS || !fs.existsSync(path.join(WT, 'scripts/followups-index.mjs'))) return false;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-land-index-'));
+  try {
+    const stage = [], dates = [], raws = {};
+    for (const n of [2, 1, 3]) {   // ours, base, theirs: the order `git merge-file` takes
+      // a missing stage (added on one side, deleted on the other) throws: not an index conflict
+      let raw;
+      try {
+        raw = execFileSync('git', ['show', `:${n}:${FOLLOWUPS}`],
+          { cwd: WT, env: GIT_ENV, encoding: 'utf8', maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch { return false; }
+      raws[n] = raw;
+      // a criss-cross merge's virtual base can carry conflict markers of its own (longer ones deeper down): leave
+      // that to a person
+      if (n === 1 && /^<{7,} /m.test(raw)) return false;
+      const stamp = withoutStamp(raw);
+      const text = withoutIndex(stamp.text);
+      // every version needs one block and one stamp: a side that kept a real stamp line could win the merge unseen
+      if (text === null || stamp.date === null) return false;
+      if (n !== 1) dates.push(stamp.date);
+      stage.push(path.join(tmp, `${n}.md`));
+      fs.writeFileSync(stage.at(-1), text);
+    }
+    // histogram, as ort merges: Myers could align a hunk outside the block differently. A git without the flag refuses
+    // it, and that is a conflict, as before.
+    if ((await git(['merge-file', '--diff-algorithm=histogram', ...stage], { cwd: WT, ok: true })).code !== 0) return false;
+    // we keep our block's order (the bench plan), so their hand reorder of it would be lost: leave that to a person
+    if (reordered(indexBlock(raws[1]), indexBlock(raws[3]))) return false;
+    let merged = fs.readFileSync(stage[0], 'utf8');
+    // put our block back before the generator runs: it keeps the ids' order from the block it reads (the bench plan).
+    // Their block follows it, so their new ids keep the order they wrote; for an id in both, ours comes first and wins.
+    const block = indexBlock(raws[2]) + indexBlock(raws[3]);
+    if (merged.split(INDEX_START).length !== 2 || merged.split(INDEX_END).length !== 2) return false;
+    const at = merged.indexOf(INDEX_START) + INDEX_START.length;
+    merged = merged.slice(0, at) + block + merged.slice(at);
+    if (merged.split(NO_STAMP).length !== 2) return false;   // a line that holds the blank in a version's own text
+    merged = merged.replace(NO_STAMP, `Updated: ${dates.sort().at(-1)}.`);
+    fs.writeFileSync(path.join(WT, FOLLOWUPS), merged);
+    try { execFileSync(process.execPath, ['scripts/followups-index.mjs'], { cwd: WT, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch { return false; }
+    await git(['add', '--', FOLLOWUPS], { cwd: WT });
+    // -m, not --no-edit: the merge message would keep git's `# Conflicts:` lines
+    return (await git(['commit', '-q', '-m', `Land ${id}`], { cwd: WT, ok: true })).code === 0;
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+}
+
+/** base + each branch in order, as --no-ff merge commits. A conflicting branch is aborted and left out, unless its only
+ *  conflict is in the generated FOLLOWUPS index or its stamp (resolveIndexConflict). */
 async function buildCandidate(base, ids, tips) {
   await resetWorktree(base);
   const merged = [], conflicts = [];
@@ -487,6 +570,11 @@ async function buildCandidate(base, ids, tips) {
     const r = await git(['merge', '--no-ff', '--no-edit', '-q', '-m', `Land ${id}`, tips[id]], { cwd: WT, ok: true });
     if (r.code === 0) { merged.push(id); continue; }
     const files = lines(await gitOut(['diff', '--name-only', '--diff-filter=U'], { cwd: WT }));
+    if (await resolveIndexConflict(id, files)) {
+      console.log(`land: ${id}: the conflict was only in the FOLLOWUPS index or its Updated stamp; resolved it`);
+      merged.push(id);
+      continue;
+    }
     await git(['merge', '--abort'], { cwd: WT, ok: true });
     conflicts.push({ id, files });
   }

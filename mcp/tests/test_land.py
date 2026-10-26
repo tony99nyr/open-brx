@@ -451,6 +451,198 @@ def test_missing_followups_inputs_do_not_stop_a_land():
             _assert_landed(t, id_)
 
 
+def _followups(t: Lane, desk: str, bench: str = "", updated: str = "2026-10-25", notes: str = "stay here") -> str:
+    """A FOLLOWUPS.md with these rows and the index block the real generator writes for them."""
+    path = t.dir / "followups-draft.md"
+    path.write_text(f"Updated: {updated}.\n\n<!-- index:start -->\n<!-- index:end -->\n\n## MVP DESK\n" + desk +
+                    f"\nDesk notes {notes}.\n\n## MVP BENCH\n" + bench + "\nBench notes stay here.\n\n## MVP DECISION\n")
+    subprocess.run([NODE, str(REPO / "scripts" / "followups-index.mjs"), str(path)], check=True)
+    return path.read_text()
+
+
+def _seed_followups(t: Lane, text: str):
+    seed = t.dir / "mover"
+    _git("pull", "-q", "origin", "main", cwd=seed)
+    (seed / "docs").mkdir(exist_ok=True)
+    (seed / "scripts").mkdir(exist_ok=True)
+    (seed / "docs" / "FOLLOWUPS.md").write_text(text)
+    shutil.copyfile(REPO / "scripts" / "followups-index.mjs", seed / "scripts" / "followups-index.mjs")
+    _git("add", "-A", cwd=seed)
+    _git("commit", "-q", "-m", "index seed", cwd=seed)
+    _git("push", "-q", "origin", "HEAD:main", cwd=seed)
+
+
+Z1 = "- **Z1 🟡 A ROW.** text\n"
+Z2 = "- **Z2 🟠 A DESK ROW.** text\n"
+Z3 = "- **Z3 🟢 A BENCH ROW.** text\n"
+
+
+def test_two_rows_that_conflict_only_in_the_index_block_both_land_with_one_index():
+    # F624 (2026-10-26): every land that touched FOLLOWUPS made each queued FOLLOWUPS branch conflict on the
+    # generated index block, three land retries in one day. Each branch here adds a row in its own section, and each
+    # commits the index its generator wrote, so the two index blocks differ line by line and git conflicts there.
+    with Lane() as t:
+        _seed_followups(t, _followups(t, Z1))
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2)})
+        b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _followups(t, Z1, Z3)})
+        assert subprocess.run([GIT, "merge-tree", "--write-tree", f"origin/land/{a}", f"origin/land/{b}"], cwd=t.dev,
+                              capture_output=True).returncode == 1, "the fixture must conflict (control)"
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        assert f"land: {b}: the conflict was only in the FOLLOWUPS index or its Updated stamp; resolved it" in r.stdout, r.stdout
+        landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote) + "\n"
+        assert landed == _followups(t, Z1 + Z2, Z3), landed
+        assert "<<<<<<<" not in landed
+        # the merge commit itself carries the whole index, not only the batch's regenerate commit after it
+        land_b = _git("log", "--format=%H", f"--grep=^Land {b}$", "main", cwd=t.remote)
+        assert _git("show", f"{land_b}:docs/FOLLOWUPS.md", cwd=t.remote) + "\n" == landed
+
+
+def _regenerated(t: Lane, text: str) -> str:
+    """`text` with its index block regenerated in place, as a lane's own --check fix does: the kept order stays."""
+    path = t.dir / "followups-draft.md"
+    path.write_text(text)
+    subprocess.run([NODE, str(REPO / "scripts" / "followups-index.mjs"), str(path)], check=True)
+    return path.read_text()
+
+
+def test_a_resolved_index_keeps_the_order_main_had():
+    # F624 (Fable review): the generator keeps the ids' order from the block it reads ("the order is the bench plan").
+    # A resolver that regenerated from an emptied block put every list back in row order, and nobody saw it move.
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    with Lane() as t:
+        seed = _followups(t, Z1 + Z5).replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**")
+        assert "- 🟡 **Z5** · **Z1**" in seed, seed
+        _seed_followups(t, seed)
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _regenerated(t, seed.replace(Z5, Z5 + Z2))})
+        b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _regenerated(t, seed.replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, b)
+        landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote)
+        assert "- 🟡 **Z5** · **Z1**" in landed and "- 🟢 **Z3**" in landed and "- 🟠 **Z2**" in landed, landed
+
+
+def test_a_hand_reorder_or_an_odd_stamp_on_their_side_is_still_a_conflict():
+    # F624 (Opus round 2): the resolver keeps our block's order and blanks only a stamp it can read. A branch that
+    # reorders the bench plan by hand, places its new row ahead of old ones (Fable round 2), or writes a stamp the
+    # pattern does not match, must not be overwritten silently.
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    Z6 = "- **Z6 🟡 A NEW ROW PLACED FIRST.** text\n"
+    for name in ("new-first", "reorder", "odd-stamp"):
+        with Lane() as t:
+            seed = _followups(t, Z1 + Z5, updated="2026-10-25")
+            _seed_followups(t, seed)
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z5 + Z2, updated="2026-10-27")})
+            if name == "new-first":
+                # Z6's row sits at the top of the section, far from a's row; the block lists it first by hand
+                plain = _regenerated(t, seed.replace(Z1, Z6 + Z1).replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))
+                theirs = plain.replace("- 🟡 **Z1** · **Z5** · **Z6**", "- 🟡 **Z6** · **Z1** · **Z5**")
+            else:
+                plain = _followups(t, Z1 + Z5, Z3, updated="2026-10-25")
+                theirs = (plain.replace("- 🟡 **Z1** · **Z5**", "- 🟡 **Z5** · **Z1**") if name == "reorder"
+                          else plain.replace("Updated: 2026-10-25.", "Updated: 2026-10-26 (late)."))
+            assert theirs != plain, name
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": theirs})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a)
+            assert t.result(b)["status"] == "conflict", (name, t.result(b))
+            assert "resolved it" not in r.stdout, (name, r.stdout)
+
+
+def test_shapes_a_lane_really_writes_resolve_and_keep_their_order():
+    # F624 (round 3). Controls for the refusals above, and two shapes a lane writes for real:
+    # - plain: the new-first fixture without the hand reorder (the generator appended Z6 last), so the refusal there
+    #   is the reorder check, not the merge (Opus);
+    # - only-new: two new rows under a marker the section had no line for, a line of only new ids (Fable);
+    # - their-order: two new rows the branch ordered by hand among themselves, kept as the branch wrote them (Fable).
+    Z5 = "- **Z5 🟡 A LATER ROW.** text\n"
+    Z6 = "- **Z6 🟡 A NEW ROW PLACED FIRST.** text\n"
+    Z7, Z8 = "- **Z7 🔴 A NEW RED ROW.** text\n", "- **Z8 🔴 ANOTHER NEW RED ROW.** text\n"
+    for name in ("plain", "only-new", "their-order"):
+        with Lane() as t:
+            seed = _followups(t, Z1 + Z5, updated="2026-10-25")
+            _seed_followups(t, seed)
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z5 + Z2, updated="2026-10-27")})
+            if name == "plain":
+                theirs = _regenerated(t, seed.replace(Z1, Z6 + Z1).replace("## MVP BENCH\n", "## MVP BENCH\n" + Z3))
+                want = "- 🟡 **Z1** · **Z5** · **Z6**"
+            else:
+                theirs = _regenerated(t, seed.replace("## MVP BENCH\n", "## MVP BENCH\n" + Z7 + Z8))
+                want = "- 🔴 **Z7** · **Z8**"
+                if name == "their-order":
+                    theirs = theirs.replace(want, "- 🔴 **Z8** · **Z7**")
+                    want = "- 🔴 **Z8** · **Z7**"
+            assert want in theirs, (name, theirs)
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": theirs})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a, b)
+            assert f"land: {b}: the conflict was only in" in r.stdout, (name, r.stdout)
+            assert want in _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote), name
+
+
+def test_two_stamps_that_conflict_land_with_the_later_date():
+    # F624: a lane that works across midnight stamps tomorrow's date while the branch landed before it kept today's.
+    # The lander takes the later date, whichever side it is on, and regenerates the index too.
+    for first, second in (("2026-10-27", "2026-10-26"), ("2026-10-26", "2026-10-27")):
+        with Lane() as t:
+            _seed_followups(t, _followups(t, Z1))
+            a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2, updated=first)})
+            b = t.submit("b-bench-row", {"docs/FOLLOWUPS.md": _followups(t, Z1, Z3, updated=second)})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a, b)
+            landed = _git("show", "main:docs/FOLLOWUPS.md", cwd=t.remote) + "\n"
+            assert landed == _followups(t, Z1 + Z2, Z3, updated="2026-10-27"), (first, landed)
+
+
+def test_a_followups_conflict_outside_the_index_block_still_fails():
+    # F624: only the generated block is the lander's to resolve. A row both branches edited is a real conflict, even
+    # when the index block conflicts too, and so is a line of prose both changed, and a conflict in FOLLOWUPS beside
+    # another file's.
+    for name, a_files, b_files, files in (
+            ("prose", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2, notes="from a")},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3, notes="from b")}, ["docs/FOLLOWUPS.md"]),
+            ("same-row", {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from a") + Z2)},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1.replace("text", "from b"), Z3)}, ["docs/FOLLOWUPS.md"]),
+            ("other-file", {"docs/FOLLOWUPS.md": _followups_text(Z1 + Z2), "same.txt": "from a\n"},
+             {"docs/FOLLOWUPS.md": _followups_text(Z1, Z3), "same.txt": "from b\n"}, ["docs/FOLLOWUPS.md", "same.txt"])):
+        with Lane() as t:
+            _seed_followups(t, _followups(t, Z1))
+            a = t.submit(f"{name}-a", {f: v(t) if callable(v) else v for f, v in a_files.items()})
+            b = t.submit(f"{name}-b", {f: v(t) if callable(v) else v for f, v in b_files.items()})
+            r = t.land("run")
+            assert r.returncode == 0, r.stdout + r.stderr
+            _assert_landed(t, a)
+            res = t.result(b)
+            assert res["status"] == "conflict" and sorted(res["conflict_files"]) == files, (name, res)
+            assert "resolved it" not in r.stdout, (name, r.stdout)
+
+
+def test_a_generator_that_refuses_the_merged_rows_is_a_conflict_and_the_next_branch_still_lands():
+    # F624 (Opus review): the resolver writes and stages FOLLOWUPS before the generator runs. When the generator refuses
+    # the merged rows, the branch is a conflict as before, and the abort leaves the worktree clean for the next one.
+    with Lane() as t:
+        _seed_followups(t, _followups(t, Z1))
+        a = t.submit("a-desk-row", {"docs/FOLLOWUPS.md": _followups(t, Z1 + Z2)})
+        unmarked = _followups(t, Z1, Z3).replace("## MVP BENCH\n", "## MVP BENCH\n- **Z4 A ROW WITH NO MARKER.** text\n")
+        b = t.submit("b-bad-row", {"docs/FOLLOWUPS.md": unmarked})
+        c = t.submit("c-clean", {"other.txt": "c\n"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a, c)
+        assert t.result(b)["status"] == "conflict", t.result(b)
+        assert "resolved it" not in r.stdout, r.stdout
+
+
+def _followups_text(desk: str, bench: str = "", updated: str = "2026-10-25", notes: str = "stay here"):
+    """A file value for the table above: built inside the Lane, because the generator writes to its temp dir."""
+    return lambda t: _followups(t, desk, bench, updated, notes)
+
+
 def test_a_docs_only_candidate_is_gated_with_changed_against_its_base():
     # E3 (2026-10-10): 21% of lands changed only docs and each paid for every job. A docs-only candidate runs
     # test-all's own --changed selection (the jobs that read docs) against the base it was merged onto.
