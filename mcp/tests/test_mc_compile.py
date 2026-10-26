@@ -1278,7 +1278,7 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     bolts = {w["weapon_id"] for w in cat.all() if cat._row(w["weapon_id"]).get("reload_type") == "bolt"}
     for r in rows:
         if r["htk"] > 1 and not r["is_cell"] and r["fam"] != ("sidearm",) and r["id"] not in bolts:
-            # F576: the Shotgun's 400 ms pump plus the field fight overshoot gives 886 ms.
+            # F576: the Shotgun's 400 ms pump plus the field fight overshoot gives 886 ms, 974 with the headset word (F614).
             floor = 850 if r["id"] == "shotgun" else 1200
             assert floor <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside {floor}-3500ms"
 

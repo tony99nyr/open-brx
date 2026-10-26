@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 105.** Desk 8 · bench 93 · decision 4.
+**MVP open: 104.** Desk 7 · bench 93 · decision 4.
 
-**MVP DESK (8),** a keyboard is enough:
+**MVP DESK (7),** a keyboard is enough:
 - 🟠 **F595**
-- 🟡 **F547** · **F614** · **F619** · **F622**
+- 🟡 **F547** · **F619** · **F622**
 - 🟢 **F512** · **F544** · **F574**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -49,7 +49,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F614 🟡 THE PUBLISHED TIME-TO-KILL ENDS AT THE LAST PULL, NOT AT THE HEADSET WORD.** brx2, 2026-10-25 (brx1's call; Opus review of F602). `WeaponCatalog.time_to_kill()` (and the `ttk_ms`/`bars.ttk` it feeds) counts a kill at its last pull. When that kill needs the pull's headset word, it lands about 88 ms later on the wire (the Shotgun against 115 always does). Add the delay to the published number. A correctness fix, not a balance change; after the sim fixes and the phase C pass 6 and 7 re-runs. Owner: whoever owns compile then. `build`.
 - **F619 🟡 SIM: A CHARGE GUN'S FINISH ESTIMATE STILL COUNTS A FRACTION OF A HIT.** brx2, 2026-10-25 (Opus review of F617). F617 made a fixed-damage finish need whole landed hits, but charge mode (opener and taps of different damage) still spends `damage * chance` against the pool in `balance_review.finish_estimate`. At a low pool, a Charge Rifle reads "finishes in one tap" at any hit chance, so the duel and field swap choices keep it over an honestly scored secondary. Give charge mode a whole-hit floor (for example `ceil(pool / tap)` landed rounds). After the F578 phase C re-runs. Owner: brx2. `build`.
 - **F595 🟠 THE POST-MATCH SYNC IS SLOW.** brx1 for Tony, 2026-10-24. The phones' post-match sync to MC takes too long. Owner brx4. `desk`. **Measured (field 2026-10-17 bundle):** the MC Mac slept through every timed whistle, 355 of the 540 s of post-whistle wait; after it woke, phones reached MC in 2 to 8 s; one phone on cellular waited 132 s more, because the operator switched the tunnel on 2.5 min after the whistle. **Built:** (1) MC holds the Mac awake itself (`keepawake.py`, caffeinate) and (3) `hello.pending` plus a fresh beat when an ack empties a batch (A78), both landed be0cca6b2. (2) MC starts the backhaul during kit (Tony: "i dont want to slow the arm"): a kit-start plus a cellular backstop, because on 10-17 every phone reported wifi through kitting and one reported cellular only during LIVE. With it the phone keeps the LAN and dials the tunnel only after it loses the LAN (A28.3 LAN-first, brx1), and A28.4 counts a LAN phone on cellular while the tunnel is up. Not in the 0.4.27 APK.
 - **F512 🟢 MAKE THE CI BROWSER GATE BLOCKING AFTER 7 GREEN DAYS.** brx2, 2026-10-11 (T17): the `mc-play` job in `.github/workflows/ci.yml` runs `webapp/mc/test/e2e/play.mjs` on every push, non-blocking (`continue-on-error: true`) from 2026-10-11. On or after 2026-10-18, if it was green on every main run of the last 7 days, remove `continue-on-error`; if it flaked, file the flake and keep it non-blocking. `test_ci_browser_gate_stays_non_blocking_until_its_row_closes` pins the pairing. Owner brx2. `build`. **→ 2026-10-18 (checked, not assumed):** not yet. Of 151 main CI runs from 2026-10-11, `mc-play` passed 132 and failed 2 (16 had no `mc-play` job; 1 still ran): 2026-10-11 run `38122943216` ("the three fresh-install pickers show against a real MC") and 2026-10-12 run `38268828276` ("timed out waiting for the first snapshot", then the PLAY screen). Both are F574. The earliest clean 7-day window ends 2026-10-19 at about 15:17 UTC; check again then.
