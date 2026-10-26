@@ -4676,8 +4676,9 @@ class Session:
             match.release_reason = (cast(ReleaseReason, reason) if reason in _RELEASE_REASONS else
                                     "finalise" if match.finalised else "sync" if match.released else None)
             if not match.released:
-                # The bounded wait resumes with the time it had left at the write, less the time MC was down (a wall step
-                # back counts as none). A snapshot from before the bound is timed from end_t.
+                # The bounded wait resumes with the time it had left at the write, less the time MC was down, by the wall
+                # clock: a step back counts as none, a step forward as time down (it can release early, the safe way, as
+                # the sync rows' idle age does). A snapshot from before the bound is timed from end_t.
                 due_in = m.get("release_due_in_ms")
                 if not isinstance(due_in, int) or isinstance(due_in, bool) or due_in < 0:
                     due_in = max(0, SYNC_STUCK_S * 1000 - max(0, self.now_ms() - (scorer.end_t or self.now_ms())))
@@ -5571,7 +5572,8 @@ class Session:
         left_ms = match.release_due_mono - self.mono_ms()
         if left_ms > 0:
             # A silent field changes nothing else, so each second left is a change of its own: the console's FINAL IN
-            # counts down, and the snapshot keeps the time left within the persist debounce for a crash.
+            # counts down, and the snapshot keeps the time left within the persist debounce for a crash. The session.json
+            # write every 2 s while pending is deliberate.
             left_s = -(-left_ms // 1000)
             if left_s != match.release_in_told:
                 match.release_in_told = left_s

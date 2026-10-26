@@ -235,6 +235,7 @@ def test_the_time_mc_was_down_counts_against_the_bound():
     s.tick()
     clock["t"] += 20_000                 # MC is down 20 s
     s2, _ = restart_no_repersist(s, clock)
+    s2._persist_path = None              # s3 below must read s's write, not s2's resume
     mono2 = {"t": 0}
     s2.mono_ms = lambda: mono2["t"]
     assert s2.resume_match() == "recap" and _sync(s2)["release_in_s"] == 10
@@ -243,3 +244,15 @@ def test_the_time_mc_was_down_counts_against_the_bound():
     assert s3.resume_match() == "recap"
     s3.tick()
     assert _sync(s3)["released_by"] == "timeout", "down past the bound: it releases at once"
+
+
+def test_a_silent_field_walks_the_whole_bound_with_nothing_pushed_until_the_release():
+    s, net, clock, mono, ps, _ = _ended()
+    for _ in range(SYNC_STUCK_S - 1):
+        mono["t"] += 1_000
+        s.tick()
+        assert net.pushes("result") == [] and net.pushes("score") == [] and _sync(s)["pending"]
+    assert _sync(s)["release_in_s"] == 1
+    mono["t"] += 1_000
+    s.tick()
+    assert _sync(s)["released_by"] == "timeout" and len(net.pushes("result")) == 2
