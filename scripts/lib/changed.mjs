@@ -5,12 +5,13 @@
 // branch relies on the re-gate rule in CLAUDE.md instead of the full suite.
 //
 // Fail safe: a known tree with no path rule or a full-suite trigger selects EVERYTHING (`filters: null`).
-// Unknown directories select mcp-docs because docs hygiene scans every tracked and unignored repository file.
+// Unknown directories select every Python job (`mcp`): docs hygiene scans every tracked and unignored repository
+// file, and test_build_state_in_checkout reads every tracked tsconfig and Vite config, wherever it lives.
 //
 // F626: the Python suite is three jobs (scripts/lib/jobs.mjs): mcp-docs (run_tests.py GROUPS['docs'], the files that
-// read docs widely), mcp-sim (the balance sims) and mcp (the rest). A filter is a name SUBSTRING, so `mcp` selects all
-// three; a docs, protocol/, .claude/ or .github/ path adds `mcp-docs`, never bare `mcp`, plus the jobs in
-// MCP_DOCS_READERS for the few such paths an mcp or mcp-sim test reads.
+// read docs widely), mcp-sim (the balance sims) and mcp-core (the rest). A filter is a name SUBSTRING, so `mcp`
+// selects all three; a docs, protocol/, .claude/ or .github/ path adds `mcp-docs`, never bare `mcp`, plus the jobs in
+// MCP_DOCS_READERS for the few such paths an mcp-core or mcp-sim test reads.
 //
 // The edges below are derived from the actual cross-directory readers (2026-10-04 review), not guessed:
 //   - app/src/hud/medalicons.js is read by webapp/mc/test/medalicons-gen.test.ts (mc-vitest needs app/**);
@@ -23,7 +24,8 @@
 //     app/tools/logsync-gate.mjs starts app/test/mc_server.py, which imports mcp/brx_mcp.
 //   - app/test/announcer.test.mjs reads docs/announcer.md. mcp/tests/test_docs_hygiene.py reads .claude/skills/**.
 //   - the mcp tests that read a docs, protocol/ or .claude/ path were found by tracing every file the suite opens
-//     (2026-10-26, F626); MCP_DOCS_READERS lists the ones outside mcp-docs.
+//     (2026-10-26, F626); MCP_DOCS_READERS lists the ones outside mcp-docs. No mcp-core or mcp-sim test read a root
+//     Markdown file in that trace.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { inputsForJob, jobsReadingLib } from './jobs.mjs';
@@ -42,12 +44,13 @@ export const NARROWED = [
     why: 'the app reads mcp/ directly only through golden_bundle.json (SCREENS_SENSITIVE below selects it); the rest '
       + 'reaches these gates through generated files, whose regenerated output selects them and whose staleness test '
       + 'runs in mcp-docs. The lander runs both in full on every code candidate.' },
-  { jobs: ['mcp', 'mcp-sim'], inputs: ['docs/', 'protocol/', '.claude/', '.github/', 'unknown/'],
-    why: 'F626: these trees hold docs and reference files. Every mcp test file that reads them widely is in run_tests.py GROUPS[\'docs\'], '
-      + 'the mcp-docs job they do select, and the few pages an mcp or mcp-sim test reads select that job through '
-      + 'MCP_DOCS_READERS. test_test_all_changed.py derives the readers from the sources. The lander gates a docs-only '
-      + 'candidate with --changed, so a missed reader could land red; CI runs every mcp file on main. A .github workflow '
-      + 'is a full-suite trigger. `unknown/` stands for a top-level directory this module does not know.' },
+  { jobs: ['mcp-core', 'mcp-sim'], inputs: ['docs/', 'protocol/', '.claude/', '.github/'],
+    why: 'F626: these trees hold docs and reference files. The test files that read them widely are in run_tests.py '
+      + 'GROUPS[\'docs\'], the mcp-docs job these paths do select. The pages an mcp-core or mcp-sim test reads select '
+      + 'that job through MCP_DOCS_READERS, and a tsconfig or Vite config anywhere selects mcp-core. '
+      + 'test_test_all_changed.py checks the docs paths those tests name against these rules, a static check that can '
+      + 'miss a path built at run time. The lander gates a docs-only candidate with --changed, so a missed reader could '
+      + 'land red; CI runs every mcp test file on main. A .github workflow is a full-suite trigger.' },
   { jobs: ['*'], inputs: ['scripts/lib/'],
     why: 'scripts/lib is the runner; its unit tests run in mcp. A runner change can still change how any job runs, '
       + 'so this is safe only because scripts/lib is code: the lander gates it in full, and flake blame uses '
@@ -66,25 +69,28 @@ export const narrowed = (job, input) => narrowedBy(job, input) >= 0;
 const MC_READS_FROM_APP = new Set(inputsForJob('mc-tsc').filter(p => p.startsWith('app/') && !p.endsWith('/')));
 
 /** Every substring a rule below can add to the selection. Keep this in step with the rules themselves. */
-export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'mcp-docs', 'mcp-sim', 'chaos'];
+export const JOB_NAME_SUBSTRINGS = ['app-', 'site', 'mc-', 'mc-vitest', 'mcp', 'mcp-core', 'mcp-docs', 'mcp-sim', 'chaos'];
 
-// F626: the docs, protocol/ and .claude/ paths that a test OUTSIDE mcp-docs reads, each with its readers. A path ending
-// in `/` is a prefix. `mcp` here also selects mcp-docs and mcp-sim (a substring), so keep this list short: a test that
-// reads docs widely belongs in run_tests.py GROUPS['docs'] instead. test_test_all_changed.py checks it against the
-// sources and pins each entry.
+// F626: the docs, protocol/, .claude/ and root Markdown paths that a test OUTSIDE mcp-docs reads, each with its readers.
+// A path ending in `/` is a prefix; `match` is a pattern on the whole path. Keep this list short: a test that reads
+// docs widely belongs in run_tests.py GROUPS['docs'] instead. test_test_all_changed.py checks it against the docs
+// paths the mcp-core and mcp-sim tests name, and pins each entry.
 export const MCP_DOCS_READERS = [
-  { path: 'docs/spec/contracts.md', jobs: ['mcp'],
+  { path: 'docs/spec/contracts.md', jobs: ['mcp-core'],
     why: 'test_contract_generated, test_contract_kinds, test_bundle_contract and test_sticks3_core check the wire spec against the code' },
-  { path: 'docs/spec/utility.md', jobs: ['mcp'], why: 'test_sticks3_core checks the Stick constants against it' },
-  { path: 'docs/weapon-design.md', jobs: ['mcp'], why: 'test_weapon_derivations checks its tables against weapons.json' },
-  { path: 'docs/platform/install.md', jobs: ['mcp'], why: 'test_launcher and test_cloudflared_upgrade check the minimum versions it quotes' },
-  { path: 'docs/platform/run.md', jobs: ['mcp'], why: 'test_cloudflared_upgrade checks the minimum version it quotes' },
-  { path: 'docs/mac-dev-runbook.md', jobs: ['mcp'], why: 'test_cloudflared_upgrade checks the minimum version it quotes' },
-  { path: 'docs/reference/sound-catalog.md', jobs: ['mcp'], why: 'test_regen_runner copies it and expects soundbank_community --check to pass' },
-  { path: 'protocol/captures/', jobs: ['mcp'], why: 'test_mc_compile replays the real captures' },
+  { path: 'docs/spec/utility.md', jobs: ['mcp-core'], why: 'test_sticks3_core checks the Stick constants against it' },
+  { path: 'docs/weapon-design.md', jobs: ['mcp-core'], why: 'test_weapon_derivations checks its tables against weapons.json' },
+  { path: 'docs/platform/install.md', jobs: ['mcp-core'], why: 'test_launcher and test_cloudflared_upgrade check the minimum versions it quotes' },
+  { path: 'docs/platform/run.md', jobs: ['mcp-core'], why: 'test_cloudflared_upgrade checks the minimum version it quotes' },
+  { path: 'docs/mac-dev-runbook.md', jobs: ['mcp-core'], why: 'test_cloudflared_upgrade checks the minimum version it quotes' },
+  { path: 'docs/reference/sound-catalog.md', jobs: ['mcp-core'], why: 'test_regen_runner copies it and expects soundbank_community --check to pass' },
+  { path: 'protocol/captures/', jobs: ['mcp-core'], why: 'test_mc_compile replays the real captures' },
   { path: '.claude/skills/balance-review/', jobs: ['mcp-sim'], why: 'test_balance_review reads the skill' },
+  { path: 'tsconfig or Vite config', match: /(^|\/)(tsconfig[^/]*\.json|(vite|vitest)[^/]*\.config\.[mc]?[jt]s)$/, jobs: ['mcp-core'],
+    why: 'test_build_state_in_checkout reads every tracked one, wherever it lives' },
 ];
-const docsReadersOf = p => MCP_DOCS_READERS.filter(r => (r.path.endsWith('/') ? p.startsWith(r.path) : p === r.path));
+const docsReadersOf = p => MCP_DOCS_READERS.filter(r => (r.match ? r.match.test(p)
+  : r.path.endsWith('/') ? p.startsWith(r.path) : p === r.path));
 
 // The one mcp/ file the phone app reads directly (app/src/demo.js imports it), so a change to it also runs the HUD
 // screen and moments gates. Everything else under mcp/ reaches the app only through a generated file (the contract,
@@ -159,9 +165,10 @@ export function selectJobs(paths) {
       if (p === 'docs/announcer.md') { filters.add('app-test'); reasons.push(`${p}: app/test/announcer.test.mjs reads this file -> app-test`); }
     }
     if (p.startsWith('protocol/')) { filters.add('mcp-docs'); matched = true; reasons.push(`${p}: protocol/** -> mcp-docs (docs hygiene)`); }
+    // hardware/ is code with readers in mcp-core (the Stick host tests) and mcp-docs (hygiene, generated headers): keep `mcp`
     if (p.startsWith('hardware/')) { filters.add('mcp'); reasons.push(`${p}: hardware/** -> mcp (the Stick host tests)`); matched = true; }
     // scripts/test-all.mjs itself is a full-suite trigger (above); scripts/lib/** (its scheduling/lock/--changed
-    // logic) is unit tested from mcp/tests/test_test_all_*.py, so it runs inside the mcp job.
+    // logic) is unit tested from mcp/tests/test_test_all_*.py, so it runs inside the mcp-core job.
     if (p.startsWith('scripts/')) { filters.add('mcp'); reasons.push(`${p}: scripts/** -> mcp (its unit tests)`); matched = true; }
     const libReaders = jobsReadingLib(p);
     if (libReaders.length) {
@@ -170,29 +177,30 @@ export function selectJobs(paths) {
     }
     if (p.startsWith('.claude/')) { filters.add('mcp-docs'); reasons.push(`${p}: .claude/** -> mcp-docs (docs hygiene)`); matched = true; }
     if (p.startsWith('.github/')) { filters.add('mcp-docs'); reasons.push(`${p}: .github/** -> mcp-docs (docs hygiene)`); matched = true; }
-    // mcp tests read root files (start.sh, .gitignore, .gitattributes), so a root file that is not Markdown runs all three
+    // mcp-core and mcp-docs tests read root files (start.sh, .gitignore, .gitattributes, any tsconfig). A root file
+    // that is not Markdown is code, never docs-only, and rare, so it keeps every Python job (`mcp`), not a narrowing.
     if (!matched && !p.includes('/')) { filters.add('mcp'); reasons.push(`${p}: root file -> mcp (its tests and docs hygiene read root files)`); matched = true; }
     if (!matched) {
       const top = p.split('/')[0];
       if (!KNOWN_TOP_LEVEL.has(top)) {
-        filters.add('mcp-docs');
-        reasons.push(`${top}/: unknown top-level directory -> mcp-docs (the docs hygiene guards scan the whole repo)`);
+        filters.add('mcp');
+        reasons.push(`${top}/: unknown top-level directory -> mcp (docs hygiene and test_build_state_in_checkout scan the whole repo)`);
         matched = true;
         continue;
       }
       return { filters: null, reasons: [`${p}: known tree has no mapping rule -- fail safe, running everything`] };
     }
   }
-  // `mcp` already matches mcp-docs and mcp-sim (a substring), so the narrower names add nothing beside it
-  if (filters.has('mcp')) { filters.delete('mcp-docs'); filters.delete('mcp-sim'); }
+  // `mcp` already matches every Python job (a substring), so the narrower names add nothing beside it
+  if (filters.has('mcp')) for (const job of ['mcp-core', 'mcp-docs', 'mcp-sim']) filters.delete(job);
   return { filters: [...filters], reasons };
 }
 
 /** True when every path is documentation: under docs/, or a Markdown file at the repo root (CLAUDE.md,
  *  CONTRIBUTING.md, README.md). The lander gates such a candidate with --changed (land.mjs `gate`), so selectJobs
- *  above must send every docs path to each job that reads docs; test_test_all_changed.py derives that list from the
- *  sources and fails if a reader is missed. Such a candidate runs mcp-docs and site, not all of mcp (F626). Empty
- *  means "not docs only". */
+ *  above must send every docs path to each job that reads docs. test_test_all_changed.py checks the docs paths the
+ *  sources name against these rules: a static check, so a path built at run time can slip past it. Such a candidate
+ *  runs mcp-docs and site, not all three Python jobs (F626). Empty means "not docs only". */
 export function isDocsOnly(paths) {
   return paths.length > 0 && paths.every(p => p.startsWith('docs/') || (!p.includes('/') && p.endsWith('.md')));
 }

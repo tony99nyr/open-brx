@@ -184,24 +184,29 @@ def test_a_docs_only_change_runs_mcp_docs_not_all_of_mcp():
                   ["docs/manual/index.md", "docs/platform/index.md"], ["protocol/brx-protocol.md"],
                   [".claude/skills/bench-session/SKILL.md"], [".github/ISSUE_TEMPLATE/bug_report.yml"]):
         jobs = _jobs_picked(paths)
-        assert "mcp-docs" in jobs and not {"mcp", "mcp-sim"} & jobs, (paths, sorted(jobs))
+        assert "mcp-docs" in jobs and not {"mcp-core", "mcp-sim"} & jobs, (paths, sorted(jobs))
 
 
 def test_the_pages_an_mcp_test_reads_still_select_it():
     """Pinned from a trace of every file the suite opened (2026-10-26), apart from MCP_DOCS_READERS, so a dropped entry
     fails here as well as in the source scan below."""
-    for path, job in [("docs/spec/contracts.md", "mcp"), ("docs/spec/utility.md", "mcp"), ("docs/weapon-design.md", "mcp"),
-                      ("docs/platform/install.md", "mcp"), ("docs/platform/run.md", "mcp"), ("docs/mac-dev-runbook.md", "mcp"),
-                      ("docs/reference/sound-catalog.md", "mcp"), ("protocol/captures/2026-08-23-solo-game-full-arm.txt", "mcp"),
-                      (".claude/skills/balance-review/SKILL.md", "mcp-sim")]:
+    for path, job in [("docs/spec/contracts.md", "mcp-core"), ("docs/spec/utility.md", "mcp-core"),
+                      ("docs/weapon-design.md", "mcp-core"), ("docs/platform/install.md", "mcp-core"),
+                      ("docs/platform/run.md", "mcp-core"), ("docs/mac-dev-runbook.md", "mcp-core"),
+                      ("docs/reference/sound-catalog.md", "mcp-core"),
+                      ("protocol/captures/2026-08-23-solo-game-full-arm.txt", "mcp-core"),
+                      (".claude/skills/balance-review/SKILL.md", "mcp-sim"),
+                      # test_build_state_in_checkout reads every tracked tsconfig and Vite config (Opus, F626 review)
+                      ("docs/tools/tsconfig.json", "mcp-core"), ("protocol/vite.config.ts", "mcp-core")]:
         jobs = _jobs_picked([path])
         assert {job, "mcp-docs"} <= jobs, (path, sorted(jobs))
-    assert "mcp" not in _jobs_picked([".claude/skills/balance-review/SKILL.md"])
+    assert _jobs_picked(["docs/spec/contracts.md"]) & {"mcp-sim"} == set()   # the one job that reads it, not all three
+    assert "mcp-core" not in _jobs_picked([".claude/skills/balance-review/SKILL.md"])
     readers = json.loads(_node(f"import({json.dumps(CHANGED_MOD.as_uri())}).then(m => console.log(JSON.stringify(m.MCP_DOCS_READERS)))"))
     assert [r["path"] for r in readers] == [
         "docs/spec/contracts.md", "docs/spec/utility.md", "docs/weapon-design.md", "docs/platform/install.md",
         "docs/platform/run.md", "docs/mac-dev-runbook.md", "docs/reference/sound-catalog.md", "protocol/captures/",
-        ".claude/skills/balance-review/"], readers
+        ".claude/skills/balance-review/", "tsconfig or Vite config"], readers
 
 
 def test_announcer_docs_select_app_test():
@@ -214,7 +219,7 @@ def test_other_docs_do_not_select_app_test():
 
 def test_protocol_paths_select_mcp_docs():
     assert _select(["protocol/messages.bin"])["filters"] == ["mcp-docs"]
-    assert _select(["protocol/captures/x.txt"])["filters"] == ["mcp"]   # test_mc_compile replays them; mcp covers mcp-docs
+    assert set(_select(["protocol/captures/x.txt"])["filters"]) == {"mcp-core", "mcp-docs"}   # test_mc_compile replays them
 
 
 def test_root_markdown_keeps_markdown_rule():
@@ -233,10 +238,11 @@ def test_root_build_manifests_select_everything():
         assert any("full-suite trigger" in reason for reason in r["reasons"]), r
 
 
-def test_unknown_top_level_directory_selects_mcp_docs_for_repo_wide_hygiene():
+def test_unknown_top_level_directory_selects_every_python_job():
+    # docs hygiene (mcp-docs) and test_build_state_in_checkout (mcp-core) scan the whole repo (Opus, F626 review)
     r = _select(["proofshot-artifacts/result.png"])
-    assert r["filters"] == ["mcp-docs"], r
-    assert any("unknown top-level directory -> mcp-docs" in reason for reason in r["reasons"]), r
+    assert r["filters"] == ["mcp"], r
+    assert any("unknown top-level directory -> mcp" in reason for reason in r["reasons"]), r
 
 
 def test_proofshot_artifacts_are_ignored():
@@ -277,7 +283,7 @@ def test_a_ci_workflow_change_is_a_full_suite_trigger():
 
 
 def test_an_unmapped_path_fails_safe_to_everything():
-    assert _select(["brand-new-tree/file.txt"])["filters"] == ["mcp-docs"]
+    assert _select(["brand-new-tree/file.txt"])["filters"] == ["mcp"]
 
 
 def test_no_changed_paths_fails_safe_to_everything():
@@ -434,7 +440,9 @@ def test_is_docs_only_means_docs_or_root_markdown_and_nothing_else():
 # lander gates a docs-only candidate with --changed, so a reader that selectJobs misses would let a broken page or
 # FOLLOWUPS row land green. A line counts as a read when it names a repo docs/ path (not a site URL) AND does file I/O
 # or imports it; a docs DIRECTORY held in a constant and joined later (site/build.mjs `DOCS`, a Python `REPO / "docs"`)
-# counts as reading the whole tree. Reviewed by Codex and Opus (2026-10-10).
+# counts as reading the whole tree. Reviewed by Codex and Opus (2026-10-10). F626 adds a literal pass for the
+# mcp-core and mcp-sim test files (_LITERAL_DOC below). It is still a static check: a path built at run time can slip
+# past it, which is why the pages a trace found are also pinned in test_the_pages_an_mcp_test_reads_still_select_it.
 import re as _re
 _READ = _re.compile(r"(readFileSync|readFile|readdirSync|existsSync|new URL\(|path\.(?:resolve|join)\(|\bopen\(|"
                     r"read_text|read_bytes|\.r?glob\(|^\s*import\b|\bimport\(|\brequire\()")
@@ -443,24 +451,58 @@ _DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.
 # F626: a Python join down to one file (`REPO / "docs" / "spec" / "contracts.md"`) reads that file, not the tree. A join
 # that goes on with a variable (`REPO / "docs" / name`) still counts as the whole tree.
 _DOCS_JOIN = _re.compile(r"""/\s*['"]docs['"]((?:\s*/\s*['"][\w.-]+['"])+)(?!\s*/)""")
-_PY = ("mcp", "mcp-docs", "mcp-sim")   # the three jobs of run_tests.py (F626); test files are owned by their GROUPS
+_PY = ("mcp-core", "mcp-docs", "mcp-sim")   # the three jobs of run_tests.py (F626); test files are owned by their GROUPS
 _MC_JOBS = (*_PY, "mc-play", "app-e2e", "app-logsync")   # jobs that start Mission Control code ("mc-play" stands for the mc-* e2e family)
-# Sources whose docs read no gate job makes against the real repo, each with the evidence. A trace of every file the
-# mcp suite opened (2026-10-26, F626) saw neither read. An entry no scan finds fails the test, so none goes stale.
-_NOT_A_GATE_READ = {   # source: (the docs paths the scan finds in it, why none is a read of the real repo)
-    "scripts/land.mjs": (("docs/FOLLOWUPS.md",), "test_land runs land.mjs only in throwaway repositories"),
-    "mcp/tools/balance_review.py": (("docs/balance-decisions.md",),
-        "only the CLI's --record writes the decision log; test_balance_review passes record() a temporary path"),
-    "mcp/tests/test_land.py": (("docs/BUILDFLAKE", "docs/FOLLOWUPS.md", "docs/any-page.md"),
-        "every docs path it names is in a throwaway seed, dev or gate repository"),
-    "mcp/tests/test_test_all_changed.py": (("docs/FOLLOWUPS.md", "docs/a.md", "docs/any-page.md", "docs/spec/x.md",
-                                            "docs/spec/contracts.md"), "the pattern tests here hold sample lines, not reads"),
+# Lines the scan below reads as a docs read that are not one against the real repo, by (source, exact stripped line
+# text), so a later real read on another line is still caught (Opus, F626 review). A trace of every file the mcp suite
+# opened (2026-10-26) saw none of them read a real docs path. A line no scan finds fails the test, so none goes stale.
+_NOT_A_GATE_READ = {   # source: (why, the lines)
+    "scripts/land.mjs": ("test_land runs land.mjs only in throwaway repositories",
+        ["if (merged.length > 0 && fs.existsSync(path.join(WT, 'docs/FOLLOWUPS.md')) &&",
+         "const file = path.join(WT, 'docs/FOLLOWUPS.md');"]),
+    "mcp/tools/balance_review.py": (
+        "only the CLI's --record writes the decision log; test_balance_review passes record() a temporary path",
+        ['DECISIONS = REPO / "docs" / "balance-decisions.md"']),
+    "mcp/tests/test_land.py": ("every docs path it names is in a throwaway seed, dev or gate repository", [
+        'if ((wt / "BUILDFLAKE").exists() or (wt / "docs" / "BUILDFLAKE").exists()) and not (d / "buildflaked").exists():',
+        '(t.dev / "docs").mkdir()', '(seed / "docs").mkdir()', '(seed / "docs").mkdir(exist_ok=True)',
+        '(seed / "docs" / "FOLLOWUPS.md").write_text(source)', '(seed / "docs" / "FOLLOWUPS.md").write_text(text)',
+        '(seed / "docs" / "FOLLOWUPS.md").write_text(source.replace(',
+        '(t.dev / "docs" / "FOLLOWUPS.md").write_text(source.replace(']),
+    "mcp/tests/test_append_only_logs_merge.py": ("it writes these logs in a throwaway repository",
+        ['LOGS = ["docs/archive/followups-closed.md", "docs/experiment-log/2026-10.md"]']),
+    "mcp/tests/test_balance_sim.py": ("failure messages that name the Balance rules table", [
+        '"(needs >= 65%). See docs/weapon-design.md\'s Balance rules table, row 4 (F291)."',
+        '"65%). See docs/weapon-design.md\'s Balance rules table, row 4 (F291)."',
+        '"See docs/weapon-design.md\'s Balance rules table, row 10 (F308)."',
+        '"docs/weapon-design.md\'s Balance rules table (F308)."',
+        '"docs/weapon-design.md\'s Balance rules table, row 4 (F291)."',
+        'f"{r.win_rate:.1%} of {reps} duels (needs >= 65%). See docs/weapon-design.md\'s "']),
+    "mcp/tests/test_derived_data.py": ("a failure message", ['"counts published in docs/manual/sounds.md in the same commit"']),
+    "mcp/tests/test_gset_t2_pinned.py": ("a failure message", ['"See docs/archive/HANDOFF-gset-t2-2026-09-13.md"']),
+    "mcp/tests/test_sticks3_core.py": ("the Stick core's own README, not the root one",
+        ['readme = (CORE / "README.md").read_text(encoding="utf-8")']),
+    "mcp/tests/test_test_all_no_skip.py": ("sample changed paths for noSkipFor", [
+        'assert "pyright" in _skips(_no_skip(foundVenv=True, changedPaths=["docs/x.md", p])), p',
+        'assert "pyright" in _skips(_no_skip(foundVenv=True, landGate=True, changedPaths=["docs/x.md"]))']),
+    "mcp/tests/test_test_inputs_declared.py": ("sample sources for its comment stripper", [
+        'js = _code_only(pathlib.Path("x.mjs"), "/* see \'docs/a.md\' */\\n// \'app/src/b.js\'\\nconst u = \'http://x\';\\nread(\'mcp/c.json\');")',
+        'py = _code_only(pathlib.Path("x.py"), \'"""Reads `docs/a.md`."""\\n# \\\'app/b.js\\\'\\nopen("mcp/c.json")\\n\')']),
 }
+# Files whose string literals name docs paths only for throwaway repositories or as samples. The literal pass skips
+# them; the read patterns above still apply, line by line.
+_LITERAL_PASS_SKIPS = {
+    "mcp/tests/test_land.py": "it builds every FOLLOWUPS file and docs page in a throwaway repository",
+}
+# This file holds the scanner, its sample lines and the tables above, which quote the lines they exempt. The trace
+# saw it read no docs file, so the scan skips it whole.
+_SCAN_SKIPS = {"mcp/tests/test_test_all_changed.py"}
 _OWNERS = [   # (source prefix, the test-all jobs that run it); the first match wins
     ("mcp/tests/test_chaos", ("chaos",)), ("mcp/brx_mcp/chaos/", ("chaos",)),   # run_tests.py --exclude chaos
     ("mcp/brx_mcp/", _MC_JOBS),
     # regen --check (test_generated_fresh) and test_docs_hygiene run it on the real repo; test_land on throwaway ones
     ("scripts/followups-index.mjs", ("mcp-docs",)),
+    ("mcp/tools/soundbank_community.py", ("mcp-core",)),   # imported by test_regen_runner and test_sound_catalog only
     ("app/test/", ("app-test",)), ("app/tools/screens", ("app-screens",)), ("app/tools/moments", ("app-moments",)),
     ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)),
     ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e")),   # bundled into every app gate
@@ -473,7 +515,7 @@ def _owners_of(f: str, groups: dict):
     """The jobs that run source `f`: an mcp test file runs in the job of its GROUPS entry (F626), else _OWNERS."""
     stem = f.rsplit("/", 1)[-1].removesuffix(".py")
     if f.startswith("mcp/tests/test_") and not f.startswith("mcp/tests/test_chaos"):
-        return ("mcp-docs",) if stem in groups["docs"] else ("mcp-sim",) if stem in groups["sim"] else ("mcp",)
+        return ("mcp-docs",) if stem in groups["docs"] else ("mcp-sim",) if stem in groups["sim"] else ("mcp-core",)
     return next((jobs for prefix, jobs in _OWNERS if f.startswith(prefix)), None)
 
 
@@ -496,43 +538,82 @@ def _code_part(line: str) -> str:
     return line
 
 
+# F626 (Opus): in an mcp-core or mcp-sim test file a docs path held in a constant is read on another line (a tuple of
+# pages, then a loop that opens each), so there any "docs/..." string, and any root Markdown name that isDocsOnly
+# admits, counts as a read. Docstrings and comments do not; a message that only names a page is exempted by its line.
+_LITERAL_DOC = _re.compile(r"(?<![\w/.-])(docs/[\w./-]*\w)")
+
+
+def _root_markdown() -> list[str]:
+    out = subprocess.run([GIT, "ls-files", "*.md"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
+    return sorted(f for f in out if "/" not in f)
+
+
+def _docstring_lines(text: str) -> set:
+    import ast
+    drop = set()
+    for node in ast.walk(ast.parse(text)):
+        body = getattr(node, "body", None)
+        if isinstance(body, list) and body and isinstance(body[0], ast.Expr) \
+                and isinstance(getattr(body[0], "value", None), ast.Constant) and isinstance(body[0].value.value, str):
+            drop.update(range(body[0].lineno, body[0].end_lineno + 1))
+    return drop
+
+
+def _docs_reads(f: str, text: str, literal: bool, root_md) -> list:
+    """(stripped line, docs path) for every docs read the patterns see in source `f`."""
+    lines = text.splitlines()
+    skip = _docstring_lines(text) if literal else set()
+    out = []
+    for n, raw in enumerate(lines, 1):
+        if n in skip or raw.strip().startswith(("//", "*", "/*", "#")):
+            continue
+        line = _code_part(raw)   # a trailing comment naming a doc is not a read
+        found = _DOCS_PATH.findall(line) if _READ.search(line) else []   # '/docs/...' site URLs never match
+        for segs in _DOCS_JOIN.findall(line):
+            found.append("docs/" + "/".join(_re.findall(r"""['"]([\w.-]+)['"]""", segs)))
+        if _DOCS_DIR.search(_DOCS_JOIN.sub("", line)):
+            found.append("docs/any-page.md")   # the whole tree
+        if literal:
+            found += _LITERAL_DOC.findall(line)
+            found += [md for md in root_md if _re.search(r"(?<![\w/.-])" + _re.escape(md) + r"(?![\w-])", line)]
+        out += [(raw.strip(), doc) for doc in dict.fromkeys(found)]
+    return out
+
+
 def test_every_source_that_reads_docs_is_selected_for_a_docs_change():
     needs(GIT, "git")
     files = subprocess.run([GIT, "ls-files", "app", "webapp/mc", "site", "scripts", "mcp/tests", "mcp/tools",
                             "mcp/brx_mcp"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split()
-    misses, readers, dir_readers, exempt = [], 0, 0, set()
-    groups = _groups()
+    misses, readers, dir_readers, literal_files, exempt = [], 0, 0, 0, set()
+    groups, root_md = _groups(), _root_markdown()
+    assert {"README.md", "CLAUDE.md", "CONTRIBUTING.md"} <= set(root_md), root_md
     for f in files:
-        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or ".gen." in f:
+        if not f.endswith((".mjs", ".js", ".ts", ".tsx", ".py")) or "/node_modules/" in f or ".gen." in f \
+                or f in _SCAN_SKIPS:
             continue
         try:
-            lines = (REPO / f).read_text(encoding="utf-8").splitlines()
+            text = (REPO / f).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        for line in lines:
-            if line.strip().startswith(("//", "*", "/*", "#")):
+        owners = _owners_of(f, groups)
+        literal = f.startswith("mcp/tests/test_") and owners in (("mcp-core",), ("mcp-sim",)) and f not in _LITERAL_PASS_SKIPS
+        literal_files += literal
+        for line, doc in _docs_reads(f, text, literal, root_md):
+            if line in _NOT_A_GATE_READ.get(f, ("", []))[1]:
+                exempt.add((f, line))
                 continue
-            line = _code_part(line)   # a trailing comment naming a doc is not a read
-            found = _DOCS_PATH.findall(line) if _READ.search(line) else []   # '/docs/...' site URLs never match
-            for segs in _DOCS_JOIN.findall(line):
-                found.append("docs/" + "/".join(_re.findall(r"""['"]([\w.-]+)['"]""", segs)))
-            if _DOCS_DIR.search(_DOCS_JOIN.sub("", line)):
-                found.append("docs/any-page.md")   # the whole tree
-            for doc in found:
-                if doc in _NOT_A_GATE_READ.get(f, ((),))[0]:
-                    exempt.add((f, doc))
-                    continue
-                owners = _owners_of(f, groups)
-                assert owners, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
-                readers += 1
-                dir_readers += doc == "docs/any-page.md"
-                picked = _select([doc])["filters"]
-                for job in owners:
-                    if not _covers(picked, job):
-                        misses.append(f"{f} reads {doc}, but a change to it selects {picked}, not {job}")
+            assert owners, f"{f} reads {doc} but no test-all job owns it: add it to _OWNERS"
+            readers += 1
+            dir_readers += doc == "docs/any-page.md"
+            picked = _select([doc])["filters"]
+            for job in owners:
+                if not _covers(picked, job):
+                    misses.append(f"{f} reads {doc} ({line!r}), but a change to it selects {picked}, not {job}")
     assert dir_readers >= 1, "the docs-directory pattern found no reader: site/build.mjs's DOCS should match"
-    listed = {(f, doc) for f, (docs, _) in _NOT_A_GATE_READ.items() for doc in docs}
-    assert exempt == listed, f"stale _NOT_A_GATE_READ entries: {sorted(listed - exempt)}"
+    assert literal_files >= 100, literal_files   # the literal pass reaches the mcp-core and mcp-sim test files
+    listed = {(f, line) for f, (_, lines) in _NOT_A_GATE_READ.items() for line in lines}
+    assert exempt == listed, f"stale _NOT_A_GATE_READ lines: {sorted(listed - exempt)}"
     assert readers >= 2, "the scan found almost no docs readers: the patterns above are broken"
     assert not misses, "\n".join(sorted(set(misses)))
 
@@ -590,7 +671,7 @@ def test_every_declared_input_selects_its_job_or_is_a_written_narrowing():
         [".claude/", ".github/", "app/", "app/package-lock.json", "app/package.json", "docs/", "hardware/", "protocol/",
          "scripts/", "scripts/lib/", "webapp/mc/package-lock.json", "webapp/mc/package.json"],   # chaos
         ["mcp/"],                                                                                 # app-screens, app-moments
-        [".claude/", ".github/", "docs/", "protocol/", "unknown/"],                                # mcp, mcp-sim (F626)
+        [".claude/", ".github/", "docs/", "protocol/"],                                           # mcp-core, mcp-sim (F626)
         ["scripts/lib/"],                                                                         # every other job
     ], got["used"]
     # Readers pinned independently of the registry, so dropping a declared input cannot drop its check.
