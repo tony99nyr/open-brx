@@ -1366,8 +1366,12 @@ class Session:
                 # range before the operator tapped PLAY came back still SITTING OUT, with no frames, no
                 # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
                 "standby": p["player_id"] in self.standby,
-                # F632: a RECAP assign (a debrief re-team or rename, F631) says so, and the phone keeps its results on
-                # it. Any other assign after an end (NEW SESSION's re-assign above all) leaves them, as before.
+                # F634: every assign names the match MC holds (armed, live or RECAP). A phone that has ended THAT match
+                # keeps its results on it: a debrief edit (F631), or an operator edit in the window between a phone's
+                # own whistle and MC's RECAP. Any other assign after an end (NEW SESSION's re-assign above all) names no
+                # match, or another one, and the phone leaves its results, as before. `recap: true` is F632's key, kept
+                # in RECAP for a phone built between F632 and F634 that reads only it.
+                **({"match_id": mid} if (mid := self._loss_match_id()) is not None else {}),
                 **({"recap": True} if self.phase == "recap" else {})}
 
     def _send_assign(self, p: Player, extra: dict | None = None) -> bool:
