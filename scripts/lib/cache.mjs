@@ -67,8 +67,11 @@ export function cacheBypassReason(env) {
   return set ? `environment variable affects test results: ${set}` : null;
 }
 
+// The Python suite's result can depend on git HEAD and the local date, so both are in its key. F626 split the old mcp
+// job into three; each keeps that context.
+const DATED_JOBS = new Set(['mcp', 'mcp-docs', 'mcp-sim']);
 export function jobContext(root, job, now = new Date()) {
-  if (job !== 'mcp') return null;
+  if (!DATED_JOBS.has(job)) return null;
   const date = [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'),
     String(now.getDate()).padStart(2, '0')].join('-');
   return { head: headOf(root), date };

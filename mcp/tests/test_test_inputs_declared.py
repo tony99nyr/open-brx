@@ -27,7 +27,7 @@ def _inputs():
 
 
 def _entries(job):
-    if job in {"mcp", "chaos"}:
+    if job in {"mcp", "mcp-docs", "mcp-sim", "chaos"}:   # every mcp job runs files of mcp/tests (F626)
         return [REPO / "mcp/run_tests.py", *sorted((REPO / "mcp/tests").glob("*.py"))]
     if job.startswith("mc-"):
         name = job[3:]

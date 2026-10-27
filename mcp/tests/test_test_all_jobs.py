@@ -50,7 +50,7 @@ def test_the_fixture_covers_every_job_and_the_sized_ones_vary():
     shapes = {}
     for r in snap["records"].values():
         shapes.setdefault(r["name"], set()).add(json.dumps(r, sort_keys=True))
-    for sized in ("mcp", "chaos", "mc-vitest", "site", "app-screens"):
+    for sized in ("mcp", "mcp-docs", "mcp-sim", "chaos", "mc-vitest", "site", "app-screens"):
         assert len(shapes[sized]) > 1, sized
     ports = ["BRX_PORT_END", "BRX_PORT_NEXT", "MC_PORT", "MC_WS_PORT", "VITE_PORT"]   # F523: a block per e2e job
     assert any(r["env"] == {"<ports>": ports} for r in snap["records"].values())

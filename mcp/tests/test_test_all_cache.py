@@ -224,7 +224,9 @@ def test_mcp_cache_context_changes_with_head_and_local_date(git_repo):
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
             f"m.jobContext({json.dumps(str(git_repo))},'mcp',new Date(2026,0,1)),"
             f"m.jobContext({json.dumps(str(git_repo))},'mcp',new Date(2026,0,2)),"
-            f"m.jobContext({json.dumps(str(git_repo))},'chaos',new Date(2026,0,2))])))")
+            f"m.jobContext({json.dumps(str(git_repo))},'chaos',new Date(2026,0,2)),"
+            f"m.jobContext({json.dumps(str(git_repo))},'mcp-docs',new Date(2026,0,2)),"
+            f"m.jobContext({json.dumps(str(git_repo))},'mcp-sim',new Date(2026,0,2))])))")
     before = json.loads(_node(expr, cwd=git_repo))
     (git_repo / "other.txt").write_text("changed\n")
     subprocess.run([GIT, "add", "other.txt"], cwd=git_repo, check=True)
@@ -233,6 +235,7 @@ def test_mcp_cache_context_changes_with_head_and_local_date(git_repo):
     assert before[0] != before[1]
     assert before[0] != after[0]
     assert before[2] == after[2]
+    assert before[3] == before[4] == before[1] and before[3] != after[3]   # F626: each mcp job keeps the context
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
             "m.cacheKey({job:'mcp',cmd:['python'],env:{},fingerprint:'f',inputHash:'i',context:{head:'a',date:'2026-01-01'}}),"
             "m.cacheKey({job:'mcp',cmd:['python'],env:{},fingerprint:'f',inputHash:'i',context:{head:'b',date:'2026-01-01'}})])))")

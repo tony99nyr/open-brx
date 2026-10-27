@@ -28,7 +28,7 @@ def test_test_all_list_writes_an_incomplete_record_with_its_selection():
         assert result.returncode == 0, result.stderr
         record = json.loads(result_path.read_text())
         assert record["version"] == 1 and record["complete"] is False
-        assert record["selected"] == ["mcp"] and record["jobs"] == []
+        assert record["selected"] == ["mcp", "mcp-docs", "mcp-sim"] and record["jobs"] == []   # F626: a substring
         assert record["build"] is None
         assert record["startedAt"] and record["finishedAt"]
 
