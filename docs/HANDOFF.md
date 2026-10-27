@@ -69,7 +69,7 @@ F631 and F630 are closed on brx4's end-to-end runs (all six cases pass on 2026-1
 
 ## Lane: brx4, the engine and the StickS3
 **State (2026-10-27):** F635 is done on `fix/f635-postmatch-e2e`, to land: the post-match end-to-end gate is the
-`--ui` job `app-postmatch` (cases 2, 6, 3, 3b, 5 and 7, about 180 s). F598 is landed. The firmware safety guards are
+`--ui` job `app-postmatch` (cases 2, 6, 3, 3b, 5 and 7, about 230 s). F598 is landed. The firmware safety guards are
 on `brx4-fwguards`. Nothing was flashed.
 **Next:** land `fix/f635-postmatch-e2e`. Bench: the code-read leads on F264, F277, F293 and F300; the older list (F519, F521, F525,
 F526, F511, F501, F530) still stands.
