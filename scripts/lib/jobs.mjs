@@ -27,7 +27,7 @@ import { blockAllocator } from './ports.mjs';
 // webapp/mc/ is a comment): app/test/announcer.test.mjs reads docs/announcer.md; the built app/www bundles
 // mcp/brx_mcp/mc/golden_bundle.json; webapp/mc/test/medalicons-gen.test.ts reads app/src/hud/medalicons.js and
 // fake-invariants.test.ts imports mcp/brx_mcp/mc/fake_invariants.json; every job that starts MC runs mcp/ and
-// reads webapp/download/build.json. The mcp job and site stay broad.
+// reads webapp/download/build.json. The mcp jobs and site stay broad.
 const COMMON = ['scripts/test-all.mjs', 'scripts/lib/', 'package.json', 'pnpm-lock.yaml'];
 const APP = ['app/', 'mcp/'];
 const MC = ['webapp/mc/', 'mcp/'];
@@ -65,14 +65,16 @@ const REGISTRY = [
   // -j 16), bounded by single ~60 s shards (a test_balance_review function, test_land); under a full gate those stretch 4
   // to 8 times. 70 gate runs on 2026-10-25 passed at a median of about 300 s, up to 556 s.
   // F626 (2026-10-26) split it into three jobs from run_tests.py's GROUPS, so a docs-only change runs mcp-docs alone
-  // (scripts/lib/changed.mjs) and the balance sims no longer share mcp's timeout. Code paths select all three: the
-  // filter `mcp` matches each name. Alone at load 4 to 6, -j 8: mcp 83 s (test_land shards, 55 to 65 s) and 1014 MB
-  // real peak; mcp-sim 75 s (test_balance_review shards) and 198 MB; mcp-docs 2 s and 87 MB. Each of mcp and mcp-sim
-  // keeps a ~60 s shard as its long pole, so each keeps the old in-gate 300 s (deriveTimeoutS 900). mcp's `mb` is
-  // 300 + 90 a worker, because 150 + 70 (710 MB at -j 8) was below the measured peak.
+  // (scripts/lib/changed.mjs) and the balance sims no longer share the rest's timeout. Code paths select all three:
+  // the filter `mcp` matches each name. No job name may be a substring of another (test_test_all_jobs.py), because
+  // the lander reruns one failed job by its name as a filter. Alone at load 4 to 6, -j 8: mcp-core 83 s (test_land
+  // shards, 55 to 65 s) and 1014 MB real peak; mcp-sim 75 s (test_balance_review shards) and 198 MB; mcp-docs 2 s and
+  // 87 MB. Each of mcp-core and mcp-sim keeps a ~60 s shard as its long pole, so each keeps the old in-gate 300 s
+  // (deriveTimeoutS 900). mcp-core's `mb` is 300 + 90 a worker, because 150 + 70 (710 MB at -j 8) was below the
+  // measured peak.
   // Each reads the whole repo for the cache key. A docs path still selects mcp or mcp-sim only where one of its tests
   // reads it: changed.mjs MCP_DOCS_READERS, and NARROWED says why the rest of docs/ may skip them.
-  { name: 'mcp', cwd: 'mcp', secs: 300, inputs: ['.'],
+  { name: 'mcp-core', cwd: 'mcp', secs: 300, inputs: ['.'],
     sized: s => ({ cmd: [s.python, 'run_tests.py', '-j', String(s.pyJ), '--exclude-group', 'docs', '--exclude-group', 'sim',
       '--exclude', 'chaos', ...s.noSkip], mb: 300 + 90 * s.pyJ, cores: s.pyJ }) },
   // Seven small files, so four workers are enough. Docs hygiene and suite registration read the whole repo.

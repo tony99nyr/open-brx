@@ -222,8 +222,8 @@ def test_installed_npm_dependency_fingerprint_and_missing_marker(tmp_path):
 def test_mcp_cache_context_changes_with_head_and_local_date(git_repo):
     _needs_node_git(git_repo)
     expr = (f"import({json.dumps(CACHE_MOD.as_uri())}).then(m => console.log(JSON.stringify(["
-            f"m.jobContext({json.dumps(str(git_repo))},'mcp',new Date(2026,0,1)),"
-            f"m.jobContext({json.dumps(str(git_repo))},'mcp',new Date(2026,0,2)),"
+            f"m.jobContext({json.dumps(str(git_repo))},'mcp-core',new Date(2026,0,1)),"
+            f"m.jobContext({json.dumps(str(git_repo))},'mcp-core',new Date(2026,0,2)),"
             f"m.jobContext({json.dumps(str(git_repo))},'chaos',new Date(2026,0,2)),"
             f"m.jobContext({json.dumps(str(git_repo))},'mcp-docs',new Date(2026,0,2)),"
             f"m.jobContext({json.dumps(str(git_repo))},'mcp-sim',new Date(2026,0,2))])))")

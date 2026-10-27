@@ -50,7 +50,17 @@ def test_the_fixture_covers_every_job_and_the_sized_ones_vary():
     shapes = {}
     for r in snap["records"].values():
         shapes.setdefault(r["name"], set()).add(json.dumps(r, sort_keys=True))
-    for sized in ("mcp", "mcp-docs", "mcp-sim", "chaos", "mc-vitest", "site", "app-screens"):
+    for sized in ("mcp-core", "mcp-docs", "mcp-sim", "chaos", "mc-vitest", "site", "app-screens"):
         assert len(shapes[sized]) > 1, sized
     ports = ["BRX_PORT_END", "BRX_PORT_NEXT", "MC_PORT", "MC_WS_PORT", "VITE_PORT"]   # F523: a block per e2e job
     assert any(r["env"] == {"<ports>": ports} for r in snap["records"].values())
+
+
+def test_no_job_name_is_inside_another():
+    """F626 (Fable): the lander reruns a failed job, and probes main for it, with the job's name as a test-all filter,
+    and expects that one job back (scripts/land.mjs, lib/land-gate.mjs gateGreen). A filter matches a substring of a
+    name, so a name inside another (`mcp` beside mcp-docs) selects both: a flake is never credited and a green main
+    reads as red."""
+    names = list(json.loads(FIXTURE.read_text())["inputs"])
+    clashes = [(a, b) for a in names for b in names if a != b and a in b]
+    assert not clashes, clashes
