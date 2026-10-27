@@ -1354,7 +1354,7 @@ class Session:
         that the HUD shows "Mission Control is setting up the game" (Tony, 2026-08-27)."""
         return self.phase == "kit" and not self.lobby_pushed
 
-    def _assign_body(self, p: Player) -> dict:
+    def _assign_body(self, p: Player, *, welcome: bool = False) -> dict:
         pol = _policy.node_view(self.policy(), self.loadout_pool())
         pol["kit_open"] = self.kit_open()
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
@@ -1366,8 +1366,14 @@ class Session:
                 # range before the operator tapped PLAY came back still SITTING OUT, with no frames, no
                 # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
                 "standby": p["player_id"] in self.standby,
-                # F632: a RECAP assign (a debrief re-team or rename, F631) says so, and the phone keeps its results on
-                # it. Any other assign after an end (NEW SESSION's re-assign above all) leaves them, as before.
+                # F634: every assign names the match MC holds (armed, live or RECAP). A phone that has ended THAT match
+                # keeps its results on it: a debrief edit (F631), or an operator edit in the window between a phone's
+                # own whistle and MC's RECAP. Any other assign after an end (NEW SESSION's re-assign above all) names no
+                # match, or another one, and the phone leaves its results, as before. `recap: true` is F632's key, kept
+                # in RECAP for a phone built between F632 and F634 that reads only it.
+                # Not in a welcome: there `node.match_id` names the start it carries (`_hydrate`), and every phone build reads
+                # it that way. `_loss_match_id` is the match MC holds: in play, or in RECAP.
+                **({"match_id": mid} if not welcome and (mid := self._loss_match_id()) is not None else {}),
                 **({"recap": True} if self.phase == "recap" else {})}
 
     def _send_assign(self, p: Player, extra: dict | None = None) -> bool:
@@ -3834,7 +3840,7 @@ class Session:
             # the body is their own context plus the bench fact, and nothing that could arm a gun.
             parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
             if parked is not None:
-                return self._assign_body(parked)
+                return self._assign_body(parked, welcome=True)
         if not p and (self.in_play() or self.phase == "recap"):   # F487: a phone first back after the whistle too
             # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`match.nodes`, from
             # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
@@ -3852,7 +3858,7 @@ class Session:
         if not p:
             return None
         self._bind(hello["node_id"], p)
-        node = self._assign_body(p)                          # A10: welcome carries catalog + policy too
+        node = self._assign_body(p, welcome=True)            # A10: welcome carries catalog + policy too
         # ...and it carries `game_brief()` exactly as an `assign` does (`engine.js _welcome` stores
         # `node.game` from both), so this IS a delivery of the announced game and is recorded as one.
         # It is the commonest delivery there is: a night LOADs at build and the players walk up
