@@ -55,15 +55,16 @@ again once F574 has a cause.
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
-**State (2026-10-27):** everything is landed:
+**State (2026-10-27):** everything is landed or in the land queue:
 - **Balance 0.4.31:** `11107dbdf`.
-- **A83, the 120 s bounded result wait:** `a0eb2fe47`. Its two gaps are `91bc983af`.
-- **F631 and F630:** `0ce0f4d70`.
-- **F633:** `3b2e20b2d`. A rejoin tells only itself, from a re-taken recap.
-- **Cloudflared:** `4021de4a5`. The start script keeps it at Cloudflare's minimum.
-- **NEXT bench sheet:** `fd0bd8adb` and `6d3d047dc`.
+- **A83 and its gaps:** `a0eb2fe47` and `91bc983af`.
+- **F631 and F630:** `0ce0f4d70`. Both are closed on brx4's end-to-end runs.
+- **F633:** `3b2e20b2d`.
+- **Cloudflared:** `4021de4a5`.
+- **The NEXT bench sheet.**
+- **F634, both halves (A84):** MC names the held match on every assign, and the phone keeps its results only for
+  the match it ended.
 
-F631 and F630 are closed on brx4's end-to-end runs (all six cases pass on 2026-10-27).
 **Next:** none open in this lane. Wait for brx1.
 **Blocked:** none.
 

@@ -1006,7 +1006,7 @@ function debrief() {
 
 test('F632: a re-team during the debrief keeps the result, and a later corrected result still lands', () => {
   const { h, mid, yellow } = debrief();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, team_id: 'yellow' }, team: yellow, policy: { kit_open: false }, recap: true } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, team_id: 'yellow' }, team: yellow, policy: { kit_open: false }, match_id: mid, recap: true } });
   assert.equal(h.eng.ended, true, 'still on the results');
   assert.equal(h.eng.matchId, mid);
   assert.equal(h.eng.result && h.eng.result.outcome, 'win', 'the result is kept');
@@ -1018,7 +1018,7 @@ test('F632: a re-team during the debrief keeps the result, and a later corrected
 
 test('F632: a rename during the debrief keeps the result and shows the new name', () => {
   const { h, mid, blue } = debrief();
-  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false }, recap: true } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false }, match_id: mid, recap: true } });
   assert.equal(h.eng.ended, true);
   assert.equal(h.eng.matchId, mid);
   assert.equal(h.eng.result && h.eng.result.outcome, 'win');
@@ -1061,6 +1061,51 @@ test('F632 review: leaving the results on the next config raises no host kit loc
   assert.equal(h.eng.ended, false, 'the next config leaves the results');
   assert.equal(h.eng.kitLocked, false, 'and it is not a host lock');
   assert.ok(!moments.includes('kit_locked_by_host'), 'no lock moment: ' + moments.join(','));
+});
+
+// F634: MC names the match it holds (armed, live or RECAP) on every assign. A timed match ends on the phone's own clock up
+// to about 0.5 s before MC reaches RECAP; an operator edit in that window used to leave the results and clear the match
+// id, so the whistle's result was then dropped as no_match.
+test('F634: an edit between this phone\'s whistle and MC\'s RECAP keeps the results, and the whistle result lands', () => {
+  const h = match({ stun: undefined });
+  const blue = h.config.teams[0];
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });   // ended on this phone (an END reaches it as a local timer would); MC is still LIVE
+  const mid = h.eng.matchId;
+  assert.ok(mid && h.eng.ended);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false }, match_id: mid } });
+  assert.equal(h.eng.ended, true, 'still on the results');
+  assert.equal(h.eng.matchId, mid, 'the match id is kept');
+  assert.equal(h.eng.player.display, 'RENAMED', 'the edit itself is applied');
+  const r = h.eng.onResultPush({ match_id: mid, outcome: 'win', winner: { team_id: 'blue' }, provisional: false });
+  assert.equal(r.ok, true, 'the whistle result is accepted, not dropped as no_match');
+  assert.equal(h.eng.result && h.eng.result.outcome, 'win');
+});
+
+test('F634 (Fable): an edit before MC\'s whistle still says ready: true, and the ended phone does not take it', () => {
+  const h = match({ stun: undefined });
+  const blue = h.config.teams[0];
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  const mid = h.eng.matchId;
+  assert.equal(h.eng.ready, false, 'the end cleared READY');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: true }, team: blue, policy: { kit_open: false }, match_id: mid } });
+  assert.equal(h.eng.ended, true);
+  assert.equal(h.eng.ready, false, 'the last match\'s READY does not come back');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: false }, team: blue, policy: { kit_open: false } } });   // NEW SESSION
+  assert.equal(h.eng.ready, false, 'and the next lobby starts on WAIT');
+});
+
+test('F634: an assign naming another match, or none, leaves the results; F632\'s `recap: true` counts only with no match named', () => {
+  const a = debrief();
+  a.h.eng.onMcMessage({ kind: 'assign', body: { player: a.h.player, team: a.blue, policy: { kit_open: false }, match_id: 'another-match' } });
+  assert.equal(a.h.eng.ended, false, 'another match: the results go');
+  assert.equal(a.h.eng.result, null);
+  const b = debrief();
+  b.h.eng.onMcMessage({ kind: 'assign', body: { player: b.h.player, team: b.blue, policy: { kit_open: false }, match_id: 'another-match', recap: true } });
+  assert.equal(b.h.eng.ended, false, 'a named other match wins over the old flag');
+  const c = debrief();
+  c.h.eng.onMcMessage({ kind: 'assign', body: { player: c.h.player, team: c.blue, policy: { kit_open: false }, recap: true } });
+  assert.equal(c.h.eng.ended, true, 'an MC from between F632 and F634 (only `recap: true`) still keeps them');
+  assert.equal(c.h.eng.result && c.h.eng.result.outcome, 'win');
 });
 
 test('F632: NEW SESSION\'s re-assign (muster, kit still closed, no recap flag) leaves the results; a RECAP one keeps them', () => {

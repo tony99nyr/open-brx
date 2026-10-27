@@ -375,15 +375,16 @@ def test_f632_a_recap_assign_says_recap_and_a_new_session_assign_does_not():
     net.pushed.clear()
     s.patch_player(ps[0]["player_id"], display="RENAMED")          # a debrief rename
     debrief = net.pushes("assign")
-    assert debrief and all(a[2].get("recap") is True for a in debrief), debrief
+    assert debrief and all(a[2].get("recap") is True and a[2].get("match_id") == info["match_id"] for a in debrief), debrief
     assert s._assign_body(ps[1]).get("recap") is True, "every RECAP body says so, whichever node it goes to"
+    assert s._assign_body(ps[1]).get("match_id") == info["match_id"], "F634: and names the match it belongs to"
     s.finalise_recap()                                              # the host releases, then starts the next session
     net.pushed.clear()
     s.new_session(keep_roster=True)                                 # NEW MATCH: muster, kit still closed
     fresh = net.pushes("assign")
     assert fresh, "NEW SESSION re-assigns every bound phone"
-    assert all("recap" not in a[2] for a in fresh), fresh
-    assert "recap" not in s._assign_body(ps[1])
+    assert all("recap" not in a[2] and "match_id" not in a[2] for a in fresh), fresh
+    assert "recap" not in s._assign_body(ps[1]) and "match_id" not in s._assign_body(ps[1])
 
 
 def test_f632_recall_from_recap_sends_no_recap_flag_and_the_phone_reads_the_same_key():
@@ -395,6 +396,44 @@ def test_f632_recall_from_recap_sends_no_recap_flag_and_the_phone_reads_the_same
     net.pushed.clear()
     s.control("recall", confirm=True)
     after = net.pushes("assign")
-    assert after and all("recap" not in a[2] for a in after), after
+    assert after and all("recap" not in a[2] and "match_id" not in a[2] for a in after), after
     eng = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
-    assert "if (this.ended && recap !== true) this._leaveEnded(" in eng, "the phone no longer reads `recap` from assign"
+    assert "const sameMatch = typeof match_id === 'string' ? match_id === this.matchId : recap === true;" in eng, \
+        "the phone no longer reads `match_id` (and F632's `recap`) from assign the way MC writes them"
+    assert "if (this.ended && !sameMatch) this._leaveEnded(" in eng
+
+
+def test_f634_an_edit_while_the_match_is_live_names_the_match():
+    """F634: a timed match ends on each phone's own clock up to about 0.5 s before MC's tick reaches RECAP. An operator
+    edit in that window re-assigns the phone while MC is still LIVE; the assign names the match, so the phone that has
+    already ended it keeps its results and its match id (the phone half is pinned in app/test/engine-persist.test.mjs)."""
+    s, net, clock, ps, info = go_live_stored(2, "tdm")
+    assert s.phase == "live"
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMED")
+    live = net.pushes("assign")
+    assert live and all(a[2].get("match_id") == info["match_id"] and "recap" not in a[2] for a in live), live
+
+
+def test_f634_the_welcome_keeps_its_own_match_id_and_the_next_match_names_its_own():
+    """F634 review (Opus): `_assign_body` also builds the welcome, where `node.match_id` has always named the start the
+    welcome carries (every phone build reads it that way). The assign-side key stays out of it. And once the next match
+    is ARMED, an assign names that match, so a phone still showing the last result leaves it."""
+    s, net, clock, ps, info = _end_pending()
+    s.finalise_recap()
+    assert s.phase == "recap"
+    assert "match_id" not in _welcome(net, 1), "a RECAP welcome carries no start, so it names no match"
+    old = info["match_id"]
+    s._roll_forward_from_recap()
+    s.push_config()
+    for i in range(len(ps)):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    nxt = s.start(runway_s=10)
+    assert s.phase == "armed" and nxt["match_id"] != old
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMED")
+    armed = net.pushes("assign")
+    assert armed and all(a[2].get("match_id") == nxt["match_id"] for a in armed), armed
+    welcome = _welcome(net, 1)
+    assert welcome.get("match_id") == nxt["match_id"] and "start" in welcome, "the welcome names its start, as before"

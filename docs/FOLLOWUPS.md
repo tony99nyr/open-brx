@@ -12,10 +12,9 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 97.** Desk 2 · bench 91 · decision 4.
+**MVP open: 95.** Desk 0 · bench 91 · decision 4.
 
-**MVP DESK (2),** a keyboard is enough:
-- 🟡 **F634** · **F635**
+**MVP DESK (0),** a keyboard is enough:
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -47,7 +46,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F634 🟡 THE EARLY-END WINDOW CAN STILL WIPE A RESULT.** brx4 for brx1, 2026-10-26 (the Opus and Fable reviews of F632). F632 keeps a phone's results only on an assign that MC marks `recap: true`, which MC sends only in RECAP. A timed match ends on each phone's own clock up to about 0.5 s before MC's tick reaches RECAP, and longer during an O8 tick failure. An operator edit (ready, display) in that window sends an assign with no flag. The phone leaves its results, clears its match id, and then drops the whistle result as `no_match`. The old code had the same hole, so this is not a regression. Fix: MC sends the flag whenever it holds the match (armed, live or recap); an assign to an ended phone in armed or live can only be that early-ended phone. If the flag is widened, rename it to what it means (for example `same_match: true`), not `recap`, in `state.py` `_assign_body`, `engine.js` `_assign`, contracts §5, and the cross-side pin in `test_mc_result_release.py`. Does not block the 0.4.30 cut. Owner brx4 (phone), with brx3 (MC). `desk`.
 
 ## MVP BENCH
 
