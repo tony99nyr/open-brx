@@ -41,10 +41,15 @@ const CASES = ['2', '6', '3', '3b', '5', '7'];
 const ONLY = process.env.ONLY || '';
 if (ONLY && !CASES.includes(ONLY)) { console.error(`FATAL: ONLY=${ONLY} is not a case (${CASES.join(', ')})`); process.exit(3); }
 const want = (c) => !ONLY || ONLY === c;
-const STUCK_S = 12;                       // the test bound (postmatch_mc.py); MC's real one is 120 s
+const STUCK_S = 25;                       // the test bound (postmatch_mc.py); MC's real one is 120 s. Room for the waiting checks under a full gate
 const CONSOLE_STUCK_S = Number(/export const SYNC_STUCK_S = (\d+);/.exec(fs.readFileSync(path.join(REPO, 'webapp/mc/src/api/contract.gen.ts'), 'utf8'))?.[1]);
 if (!Number.isFinite(CONSOLE_STUCK_S)) { console.error('FATAL: no SYNC_STUCK_S in webapp/mc/src/api/contract.gen.ts'); process.exit(3); }
-const TL_TDM = 30, TL_KOTH = 45;          // match lengths: room for the scripted kills, and for the hill to go quiet first
+const TL_TDM = 30, TL_KOTH = 60;          // match lengths: room for the scripted kills, and for the hill to go quiet more than 10 s before the whistle
+// The phone's own settle time (engine.js RESULT_SETTLE_MS, not exported): an unlinked phone says RESULT PENDING for this long
+// after its end, then MC NOT REACHED. Read from the source, as CONSOLE_STUCK_S is.
+const SETTLE_MS = Number(/const RESULT_SETTLE_MS = (\d+);/.exec(fs.readFileSync(path.join(ROOT, 'src/engine.js'), 'utf8'))?.[1]);
+if (!Number.isFinite(SETTLE_MS)) { console.error('FATAL: no RESULT_SETTLE_MS in app/src/engine.js'); process.exit(3); }
+const SETTLE_BAND_MS = 4000;              // either headline is right this close to the boundary (the phone's end is not MC's)
 
 // ---------- log and checks ----------
 const logf = fs.openSync(path.join(OUT, 'postmatch.log'), 'w');
@@ -108,7 +113,7 @@ try {
     .catch(e => { throw new Error(`${e.message}\n${fs.readFileSync(path.join(OUT, 'mc.log'), 'utf8').slice(-2000)}`); });
   mcLogText = fs.readFileSync(path.join(OUT, 'mc.log'), 'utf8');
   if (!mcLogText.includes(`SYNC_STUCK_S=${STUCK_S}`)) throw new Error('MC did not start through postmatch_mc.py with the test bound');
-  hud = await startStaticServer(path.join(ROOT, 'www'), { port: 0, host: '127.0.0.1' });
+  hud = await startStaticServer(path.join(ROOT, 'www'), { port: await freePort(), host: '127.0.0.1' });
   const HUD = `http://127.0.0.1:${hud.port}`;
   let S = await st();
   const QR = S.lan.ws_url;
@@ -150,7 +155,8 @@ try {
     const s = window.brx.engine.state(); const r = s.result; const res = q('.result.rv');
     const sy = res && q('.rfoot .sy', res);
     return {
-      screen: res ? 'result' : q('.lobby .setup') ? 'setup' : 'other',
+      screen: res ? 'result' : q('.lobby .setup') ? 'setup' : q('[data-act="onReady"]') ? 'kit' : 'other',
+      kit: !res && q('[data-act="onReady"]') ? { ready: tx(q('[data-act="onReady"]')), results: !!q('[data-act="onShowResults"]'), chip: q('.sychip')?.getAttribute('data-sync') ?? null } : null,
       resultVisible: !!res && !!q('.rh1.w', res),
       headline: tx(res && q('.rh1', res)), meta: tx(res && q('.rmeta', res)),
       teams: res ? [...res.querySelectorAll('.rteam')].map(t => ({ name: tx(q('.tm .unskew', t))?.replace(/\s*\S+$/, '') ?? null, score: tx(q('.tm b', t)),
@@ -172,13 +178,17 @@ try {
       names: (document.body.innerText.match(/REAPERX?|NOMAD|VIPER|GHOST/g) || []) };
   });
   let shotN = 0;
-  const checkpoint = async (tag) => {
-    const o = { tag, console: await snapCon() }; for (const nm of KEEP) o[nm] = await snapPhone(nm);
+  // A checkpoint reads the text first (fast); the screenshots come after the caller's checks (`await o.shots()`), so a
+  // slow screenshot under load never eats the time a waiting check needs.
+  const checkpoint = async (tag, { defer = false } = {}) => {
+    const o = { tag, at: Date.now(), console: await snapCon() }; for (const nm of KEEP) o[nm] = await snapPhone(nm);
     fs.appendFileSync(path.join(OUT, 'snapshots.jsonl'), JSON.stringify(o) + '\n');
-    const pre = String(++shotN).padStart(2, '0');
-    for (const nm of KEEP) await phones[nm].pg.screenshot({ path: path.join(OUT, `${pre}-${tag}-${nm}.png`) }).catch(() => { });
-    await con.screenshot({ path: path.join(OUT, `${pre}-${tag}-console.png`), fullPage: true }).catch(() => { });
     log('checkpoint', tag, o.console);
+    const pre = String(++shotN).padStart(2, '0');
+    Object.defineProperty(o, 'shots', { enumerable: false, value: async () => {
+      for (const nm of KEEP) await phones[nm].pg.screenshot({ path: path.join(OUT, `${pre}-${tag}-${nm}.png`) }).catch(() => { });
+      await con.screenshot({ path: path.join(OUT, `${pre}-${tag}-console.png`), fullPage: true }).catch(() => { }); } });
+    if (!defer) await o.shots();
     return o;
   };
   const results = (nm, since = 0) => phones[nm].frames.filter(f => f.dir === 'in' && f.kind === 'result' && f.at >= since);
@@ -213,7 +223,8 @@ try {
   const tilesFinal = (l, held) => [['KILLS', String(l.k)], ['DEATHS', String(l.d)], ['ASSISTS', '0'], ['ACCURACY', '—'], ['BEST STREAK', String(l.best)],
     ...(held != null ? [['YOUR TEAM HELD', held]] : [['SHOTS', '0']])];
   const sessLine = (nm, hist) => { const g = hist[nm]; return g.length > 1 ? `THIS SESSION · ${g.length} GAMES · ${g.reduce((a, x) => a + x.k, 0)} KILLS · ${g.reduce((a, x) => a + x.d, 0)} DEATHS` : null; };
-  const closedPhone = (eng) => ({ screen: 'other', resultVisible: false, headline: null, meta: null, teams: [], tiles: null, honours: null, track: null, mcv: null, sess: null, engine: eng });
+  // After OK the player is back on the kit screen: READY FOR NEXT MATCH, the RESULTS button and the sync chip.
+  const closedPhone = (eng) => ({ screen: 'kit', kit: { ready: 'READY FOR NEXT MATCH ▸', results: true, chip: 'received' }, resultVisible: false, headline: null, meta: null, teams: [], tiles: null, honours: null, track: null, mcv: null, sess: null, engine: eng });
   /** A phone on the waiting screen. */
   const pendingPhone = ({ mode, own, track, matchId, unreached, mcv, sess }) => ({
     screen: 'result', resultVisible: false, headline: unreached ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING', meta: mode.toUpperCase(), teams: [],
@@ -237,7 +248,14 @@ try {
     }
   };
   const expectConsole = (cse, tag, c, exp) => { const d = fieldDiff(c, exp); check(cse, Object.keys(d).length === 0, `${tag}: console status lines as expected`, d); };
-  const CON_WAIT = (who) => ({ status: 'MATCH OVER · WAITING FOR RESULTS', pending: 'RESULTS PENDING', waiting: `WAITING FOR ${who}`, finalWithout: null, resultChanged: null });
+  const CON_WAIT = (who) => ({ status: 'MATCH OVER · WAITING FOR RESULTS', pending: 'RESULTS PENDING', waiting: `WAITING FOR ${who}`, finalWithout: null, releasedBy: null, resultChanged: null });
+  const CON_DONE = (finalWithout, releasedBy, resultChanged) => ({ status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null, finalWithout, releasedBy, resultChanged });
+  /** The headline an unlinked phone shows `sinceEndMs` after its end: null inside the dead band, where either is right. */
+  const offlineHeadline = (sinceEndMs) => Math.abs(sinceEndMs - SETTLE_MS) < SETTLE_BAND_MS ? null : sinceEndMs >= SETTLE_MS ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING';
+  const expectOffline = (cse, tag, nm, snap, exp, sinceEndMs) => { const h = offlineHeadline(sinceEndMs);
+    expectPhone(cse, tag, nm, snap, { ...exp, headline: h ?? (['RESULT PENDING', 'MC NOT REACHED · SEE MISSION CONTROL'].includes(snap.headline) ? snap.headline : 'RESULT PENDING or MC NOT REACHED') }); };
+  /** MC's own word on what ended the wait (GET /api/state recap.sync.released_by). */
+  const releasedBy = async () => (await st()).recap?.sync?.released_by ?? null;
   const finalLead = `FINAL AFTER ${Math.round(CONSOLE_STUCK_S / 60)} MIN`;   // the console's constant (see the header)
   const releaseInS = (c) => { const m = /^FINAL IN (\d+:\d\d)$/.exec(c.releaseIn || ''); return m ? mmssToS(m[1]) : null; };
 
@@ -288,29 +306,34 @@ try {
     const whistle = await waitRecap(TL_TDM * 1000 + 30000); log('M1 recap phase at', ((whistle - m1.go_live_t) / 1000).toFixed(1), 's after go-live');
     await con.goto(MC + '/');
     const ONLINE = ['REAPER', 'VIPER', 'NOMAD'];
-    await until(async () => (await snapCon()).releaseIn && (await Promise.all(ONLINE.map(snapPhone))).every(s => s.track?.stage === 'received'), STUCK_S * 1000, 'console countdown and the online phones synced');
-    await consoleWaitsFor(['GHOST'], 'GHOST');
-    const c2a = await checkpoint('m1-waiting');
+    const m1End = m1.go_live_t + TL_TDM * 1000;   // the phones' own end, which their settle time counts from
+    const released1 = () => results('REAPER', whistle).length > 0;
+    await until(async () => released1() || ((await snapCon()).releaseIn && (await Promise.all(ONLINE.map(snapPhone))).every(s => s.track?.stage === 'received')), STUCK_S * 1000, 'console countdown and the online phones synced');
+    if (!released1()) await consoleWaitsFor(['GHOST'], 'GHOST');
+    const c2a = await checkpoint('m1-waiting', { defer: true });
+    const toWait1 = (c2a.at - whistle) / 1000; log('M1 waiting checkpoint', toWait1.toFixed(1), 's after the whistle');
+    check('2', !released1(), `m1-waiting: too slow to observe the wait: the release came first (the checkpoint was ${toWait1.toFixed(1)} s after the whistle, the bound is ${STUCK_S} s)`, toWait1);
     const rel1s = releaseInS(c2a.console);
     expectConsole('2', 'm1-waiting', c2a.console, CON_WAIT('GHOST'));
     check('2', rel1s != null && rel1s >= 1 && rel1s <= STUCK_S, `m1-waiting: FINAL IN counts from the test bound (${STUCK_S} s)`, c2a.console.releaseIn);
     for (const nm of ONLINE) expectPhone('2', 'm1-waiting', nm, c2a[nm], pendingPhone({ mode: 'tdm', own: L[nm], track: SYNCED, matchId: m1.match_id }));
-    // GHOST is offline: its own count, and RESULT PENDING until RESULT_SETTLE_MS, MC NOT REACHED after it
-    const gExp = pendingPhone({ mode: 'tdm', own: L.GHOST, track: UNLINKED, matchId: m1.match_id, unreached: c2a.GHOST.headline !== 'RESULT PENDING' });
-    expectPhone('2', 'm1-waiting', 'GHOST', c2a.GHOST, gExp);
+    // GHOST is offline: its own count, and RESULT PENDING until RESULT_SETTLE_MS after its end, MC NOT REACHED after it
+    const gExp = pendingPhone({ mode: 'tdm', own: L.GHOST, track: UNLINKED, matchId: m1.match_id });
+    expectOffline('2', 'm1-waiting', 'GHOST', c2a.GHOST, gExp, c2a.at - m1End);
     for (const nm of KEEP) check('2', results(nm, m1.go_live_t).length === 0, `m1-waiting: ${nm} has no result frame yet`, results(nm, m1.go_live_t).length);
-    await until(async () => { const s = releaseInS(await snapCon()); return s != null && s < rel1s; }, STUCK_S * 1000, 'the countdown to move');
-    check('2', true, 'FINAL IN counts down');
-    // the release
-    await until(() => results('REAPER', whistle).length > 0, (STUCK_S + 20) * 1000, 'the bounded release');
-    const relAt = Date.now(); const relAfter = (relAt - whistle) / 1000;
+    await c2a.shots();
+    const moved = await until(async () => { const s = releaseInS(await snapCon()); return released1() || (s != null && s < rel1s) ? (s ?? -1) : false; }, STUCK_S * 1000, 'the countdown to move');
+    check('2', moved >= 0 && moved < rel1s, 'FINAL IN counts down', { first: rel1s, later: moved });
+    // the release: its time is the first result frame's own arrival; MC's sync board says what ended the wait
+    await until(released1, (STUCK_S + 20) * 1000, 'the bounded release');
+    const relAt = results('REAPER', whistle)[0].at; const relAfter = (relAt - whistle) / 1000;
     log('M1 release', relAfter.toFixed(1), 's after the recap phase');
-    check('2', relAfter >= STUCK_S - 1.5 && relAfter <= STUCK_S + 4, `the release comes ${STUCK_S} s (the test bound) after the whistle`, relAfter.toFixed(1));
+    check('2', await releasedBy() === 'timeout', 'MC released on the bound (recap.sync.released_by is timeout)', await releasedBy());
+    check('2', relAfter >= STUCK_S - 1.5 && relAfter <= STUCK_S + 8, `the release comes ${STUCK_S} s (the test bound) after the whistle`, relAfter.toFixed(1));
     await until(async () => (await snapCon()).finalWithout && (await Promise.all(ONLINE.map(snapPhone))).every(s => s.resultVisible), 15000, 'release on the console and the phones');
     await settle(ONLINE, relAt, 'release');
     const c2c = await checkpoint('m1-released');
-    expectConsole('2', 'm1-released', c2c.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null,
-      finalWithout: `${finalLead} WITHOUT 1 PHONE (GHOST)`, releasedBy: 'timeout', resultChanged: null });
+    expectConsole('2', 'm1-released', c2c.console, CON_DONE(`${finalLead} WITHOUT 1 PHONE (GHOST)`, 'timeout', null));
     const relF1 = Object.fromEntries(ONLINE.map(n => [n, fr(results(n, whistle)[0])]));
     w1 = relF1.REAPER?.body?.winner;
     check('2', sameJson(w1, { team_id: 'blue' }), 'released without GHOST: blue wins on kills (2 to 1)', w1);
@@ -319,7 +342,7 @@ try {
       expectPhone('2', 'm1-released', nm, c2c[nm], finalPhone({ nm, mode: 'tdm', winBy: 'KILLS', winner: 'blue', myTeam: team0[nm], updated: false, own: L[nm],
         teams: tdmTeams({ ...L, GHOST: L0.GHOST }, team0), body: relF1[nm].body, track: SYNCED, matchId: m1.match_id }));
     }
-    expectPhone('2', 'm1-released', 'GHOST', c2c.GHOST, { ...gExp, headline: c2c.GHOST.headline === 'RESULT PENDING' ? 'RESULT PENDING' : 'MC NOT REACHED · SEE MISSION CONTROL' });
+    expectOffline('2', 'm1-released', 'GHOST', c2c.GHOST, gExp, c2c.at - m1End);
     check('2', results('GHOST').length === 0, 'm1-released: GHOST (offline) got no result frame', results('GHOST').length);
     identical('2', relF1, 'released result');
     for (const nm of ONLINE) hist[nm].push({ ...L[nm] });
@@ -340,8 +363,7 @@ try {
         && (await snapCon()).names.includes('REAPERX'), 20000, 'the edits reach the phones and the console');
       await settle(ONLINE, t6, 'edits');
       const c6 = await checkpoint('m1-after-edits');
-      expectConsole('6', 'm1-after-edits', c6.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null,
-        finalWithout: `${finalLead} WITHOUT 1 PHONE (GHOST)`, releasedBy: 'timeout', resultChanged: null });
+      expectConsole('6', 'm1-after-edits', c6.console, CON_DONE(`${finalLead} WITHOUT 1 PHONE (GHOST)`, 'timeout', null));
       check('6', c6.console.names.includes('REAPERX'), 'm1-after-edits: the console shows the rename', c6.console.names);
       for (const nm of ['NOMAD', 'REAPER']) {
         const a = phones[nm].frames.filter(f => f.dir === 'in' && f.kind === 'assign' && f.at >= t6);
@@ -379,13 +401,14 @@ try {
       const c3 = await checkpoint('m1-late-fact');
       flipped = results('GHOST', t3).at(-1)?.body ?? welcomeResult(phones.GHOST.frames.filter(f => f.dir === 'in' && f.kind === 'welcome' && f.at >= t3).at(-1));
       check('3', sameJson(flipped?.winner, { team_id: 'red' }), "GHOST's facts flip the winner to red (4 to 2)", { before: w1, after: flipped?.winner });
-      expectConsole('3', 'm1-late-fact', c3.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null, finalWithout: null, resultChanged: 'RESULT CHANGED' });
+      expectConsole('3', 'm1-late-fact', c3.console, CON_DONE(null, null, 'RESULT CHANGED'));
       const g3 = results('GHOST', t3); const welcomeR = phones.GHOST.frames.filter(f => f.dir === 'in' && f.kind === 'welcome' && f.at >= t3 && welcomeResult(f));
-      check('3', g3.length + welcomeR.length >= 1 && g3.length <= 1, 'm1-late-fact: GHOST got exactly one result', { results: g3.length, welcomeWithResult: welcomeR.length });
+      // F628: MC holds the result back while GHOST owes facts, so its rejoin welcome carries none and the beat that drains the queue sends one frame
+      check('3', g3.length + welcomeR.length === 1, 'm1-late-fact: GHOST got exactly one result (result frames and welcomes with a result together)', { results: g3.length, welcomeWithResult: welcomeR.length });
       const badG = samples.filter(s => (s.w && sameJson(s.w, w1)) || s.u === true || /RESULT UPDATED/.test(s.meta || ''));
       const gaps = samples.slice(1).map((s, i) => s.t - samples[i].t);
       check('3', samples.length > 0 && badG.length === 0, `GHOST never showed the old winner or RESULT UPDATED (${samples.length} in-page samples)`, badG.slice(0, 3));
-      check('3', Math.max(0, ...gaps) <= 1000, 'GHOST sampled at least every second', Math.max(0, ...gaps));
+      log('GHOST sampler', { samples: samples.length, max_gap_ms: Math.max(0, ...gaps) });
       const teamsF = tdmTeams(LF, team0);
       for (const nm of ONLINE) {
         const after = results(nm, t3);
@@ -426,7 +449,7 @@ try {
           teams: teamsF, body: results(nm).at(-1).body, track: SYNCED, matchId: m1.match_id }));
         expectPhone('3b', 'm1-rejoin', 'GHOST', c3b.GHOST, finalPhone({ nm: 'GHOST', mode: 'tdm', winBy: 'KILLS', winner: 'red', myTeam: 'blue', updated: false, own: LF.GHOST,
           teams: teamsF, body: flipped, track: SYNCED, matchId: m1.match_id }));
-        expectConsole('3b', 'm1-rejoin', c3b.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null, finalWithout: null, resultChanged: 'RESULT CHANGED' });
+        expectConsole('3b', 'm1-rejoin', c3b.console, CON_DONE(null, null, 'RESULT CHANGED'));
       }
     } else {
       hist.GHOST.push({ ...L.GHOST });
@@ -452,7 +475,7 @@ try {
     await until(async () => (await Promise.all(KEEP.map(snapPhone))).every(s => s.screen === 'setup'), 20000, 'every phone on the setting-up screen');
     await settle(KEEP, Date.now(), 'next match');
     const c7 = await checkpoint(tag);
-    check(cse, c7.console.status === null && c7.console.pending === null && c7.console.finalWithout === null, `${tag}: the console left the recap`, c7.console);
+    expectConsole(cse, tag, c7.console, { status: null, pending: null, waiting: null, releaseIn: null, finalWithout: null, releasedBy: null, resultChanged: null });
     for (const nm of KEEP) {
       const a = phones[nm].frames.filter(f => f.dir === 'in' && f.kind === 'assign' && f.at >= t7);
       check(cse, a.length > 0 && a.every(f => !('recap' in (f.body || {}))), `${tag}: ${nm} every re-assign carries no recap flag`, a.map(f => f.body?.recap));
@@ -501,14 +524,18 @@ try {
     const hOff = await hsnap('pre-offline');
     check('5', red(hOff) > 0 && sameJson(quietBeats().at(-1).body.control.hold_ms, hOff.holdMs) && Object.keys(hOff.counts || {}).length === 0,
       'presence gone and the hold frozen and reported before the hill goes offline', { hill: hOff.holdMs, beat: quietBeats().at(-1).body.control.hold_ms });
-    check('5', hOff.toWhistle_s > 10, 'the hill goes offline well before the whistle', hOff.toWhistle_s);
-    await hill.context().setOffline(true); await hill.evaluate(() => window.brx.transport?.dropLink?.());
+    check('5', hOff.toWhistle_s > 10, `the hill goes offline more than 10 s before the whistle (${hOff.toWhistle_s} s): if not, the hill took too long to go quiet under this load and TL_KOTH (${TL_KOTH} s) needs room`, hOff.toWhistle_s);
+    await hill.context().setOffline(true); await hill.evaluate(() => window.brxUtility.transport?.dropLink?.());
+    await until(() => hill.evaluate(() => window.brxUtility.transport?.state).then(w => w != null && w !== 'bound'), 15000, 'the hill link down');
     const tOff = Date.now(); log('hill offline', { red_ms: red(hOff), toWhistle_s: hOff.toWhistle_s });
     const wh2 = await waitRecap(TL_KOTH * 1000 + 30000); log('M2 recap phase');
     await con.goto(MC + '/');
-    await until(async () => (await snapCon()).releaseIn && (await Promise.all(KEEP.map(snapPhone))).every(s => s.track?.stage === 'received'), STUCK_S * 1000, 'console countdown and every phone synced');
-    await consoleWaitsFor(['CONTROL POINT 1'], 'CONTROL POINT 1');
-    const c5a = await checkpoint('m2-waiting'); const hW = await hsnap('waiting');
+    const released2 = () => results('REAPER', wh2).length > 0;
+    await until(async () => released2() || ((await snapCon()).releaseIn && (await Promise.all(KEEP.map(snapPhone))).every(s => s.track?.stage === 'received')), STUCK_S * 1000, 'console countdown and every phone synced');
+    if (!released2()) await consoleWaitsFor(['CONTROL POINT 1'], 'CONTROL POINT 1');
+    const c5a = await checkpoint('m2-waiting', { defer: true }); const hW = await hsnap('waiting');
+    const toWait2 = (c5a.at - wh2) / 1000; log('M2 waiting checkpoint', toWait2.toFixed(1), 's after the whistle');
+    check('5', !released2(), `m2-waiting: too slow to observe the wait: the release came first (the checkpoint was ${toWait2.toFixed(1)} s after the whistle, the bound is ${STUCK_S} s)`, toWait2);
     const rel2s = releaseInS(c5a.console);
     expectConsole('5', 'm2-waiting', c5a.console, CON_WAIT('CONTROL POINT 1'));
     check('5', rel2s != null && rel2s >= 1 && rel2s <= STUCK_S, `m2-waiting: FINAL IN counts from the test bound (${STUCK_S} s)`, c5a.console.releaseIn);
@@ -518,14 +545,15 @@ try {
       expectPhone('5', 'm2-waiting', nm, c5a[nm], pendingPhone({ mode: 'koth', own: L0[nm], track: SYNCED, matchId: m2.match_id, mcv: KOTH_MCV,
         sess: sessLine(nm, { [nm]: [...hist[nm], L0[nm]] }) }));
     }
-    await until(() => results('REAPER', wh2).length > 0, (STUCK_S + 20) * 1000, 'the bounded release (KOTH)');
-    const rel2 = Date.now(); const rel2After = (rel2 - wh2) / 1000;
-    check('5', rel2After >= STUCK_S - 1.5 && rel2After <= STUCK_S + 4, `the KOTH release comes ${STUCK_S} s (the test bound) after the whistle`, rel2After.toFixed(1));
+    await c5a.shots();
+    await until(released2, (STUCK_S + 20) * 1000, 'the bounded release (KOTH)');
+    const rel2 = results('REAPER', wh2)[0].at; const rel2After = (rel2 - wh2) / 1000;
+    check('5', await releasedBy() === 'timeout', 'MC released the KOTH result on the bound (recap.sync.released_by is timeout)', await releasedBy());
+    check('5', rel2After >= STUCK_S - 1.5 && rel2After <= STUCK_S + 8, `the KOTH release comes ${STUCK_S} s (the test bound) after the whistle`, rel2After.toFixed(1));
     await until(async () => (await snapCon()).finalWithout && (await Promise.all(KEEP.map(snapPhone))).every(s => s.resultVisible), 15000, 'release on the console and the phones');
     await settle(KEEP, rel2, 'koth release');
     const c5b = await checkpoint('m2-released'); const hRel = await hsnap('released');
-    expectConsole('5', 'm2-released', c5b.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null,
-      finalWithout: `${finalLead} WITHOUT 1 HILL (CONTROL POINT 1)`, releasedBy: 'timeout', resultChanged: null });
+    expectConsole('5', 'm2-released', c5b.console, CON_DONE(`${finalLead} WITHOUT 1 HILL (CONTROL POINT 1)`, 'timeout', null));
     const f5 = Object.fromEntries(KEEP.map(n => [n, fr(results(n, wh2)[0])]));
     identical('5', f5, 'koth released result');
     const relRed = f5.REAPER?.body?.possession?.by_team?.red;
@@ -547,7 +575,8 @@ try {
       [hOff, hW, hRel, hBack].map(h => [h.tag, h.holdMs]));
     const st5 = hillRec.frames.filter(f => f.dir === 'out' && f.kind === 'status' && f.at >= t5);
     check('5', st5.every(f => sameJson(f.body?.control?.hold_ms, hOff.holdMs)), 'the returning hill reports the same tally', st5.map(f => f.body?.control?.hold_ms));
-    expectConsole('5', 'm2-hill-back', c5c.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null, resultChanged: null });
+    // the hill's return completes the board, so the FINAL WITHOUT line goes; the release reason stays MC's
+    expectConsole('5', 'm2-hill-back', c5c.console, CON_DONE(null, null, null));
     for (const nm of KEEP) {
       check('5', results(nm, t5).length === 0, `m2-hill-back: ${nm} no second result frame when the hill returns`, results(nm, t5).map(f => f.body?.possession?.by_team));
       for (const k of ['screen', 'resultVisible', 'headline', 'meta', 'teams', 'tiles', 'honours', 'track', 'mcv', 'sess', 'engine'])

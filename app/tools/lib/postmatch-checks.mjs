@@ -6,9 +6,9 @@
 //     its frame after the broadcast), so the caller names those viewers in `late`, and `t` is excluded for them only.
 //     For the others `t` must be the same broadcast: MC stamps it per recipient inside one push (`_result_body` runs
 //     once a player), so two frames of one push can differ by a millisecond (seen 2026-10-27 under load). Within
-//     SAME_PUSH_MS is the same push; anything more is a difference.
+//     SAME_PUSH_MS is the same push; a separate, stale push comes seconds apart (a status beat is 2 s), so it still fails.
 export const PER_VIEWER = ['outcome', 'my'];
-export const SAME_PUSH_MS = 50;
+export const SAME_PUSH_MS = 1000;
 export const strip = (b, extra = []) => { const c = JSON.parse(JSON.stringify(b || {})); for (const k of [...PER_VIEWER, ...extra]) delete c[k]; return c; };
 export const diffKeys = (a, b) => { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); return [...ks].filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])); };
 /** frames: { name: { at, body } }; late: names whose frame MC sent later. Returns [{ a, b, late, differ }]. */
