@@ -121,13 +121,13 @@ def test_webapp_mc_changes_select_app_e2e_for_its_built_dist():
 def test_webapp_mc_paths_select_mc_mcp_and_site():
     # HIGH fix: mcp/tests reads webapp/mc/ (needs mcp); site/lib/facts.mjs reads webapp/mc/src/tokens.ts (needs site).
     r = _select(["webapp/mc/src/api/contract.gen.ts"])
-    assert set(r["filters"]) == {"mc-", "mcp", "site", "app-e2e"}, r
+    assert set(r["filters"]) == {"mc-", "mcp", "site", "app-e2e", "app-postmatch"}, r
 
 
 def test_mcp_paths_select_mcp_chaos_mc_and_site():
     # HIGH fix: site/lib/data.mjs + facts.mjs read mcp/ data files (weapons.json, sound_catalog.json, state.py).
     r = _select(["mcp/brx_mcp/mc/scoring.py"])
-    assert {"mcp", "chaos", "mc-", "site", "app-e2e", "app-logsync", "app-test"} == set(r["filters"]), r
+    assert {"mcp", "chaos", "mc-", "site", "app-e2e", "app-postmatch", "app-logsync", "app-test"} == set(r["filters"]), r
 
 
 def test_generator_fed_sources_select_mcp_not_app_screens_and_the_bundled_demo_still_does():
@@ -452,7 +452,7 @@ _DOCS_DIR = _re.compile(r"""(?:path\.(?:resolve|join)\([^)]*|new URL\()['"](?:\.
 # that goes on with a variable (`REPO / "docs" / name`) still counts as the whole tree.
 _DOCS_JOIN = _re.compile(r"""/\s*['"]docs['"]((?:\s*/\s*['"][\w.-]+['"])+)(?!\s*/)""")
 _PY = ("mcp-core", "mcp-docs", "mcp-sim")   # the three jobs of run_tests.py (F626); test files are owned by their GROUPS
-_MC_JOBS = (*_PY, "mc-play", "app-e2e", "app-logsync")   # jobs that start Mission Control code ("mc-play" stands for the mc-* e2e family)
+_MC_JOBS = (*_PY, "mc-play", "app-e2e", "app-postmatch", "app-logsync")   # jobs that start Mission Control code ("mc-play" stands for the mc-* e2e family)
 # Lines the scan below reads as a docs read that are not one against the real repo, by (source, exact stripped line
 # text), so a later real read on another line is still caught (Opus, F626 review). A trace of every file the mcp suite
 # opened (2026-10-26) saw none of them read a real docs path. A line no scan finds fails the test, so none goes stale.
@@ -504,8 +504,8 @@ _OWNERS = [   # (source prefix, the test-all jobs that run it); the first match 
     ("scripts/followups-index.mjs", ("mcp-docs",)),
     ("mcp/tools/soundbank_community.py", ("mcp-core",)),   # imported by test_regen_runner and test_sound_catalog only
     ("app/test/", ("app-test",)), ("app/tools/screens", ("app-screens",)), ("app/tools/moments", ("app-moments",)),
-    ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)),
-    ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e")),   # bundled into every app gate
+    ("app/tools/e2e", ("app-e2e",)), ("app/tools/logsync", ("app-logsync",)), ("app/tools/postmatch", ("app-postmatch",)),
+    ("app/src/", ("app-test", "app-screens", "app-moments", "app-e2e", "app-postmatch")),   # bundled into every app gate
     ("webapp/mc/test/e2e/", ("mc-play",)), ("webapp/mc/", ("mc-vitest", "mc-play")), ("site/", ("site",)),
     ("mcp/", _PY), ("scripts/", _PY),
 ]

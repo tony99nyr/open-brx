@@ -12,10 +12,9 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 96.** Desk 1 · bench 91 · decision 4.
+**MVP open: 95.** Desk 0 · bench 91 · decision 4.
 
-**MVP DESK (1),** a keyboard is enough:
-- 🟡 **F635**
+**MVP DESK (0),** a keyboard is enough:
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -47,7 +46,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 
 A keyboard is enough. Highest value first.
 
-- **F635 🟡 THE POST-MATCH E2E HARNESS BECOMES A GATE JOB.** brx4 for brx1, 2026-10-26. The ad-hoc end-to-end harness (a real MC, four phone HUDs, a utility hill station and the console, with a WebSocket tap and per-phone snapshots of every visible field) found four real defects in two days: the A81 stale welcome (F628), the stuck PROVISIONAL (F630), the debrief edit that wiped a result (F632) and the stale result on a rejoin (F633). Land it as an e2e script in the repo, with its own job in `scripts/lib/jobs.mjs` and measured `mb` and `secs`. It covers the cases: one phone offline, a late flip, a rejoin with an empty queue, KOTH with the hill offline, debrief edits with a late fact, and NEW SESSION. It asserts every player-visible field on every phone and the console's status lines, and follows the parallel-safety rules: free ports, its own output folder, and condition waits, not sleeps. The 120 s release bound needs a test override or a mocked clock, to keep the job short. After the 0.4.30 cut. Owner brx4. `build`.
 
 ## MVP BENCH
 
