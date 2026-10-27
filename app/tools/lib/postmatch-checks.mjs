@@ -4,7 +4,11 @@
 //   - `my` is each viewer's own row, and `outcome` is each viewer's win or lose: both differ by design;
 //   - `t` is MC's send time. It differs for a frame that MC sent later on its own path (a phone that reconnects gets
 //     its frame after the broadcast), so the caller names those viewers in `late`, and `t` is excluded for them only.
+//     For the others `t` must be the same broadcast: MC stamps it per recipient inside one push (`_result_body` runs
+//     once a player), so two frames of one push can differ by a millisecond (seen 2026-10-27 under load). Within
+//     SAME_PUSH_MS is the same push; anything more is a difference.
 export const PER_VIEWER = ['outcome', 'my'];
+export const SAME_PUSH_MS = 50;
 export const strip = (b, extra = []) => { const c = JSON.parse(JSON.stringify(b || {})); for (const k of [...PER_VIEWER, ...extra]) delete c[k]; return c; };
 export const diffKeys = (a, b) => { const ks = new Set([...Object.keys(a), ...Object.keys(b)]); return [...ks].filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k])); };
 /** frames: { name: { at, body } }; late: names whose frame MC sent later. Returns [{ a, b, late, differ }]. */
@@ -13,7 +17,9 @@ export const compareFrames = (frames, late = []) => {
   const f0 = frames[names[0]];
   return names.slice(1).map(nm => {
     const f = frames[nm]; const isLate = late.includes(nm) || late.includes(names[0]);
-    const ex = isLate ? ['t'] : []; return { a: names[0], b: nm, late: isLate, differ: diffKeys(strip(f0.body, ex), strip(f.body, ex)) };
+    const differ = diffKeys(strip(f0.body, ['t']), strip(f.body, ['t']));
+    if (!isLate && !(Number.isFinite(f0.body.t) && Number.isFinite(f.body.t) && Math.abs(f0.body.t - f.body.t) <= SAME_PUSH_MS)) differ.push('t');
+    return { a: names[0], b: nm, late: isLate, differ };
   });
 };
 /** Case 3b: a rejoin welcome carries the result at body.node.result. */

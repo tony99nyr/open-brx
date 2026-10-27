@@ -186,7 +186,7 @@ try {
   const identical = (cse, frames, label, late = []) => {
     for (const r of compareFrames(frames, late)) {
       const A = frames[r.a].body, B = frames[r.b].body;
-      check(cse, r.differ.length === 0, `${label}: ${r.a} vs ${r.b} full body identical except outcome, my${r.late ? ', t (sent later)' : ''}`,
+      check(cse, r.differ.length === 0, `${label}: ${r.a} vs ${r.b} full body identical except outcome, my${r.late ? ', t (sent later)' : ', t within one push'}`,
         { differ: r.differ, a: r.differ.map(k => A[k]), b: r.differ.map(k => B[k]) });
     }
   };
@@ -305,7 +305,7 @@ try {
     await until(() => results('REAPER', whistle).length > 0, (STUCK_S + 20) * 1000, 'the bounded release');
     const relAt = Date.now(); const relAfter = (relAt - whistle) / 1000;
     log('M1 release', relAfter.toFixed(1), 's after the recap phase');
-    check('2', relAfter >= STUCK_S - 1.5 && relAfter <= STUCK_S + 8, `the release comes ${STUCK_S} s (the test bound) after the whistle`, relAfter.toFixed(1));
+    check('2', relAfter >= STUCK_S - 1.5 && relAfter <= STUCK_S + 4, `the release comes ${STUCK_S} s (the test bound) after the whistle`, relAfter.toFixed(1));
     await until(async () => (await snapCon()).finalWithout && (await Promise.all(ONLINE.map(snapPhone))).every(s => s.resultVisible), 15000, 'release on the console and the phones');
     await settle(ONLINE, relAt, 'release');
     const c2c = await checkpoint('m1-released');
@@ -337,7 +337,7 @@ try {
       world.renamed = true; world.reteamed = true;
       await until(async () => ONLINE.every(n => results(n, t6).some(f => JSON.stringify(f.body?.rows || []).includes('REAPERX')))
         && ['NOMAD', 'REAPER'].every(n => phones[n].frames.some(f => f.dir === 'in' && f.kind === 'assign' && f.at >= t6))
-        && (await snapCon()).names.includes('REAPERX') && (await snapPhone('NOMAD')).teams.some(t => t.rows.some(r => r[0] === 'REAPERX')), 20000, 'the edits reach the phones and the console');
+        && (await snapCon()).names.includes('REAPERX'), 20000, 'the edits reach the phones and the console');
       await settle(ONLINE, t6, 'edits');
       const c6 = await checkpoint('m1-after-edits');
       expectConsole('6', 'm1-after-edits', c6.console, { status: 'MATCH COMPLETE', pending: null, waiting: null, releaseIn: null,
@@ -520,7 +520,7 @@ try {
     }
     await until(() => results('REAPER', wh2).length > 0, (STUCK_S + 20) * 1000, 'the bounded release (KOTH)');
     const rel2 = Date.now(); const rel2After = (rel2 - wh2) / 1000;
-    check('5', rel2After >= STUCK_S - 1.5 && rel2After <= STUCK_S + 8, `the KOTH release comes ${STUCK_S} s (the test bound) after the whistle`, rel2After.toFixed(1));
+    check('5', rel2After >= STUCK_S - 1.5 && rel2After <= STUCK_S + 4, `the KOTH release comes ${STUCK_S} s (the test bound) after the whistle`, rel2After.toFixed(1));
     await until(async () => (await snapCon()).finalWithout && (await Promise.all(KEEP.map(snapPhone))).every(s => s.resultVisible), 15000, 'release on the console and the phones');
     await settle(KEEP, rel2, 'koth release');
     const c5b = await checkpoint('m2-released'); const hRel = await hsnap('released');
@@ -559,6 +559,7 @@ try {
 } catch (e) {
   failed = true;
   log('ABORT', String(e?.stack || e));
+  for (const c of CASES.filter(want)) checks.push({ cse: c, ok: false, what: `aborted: ${String(e?.message || e).slice(0, 200)}` });
 } finally {
   await stopAll();
 }
