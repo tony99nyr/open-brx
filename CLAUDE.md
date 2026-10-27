@@ -70,7 +70,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
 - **Which tests to run.** Run `pnpm run test:all` from the repo root before committing (about 30 s), not the
   suites one by one. Add `-- --ui` (about 7.5 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
-  a UI gate or an e2e script: **CI runs only `mc-play` of the browser gates (non-blocking, F512)**, and `site`
+  a UI gate or an e2e script: **CI runs only `mc-play` of the browser gates (blocking since F512)**, and `site`
   not at all. The lander runs them all, but a red there costs a whole batch. After merging `origin/main`, use
   `pnpm run test:all -- --changed <base>` instead of the full suite. It uses a per-checkout lock and a shared
   resource pool: a second run in the same checkout waits, while different worktrees can run together. Full
