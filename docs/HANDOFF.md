@@ -68,13 +68,13 @@ F631 and F630 are closed on brx4's end-to-end runs (all six cases pass on 2026-1
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-26):** F598 is landed (the hill's last step counts presence as of the whistle; the clock ratchet
-stays as it was). The firmware safety guards are on `brx4-fwguards`: `$ZTOG` and `$CLEARDEVICE` denied, every writer
-refuses a `$WEAP` slot above 11 or a damage above 255, and the September firmware labels are corrected or marked
-unproven. Nothing was flashed.
-**Next (bench):** the code-read leads on F264, F277, F293 and F300. The older bench list (F519, F521, F525, F526,
-F511, F501, F530) still stands.
+**State (2026-10-27):** F635 is done on `fix/f635-postmatch-e2e`, to land: the post-match end-to-end gate is the
+`--ui` job `app-postmatch` (cases 2, 6, 3, 3b, 5 and 7, about 180 s). F598 is landed. The firmware safety guards are
+on `brx4-fwguards`. Nothing was flashed.
+**Next:** land `fix/f635-postmatch-e2e`. Bench: the code-read leads on F264, F277, F293 and F300; the older list (F519, F521, F525,
+F526, F511, F501, F530) still stands.
 **Blocked:** none.
+
 ## Lane: brx5, cross-language seams and the stage
 **State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews
 (mock slices 1 to 6, F527 and the MC docs DRY pass), and the 0.4.22 bench sheet, which was walked against main and
