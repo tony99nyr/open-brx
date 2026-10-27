@@ -109,7 +109,7 @@ For any of these, merge `origin/main`, run the generator, and submit again.
    `package.json` or `package-lock.json` differs from the main checkout's, the lander removes the link and runs
    `npm ci` in the worktree instead. A failed install counts as a red job named `install <dir>`.
 4. It gates the candidate once: `node scripts/test-all.mjs --cache --ui`. The gate's environment (`BRX_LAND_GATE`, `BRX_FOLLOWUPS_INDEX_FRESH`) makes test-all bypass the cache, so every job reruns, because those variables change what the tests assert. A docs-only candidate also gets
-   `--changed <base>`, so only jobs that read docs run. The lander reads the verdict from the gate's
+   `--changed <base>`, so only jobs that read docs run: for most pages `mcp-docs` and `site`, not all of `mcp` (F626). The lander reads the verdict from the gate's
    `results.json` (a candidate older than the record is judged on its printed table). An unreadable record counts as red. The gate must run exactly the jobs that `--list` names.
 5. It reruns a failed job alone, once. If the job passes on the rerun, the lander records a flake and continues.
    If the job fails again, the lander bisects the batch. Each half is gated on top of the branches that already

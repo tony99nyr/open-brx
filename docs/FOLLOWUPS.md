@@ -12,12 +12,12 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 102.** Desk 7 · bench 91 · decision 4.
+**MVP open: 101.** Desk 6 · bench 91 · decision 4.
 
-**MVP DESK (7),** a keyboard is enough:
+**MVP DESK (6),** a keyboard is enough:
 - 🟠 **F631** · **F632** · **F633**
 - 🟡 **F634** · **F635**
-- 🟢 **F626** · **F630**
+- 🟢 **F630**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
@@ -55,7 +55,6 @@ A keyboard is enough. Highest value first.
 - **F631 🟠 A TEAM EDIT DURING THE DEBRIEF MOVES THE MATCH'S WINNER.** brx3, 2026-10-26 (predates A83). The live Scorer holds `self.players` by reference, so a team edit during the debrief moves this match's console winner and team scores, and any late fact after that re-stores the recap and pushes the wrong winner to the phones. Fix: after the whistle the scorer reads the frozen `match.played` roster; a display-name edit still shows, because it is cosmetic. Before Tony's next game; it does not block the APK cut. Owner brx3. `build`.
 - **F634 🟡 THE EARLY-END WINDOW CAN STILL WIPE A RESULT.** brx4 for brx1, 2026-10-26 (the Opus and Fable reviews of F632). F632 keeps a phone's results only on an assign that MC marks `recap: true`, which MC sends only in RECAP. A timed match ends on each phone's own clock up to about 0.5 s before MC's tick reaches RECAP, and longer during an O8 tick failure. An operator edit (ready, display) in that window sends an assign with no flag. The phone leaves its results, clears its match id, and then drops the whistle result as `no_match`. The old code had the same hole, so this is not a regression. Fix: MC sends the flag whenever it holds the match (armed, live or recap); an assign to an ended phone in armed or live can only be that early-ended phone. If the flag is widened, rename it to what it means (for example `same_match: true`), not `recap`, in `state.py` `_assign_body`, `engine.js` `_assign`, contracts §5, and the cross-side pin in `test_mc_result_release.py`. Does not block the 0.4.30 cut. Owner brx4 (phone), with brx3 (MC). `desk`.
 - **F635 🟡 THE POST-MATCH E2E HARNESS BECOMES A GATE JOB.** brx4 for brx1, 2026-10-26. The ad-hoc end-to-end harness (a real MC, four phone HUDs, a utility hill station and the console, with a WebSocket tap and per-phone snapshots of every visible field) found four real defects in two days: the A81 stale welcome (F628), the stuck PROVISIONAL (F630), the debrief edit that wiped a result (F632) and the stale result on a rejoin (F633). Land it as an e2e script in the repo, with its own job in `scripts/lib/jobs.mjs` and measured `mb` and `secs`. It covers the cases: one phone offline, a late flip, a rejoin with an empty queue, KOTH with the hill offline, debrief edits with a late fact, and NEW SESSION. It asserts every player-visible field on every phone and the console's status lines, and follows the parallel-safety rules: free ports, its own output folder, and condition waits, not sleeps. The 120 s release bound needs a test override or a mocked clock, to keep the job short. After the 0.4.30 cut. Owner brx4. `build`.
-- **F626 🟢 GATE: A DOCS-ONLY CHANGE RUNS THE WHOLE `mcp` JOB.** brx2 for brx1, 2026-10-26. `test_docs_hygiene` and the other docs tests live in the `mcp` job, so `--changed` runs all of `mcp` (300 s registered, about 5 to 9 min in a gate) for a docs-only diff, and the job can time out under outside load. On 2026-10-26, the F595 row close (two jobs) went red on an `mcp` TIMEOUT at 900 s with every shard passed. (1) Give the docs tests a registry job of their own in `scripts/lib/jobs.mjs`, with `inputs` that `--changed` selects for a docs-only diff, and keep them out of `mcp` so nothing runs twice; a docs land then gates in seconds. (2) Split the `test_balance_review` shards into their own job, so a sim change does not carry the rest of `mcp` and `mcp` alone stays well inside its timeout. Owner brx2. `build`.
 
 ## MVP BENCH
 

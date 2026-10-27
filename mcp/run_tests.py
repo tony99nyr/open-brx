@@ -75,10 +75,14 @@ SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_ser
 
 # F627 / F626 (2026-10-26): named groups of whole files, so CI's jobs and test-all's jobs split the suite the same
 # way from one list. `sim` is about 60% of the suite's CPU and needs no extra, so CI runs it once on its own.
+# `docs` is test-all's mcp-docs job, the only mcp job a docs-only change selects (scripts/lib/changed.mjs). It holds
+# the cheap files that read real docs widely: the whole tree, docs/FOLLOWUPS.md, or a generated page. A code test that
+# reads one docs page stays in mcp, and changed.mjs MCP_DOCS_READERS sends that page to mcp.
 # Exact file stems, not substrings: test_every_group_names_real_test_files fails when a file is renamed.
 GROUPS = {
     "sim": ("test_balance_review", "test_balance_review_field_kit", "test_balance_sim"),
-    "docs": ("test_docs_hygiene", "test_suite_registry"),
+    "docs": ("test_docs_hygiene", "test_suite_registry", "test_amendment_citations", "test_site_external_links",
+             "test_generated_fresh", "test_fw_commands", "test_run_tests_guards"),
 }
 
 
