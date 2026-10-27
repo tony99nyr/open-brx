@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-26. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-27. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -12,10 +12,10 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 101.** Desk 6 · bench 91 · decision 4.
+**MVP open: 99.** Desk 4 · bench 91 · decision 4.
 
-**MVP DESK (6),** a keyboard is enough:
-- 🟠 **F631** · **F632** · **F633**
+**MVP DESK (4),** a keyboard is enough:
+- 🟠 **F631**
 - 🟡 **F634** · **F635**
 - 🟢 **F630**
 
@@ -50,8 +50,6 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 A keyboard is enough. Highest value first.
 
 - **F630 🟢 MC PUSHES AN IDENTICAL SECOND `result` WHEN A HILL COMES BACK WITH THE SAME TALLY.** brx3, 2026-10-26 (brx4's A83 end-to-end rerun). A missing KOTH hill that reported after the release with an unchanged tally made MC re-send the same `result` to all four phones. The phone ignores it, but MC should push only when the result changes. After the 0.4.30 cut. Owner brx3. `build`.
-- **F632 🟠 A DEBRIEF EDIT WIPES THE EDITED PLAYER'S RESULT ON THEIR PHONE.** brx4, 2026-10-26 (end-to-end rerun on `0ce0f4d70`, case 3). During the debrief MC re-sends `assign` on every player edit (re-team or rename; normal since F631). The phone's `_assign` (`app/src/engine.js`) treats any assign while `ended` as a new match and clears the match id and the result. The phone drops to kitted, then refuses the corrected result as `no_match`. In the run a re-teamed player won after a late flip and never saw it. Fix: the phone leaves the results only on a real new-match signal (brx1 to choose: a config or start for another match, `kit_open` turning true, or an explicit MC flag). Before the 0.4.30 cut. Owner brx4, with brx3 if MC sends a flag. `desk`.
-- **F633 🟠 A REJOINING LATE PHONE MAKES MC PUSH THE OLD RESULT FIRST.** brx4, 2026-10-26 (the same rerun, case 6). When a phone that missed the release rejoins, MC pushes the old stored result to every online phone, then the corrected one 14 ms later. The stale frame also names a debrief-renamed player differently in the rows and the honours. The likely source is the bind or welcome path, which pushes the stored recap before the drained facts land. Before the 0.4.30 cut. Owner brx3. `desk`.
 - **F631 🟠 A TEAM EDIT DURING THE DEBRIEF MOVES THE MATCH'S WINNER.** brx3, 2026-10-26 (predates A83). The live Scorer holds `self.players` by reference, so a team edit during the debrief moves this match's console winner and team scores, and any late fact after that re-stores the recap and pushes the wrong winner to the phones. Fix: after the whistle the scorer reads the frozen `match.played` roster; a display-name edit still shows, because it is cosmetic. Before Tony's next game; it does not block the APK cut. Owner brx3. `build`.
 - **F634 🟡 THE EARLY-END WINDOW CAN STILL WIPE A RESULT.** brx4 for brx1, 2026-10-26 (the Opus and Fable reviews of F632). F632 keeps a phone's results only on an assign that MC marks `recap: true`, which MC sends only in RECAP. A timed match ends on each phone's own clock up to about 0.5 s before MC's tick reaches RECAP, and longer during an O8 tick failure. An operator edit (ready, display) in that window sends an assign with no flag. The phone leaves its results, clears its match id, and then drops the whistle result as `no_match`. The old code had the same hole, so this is not a regression. Fix: MC sends the flag whenever it holds the match (armed, live or recap); an assign to an ended phone in armed or live can only be that early-ended phone. If the flag is widened, rename it to what it means (for example `same_match: true`), not `recap`, in `state.py` `_assign_body`, `engine.js` `_assign`, contracts §5, and the cross-side pin in `test_mc_result_release.py`. Does not block the 0.4.30 cut. Owner brx4 (phone), with brx3 (MC). `desk`.
 - **F635 🟡 THE POST-MATCH E2E HARNESS BECOMES A GATE JOB.** brx4 for brx1, 2026-10-26. The ad-hoc end-to-end harness (a real MC, four phone HUDs, a utility hill station and the console, with a WebSocket tap and per-phone snapshots of every visible field) found four real defects in two days: the A81 stale welcome (F628), the stuck PROVISIONAL (F630), the debrief edit that wiped a result (F632) and the stale result on a rejoin (F633). Land it as an e2e script in the repo, with its own job in `scripts/lib/jobs.mjs` and measured `mb` and `secs`. It covers the cases: one phone offline, a late flip, a rejoin with an empty queue, KOTH with the hill offline, debrief edits with a late fact, and NEW SESSION. It asserts every player-visible field on every phone and the console's status lines, and follows the parallel-safety rules: free ports, its own output folder, and condition waits, not sleeps. The 120 s release bound needs a test override or a mocked clock, to keep the job short. After the 0.4.30 cut. Owner brx4. `build`.
