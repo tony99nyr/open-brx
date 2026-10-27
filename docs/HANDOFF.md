@@ -55,25 +55,17 @@ again once F574 has a cause.
 R4/T5 read-only research is authorised; flashing stays decision first.
 **Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
 ## Lane: brx3, releases and Mission Control
-**State (2026-10-25):** F596/F597 and F599 are on main. MC polish rounds 1 and 2 are `f758421ac` and `02755adba`.
-Round 3 is uncommitted on `brx3/mc-polish`. A persisted release latch keeps a result available after a late batch or restart. The late phone
-shows sending until its next zero-pending status. Pending results block every new-match path with 409 and expose no
-winner, team score or honours on the console or in API winner fields. `/api/recap` and the snapshot retain per-player
-rows for the sync table. RECAP resume restores the end reason, A42 watch and saved idle age without a second END.
-The console and mock follow those rules. Round 3 passed pyright, chaos and soak tests, 4,317 system Python tests,
-4,565 venv Python tests, 1,758 Vitest tests, TypeScript and four named browser jobs. The 2026-10 log records the evidence.
-F599 phase 2 final fixes are uncommitted on `brx3/f599-2`: the report warning, pre-push readiness reason, GAME INFO,
-locked KIT wording, sentence case tooltips and rendered-state tests. TypeScript, 1,794 Vitest tests and nine named browser
-jobs pass. The rebuilt gallery is at `/mnt/c/Users/Tony/brx-console-help-2-built/`.
-**Next:** review and land the two worktree diffs through the normal brx3 lane. Bench rows remain in [`FOLLOWUPS.md`](FOLLOWUPS.md).
+**State (2026-10-27):** everything is landed:
+- **Balance 0.4.31:** `11107dbdf`.
+- **A83, the 120 s bounded result wait:** `a0eb2fe47`. Its two gaps are `91bc983af`.
+- **F631 and F630:** `0ce0f4d70`.
+- **F633:** `3b2e20b2d`. A rejoin tells only itself, from a re-taken recap.
+- **Cloudflared:** `4021de4a5`. The start script keeps it at Cloudflare's minimum.
+- **NEXT bench sheet:** `fd0bd8adb` and `6d3d047dc`.
 
-**A81 result release (uncommitted on `brx3/result-release`, 2026-10-25):** MC withholds `result`, `score`,
-`victory` and welcome result/score while RECAP waits. Release flushes result and score together. Late facts and
-final heartbeats refresh the recap and retired ledger. The cue uses the frozen roster and both MC clocks; a restart
-never plays it. A released result and score reach each phone on reconnect after a restart. The 22 release cases,
-touched Python tests, pyright, the full system suite (4,374 passed, 195 optional skips), one-minute chaos soak
-(31 matches), and four named browser jobs pass. The log holds the review evidence.
-**Next:** review and land this worktree. Brx4 owns the A81 row in `docs/spec/contracts.md`.
+F631 closed on brx4's case 6. F630 stays open for brx4's case 5 rerun, with presence stopped first.
+**Next:** close F630 on a PASS. On a FAIL, reopen the F630 fix (`_flush_result_release` re-takes the recap).
+**Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
 **State (2026-10-26):** F598 is landed (the hill's last step counts presence as of the whistle; the clock ratchet
