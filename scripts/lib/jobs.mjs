@@ -113,6 +113,13 @@ const REGISTRY = [
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
   { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1300, secs: 65, libs: [SERVER, BUNDLES],
     inputs: [...MC, ...APP, DOWNLOAD, ...APP_LOCK, ...WEB_LOCK] },
+  // F635: the post-match gate. A real MC (tools/postmatch_mc.py: a 12 s release bound for the 120 s one), four phone HUDs,
+  // a hill station and the built console in one Chromium, so it needs app/www and webapp/mc/dist as app-e2e does.
+  // Measured alone 2026-10-27, four full runs: 177 to 187 s, the whole tree (node, Chromium, MC) at 1690 to 1728 MB RSS
+  // (827 to 872 MB PSS) and up to 243 threads, so `mb` is the RSS peak with room and `tasks` is above the 240 UI default.
+  // The time is mostly match clocks and the release bound, so load stretches it less than a CPU-bound job.
+  { name: 'app-postmatch', cwd: 'app', cmd: ['node', 'tools/postmatch-e2e.mjs'], www: true, dist: true, ui: true, mb: 1800, secs: 190, tasks: 280,
+    env: jobBlockEnv, libs: [SERVER, PORTS], inputs: [...MC, ...APP, DOWNLOAD, ...APP_LOCK, ...WEB_LOCK] },
   ...E2E.map(([script, secs, mb = E2E_DEFAULT_MB]) => ({
     name: `mc-${script}`, cwd: 'webapp/mc', cmd: ['node', `test/e2e/${script}.mjs`], ui: true, mb, secs,
     ...(script in E2E_TASKS ? { tasks: E2E_TASKS[script] } : {}),

@@ -143,13 +143,13 @@ export function selectJobs(paths) {
       reasons.push(`${p}: app/** -> app-*, site (embeds the HUD demo), mc-vitest (medalicons-gen.test.ts reads app/src/hud/medalicons.js), mcp (its tests read app/)`);
     }
     if (p.startsWith('webapp/mc/')) {
-      filters.add('mc-'); filters.add('mcp'); filters.add('site'); filters.add('app-e2e'); matched = true;
-      reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, app-e2e (serves webapp/mc/dist), mcp (its tests read webapp/mc/), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
+      filters.add('mc-'); filters.add('mcp'); filters.add('site'); filters.add('app-e2e'); filters.add('app-postmatch'); matched = true;
+      reasons.push(`${p}: webapp/mc/** -> the mc-* jobs, app-e2e and app-postmatch (serve webapp/mc/dist), mcp (its tests read webapp/mc/), site (facts.mjs reads webapp/mc/src/tokens.ts)`);
     }
     if (p.startsWith('mcp/')) {
       filters.add('mcp'); filters.add('chaos'); filters.add('mc-'); filters.add('site');
-      filters.add('app-e2e'); filters.add('app-logsync'); filters.add('app-test'); matched = true;
-      reasons.push(`${p}: mcp/** -> mcp, chaos, mc-*, app-e2e, app-logsync, app-test, site (the jobs read MC code or data)`);
+      filters.add('app-e2e'); filters.add('app-postmatch'); filters.add('app-logsync'); filters.add('app-test'); matched = true;
+      reasons.push(`${p}: mcp/** -> mcp, chaos, mc-*, app-e2e, app-postmatch, app-logsync, app-test, site (the jobs read MC code or data)`);
       if (SCREENS_SENSITIVE.has(p)) {
         filters.add('app-screens'); filters.add('app-moments');
         reasons.push(`${p}: the app bundles it (app/src/demo.js) -> app-screens and app-moments too`);
