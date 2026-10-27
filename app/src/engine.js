@@ -2294,7 +2294,9 @@ export class Engine {
     // One-directional on purpose: this only ever turns READY on, never off. `setReady`/standby/S7 are
     // still the sole way to CLEAR it, so F-4's "a push never un-readies" and S7's "the bench clears
     // READY" both hold exactly as pinned.
-    if (player && player.ready && !this.ready) this.ready = true;
+    // F634 (Fable): not on an ended phone. An edit in the window before MC's own whistle still says `ready: true` (MC
+    // clears READY only at its whistle), and the next lobby must not start READY on the strength of the last match.
+    if (player && player.ready && !this.ready && !this.ended) this.ready = true;
     if (team) this._checkTeamVsHead();   // B1: a mid-match re-team the head never followed must not be silent
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();

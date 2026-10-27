@@ -413,3 +413,27 @@ def test_f634_an_edit_while_the_match_is_live_names_the_match():
     s.patch_player(ps[0]["player_id"], display="RENAMED")
     live = net.pushes("assign")
     assert live and all(a[2].get("match_id") == info["match_id"] and "recap" not in a[2] for a in live), live
+
+
+def test_f634_the_welcome_keeps_its_own_match_id_and_the_next_match_names_its_own():
+    """F634 review (Opus): `_assign_body` also builds the welcome, where `node.match_id` has always named the start the
+    welcome carries (every phone build reads it that way). The assign-side key stays out of it. And once the next match
+    is ARMED, an assign names that match, so a phone still showing the last result leaves it."""
+    s, net, clock, ps, info = _end_pending()
+    s.finalise_recap()
+    assert s.phase == "recap"
+    assert "match_id" not in _welcome(net, 1), "a RECAP welcome carries no start, so it names no match"
+    old = info["match_id"]
+    s._roll_forward_from_recap()
+    s.push_config()
+    for i in range(len(ps)):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    nxt = s.start(runway_s=10)
+    assert s.phase == "armed" and nxt["match_id"] != old
+    net.pushed.clear()
+    s.patch_player(ps[0]["player_id"], display="RENAMED")
+    armed = net.pushes("assign")
+    assert armed and all(a[2].get("match_id") == nxt["match_id"] for a in armed), armed
+    welcome = _welcome(net, 1)
+    assert welcome.get("match_id") == nxt["match_id"] and "start" in welcome, "the welcome names its start, as before"

@@ -1069,7 +1069,7 @@ test('F632 review: leaving the results on the next config raises no host kit loc
 test('F634: an edit between this phone\'s whistle and MC\'s RECAP keeps the results, and the whistle result lands', () => {
   const h = match({ stun: undefined });
   const blue = h.config.teams[0];
-  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });   // this phone has ended; MC is still LIVE
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });   // ended on this phone (an END reaches it as a local timer would); MC is still LIVE
   const mid = h.eng.matchId;
   assert.ok(mid && h.eng.ended);
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, display: 'RENAMED' }, team: blue, policy: { kit_open: false }, match_id: mid } });
@@ -1079,6 +1079,19 @@ test('F634: an edit between this phone\'s whistle and MC\'s RECAP keeps the resu
   const r = h.eng.onResultPush({ match_id: mid, outcome: 'win', winner: { team_id: 'blue' }, provisional: false });
   assert.equal(r.ok, true, 'the whistle result is accepted, not dropped as no_match');
   assert.equal(h.eng.result && h.eng.result.outcome, 'win');
+});
+
+test('F634 (Fable): an edit before MC\'s whistle still says ready: true, and the ended phone does not take it', () => {
+  const h = match({ stun: undefined });
+  const blue = h.config.teams[0];
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  const mid = h.eng.matchId;
+  assert.equal(h.eng.ready, false, 'the end cleared READY');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: true }, team: blue, policy: { kit_open: false }, match_id: mid } });
+  assert.equal(h.eng.ended, true);
+  assert.equal(h.eng.ready, false, 'the last match\'s READY does not come back');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, ready: false }, team: blue, policy: { kit_open: false } } });   // NEW SESSION
+  assert.equal(h.eng.ready, false, 'and the next lobby starts on WAIT');
 });
 
 test('F634: an assign naming another match, or none, leaves the results; F632\'s `recap: true` counts only with no match named', () => {
