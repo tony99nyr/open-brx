@@ -89,11 +89,13 @@ branch before the merge), else the merge-base with `origin/main`. Right after `g
 that merge-base IS origin/main's own tip, so the default omits everything the merge just brought in: pass the
 base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. The Python
 suite is three jobs (F626): `mcp-docs` (docs hygiene and the other files in `run_tests.py`'s `docs` group), `mcp-sim`
-(the balance sims) and `mcp` (the rest). A job filter matches a substring of the name, so `mcp` runs all three. If only
-docs came in, `mcp-docs` and `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when
-`docs/announcer.md` changed (its test reads that file), plus `mcp` or `mcp-sim` for the few pages their tests read
-(`MCP_DOCS_READERS` in `scripts/lib/changed.mjs`). An unknown top-level directory selects `mcp-docs` only. A new test
-that reads docs widely goes into the `docs` group; `mcp/tests/test_test_all_changed.py` fails until it is selected. An unmapped path inside a known
+(the balance sims) and `mcp-core` (the rest). A job filter matches a substring of the name, so `mcp` runs all three,
+and no job name may sit inside another (the lander reruns a failed job by its name). If only docs came in, `mcp-docs`
+and `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when `docs/announcer.md` changed
+(its test reads that file), plus `mcp-core` or `mcp-sim` for the few pages their tests read (`MCP_DOCS_READERS` in
+`scripts/lib/changed.mjs`). An unknown top-level directory selects all three. A new test that reads docs widely goes
+into the `docs` group. `mcp/tests/test_test_all_changed.py` checks the docs paths the other test files name against
+these rules; it is a static check, so a path built at run time can still slip past it. An unmapped path inside a known
 tree, or a change to the runner itself, the root `package.json`/`pnpm-lock.yaml` or a CI workflow file
 (`FULL_SUITE_TRIGGERS` in `scripts/lib/changed.mjs`), selects everything: fail safe, never a
 narrower guess. A job name typed after `--changed` (e.g. `--changed [base] mcp site`) ADDS to that selection, a
