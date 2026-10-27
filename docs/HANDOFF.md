@@ -63,8 +63,8 @@ R4/T5 read-only research is authorised; flashing stays decision first.
 - **Cloudflared:** `4021de4a5`. The start script keeps it at Cloudflare's minimum.
 - **NEXT bench sheet:** `fd0bd8adb` and `6d3d047dc`.
 
-F631 closed on brx4's case 6. F630 stays open for brx4's case 5 rerun, with presence stopped first.
-**Next:** close F630 on a PASS. On a FAIL, reopen the F630 fix (`_flush_result_release` re-takes the recap).
+F631 and F630 are closed on brx4's end-to-end runs (all six cases pass on 2026-10-27).
+**Next:** none open in this lane. Wait for brx1.
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
