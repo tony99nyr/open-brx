@@ -1492,7 +1492,7 @@ _FW_ADDR_ALLOWED = {
 
 def _fw_addr_files() -> list[pathlib.Path]:
     out = sorted((DOCS / "experiment-log").rglob("*.md")) + [DOCS / "firmware-image-research-plan.md"]
-    for d in (DOCS / "manual", DOCS / "spec", REPO / "protocol"):
+    for d in (DOCS / "manual", DOCS / "spec", DOCS / "reference", REPO / "protocol"):
         out += sorted(d.rglob("*.md"))
     return out
 
@@ -1581,3 +1581,15 @@ def test_every_experiment_log_month_has_an_index_row():
     missing = _log_months_missing((DOCS / "experiment-log.md").read_text(encoding="utf-8"), months)
     assert not missing, f"docs/experiment-log.md has no row for {missing}: add one when a month's file starts"
     assert _log_months_missing("| 2026-09 | [2026-09](experiment-log/2026-09.md) |", ["2026-09", "2026-10"]) == ["2026-10"]
+
+
+# 2026-10-27 doc-rot review: ten top-level docs were missing from the index. Every docs/*.md page is listed there.
+def _unindexed(index: str, names: list[str]) -> list[str]:
+    return [n for n in names if n != "README.md" and f"({n})" not in index and f"({n}#" not in index]
+
+
+def test_every_top_level_doc_is_in_the_docs_index():
+    names = sorted(p.name for p in DOCS.glob("*.md"))
+    missing = _unindexed((DOCS / "README.md").read_text(encoding="utf-8"), names)
+    assert not missing, f"docs/README.md does not link {missing}: add a row, or archive the page"
+    assert _unindexed("[a](a.md) [b](b.md#x)", ["a.md", "b.md", "c.md", "README.md"]) == ["c.md"]
