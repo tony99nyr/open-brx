@@ -42,12 +42,12 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
 - **Version gate strings** — `"Application is outdated. Please update. Compatible version
   starts from {0}"` confirms the soft upper-bound version check.
 
-## Recovered later (this section is superseded)
+## Field maps
 
 The `$GSET`/`$PSET`/`$WEAP` command **field maps were recovered** in a follow-up pass — the
 metadata's index tables are obfuscated, but the identifier strings are plaintext **in declaration
 order**, which is the token map. See **`protocol-classes.md`** (GSET hardware-confirmed, WEAP token
-positions cross-validated against two live frames) and experiment-log #24–30. Il2CppDumper/
+positions cross-validated against two live frames) and `docs/experiment-log/2026-08.md` #24–30. Il2CppDumper/
 Il2CppInspector still fail on the obfuscated metadata (v39 + encrypted tables), and a full
 method-body decompile (Ghidra) is only needed to pin the last ~6 always-empty `$WEAP` tokens —
 low priority, since declaration order is already validated against live frames.

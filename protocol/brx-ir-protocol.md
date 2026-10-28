@@ -255,4 +255,4 @@ grenade out of the building** on 2026-09-04: our emitter is a working respawn st
 (Mission Control) games ignore all three, with or without a `$SIR` row for protocol 15; the station logic is
 native-mode firmware (FOLLOWUPS B23). Full behaviour and the arming paths: `docs/reference/grenade.md`
 §Respawn Station mode; evidence `docs/experiment-log/2026-09.md` (2026-09-04). The Hill / Assault / CTF / Frag
-words and the headset-front-plus-trigger request word are not yet captured intact.
+words and the headset-front-plus-trigger request word are not yet captured intact (B8 in `docs/post-mvp.md`).

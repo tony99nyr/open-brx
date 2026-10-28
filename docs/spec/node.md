@@ -730,7 +730,9 @@ what the HUD draws: `hud.js` and `hud/deathscreen.js` read it. The voice is outs
 | ARMED (countdown) | **giant T-minus** | full caps | shown | M-START countdown; gun plays the cues |
 | LIVE · ALIVE | the HUD | live | K/D/A/ACC | D is local-real; K/A/ACC = MC + last-synced age |
 | LIVE · DOWN | **DOWN takeover** | health 0, ammo dim | frozen | countdown (auto) or the station lesson (scanner), the race to the cap while MC is linked |
-| WS DISCONNECTED (any) | amber MC dot only | last-known | last-known | non-destructive; expected for most of a park match |
+| match over | **FINAL RESULTS**: "RESULT PENDING" beside the sync track until MC's `result` arrives, then the result screen | frozen | frozen | `OK` (`ackEnd`) leads to MATCH COMPLETE, then KITTED. "MC NOT REACHED · SEE MISSION CONTROL" after the 30 s settle window with no MC link (§3.13); never WIN or LOSE without a `result` |
+| WS DISCONNECTED (LIVE) | amber MC dot only | last-known | last-known | non-destructive; expected for most of a park match. A tap on the MC label (or night mode) shows the detail pill |
+| WS DISCONNECTED (before LIVE) | dim MC pill | last-known | last-known | MC is required before the match, so the pill stays |
 | BLE DROPPED (any) | red "GUN LINK LOST" strip | frozen | frozen | the retry loop, unbounded while ARMED/LIVE |
 | BLE RELINKED (LOBBY/ARMED) | amber "GUN RELINKED" while the head is re-written | frozen until the echo | frozen | §3.10 head re-write |
 | BLE RELINKED (LIVE) | **RECONCILING takeover** "GUN RELINKED · SYNCING WITH YOUR GUN · weapon disarmed for a moment" | real pools kept | frozen | S7.1: never infers a death, never heals; 3 s disarmed, then re-armed at the real HP; no trigger pull asked |
@@ -857,23 +859,10 @@ cite this section as `node.md §10-Q12`.
 These questions carry no ids. Anything that needs tracking gets a row in [`../FOLLOWUPS.md`](../FOLLOWUPS.md),
 which is where open work lives; closed questions are in git history.
 
-- **Q2 — the third pool on the wire (`$HIR` from a station).** With scanner respawn built over BLE adverts
-  (utility.md §4), the remaining question is whether a grenade/IR station beacon (`$HIR` tok2 = 15) should also
-  be a presence source (FOLLOWUPS B23).
-- **Q3: dmg accounting.** `hit_taken.dmg` = the total pool delta, shield included (`engine.js _onHp`); a single
-  `$HIR` spanning two pools is one `hit_taken` with the summed delta.
-- **Q4 — `$VOLTS` token map.** Seed reads token 3 as pack %; the lab log leans token 4 = cell-voltage
-  SoC. A controlled discharge sweep settles which token the HUD/readiness shows.
-- **Q5 — cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from
-  cache without MC in range before it's unsafe/stale? `CONFIG_TTL_MS` + a "stale config" HUD warning.
-- **Q6 — keep-awake vs. battery.** Full brightness + keep-awake + continuous BLE + beacon scanning drains the
-  phone over a long event. Measure; consider dimming only the non-STATE zones between firefights.
-- **Q7 — side-effect-free gun state probe.** Does anything short of `$SPAWN` make the gun report `$LCD`
-  (HP/armor/ammo + "configured")? Less pressing since S7.1 restores pools from persistence; still the only way
-  to catch a gap-death (§3.10 known limitation).
-- **Q10 — iOS queued BLE notifications on resume.** With `bluetooth-central` background mode, are
-  notifications received while the JS was frozen delivered on resume, or dropped?
-- **Q12: the third pool.** Built: `hit_taken.dmg` counts the shield delta (`engine.js _onHp`), so a hit the
-  shield fully absorbs still produces an event, and the HUD shows SHIELD when the game has one. Still open: the
-  `status` body carries no `shield`, and whether `hit_taken` also carries the shield delta as its own field is
-  FOLLOWUPS **Q12′**.
+- **Q2: a station beacon as a presence source (`$HIR` tok2 = 15).** Post-MVP: FOLLOWUPS/post-mvp **F338**.
+- **Q4: the `$VOLTS` token map** (tok 3 vs tok 4 for pack %). `post-mvp.md` §10, "`$VOLTS` % token" (no id).
+- **Q5: cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from cache without MC in range? `CONFIG_TTL_MS` plus a stale-config warning. No row yet.
+- **Q6: keep-awake vs. battery.** Measure the drain over a long event. No row yet.
+- **Q7: a side-effect-free gun state probe** (the only way to catch a gap-death, §3.10). No row yet.
+- **Q10: iOS queued BLE notifications on resume.** `post-mvp.md` §10, "iOS locked-phone BLE" (no id).
+- **Q12: should `hit_taken` carry the shield delta as its own field?** FOLLOWUPS/post-mvp **Q12′**.

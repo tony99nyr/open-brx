@@ -61,7 +61,7 @@ headset link dropped (which blocks firing).
 - **"JEDGE 6 doesn't work, LoRa doesn't work."** The community's strong, repeated guidance is to
   use *exactly* the units/wiring in the maintained build docs; off-script LoRa modules and newer
   JEDGE builds are a common source of wasted effort. (Useful signal: the field-range problem is
-  hard even for the originators — reinforces our followup D / the Companion approach.)
+  hard even for the originators, which reinforces the Companion approach.)
 - **SwapTX headset mod** (≈$50 headset, single 18650): unlocks STX-style hosting + JEDGE controls,
   but the swaptx headset **has no IR emitters**, so it loses splash damage, shotguns, pass-through,
   medics, many Supremacy/Deathmatch perks, and base/commander respawn requests. Non-final beta.
@@ -87,7 +87,7 @@ headset link dropped (which blocks firing).
   health** (a stock imbalance/bug). Sniper head-shots: prefer boosting **crit rate** over damage
   (the headset is an easier target than the gun sensor).
 
-## Grenade notes (feeds followup F)
+## Grenade notes
 
 - A grenade can be **set as a CTF base**. The "scary music" a tagger plays is the **capture-the-
   flag music** (played when a tagger holds the flag). Running grenades in the wrong mode with
@@ -211,7 +211,7 @@ a BLE link survives a full session. ([post](https://www.facebook.com/groups/7120
 - **⚠️ Audio is on a (removable) SD card** — a **"pop" at boot = speaker power OK**; a loose/corrupt
   SD = **no sound**; swap the SD to diagnose. This **partly tensions** the "SD is hot-glued, not
   removed" note above — the card is physically an SD and can be accessed for diagnosis even if normally
-  glued. Reconcile on hardware (followup). ([post](https://www.facebook.com/groups/712027809192113/posts/1795195307542019/))
+  glued. The manual (`docs/manual/hardware.md`) records an SD card on the mainboard; whether it is removable is P14 in `docs/post-mvp.md`. ([post](https://www.facebook.com/groups/712027809192113/posts/1795195307542019/))
 - **Specific `.LTP` filenames:** `NA0.ltp` = death loud-beep, `VA3.ltp` = scream, `VA5.ltp` = yell
   (copy/rename to swap the death cue). ([post](https://www.facebook.com/groups/712027809192113/posts/1640531343008417/))
 - **Callsign gun-sound filenames differ from the default BRX gun files** — replacing Callsign files
