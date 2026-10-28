@@ -10,12 +10,12 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - 19 weapons in the Callsign app arsenal, from 20 captured frames (every one read off the wire)
 - 7 gun-menu modes with no phone at all: FFA, Death Match, Generals, Supremacy, Commander, Survival, The Swarm
 - 14 mode families built into the Callsign app
-- 115 is the default health pool (45 HP + 70 armor)
+- 115 is the default health pool (45 HP + 70 armour)
 - 4 native hardware teams (team id is 2 bits in every shot)
 - 5 Smart Grenade objective modes, set by a button and a colour
 
 - The arsenal: all 19 Callsign weapons (20 captured frames) with damage, cycle, clip, reserve, heat, reload and fire mode.
-- Health, armor and damage: what a hit takes off, what armor does, and why nothing heals on its own.
+- Health, armour and damage: what a hit takes off, what armour does, and why nothing heals on its own.
 - How a kill actually works: the 25-bit word of light, the sensors that catch it, the green flash that confirms it.
 - Native modes and settings: every gun-menu and Callsign mode, with the exact setting values.
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
@@ -33,7 +33,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 > - **Reserve** is your total spare rounds. The app shows reserve as magazines: mags x clip = reserve.
 > - **Heat/shot** is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number alone does nothing. A separate token, t38, switches the overheat system on. Callsign sets t38 only on the Charge Rifle, so that is the only stock weapon whose gauge climbs. Open BRX switches it on for the Energy Rifle too.
 >
-> **Hits to kill** is not a table column. Find it in the per-weapon notes below. It counts hits against the default 115-point pool (45 HP + 70 armor). It applies only to weapons whose shots land as standard damage on the target's effect table.
+> **Hits to kill** is not a table column. Find it in the per-weapon notes below. It counts hits against the default 115-point pool (45 HP + 70 armour). It applies only to weapons whose shots land as standard damage on the target's effect table.
 >
 > Two caveats apply to hits to kill and to Reserve.
 >
@@ -110,7 +110,7 @@ Power, single shot, 115 dmg (explosive damage type), 1.0 s, 2/4, 1.2 s. A one-sh
 
 ### Rail Gun
 
-Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armor-piercing type), 1/3, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
+Power, charges and fires itself after about 1.2 s (a tap also fires), 115 dmg (armour-piercing type), 1/3, 2.4 s. A one-shot kill. It has no release sound, because it fires itself.
 
 ### Laser Cannon
 
@@ -156,24 +156,24 @@ Battle Company's stock presets below are for phoneless play. The damage scale he
 
 Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are that weapon's ceiling and floor: fire fast and your accuracy drifts down from the first number toward the second. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts, or reload, to bring your accuracy back up. See *How a kill actually works* for the mechanism.
 
-## Health, armor and damage
+## Health, armour and damage
 
-Every player is a pool of points: 45 health and 70 armor by default, which is 115 in total. A hit comes off your armor first. Whatever armor cannot soak up spills straight into your health. When your health hits zero you are out. Nothing in the stock firmware fills you back up until you respawn.
+Every player is a pool of points: 45 health and 70 armour by default, which is 115 in total. A hit comes off your armour first. Whatever armour cannot soak up spills straight into your health. When your health hits zero you are out. Nothing in the stock firmware fills you back up until you respawn.
 
 **What happens when you get hit:**
 
 1. The shot's damage number lands on your gun. The IR word carries it (see *How a kill actually works*).
 2. Your gun looks up the shot's damage type in its effect table. Most shots are "standard damage". Class abilities can be heals, shield grants or multipliers instead.
-3. Armor soaks damage 1 for 1, with no cap per hit. An 80-point standard hit takes all 70 armor and 10 health at once.
+3. Armour soaks damage 1 for 1, with no cap per hit. An 80-point standard hit takes all 70 armour and 10 health at once.
 4. Health takes the rest. Your headset and gun play the hit tone. The gun reports your new pool to any connected phone.
 5. At 0 health the gun plays the death alarm, stops firing, and ignores every incoming shot until it respawns.
 
 | Question | Answer |
 |---|---|
-| Default pool? | 45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health. |
-| Does armor reduce damage? | No. It is extra hit points, and it drains first. Armor never makes a hit weaker. |
-| Do I heal over time? | No. Armor shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you. |
-| What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). You spawn with it empty: `$PSET` token 5 sets the ceiling, not the starting amount. Two things fill it. An IR grant (a `$SIR` shield function, or armor that overflows) fills it in a native game, and a host can fill or drain it over Bluetooth with `$LIFE,0,0,<n>,*`, measured on the bench on 2026-09-11 with no IR involved. |
+| Default pool? | 45 HP + 70 armour = 115. Modes like Battle Royale offer Low / Medium / Full starting health. |
+| Does armour reduce damage? | No. It is extra hit points, and it drains first. Armour never makes a hit weaker. |
+| Do I heal over time? | No. Armour shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you. |
+| What is a shield? | A third pool that sits above armour. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). You spawn with it empty: `$PSET` token 5 sets the ceiling, not the starting amount. Two things fill it. An IR grant (a `$SIR` shield function, or armour that overflows) fills it in a native game, and a host can fill or drain it over Bluetooth with `$LIFE,0,0,<n>,*`, measured on the bench on 2026-09-11 with no IR involved. |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. The headset multiplier is a per-game setting, `$GSET` t7, and it applies to two effect-table functions on the headset sensor only, not to a crit flag. Callsign captures carry t7=50, which scales those two functions up on the headset, by x1.25 and by x2. **Open BRX ships t7=0, so every hit lands the same wherever it strikes**: four of the five sensors are on the headset and BRX players aim there. |
@@ -200,7 +200,7 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits), player id (6 bits, 0-63), team (2 bits, 4 teams), damage (8 bits, up to 255), crit flag, effect subtype, 2 check bits.
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
-3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
+3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). Then it looks up the damage type in its effect table and applies the damage: armour first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
@@ -208,7 +208,7 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 | Event | Victim | Shooter |
 |---|---|---|
-| Hit (non-lethal) | one green headset flash, hit tone (HP / armor / shield / crit each have their own), gun LEDs | nothing (a plain hit is never confirmed back to the shooter) |
+| Hit (non-lethal) | one green headset flash, hit tone (HP / armour / shield / crit each have their own), gun LEDs | nothing (a plain hit is never confirmed back to the shooter) |
 | Kill | headset sustained green blink (the out state), death alarm, gun stops firing | green sight flash + "kill" callout; in gun-menu games also "double kill" and other streak lines |
 | Same team, FF off | nothing (the gun drops the shot, by the documented rule one bench result contradicts) | nothing |
 | Miss (accuracy roll) | headset lights + zip, 0 damage | (none) |
@@ -296,11 +296,11 @@ The Callsign app's modes are the complete list found in the app, with what each 
 
 ## Classes, factions, perks and killstreaks
 
-Supremacy swaps the weapon picker for characters. Each one has a fixed gun, a set health/armor/shield build, and an ALT-button ability. Three factions split the roster: Nexus (energy, shields, explode-on-death), Resistance (milsim, explosives) and Vanguard (exotic, long-range).
+Supremacy swaps the weapon picker for characters. Each one has a fixed gun, a set health/armour/shield build, and an ALT-button ability. Three factions split the roster: Nexus (energy, shields, explode-on-death), Resistance (milsim, explosives) and Vanguard (exotic, long-range).
 
-These are the 9 manual characters, the exact health builds Battle Company prints. There are two pool shapes here: armor characters and shield characters.
+These are the 9 manual characters, the exact health builds Battle Company prints. There are two pool shapes here: armour characters and shield characters.
 
-| Character | Role | Mag | Damage | Health | Armor | Shield | Ability (ALT) |
+| Character | Role | Mag | Damage | Health | Armour | Shield | Ability (ALT) |
 |---|---|---:|---:|---:|---:|---:|---|
 | Soldier | Offense | 30 | 22 | 100 | 50 | - | secondary shotgun (M4 + shotgun swap) |
 | Medic | Support | 30 | 21 | 100 | 40 | - | medi-gel heal pulse: heals allies when you shoot them |
@@ -317,7 +317,7 @@ Four more classes are described in the Extended Guide but are not in the V7 tabl
 - Grenadier: laser beam + sticky grenade
 - Mercenary: silenced AR + healing/tracking dart
 - Valkyrie: burst SMG + mini-rockets
-- Sniper: armor-piercing bolt rifle, silencer on ALT
+- Sniper: armour-piercing bolt rifle, silencer on ALT
 
 > **Status effects the app defines:** Standard, MedicHeal, ActivateShield, RallyPulse, Radiation (poison), Cryogenic (frost), ArmorPiercing, EMP, Shrapnel, StickyBomb, lethal and non-lethal explosive, ShottyPellets, MeleeDamage, Plasma. Each one has its own hit-sound slot in the app's sound table (poison hit, cold hit, EMP start/loop/end, incendiary start/loop/stop, and others).
 
@@ -327,7 +327,7 @@ Perks are what ALT cycles in Death Match / Generals. Not all games have perks, a
 |---|---|
 | Grenade Launcher | launcher alt-fire |
 | Med Kit | self-heal |
-| Body Armor | extra armor (on a General it lowers total health, a known stock quirk) |
+| Body Armor | extra armour (on a General it lowers total health, a known stock quirk) |
 | Extended Mags | bigger magazines |
 | Concussion Grenade | stun grenade |
 | Critical Strike (Extended Guide only) | crit chance |
@@ -412,7 +412,7 @@ The BRX Smart Grenade is more than a bomb. Hold its button and it turns into a p
 
 ## Beyond stock: what a host can add
 
-The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode, and the host that runs it does not have to be Battle Company's app. That is what Open BRX is: a laptop and a phone per player, running rules the tagger never had to know about. The modes it runs, what each one needs and which have been played on real taggers are on the [Open BRX modes page](/docs/modes); the wider catalog of mode designs lives in the repository, in [`docs/game-modes.md`](https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md).
+The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode, and the host that runs it does not have to be Battle Company's app. That is what Open BRX is: a laptop and a phone per player, running rules the tagger never had to know about. The modes it runs, what each one needs and which have been played on real taggers are on the [Open BRX modes page](/docs/modes); the wider catalogue of mode designs lives in the repository, in [`docs/game-modes.md`](https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md).
 
 ## The grenade as a control point
 

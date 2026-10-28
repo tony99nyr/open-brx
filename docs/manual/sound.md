@@ -7,11 +7,11 @@ How BRX plays sound: what the gun does on its own, what a host has to trigger, a
 
 Every sound is an id. Your BRX stores 2,477 sound files (the official app's own list names 2,166 of them). The gun plays most of them by itself, the instant something happens. A host (the Callsign app, or Open BRX Mission Control) plays the rest with a single command. Knowing which is which tells you what you can change.
 
-> **What decides behavior.** Two questions decide how any sound behaves. First, who starts it: the gun on its own, or a host over Bluetooth. Second, how much you can change it: fixed, swappable by file, or fully yours.
+> **What decides behaviour.** Two questions decide how any sound behaves. First, who starts it: the gun on its own, or a host over Bluetooth. Second, how much you can change it: fixed, swappable by file, or fully yours.
 
 **Cut 1: who starts the sound**
 
-- **Automatic, gun-played (mapped once at game start).** These are hit tones, respawn chimes, armor and shield pickups, pain and death lines, plus the weapon's own fire, reload and empty sounds. Your loadout points each event at a sound id (`$SIR` for incoming IR types, `$PSET` for your voice pack, `$WEAP` for the weapon). The firmware then plays it with no host involved.
+- **Automatic, gun-played (mapped once at game start).** These are hit tones, respawn chimes, armour and shield pickups, pain and death lines, plus the weapon's own fire, reload and empty sounds. Your loadout points each event at a sound id (`$SIR` for incoming IR types, `$PSET` for your voice pack, `$WEAP` for the weapon). The firmware then plays it with no host involved.
 - **Host-triggered announcements.** These depend on game state that only a host knows: "flag taken", "point captured", "3 minutes left", game over, custom announcers. The host sends `$PLAY,<id>,...` at the moment its rules say so.
 - **Native reflexes.** The boot chime, "connection established" on phone attach, the disabled "can't do that" chirp, and low battery. The firmware fires these on its own schedule. You can swap the clip, but you cannot stop it.
 
@@ -21,7 +21,7 @@ Every sound is an id. Your BRX stores 2,477 sound files (the official app's own 
 |---|---|---|
 | Forced (native, unstoppable) | Power-on boot sound. It plays before any host connects, which is why a tagger is loud at startup | Nothing: can't suppress or trigger |
 | Native reflex, re-skinnable | "Phone connected" on BLE attach, disabled chirp, reload / empty, low battery | You can't stop it firing, but you can replace the clip in the USB `AUDIO` folder (see Custom sounds over USB) |
-| Config-driven, then automatic | Hit / pain / death / armor / shield / weapon sounds | Any bank id via the loadout (`$SIR` / `$PSET` / `$WEAP`), or replace the file |
+| Config-driven, then automatic | Hit / pain / death / armour / shield / weapon sounds | Any bank id via the loadout (`$SIR` / `$PSET` / `$WEAP`), or replace the file |
 | Host-triggered, fully yours | Objective callouts, timers, custom announcers | Any of the 2,477 ids on the gun, on any rule, via `$PLAY` |
 
 Only one sound is truly stuck: the boot chime.
@@ -46,7 +46,7 @@ Score a kill in a game the app hosts, and your gun gets three things from the ho
 
 In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own, with no phone involved. How a gun learns enough about the other players to call a streak has not been established. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
 
-> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armor, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. **Token 2 is now known: it is the gun's live accuracy** (bench 2026-09-09), so a fn 23 hit forces your accuracy to zero, below whatever floor your weapon carries. The gun was also heard to go silent on a fn 23 hit, and that stands on its own, but the token 2 number was never evidence for it. Treat fn 23 as an accuracy debuff a host can trigger and read.
+> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armour, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. **Token 2 is now known: it is the gun's live accuracy** (bench 2026-09-09), so a fn 23 hit forces your accuracy to zero, below whatever floor your weapon carries. The gun was also heard to go silent on a fn 23 hit, and that stands on its own, but the token 2 number was never evidence for it. Treat fn 23 as an accuracy debuff a host can trigger and read.
 
 ### Why does the gun play music when I die?
 
@@ -60,7 +60,7 @@ Mostly no. Your gun sees the grenade's IR signal and plays those sounds from its
 
 A voice pack is the run of sound ids at the tail of `$PSET`, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship "a male voice" and "a female voice" as one big pack. The characters you pick in the app are just pre-filled sets of those ids.
 
-The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the order below. The alignment is confirmed from Battle Company's field table and the v4.30 firmware image, and the pool-sound positions were checked on hardware.
+The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the order below. The alignment is confirmed from Battle Company's field table and our own reading of the firmware, and the pool-sound positions were checked on hardware.
 
 | Declared field | Event it fires on |
 |---|---|
@@ -75,7 +75,7 @@ The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the
 | painRelief | Healed / relieved |
 | missShotHit | A shot that registered but did no damage (accuracy miss) |
 | hitHp | Hit that took health |
-| hitArmor | Hit that took armor |
+| hitArmor | Hit that took armour |
 | hitShield | Hit that took shield |
 | hitCrit | Critical hit |
 | emptyUnboundButtonSound | Pressing a button with nothing bound (the "can't do that" chirp) |
@@ -84,9 +84,9 @@ The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the
 
 The "Get some" respawn line was traced to this block on the bench.
 
-> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armor and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armor and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The pool slots behave as described on hardware, and every sound was chosen by ear rather than from the catalog.
+> **Design choice: pool sounds, not health sounds.** Open BRX uses the pool slots on purpose. Because the firmware carries a separate sound for a hit that took health, a hit that took armour and a hit that took shield, a hit can tell the player what it went through. Open BRX rings metal for armour and plays an energy note for the shield, drawing from a small pool so the same hit does not sound identical all match. Health is deliberately silent: the character's own pain grunt fires on exactly those hits, so real damage is the moment the metal stops and a human sound starts. The pool slots behave as described on hardware, and every sound was chosen by ear rather than from the catalogue.
 
-> **An empty slot is not silence.** Clearing one of these fields makes the gun fall through to a neighboring pool's sound, not go quiet: an empty hitShield plays the armor clip. Health can ship empty only because it is the innermost pool, with nothing further in to fall through to. This differs from the voice fields, where an empty value really does mean the gun says nothing. Confirmed on hardware 2026-09-07.
+> **An empty slot is not silence.** Clearing one of these fields makes the gun fall through to a neighbouring pool's sound, not go quiet: an empty hitShield plays the armour clip. Health can ship empty only because it is the innermost pool, with nothing further in to fall through to. This differs from the voice fields, where an empty value really does mean the gun says nothing. Confirmed on hardware 2026-09-07.
 
 > **Where named voices come from.** The named voice profiles you choose in Callsign are not stored in the app. The app fetches them from Battle Company's server (`.../callsign/voice-profiles/selected/`) and writes the resulting slot ids into `$PSET`. Open BRX offers the same idea as a `voice` field on each player.
 
