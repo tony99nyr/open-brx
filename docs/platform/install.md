@@ -101,7 +101,7 @@ macOS and Linux, `.venv\Scripts\python.exe` on Windows. Activate the venv first
 from `webapp/mc/dist`, which is not in the repository and is not rebuilt for you:
 
 ```
-cd webapp/mc && npm install && npm run build
+cd webapp/mc && npm ci && npm run build
 ```
 
 Requires Node.js 22.12 or later. A page that says "UI not built" means this step was skipped. A
