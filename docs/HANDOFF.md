@@ -52,10 +52,10 @@ and contracts.md folded into its body with §10 compacted to one line per older 
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-27):** F635 is done on `fix/f635-postmatch-e2e`, to land: the post-match end-to-end gate is the
-`--ui` job `app-postmatch` (cases 2, 6, 3, 3b, 5 and 7, about 230 s). F598 is landed. The firmware safety guards are
-on `brx4-fwguards`. Nothing was flashed.
-**Next:** land `fix/f635-postmatch-e2e`. Bench: the code-read leads on F264, F277, F293 and F300; the older list (F519, F521, F525,
+**State (2026-10-28):** F635 is landed (`29f238707`): the post-match end-to-end gate is the `--ui` job `app-postmatch`.
+F598 is landed. The doc-rot apply has landed (`e914148f1`, `587d7086d`, `2d5f66bf3`, `b998a70e5`). The review fixes are on
+`fix/docrot-review`, to land after the gate. The firmware safety guards are on `brx4-fwguards`. Nothing was flashed.
+**Next:** land `fix/docrot-review`. Bench: the code-read leads on F264, F277, F293 and F300; the older list (F519, F521, F525,
 F526, F511, F501, F530) still stands.
 **Blocked:** none.
 
