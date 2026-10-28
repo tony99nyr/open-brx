@@ -918,7 +918,6 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 - **F323 🟢 A `$HIT` SOURCE VALUE AS A HOST LEVER.** Code read, not bench-proven: the `$HIT` parser passes through a source (sensor) value it parses, which could let the host mark a hit as headset or body. A possible lever only; nothing is built on it. `bench` + `decision`.
 
-- **F324 🟠 PUBLISHING FIRMWARE-DERIVED DETAIL BEFORE BATTLE COMPANY ANSWERS.** 596122ea put disassembly-derived addresses, RAM locations and branch maps in public docs, while R4's "Human path" still waits for Battle Company's written answer on publishing derived facts. Tony decides: keep them public, move them to the private notes until BC answers, or keep only behaviour-level readings. `decision`.
 
 - **R3 🟡 IS JAY (EXTREME LASER TAG) THE SAME PROJECT AS LASERTAGMODS?** `reference/jay-ecosystem.md` presented JBOX/JCUBE/JBOX Mini/JTOWER/JHALO/JEDGE as his devices; `reference/lasertagmods.md` and CLAUDE.md credit JEDGE and JBOX to LaserTagMods. Two sources disagree, so the ownership claim was withdrawn 2026-09-12. Settle it (channel about page vs GitHub org commit authorship); it decides the public credit line. **→ 2026-09-18:** the drive Jay shared holds the JEDGE, JBOX and JHALO sources, and `reference/lasertagmods.md` already cites "Jay's JEDGE 6.0 source". **Decision for Tony:** ask Jay for the credit line he wants, then fix the warning in `reference/jay-ecosystem.md`. `research` + `decision`.
 

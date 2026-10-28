@@ -715,6 +715,20 @@ def _living_docs() -> list[pathlib.Path]:
     return out
 
 
+# 2026-10-27 doc-rot review: open ids regrew outside docs/ (hardware specs and component READMEs cited P10 and D2
+# as open, and listed Stick ids twice), where neither id scan looked. Both scans now read these too.
+_ID_SCAN_README_GLOBS = ("README.md", "app/README.md", "webapp/mc/README.md", "scripts/README.md", "mcp/**/README.md")
+
+
+def _id_scan_pages() -> list[pathlib.Path]:
+    """The living docs plus hardware/**/*.md and the component READMEs."""
+    out = _living_docs() + sorted((REPO / "hardware").rglob("*.md"))
+    for g in _ID_SCAN_README_GLOBS:
+        out += sorted(REPO.glob(g))
+    tracked = {f.resolve() for f in _tracked_files()}
+    return [f for f in dict.fromkeys(out) if f.resolve() in tracked]
+
+
 def _dated_closed_ids() -> set[str]:
     """Ids with a `- YYYY-MM-DD **F42** ...` closure line in the archive — the one-line-per-item session-close
     format (docs/README.md → Session close is three writes). A block heading in the older part of the file is deliberately NOT counted."""
@@ -768,7 +782,7 @@ def _closed_ids_cited_as_open() -> list[str]:
     """
     closed = _dated_closed_ids()
     hits = []
-    for f in _living_docs():
+    for f in _id_scan_pages():
         generated = False   # FOLLOWUPS' index block: the lander regenerates it from the rows (A15), a branch never edits it
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
             if line.strip() in ("<!-- index:start -->", "<!-- index:end -->"):
@@ -849,13 +863,16 @@ _CITED_ID_ALLOW: set = {
     "B0",
     *(("node.md", i) for i in ("Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q10")),
     *(("start-sequence.md", i) for i in ("E9", "E10", "E11")),
+    ("brx-station-spec.md", "S0"),   # a station tier name (S0 Mini, S1 ...), not a followup id
+    ("inventory.md", "G42"),         # the StickS3's IR receive GPIO, not a followup id
 }
 
 
 # Ids that only the pre-2026-09-06 FOLLOWUPS snapshot named, and that living pages still cite. The snapshot was
 # deleted on 2026-10-27 (read it with `git show c55119667:docs/archive/pre-2026-09-06-followups-snapshot.md`).
-# P1 and P2 are also the bench sheets' part labels, and G9/G10 the Stick's pins. Never add an id: a new cite needs a living row.
-_SNAPSHOT_IDS = frozenset({"D2", "D3", "D4", "F11", "G4", "G6", "G7", "G8", "G9", "G10", "K5", "P1", "P2"})
+# P1 and P2 are also the bench sheets' part labels, and G9/G10 the Stick's pins. B13 (the IR bit layout, closed
+# 2026-08-26) joined on 2026-10-27, when the scan first read hardware/. Never add an id: a new cite needs a living row.
+_SNAPSHOT_IDS = frozenset({"B13", "D2", "D3", "D4", "F11", "G4", "G6", "G7", "G8", "G9", "G10", "K5", "P1", "P2"})
 
 
 def _known_ids() -> set[str]:
@@ -874,7 +891,7 @@ def test_every_cited_followup_id_resolves():
     cannot find out what it was, and the usual cause is an id renumbered or dropped rather than closed."""
     known = _known_ids() | {a for a in _CITED_ID_ALLOW if isinstance(a, str)}
     missing: dict[str, str] = {}
-    for f in _living_docs():
+    for f in _id_scan_pages():
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
             for m in _CITED_ID.finditer(line):
                 if (f.name, m.group(1)) in _CITED_ID_ALLOW:
@@ -896,6 +913,10 @@ def test_the_id_scans_reach_the_whole_docs_tree():
     for excluded in pages:
         assert excluded.relative_to(DOCS).parts[0] not in _ID_SCAN_SKIP_DIRS, (
             f"{excluded} is history/lab-notebook and must stay out of the id scans")
+    extra = {f.relative_to(REPO).as_posix() for f in _id_scan_pages()}
+    for required in ("hardware/brx-station-spec.md", "hardware/m5sticks3/README.md", "app/README.md",
+                     "mcp/brx_mcp/mc/README.md", "README.md"):
+        assert required in extra, f"{required} is not in the id scans' file list"
 
 
 def test_the_id_resolution_check_sees_real_ids():

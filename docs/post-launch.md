@@ -114,7 +114,7 @@ Desk research on the stock firmware images (read only, never hosted and never fl
 and the bench measurements that would make the IR model exact. Publishing any firmware-derived detail waits on
 Battle Company's answer.
 
-Ids: R4, F300 to F307, F320, F321, F323, F324, R3, F162, F171, F195, F167, F168, F169, F28, P3, P4, P8, P12, P14,
+Ids: R4, F300 to F307, F320, F321, F323, R3, F162, F171, F195, F167, F168, F169, F28, P3, P4, P8, P12, P14,
 Q16, F285, F286, U2.
 
 ## Hardware, tooling and the site
