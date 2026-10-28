@@ -43,9 +43,9 @@ A proven feature can still carry an open row for one part of it. The evidence co
 
 | Feature | Status | Evidence or row |
 |---|---|---|
-| **Free For All.** Every player for themselves; kills score. | proven | 2026-08-30, the first full match on our stack (a 300 s FFA through Mission Control, `experiment-log/2026-08.md`); 2026-09-12, three FFA matches over mobile data |
+| **Free For All.** Every player for themselves; kills score. | proven | 2026-08-30, the first full match on our stack (a 300 s FFA through Mission Control, `experiment-log/2026-08.md`); 2026-09-12, three FFA matches over mobile data; 2026-10-17, an outdoor FFA with four player phones ([`field-2026-10-17.md`](field-2026-10-17.md)) |
 | **Team Deathmatch.** Two teams; kills score for the team. | proven | 2026-09-16, two guns through Mission Control, 43 or more hits all credited to the right team after the F206 team fix. Team damage stays off: the bench confirmed it on 2026-10-16 (Q13; the gun drops a teammate's word, no `$HIR`). Four player phones played TDM outdoors on 2026-10-17 |
-| **King of the Hill.** Teams hold one hill; possession time scores. The hill is a phone or a Stick station. | bench pending | A KOTH game cannot LOAD without a hill station (F402, bench-confirmed 2026-09-28). A Stick hill has run a two-phone KOTH match on the bench (2026-09-26; F382, F384 and F385 closed). A phone hill ran one on 2026-10-02: the hold target ended the match, but the hill heard one phone only now and then, so the contest failed (F440; a fix is built and waits for the re-bench). F383 (the 7.5 m hill radius) and F386 (the hill freezes at the whistle) are bench pending. The chaos suite checks the win path at the desk for both hill sources ([`chaos-testing.md`](chaos-testing.md)). The mode itself ran through the gun on 2026-09-10 with the BRX grenade as the hill, which is post-launch |
+| **King of the Hill.** Teams hold one hill; possession time scores. The hill is a phone or a Stick station. | bench pending | A KOTH game cannot LOAD without a hill station (F402, bench-confirmed 2026-09-28). A Stick hill has run a two-phone KOTH match on the bench (2026-09-26; F382, F384 and F385 closed). A phone hill ran one on 2026-10-02: the hold target ended the match, but the hill heard one phone only now and then, so the contest failed (F440; a fix is built and waits for the re-bench). F383 (the 7.5 m hill radius) and F386 (the hill freezes at the whistle) are bench pending. Two 600 s KOTH matches ran outdoors on 2026-10-17 with four player phones and two phone hills. They found the hill paying its owner while the enemy drained it (and, less certainly, while the owner was dead), and four more hill clock, possession and scoring bugs; the field push fixed them at the desk (F554 to F559), and the bench check is `bench-field-1017.md` L4. The chaos suite checks the win path at the desk for both hill sources ([`chaos-testing.md`](chaos-testing.md)). The mode itself ran through the gun on 2026-09-10 with the BRX grenade as the hill, which is post-launch |
 
 ## The phone app and HUD
 
@@ -129,7 +129,7 @@ ARMORY only, and they are on by default. The mechanism is [`spec/powerups.md`](s
 | Per-weapon range | bench pending | F231 and Q15 |
 | Recoil on sustained fire (the Assault Rifle's ladder) | bench pending | F308 (bench 4.3 passed on 2026-09-24; the tuned value ships and sitting C re-checks the feel); F274 (the write budget, soak) |
 | The Charge Rifle | bench pending | F226 |
-| The Toxin Rifle (poison over time) | bench pending | F292 |
+| The Toxin Rifle (poison over time) | proven | 2026-10-16 bench, on a real gun: it passed by ear, and a lethal tick booked one death and one feed line (F292 closed). F536 (the pain-relief line after a lethal tick) is bench pending |
 | Perks | proven | The perk levers were answered on the 2026-09-18 perks bench; Body Armor played in the 2026-09-13 game test. The perk values since then are balanced at the desk |
 | Easy Reload: the ALT button reloads, for a player who cannot work the lever | proven | `experiment-log/2026-08.md`, 2026-08-27 (`alt_reload` proven) |
 | Pickups: Rockets, Rail Gun and Overshield, on by default | proven | On by default (F372). Phone and Stick pickups passed on the bench (2026-09-25 and 2026-10-02; S58 closed). The briefing names the pickups (F403). F379, F417, F434 and F436 are bench pending |
@@ -144,7 +144,7 @@ station. The gun lights and the headset tell the player their state. The respawn
 | Feature | Status | Evidence or row |
 |---|---|---|
 | Standard life preset | proven | Every field match |
-| Shields life preset: a Halo-style shield that recharges, with the shield bar on the HUD | bench pending | F298 and F349; a Shields spawn starts at full shield (F348, passed 2026-10-02) |
+| Shields life preset: a Halo-style shield that recharges, with the shield bar on the HUD | bench pending | F298. The recharge and its cue passed on 2026-10-16 (F349 closed), and a Shields spawn starts at full shield (F348, passed 2026-10-02) |
 | Hardcore life preset | unclear | Built and in the balance tests (`experiment-log/2026-09.md`, 2026-09-23); no bench or field record |
 | Timed respawn | proven | 2026-08-30 (12 respawns in one match); every field match since |
 | Station respawn | proven | See *Utility stations* |
@@ -160,7 +160,7 @@ Control awards medals and end-of-match awards. The queue is [`announcer.md`](ann
 
 | Feature | Status | Evidence or row |
 |---|---|---|
-| One announcer queue for voice lines and HUD banners | bench pending | F351 closed 2026-09-25; the gun-audio rows F439 and F50 are bench pending (F375 and F158 are folded into F439) |
+| One announcer queue for voice lines and HUD banners | bench pending | F351 closed 2026-09-25, and F439 (the scream before the kill callouts) passed by ear on 2026-10-16. F50 is bench pending |
 | Kill confirms and voice lines on the gun | proven | 2026-09-12 field test |
 | Kill medals: first blood, the multi-kill ladder and streaks | proven | Medals reached the recap in the 2026-09-12 field test (F150); Tony confirmed the ladder by ear on 2026-09-24 (A61) |
 | The melee and Killjoy medals (A62, A63) | built | F361 closed 2026-09-25 |
