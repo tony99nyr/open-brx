@@ -10,7 +10,7 @@ Six classes, and one rule underneath all of them: every weapon keeps one damage 
 
 ### One damage number, and the pool sets the hits
 
-The hits to kill are the pool divided by the weapon's damage, rounded up. So the hit count moves with the pool, and the damage stays the same. The default pool is 115 (Standard: 45 health and 70 armour), and there an assault rifle takes 13 hits. The same rifle takes 17 against Shields (150) and 5 in a Hardcore match (45). The hit counts in the list below are for the default pool.
+The hits to kill are the pool divided by the weapon's damage, rounded up. So the hit count moves with the pool, and the damage stays the same. The default pool is 115 (Standard: 45 health and 70 armour), and there an assault rifle takes 13 hits. The same rifle takes 17 hits if the host raises the pool to 150, and 5 in a Hardcore match (45). The hit counts in the list below are for the default pool.
 
 That is the whole reason the arsenal can be retuned between matches without anyone touching a tagger. The weapon is data. The gun runs stock firmware and always will.
 
@@ -36,7 +36,7 @@ arsenal
 
 ### There are four ways to take someone down
 
-Every weapon in the list above is one of these, and so is the Armour Piercing perk, and each one beats something and loses to something else. That is the whole design, and it is why the arsenal is not a ladder with a best weapon at the top.
+Every weapon in the list above is one of these, and so is the Armor Piercing perk, and each one beats something and loses to something else. That is the whole design, and it is why the arsenal is not a ladder with a best weapon at the top.
 
 - **Plain damage.** Drains shield, then armour, then health. Against a bare target nothing is faster. Against a big pool it is the slowest thing you can carry.
 - **Armour piercing.** Goes straight to health and ignores the armour entirely. It has to be priced down to pay for that, so against someone wearing nothing it is strictly worse than the rifle you gave up.

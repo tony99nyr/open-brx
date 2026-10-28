@@ -43,8 +43,8 @@ phone demo catalogue from this source. After any change to `weapons.json`, run
 
 A plain-damage weapon that should be able to carry Armour Piercing needs the pair `ap_dmg` and `ap_fire_ms`
 in its row. Without both, the compiler refuses the perk on that weapon (`_refuse_if_ap_ineligible` in
-`compile.py`). Price the pair by the method in [`weapon-design.md`](weapon-design.md) §7.7. A charge weapon, a
-one-shot weapon and a weapon on a headset-multiplier cell stay refused.
+`compile.py`). Price the pair by the method in [`weapon-design.md`](weapon-design.md) §7.7. A charge weapon and a weapon on a headset-multiplier cell stay refused. A one-shot weapon is refused
+only because its row has no `ap_dmg` and `ap_fire_ms` pair (`_ap_block` in `compile.py`).
 
 If the weapon fires on a nonstock IR cell, declare its `sir_fn`. Mission Control then adds that row only
 when a roster needs it. Never add a conditional weapon row to the permanent stock table. If the behaviour

@@ -78,4 +78,4 @@ interrupts, and the phone sends no death stop when the scream is known (docs/ann
 
 ## Bench results
 
-The Sitting A results (2026-09-25, one gun) are in `docs/experiment-log/2026-09.md`, entry "2026-09-25 (desk) F347 and F350 from sitting A", with the later sitting in `docs/experiment-log/2026-10.md`.
+The Sitting A results (2026-09-25, one gun) are in `docs/experiment-log/2026-09.md`, entry "2026-09-25 (desk) F347 and F350 from sitting A".

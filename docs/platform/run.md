@@ -29,7 +29,7 @@ field session played four matches (Free-for-all, Team Deathmatch and two King of
 player phones and two station phones. It is also unfinished and changes week to week, and the
 published Android build can be behind the current game rules. Three things have never been run: a
 dispersed start with players out of Wi-Fi range before T-0, a recovery after real coverage loss, and
-a 20 minute soak.
+a 20 minute soak. The 2026-10-17 field day does not count as that recovery, because all four player phones stayed on the Wi-Fi and kept sending status all day. It did lead to the result-wait fixes F595 and F596, which the desk then measured and tested.
 
 ## What you need
 
@@ -98,9 +98,10 @@ This is the per-game arming, and it is where a bad start gets caught.
    and no voice line. This is the single most common cause of "only two of the three taggers started".
    A settled headset shows its team colour before the game and goes dark once play begins, which is
    normal.
-2. **Get each player onto a tagger.** Add the player in Mission Control. On the phone, the player taps
-   **SET MY GUN** and then taps their own tagger in the list under SCANNING FOR TAGGERS. The phone
-   connects to that tagger. To swap to another tagger before the match, use **CHANGE TAGGER** on the
+2. **Get each player onto a tagger.** Add the player in Mission Control. Assign the player's tagger in
+   KIT, in the gun list on the player's row. Mission Control then waits for that tagger. On the phone,
+   the player taps **SET MY GUN** and then taps their own tagger in the list under SCANNING FOR
+   TAGGERS. The phone connects to that tagger and reports it to Mission Control. To swap to another tagger before the match, use **CHANGE TAGGER** on the
    phone's diagnostics panel.
 3. **Kit them out.** Set display name, team, weapon and voice. A weapon change can push a silent
    try-out so the player fires and reloads to feel it. A configured but unspawned tagger ignores
@@ -175,7 +176,7 @@ backgrounded phone pauses the HUD's timers until it is back in front.
 
 At the time limit, or when you end the match, Mission Control works out per-player kills, deaths,
 accuracy and medals. It names the winner only after every player phone and every control point has
-sent its last results. A kill lives in the victim's report, so a phone that is still out of range
+sent its last results, or until the operator taps FINALISE, or until 2 minutes pass after the whistle. A kill lives in the victim's report, so a phone that is still out of range
 can change the winner.
 
 While Mission Control waits, the recap shows the wait:
@@ -192,9 +193,10 @@ After the release the panel names the winner. A line under it names what the res
 WITHOUT after FINALISE, or FINAL AFTER 2 MIN WITHOUT after the automatic release. A phone that syncs
 later still merges in. If it changes the result, the recap shows RESULT CHANGED.
 
-On the player's phone the results screen reads RESULT PENDING until the result arrives. If the phone
-cannot reach Mission Control, it reads MC NOT REACHED · SEE MISSION CONTROL, so walk it back into
-Wi-Fi range. A phone that still holds unsent results gets no result until it has sent them. A result
+On the player's phone the results screen reads RESULT PENDING until the result arrives. It reads MC NOT
+REACHED · SEE MISSION CONTROL only when two things are true: the phone has not reached Mission Control since the whistle,
+and 30 seconds have passed. Walk that phone back into Wi-Fi range. A phone that reached Mission Control
+after the whistle and then dropped stays on RESULT PENDING. A phone that still holds unsent results gets no result until it has sent them. A result
 released without every phone shows PROVISIONAL · SCORES STILL ARRIVING. If a late phone then changes
 the winner or the outcome, the phone shows RESULT UPDATED.
 
