@@ -17,8 +17,10 @@ Sanitising, and why each rule exists:
 * **The engine-state blob at the end of each node log is truncated.** It is ~25 KB of weapon/perk CATALOG per
   upload -- the same static catalog every time, already in `mcp/brx_mcp/mc/weapons.json` -- wrapped around a
   few hundred bytes of live state. The live keys are kept; the catalog is dropped.
-* Private LAN addresses are left as they are: RFC1918, non-routable, and F203 is ABOUT a specific unreachable
-  address, so rewriting them would destroy the evidence.
+* **Private LAN host addresses are rewritten** to `<lan-ip-1>`, `<lan-ip-2>`, ... in order of first appearance,
+  so one address keeps one name in every file. F203 is about a phone dialling one address while MC sat on another,
+  and distinct names keep that evidence. A subnet (`192.168.0.0/24`) or a sweep wildcard (`192.168.0.x`) is not a
+  host and stays. `test_docs_hygiene.py` fails the build if a host address gets through.
 
 Nothing else is filtered. If a claim in the write-up is not supported by what lands here, the write-up is
 wrong -- that is the point of committing this.
@@ -53,10 +55,19 @@ KEEP_STATE = (
 ).split()
 
 
+# An RFC1918 host address. Not a subnet (`/24`), not a wildcard (`.x`), not part of a longer dotted number.
+_LAN_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
+_LAN_NAMES: dict[str, str] = {}
+
+
+def _lan_alias(m: re.Match) -> str:
+    return _LAN_NAMES.setdefault(m.group(0), f"<lan-ip-{len(_LAN_NAMES) + 1}>")
+
+
 def sanitise(text: str) -> str:
     for sticker, alias in ALIASES:
         text = text.replace(sticker, alias)
-    return text
+    return _LAN_IP.sub(_lan_alias, text)
 
 
 def trim_state_blob(line: str) -> str:
@@ -171,6 +182,10 @@ def main() -> int:
         if leak:
             print(f"REFUSING TO WRITE {name}: sticker id {leak.group(0)!r} survived sanitising "
                   f"-- add it to ALIASES", file=sys.stderr)
+            return 2
+        ip = _LAN_IP.search(text)
+        if ip:
+            print(f"REFUSING TO WRITE {name}: LAN address {ip.group(0)!r} survived sanitising", file=sys.stderr)
             return 2
         (HERE / name).write_text(text, encoding="utf-8")
         print(f"{name}: {len(text)} bytes")

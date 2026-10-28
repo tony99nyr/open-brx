@@ -177,7 +177,7 @@ public, so the reporter still opens the zip and checks it before posting.
 - **`API.md`** + **`docs/spec/design/mission-control.md`** (screens): the MC spec since 2026-09-06. `API.md` is the
   server ⇄ web-UI contract (REST + `/ui-ws` snapshot, the operator-token rule) and MC's behaviour.
 - **`docs/spec/contracts.md`** §5 — the node ⇄ MC wire (`envelope.py`, `net.py`); amendments: the §10 index.
-- **`docs/spec/modes.md`**: what `compile.py` emits. The old MC module spec is archived at `docs/archive/spec-mission-control.md`.
+- **`docs/spec/modes.md`**: what `compile.py` emits.
 - **`docs/field-runbook-mc.md`** — match-day procedure (MacBook, real phones, field network).
 - **`docs/mac-dev-runbook.md`** — the MacBook setup that is not in git, and the restart-vs-hard-reload rule.
 - **`webapp/mc/README.md`** — the console: dev server, jsdom tests, the browser e2e, why MC needs no stage harness.

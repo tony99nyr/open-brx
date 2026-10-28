@@ -2,9 +2,8 @@
 
 **Package for:** the operator console (`webapp/mc/`, React/TS; server⇄UI contract `mcp/brx_mcp/mc/API.md`).
 Real weapon data is `mcp/brx_mcp/mc/weapons.json` (the public arsenal page is `docs/manual/gameplay.md`).
-The shipping UI is the visual source of truth. The Claude Design export it started from is archived at
-`docs/archive/design/mc-export/` for re-seeding the design tool; per Tony, the exports were inspiration, not
-definitive. This brief also carries the shared foundation section and the screen sections of the retired
+The shipping UI is the visual source of truth. The Claude Design export it started from is in git history only; per Tony, the exports were
+inspiration, not definitive. This brief also carries the shared foundation section and the screen sections of the retired
 `spec/mission-control.md`.
 
 ## 0. Shared foundation (both UIs: this console and `phone-hud.md`)

@@ -110,7 +110,7 @@ produced them (carried in from the 2026-09-03 session sheet when it was archived
 And never end a run on a bare `$CLEAR` (it wipes the `$SIR` table, under Sending commands below).
 State the shooter team for every IR test (see "Check the SHOOTER TEAM" below). Never advance an
 operator-in-the-loop sweep on a timer. Run the tools from the Windows venv
-(`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp …`). The rig is board A = receiver COM7 and
+([`wsl-dev-runbook.md`](wsl-dev-runbook.md) has its path). The rig is board A = receiver COM7 and
 board B = emitter COM8, and Windows COM ports are exclusive.
 
 
@@ -162,9 +162,8 @@ A **"screamer"** — the documented failure of a tagger left powered all day. **
 between sessions.** Never bench-marathon a match-day fleet. Also: BC firmware won't re-pair below a
 battery threshold, so keep them charged.
 
-**"The gun is called Tactix2 again."**
-**Opening the Callsign app wipes an enrolled gun's `$NAME`.** Never open it on our guns. Re-stamp with
-`python -m brx_mcp rename`.
+**"The gun is called Tactix2 again."** The Callsign app wiped its `$NAME`: see
+[`manual/fix.md`](manual/fix.md) → *Why is my gun called Tactix2 again?* Re-stamp with `python -m brx_mcp rename`.
 
 **"The gun says `phone connected` so the app must be fine."**
 Two different signals. The tagger saying **"phone connected"** means a central attached; the app saying
@@ -214,12 +213,8 @@ gun. **Keep bench-script output ASCII-only.** (`mcp/tools/weapon_range.py` says 
 the lesson does not travel unless you look.)
 
 **🔴 ENVIRONMENT VARIABLES DO NOT CROSS THE WSL -> WINDOWS BOUNDARY (2026-09-03)**
-`FOO=1 /mnt/c/.../python.exe script.py` arrives with `os.environ["FOO"]` **unset**. There is no error;
-the flag silently does nothing.
-
-This faked a hardware result within 24 hours of being written: a `PAINT_HZ=25` repaint test was
-judged "pretty good" when the option had never applied and a single frame was actually being sent.
-**Use `sys.argv`, not env vars, for anything a Windows-side bench tool reads.** And the general rule:
+The rule is in `CLAUDE.md` and [`wsl-dev-runbook.md`](wsl-dev-runbook.md): use `sys.argv`. It faked a hardware
+result once (a `PAINT_HZ=25` repaint test that never applied). The general rule:
 **if a knob does not visibly change behaviour, check it is being READ before believing the result.**
 
 **"That IR function does nothing" / "my emitter fired but the victim never reacted."**
@@ -597,7 +592,8 @@ came from a human's senses.
 proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
-`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
+`$HIR` tok5 is the raw magnitude, and the applied damage depends on the sensor and `$GSET` t7: the rule is in
+[`protocol/brx-protocol.md`](../protocol/brx-protocol.md) (`$GSET` t7). Open BRX compiles t7 = 0, so every hit lands at its raw magnitude: players already aim at the headset (four of the five sensors), so a headset multiplier would only make that aim pay twice.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
 **A simulated gun that answers instantly is not a gun.** Twice on 2026-09-18 a test suite passed while the

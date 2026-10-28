@@ -684,10 +684,10 @@ def test_no_memory_slugs_in_tracked_markdown():
 
 # HANDOFF is capped at 150 LINES, which one long line per bullet walks straight through: the file that
 # triggered the rule was 836 lines, but the shape it keeps coming back as is 30 paragraph-length bullets.
-# The intent is 9,000 bytes (~one screen). 2026-09-12: the file measures 12,752, so the cap is pinned just
-# above that. This is a CEILING, not an auto-ratchet: nothing in this suite lowers it on its own. Lower
+# The intent is 9,000 bytes (~one screen). 2026-09-12: the file measured 12,752, so the cap was pinned just
+# above that. 2026-10-27: the rewrite measures about 7,200, so the cap is the intent. This is a CEILING, not an auto-ratchet: nothing in this suite lowers it on its own. Lower
 # it by hand, to the new size plus a small margin, the next time a HANDOFF rewrite lands well under it.
-_HANDOFF_MAX_BYTES = 13_400
+_HANDOFF_MAX_BYTES = 9_000
 
 
 def test_handoff_is_one_screen_by_bytes_too():
@@ -852,13 +852,17 @@ _CITED_ID_ALLOW: set = {
 }
 
 
+# Ids that only the pre-2026-09-06 FOLLOWUPS snapshot named, and that living pages still cite. The snapshot was
+# deleted on 2026-10-27 (read it with `git show c55119667:docs/archive/pre-2026-09-06-followups-snapshot.md`).
+# P1 and P2 are also the bench sheets' part labels, and G9/G10 the Stick's pins. Never add an id: a new cite needs a living row.
+_SNAPSHOT_IDS = frozenset({"D2", "D3", "D4", "F11", "G4", "G6", "G7", "G8", "G9", "G10", "K5", "P1", "P2"})
+
+
 def _known_ids() -> set[str]:
     text = FOLLOWUPS.read_text(encoding="utf-8")
     known = set(_followup_definitions(_register_text()))
     known |= set(re.findall(r"\*\*([A-Z]\d+)\b", (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")))
-    snap = DOCS / "archive" / "pre-2026-09-06-followups-snapshot.md"
-    if snap.is_file():
-        known |= set(re.findall(r"\b([A-Z]\d+)\b", snap.read_text(encoding="utf-8")))
+    known |= _SNAPSHOT_IDS
     m = re.search(r"\*\*Next free:([^*]+)\*\*", text)     # advertised-free ids resolve to "not yet taken"
     if m:
         known |= set(re.findall(r"\b([A-Z]\d+)\b", m.group(1)))
@@ -1010,20 +1014,16 @@ _ARCHIVE_REF = re.compile(r"(?<![\w/.-])(?:docs/)?archive/([A-Za-z0-9._][A-Za-z0
 # ever shrinks — delete an entry when its page stops citing the archive, and never add one to make a
 # red go away: archiving a sheet means promoting what the living pages still need FIRST.
 _ARCHIVE_CITERS_BASELINE = {
-    "app/README.md",                        # design/hud-export/
-    "docs/architecture-topology.md",        # verification-checklist.md
+    "docs/architecture-topology.md",        # session-findings-2026-08.md
     "docs/bench-grenade.md",                # bench-grenade-answered.md
     "docs/reference/ttk-model.md",          # game-test-2026-09-11.md (D2 provenance, cited twice)
     "docs/site/README.md",                  # site/SIMPLIFY-PLAN.md
     "docs/spec/contracts.md",               # mode-extensibility.md, spec-armory.md, spec-net.md
-    "docs/spec/design/mission-control.md",  # design/mc-export/
-    "docs/spec/design/phone-hud.md",        # design/hud-export/
     "docs/spec/loadout.md",                 # spec-loadout-superseded-notes.md
     "docs/spec/start-sequence.md",          # spec-start-sequence-tasks.md
     "docs/weapon-design.md",                # game-test-2026-09-11.md (D2 provenance)
     "hardware/esp32-ir-bridge/README.md",   # hardware/bench-shopping-list.md, hardware/ir-prototype-plan.md
     "hardware/inventory.md",                # hardware/bench-shopping-list.md
-    "webapp/mc/README.md",                  # design/mc-export/
 }
 
 
@@ -1492,7 +1492,7 @@ _FW_ADDR_ALLOWED = {
 
 def _fw_addr_files() -> list[pathlib.Path]:
     out = sorted((DOCS / "experiment-log").rglob("*.md")) + [DOCS / "firmware-image-research-plan.md"]
-    for d in (DOCS / "manual", DOCS / "spec", REPO / "protocol"):
+    for d in (DOCS / "manual", DOCS / "spec", DOCS / "reference", REPO / "protocol"):
         out += sorted(d.rglob("*.md"))
     return out
 
@@ -1521,3 +1521,79 @@ def test_the_firmware_address_scan_can_actually_fail():
     assert _fw_addr_problems(rel, "header 0x3412"), "an allowed value is allowed in its own file only"
     assert not _fw_addr_problems("docs/firmware-image-research-plan.md", "header 0x3412")
     assert not _fw_addr_problems(rel, "HCI reason 0x3E, PMIC 0x49, byte 0xFF, sha 9bd77564d")
+
+
+# Privacy: a private LAN host address or a Mac/Linux account path never goes in the docs. The address names one
+# person's network, and the path names one person's account (a field bundle once named the MacBook's account). Write
+# a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log. A subnet (`/24`) or a
+# wildcard (`192.168.0.x`) is a sweep range, not a host, so it never matches. Generic addresses are allowed by value.
+# Scope: the docs trees only. Code and tests under app/ and mcp/ carry example addresses of their own.
+_PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
+_ACCOUNT_PATH = re.compile(r"/Users/(?!Tony\b|<)[A-Za-z][\w.-]*|/home/(?!tony\b|<|example\b)[a-z][\w.-]*"
+                           r"|[A-Za-z]:\\Users\\(?!Tony\b|<|Public\b)[A-Za-z][\w.-]*")
+_PRIVATE_IP_ALLOWED = {
+    "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
+    "192.168.16.1": "an example WSL host address, assigned per boot",
+    "10.255.255.254": "WSL's own DNS resolver, the same on every WSL install",
+}
+
+
+def _privacy_files() -> list[pathlib.Path]:
+    out = []
+    for d in (DOCS, REPO / "hardware", REPO / "protocol"):
+        out += [p for p in sorted(d.rglob("*")) if p.suffix in (".md", ".log", ".tsv", ".txt") and p.is_file()]
+    return out
+
+
+def _privacy_problems(rel: str, text: str) -> list[str]:
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        out += [f"{rel}:{n}: {m.group(0)}" for m in _PRIVATE_IP.finditer(line)
+                if m.group(0) not in _PRIVATE_IP_ALLOWED]
+        out += [f"{rel}:{n}: {m.group(0)}" for m in _ACCOUNT_PATH.finditer(line)]
+    return out
+
+
+def test_no_private_lan_address_or_account_path_in_the_docs():
+    hits = []
+    for path in _privacy_files():
+        hits += _privacy_problems(path.relative_to(REPO).as_posix(), path.read_text(encoding="utf-8", errors="replace"))
+    assert not hits, ("a private LAN address or an account path in the docs (use <mc-lan-ip>, <lan-ip-N> or "
+                      "<you>; a generic address goes in _PRIVATE_IP_ALLOWED with its reason): "
+                      + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
+
+
+def test_the_privacy_scan_can_actually_fail():
+    rel = "docs/x.md"
+    for bad in ("--advertise 192.168.0.2 --x", "ws://192.168.0.3:8766/ws", "at 10.0.0.7.", "172.20.10.2",
+                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x",
+                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws", r"C:\Users\someone\x"):
+        assert _privacy_problems(rel, bad), bad
+    for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
+                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/Tony/x", "/home/tony/x",
+                 r"C:\Users\Tony\x", "10.0.0.0/8"):
+        assert not _privacy_problems(rel, good), good
+
+
+# The log index once ran a month behind (2026-10 had no row for 26 days). Every month file needs its row.
+def _log_months_missing(index: str, months: list[str]) -> list[str]:
+    return [m for m in months if f"(experiment-log/{m}.md)" not in index]
+
+
+def test_every_experiment_log_month_has_an_index_row():
+    months = sorted(p.stem for p in (DOCS / "experiment-log").glob("*.md"))
+    missing = _log_months_missing((DOCS / "experiment-log.md").read_text(encoding="utf-8"), months)
+    assert not missing, f"docs/experiment-log.md has no row for {missing}: add one when a month's file starts"
+    assert _log_months_missing("| 2026-09 | [2026-09](experiment-log/2026-09.md) |", ["2026-09", "2026-10"]) == ["2026-10"]
+
+
+# 2026-10-27 doc-rot review: ten top-level docs were missing from the index. Every docs/*.md page is listed there.
+def _unindexed(index: str, names: list[str]) -> list[str]:
+    return [n for n in names if n != "README.md" and f"({n})" not in index and f"({n}#" not in index]
+
+
+def test_every_top_level_doc_is_in_the_docs_index():
+    names = sorted(p.name for p in DOCS.glob("*.md"))
+    missing = _unindexed((DOCS / "README.md").read_text(encoding="utf-8"), names)
+    assert not missing, f"docs/README.md does not link {missing}: add a row, or archive the page"
+    assert _unindexed("[a](a.md) [b](b.md#x)", ["a.md", "b.md", "c.md", "README.md"]) == ["c.md"]

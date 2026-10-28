@@ -1,6 +1,6 @@
 # Open BRX 1.0.0: what ships
 
-Updated: 2026-10-03. Scope set by Tony on 2026-09-25. What comes after 1.0.0 is [`post-launch.md`](post-launch.md).
+Updated: 2026-10-27. Scope set by Tony on 2026-09-25. What comes after 1.0.0 is [`post-launch.md`](post-launch.md).
 
 This page says what a group can do with Open BRX 1.0.0, and how sure we are that each part works. It is written
 for a reader who knows laser tag and the Battle Company BRX tagger, but not our code. The detail lives in the
@@ -44,7 +44,7 @@ A proven feature can still carry an open row for one part of it. The evidence co
 | Feature | Status | Evidence or row |
 |---|---|---|
 | **Free For All.** Every player for themselves; kills score. | proven | 2026-08-30, the first full match on our stack (a 300 s FFA through Mission Control, `experiment-log/2026-08.md`); 2026-09-12, three FFA matches over mobile data |
-| **Team Deathmatch.** Two teams; kills score for the team. | proven | 2026-09-16, two guns through Mission Control, 43 or more hits all credited to the right team after the F206 team fix. Q13 (team damage stays off) is bench pending |
+| **Team Deathmatch.** Two teams; kills score for the team. | proven | 2026-09-16, two guns through Mission Control, 43 or more hits all credited to the right team after the F206 team fix. Team damage stays off: the bench confirmed it on 2026-10-16 (Q13; the gun drops a teammate's word, no `$HIR`). Four player phones played TDM outdoors on 2026-10-17 |
 | **King of the Hill.** Teams hold one hill; possession time scores. The hill is a phone or a Stick station. | bench pending | A KOTH game cannot LOAD without a hill station (F402, bench-confirmed 2026-09-28). A Stick hill has run a two-phone KOTH match on the bench (2026-09-26; F382, F384 and F385 closed). A phone hill ran one on 2026-10-02: the hold target ended the match, but the hill heard one phone only now and then, so the contest failed (F440; a fix is built and waits for the re-bench). F383 (the 7.5 m hill radius) and F386 (the hill freezes at the whistle) are bench pending. The chaos suite checks the win path at the desk for both hill sources ([`chaos-testing.md`](chaos-testing.md)). The mode itself ran through the gun on 2026-09-10 with the BRX grenade as the hill, which is post-launch |
 
 ## The phone app and HUD
@@ -195,8 +195,9 @@ Control awards medals and end-of-match awards. The queue is [`announcer.md`](ann
   early; the player's phone refuses the claim (F374). An operator or objective end does not reach a Stick out of
   Wi-Fi (F386, accepted for 1.0.0).
 - **PANIC is a stop, not a pause.** A panicked tagger cannot be hit until it is re-armed.
-- **Untried at scale.** No match has run with more than two player phones, a 20-minute soak, or a dispersed start
-  with players out of Wi-Fi before T-0 ([`post-mvp.md`](post-mvp.md), *System proofs*).
+- **Untried at scale.** The largest match so far is four player phones and two station phones (the 2026-10-17 field,
+  [`field-2026-10-17.md`](field-2026-10-17.md)). No 20-minute soak and no dispersed start with players out of Wi-Fi
+  before T-0 has run ([`post-mvp.md`](post-mvp.md), *System proofs*).
 
 ## Status unclear
 

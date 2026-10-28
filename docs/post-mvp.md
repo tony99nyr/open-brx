@@ -975,7 +975,7 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
 
-- **F285 🟡 ONE TABLE FOR HOW EACH `$TMP` TOKEN TAKES A WRITE.** Filed 2026-09-18 night. **→ 2026-09-22: DESK HALF SHIPPED.** `protocol/brx-protocol.md` now has one guarded row per token and separates a confirmed effect from confirmed repeated-write behaviour. Only t4/t8 are ABSOLUTE and t9 is ADDITIVE, ONE-SHOT; every other token stays UNMEASURED. The old unsupported t1/t2 absolute claim is gone. This row remains open for bench-plan sitting 2 steps 1 and 3-5, which now cover every unmeasured cell; the load-bearing t6 repeat (send t6 = 50 twice and time one reload) gates F281. `bench`.
+- **F285 🟡 ONE TABLE FOR HOW EACH `$TMP` TOKEN TAKES A WRITE.** Filed 2026-09-18 night. **→ 2026-09-22: DESK HALF SHIPPED.** `protocol/brx-protocol.md` now has one guarded row per token and separates a confirmed effect from confirmed repeated-write behaviour. Only t4/t8 are ABSOLUTE and t9 is ADDITIVE, ONE-SHOT; every other token stays UNMEASURED. The old unsupported t1/t2 absolute claim is gone. This row remains open for research sitting 2 steps 1 and 3-5 (§9), which now cover every unmeasured cell; the load-bearing t6 repeat (send t6 = 50 twice and time one reload) gates F281. `bench`.
 
 - **F286 🟡 A BLE PROTOCOL PERFORMANCE AND EFFICIENCY PASS.** Filed 2026-09-18 night. Tony: a future exploration, planned for the week of 2026-09-21. Measure and cut the BLE cost of a whole match: bytes, packets and writes per life, per minute and per event, for every node and MC writer. Inputs: the write budget (F274), the screamer transport rules (`bench-screamers-2026-09-19.md`), the 20-byte packet size, and tonight's `$TMP` results (one short frame can replace `$WEAP` + `$AMMO`, and `$SPAWN` + `$TMP` t8 replaces the 28-frame twin table). Do: a per-writer inventory from the code, a measured baseline with the soak tool, then a ranked list of cuts. `explore`.
 
@@ -1117,9 +1117,133 @@ needs `bench_common`'s own frames instead; the known-safe command list is enforc
 word can pass parity while naming the wrong protocol or magnitude: count only whole `WORD` lines or an
 unambiguous `STITCH`, never an `AMBIGUOUS` one.
 
+### Research sittings: done, do not re-run
+
+Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware levers session 1" entries):
+§1 runs a-e, §4 step 1, §5 (all, including the shield flag and the sound token), §6 step 4 and §10 fn 34 (both
+answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
+6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
+t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
+(the archived bench-perks-2026-09-18, §1-§8). F230 closed, so levers §19 step 18 is dropped.
+
+**Pre-game check, 2026-09-19.** Levers §1 run f passed (F206's last gate). The write-up is the log's 2026-09-19
+pre-game entry.
+
+**The 2026-09-24 runbook, [`bench-2026-09-24.md`](bench-2026-09-24.md).** Blocks 0, 1, 1.4, 3.1-3.3, 4.3 and 7 step 11
+ran. The results are in the log's 2026-09-24 entries.
+
+**The archived bench-2026-09-25, sittings A and B.** The results are in the log's 2026-09-25 entries.
+
+### Research sittings (moved from `bench-plan.md`, 2026-10-27)
+
+The levers and screamers sittings in their old priority order. Where a sitting holds an MVP row, the
+[`bench-plan.md`](bench-plan.md) NEXT list runs that row first, and its step wins.
+
+#### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
+
+Screamers are P0. Screamers A1c (the nonblocking loop control, **F272**), A3, A5, A6, A11, A12; A4, A7, A7b, A7c and A8 run in the runbook's Block 2. A7 and A8 give the block-pacing
+numbers (**F269**, **F270**); a lock-up feeds **F272**. Keep the block pause off until A7 and A8 give a number.
+A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm before the next step.
+
+#### Sitting 2: the rest of levers session 1 (about 100 min; 2 guns, ears, the rig for steps 8 and 9)
+
+1. Levers §21 step 19, `$TMP` t10 crit chance, including the same-value re-send control (10 min). **S50**, **F285**.
+2. Levers §21 step 11, and one run that asks whether t9 applies per slot or once for every slot (10 min). Extended
+   Mags on `$TMP` waits on this. **S50**.
+3. Levers §21 steps 12-14, t1-t3 pool maxima, repeating each same non-zero write before the second read (15 min). **S50**, **F285**.
+4. `$TMP` t6 re-send: send t6 = 50 twice, then time one reload (5 min; method in the row). **F285**, **F281**.
+5. Complete the F285 table: repeat same non-zero t5 and t7 writes and compare fire timing/damage; for t11 first
+   prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
+6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
+7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
+8. ~~Levers §2, melee.~~ **K4** closed 2026-09-24: melee works in our compiled game (bench 2026-09-24 entry, `archive/followups-closed.md`). Steps 5 and 7 (the `$BHIT`/`$FIREX` controls) stay optional, not blocking.
+9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**.
+10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
+   Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
+
+#### Sitting 3: the recoil numbers, groups A and B (about 30 min; 2 guns on a fixed mount)
+
+Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"): the
+measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into sitting 8.
+
+#### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
+
+Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays the shipped recoil writer,
+which writes `$TMP` t4 only (S55, shipped).
+
+#### Runbook Block 2b: the native kill word and the R4 readings (70 min, plus 20 optional)
+
+The old sittings 4a and 4b. Kit: 2 guns and their headsets, the rig, a laptop and a camera, plus Phones + MC for
+the hosted trials. The procedure is [Block 2b of `bench-2026-09-24.md`](bench-2026-09-24.md): native
+Death Match kills N1-N3, and the short R4 checks (**F320**, **F321**, **F322**, fn 36/37 on domes 1-3, fn 18/22 on
+an enemy, the stored-ID compare, native Survival and FFA). The hosted trials H1-H3 ride on Block 4.2's kills, so
+they need both Pixels and Mission Control. Do not send `$AS,1`.
+
+#### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
+
+Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not re-run it here.
+1. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
+   and watch for a trigger answer. The row holds the gate. If the gun revives, prove its next death still shows the
+   native flash (A16).
+2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
+3. ~~F237~~ closed 2026-10-16 (C.28 re-picked 5 times, quick links).
+4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; the row is **U11′** in [`post-mvp.md`](post-mvp.md)).
+5. ~~The shield recharge cues~~ (F349) closed 2026-10-16 (A.15, Tony approved).
+
+#### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
+
+- 6a (about 50 min): §3 `$BHIT`, §6 steps 1-3 (the shield levers), §7 (**S50**), §8 the fuse; use the levers sheet as the procedure source.
+- 6b (about 40 min): §9 the crit bonus (**S50**), §10 fn 35, 38, 30, 33, 50-52 (**U11′**), §15 a headless gun (**B26**).
+
+#### Sitting 7: levers session 4, the IR rig (two sittings; 2 guns, the rig)
+
+- 7a (about 50 min): §11 splash, §16 step 4 (field 4 = 1), §17 station words (research: the MVP respawn station runs over Bluetooth).
+- 7b (about 45 min): §20 indoor half (**S48**, **Q15**), §24 the proc block (**F63**). §13 steps 2 and 3
+  (magnitudes 40-63) are optional now (**S57**).
+
+#### Sitting 8: the recoil numbers, groups C to F (about 35 min; 2 guns, Phones + MC)
+
+Levers §26 groups C, D, E and F, on the phone's node. The rung basis is settled (S54, `aa7b08b9`); the rungs to
+expect are the recoil table in `spec/node.md` §3.15.
+
+#### Sitting 9: levers gap sweep (two sittings; 2 guns, the rig for two steps)
+
+- 9a (about 45 min): §19 steps 1-9.
+- 9b (about 40 min): §19 steps 10, 11, 14, 16 and 17. Step 17 (`$AS,4`) runs only after sittings 1 and 4. Steps 12
+  and 13 moved to §21 and §22; step 15 is answered (F71, F263; the emitter and its reach are F275, sitting 10); step
+  18 is dropped.
+
+#### Sitting 10: outdoor (about 60 min; 2 guns, outdoor, the rig or the S49 receiver)
+
+**F275** (the `t13` ladder: where the headset word stops arriving). Then the outdoor half of levers §20. Then **F171**
+and **F195** (aim tolerance in degrees) if time allows. ⚠ F254 is CLOSED (the eleven-row `$SIR` table). The outdoor
+headset-word row was F254 before its renumber and is F275 now.
+
+#### Unattended and long runs (no sitting)
+
+- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` t4 recoil writer (S55, shipped).
+- **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
+- **Screamers Phase E** (20 min), after the lock-up detector (**F272**) passes its bench validation.
+
+#### Backlog (no fixed order; pick by setup)
+
+- [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md): the M5StickS3 gates. Gate 2 (IR receive, **F314**) is
+  post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
+  Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
+- [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
+- The unrun rungs of the archived bench-queue-2026-09-09, except the moved ones: BQ-C2 answered (perks §1); BQ-C3 is
+  levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11. Do not run BQ-A2 (`$AS,1`): it
+  starts a native game, a screamer path.
+- The archived 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets are grep only.
+  Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is
+  answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook.
+  Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10.
+- Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
+  that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
+
 ## 10. System proofs (need players, space, time)
 
-From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and still true:
+From the 2026-09-06 verification checklist (in git history only); what was ⬜ there and is still true:
 - **Hold-across-disperse 5 min**: config head written, gun left unspawned 5+ min, then `$SPAWN` + `$AMMO` goes live with
   config intact (2 min passed; the 5 min run was cut). Else the T-10 s head re-write becomes default.
   The `rewriteHeadAtT10` flag was removed on 2026-10-10 because nothing set it; rebuild it if this run

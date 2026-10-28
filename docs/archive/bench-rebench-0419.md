@@ -95,7 +95,7 @@ The index is [`bench-plan.md`](bench-plan.md).
    3 m ladder) on both Pixel 5s. Log the RSSI at each grant. **Pass:** a claim at 30 cm every time and none at 3 m,
    with at least 4 dB of margin each way on both phones. Owners: brx3 for the value, brx4 for the Stick. Row: F434.
 5. **Start MC from the latest `main`**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 80 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
+   `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume 80 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Rebuild `webapp/mc/dist` first if it is older than main. Powerups are on by default. **Pass:** the banner says
    "BENCH VOLUME 80". Log the banner, the token and MC's sha.
 6. Each player phone joins MC and runs SET MY GUN with its own gun. The station Pixel becomes the phone powerup
