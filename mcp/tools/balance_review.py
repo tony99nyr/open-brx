@@ -109,8 +109,8 @@ from brx_mcp.mc.types import SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_
 # The versioned scenario list and every invented constant
 # --------------------------------------------------------------------------- #
 
-SCENARIO_VERSION = 26   # 15-18: secondary draw, melee, headset word, duel cap
-# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo; 25: a kit can pick no perk (F625); 26: a charge finish needs whole landed hits (F619)
+SCENARIO_VERSION = 27   # 15-18: secondary draw, melee, headset word, duel cap
+# 19: real-aim domination and rule gates, with draws separate from kills (F610); 20: own-score niche (F611); 21: field shield regen and a per-kit regen delay (F605); 22: two swap stalls (F608); 23: a finish needs whole landed shots (F617); 24: per-preset perk effects (0.4.31 Extended Mags x1.5 on Shields) and the CR+Sniper+FH combo; 25: a kit can pick no perk (F625); 26: a charge finish needs whole landed hits (F619); 27: the marksman rush counter is a flip test against the baseline (F578)
 SEED = 7
 # Rep counts per cell kind. Tests scale these down with `reps_scale`; a scaled verdict says so and is
 # never recorded.
@@ -200,6 +200,9 @@ MARKSMAN_RUSH_BAR = 0.50      # the old absolute rush bar from the 20 m start; r
 # F578 (Tony, 2026-10-27, "Relative"): the rush counter is a flip test. A drop in rush success counts only when it
 # is larger than this floor and than the 95% binomial noise of the two rates.
 RUSH_FLIP_FLOOR = 0.02
+# A new marksman is compared with this shipped row, the design-of-record marksman. Pending Tony (F578 review): the
+# AMR, the hardest to rush, would make a new marksman's bar lenient.
+RUSH_NEW_MARKSMAN_REF = "sniper_rifle"
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
 PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.62; leave about 0.62 kills of room
 PICKUP_TTK_BAR_MS = 2500.0     # practical median against an undefended Standard target
@@ -297,7 +300,8 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "near_top_margin": dict(NEAR_TOP_MARGIN), "viable_field_floor": VIABLE_FIELD_FLOOR,
         "marksman_bars": {"strong": MARKSMAN_STRONG_BAR, "strong_column": MARKSMAN_STRONG_COLUMN,
                           "rush": MARKSMAN_RUSH_BAR, "rush_rule": "relative to the shipped baseline (F578)",
-                          "rush_flip_floor": RUSH_FLIP_FLOOR, "rush_start_m": RUSH_STARTS_M[0],
+                          "rush_flip_floor": RUSH_FLIP_FLOOR, "rush_new_marksman_ref": RUSH_NEW_MARKSMAN_REF,
+                          "rush_start_m": RUSH_STARTS_M[0],
                           "rush_opponents": ["plain AR", "AR with Body Armor"]},
         "perk_exemption": "a row with reload_type 'bolt' ignores ammo_mult, ammo_mult_pistol and reload_mult",
         "rule_bars": {"standard": RULE_BAR_STANDARD, "overrides": dict(RULE_BAR_OVERRIDES),
@@ -1523,7 +1527,9 @@ def rush_speed_sweep(marksman: Kit, plain: Kit, armoured: Kit, reps: int,
 
 
 def rush_drop_margin(base_rate: float, cand_rate: float, reps: int) -> float:
-    """The drop in rush success that counts: RUSH_FLIP_FLOOR, or the 95% noise of the two rates if larger."""
+    """The drop in rush success that counts: RUSH_FLIP_FLOOR, or the 95% noise of the two rates if larger. It treats
+    the rates as independent; a changed marksman's cells are paired, so the margin is conservative (it can miss a
+    small real drop, never invent one). At scaled reps it is wide; record() refuses scaled runs."""
     se = math.sqrt((base_rate * (1 - base_rate) + cand_rate * (1 - cand_rate)) / max(reps, 1))
     return max(RUSH_FLIP_FLOOR, 1.96 * se)
 
@@ -3098,10 +3104,10 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
                                       heat_cool_while_firing, verdict_plain=r, verdict_armoured=r_ba)
         same = base_mk["body_armor"] is base_mk["plain"]
         base_plain_rows = rush_speed_sweep(base_mk["plain"], base_ar, base_ba, sweep_reps, heat_cool_while_firing,
-                                           verdict_plain=base_r, verdict_armoured=base_r_ba if same else None)
+                                           verdict_plain=base_r, verdict_armoured=base_r_ba)
         base_ba_rows = (base_plain_rows if same else
                         rush_speed_sweep(base_mk["body_armor"], base_ar, base_ba, sweep_reps,
-                                         heat_cool_while_firing, verdict_plain=None, verdict_armoured=base_r_ba))
+                                         heat_cool_while_firing, verdict_plain=base_r, verdict_armoured=base_r_ba))
         for row, bp, bb in zip(rush_sweep, base_plain_rows, base_ba_rows):
             row["baseline_plain"], row["baseline_body_armor"] = bp["plain"], bb["body_armor"]
         rush_flip = rush_sweep_flips(rush_sweep, verdict_pass=tests["marksman_rush_counter"]["pass"],
@@ -3411,15 +3417,18 @@ def marksman_verdict(r: dict, r_ba: dict, near_cols: list,
 
 def rush_baseline(base: World, wid: str, reps: int, n_jobs: int = 1, heat_cool_while_firing=True):
     """F578: the shipped marksman a candidate is compared with, and its 20 m rush rates against the baseline
-    world's plain AR and AR with Body Armor. A changed weapon is compared with itself as shipped. A new marksman is
-    compared, per rusher, with the shipped marksman that rusher finds hardest, so it fails only when it is harder to
-    rush than every shipped one."""
+    world's plain AR and AR with Body Armor. A changed marksman is compared with itself as shipped. A new marksman,
+    or a row that becomes one, is compared with RUSH_NEW_MARKSMAN_REF (the Sniper), so it fails when it is harder to
+    rush than the shipped Sniper. Without that row, each rusher takes the shipped marksman it finds hardest."""
     ar = make_kit(base, "AR (plain)", ANCHOR)
     ar_ba = make_kit(base, "AR+BA", ANCHOR, perk="body_armor") if base.perks.has("body_armor") else ar
-    if wid in base.cat._by_id:
+    shipped = [w for w in roster_ids(base)[0] if base.cat._row(w).get("role") == "marksman"]
+    if wid in base.cat._by_id and base.cat._row(wid).get("role") == "marksman":
         ids = [wid]
+    elif RUSH_NEW_MARKSMAN_REF in shipped:
+        ids = [RUSH_NEW_MARKSMAN_REF]
     else:
-        ids = [w for w in roster_ids(base)[0] if base.cat._row(w).get("role") == "marksman"]
+        ids = shipped
     if not ids:
         raise ValueError("F578: no shipped marksman to compare a new marksman with")
     kits = {w: make_kit(base, f"{_name(base, w)} (plain)", w) for w in ids}
@@ -3429,9 +3438,13 @@ def rush_baseline(base: World, wid: str, reps: int, n_jobs: int = 1, heat_cool_w
     armoured = {w: res[2 * i + 1] for i, w in enumerate(ids)}
     w_plain = min(ids, key=lambda w: plain[w]["rush_success"])
     w_ba = min(ids, key=lambda w: armoured[w]["rush_success"])
-    label = "the same weapon, shipped" if ids == [wid] else None
-    baseline_from = {"plain": label or f"{w_plain}, the hardest shipped marksman to rush",
-                     "body_armor": label or f"{w_ba}, the hardest shipped marksman to rush"}
+    if ids == [wid]:
+        baseline_from = {"plain": "the same weapon, shipped", "body_armor": "the same weapon, shipped"}
+    elif ids == [RUSH_NEW_MARKSMAN_REF]:
+        baseline_from = {k: f"{RUSH_NEW_MARKSMAN_REF}, the reference marksman" for k in ("plain", "body_armor")}
+    else:
+        baseline_from = {"plain": f"{w_plain}, the hardest shipped marksman to rush",
+                         "body_armor": f"{w_ba}, the hardest shipped marksman to rush"}
     return ({"plain": kits[w_plain], "body_armor": kits[w_ba]}, ar, ar_ba,
             plain[w_plain], armoured[w_ba], baseline_from)
 
