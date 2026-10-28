@@ -8,10 +8,10 @@ public doors built from one static-site generator: the platform landing/docs (`d
 <https://open-brx.iamrossi.workers.dev/>, and **The Ultimate BRX Manual**, the public reference for the tagger
 and headset, built from `docs/manual/` and served at <https://open-brx.iamrossi.workers.dev/manual/>.
 
-Today a laptop runs a full scored Team Deathmatch on real taggers over Bluetooth LE (Tier 0), and the
-per-player phone app (the BRX Combat HUD) plus the Mission Control console have run two whole multi-phone
-matches outdoors on real hardware (2026-08-30 and 2026-09-01). The phone-node path is what lifts the laptop's
-BLE-range limit.
+Today the per-player phone app (the BRX Combat HUD) and the Mission Control console run whole matches on
+real taggers. On 2026-10-17 four players played four matches: Free For All, Team Deathmatch and two King of
+the Hill games, with two phones as respawn stations. Each match ran for 10 to 14 minutes. The phone-node path
+is what lifts the laptop's BLE-range limit.
 
 **Start here: [`docs/README.md`](docs/README.md)**, the documentation index. It points to
 [`docs/architecture-topology.md`](docs/architecture-topology.md) (how it is wired and what is proven),
@@ -42,8 +42,9 @@ the manual, the spec of record (`docs/spec/`), the ADRs and the open-work list.
 | `mcp/` | **brx-mcp**, the MCP server + CLI that drives taggers over BLE, and **`mcp/brx_mcp/mc/`**, the Mission Control server (game modes, scoring, the frame compiler; `API.md` is the server⇄UI contract) |
 | `app/` | **BRX Combat HUD**, the native per-player phone app (Capacitor: one codebase → Android + iOS, native BLE). See [`app/README.md`](app/README.md) |
 | `webapp/` | The site generator's output lands here, git-ignored (built from `docs/platform/` + `docs/manual/` by `site/`). `webapp/mc/` (the Mission Control console, Vite/React) and `webapp/download/build.json` (the Android build sidecar, which points at the GitHub Release) are hand-kept and tracked |
+| `scripts/` | Repo scripts: start, the test runner, the land lane. [`scripts/README.md`](scripts/README.md) is the index |
 | `site/` | The static-site generator (two doors, one source: `docs/site/FORMAT.md`) and its Playwright verification suite |
-| `hardware/` | `esp32-ir-bridge/` and `m5sticks3/` (built ESP32 rigs), the Companion and Station specs, print-file notes |
+| `hardware/` | `esp32-ir-bridge/` and `m5sticks3/` (built ESP32 rigs), `player-sim/` (a fake player phone for station bench tests), the Companion and Station specs, print-file notes |
 
 ## Quickstart: run Mission Control
 
@@ -73,13 +74,10 @@ The direct tagger-control CLI and stdio MCP server are documented in the
 installation, first contact, `play`, `game-sim`, MCP registration, platform notes, and the full command table.
 That README's CLI table is the canonical command list; bare `python -m brx_mcp` starts the stdio server.
 
-> **What works today:** `python -m brx_mcp play tdm` ([`mcp/README.md`](mcp/README.md)) ran a full TDM on two real taggers: scoring, respawn,
-> frag limit, correct winner (`docs/experiment-log/2026-08.md`, "FIRST LIVE M0 GAME"). The **phone-node +
-> field Wi-Fi** path has run **two whole matches on real hardware**: a 300 s FFA on 2026-08-30 (two phones,
-> two taggers, one MacBook hosting; 12 kills, 126 landed hits, 12 respawns, a winner) and an outdoor TDM on
-> 2026-09-01 with two Android HUDs. Still unproven: a dispersed start with players out of Wi-Fi range before
-> T-0, more than two phones, the 20-minute soak, phone auto-rejoin and iOS locked-phone BLE (`docs/post-mvp.md`
-> "System proofs"). See [`docs/architecture-topology.md`](docs/architecture-topology.md) §7 for the line-by-line.
+> **What works today:** `python -m brx_mcp play tdm` ([`mcp/README.md`](mcp/README.md)) runs a scored TDM
+> on real taggers from a laptop, with no phones. The phone-node path ran the four field matches above. What is
+> proven, mode by mode and feature by feature, is in [`docs/release-1.0.md`](docs/release-1.0.md). The open
+> system proofs are in [`docs/post-mvp.md`](docs/post-mvp.md) → *System proofs*.
 
 > **You do not need the phone app for any of the above.** The phone node is what lifts the BLE-range
 > limit later. A **release-signed Android test build** (release-signed since 0.4.6; see
@@ -113,9 +111,8 @@ in [`mcp/README.md`](mcp/README.md) → *Platform notes* (and, for the WSL/Windo
 
 M1 Identify ✅ → M2 Control ✅ → M3 Protocol depth (`$WEAP` map, the 2,477-file sound bank, per-player id over
 BLE, the IR word) ✅ → M4 Pilot game (per-player node + Mission Control + live scoreboard): **built and tested in
-software** (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e suite in `test_mc_e2e.py`) and **run on hardware**:
-two whole two-phone matches outdoors (2026-08-30, 2026-09-01); a dispersed start, more than two phones and the
-20-minute soak are still owed (`docs/field-runbook-mc.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of record:
+software** (`cd mcp && python3 run_tests.py`, incl. the full-stack e2e suite in `test_mc_e2e.py`) and **run on hardware**
+(per-mode evidence: `docs/release-1.0.md`) → M5 Arena (objectives, items) → M6 Companion + scale. Spec of record:
 **`docs/spec/`**; decisions: `docs/adr/`; open MVP work: `docs/FOLLOWUPS.md`; the roadmap: `docs/post-mvp.md`.
 
 ## Contributing
