@@ -21,7 +21,7 @@ The index is [`bench-plan.md`](bench-plan.md).
 - Every M5StickS3 on USB, for the firmware floor (setup step 4) and step 17. Optional: one player-sim board
   ([`hardware/player-sim/README.md`](../hardware/player-sim/README.md)) for step 17.
 - This box: WSL for MC and the tools, Windows Python for anything that touches a gun
-  (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
+  (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 - A tape measure (the hill ladder needs 12 m), a stopwatch, and a wall for the self-hit step.
 
 ## Method (it worked on 2026-10-02; keep it)
@@ -29,7 +29,7 @@ The index is [`bench-plan.md`](bench-plan.md).
 - **Drive MC through its API**, not by clicking, except where a step tests the console itself. Every non-GET
   `/api/*` call takes `Authorization: Bearer <token>` (the token is in MC's boot banner; `mcp/brx_mcp/mc/API.md`).
 - **Read each phone's log over CDP** after each step, before the next one starts:
-  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
 - **Read a gun's pools with `$LIFE,0,0,0`** (a read probe). The laptop MCP reaches a gun only while no phone
   holds it: force-stop that phone's app first. Arm a laptop-held gun from `compile.resolve()`, never from a capture.
 - **Volume: MC runs the whole sheet at `--bench-volume 80`** (Tony's level since 2026-10-02, ears at arm's length).
@@ -44,11 +44,11 @@ The index is [`bench-plan.md`](bench-plan.md).
    run `adb pair <ip>:<pairing port> <code>`. Then Tony reads the connect `ip:port` from the Wireless debugging
    screen; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
 2. **Install 0.4.20 on all three:**
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.20/brx-companion-0.4.20-android-release.apk`. The same
+   `adb -s <ip:port> install -r ~/apk-0.4.20/brx-companion-0.4.20-android-release.apk`. The same
    release key installs over 0.4.18 or 0.4.19 with no uninstall. **The APK** (built 2026-10-05, not published): sha256
    `d1a5e308ec53fdb099e218514d6324e03c22c56dd4d7932b516c26406fc1fb84`, versionCode 420, from `release/app-0.4.20`
    at `cea5a9d7` (main `9ab8b345` plus the version bump and notes; `dirty: false`). Check the file first:
-   `sha256sum /home/tony/apk-0.4.20/brx-companion-0.4.20-android-release.apk` must print that sha256. **F395, a
+   `sha256sum ~/apk-0.4.20/brx-companion-0.4.20-android-release.apk` must print that sha256. **F395, a
    glance:** on each phone's first cold launch of 0.4.20, the splash is the plain background with no stretched logo;
    close F395 if it is clean on all three. Log each phone's version:
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName` (it reads 0.4.20).

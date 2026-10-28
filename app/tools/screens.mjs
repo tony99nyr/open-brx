@@ -5334,7 +5334,7 @@ await step('QA-15 stage result: a result MC just delivered never reads OUT OF RA
   must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
   must(r.stage === 'received' && !/NOT LINKED/.test(r.line), 'the sync track contradicts the link that just delivered the result: ' + JSON.stringify(r));
 });
-// Phone sync track (Tony 2026-10-25, gallery C:/Users/Tony/brx-phone-sync, option A): MC's own stages after the whistle,
+// Phone sync track (Tony 2026-10-25, gallery brx-phone-sync, not in the repo, option A): MC's own stages after the whistle,
 // a sentence-case reason and one action, at both widths, never overlapping the OK button.
 const SYNC_CASES = [
   ['result-sync-sending', 'sending', /SENDING 12 LEFT/, null],

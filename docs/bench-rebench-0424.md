@@ -19,8 +19,8 @@ How a bench run works with Tony: the [`bench-session` skill](../.claude/skills/b
 
 Use the 0422 sheet's *Before you start* and *Setup*, with these changes:
 
-- **The APK** is `/home/tony/apk-0.4.24/brx-companion-0.4.24-android-release.apk`. Its sha256 must be
-  `6d11a76a8a1fbaf5561c7b66bb1271a2df90b6c0ed9e6ea24fe5bd25df91295d` (the `sha256` in `/home/tony/apk-0.4.24/build.json`, which also reads `"dirty": false` and
+- **The APK** is `~/apk-0.4.24/brx-companion-0.4.24-android-release.apk`. Its sha256 must be
+  `6d11a76a8a1fbaf5561c7b66bb1271a2df90b6c0ed9e6ea24fe5bd25df91295d` (the `sha256` in `~/apk-0.4.24/build.json`, which also reads `"dirty": false` and
   `"git": "36f4f7f2"`). Each phone's `versionName` reads 0.4.24.
 - **The volume is 80 for this sheet** (Tony, 2026-10-16). Start MC with `--bench-volume 80`, and arm a laptop-held
   gun with `volume=80` in the arming recipe. The banner says "BENCH VOLUME 80: not for a real game".

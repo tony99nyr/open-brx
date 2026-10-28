@@ -1,5 +1,5 @@
 // Phone sync track (Tony 2026-10-25: "MC shows your phone not synced and you wonder wait im right here why"; gallery
-// C:/Users/Tony/brx-phone-sync, option A). After the whistle the phone shows MC's own F596 stages (state.py
+// brx-phone-sync, not in the repo, option A). After the whistle the phone shows MC's own F596 stages (state.py
 // `_sync_stage`): NOT LINKED, LINKED, SENDING N LEFT, RECEIVED. RECEIVED needs what MC needs: a status with nothing
 // pending sent after the whistle (`transport.drainedAt`), and it latches through a later drop, as MC's does. MC
 // confirms the end from that same status (A42 `_note_end_confirm`), so "end not confirmed" is not a separate state here.

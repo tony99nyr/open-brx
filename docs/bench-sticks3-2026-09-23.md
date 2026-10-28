@@ -17,10 +17,10 @@ This is our ESP32 code, so flashing the Stick is fine. **Never flash or modify a
 ## Conventions
 
 - **WSL cannot see USB.** Every flash and serial command runs Windows programs from WSL: the Arduino IDE's bundled
-  `arduino-cli.exe`, and Windows Python (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, which has pyserial).
+  `arduino-cli.exe`, and Windows Python (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, which has pyserial).
   Arguments go on the command line; environment variables do not cross from WSL to Windows.
 - **The Windows arduino-cli cannot build from a `\\wsl.localhost` path.** The sketch is staged in
-  `C:\Users\Tony\brx-sticks3\m5sticks3\` (the folder name must match the `.ino`), copied from the checkout before each
+  `%USERPROFILE%\brx-sticks3\m5sticks3\` (the folder name must match the `.ino`), copied from the checkout before each
   compile.
 - **COM numbers move.** COM7 and COM8 are the IR rig (CH343 serials `5C93045958` receiver, `5C4C136487` emitter). The
   Stick is the ESP32-S3's own USB, vendor id `0x303a`; find it by that, not by number.
@@ -31,11 +31,11 @@ This is our ESP32 code, so flashing the Stick is fine. **Never flash or modify a
 The M5Stack core and M5Unified install once; then stage and compile:
 
 ```
-CLI="/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
+CLI="/mnt/c/Users/<you>/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
 URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
 "$CLI" core install m5stack:esp32 --additional-urls $URL && "$CLI" lib install M5Unified
-mkdir -p /mnt/c/Users/Tony/brx-sticks3/m5sticks3 && cp hardware/m5sticks3/*.ino hardware/m5sticks3/*.h /mnt/c/Users/Tony/brx-sticks3/m5sticks3/
-cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc" --additional-urls $URL 'C:\Users\Tony\brx-sticks3\m5sticks3'
+mkdir -p /mnt/c/Users/<you>/brx-sticks3/m5sticks3 && cp hardware/m5sticks3/*.ino hardware/m5sticks3/*.h /mnt/c/Users/<you>/brx-sticks3/m5sticks3/
+cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc" --additional-urls $URL '%USERPROFILE%\brx-sticks3\m5sticks3'
 ```
 
 **Pass:** the compile ends with a sketch size under the 3 MB app partition. **Log:** core and library versions.
@@ -45,7 +45,7 @@ cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionSchem
 **Restart: single-click the small side button** (docs.m5stack.com/en/core/StickS3).
 
 1. Tony plugs the Stick into the laptop by USB-C and powers it on. The agent lists ports and picks the `0x303a` one.
-2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\Tony\brx-sticks3\m5sticks3'`. The
+2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> '%USERPROFILE%\brx-sticks3\m5sticks3'`. The
    factory firmware ignores a software reset, so the first flash needs download mode: Tony holds the Stick's
    SMALL side button (this is also the power button) while plugging in USB, then replugs without the button.
    Later flashes worked without it. The Stick's USB-C cable must carry data: a charge-only cable makes it
@@ -120,7 +120,7 @@ Re-arm the gun stock (`armgen.py <team> <id> ar volume=65`) and power-cycle it a
 ## Results (2026-09-23)
 
 - **Gate 0 PASS.** The Arduino IDE's bundled arduino-cli built the sketch with the M5Stack core 3.3.9 and
-  M5Unified 0.2.21 (M5GFX 0.2.28), staged in `C:\Users\Tony\brx-sticks3\m5sticks3`. Sketch size 835 KB of the
+  M5Unified 0.2.21 (M5GFX 0.2.28), staged in `%USERPROFILE%\brx-sticks3\m5sticks3`. Sketch size 835 KB of the
   3.3 MB app partition.
 - **Gate 1 PASS.** The Stick enumerated as vendor `0x303a` (factory firmware pid `0x832b`, COM9; after our
   flash pid `0x1001`, COM10). `STATUS` replied and the screen read "BRIDGE 1 NEUTRAL no beacon yet".

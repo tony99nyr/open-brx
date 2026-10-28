@@ -9,7 +9,7 @@ LED and sound behaviour can be judged on a bench, one click at a time, before a 
 ## Run it (on the machine with Bluetooth — Windows here)
 
 ```
-/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp stage --gun <addr> --ir auto
+/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe -m brx_mcp stage --gun <addr> --ir auto
 # or from a Windows shell: python -m brx_mcp stage --gun <addr> --ir COM8
 ```
 Then open **http://127.0.0.1:8790/**. Flags: `--gun ADDR` connect on start (or SCAN / CONNECT on the page; S11: the
@@ -164,7 +164,7 @@ offered.
 
 ## Running it from WSL (how the 2026-09-04 session drove it)
 
-The stage must run on Windows Python (Bluetooth). From WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m
+The stage must run on Windows Python (Bluetooth). From WSL: `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe -m
 brx_mcp stage --gun <addr> --ir COM8 --host 0.0.0.0 --port 8790` in the background. Reach it from WSL at the Windows
 host address (`ip route | awk '/default/ {print $3}'`, e.g. `http://192.168.16.1:8790`), from a Windows browser at
 `http://localhost:8790/`. To stop it, do NOT `pkill -f "brx_mcp stage"` from a shell whose own command line contains that

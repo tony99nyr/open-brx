@@ -22,7 +22,7 @@ the brx MCP tools run current code too.
    built" page). Log `git rev-parse --short HEAD`: that is the bench sha for MC and the Sticks.
 3. **Install 0.4.22 on all four Pixels** (Setup 2): the black and green Pixel 5s (players 1 and 2), the grey Pixel 5
    (station 1) and the Pixel 10 Pro (station 2). The APK is
-   `/home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`; its sha256 must be
+   `~/apk-0.4.22/brx-companion-0.4.22-android-release.apk`; its sha256 must be
    `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77`.
 4. **Start MC** with the full command in Setup 4 (`--advertise <the laptop's LAN address> --bench-volume 65`).
 5. **The Sticks are optional** (Sitting B, last). If Sitting B runs, flash each Stick from the main checkout:
@@ -62,7 +62,7 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 - The IR rig: the receiver for F521 (a), and the emitter (the `ir-emit` CLI) as Sitting A's shooter, so a hit or a
   kill needs no second gun.
 - This box: WSL for MC and the tools, Windows Python for anything that touches a gun
-  (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
+  (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 - A tape measure (the hill ladder needs 12 m), a stopwatch, a wall for the self-hit step, and a target for melee.
 
 ## Method (it worked on 2026-10-02; keep it)
@@ -74,7 +74,7 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 - **Drive MC through its API**, not by clicking, except where a step tests the console itself. Every non-GET
   `/api/*` call takes `Authorization: Bearer <token>` (the token is in MC's boot banner; `mcp/brx_mcp/mc/API.md`).
 - **Read each phone's log over CDP** after each step, before the next one starts:
-  `cd ~/gitrepos/battlecompany && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `cd ~/gitrepos/battlecompany && /mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
 - **Read a gun's pools with `$LIFE,0,0,0,*`** (a read probe). `$LIFE` and `$QUERY` are on the known-safe list
   (`mcp/brx_mcp/protocol.py`), so they need no `confirm=true`. The laptop MCP reaches a gun only while no
   phone holds it: force-stop that phone's app first. Arm a laptop-held gun from the Sitting A recipe or the CLI's
@@ -90,9 +90,9 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    the installs). Open *Pair device with pairing code* again (the dialog closes after one pair), Tony
    reads out the new `ip:port` and code, and run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
    with `adb devices` and `adb.exe devices`: four phones, each `device`, on both.
-2. **Install 0.4.22 on all four.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
+2. **Install 0.4.22 on all four.** Check the file first: `sha256sum ~/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
    must print `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77` (the `sha256` in
-   `/home/tony/apk-0.4.22/build.json`, which also reads `"dirty": false` and `"git": "be55fbd7"`). Then `adb -s <ip:port> install -r /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
+   `~/apk-0.4.22/build.json`, which also reads `"dirty": false` and `"git": "be55fbd7"`). Then `adb -s <ip:port> install -r ~/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
    same release key installs over a release build with no uninstall). The Pixel 10 Pro may hold a debug build signed
    with another key: if its install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, run
    `adb -s <ip:port> uninstall com.openbrx.companion` first (this wipes its saved MC address), then install. Log each phone's version:
@@ -162,7 +162,7 @@ closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording i
 **Result 2026-10-16 (brx1): CONFIRMED: all three energy weapons refill on a 50 ms tap at t19 + 0.5-0.6 s. The Energy Rifle control band above is old; it measured about 3.0 s.**
 
 **A.7. F515, a gun armed from the CLI matches MC (20 min; Min: `fa5b31d4`).** The CLI now arms MC's own compiled head.
-Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
+Run `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
 Python, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
 gun armed from the Sitting A recipe fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and

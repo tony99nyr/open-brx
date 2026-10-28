@@ -599,10 +599,10 @@ def test_recorded_fixture_files_stay_under_200_kb():
 
 
 def test_guard_catches_planted_host_and_secret():
-    for planted in ('/home/example/real-store', '/Users/tony/.brx-mcp/session.json',
-                    r'C:\Users\Tony\x', '/mnt/c/Users/Tony/x', '192.168.1.23',
+    for planted in ('/home/example/real-store', '/Users/someone/.brx-mcp/session.json',
+                    r'C:\Users\Someone\x', '/mnt/c/Users/Someone/x', '192.168.1.23',
                     '8.8.8.8', 'fe80::1234', 'ws://[2001:db8::1]:8765/ws',
-                    'ws://tonys-macbook.local/ws', 'https://fieldbox.lan:8765',
+                    'ws://someones-macbook.local/ws', 'https://fieldbox.lan:8765',
                     socket.gethostname(), 'sk_' + 'x' * 24):
         assert unsafe_recorded_text({'planted': planted})
         assert unsafe_recorded_text((FIXTURES / 'mock-gap-list.md').read_text(encoding='utf-8') + '\n' + planted,

@@ -4,14 +4,15 @@
 // holder hears "Hill Contested", and the Rockets shot-ready shine before and after.
 // It asserts nothing (app/tools/screens.mjs is the gate).
 // Run from app/ after `npm run build`: node tools/koth-capture-alert-gallery.mjs [out-dir]
-// The default out-dir is C:\Users\Tony\brx-koth-capture-alert (WSL: /mnt/c/Users/Tony/brx-koth-capture-alert).
+// The default out-dir is %USERPROFILE%\brx-koth-capture-alert (from WSL, the same folder under /mnt/c; win-home.mjs).
 // The screenshots never go in the repo.
 import { chromium } from 'playwright';
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { winHome } from './win-home.mjs';
 import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 import { execFileSync } from 'node:child_process';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), WWW = path.resolve(HERE, '..', 'www');
-const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-koth-capture-alert');
+const OUT = path.resolve(process.argv[2] || path.join(winHome(), 'brx-koth-capture-alert'));
 fs.mkdirSync(OUT, { recursive: true });
 let BASE = '?'; try { BASE = execFileSync('git', ['log', '-1', '--format=%h %s'], { cwd: HERE }).toString().trim(); } catch { /* not a checkout: say so on the page */ }
 const serve = root => startStaticServer(root, { host: '127.0.0.1', decodePath: true });

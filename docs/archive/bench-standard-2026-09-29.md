@@ -20,7 +20,7 @@ powerup station.
 - Two guns with their headsets: Tactix-FE30 (grey Pixel, player 1) and Tactix-9498 (green Pixel, player 2).
 - Three Pixel 5s: grey and green as players, black as the phone powerup station. Phones ride on the rail.
 - This box: WSL for MC and the tools, Windows Python for anything that touches a gun
-  (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
+  (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 - A tape measure and a stopwatch.
 
 ## Method (it worked on 2026-09-28; keep it)
@@ -28,7 +28,7 @@ powerup station.
 - **Drive MC through its API**, not by clicking: every non-GET `/api/*` call takes
   `Authorization: Bearer <token>` (the token is in MC's boot banner; `mcp/brx_mcp/mc/API.md`).
 - **Read each phone's log over CDP**, not from screenshots: from WSL,
-  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
   Read it after each step, before the next one starts.
 - **Time cold connects through adb** with `mcp/tools/coldconn.sh` (step 1).
 - **Read a gun's pools with `$LIFE,0,0,0`** (a read probe; `$QUERY` returns the maxima). The laptop MCP can
@@ -41,7 +41,7 @@ powerup station.
 1. Tony turns on wireless debugging on the three Pixels and reads out each `ip:port`. Then run
    `adb connect <ip:port>` for each one.
 2. Install the unpublished, release-signed 0.4.16 APK on all three (built from `release/app-0.4.16` at `6a435152`,
-   not on `main`): `adb -s <ip:port> install -r /home/tony/apk-0.4.16/brx-companion-0.4.16-android-release.apk`. Log each phone's version:
+   not on `main`): `adb -s <ip:port> install -r ~/apk-0.4.16/brx-companion-0.4.16-android-release.apk`. Log each phone's version:
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`.
 3. Start MC from the latest `main`, with no match ARMED or LIVE anywhere, detached from the agent shell (a harness
    kill takes MC with it):
@@ -55,7 +55,7 @@ powerup station.
 ## Steps, in priority order
 
 **1. F297, phone cold connects, 10 runs a phone (20 min).** Control first, the laptop (Windows Python; WSL has no
-Bluetooth): `cd mcp && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp connect-metrics <Tactix-9498 address> --runs 3 --cold warm --hold-s 60`.
+Bluetooth): `cd mcp && /mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe -m brx_mcp connect-metrics <Tactix-9498 address> --runs 3 --cold warm --hold-s 60`.
 Part 2's laptop reference: 3/3, median 1.61 s and 1.91 s. Then both phones in parallel, each with its gun set:
 `mcp/tools/coldconn.sh <grey ip:port> grey 10 60` and `mcp/tools/coldconn.sh <green ip:port> green 10 60`.
 Tony watches both headsets for a drop during every 60 s hold. Close with the laptop control again.

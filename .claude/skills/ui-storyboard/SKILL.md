@@ -51,7 +51,7 @@ yet, add one; the stage stays as a screens gate later.
 
 ## 4. Publish to Tony and stop
 
-- Write the page and its PNGs to `/mnt/c/Users/Tony/brx-<topic>/` (Windows: `C:\Users\Tony\brx-<topic>\index.html`).
+- Write the page and its PNGs to `%USERPROFILE%\brx-<topic>\` (from WSL, the same folder under `/mnt/c/Users/<you>/`; open `index.html` there).
   Screenshots never go in the repo.
 - Keep the generator in `app/tools/<topic>-gallery.mjs`, with the output folder as `argv[2]` and the
   Windows folder as the default. It asserts nothing; `app/tools/screens.mjs` is the gate.

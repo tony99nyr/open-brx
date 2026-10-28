@@ -81,9 +81,9 @@ every hit while reporting healthy (F11). Close with the teardown in §Close-out.
 **Shell** (WSL):
 
 ```bash
-PY=/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe     # anything touching BLE or a COM port
-WPY=/home/tony/gitrepos/battlecompany/.venv/bin/python     # frame generation only, no hardware
-cd /home/tony/gitrepos/battlecompany
+PY=/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe     # anything touching BLE or a COM port
+WPY=~/gitrepos/battlecompany/.venv/bin/python     # frame generation only, no hardware
+cd ~/gitrepos/battlecompany
 GUN=D8:AE:5F:60:E2:0D                                      # Tactix-E20D; confirm with `$PY -m brx_mcp scan`
 ```
 

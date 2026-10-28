@@ -20,7 +20,7 @@ receives on G10. Its receiver hears a real BRX gun at 3 to 30 m (10/10 pulls eac
 reaches only about 1.5 m outdoors; the indoor 3 m results were bounce. A ground box needs side-facing receivers. Melee
 (t2 60) reached the U002 to about 7 m and the Shotgun headset word to about 10 m, but that receiver is not a headset, so
 the victim cutoffs are F580. A MacBook serial open restarts the Stick, so AUTO needs an open sercmd session. The field push
-plan is in `/home/tony/reviews-2026-10-17/` (outside the repo).
+plan is in `~/reviews-2026-10-17/` (outside the repo).
 **Next:** F580 (victim-side melee and Shotgun cutoffs) and the Stick-to-Stick IR range. Then the next APK cut on Tony's go.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go. Power-cycle the gun after a CLI `deathmatch` run: the
 Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
