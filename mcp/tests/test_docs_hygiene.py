@@ -863,7 +863,7 @@ _CITED_ID_ALLOW: set = {
     "B0",
     *(("node.md", i) for i in ("Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q10")),
     *(("start-sequence.md", i) for i in ("E9", "E10", "E11")),
-    ("brx-station-spec.md", "S0"),   # a station tier name (S0 Mini, S1 ...), not a followup id
+    *(("brx-station-spec.md", i) for i in ("S0", "S1", "S2", "S3")),   # station tier names, not followup ids
     ("inventory.md", "G42"),         # the StickS3's IR receive GPIO, not a followup id
 }
 
@@ -898,7 +898,7 @@ def test_every_cited_followup_id_resolves():
                     continue                       # a local register that numbers its own ids (see above)
                 missing.setdefault(m.group(1), f"{f.relative_to(REPO)}:{n}")
     dangling = {k: v for k, v in missing.items() if k not in known}
-    assert not dangling, ("docs/ cites followup ids that resolve to nothing (not in FOLLOWUPS.md, not in "
+    assert not dangling, ("a living page cites followup ids that resolve to nothing (not in FOLLOWUPS.md, not in "
                           "archive/followups-closed.md, not in the snapshot): " + str(dangling))
 
 

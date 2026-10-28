@@ -111,8 +111,8 @@ F29, F130, F176, F177, F186, F204, F266, F267, F12, F30, S7.
 ## Protocol, firmware and research
 
 Desk research on the stock firmware images (read only, never hosted and never flashed), the undecoded commands,
-and the bench measurements that would make the IR model exact. Publishing any firmware-derived detail waits on
-Battle Company's answer.
+and the bench measurements that would make the IR model exact. Hosting the images waits on Battle
+Company; firmware facts are published at behaviour level only, never as addresses or decompiled detail (F324).
 
 Ids: R4, F300 to F307, F320, F321, F323, R3, F162, F171, F195, F167, F168, F169, F28, P3, P4, P8, P12, P14,
 Q16, F285, F286, U2.
