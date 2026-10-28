@@ -18,7 +18,7 @@ src/transport/       the M-NET client (Transport) — owned by a separate lane; 
 src/hud/hud.js       the Phone HUD v2 renderer (a pure function of engine state)
 src/app.js           composition: engine + brxlink + transport + hud + Capacitor plugins
 src/demo.js          ?demo — a scripted fake gun + fake MC for desktop-browser development
-www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md; the 2026-08-25 export is archived at docs/archive/design/hud-export/)
+www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md)
 ```
 
 **Where the wire types come from:** `src/transport/contract.gen.js` is generated, not hand-kept — see

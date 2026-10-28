@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-10-26 (see experiment-log/2026-10.md for the day's changes).
+Updated: 2026-10-27 (see experiment-log/2026-10.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -1235,7 +1235,7 @@ headset-word row was F254 before its renumber and is F275 now.
 
 ## 10. System proofs (need players, space, time)
 
-From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and still true:
+From the 2026-09-06 verification checklist (in git history only); what was ⬜ there and is still true:
 - **Hold-across-disperse 5 min**: config head written, gun left unspawned 5+ min, then `$SPAWN` + `$AMMO` goes live with
   config intact (2 min passed; the 5 min run was cut). Else the T-10 s head re-write becomes default.
   The `rewriteHeadAtT10` flag was removed on 2026-10-10 because nothing set it; rebuild it if this run

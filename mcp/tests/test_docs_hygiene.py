@@ -852,13 +852,17 @@ _CITED_ID_ALLOW: set = {
 }
 
 
+# Ids that only the pre-2026-09-06 FOLLOWUPS snapshot defined, and that living pages still cite. The snapshot was
+# deleted on 2026-10-27 (read it with `git show c55119667:docs/archive/pre-2026-09-06-followups-snapshot.md`).
+# P1 and P2 here are also the bench sheets' part labels. Never add an id: a new cite needs a living row.
+_SNAPSHOT_IDS = frozenset({"D2", "D3", "D4", "F11", "G4", "G6", "G7", "G8", "G9", "G10", "K5", "P1", "P2"})
+
+
 def _known_ids() -> set[str]:
     text = FOLLOWUPS.read_text(encoding="utf-8")
     known = set(_followup_definitions(_register_text()))
     known |= set(re.findall(r"\*\*([A-Z]\d+)\b", (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")))
-    snap = DOCS / "archive" / "pre-2026-09-06-followups-snapshot.md"
-    if snap.is_file():
-        known |= set(re.findall(r"\b([A-Z]\d+)\b", snap.read_text(encoding="utf-8")))
+    known |= _SNAPSHOT_IDS
     m = re.search(r"\*\*Next free:([^*]+)\*\*", text)     # advertised-free ids resolve to "not yet taken"
     if m:
         known |= set(re.findall(r"\b([A-Z]\d+)\b", m.group(1)))
@@ -1010,20 +1014,16 @@ _ARCHIVE_REF = re.compile(r"(?<![\w/.-])(?:docs/)?archive/([A-Za-z0-9._][A-Za-z0
 # ever shrinks — delete an entry when its page stops citing the archive, and never add one to make a
 # red go away: archiving a sheet means promoting what the living pages still need FIRST.
 _ARCHIVE_CITERS_BASELINE = {
-    "app/README.md",                        # design/hud-export/
-    "docs/architecture-topology.md",        # verification-checklist.md
+    "docs/architecture-topology.md",        # session-findings-2026-08.md
     "docs/bench-grenade.md",                # bench-grenade-answered.md
     "docs/reference/ttk-model.md",          # game-test-2026-09-11.md (D2 provenance, cited twice)
     "docs/site/README.md",                  # site/SIMPLIFY-PLAN.md
     "docs/spec/contracts.md",               # mode-extensibility.md, spec-armory.md, spec-net.md
-    "docs/spec/design/mission-control.md",  # design/mc-export/
-    "docs/spec/design/phone-hud.md",        # design/hud-export/
     "docs/spec/loadout.md",                 # spec-loadout-superseded-notes.md
     "docs/spec/start-sequence.md",          # spec-start-sequence-tasks.md
     "docs/weapon-design.md",                # game-test-2026-09-11.md (D2 provenance)
     "hardware/esp32-ir-bridge/README.md",   # hardware/bench-shopping-list.md, hardware/ir-prototype-plan.md
     "hardware/inventory.md",                # hardware/bench-shopping-list.md
-    "webapp/mc/README.md",                  # design/mc-export/
 }
 
 

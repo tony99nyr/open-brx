@@ -2,7 +2,7 @@
 
 The operator console for Open BRX (spec: `docs/spec/design/mission-control.md` + `docs/spec/contracts.md`; server⇄UI contract:
 `mcp/brx_mcp/mc/API.md`). Vite + React 19 + TypeScript. The visual design is a pixel-close port of
-the 2026-08-25 Claude Design export (archived at `docs/archive/design/mc-export/`, six screens A1–A8, "military armory" language); the shipping UI is now the visual source of truth.
+the 2026-08-25 Claude Design export (six screens A1–A8, "military armory" language; in git history only); the shipping UI is now the visual source of truth.
 
 ```
 npm install
