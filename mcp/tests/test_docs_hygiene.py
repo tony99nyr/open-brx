@@ -1544,26 +1544,51 @@ def test_the_firmware_address_scan_can_actually_fail():
     assert not _fw_addr_problems(rel, "HCI reason 0x3E, PMIC 0x49, byte 0xFF, sha 9bd77564d")
 
 
-# Privacy: a private LAN host address or a Mac/Linux account path never goes in the docs. The address names one
+# Privacy: a private LAN host address or an account's home path never goes in the docs. The address names one
 # person's network, and the path names one person's account (a field bundle once named the MacBook's account). Write
-# a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log. A subnet (`/24`) or a
-# wildcard (`192.168.0.x`) is a sweep range, not a host, so it never matches. Generic addresses are allowed by value.
-# Scope: addresses in the docs trees; account paths in those and in every tracked markdown file. Code and tests
-# carry example paths and addresses of their own (`/home/op`, `C:\\Users\\Someone`).
+# a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log, and `<you>`, `~/` or
+# `%USERPROFILE%` in a path. A subnet (`/24`) or a wildcard (`192.168.0.x`) is a sweep range, not a host, so it
+# never matches. Generic addresses and account names are allowed by value, each with its reason.
+# Scope: addresses in the docs trees (docs/, hardware/, protocol/); account paths in every tracked text doc. Code
+# and tests are not scanned: they plant example paths and addresses of their own (`/home/op`, `C:\\Users\\Someone`).
 _PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
-_ACCOUNT_PATH = re.compile(r"/Users/(?!<|Shared\b)[A-Za-z][\w.-]*|/home/(?!<|example\b)[a-z][\w.-]*"
-                           r"|[A-Za-z]:\\Users\\(?!<|Public\b)[A-Za-z][\w.-]*")
+# A home root, then the account name. `Users` in any case and with either slash covers macOS, Windows, /mnt/c and
+# an escaped `C:\\Users\\`; `/home/` must not follow a word or a dot, so a URL path (`example.com/home/page`) does
+# not match; `\home\` is the UNC form (`\\wsl.localhost\Ubuntu\home\<you>`); `~name/` is a shell's home shorthand.
+_ACCOUNT_PATH = re.compile(r"(?i:[\\/]+users[\\/]+)(?P<a>[^\s\\/`'\")<>*|]+)"
+                           r"|(?<![\w.])/home/(?P<b>[^\s\\/`'\")<>*|]+)"
+                           r"|(?i:\\+home\\+)(?P<c>[^\s\\/`'\")<>*|]+)"
+                           r"|(?<![\w/~])~(?P<d>[A-Za-z][\w.-]*)/")
+_ACCOUNT_ALLOWED = {
+    "shared": "macOS's shared folder, /Users/Shared",
+    "public": "Windows' shared profile, C:\\Users\\Public",
+    "default": "Windows' template profile",
+    "all users": "Windows' legacy shared profile",
+    "example": "a documentation example",
+    "runner": "the GitHub Actions runner account",
+    "pi": "Raspberry Pi OS's default account",
+    "user": "a generic example account",
+    "you": "the placeholder for the reader's own account",
+    "username": "the placeholder for the reader's own account",
+    "%username%": "the Windows variable for the reader's own account",
+    "$user": "the shell variable for the reader's own account",
+}
 _PRIVATE_IP_ALLOWED = {
     "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
     "192.168.16.1": "an example WSL host address, assigned per boot",
     "10.255.255.254": "WSL's own DNS resolver, the same on every WSL install",
 }
+_PRIVACY_IP_ROOTS = ("docs/", "hardware/", "protocol/")
+_PRIVACY_TEXT = (".md", ".log", ".tsv", ".txt", ".yml", ".yaml", ".html", ".toml")
 
 
-def _privacy_files() -> list[pathlib.Path]:
+def _account_paths(line: str) -> list[str]:
     out = []
-    for d in (DOCS, REPO / "hardware", REPO / "protocol"):
-        out += [p for p in sorted(d.rglob("*")) if p.suffix in (".md", ".log", ".tsv", ".txt") and p.is_file()]
+    for m in _ACCOUNT_PATH.finditer(line):
+        name = next(g for g in m.groups() if g is not None)
+        if name.startswith("<") or name.lower() in _ACCOUNT_ALLOWED:
+            continue
+        out.append(m.group(0))
     return out
 
 
@@ -1573,38 +1598,41 @@ def _privacy_problems(rel: str, text: str, ips: bool = True) -> list[str]:
         if ips:
             out += [f"{rel}:{n}: {m.group(0)}" for m in _PRIVATE_IP.finditer(line)
                     if m.group(0) not in _PRIVATE_IP_ALLOWED]
-        out += [f"{rel}:{n}: {m.group(0)}" for m in _ACCOUNT_PATH.finditer(line)]
+        out += [f"{rel}:{n}: {a}" for a in _account_paths(line)]
     return out
 
 
 def test_no_private_lan_address_or_account_path_in_the_docs():
     hits = []
-    docs = _privacy_files()
-    for path in docs:
-        hits += _privacy_problems(path.relative_to(REPO).as_posix(), path.read_text(encoding="utf-8", errors="replace"))
-    # 2026-10-28: no tracked page names an account any more, so every markdown file (skills, READMEs) is held to it.
-    # Addresses stay docs-only: a component's own README or fixture may show an example address.
-    seen = set(docs)
     for path in _tracked_files():
-        if path.suffix == ".md" and path.is_file() and path not in seen:
-            hits += _privacy_problems(path.relative_to(REPO).as_posix(),
-                                      path.read_text(encoding="utf-8", errors="replace"), ips=False)
+        rel = path.relative_to(REPO).as_posix()
+        if path.suffix not in _PRIVACY_TEXT or not path.is_file():
+            continue
+        hits += _privacy_problems(rel, path.read_text(encoding="utf-8", errors="replace"),
+                                  ips=rel.startswith(_PRIVACY_IP_ROOTS))
     assert not hits, ("a private LAN address or an account path in the docs (use <mc-lan-ip>, <lan-ip-N> or "
-                      "<you>; a generic address goes in _PRIVATE_IP_ALLOWED with its reason): "
+                      "<you>; a generic value goes in _PRIVATE_IP_ALLOWED or _ACCOUNT_ALLOWED with its reason): "
                       + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
 
 
 def test_the_privacy_scan_can_actually_fail():
     rel = "docs/x.md"
     for bad in ("--advertise 192.168.0.2 --x", "ws://192.168.0.3:8766/ws", "at 10.0.0.7.", "172.20.10.2",
-                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x",
-                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws", r"C:\Users\someone\x",
-                "/mnt/c/Users/Tony/x", "/home/tony/x", r"C:\Users\Tony\x", "/Users/Tony/x"):
+                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws",
+                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x", r"C:\Users\someone\x",
+                "/mnt/c/Users/Tony/x", "/mnt/c/users/tony/x", "/home/tony/x", "/home/Tony/x", r"C:\users\tony",
+                r"C:\\Users\\Tony\\x", "C:/Users/Tony/x", "/Users/Tony/x", r"\\wsl.localhost\Ubuntu\home\tony\x",
+                r"\\wsl$\Ubuntu\home\tony", "~tony/x", "/Users/Sharedfoo/x", "/home/examples/x"):
         assert _privacy_problems(rel, bad), bad
     for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
                  "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/<you>/x", "~/x", r"%USERPROFILE%\x",
-                 r"C:\Users\Public\x", "/home/<you>/x", "10.0.0.0/8"):
+                 r"C:\Users\Public\x", "/Users/Shared/x", "/home/<you>/x", "10.0.0.0/8", "/home/runner/work",
+                 r"\\wsl.localhost\<distro>\home\<you>\x", "https://example.com/home/page", "/var/home/x",
+                 r"C:\Users\%USERNAME%\x", "about ~5 min/run"):
         assert not _privacy_problems(rel, good), good
+    # The repo-wide pass reads account paths only: an address outside the docs trees is a component's example.
+    assert _privacy_problems("app/README.md", "10.0.0.7", ips=False) == []
+    assert _privacy_problems("app/README.md", "/home/someone/x", ips=False)
 
 
 # The log index once ran a month behind (2026-10 had no row for 26 days). Every month file needs its row.
