@@ -139,7 +139,7 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 
 | Thing | Limit | Why | Status |
 |---|---|---|---|
-| Guns per BLE radio | **3 proven**. Three guns held on one laptop radio for a synced start. The maximum is untested | one central radio shares connection events | 3 guns proven (B10, `archive/pre-2026-09-06-followups-snapshot.md`), max unmeasured |
+| Guns per BLE radio | **3 proven**. Three guns held on one laptop radio for a synced start. The maximum is untested | one central radio shares connection events | 3 guns proven (B10, closed before 2026-09-06), max unmeasured |
 | Guns per phone node | **exactly 1** | the link rides one player | by design |
 | Players per game | **63** | the gun accepts `$PSET` ids 0–63 (bench-proven); Open BRX reserves wire id 0, so a match has ids 1–63 (`docs/spec/contracts.md` A5.1) | proven |
 | Native hardware teams | **4** | `$TID` is masked to 2 bits | proven, bench 2026-08-26 |
@@ -147,7 +147,7 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 
 The wire itself is `spec/contracts.md` §5; the gun↔headset and config-survival facts are
 `docs/archive/session-findings-2026-08.md` §7r; the counting limits are also sourced to
-B10 (`docs/archive/pre-2026-09-06-followups-snapshot.md`), `docs/spec/contracts.md` A5.1, `docs/archive/session-findings-2026-08.md` §7p
+B10 (closed before 2026-09-06), `docs/spec/contracts.md` A5.1, `docs/archive/session-findings-2026-08.md` §7p
 and `docs/game-modes.md` §Team structure.
 
 ---
@@ -286,7 +286,7 @@ The resolution to trust, in one line: **Tier 0 is proven on two guns; two phones
 timed start, or store-and-forward recovery across a real outage; backhaul is proven on one phone only.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
 utility *phone* station and the StickS3 station are built and bench-proven.
 
-**A green test suite is not a working field.** That distinction is stated in B15 (`archive/pre-2026-09-06-followups-snapshot.md`) in the
+**A green test suite is not a working field.** That distinction is stated in B15 (closed before 2026-09-06) in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
 
 For the current status of every feature, by evidence, read [`release-1.0.md`](release-1.0.md); for what

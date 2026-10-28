@@ -3,9 +3,8 @@
 **Package for:** the player's phone. Shared brand/constraints: the header of `mission-control.md`.
 **The shipping HUD is the source of truth** (`app/www/index.html` + `app/src/hud/`, 844×390 landscape; iterate
 with `cd app && npm run ui:stage`, prove with `npm run ui:screens`). The 2026-08-25 Claude Design export it was
-built from (Phone HUD v2: landscape, rail-mounted, ten screen states) is archived at
-`docs/archive/design/hud-export/` for re-seeding the design tool; per Tony (2026-08-26) the exports were
-inspiration, not definitive.
+built from (Phone HUD v2: landscape, rail-mounted, ten screen states) is in git history only; per Tony
+(2026-08-26) the exports were inspiration, not definitive.
 
 One phone, one gun, one player. Two jobs: a few **setup screens** (before the match) and the **in-game
 HUD** (during). The HUD is the star: a **first-person-shooter heads-up display** — instantly readable at
