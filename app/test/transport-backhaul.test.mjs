@@ -418,7 +418,7 @@ test('F203: clearing a failed MC target removes the persisted pub URL scope too'
   const store = memoryStorage();
   store.setItem('brx.pub', 'wss://stale.example/ws');
   store.setItem('brx.secret', 'stale-secret');
-  store.setItem('brx.pub_url', 'ws://192.168.0.55:8766/ws');
+  store.setItem('brx.pub_url', 'ws://192.0.2.55:8766/ws');
   const t = new Transport({ storage: store, wsFactory: () => { throw new Error('unused'); } });
   assert.equal(t.pub, 'wss://stale.example/ws');
   t.clearJoinTarget();

@@ -53,9 +53,9 @@ test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 500, lanGiveupMs: 20, welcomeTimeoutMs: 5000 });
   ctx.after(() => t.close());
-  const p = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://pub/ws' });
+  const p = t.connect({ url: 'ws://192.0.2.167:8766/ws', pub: 'wss://pub/ws' });
   p.catch(() => { /* never welcomes in this test */ });
-  assert.equal(sockets[0].url, 'ws://192.168.28.167:8766/ws', 'LAN first (F595)');
+  assert.equal(sockets[0].url, 'ws://192.0.2.167:8766/ws', 'LAN first (F595)');
   // ...and that LAN address has no route from this phone: no onopen, no onerror, no onclose. Ever.
   await advance(19);
   assert.equal(sockets.length, 1, 'still waiting on the LAN dial before the giveup');
@@ -66,7 +66,7 @@ test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and
   sockets[1].close(1006, 'no data');                 // data is off too: pub fails, the pass ends
   await advance(1);                                   // the 1 ms backoff
   assert.equal(sockets.length, 3, 'a new pass started');
-  assert.equal(sockets[2].url, 'ws://192.168.28.167:8766/ws', 'and it starts on the LAN again: lan -> pub, then lan');
+  assert.equal(sockets[2].url, 'ws://192.0.2.167:8766/ws', 'and it starts on the LAN again: lan -> pub, then lan');
   sockets[2].open(); sockets[2].recv(welcome());
   await p;
   assert.equal(t.reach, 'lan');
@@ -94,11 +94,11 @@ test('F153a: with no pub held, a dead LAN address still ends its pass and retrie
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 15, welcomeTimeoutMs: 5000 });
   ctx.after(() => t.close());
-  const p = t.connect({ url: 'ws://192.168.28.167:8766/ws' });
+  const p = t.connect({ url: 'ws://192.0.2.167:8766/ws' });
   p.catch(() => { /* never welcomes */ });
   await advance(30);
   assert.equal(sockets.length, 2, 'the silent dial was given up on and retried');
-  assert.equal(sockets[1].url, 'ws://192.168.28.167:8766/ws');
+  assert.equal(sockets[1].url, 'ws://192.0.2.167:8766/ws');
   assert.ok(t.reconnects >= 1, 'a LAN failure IS a backoff-consuming reconnect (unlike the backhaul fallback)');
   t.close();
 });
@@ -109,17 +109,17 @@ test('F153b: a new connect() closes the dial already in flight and dials the NEW
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 5000, lanGiveupMs: 5000, welcomeTimeoutMs: 5000 });
   ctx.after(() => t.close());
-  const first = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://old-tunnel/ws' });
+  const first = t.connect({ url: 'ws://192.0.2.167:8766/ws', pub: 'wss://old-tunnel/ws' });
   const firstErr = first.then(() => null, e => e);
   sockets[0].close(1006, 'off the field Wi-Fi');     // LAN fails -> pub
   assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'wss://old-tunnel/ws');
   const hung = sockets[1];                            // the tunnel restarted, the old hostname hangs and fires nothing
   // the player rescans the QR MC is showing now: same MC, new tunnel hostname
-  const second = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://new-tunnel/ws', secret: 'sek' });
+  const second = t.connect({ url: 'ws://192.0.2.167:8766/ws', pub: 'wss://new-tunnel/ws', secret: 'sek' });
   assert.ok(hung.closed, 'the hanging socket was closed, not left holding the slot');
   assert.equal(hung.onopen, null, 'and its handlers were detached first, so it cannot schedule anything');
   assert.equal(sockets.length, 3, 'the new target is dialled immediately, not after the OS timeout');
-  assert.equal(sockets[2].url, 'ws://192.168.28.167:8766/ws', 'LAN first, from the top of the ladder');
+  assert.equal(sockets[2].url, 'ws://192.0.2.167:8766/ws', 'LAN first, from the top of the ladder');
   assert.equal((await firstErr).message, 'connect: superseded by a new connect()', 'the old promise settles');
   sockets[2].close(1006, 'still off the Wi-Fi');
   assert.equal(sockets[3].url, 'wss://new-tunnel/ws', 'then the freshly scanned hostname');

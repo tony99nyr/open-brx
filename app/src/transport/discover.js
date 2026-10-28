@@ -56,7 +56,7 @@ export const PROBE_POOL = 8;
 export const PROBE_PACING_MS = 40;
 export const HOSTS_PER_SUBNET = 254;
 
-/** '192.168.0.149' → '192.168.0'; anything that is not a dotted-quad IPv4 → null.
+/** '192.0.2.149' → '192.0.2'; anything that is not a dotted-quad IPv4 → null.
  * @param {unknown} ip
  * @returns {string|null} */
 export function subnetOf(ip) {

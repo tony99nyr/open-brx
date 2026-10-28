@@ -314,13 +314,13 @@ test('F421: a released utility phone dials its prior MC directly instead of wait
   // mDNS/sweep discovery simply missed. `exitToHud` had already written the MC url this phone was JUST
   // bound to as a station into the handoff; nothing on the HUD side ever read it as a dial target.
   const at = Date.now();
-  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, null),
-    'ws://192.168.0.55:8766/ws', 'no remembered address: dial the handoff\'s mc_url');
-  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, ''),
-    'ws://192.168.0.55:8766/ws', 'an empty remembered address counts as none');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.0.2.55:8766/ws', at }, null),
+    'ws://192.0.2.55:8766/ws', 'no remembered address: dial the handoff\'s mc_url');
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.0.2.55:8766/ws', at }, ''),
+    'ws://192.0.2.55:8766/ws', 'an empty remembered address counts as none');
   // A remembered address — named by the player, or one that already bound this phone as a HUD — always
   // wins; the handoff is a fallback for the phone that has never been a HUD on this network before.
-  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.168.0.55:8766/ws', at }, 'ws://remembered/ws'),
+  assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: 'ws://192.0.2.55:8766/ws', at }, 'ws://remembered/ws'),
     null, 'a remembered address is never overridden by the handoff');
   assert.equal(priorUtilityReconnectUrl(null, null), null, 'no handoff at all: nothing to dial');
   assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k' }, null), null, 'a handoff with no mc_url names nowhere to dial');
@@ -330,7 +330,7 @@ test('F430 (review, 2026-09-26): a stale or unstamped prior-utility handoff is n
   // F421's handoff never expired, so a station's old address (moved networks, decommissioned) could sit
   // in localStorage indefinitely and still be dialled. `exitToHud` now stamps every `mc_url` it writes
   // with `at`; this is the read-side half of that fix.
-  const url = 'ws://192.168.0.55:8766/ws';
+  const url = 'ws://192.0.2.55:8766/ws';
   const fresh = Date.now();
   assert.equal(priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'k', mc_url: url, at: fresh - 1000 }, null),
     url, 'a fresh handoff (well under the max age) is still dialled');
@@ -368,9 +368,9 @@ test('F421: dialling the handoff\'s mc_url is a TRUSTED, non-first-contact hello
   // takeover proof that lets it retire the old utility station row.
   const sockets = [];
   const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
-    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws' } });
+    priorUtility: { node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.0.2.55:8766/ws' } });
   ctx.after(() => t.close());
-  const url = priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.168.0.55:8766/ws', at: Date.now() }, null);
+  const url = priorUtilityReconnectUrl({ node_id: 'brxu-old', node_key: 'utility-key', mc_url: 'ws://192.0.2.55:8766/ws', at: Date.now() }, null);
   const p = t.connect({ url }); sockets[0].open();
   assert.deepEqual(sockets[0].sent[0].body.prior_utility, { node_id: 'brxu-old', node_key: 'utility-key' });
   sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0, node_key: 'k-1', prior_utility_consumed: true }));
