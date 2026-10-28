@@ -12,7 +12,7 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 95.** Desk 0 · bench 91 · decision 4.
+**MVP open: 94.** Desk 0 · bench 91 · decision 3.
 
 **MVP DESK (0),** a keyboard is enough:
 
@@ -22,15 +22,15 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 - 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F606** · **F618**
 - 🟢 **F538** · **F545** · **F592**
 
-**MVP DECISION (4),** awaiting Tony:
+**MVP DECISION (3),** awaiting Tony:
 - 🟠 **F575** · **F578**
-- 🟡 **F342** · **F607**
+- 🟡 **F342**
 <!-- index:end -->
 
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F636 · G11 · H10 · K9 · P20 · Q20 · R5 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F636 · G11 · H10 · K9 · P20 · Q25 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -321,7 +321,6 @@ cites are its history, and the NEXT step wins where they differ.
 
 Tony's call. Each row says what the answer unblocks.
 
-- **F607 🟡 DECISION: REBUILD THE FIELD MODEL'S CONTACTS?** brx2, 2026-10-25 (Astra sim review #4, brx1). Field encounters are independent attack timers: a victim is never alerted by incoming fire, and each side draws its own contact length and range. A shared pair-contact model is one to two days and moves every field and team number. Until then the phase C team tables carry a caveat. brx1 takes it to Tony after passes 6 and 7.
 - **F578 🟠 PHASE B: THREE BALANCE CALLS, AND NO ONE-FIELD SET PASSES TODAY.** brx2, 2026-10-24 (the phase B loadout sweep on scenario 12, the report in `~/reviews-2026-10-18-sandbox/phase-b/report.md`). Without the Haze, 37 of 883 kits are OP: 20 have the AMR as primary and 29 carry Body Armor. Body Armor helps in all 168 matched pairs and Quick Switch hurts in 154 of 156. No tested one-field set passes `balance_review.py`. Tony picks: (a) make `marksman_rush_counter` a flip test like the heat branches, or keep it absolute (the shipped Sniper already fails it: a plain AR rush from 20 m wins 0.33 against a 0.50 bar, so every marksman change fails it today); (b) the AMR `fire_ms` 350 to 600 (field ratio 1.32 to 0.94, the AMR leaves the OP list; it fails only that rush test); (c) a direction for a Body Armor and Quick Switch redesign (the one-field trims, Body Armor 25 to 15 and Quick Switch -20 to -10, each fail `balance_kept`). `decision`.
 - **F575 🟠 THE CHARGE RIFLE'S NUMBERS UNDER THE HEAT BUDGET.** brx2, 2026-10-18 (brx1 found it). The 55/14 Charge Rifle was withdrawn from F573 before it shipped: a full charge costs +56 heat and a tap +14, and the gun locks out at about 103, so at 55/14 a 115 pool needs 126 heat and the gun locks out after 111 damage. Neither balance sim modelled heat then, so every Charge Rifle verdict before 2026-10-18 missed it. It ships at 70/16 (one charge plus three taps, 98 heat). Tony picks: 73/14 (73 + 3 × 14 = 115, inside the budget) or keep 70/16. Then rerun `balance_review.py` with the candidate and record his call. **→ 2026-10-18 (brx2, sim gaps):** the sims now model heat from the rows' `heat` blocks (bench F229). Our own bench says the Charge Rifle cools about 30 a second on its own; if it also cools while firing, a charge plus five taps at the 285 ms cadence reaches about 84 heat and 55/14 does NOT lock before the kill. Whether it cools while firing is unproven, so every Charge Rifle verdict reports three cooling branches (throughout, after a lockout only, none; `--heat-cooling`) and fails only on a flip under one of them. With cooling only after a lockout or none, the shipped 70/16 already fails the Shields R1 rule (a 150 pool needs a charge plus five taps, 126 heat), so the bench row also decides whether today's Charge Rifle holds on Shields. This waits for the bench row "Charge Rifle heat while firing" before Tony picks; 70/16 fits the budget either way.
 
