@@ -1549,13 +1549,13 @@ def test_the_firmware_address_scan_can_actually_fail():
 # a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log, and `<you>`, `~/` or
 # `%USERPROFILE%` in a path. A subnet (`/24`) or a wildcard (`192.168.0.x`) is a sweep range, not a host, so it
 # never matches. Generic addresses and account names are allowed by value, each with its reason.
-# Scope: addresses in the docs trees (docs/, hardware/, protocol/); account paths in every tracked text doc. Code
-# and tests are not scanned: they plant example paths and addresses of their own (`/home/op`, `C:\\Users\\Someone`).
+# Scope: addresses in the docs trees (docs/, hardware/, protocol/); account paths in every tracked text, data and
+# shell file. Program code and tests are not scanned: they plant example paths and addresses of their own (`/home/op`, `C:\\Users\\Someone`).
 _PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
 # A home root, then the account name. `Users` in any case and with either slash covers macOS, Windows, /mnt/c and
-# an escaped `C:\\Users\\`; `/home/` must not follow a word or a dot, so a URL path (`example.com/home/page`) does
-# not match; `\home\` is the UNC form (`\\wsl.localhost\Ubuntu\home\<you>`); `~name/` is a shell's home shorthand.
-_ACCOUNT_PATH = re.compile(r"(?i:[\\/]+users[\\/]+)(?P<a>[^\s\\/`'\")<>*|]+)"
+# an escaped `C:\\Users\\`. Neither `Users` nor `/home/` may follow a word or a dot (bar a drive letter or
+# `/mnt/c`), so a URL or API path (`example.com/home/page`, `/api/users/me`) does not match; `\home\` is the UNC form (`\\wsl.localhost\Ubuntu\home\<you>`); `~name/` is a shell's home shorthand.
+_ACCOUNT_PATH = re.compile(r"(?:(?<![\w.])|(?<=[A-Za-z]:)|(?<=/mnt/[a-z]))(?i:[\\/]+users[\\/]+)(?P<a>[^\s\\/`'\")<>*|]+)"
                            r"|(?<![\w.])/home/(?P<b>[^\s\\/`'\")<>*|]+)"
                            r"|(?i:\\+home\\+)(?P<c>[^\s\\/`'\")<>*|]+)"
                            r"|(?<![\w/~])~(?P<d>[A-Za-z][\w.-]*)/")
@@ -1563,30 +1563,37 @@ _ACCOUNT_ALLOWED = {
     "shared": "macOS's shared folder, /Users/Shared",
     "public": "Windows' shared profile, C:\\Users\\Public",
     "default": "Windows' template profile",
-    "all users": "Windows' legacy shared profile",
+    "all": "Windows' legacy shared profile, C:\\Users\\All Users",
     "example": "a documentation example",
     "runner": "the GitHub Actions runner account",
     "pi": "Raspberry Pi OS's default account",
+    "ubuntu": "the default account of Ubuntu cloud images",
+    "node": "the account in the official Node.js container images",
+    "vscode": "the account in VS Code dev containers",
+    "linuxbrew": "Homebrew's prefix on Linux",
+    "root": "the superuser, no person",
     "user": "a generic example account",
     "you": "the placeholder for the reader's own account",
     "username": "the placeholder for the reader's own account",
-    "%username%": "the Windows variable for the reader's own account",
-    "$user": "the shell variable for the reader's own account",
 }
+# A name that starts like a variable or a route parameter is a placeholder: `${USER}`, `$(whoami)`, `%USERNAME%`,
+# `{user}`, `:id`, or a numeric id.
+_ACCOUNT_PLACEHOLDER = re.compile(r"[$%{:\d]")
 _PRIVATE_IP_ALLOWED = {
     "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
     "192.168.16.1": "an example WSL host address, assigned per boot",
     "10.255.255.254": "WSL's own DNS resolver, the same on every WSL install",
 }
 _PRIVACY_IP_ROOTS = ("docs/", "hardware/", "protocol/")
-_PRIVACY_TEXT = (".md", ".log", ".tsv", ".txt", ".yml", ".yaml", ".html", ".toml")
+_PRIVACY_TEXT = (".md", ".log", ".tsv", ".txt", ".yml", ".yaml", ".html", ".toml", ".json", ".csv", ".svg",
+                 ".sh", ".ps1", ".cmd", ".bat")
 
 
 def _account_paths(line: str) -> list[str]:
     out = []
     for m in _ACCOUNT_PATH.finditer(line):
-        name = next(g for g in m.groups() if g is not None)
-        if name.startswith("<") or name.lower() in _ACCOUNT_ALLOWED:
+        name = next(g for g in m.groups() if g is not None).rstrip(",.:;]")
+        if not name or _ACCOUNT_PLACEHOLDER.match(name) or name.lower() in _ACCOUNT_ALLOWED:
             continue
         out.append(m.group(0))
     return out
@@ -1622,13 +1629,17 @@ def test_the_privacy_scan_can_actually_fail():
                 "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x", r"C:\Users\someone\x",
                 "/mnt/c/Users/Tony/x", "/mnt/c/users/tony/x", "/home/tony/x", "/home/Tony/x", r"C:\users\tony",
                 r"C:\\Users\\Tony\\x", "C:/Users/Tony/x", "/Users/Tony/x", r"\\wsl.localhost\Ubuntu\home\tony\x",
-                r"\\wsl$\Ubuntu\home\tony", "~tony/x", "/Users/Sharedfoo/x", "/home/examples/x"):
+                r"\\wsl$\Ubuntu\home\tony", "~tony/x", "/Users/Sharedfoo/x", "/home/examples/x",
+                "see /Users/tony, then", "file:///Users/tony/x", r"C:\Users\Tony Rossi\x"):
         assert _privacy_problems(rel, bad), bad
     for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
                  "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/<you>/x", "~/x", r"%USERPROFILE%\x",
                  r"C:\Users\Public\x", "/Users/Shared/x", "/home/<you>/x", "10.0.0.0/8", "/home/runner/work",
                  r"\\wsl.localhost\<distro>\home\<you>\x", "https://example.com/home/page", "/var/home/x",
-                 r"C:\Users\%USERNAME%\x", "about ~5 min/run"):
+                 r"C:\Users\%USERNAME%\x", "about ~5 min/run", "GET /users/{id}", "/api/users/me",
+                 "https://github.com/users/x", "/users/:id", "see /Users/Shared, then", "/home/runner: the CI",
+                 "/home/${USER}/x", r"C:\Users\$env:USERNAME", "/Users/$(whoami)/x", r"C:\Users\All Users",
+                 "/home/ubuntu/x", "/root/x"):
         assert not _privacy_problems(rel, good), good
     # The repo-wide pass reads account paths only: an address outside the docs trees is a component's example.
     assert _privacy_problems("app/README.md", "10.0.0.7", ips=False) == []
