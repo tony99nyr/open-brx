@@ -200,8 +200,8 @@ MARKSMAN_RUSH_BAR = 0.50      # the old absolute rush bar from the 20 m start; r
 # F578 (Tony, 2026-10-27, "Relative"): the rush counter is a flip test. A drop in rush success counts only when it
 # is larger than this floor and than the 95% binomial noise of the two rates.
 RUSH_FLIP_FLOOR = 0.02
-# A new marksman is compared with this shipped row, the design-of-record marksman. Pending Tony (F578 review): the
-# AMR, the hardest to rush, would make a new marksman's bar lenient.
+# A new marksman, or a row that becomes one, is compared with this shipped row (Tony, 2026-10-28, "Shipped Sniper").
+# The hardest shipped marksman to rush is the AMR, which would make a new marksman's bar lenient.
 RUSH_NEW_MARKSMAN_REF = "sniper_rifle"
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
 PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.62; leave about 0.62 kills of room
