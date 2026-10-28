@@ -11,36 +11,6 @@ damage model (§0), the arsenal table and its derivations (§2), the wire levers
 (§5) and the triangle (§7). A bare §0 to §5 or §7 below means that page. §7r means
 the archived session-findings-2026-08 §7r, the archived August notebook.
 
-## Status
-
-This note was the banner at the top of `weapon-design.md`. It concerns this page only.
-
-> **✅ FIXED 2026-09-18 — the Energy Launcher's zero damage had a one-line cause**
-> Its `$WEAP` key `<t3,t4> = <9,3>` landed on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
-> into **every** game head, and **fn 24 applies no damage at all**. Reproduced and fixed on hardware in
-> one minute, same weapon, same word, one row changed: on **fn 24** a magnitude-115 word moved the victim
-> **999 → 999**; on **fn 1** it moved **999 → 884**. The row now ships as `$SIR,9,3,,1,0,0,1,,*` and the
-> weapon deals its full 115.
->
-> The same bench showed fn 24 is worse than inert: it leaves the victim's gun **manufacturing a phantom
-> `$HIR` every 5.07 s until the next `$SPAWN`**, with sound, vibration and a headset flash, so one hit
-> reads to the player as being shot every five seconds for the rest of the life. 25, 26 and 27 do the
-> same. **Never ship fn 24-27 on a cell a weapon can reach** (P18, closed; `protocol/brx-protocol.md` §5).
->
-> ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
-> lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
-> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, which WAS the
-> MC default until the 2026-09-17 arsenal review set it to **0**, because BRX players aim at the
-> headset: 4 of the 5 sensors are on it. At t7=0 every function lands the raw magnitude on both
-> sensors, so the five weapons named next no longer gain anything from a headset hit) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
-> five weapons — Burst Rifle, Bolt Rifle, AMR (fn 37), Force Rifle, Sniper Rifle (fn 36) — deal more
-> than their `t5` on a HEADSET hit only; a body hit is exactly `t5`. This reconciles rather than
-> overturns the two earlier readings: 2026-08-27's ×1.0 matrix was rig-pinned to the gun body
-> (correct — body is always ×1) and 2026-09-02's ×1.25/×2 reading was taken on the headset at t7=50
-> (also correct). §6.2.
-
----
-
 ## 6. The `$SIR` layer — damage is a negotiation, not a number
 
 **Added 2026-08-26 (third pass), from the IR-emitter bench sessions.** Everything in `weapon-design.md` §0 to §5
