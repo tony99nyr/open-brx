@@ -848,7 +848,7 @@ doesn't regress it.
   background-mode (§3.11), advertising (utility.md §6) and share all go through Capacitor plugins.
 - The **node** stays Capacitor (Android + iOS) — one web UI/engine, native BLE. Web Bluetooth is **ruled out**
   (ADR-0003).
-- iOS deployment target 15.0; iPhone X (16.7) supported. Generated `ios/`/`android/` are rebuilt —
+- iOS deployment target 16.2 (`app/scripts/ios-setup.sh`); iPhone X (16.7) supported. Generated `ios/`/`android/` are rebuilt —
   platform settings live in `app/scripts/*-setup.sh`, never hand-edited in Xcode/Studio.
 
 ---
