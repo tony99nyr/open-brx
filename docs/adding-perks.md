@@ -21,6 +21,20 @@ Then decide where the effect lives:
 - **Slot frame** (`mechanism: "slot_frame"`). A `$WEAP` whose effect lives in every victim's `$SIR` table.
   These rows stay hidden until the emit side is benched.
 
+## 1b. Run the balance review and log Tony's call
+
+This step is mandatory for a new perk and for any change to a perk number. Do it before you write code.
+
+1. Write a candidate file outside the repo: `{"perk": {...row...}}` for a new perk, or
+   `{"perk_id": ..., "changes": {...}}` for a change.
+2. Run `python3 mcp/tools/balance_review.py --candidate <file.json> --out <verdict.json> --report <report.md>`.
+   The exit code is 0 for PASS and 1 for FAIL. Do not change a constant or a margin to get a pass.
+3. Show Tony the report. Tony makes the call, whatever the verdict says.
+4. Record the call in [`balance-decisions.md`](balance-decisions.md) with `--record --call "<Tony's words>"`
+   (or `--record-from <verdict.json> --call ...`).
+
+The `balance-review` skill (`.claude/skills/balance-review/SKILL.md`) holds the full loop and the eight tests.
+
 ## 2. Add the catalogue row
 
 The catalogue is `mcp/brx_mcp/mc/perks.json`. Each row carries:

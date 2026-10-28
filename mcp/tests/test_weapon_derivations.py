@@ -506,7 +506,7 @@ def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
 
 
 def test_weapon_design_balance_table_matches_the_wire():
-    """§2.2 is the balance table a human reads. Every numeric column is recomputed here.
+    """§2.2 is the balance table a human reads. Every numeric column, and the role, is recomputed here.
 
     `dps` is damage per cycle second; `sust` folds one reload into a whole magazine — the two
     columns that were stale for the AR after the 2026-08-30 retune, because nothing recomputed them.
@@ -514,7 +514,7 @@ def test_weapon_design_balance_table_matches_the_wire():
     rows = _table("### 2.2 The table")
     header = [_cell(c).lower() for c in rows[0]]
     ix = {name: header.index(name) for name in
-          ("weapon", "dmg", "cycle ms", "htk", "ttk s", "dps", "sust", "mag", "reserve", "reload",
+          ("weapon", "role", "dmg", "cycle ms", "htk", "ttk s", "dps", "sust", "mag", "reserve", "reload",
            "one-mag kill % (p=0.7)", "heat")}
     by_name, seen, bad = _by_name(), set(), []
     for r in rows[1:]:
@@ -534,6 +534,7 @@ def test_weapon_design_balance_table_matches_the_wire():
         cycle_txt = f"{CAT.fire_ms(wid)} +{gap}" if wid in ("burst_rifle", "force_rifle") else str(CAT.fire_ms(wid))
         heat = int(_tok(wid, "heat") or 0)
         want = {
+            "role": str(row["role"]),
             "dmg": str(dmg),
             "cycle ms": cycle_txt,
             "htk": str(htk),

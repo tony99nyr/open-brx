@@ -546,7 +546,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   OUTDOOR it still sent `$GSET` t2 = 0, so the app's venue switch is not t2. Which of t13/t42 fires is presumably
   the gun's own ALT-hold level; unmeasured. Original row: sub-indoor IR power
   (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
-  `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, see `weapon-design.md` §5 U2**; lever 2 =
+  `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, `docs/archive/weapon-design-history.md` §5 U2**; lever 2 =
   `$GSET` t3 `gunLaserRegion`. `$IRTX`/`$HFIRE` emit nothing on v4.32. **Run sheet:
   [`archive/bench-super-indoor-2026-09-07.md`](archive/bench-super-indoor-2026-09-07.md)** (MacBook — the rig has never run on
   macOS; find the margin before sweeping). A null is an answer. If it works, an `indoor_tight` venue preset.
@@ -979,7 +979,13 @@ S10's post-MVP parts (the MVP half, the L10 hold, stays in [`FOLLOWUPS.md`](FOLL
 
 - **F286 🟡 A BLE PROTOCOL PERFORMANCE AND EFFICIENCY PASS.** Filed 2026-09-18 night. Tony: a future exploration, planned for the week of 2026-09-21. Measure and cut the BLE cost of a whole match: bytes, packets and writes per life, per minute and per event, for every node and MC writer. Inputs: the write budget (F274), the screamer transport rules (`bench-screamers-2026-09-19.md`), the 20-byte packet size, and tonight's `$TMP` results (one short frame can replace `$WEAP` + `$AMMO`, and `$SPAWN` + `$TMP` t8 replaces the 28-frame twin table). Do: a per-writer inventory from the code, a measured baseline with the soak tool, then a ranked list of cuts. `explore`.
 
-- **U2** = Q15 (t41). **U4 / U5** reload-chain timing vs `reload_ms`; held-trigger fire sound retrigger vs ring-under. `ears`.
+- **U2** = Q15 (t41), above.
+
+- **U4 🟢 DOES THE 3-PART RELOAD CHAIN FIT `reload_ms`?** Six stock frames overrun a sequential model (for example the Shotgun's 0.82 s chain inside a 400 ms Shells reload), so the sequential model is wrong. Nothing in the MVP depends on it; it matters for future reload-sound work. Fire one weapon with one long chain and time it with a stopwatch. Also answers whether `t19` changes the chain. `ears`.
+
+- **U5 🟢 DOES A HELD TRIGGER RETRIGGER THE FIRE SAMPLE FROM ZERO, OR RING UNDER THE NEXT SHOT?** It decides whether sample duration constrains anything at all, so it matters for custom weapon sound design only. Fire the Assault Rifle (1.76 s sample, 100 ms cycle) and listen. `ears`.
+
+- **U8 🟢 `t17` VERSUS `t40`.** Every captured frame obeys `t17 == 2 x t40` and `resolve()` preserves it, but nobody knows why. Is `t40` a per-magazine count and `t17` a total? Nothing needs it today; it would matter for a resupply powerup. Set the two independently and watch `$ALCD`. `bench`.
 
 - **Explained 2026-09-11 (F23):** the 2026-08-27 24-cell ×1.0 matrix was the GUN BODY (always ×1); the ×1.25/×2
   runs measured the HEADSET. Different sensors, both correct. Kept: one 16/16 vs 4/10 registration run under
