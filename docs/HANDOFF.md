@@ -66,7 +66,7 @@ R4/T5 read-only research is authorised; flashing stays decision first.
   the match it ended.
 
 The doc-rot pass (spec and protocol lane) is in the land queue: the design briefs, API.md, the protocol references,
-and contracts.md folded and compacted, with §10's older rows in `archive/contracts-amendments-2026-08-to-09.md`.
+and contracts.md folded into its body with §10 compacted to one line per older row.
 **Next:** none open in this lane. Wait for brx1.
 **Blocked:** none.
 
