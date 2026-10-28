@@ -466,7 +466,7 @@ Where BRX owners really solve things, and what each place is good for.
   the pinned "JEDGE for all" document. Best for: "has anyone seen this?"
 - **LaserTagMods on GitHub (JEDGE / JBOX / autoupdate and ~10 more repos).** The de-facto
   reverse-engineered BRX command dictionary, plus the JBOX station designs with enclosures and
-  schematics. No license: read, don't copy. Best for: protocol facts, station behaviours, current
+  schematics. No licence: read, don't copy. Best for: protocol facts, station behaviours, current
   firmware versions.
 - **Jay, "Extreme Laser Tag And More!" (YouTube @extremelasertag3602).** The grenade manual that
   never shipped, measured radio-range tests, every JBOX mode demonstrated, and the 45-rifle field

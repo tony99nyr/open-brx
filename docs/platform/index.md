@@ -35,7 +35,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 
 ### Your phone, on the tagger.
 
-The BRX Companion holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armor, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
+The BRX Companion holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armour, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
 
 ![Live HUD: health, rounds, the match clock, weapons hot](/shots/hud-live.jpg)
 
@@ -48,7 +48,7 @@ The BRX Companion holds the Bluetooth link to one tagger and shows what the tagg
 
 ### Every rule yours.
 
-Play the defaults or change the cap, the clock, respawn, health, armor and what each slot may carry. Save it. Modes are Python, and new ones are welcome.
+Play the defaults or change the cap, the clock, respawn, health, armour and what each slot may carry. Save it. Modes are Python, and new ones are welcome.
 
 ```data
 modes

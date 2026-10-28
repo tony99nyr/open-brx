@@ -12,7 +12,7 @@ The first letters are a family prefix (what kind of sound), and the rest is an i
 - **136** `E_`-prefixed alternate takes of existing ids in the app's list
 - **Longest:** `J100` at 250 s (a music bed). **Shortest:** `N1A` at 0.04 s
 
-We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03. The official app's own configuration file, `Sounds.json`, names 2,166 ids, but the catalog below is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03. The official app's own configuration file, `Sounds.json`, names 2,166 ids, but the catalogue below is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
 
 ## Play a sound, and what the labels mean
 
@@ -26,7 +26,7 @@ The table below marks a meaning three ways, by how sure we are of it:
 
 ## Families in the app list
 
-Prefix meanings are restated from David Knox's audio map; counts in this summary are computed from the app's 2,166-id list. It is not the complete gun inventory. The on-gun catalog also has the `VX`, `VZ`, `SH`, `ST`, `HM`, `TK` and `VT` families, expands several families in this list, and includes hundreds of single-file voice and music prefixes. The generated table below is the complete 2,634-id union and its **AI category** column is the more useful way to explore all families.
+Prefix meanings are restated from David Knox's audio map; counts in this summary are computed from the app's 2,166-id list. It is not the complete gun inventory. The on-gun catalogue also has the `VX`, `VZ`, `SH`, `ST`, `HM`, `TK` and `VT` families, expands several families in this list, and includes hundreds of single-file voice and music prefixes. The generated table below is the complete 2,634-id union and its **AI category** column is the more useful way to explore all families.
 
 | Family | What it holds | Ids | Typical length |
 |---|---|---|---|
@@ -87,7 +87,7 @@ Sums to 2,166, the app's list; the gun holds 2,477 files.
 | `JA9` | JA | Startup music | 5.75 s |
 | `JAD` | JA | Death music (the musicMixOnDeath slot) | 3.50 s |
 | `H29` | H | Respawn / add-HP: a quiet, sustained "stim-pack" medical sound | 1.20 s |
-| `VA1G` | VA | "Body Armor": add armor | 1.20 s |
+| `VA1G` | VA | "Body Armor": add armour | 1.20 s |
 | `VA16` | VA | "Armor suit": menu line | 0.94 s |
 | `VA8C` | VA | "Shields online": add shields (SFX over the first word) | 1.50 s |
 | `VA2` | VA | Tear gas effect | 5.98 s |

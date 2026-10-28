@@ -47,7 +47,7 @@ Start from a stock mode. Change the score cap, the clock, respawn, health and ar
 
 ![Armed: the countdown on the phone](/shots/hud-armed.jpg) ![Taking fire: health falling, the hit called](/shots/hud-hit.jpg) ![Down: who got you, and the redeploy count](/shots/hud-down.jpg)
 
-- **Weapons hot.** Health, armor, ammo and the clock, on the rail where you can see them.
+- **Weapons hot.** Health, armour, ammo and the clock, on the rail where you can see them.
 - **Taking fire.** Every hit is called on the phone as the tagger reports it, with the damage it did.
 - **Down.** Who got you and how long until you redeploy. The tagger stays silent until the count ends.
 
