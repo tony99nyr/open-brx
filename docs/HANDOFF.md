@@ -1,27 +1,18 @@
-# Handoff: Open BRX, state after the 48-hour improvement push
-**State as of 2026-10-11.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
+# Handoff: Open BRX
+**State as of 2026-10-27.** This is the current truth; history is `git log -p -- docs/HANDOFF.md`.
 Open MVP work is [`FOLLOWUPS.md`](FOLLOWUPS.md) (desk, bench, decision); ideas and the roadmap are [`post-mvp.md`](post-mvp.md);
 what is done is [`archive/followups-closed.md`](archive/followups-closed.md). The bench order is [`bench-plan.md`](bench-plan.md).
 What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is [`post-launch.md`](post-launch.md).
 Update only the lane you worked.
-## State of main (2026-10-13)
-**App 0.4.15 is the last published build** (`app-v0.4.15`). 0.4.16-0.4.21 were built on release branches and not
-published. **0.4.22** (`/home/tony/apk-0.4.22`, from main `221d4fe1`, release commit `be55fbd7`) is the bench build, and the bench sheet is
-[`bench-rebench-0422.md`](bench-rebench-0422.md). The push's reviews, triage and retro are in
-`/home/tony/reviews-2026-10-10/` and `/home/tony/retro-2026-10-11.md` (outside the repo). The Stick firmware changed
-(ButtonController, TickController, the advert checks): reflash every Stick from main before any Stick sheet. The iPhone X
-build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`.
+## State of main (2026-10-27)
+**App 0.4.29 is the last published build** (`app-v0.4.29`, 2026-10-25). Publishing waits for Tony's own go. The next
+bench is the NEXT list in [`bench-plan.md`](bench-plan.md), "the bench after 0.4.31": every MVP BENCH row in rig order;
+each step cites the sheet that holds its procedure. Reflash every Stick from main before a Stick step. The iPhone X
+build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`. The 2026-10-17 field report
+([`field-2026-10-17.md`](field-2026-10-17.md)) is closed at the desk; its evidence bundle is unscrubbed and stays off
+the repo and off public issues. Tony's balance calls are in [`balance-decisions.md`](balance-decisions.md).
 Every firmware fact from the drive is a disassembly reading until a bench proves it on v4.32; proven facts live in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
-## Lane: field, the 2026-10-17 session (owned by brx1 since the evening of 2026-10-17)
-**State:** the report [`field-2026-10-17.md`](field-2026-10-17.md) is on main, and every desk fix it asked for has
-landed (the field push, 2026-10-17/18: about 60 lands across brx2-brx5, Claude + Codex reviewed, a milestone review
-after). The evidence bundle is unscrubbed and stays off the repo and off public issues; ask Tony for it.
-Tony's balance calls of the push are in [`weapon-design.md`](weapon-design.md) and, from now on, in
-[`balance-decisions.md`](balance-decisions.md) through `.claude/skills/balance-review`.
-**Next:** the bench sheet [`bench-field-1017.md`](bench-field-1017.md), P1 first (the large-reserve ceiling, the SMG
-frame, the ALT swallow matrix); every phone-side fix needs the next APK first.
-**Blocked on Tony:** F575 waits for the bench row "Charge Rifle heat while firing" first, then Tony (keep 70/16 or 73/14). F578 (phase B: the marksman rush test, the AMR fire rate, a Body Armor and Quick Switch direction). F572, F573 and F577 are decided and on main.
 
 ## Lane: brx1, orchestration
 **State:** 2026-10-24: Stick U002 IR bench and the outdoor range walk done (log 2026-10-24). The Unit IR sends on G9 and
@@ -77,12 +68,10 @@ F526, F511, F501, F530) still stands.
 **Blocked:** none.
 
 ## Lane: brx5, cross-language seams and the stage
-**State:** 2026-10-13: everything is landed. That covers F522 and the F525 stage mirror (with brx4), brx3's reviews
-(mock slices 1 to 6, F527 and the MC docs DRY pass), and the 0.4.22 bench sheet, which was walked against main and
-reviewed in three rounds (log 2026-10-13).
-**Next:** support Tony's 0.4.22 bench (`bench-rebench-0422.md`): fix any step that does not run as written. Trim the
-sheet's MC-restart lines to a pointer once the bench-session skill's "Volume and MC" section is on main. Stay brx3's
-second reviewer. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
+**State (2026-10-27):** F574 (the mc-play vite proxy on IPv4), F512 (`mc-play` is a blocking CI gate), F624 (the
+lander resolves an index-only FOLLOWUPS conflict) and F627 (CI's Python job split into `mcp`, `mcp-extras` and
+`mcp-sim`, with `run_tests.py --group`) are landed. Now: the doc-rot apply lane for status, archive and privacy.
+**Next:** whatever brx1 assigns. `fix/koth-dense-adverts` (`wt-dense`) is still held for its own labelled-APK A/B.
 **Blocked:** none.
 ## Start here
 
@@ -98,6 +87,6 @@ implementation for a bench-gated row.
 ## Machine state
 
 MC is `mcp/` on 8765/8766 serving `webapp/mc/dist`; rebuild before starting and restart between matches
-(`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume`
+(`ss -ltn | grep 876`). Launch with `setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume`
 (S58 powerups are on by default; add `--no-powerups` to turn them off). Shields recharge only on the Shields preset (armour 0). WSL runs Python/no-hardware MC,
 Windows drives BLE, and the MacBook is the field target. Never modify stock firmware.

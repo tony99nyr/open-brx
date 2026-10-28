@@ -1521,3 +1521,63 @@ def test_the_firmware_address_scan_can_actually_fail():
     assert _fw_addr_problems(rel, "header 0x3412"), "an allowed value is allowed in its own file only"
     assert not _fw_addr_problems("docs/firmware-image-research-plan.md", "header 0x3412")
     assert not _fw_addr_problems(rel, "HCI reason 0x3E, PMIC 0x49, byte 0xFF, sha 9bd77564d")
+
+
+# Privacy: a private LAN host address or a Mac/Linux account path never goes in the docs. The address names one
+# person's network, and the path names one person's account (a field bundle once named the MacBook's account). Write
+# a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log. A subnet (`/24`) or a
+# wildcard (`192.168.0.x`) is a sweep range, not a host, so it never matches. Generic addresses are allowed by value.
+_PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?![\d/]|\.\d)")
+_ACCOUNT_PATH = re.compile(r"/Users/(?!Tony\b|<)[A-Za-z][\w.-]*|/home/(?!tony\b|<|example\b)[a-z][\w.-]*")
+_PRIVATE_IP_ALLOWED = {
+    "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
+    "192.168.16.1": "an example WSL host address, assigned per boot",
+    "10.255.255.254": "WSL's own DNS resolver, the same on every WSL install",
+}
+
+
+def _privacy_files() -> list[pathlib.Path]:
+    out = []
+    for d in (DOCS, REPO / "hardware", REPO / "protocol"):
+        out += [p for p in sorted(d.rglob("*")) if p.suffix in (".md", ".log", ".tsv", ".txt") and p.is_file()]
+    return out
+
+
+def _privacy_problems(rel: str, text: str) -> list[str]:
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        out += [f"{rel}:{n}: {m.group(0)}" for m in _PRIVATE_IP.finditer(line)
+                if m.group(0) not in _PRIVATE_IP_ALLOWED]
+        out += [f"{rel}:{n}: {m.group(0)}" for m in _ACCOUNT_PATH.finditer(line)]
+    return out
+
+
+def test_no_private_lan_address_or_account_path_in_the_docs():
+    hits = []
+    for path in _privacy_files():
+        hits += _privacy_problems(path.relative_to(REPO).as_posix(), path.read_text(encoding="utf-8", errors="replace"))
+    assert not hits, ("a private LAN address or an account path in the docs (use <mc-lan-ip>, <lan-ip-N> or "
+                      "<you>; a generic address goes in _PRIVATE_IP_ALLOWED with its reason): "
+                      + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
+
+
+def test_the_privacy_scan_can_actually_fail():
+    rel = "docs/x.md"
+    for bad in ("--advertise 192.168.0.55 --x", "ws://192.168.0.171:8766/ws", "at 10.0.0.7.", "172.20.10.2",
+                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x"):
+        assert _privacy_problems(rel, bad), bad
+    for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
+                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/Tony/x", "/home/tony/x"):
+        assert not _privacy_problems(rel, good), good
+
+
+# The log index once ran a month behind (2026-10 had no row for 26 days). Every month file needs its row.
+def _log_months_missing(index: str, months: list[str]) -> list[str]:
+    return [m for m in months if f"(experiment-log/{m}.md)" not in index]
+
+
+def test_every_experiment_log_month_has_an_index_row():
+    months = sorted(p.stem for p in (DOCS / "experiment-log").glob("*.md"))
+    missing = _log_months_missing((DOCS / "experiment-log.md").read_text(encoding="utf-8"), months)
+    assert not missing, f"docs/experiment-log.md has no row for {missing}: add one when a month's file starts"
+    assert _log_months_missing("| 2026-09 | [2026-09](experiment-log/2026-09.md) |", ["2026-09", "2026-10"]) == ["2026-10"]

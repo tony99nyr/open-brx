@@ -101,8 +101,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    Close F395 if it is clean on all four. Min: `4fb379d8`.
 3. **Update the checkout** (*Before you start* step 2). There is no other `start.sh` run.
 4. **Start MC from the main checkout**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
-   (192.168.0.55 is the laptop's Windows LAN address, from `ipconfig`: check it first).
+   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
+   (<mc-lan-ip> is the laptop's Windows LAN address, from `ipconfig`: check it first).
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
    token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or

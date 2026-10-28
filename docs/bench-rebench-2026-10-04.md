@@ -44,7 +44,7 @@ holds the history and the fix; this sheet holds the procedure. How a bench run w
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`. Log the APK's sha from
    `/home/tony/apk-0.4.18/build.json`; it must be at or after the land of F442, F444 and F448 (brx1 confirms).
 3. **Start MC from the latest `main`**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
+   `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Rebuild `webapp/mc/dist` first if it is older than main. Powerups are on by default. Log the boot banner, the
    token and MC's sha.
 4. Each player phone joins MC and runs SET MY GUN with its own gun. The station Pixel becomes the phone powerup
