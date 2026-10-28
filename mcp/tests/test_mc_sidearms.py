@@ -64,7 +64,7 @@ def test_pistol_frames_ride_the_bolt_rifle_and_only_named_tokens_move():
 
 
 def test_pistol_identities_keep_tonys_ordering():
-    """D2 rebalance (2026-09-12, docs/reference/ttk-model.md §Shipped). Tony, 2026-09-11: "usp fast,
+    """D2 rebalance (2026-09-12, docs/archive/ttk-model-history.md, "Shipped 2026-09-12"). Tony, 2026-09-11: "usp fast,
     as fast as you can pull the trigger, but low damage. glock in middle" — DELIBERATELY the reverse
     of the earlier Counter-Strike-identity pin (glock fastest+weakest, usp in the middle): this test
     used to assert `dmg["glock"] < dmg["usp"] < dmg["deagle"]` and the matching fire ordering. Tony's
