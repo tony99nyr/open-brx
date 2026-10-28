@@ -205,7 +205,7 @@ def build(args):
     # first use of its result.)
     public_url = _check_public_url(getattr(args, "public_url", None))
     # F143 (field 2026-09-12): `mode` used to be the literal "unknown", and the REACH panel printed it
-    # as a display word — "UNKNOWN · 192.168.28.167:8765". Best-effort SSID per platform, never fatal,
+    # as a display word — "UNKNOWN · 192.0.2.167:8765". Best-effort SSID per platform, never fatal,
     # and the no-answer case is "lan" with no ssid (`netinfo.lan_info`).
     from . import netinfo as _netinfo
     session = Session(compiler, net, armory,

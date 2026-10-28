@@ -1,5 +1,5 @@
 """F143 (field 2026-09-12) — `lan.mode` was the hard-coded word "unknown", and the REACH panel printed
-it: "UNKNOWN · 192.168.28.167:8765". The parsers are pinned here against real captured output; the
+it: "UNKNOWN · 192.0.2.167:8765". The parsers are pinned here against real captured output; the
 subprocess calls themselves cannot run in CI and are not what goes wrong."""
 from brx_mcp.mc import netinfo as N
 
@@ -172,7 +172,7 @@ def test_lan_info_carries_the_warning_key_through():
     real = N.is_wsl
     try:
         N.is_wsl = lambda: True
-        lan = N.lan_info("192.168.28.167", 8765, "ws://192.168.28.167:8766/ws")
+        lan = N.lan_info("192.0.2.167", 8765, "ws://192.0.2.167:8766/ws")
         assert lan["warning"] and "PHONES CANNOT REACH" in lan["warning"]
         lan2 = N.lan_info("10.0.1.9", 8765, "ws://10.0.1.9:8766/ws", advertise_overridden=True)
         assert lan2["warning"] is None

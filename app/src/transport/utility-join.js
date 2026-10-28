@@ -4,7 +4,7 @@
 // 1. `startUtilitySweep`: the LAN sweep fallback for the utility screen's own search (bench 2026-09-24,
 //    app 0.4.10, Pixel 5). The utility search was mDNS-only. MC in WSL sits behind a Windows portproxy,
 //    so its mDNS never reaches the LAN, and the screen said "SEARCHING THIS WI-FI" forever while the
-//    player screen's sweep (app.js `sweepForMc`) found MC at 192.168.0.55:8766 on the same Wi-Fi.
+//    player screen's sweep (app.js `sweepForMc`) found MC at 192.0.2.55:8766 on the same Wi-Fi.
 //    A utility phone has no player takeover key, so a hit may auto-join (`trusted: false`, the same as an
 //    mDNS hit). A player phone only SUGGESTS a sweep hit; see app.js.
 // 2. `resolveTypedMc`: what the typed-address buttons dial. The HUD runs the text through `parseMcJoin`

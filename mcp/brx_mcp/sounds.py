@@ -15,8 +15,8 @@ Confidence:
                 "DK BRX Audio File Names" map (credit DK; restated as reference).
   PROVISIONAL — in the correct *documented range* but the exact clip isn't yet
                 verified by ear. V101–V144 are the app's CTF/Slayer/KotH voice
-                callouts (sound-bank.md); which one is which is a by-ear task
-                (verification-checklist → "objective callouts"). Safe to ship:
+                callouts (sound-bank.md); which one is which is a by-ear task (the
+                community labels in docs/reference/sound-catalog.md are unconfirmed). Safe to ship:
                 every id here is a real bank id, so it plays *a* real clip.
 
 Every id in this module is asserted to exist in the real bank by test_sounds.py.

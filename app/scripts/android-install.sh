@@ -3,9 +3,9 @@
 # launch it. This is the bench loop: edit app/src, run this, the phone is current.
 #
 #   npm run android:install                              # one phone attached: build + install + launch
-#   ADB_DEVICE=192.168.0.149:38939 npm run android:install   # pick a phone when several are attached
-#   ADB_CONNECT=192.168.0.149:38939 npm run android:install  # `adb connect` first (wireless debugging)
-#   ADB_CONNECT=192.168.0.149 npm run android:install        # the same, with the port found by mDNS (F544)
+#   ADB_DEVICE=192.0.2.149:38939 npm run android:install   # pick a phone when several are attached
+#   ADB_CONNECT=192.0.2.149:38939 npm run android:install  # `adb connect` first (wireless debugging)
+#   ADB_CONNECT=192.0.2.149 npm run android:install        # the same, with the port found by mDNS (F544)
 #   APK=/path/to/some.apk npm run android:install        # skip the build, install that file
 #
 # The build is `android-apk.sh` with APK_OUT_DIR pointed away from webapp/download/, so the site's

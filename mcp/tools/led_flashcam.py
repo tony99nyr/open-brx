@@ -12,7 +12,7 @@ the headset so BOTH LEDs are in frame, exposure pulled DOWN until the room is bl
 propped still. Screen brightness/timeouts pinned (see ledcam.py).
 
 Usage (WSL, uses WSL's paired adb + the running stage on the Windows host):
-    python led_flashcam.py run  [--stage http://192.168.16.1:8790] [--serial 192.168.0.48:42183] [--out dir]
+    python led_flashcam.py run  [--stage http://192.168.16.1:8790] [--serial <ip:port>] [--out dir]
                                  [--frames '$LED,9,1,1,1,*' '$HLED,3,4,90,90,10,15,*' ...] [--gap 3.0] [--native]
     python led_flashcam.py analyze <video.mp4> <schedule.json>
 `run` = record + send + pull + analyze. `--native` fires the emitter (stage IR shot) as the reference event.
@@ -34,7 +34,7 @@ DEFAULT_FRAMES = ['$LED,9,1,1,1,*', '$LED,0,1,1,1,*', '$HLED,3,4,90,90,10,15,*',
 
 
 def adb(serial, *args, timeout=60):
-    return subprocess.run([ADB, "-s", serial, *args], capture_output=True, text=True, timeout=timeout)
+    return subprocess.run([ADB, *(["-s", serial] if serial else []), *args], capture_output=True, text=True, timeout=timeout)
 
 
 def stage_do(base, body: dict):
@@ -46,7 +46,7 @@ def stage_do(base, body: dict):
 def record(serial, secs, remote="/sdcard/flashcam.mp4"):
     """Start screenrecord in the background; returns the Popen. screenrecord takes 1-2 s to start (known), so
     every offset below is measured from the FIRST frame we can see move, not from the process start."""
-    return subprocess.Popen([ADB, "-s", serial, "shell", "screenrecord", "--time-limit", str(int(secs)), "--bit-rate", "8000000", remote],
+    return subprocess.Popen([ADB, *(["-s", serial] if serial else []), "shell", "screenrecord", "--time-limit", str(int(secs)), "--bit-rate", "8000000", remote],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
@@ -54,7 +54,7 @@ def run(args):
     out = pathlib.Path(args.out); out.mkdir(parents=True, exist_ok=True)
     frames = args.frames or DEFAULT_FRAMES
     total = 4 + len(frames) * args.gap + (args.gap if args.native else 0) + 3
-    print(f"recording {int(total)} s on {args.serial}; {len(frames)} frames every {args.gap} s" + (" + native shot" if args.native else ""), flush=True)
+    print(f"recording {int(total)} s on {args.serial or 'the attached phone'}; {len(frames)} frames every {args.gap} s" + (" + native shot" if args.native else ""), flush=True)
     rec = record(args.serial, total)
     t0 = time.monotonic()
     time.sleep(4.0)                                   # let screenrecord start (1-2 s) and settle
@@ -127,7 +127,7 @@ def analyze(video: str, schedule_path: str, gap: float = 3.0):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run"); r.add_argument("--stage", default="http://192.168.16.1:8790"); r.add_argument("--serial", default="192.168.0.48:42183")
+    r = sub.add_parser("run"); r.add_argument("--stage", default="http://192.168.16.1:8790"); r.add_argument("--serial", default=os.environ.get("ADB_DEVICE"), help="adb device (default: $ADB_DEVICE, else adb's only device)")
     r.add_argument("--out", default=str(pathlib.Path.home() / ".brx-mcp" / "flashcam")); r.add_argument("--frames", nargs="*"); r.add_argument("--gap", type=float, default=3.0)
     r.add_argument("--native", action="store_true")
     a = sub.add_parser("analyze"); a.add_argument("video"); a.add_argument("schedule"); a.add_argument("--gap", type=float, default=3.0)

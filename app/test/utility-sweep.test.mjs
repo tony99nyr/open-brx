@@ -1,6 +1,6 @@
 // Bench 2026-09-24 (app 0.4.10, Pixel 5): the utility screen's own search never found Mission Control.
 // MC ran in WSL behind a Windows portproxy, so its mDNS never reached the LAN, and the utility search was
-// mDNS-only. The player screen's LAN sweep on the same Wi-Fi found it at 192.168.0.55:8766.
+// mDNS-only. The player screen's LAN sweep on the same Wi-Fi found it.
 // Also: the utility typed-address buttons dialled the raw text, so a pasted console address
 // (http://<host>:8765/) became the remembered MC url.
 import { test } from 'node:test';
@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { startUtilitySweep, resolveTypedMc, UTILITY_SWEEP_FIRST_MS, UTILITY_SWEEP_EVERY_MS } from '../src/transport/utility-join.js';
 import { MC_WS_PORT } from '../src/transport/discover.js';
 
-const MC = `ws://192.168.0.55:${MC_WS_PORT}/ws`;
+// The utility sweep probes DEFAULT_SUBNETS (discover.js), so the fake MC sits on one of them; the host is made up and inside SMALL.hosts.
+const MC = `ws://192.168.0.42:${MC_WS_PORT}/ws`;
 
 /** Manual clock: nothing fires until `advance` says so. */
 function fakeTimers() {
@@ -132,23 +133,23 @@ test('operator types a URL mid-sweep: the sweep stops and does not connect', asy
 });
 
 test('typed http console address dials the node port, not the console', () => {
-  const r = resolveTypedMc('http://192.168.0.55:8765/');
-  assert.equal(r.url, `ws://192.168.0.55:${MC_WS_PORT}/ws`);
+  const r = resolveTypedMc('http://192.0.2.55:8765/');
+  assert.equal(r.url, `ws://192.0.2.55:${MC_WS_PORT}/ws`);
   assert.equal(r.join, false, 'no pub/secret to replace');
-  assert.equal(r.note, `that is the console address; connecting to the default node port ws://192.168.0.55:${MC_WS_PORT}/ws`);
+  assert.equal(r.note, `that is the console address; connecting to the default node port ws://192.0.2.55:${MC_WS_PORT}/ws`);
   assert.equal(resolveTypedMc('HTTP://mc.local').url, `ws://mc.local:${MC_WS_PORT}/ws`);
 });
 
 test('typed ws join code still parses into url + pub + secret', () => {
-  const r = resolveTypedMc(`  ws://192.168.0.55:8766/ws?s=abc123&pub=wss://x.trycloudflare.com/ws  `);
-  assert.deepEqual(r, { url: 'ws://192.168.0.55:8766/ws', join: true, pub: 'wss://x.trycloudflare.com/ws', secret: 'abc123', note: null });
+  const r = resolveTypedMc(`  ws://192.0.2.55:8766/ws?s=abc123&pub=wss://x.trycloudflare.com/ws  `);
+  assert.deepEqual(r, { url: 'ws://192.0.2.55:8766/ws', join: true, pub: 'wss://x.trycloudflare.com/ws', secret: 'abc123', note: null });
   // the console join LINK (http with ?ws=) is a join code, not a console address
-  const link = resolveTypedMc(`http://192.168.0.55:8765/join?ws=${encodeURIComponent('ws://192.168.0.55:8766/ws?s=k')}`);
-  assert.equal(link.url, 'ws://192.168.0.55:8766/ws');
+  const link = resolveTypedMc(`http://192.0.2.55:8765/join?ws=${encodeURIComponent('ws://192.0.2.55:8766/ws?s=k')}`);
+  assert.equal(link.url, 'ws://192.0.2.55:8766/ws');
   assert.equal(link.secret, 'k');
   assert.equal(link.note, null);
   assert.equal(resolveTypedMc('   '), null);
-  assert.equal(resolveTypedMc('192.168.0.55').url, '192.168.0.55', 'a bare address passes through as before');
+  assert.equal(resolveTypedMc('192.0.2.55').url, '192.0.2.55', 'a bare address passes through as before');
 });
 
 test('a typed https address (the tunnel) passes through unchanged', () => {

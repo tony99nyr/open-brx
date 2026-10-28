@@ -2,7 +2,7 @@
 
 `State.lan.mode` was the literal string `"unknown"`, hard-coded at launch because no SSID detection
 existed on any platform. The REACH block prints the mode when there is no SSID, so the operator's
-first look at the new backhaul panel read **"UNKNOWN · 192.168.28.167:8765"** — a placeholder word
+first look at the new backhaul panel read **"UNKNOWN · 192.0.2.167:8765"** — a placeholder word
 rendered as a fact. The same word fed Debug's SSID row.
 
 Two rules come out of that:

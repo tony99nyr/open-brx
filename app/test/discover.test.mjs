@@ -33,40 +33,44 @@ function lan(live = []) {
 }
 
 test('F139: subnetOf takes the /24 of a dotted quad and refuses anything else', () => {
-  assert.equal(subnetOf('192.168.0.149'), '192.168.0');
+  assert.equal(subnetOf('192.0.2.149'), '192.0.2');
   assert.equal(subnetOf(' 10.0.0.7 '), '10.0.0');
   assert.equal(subnetOf('172.20.10.1'), '172.20.10');
-  assert.equal(subnetOf('192.168.0.256'), null, 'not an octet');
+  assert.equal(subnetOf('192.0.2.256'), null, 'not an octet');
   assert.equal(subnetOf('mc.local'), null, 'an mDNS name has no subnet to sweep');
   assert.equal(subnetOf(null), null); assert.equal(subnetOf(''), null);
 });
 
 test('F139: parseWsTarget splits host/port/path, defaulting the path', () => {
-  assert.deepEqual(parseWsTarget('ws://192.168.0.12:8766/ws'), { host: '192.168.0.12', port: 8766, path: '/ws' });
+  assert.deepEqual(parseWsTarget('ws://192.0.2.12:8766/ws'), { host: '192.0.2.12', port: 8766, path: '/ws' });
   assert.deepEqual(parseWsTarget('WSS://x.trycloudflare.com/ws'), { host: 'x.trycloudflare.com', port: null, path: '/ws' });
-  assert.deepEqual(parseWsTarget('ws://192.168.0.12:8766'), { host: '192.168.0.12', port: 8766, path: '/ws' });
-  assert.equal(parseWsTarget('http://192.168.0.12:8765/api/state'), null);
+  assert.deepEqual(parseWsTarget('ws://192.0.2.12:8766'), { host: '192.0.2.12', port: 8766, path: '/ws' });
+  assert.equal(parseWsTarget('http://192.0.2.12:8765/api/state'), null);
   assert.equal(parseWsTarget(null), null);
 });
 
 test('F139: the phone\'s own address is the first subnet swept, whatever shape the plugin reports it in', () => {
   assert.equal(localIpFrom({ connected: true, connectionType: 'wifi' }), null, 'Capacitor\'s Network plugin reports no address today — say so rather than guess');
-  assert.equal(localIpFrom({ ipAddress: '192.168.0.149' }), '192.168.0.149');
+  assert.equal(localIpFrom({ ipAddress: '192.0.2.149' }), '192.0.2.149');
   assert.equal(localIpFrom({ ip: '10.0.0.4' }), '10.0.0.4');
   assert.equal(localIpFrom({ ip: 'fe80::1' }), null, 'not a v4 address to sweep');
   assert.equal(localIpFrom(null), null);
-  const plan = sweepPlan({ localIp: '192.168.0.149', joinUrl: 'ws://172.20.10.3:8766/ws' });
-  assert.equal(plan.subnets[0], '192.168.0', 'the phone\'s OWN subnet wins over any url');
+  const plan = sweepPlan({ localIp: '192.0.2.149', joinUrl: 'ws://172.20.10.3:8766/ws' });
+  assert.equal(plan.subnets[0], '192.0.2', 'the phone\'s OWN subnet wins over any url');
 });
 
 test('F139: with no address source, the subnet comes from the CURRENT join — the field bug was using a remembered one', () => {
-  const plan = sweepPlan({ localIp: null, joinUrl: 'ws://192.168.0.12:8766/ws' });
-  assert.equal(plan.subnets[0], '192.168.0');
+  const plan = sweepPlan({ localIp: null, joinUrl: 'ws://192.0.2.12:8766/ws' });
+  assert.equal(plan.subnets[0], '192.0.2');
   assert.deepEqual(plan.ports, [8766], 'the join\'s own port, deduped against the default');
   assert.equal(plan.path, '/ws');
   // and the common ranges still follow, so a phone with neither source is no worse off than before
   for (const sn of DEFAULT_SUBNETS) assert.ok(plan.subnets.includes(sn), `${sn} still swept`);
   assert.equal(new Set(plan.subnets).size, plan.subnets.length, 'no subnet swept twice');
+  // The dedup proper: a join on one of the DEFAULT subnets is swept first and only once.
+  const onDefault = sweepPlan({ localIp: null, joinUrl: 'ws://192.168.1.12:8766/ws' });
+  assert.equal(onDefault.subnets[0], '192.168.1');
+  assert.equal(onDefault.subnets.filter(sn => sn === '192.168.1').length, 1, 'a default subnet the join names is not swept twice');
 });
 
 test('F139: a join on a non-default port sweeps that port first, then the default', () => {
@@ -84,8 +88,8 @@ test('F139: with nothing known at all the plan is still valid — the common ran
 });
 
 test('F139: the probe OPENS a websocket and closes it without ever sending a hello', async () => {
-  const { sockets, wsFactory } = lan(['ws://192.168.0.12:8766/ws']);
-  assert.equal(await probeWsOpen('ws://192.168.0.12:8766/ws', { wsFactory, timeoutMs: 50 }), true);
+  const { sockets, wsFactory } = lan(['ws://192.0.2.12:8766/ws']);
+  assert.equal(await probeWsOpen('ws://192.0.2.12:8766/ws', { wsFactory, timeoutMs: 50 }), true);
   assert.equal(sockets[0].sent.length, 0, 'a hello here would make MC hand the node over and kill the real link (net.py: one socket per node)');
   assert.deepEqual(sockets[0].closed, { code: 1000, reason: 'probe' }, 'closed the moment it opened');
   assert.equal(sockets[0].onopen, null, 'handlers detached');
@@ -94,7 +98,7 @@ test('F139: the probe OPENS a websocket and closes it without ever sending a hel
 test('F139: a probe of a dead address resolves false on the timeout — a host with no route fires NO event', async () => {
   const { sockets, wsFactory } = lan([]);
   const t0 = Date.now();
-  assert.equal(await probeWsOpen('ws://192.168.0.13:8766/ws', { wsFactory, timeoutMs: 30 }), false);
+  assert.equal(await probeWsOpen('ws://192.0.2.13:8766/ws', { wsFactory, timeoutMs: 30 }), false);
   assert.ok(Date.now() - t0 >= 25, 'it waited out its own bound, not the OS\'s');
   assert.ok(sockets[0].closed, 'and closed the socket it gave up on');
 });
@@ -102,25 +106,25 @@ test('F139: a probe of a dead address resolves false on the timeout — a host w
 test('F139: a probe that is refused resolves false at once, and a factory that throws does not take the sweep down', async () => {
   const { wsFactory } = lan([]);
   const refusing = url => { const w = new FakeWS(url); setTimeout(() => w.onclose && w.onclose({ code: 1006 }), 0); return w; };
-  assert.equal(await probeWsOpen('ws://192.168.0.14:8766/ws', { wsFactory: refusing, timeoutMs: 5000 }), false);
+  assert.equal(await probeWsOpen('ws://192.0.2.14:8766/ws', { wsFactory: refusing, timeoutMs: 5000 }), false);
   assert.equal(await probeWsOpen('ws://bad/ws', { wsFactory: () => { throw new Error('blocked'); }, timeoutMs: 5000 }), false);
   assert.ok(wsFactory, 'unused');
 });
 
 test('F139: the sweep finds MC on the planned subnet and returns the url to dial', async () => {
-  const mc = 'ws://192.168.0.12:8766/ws';
+  const mc = 'ws://192.0.2.12:8766/ws';
   const { sockets, wsFactory } = lan([mc]);
-  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const plan = sweepPlan({ localIp: '192.0.2.149' });
   const found = await sweepForMc({ ...plan, wsFactory, timeoutMs: 20, pool: 16, hosts: 20 });
   assert.equal(found, mc);
-  assert.ok(sockets.every(s => s.url.startsWith('ws://192.168.0.')), 'never left the phone\'s own subnet once it hit');
+  assert.ok(sockets.every(s => s.url.startsWith('ws://192.0.2.')), 'never left the phone\'s own subnet once it hit');
   assert.ok(sockets.every(s => s.sent.length === 0), 'no probe ever spoke');
 });
 
 test('F139: the sweep is bounded and stops the moment a join lands — it never keeps hammering the LAN', async () => {
   const { sockets, wsFactory } = lan([]);
   let bound = false;
-  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const plan = sweepPlan({ localIp: '192.0.2.149' });
   const p = sweepForMc({ ...plan, wsFactory, timeoutMs: 10, pool: 8, hosts: 254, shouldStop: () => bound });
   setTimeout(() => { bound = true; }, 25);
   assert.equal(await p, null);
@@ -132,10 +136,10 @@ test('office test 2026-09-19: a paused sweep waits rather than gives up, and res
   // Field/office finding: the sweep ran ON TOP of a gun connect and was the likely cause of a 1-2 s freeze
   // before the picker's "Connecting to <gun>…" screen. `isPaused` must hold the NEXT batch, not abandon the
   // sweep the way `shouldStop` does -- so it still finds MC once the connect is done.
-  const mc = 'ws://192.168.0.9:8766/ws';
+  const mc = 'ws://192.0.2.9:8766/ws';
   const { sockets, wsFactory } = lan([mc]);
   let paused = true;
-  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const plan = sweepPlan({ localIp: '192.0.2.149' });
   const p = sweepForMc({ ...plan, wsFactory, timeoutMs: 10, pool: 4, hosts: 20, pacingMs: 1, isPaused: () => paused });
   await new Promise(r => setTimeout(r, 30));
   assert.equal(sockets.length, 0, 'paused before the first batch: nothing probed yet');
@@ -152,7 +156,7 @@ test('F139: the sweep never has more than `pool` sockets open at a time', async 
     w.close = (c, r) => { if (!w.closed) open--; orig(c, r); };
     return w;
   };
-  await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 5, hosts: 40, pacingMs: 0 });
+  await sweepForMc({ subnets: ['192.0.2'], ports: [8766], wsFactory, timeoutMs: 5, hosts: 40, pacingMs: 0 });
   assert.ok(peak <= PROBE_POOL, `peak in flight ${peak} <= the default pool ${PROBE_POOL}`);
   // Closing a socket that is still CONNECTING does not free it in a WebView, so the default is small on
   // purpose: a wide pool leaves hundreds half-open and starves the probes behind them.
@@ -164,23 +168,23 @@ test('F139: a probe queued behind earlier batches gets its FULL window — the c
   // The MC on this LAN is the LAST host swept and answers 25 ms after ITS OWN socket is built. If the
   // timeout were armed when the sweep started rather than when this probe dialled, its window would be
   // long gone by the time its turn came and the one MC on the LAN would be reported as absent.
-  const mc = 'ws://192.168.0.6:8766/ws';
+  const mc = 'ws://192.0.2.6:8766/ws';
   const sockets = [];
   const wsFactory = url => {
     const w = new FakeWS(url); sockets.push(w);
     if (url === mc) setTimeout(() => w.onopen && w.onopen(), 25);
     return w;
   };
-  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 40,
+  const found = await sweepForMc({ subnets: ['192.0.2'], ports: [8766], wsFactory, timeoutMs: 40,
                                    pool: 2, hosts: 6, pacingMs: 1 });
   assert.equal(found, mc);
   assert.ok(sockets.length >= 6, 'it really did work through the earlier batches first');
 });
 
 test('F139: the sweep stops the moment a host answers — no further ports, no further batches', async () => {
-  const mc = 'ws://192.168.0.1:8766/ws';
+  const mc = 'ws://192.0.2.1:8766/ws';
   const { sockets, wsFactory } = lan([mc]);
-  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766, 9999], path: '/ws', wsFactory,
+  const found = await sweepForMc({ subnets: ['192.0.2'], ports: [8766, 9999], path: '/ws', wsFactory,
                                    timeoutMs: 20, pool: 4, hosts: 254, pacingMs: 1 });
   assert.equal(found, mc);
   assert.ok(sockets.every(s => !s.url.includes(':9999')), 'the second port was never tried once one answered');
@@ -396,18 +400,18 @@ test('A60 guard: the verify path processes nothing before the proof check', () =
 // F294 (2026-10-05): a sweep that missed MC on a WSL bench left no trace of WHY. Its log must tell a pause during a gun
 // connect apart from probes that never got an answer, so the 0.4.19 bench step 27 is decisive in one try.
 test('F294: a pause is reported with its reason, and the resume with how long it held the sweep', async () => {
-  const mc = 'ws://192.168.0.9:8766/ws';
+  const mc = 'ws://192.0.2.9:8766/ws';
   const { wsFactory } = lan([mc]);
   /** @type {any[]} */ const events = [];
   let paused = /** @type {string|false} */ ('gun connect');
-  const plan = sweepPlan({ localIp: '192.168.0.149' });
+  const plan = sweepPlan({ localIp: '192.0.2.149' });
   const p = sweepForMc({ ...plan, wsFactory, timeoutMs: 10, pool: 4, hosts: 20, pacingMs: 1,
     isPaused: () => paused, onEvent: e => events.push(e) });
   await new Promise(r => setTimeout(r, 30));
   paused = false;
   assert.equal(await p, mc);
   const pause = events.find(e => e.type === 'pause'), resume = events.find(e => e.type === 'resume');
-  assert.ok(pause && pause.reason === 'gun connect' && pause.subnet === '192.168.0', JSON.stringify(events));
+  assert.ok(pause && pause.reason === 'gun connect' && pause.subnet === '192.0.2', JSON.stringify(events));
   assert.ok(resume && resume.pausedMs >= 20, JSON.stringify(resume));
   assert.equal(events.filter(e => e.type === 'pause').length, 1, 'one pause line per pause, not one per poll');
 });
@@ -415,18 +419,18 @@ test('F294: a pause is reported with its reason, and the resume with how long it
 test('F294: each subnet ends with a probe summary that tells timeouts from closes from a factory that threw', async () => {
   /** @type {any[]} */ const events = [];
   const wsFactory = url => {
-    if (url.includes('.0.5:')) throw new Error('webview refused');
+    if (url.includes('.2.5:')) throw new Error('webview refused');
     const w = new FakeWS(url);
-    if (url.includes('.0.3:')) setTimeout(() => w.onclose && w.onclose({ code: 1006 }), 0);   // refused / reset
-    if (url.includes('.0.9:')) setTimeout(() => w.onopen && w.onopen(), 0);
+    if (url.includes('.2.3:')) setTimeout(() => w.onclose && w.onclose({ code: 1006 }), 0);   // refused / reset
+    if (url.includes('.2.9:')) setTimeout(() => w.onopen && w.onopen(), 0);
     return w;
   };
-  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 15, pool: 4, hosts: 12,
+  const found = await sweepForMc({ subnets: ['192.0.2'], ports: [8766], wsFactory, timeoutMs: 15, pool: 4, hosts: 12,
     pacingMs: 1, onEvent: e => events.push(e) });
-  assert.equal(found, 'ws://192.168.0.9:8766/ws');
+  assert.equal(found, 'ws://192.0.2.9:8766/ws');
   const sum = events.find(e => e.type === 'subnet');
   assert.ok(sum, JSON.stringify(events));
-  assert.equal(sum.subnet, '192.168.0');
+  assert.equal(sum.subnet, '192.0.2');
   assert.equal(sum.open, 1);
   assert.equal(sum.closed, 1, 'the refused host');
   assert.equal(sum.threw, 1, 'the factory that threw');
@@ -449,10 +453,10 @@ test('F294: a sweep stopped from outside says so, and the logger never calls it 
 test('F294: the logger writes one readable line per pause, resume and subnet', () => {
   /** @type {string[]} */ const lines = [];
   const log = sweepLogger(m => lines.push(m));
-  log({ type: 'pause', reason: 'gun connect', subnet: '192.168.0', host: 41 });
+  log({ type: 'pause', reason: 'gun connect', subnet: '192.0.2', host: 41 });
   log({ type: 'resume', pausedMs: 2300 });
-  log({ type: 'subnet', subnet: '192.168.0', probed: 254, open: 0, closed: 2, timeout: 251, threw: 1, ms: 24100 });
-  assert.match(lines[0], /sweep paused \(gun connect\) at 192\.168\.0\.41/);
+  log({ type: 'subnet', subnet: '192.0.2', probed: 254, open: 0, closed: 2, timeout: 251, threw: 1, ms: 24100 });
+  assert.match(lines[0], /sweep paused \(gun connect\) at 192\.0\.2\.41/);
   assert.match(lines[1], /sweep resumed after 2\.3 s/);
-  assert.match(lines[2], /sweep 192\.168\.0\.0\/24: 254 probed, 0 open, 2 closed, 251 timed out, 1 threw \(24\.1 s\)/);
+  assert.match(lines[2], /sweep 192\.0\.2\.0\/24: 254 probed, 0 open, 2 closed, 251 timed out, 1 threw \(24\.1 s\)/);
 });

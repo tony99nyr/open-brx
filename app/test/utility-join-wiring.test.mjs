@@ -76,9 +76,9 @@ test('a sweep hit never replaces a connect already in flight', async () => {
 });
 
 test('a typed http console address dials MC\'s node url, and is saved as that url', async () => {
-  elFor('mcUrl').value = 'http://192.168.0.55:8765/';
+  elFor('mcUrl').value = 'http://192.0.2.55:8765/';
   elFor('btnMc').onclick();
-  const want = 'ws://192.168.0.55:8766/ws';
+  const want = 'ws://192.0.2.55:8766/ws';
   await until(() => api.transport && api.transport.url === want, 'the typed address to be dialled');
   assert.equal(api.transport.trusted, true, 'an operator-typed address is a trusted dial');
   assert.equal(api.settings.mc, want, 'the node url is what is redialled on the next start, not the console address');
