@@ -171,7 +171,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
     "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
     "DDFU": "the v2.x DFU entry [disasm]",
-    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage; so a link must pair again, and which one is unproven; code read only [disasm]",
+    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage, so a link must pair again (which one is unproven; code read only) [disasm]",
     "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
     "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
     "DEV": "developer-mode toggle, persistence unknown [disasm]",

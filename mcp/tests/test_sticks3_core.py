@@ -253,11 +253,14 @@ def test_f391_lock_restore_contract_matches_firmware():
     assert "return saved_s > contract::STATION_LOCK_MAX_S ? contract::STATION_LOCK_MAX_S : saved_s;" in link
     assert interval_ms == 60000
     contracts = (ROOT / "docs/spec/contracts.md").read_text(encoding="utf-8")
+    # contracts.md section 10 keeps one line per older row (doc-rot pass 2026-10-27); the rule's home is utility.md, and
+    # A58's line must send the reader there. No live page may still say 120 seconds.
     a58 = next(line for line in contracts.splitlines() if line.startswith("| A58 |"))
+    assert "utility.md" in a58, a58
     utility = (ROOT / "docs/spec/utility.md").read_text(encoding="utf-8")
-    for text in (a58, utility):
-        assert "at most once a minute" in text
-        assert "restores it in full" in text and "saved game byte" in text
+    assert "at most once a minute" in utility
+    assert "restores it in full" in utility and "saved game byte" in utility
+    for text in (contracts, utility):
         assert "120 seconds" not in text
 
 

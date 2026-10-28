@@ -34,3 +34,5 @@ living reader is deleted, not kept here; `git log --diff-filter=D --name-only --
 **Moved on 2026-10-27:** `bench-rebench-2026-10-04.md` and `bench-rebench-0419.md` (never ran),
 `bench-standard-2026-09-29.md` (ran 2026-10-02), `bench-stick-2026-09-29.md` (never ran) and
 `mc-warning-audit-2026-09-16.md`. `docs/bench-plan.md` NEXT carries every open step of the bench sheets.
+Also `contracts-amendments-2026-08-to-09.md`: the full text of the `docs/spec/contracts.md` §10 rows dated 2026-08-25
+to 2026-09-26. Each rule is folded into the contracts body or the spec its row names; §10 keeps one line per row.

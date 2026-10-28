@@ -114,10 +114,13 @@ the HUD match clock and the local timed end (§3.9). `night` selects blackout de
 
 ### 3.2 Tracking hp / armor / ammo / shooter
 
-> ⚠ **Two pools scored, three on the wire.** `$HP` carries `<hp>,<armor>,<shield>` and damage drains
-> **shields → armor → HP**. The engine now reads and persists `shield` (`engine.js`'s `$HP` handler and its snapshot) but the `status`
-> event, `hit_taken.dmg` and the HUD still model hp+armor. The node fills the shield itself with `$LIFE` writes
-> (F348, below), and an IR `$SIR` function-11 event (P16) can raise it too. The decision is **§10-Q12**.
+> **Three pools on the wire.** `$HP` carries `<hp>,<armor>,<shield>` and damage drains
+> **shields → armor → HP**. The engine reads and persists `shield` (`engine.js`'s `$HP` handler and its snapshot).
+> `hit_taken.dmg` is the drop in hp + armor + shield (`_hpTakePools`), so a hit the shield fully absorbs still
+> produces a `hit_taken`. The HUD shows the shield as a bar when the game has one. The contract's `status` body
+> lists hp and armor only. The phone's beat also sends `shield`, and MC does not read it. The node fills the shield
+> itself with `$LIFE` writes (F348, below), and an IR `$SIR` function-11 event (P16) can raise it too. The open
+> question is **§10-Q12**.
 
 | frame | tokens read | engine effect |
 |---|---|---|
@@ -732,7 +735,7 @@ what the HUD draws: `hud.js` and `hud/deathscreen.js` read it. The voice is outs
 | LIVE · DOWN | **DOWN takeover** | health 0, ammo dim | frozen | countdown (auto) or the station lesson (scanner), the race to the cap while MC is linked |
 | match over | **FINAL RESULTS**: "RESULT PENDING" beside the sync track until MC's `result` arrives, then the result screen | frozen | frozen | `OK` (`ackEnd`) leads to MATCH COMPLETE, then KITTED. "MC NOT REACHED · SEE MISSION CONTROL" after the 30 s settle window with no MC link (§3.13); never WIN or LOSE without a `result` |
 | WS DISCONNECTED (LIVE) | amber MC dot only | last-known | last-known | non-destructive; expected for most of a park match. A tap on the MC label (or night mode) shows the detail pill |
-| WS DISCONNECTED (before LIVE) | dim MC pill | last-known | last-known | MC is required before the match, so the pill stays |
+| WS DISCONNECTED (before LIVE) | amber MC pill | last-known | last-known | MC is required before the match, so the pill stays |
 | BLE DROPPED (any) | red "GUN LINK LOST" strip | frozen | frozen | the retry loop, unbounded while ARMED/LIVE |
 | BLE RELINKED (LOBBY/ARMED) | amber "GUN RELINKED" while the head is re-written | frozen until the echo | frozen | §3.10 head re-write |
 | BLE RELINKED (LIVE) | **RECONCILING takeover** "GUN RELINKED · SYNCING WITH YOUR GUN · weapon disarmed for a moment" | real pools kept | frozen | S7.1: never infers a death, never heals; 3 s disarmed, then re-armed at the real HP; no trigger pull asked |
@@ -750,7 +753,7 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 | SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the gun's swap delay = `FrameBundle.swap_ms` (`$WEAP` t15, bench 2026-09-04: the larger of the two slots; Fast Hands halves it) | a shot on the new slot confirms the slot. A round on the old slot 250 ms or more after the press closes the card without a swap (GUN WAS ON). With neither by `swap_ms`, the node assumes the swap (READY), and the next shot's slot corrects it (§3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
-| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary, perk — A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | 1.7 s, or the weapon delay + 0.4 s |
+| REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary and perk, A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | at least 1.7 s, or the weapon delay + 0.4 s: 1.9 s at the 1.5 s default (A74, `lanes.js redeployOutMs`) |
 | HIT / GAIN | moment | `$HP` down / up | the damage number + the shooter's team chip / +n POOL; one fade in, one fade out, never a repeating flash | 0.7 s / 1 s |
 
 KILL and ALERT are drawn by the lanes (HERO, OBJECTIVE, FEED), not as moments; the centre priority and
@@ -845,7 +848,7 @@ doesn't regress it.
   background-mode (§3.11), advertising (utility.md §6) and share all go through Capacitor plugins.
 - The **node** stays Capacitor (Android + iOS) — one web UI/engine, native BLE. Web Bluetooth is **ruled out**
   (ADR-0003).
-- iOS deployment target 15.0; iPhone X (16.7) supported. Generated `ios/`/`android/` are rebuilt —
+- iOS deployment target 16.2 (`app/scripts/ios-setup.sh`); iPhone X (16.7) supported. Generated `ios/`/`android/` are rebuilt —
   platform settings live in `app/scripts/*-setup.sh`, never hand-edited in Xcode/Studio.
 
 ---
@@ -860,9 +863,9 @@ These questions carry no ids. Anything that needs tracking gets a row in [`../FO
 which is where open work lives; closed questions are in git history.
 
 - **Q2: a station beacon as a presence source (`$HIR` tok2 = 15).** Post-MVP: FOLLOWUPS/post-mvp **F338**.
-- **Q4: the `$VOLTS` token map** (tok 3 vs tok 4 for pack %). `post-mvp.md` §10, "`$VOLTS` % token" (no id).
-- **Q5: cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from cache without MC in range? `CONFIG_TTL_MS` plus a stale-config warning. No row yet.
-- **Q6: keep-awake vs. battery.** Measure the drain over a long event. No row yet.
-- **Q7: a side-effect-free gun state probe** (the only way to catch a gap-death, §3.10). No row yet.
-- **Q10: iOS queued BLE notifications on resume.** `post-mvp.md` §10, "iOS locked-phone BLE" (no id).
-- **Q12: should `hit_taken` carry the shield delta as its own field?** FOLLOWUPS/post-mvp **Q12′**.
+- **Q4: the `$VOLTS` token map** (tok 3 vs tok 4 for pack %). Q20 in `post-mvp.md`.
+- **Q5: cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from cache without MC in range? `CONFIG_TTL_MS` plus a stale-config warning. Q22 in `post-mvp.md`.
+- **Q6: keep-awake vs. battery.** Measure the drain over a long event. Q23 in `post-mvp.md`.
+- **Q7: a side-effect-free gun state probe** (the only way to catch a gap-death, §3.10). Q24 in `post-mvp.md`.
+- **Q10: iOS queued BLE notifications on resume.** Q21 in `post-mvp.md`.
+- **Q12: should `hit_taken` carry the shield delta as its own field?** `dmg` already counts it (§3.2). FOLLOWUPS/post-mvp **Q12′**.

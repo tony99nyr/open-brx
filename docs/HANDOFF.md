@@ -46,6 +46,8 @@ a decision first.
 - **F634, both halves (A84):** MC names the held match on every assign, and the phone keeps its results only for
   the match it ended.
 
+The doc-rot pass (spec and protocol lane) is in the land queue: the design briefs, API.md, the protocol references,
+and contracts.md folded into its body with §10 compacted to one line per older row.
 **Next:** none open in this lane. Wait for brx1.
 **Blocked:** none.
 

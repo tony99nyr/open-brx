@@ -1,6 +1,6 @@
 # M-LOADOUT — three slots (primary, secondary, perk), loadout policy, phone self-serve kitting
 
-- **Status:** Built; open items: S6. A14 made the perk its own slot beside PRIMARY / SECONDARY; F411 replaced the §8 saved-game store (see §8). Amends `contracts.md` (**A10**) §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
+- **Status:** Built; open items: S6 (`docs/post-mvp.md`). A14 made the perk its own slot beside PRIMARY / SECONDARY; F411 replaced the §8 saved-game store (see §8). Amends `contracts.md` (**A10**) §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
   Binding for `mcp/brx_mcp/mc` (server), `webapp/mc` (MC UI) and `app/` (phone node). Field names are identical
   in Python TypedDicts, `API.md`, `types.ts` and the phone engine.
 - **Owns:** the shape of a player's kit (primary + optional secondary + optional perk), the **loadout policy** a host

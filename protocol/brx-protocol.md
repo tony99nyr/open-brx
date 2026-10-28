@@ -501,7 +501,7 @@ the gun send `$DISCONNECT,*` and drop the link; a power-cycled gun needs its hea
 row sent once at arm still registers hits after a `$SPAWN,,*` with no re-send. `$SPAWN` DOES zero every `$TMP`
 token, so a per-life `$TMP` write (spawn protection, live accuracy, …) must land AFTER `$SPAWN`, never before it.
 
-**Still open on v4.32:** `$AS` / `$UP` effects are P4, the `$PB*` enums are P12, and the nRF radio is D1, all in `docs/post-mvp.md`.
+**Still open on v4.32:** `$AS` / `$UP` effects are P4, the `$PB*` enums are P12, the nRF radio is D1, and the rest (`$BHIT`, `$HFIRE`, `$LCD`/`$VOLTS` tokens 3 to 4, `$SIR` p5 to p8, `$RV`/`$RP`/`$KK`, `$SP` end-game, the gun-to-headset link, Gen1 differences) is R5, all in `docs/post-mvp.md`.
 
 ## 8. Safe testing notes
 
