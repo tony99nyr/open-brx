@@ -71,7 +71,7 @@ What the shape costs, stated plainly:
 - **You always know you died. You may learn the kill later.** A kill is seen by the tagger that took it. The confirm reaches the shooter through Mission Control, so out of coverage it lands when both phones next have a path.
 - **One phone, one tagger.** A dead phone takes its player out of the match. There is no spare link.
 - **Backhaul needs the host online.** The tunnel needs internet at the laptop, and the phone needs a plan and a signal. A park with no cell service plays exactly as it does without it.
-- **The winner waits for everyone.** Kills live in the victims' reports, so Mission Control holds the winner until every phone has sent its results, the operator taps FINALISE, or 2 minutes pass after the whistle.
+- **The winner waits for everyone.** Kills live in the victims' reports, so Mission Control holds the winner until every phone and every control point has sent its results, the operator taps FINALISE, or 2 minutes pass after the whistle.
 
 ## Recap
 
