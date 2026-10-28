@@ -1548,10 +1548,11 @@ def test_the_firmware_address_scan_can_actually_fail():
 # person's network, and the path names one person's account (a field bundle once named the MacBook's account). Write
 # a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log. A subnet (`/24`) or a
 # wildcard (`192.168.0.x`) is a sweep range, not a host, so it never matches. Generic addresses are allowed by value.
-# Scope: the docs trees only. Code and tests under app/ and mcp/ carry example addresses of their own.
+# Scope: addresses in the docs trees; account paths in those and in every tracked markdown file. Code and tests
+# carry example paths and addresses of their own (`/home/op`, `C:\\Users\\Someone`).
 _PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
-_ACCOUNT_PATH = re.compile(r"/Users/(?!Tony\b|<)[A-Za-z][\w.-]*|/home/(?!tony\b|<|example\b)[a-z][\w.-]*"
-                           r"|[A-Za-z]:\\Users\\(?!Tony\b|<|Public\b)[A-Za-z][\w.-]*")
+_ACCOUNT_PATH = re.compile(r"/Users/(?!<|Shared\b)[A-Za-z][\w.-]*|/home/(?!<|example\b)[a-z][\w.-]*"
+                           r"|[A-Za-z]:\\Users\\(?!<|Public\b)[A-Za-z][\w.-]*")
 _PRIVATE_IP_ALLOWED = {
     "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
     "192.168.16.1": "an example WSL host address, assigned per boot",
@@ -1566,19 +1567,28 @@ def _privacy_files() -> list[pathlib.Path]:
     return out
 
 
-def _privacy_problems(rel: str, text: str) -> list[str]:
+def _privacy_problems(rel: str, text: str, ips: bool = True) -> list[str]:
     out = []
     for n, line in enumerate(text.splitlines(), 1):
-        out += [f"{rel}:{n}: {m.group(0)}" for m in _PRIVATE_IP.finditer(line)
-                if m.group(0) not in _PRIVATE_IP_ALLOWED]
+        if ips:
+            out += [f"{rel}:{n}: {m.group(0)}" for m in _PRIVATE_IP.finditer(line)
+                    if m.group(0) not in _PRIVATE_IP_ALLOWED]
         out += [f"{rel}:{n}: {m.group(0)}" for m in _ACCOUNT_PATH.finditer(line)]
     return out
 
 
 def test_no_private_lan_address_or_account_path_in_the_docs():
     hits = []
-    for path in _privacy_files():
+    docs = _privacy_files()
+    for path in docs:
         hits += _privacy_problems(path.relative_to(REPO).as_posix(), path.read_text(encoding="utf-8", errors="replace"))
+    # 2026-10-28: no tracked page names an account any more, so every markdown file (skills, READMEs) is held to it.
+    # Addresses stay docs-only: a component's own README or fixture may show an example address.
+    seen = set(docs)
+    for path in _tracked_files():
+        if path.suffix == ".md" and path.is_file() and path not in seen:
+            hits += _privacy_problems(path.relative_to(REPO).as_posix(),
+                                      path.read_text(encoding="utf-8", errors="replace"), ips=False)
     assert not hits, ("a private LAN address or an account path in the docs (use <mc-lan-ip>, <lan-ip-N> or "
                       "<you>; a generic address goes in _PRIVATE_IP_ALLOWED with its reason): "
                       + "; ".join(hits[:8]) + (f" (+{len(hits) - 8} more)" if len(hits) > 8 else ""))
@@ -1588,11 +1598,12 @@ def test_the_privacy_scan_can_actually_fail():
     rel = "docs/x.md"
     for bad in ("--advertise 192.168.0.2 --x", "ws://192.168.0.3:8766/ws", "at 10.0.0.7.", "172.20.10.2",
                 "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x",
-                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws", r"C:\Users\someone\x"):
+                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws", r"C:\Users\someone\x",
+                "/mnt/c/Users/Tony/x", "/home/tony/x", r"C:\Users\Tony\x", "/Users/Tony/x"):
         assert _privacy_problems(rel, bad), bad
     for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
-                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/Tony/x", "/home/tony/x",
-                 r"C:\Users\Tony\x", "10.0.0.0/8"):
+                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/<you>/x", "~/x", r"%USERPROFILE%\x",
+                 r"C:\Users\Public\x", "/home/<you>/x", "10.0.0.0/8"):
         assert not _privacy_problems(rel, good), good
 
 
