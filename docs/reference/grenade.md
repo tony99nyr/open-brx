@@ -3,9 +3,9 @@
 The grenade has no real written manual; the best source is two 2019 videos by **"Extreme Laser Tag
 And More!"** — *BRX Accessory Grenade Basics* (`youtu.be/A9DTQMrdjxk`, 26 min) and *Tips & tricks on
 grenade settings/functionality* (`youtu.be/5xgKF2MBtWc`, 9.5 min). Facts distilled from their
-transcripts (credit the channel), then **hardware-confirmed and extended** in exp-log #33–40. This makes
+transcripts (credit the channel), then **hardware-confirmed and extended** in `experiment-log/2026-08.md` #33–40. This makes
 our reference the most complete grenade doc anywhere — it feeds the grenade **state-display** app
-(FOLLOWUPS B8; note: over-BLE *config* was disproven — see §"Configuration is on-device only" below).
+(B8 in `docs/post-mvp.md`; note: over-BLE *config* was disproven, see §"Configuration is on-device only" below).
 Complements the `$GREN` field facts in `../../protocol/callsign-extract/apk-harvest.md` and the
 pairing/IR facts in `brx-extended-user-guide.md`.
 
@@ -294,16 +294,14 @@ Two different questions:
 - Note also: community reports **Assault was "unusable" / removed from JEDGE hosting** — the mode itself
   works (we confirmed capture-to-team-colour), but treat its *reliability* as low.
 
-## Resolved this session, and what's still open
+## Resolved findings
 
-**Resolved (exp-log #33–40):** the 5-mode colour map; the on-device setup procedure; the `$HIR,0,15,0,
+**Resolved (#33–40):** the 5-mode colour map; the on-device setup procedure; the `$HIR,0,15,0,
 <team>,<mode>` beacon decode incl. live ownership; the IR-broadcast comms model; **G8** (`$GREN` does
 NOT set objective modes — button-locked); **G7** (USB-C is power/charge only — no data interface);
 **G6** (mode-dependent — Hill/Respawn beacon over BLE, Assault/CTF/Frag don't).
 
-**Still open:** **G9** — CTF flag team-assignment (shooting a CTF grenade turned it *red*, not the
-shooter's team colour; likely needs a team/flag assignment first — pull Jay's CTF videos). **G10** —
-`$GREN` for a *paired thrown* grenade's blast type (untested — needs the install-accessory pairing).
+**Still open:** G9 (CTF flag team assignment) and G10 (`$GREN` blast type on a paired thrown grenade). Both are rows in `docs/post-mvp.md`.
 The **KotH charge/progress level** is not in the beacon (it's a per-gun local timer); decoding a charge
 value needs a `$SIR`-passthrough rig that lets the gun fire *and* surface grenade IR (exp-log #38) —
 **that rig now exists**: `$SIR,15,<sub>,,28,0,0,1,,*` (FF on) surfaces protocol-15 words as `$HIR` with no

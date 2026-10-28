@@ -2,7 +2,7 @@
 """The Stick's screen simulator: build it, run every scenario, check the screens, write a gallery.
 
     python3 hardware/m5sticks3/sim/stick_sim.py            # build, run, check, write sim/out/index.html
-    python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/Tony/brx-stick-sim
+    python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/<you>/brx-stick-sim
 
 Render path: the REAL station_render.h, compiled on the host against the real LovyanGFX sprite code
 from the installed M5GFX library (sim/shim/M5Unified.h), so every PNG is pixel-exact with the Stick.

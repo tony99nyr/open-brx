@@ -45,7 +45,7 @@ dispersed** match, tracks a live board and produces a recap. Each player carries
 | 4 | **Lobby** | Players ready up; on all-ready MC pushes `config` + the per-player `FrameBundle`; nodes write the head (gun unspawned) and ack with the gun's echo. | contracts §5 |
 | 5 | **Dispersed start** | MC issues `match_id` + a go-live wall-clock time; each node counts down locally and spawns its gun at T. No signal at T-0. | start-sequence.md |
 | 6 | **Live play** | Nodes run the match; MC shows a board with staleness; feedback and K/A/ACC reach players in coverage zones. | node.md, API.md |
-| 7 | **Recap** | Nodes flush; MC reconciles; winner, K/D, accuracy, medals, CSV. Provisional until every node has flushed. | API.md, contracts §4 |
+| 7 | **Recap** | Nodes flush; MC reconciles; winner, K/D, accuracy, medals, CSV. Withheld until every phone and hill is in, the host presses FINALISE, or 120 s pass (A81, A83). | API.md, contracts §4 |
 
 ## 4. Module map
 

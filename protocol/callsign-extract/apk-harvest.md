@@ -57,7 +57,7 @@ today.
 
 ## The grenade (answers "can we push the mode onto the grenade?")
 
-**⚠️ Hardware-tested — the answer is NO for objective modes (G8, exp-log #36).** This APK-derived
+**⚠️ Hardware-tested: the answer is NO for objective modes (G8, `docs/experiment-log/2026-08.md` #36).** This APK-derived
 section originally hypothesized that `$GREN` sets the grenade's mode; **that was disproven on hardware.**
 The grenade is not its own BLE device (correct — no grenade-BLE/QR class, only `SetupGrenade` + the
 `$GREN` request in the gun's namespace), BUT:
