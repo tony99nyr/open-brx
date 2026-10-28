@@ -316,7 +316,7 @@ def test_bolt_verdict_json_is_strict_and_null_reads_as_na():
         assert record.call_args.args[0]["matrix"]["candidate"]["columns"]["Sniper Rifle"]["ammo stress"] is None
 
 
-def test_report_scenario_copy_uses_the_current_assumptions():
+def _copy_verdict():
     reasons = {"dry": 1, "died_reloading": 0, "died_heat_locked_or_venting": 0,
                "died_swapping": 0, "cap": 0}
     matrix = {"kits": ["AR", "Sniper"], "specs": {"AR": {"perk": None},
@@ -338,7 +338,8 @@ def test_report_scenario_copy_uses_the_current_assumptions():
                "rules": {"shipped": {}, "baseline": {}, "candidate": {}}, "ttk": [],
                "assumptions": {}, "not_modelled": [],
                "rush_speed_sweep": {"rows": [{"speed_m_s": speed,
-                   "plain": {"rush_success": 0.4}, "body_armor": {"rush_success": 0.5}}
+                   "plain": {"rush_success": 0.4}, "body_armor": {"rush_success": 0.5},
+                   "baseline_plain": {"rush_success": 0.4}, "baseline_body_armor": {"rush_success": 0.5}}
                    for speed in R.RUSH_SPEED_SWEEP], "verdict_flips": True},
                "aim_sweep": R.aim_sweep_status(
                    [{"aim": aim, "mid": 0.4, "long": 0.5} for aim in R.AIM_SWEEP],
@@ -348,6 +349,11 @@ def test_report_scenario_copy_uses_the_current_assumptions():
                "hill": {"hold": [], "overwatch": [], "contest": []},
                "pistol_finishers": [{"primary": "AR", "pistol": "USP", "finish_ms": 1,
                                      "reload_finish_ms": 2, "bar_ms": 3, "beats_staying": True}]}
+    return verdict
+
+
+def test_report_scenario_copy_uses_the_current_assumptions():
+    verdict = _copy_verdict()
     with mock.patch.object(R, "REAL_AIM", 0.73), mock.patch.object(R, "AMMO_STRESS_ATTACKER_AIM", 0.17), \
             mock.patch.object(R, "AMMO_PICKUP_AFTER_KILLS", 7), \
             mock.patch.object(R, "HILL_SECOND_ATTACKER_MS", 4200), \
@@ -790,38 +796,94 @@ def test_op_rule_gates_on_the_crit_pull_and_on_every_fieldable_perk():
     assert t["status"] == "fail" and t["numbers"]["failing"] == ["sniper_rifle"], t
 
 
-def test_marksman_rush_counter_catches_both_sides():
-    """A Sniper that one-shots is never rushed down (counter fails); one at 20 damage never peek-kills (strong
-    fails). The strong side reads MARKSMAN_STRONG_COLUMN. Break it once (drop either condition) and watch a case
-    pass."""
+def test_marksman_rush_counter_is_a_flip_test():
+    """F578 (Tony, 2026-10-27, "Relative"): the rush counter fails only when the change makes a 20 m rush weaker
+    than against the shipped baseline, past the margin. A one-shot Sniper is far harder to rush than the shipped
+    one (fail); a 20-damage Sniper is easier (pass). Break it once (gate on the old absolute bar, or drop the
+    Body Armor side) and watch a case flip."""
     w = R.shipped_world()
     ar = R.make_kit(w, "AR (plain)", R.ANCHOR)
+    shipped = R.marksman_rush_counter(R.make_kit(w, "Sniper (plain)", "sniper_rifle"), ar, 60)
     out = {}
     for dmg in (200, 20):
         cw = R.build_worlds(R.load_candidate({"weapon_id": "sniper_rifle", "changes": {"wire.dmg": dmg}}))[1]
-        out[dmg] = R.marksman_rush_counter(R.make_kit(cw, f"sn{dmg}", "sniper_rifle"), ar, 60)
-    hi = R.marksman_verdict(out[200], out[200], [R.MARKSMAN_STRONG_COLUMN])
-    lo = R.marksman_verdict(out[20], out[20], [R.MARKSMAN_STRONG_COLUMN])
-    assert hi["numbers"]["strong_ok"] and not hi["numbers"]["counter_ok"] and hi["status"] == "fail", hi
-    assert not lo["numbers"]["strong_ok"] and lo["status"] == "fail", lo
-    good = {"peek_kill": 0.7, "rush_success": 0.6}
-    assert R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN])["status"] == "pass"
-    armoured = {"peek_kill": 0.7, "rush_success": 0.0}
-    assert R.marksman_verdict(good, armoured, [R.MARKSMAN_STRONG_COLUMN])["status"] == "fail"
-    assert R.marksman_verdict(good, good, [])["status"] == "fail"
+        out[dmg] = R.marksman_rush_counter(R.make_kit(cw, "Sniper (plain)", "sniper_rifle"), ar, 60)
+    hi = R.marksman_verdict(out[200], out[200], [R.MARKSMAN_STRONG_COLUMN], base=shipped, base_ba=shipped, reps=60)
+    lo = R.marksman_verdict(out[20], out[20], [], base=shipped, base_ba=shipped, reps=60)
+    assert hi["status"] == "fail" and hi["numbers"]["plain_weaker"], hi
+    assert lo["status"] == "pass" and not lo["numbers"]["strong_ok"], lo   # the strong side is reported only
+    base = {"peek_kill": 0.7, "rush_success": 0.30}
+    v = R.marksman_verdict(base, base, [R.MARKSMAN_STRONG_COLUMN], base=base, base_ba=base, reps=3000)
+    assert v["status"] == "pass" and not v["numbers"]["absolute_bar_met"], v   # below 0.50 is no longer a fail
+    small_drop = {"peek_kill": 0.7, "rush_success": 0.29}
+    assert R.marksman_verdict(small_drop, small_drop, [], base=base, base_ba=base, reps=3000)["status"] == "pass"
+    big_drop = {"peek_kill": 0.7, "rush_success": 0.20}
+    only_ba = R.marksman_verdict(base, big_drop, [], base=base, base_ba=base, reps=3000)
+    assert only_ba["status"] == "fail" and only_ba["numbers"]["body_armor_weaker"], only_ba
+    assert not only_ba["numbers"]["plain_weaker"]
+    assert R.marksman_verdict(big_drop, base, [], base=base, base_ba=base, reps=3000)["status"] == "fail"
+    rise = {"peek_kill": 0.7, "rush_success": 0.60}
+    assert R.marksman_verdict(rise, rise, [], base=base, base_ba=base, reps=3000)["status"] == "pass"
     far = {"peek_kill": 0.7, "rush_success": 0.3}
-    numbers = R.marksman_verdict(good, good, [R.MARKSMAN_STRONG_COLUMN], far, far)["numbers"]
+    numbers = R.marksman_verdict(base, base, [], far, far, base=base, base_ba=base, reps=3000)["numbers"]
     assert numbers["vs_plain_ar_30m"] == far and numbers["rush_start_m"] == 20.0
     assert R.MARKSMAN_STRONG_COLUMN in R.COLUMNS
 
 
+def test_report_renders_the_flip_rush_table_and_an_old_absolute_verdict():
+    """F578 review: the report renders the baseline/candidate table, an old-shape verdict through its own branch,
+    and sweep rows written before the baseline columns existed."""
+    rate = lambda x: {"peek_kill": 0.7, "peek_death": 0.0, "escape": 0.3, "rush_success": x}  # noqa: E731
+    v = _copy_verdict()
+    v["tests"]["marksman_rush_counter"] = R.marksman_verdict(
+        rate(0.10), rate(0.30), [R.MARKSMAN_STRONG_COLUMN], base=rate(0.30), base_ba=rate(0.30), reps=3000)
+    report = R.report_markdown(v)
+    assert "| plain AR | 0.300 | 0.100 |" in report and "| True | the same weapon, shipped |" in report, report
+    assert "| AR with Body Armor | 0.300 | 0.300 |" in report
+    old = _copy_verdict()
+    old["tests"]["marksman_rush_counter"] = {"status": "fail", "pass": False, "numbers": {
+        "vs_plain_ar": rate(0.35), "vs_ar_body_armor": rate(0.33), "counter_ok": False, "strong_ok": False}}
+    old["rush_speed_sweep"]["rows"] = [{"speed_m_s": s, "plain": {"rush_success": 0.4},
+                                        "body_armor": {"rush_success": 0.5}} for s in R.RUSH_SPEED_SWEEP]
+    text = R.report_markdown(old)
+    assert "An absolute-bar verdict from before F578" in text and "| 2.5 | - / 0.40 | - / 0.50 |" in text, text
+
+
+def test_rush_drop_margin_is_the_floor_or_the_noise():
+    assert R.rush_drop_margin(0.0, 0.0, 3000) == R.RUSH_FLIP_FLOOR
+    assert R.rush_drop_margin(0.5, 0.5, 60) > 0.15        # 60 reps: noise, not the floor
+    assert R.rush_weaker(0.30, 0.25, 3000) and not R.rush_weaker(0.30, 0.25, 60)
+
+
+def test_rush_baseline_compares_a_new_marksman_with_the_reference_sniper():
+    """A changed marksman is its own baseline, a new one is the shipped Sniper (F578 review: the hardest shipped
+    marksman is the AMR, which made the bar lenient). The kit names match review()'s, so a no-op pairs exactly."""
+    w = R.shipped_world()
+    ar = R.make_kit(w, "AR (plain)", R.ANCHOR)
+    sniper = R.marksman_rush_counter(R.make_kit(w, f"{R._name(w, 'sniper_rifle')} (plain)", "sniper_rifle"), ar, 20)
+    new = R.rush_baseline(w, "no_such_marksman", 20)
+    assert new[5]["plain"].startswith("sniper_rifle") and new[3] == sniper, new[5]
+    same = R.rush_baseline(w, "sniper_rifle", 20)
+    assert same[5]["plain"] == "the same weapon, shipped" and same[3] == sniper
+    amr = R.rush_baseline(w, "amr", 20)
+    assert amr[5]["plain"] == "the same weapon, shipped"
+    assert R.rush_baseline(w, R.ANCHOR, 20)[5]["plain"].startswith("sniper_rifle")   # becomes a marksman
+    with mock.patch.object(R, "RUSH_NEW_MARKSMAN_REF", "not_shipped"):
+        hard = R.rush_baseline(w, "no_such_marksman", 20)
+    assert "hardest shipped marksman" in hard[5]["plain"]
+
+
 def test_rush_speed_sweep_reports_three_speeds_and_a_constructed_verdict_flip():
     assert R.RUSH_SPEED_SWEEP == (2.5, 5.0, 8.0)
-    rows = [{"speed_m_s": speed, "plain": {"rush_success": plain},
-             "body_armor": {"rush_success": armoured}}
-            for speed, plain, armoured in ((2.5, 0.2, 0.3), (5.0, 0.4, 0.45), (8.0, 0.6, 0.7))]
-    assert R.rush_sweep_flips(rows, strong_ok=True, verdict_pass=False)
-    assert not R.rush_sweep_flips(rows, strong_ok=False, verdict_pass=False)
+    def row(speed, base, cand):
+        return {"speed_m_s": speed, "plain": {"rush_success": cand}, "body_armor": {"rush_success": cand},
+                "baseline_plain": {"rush_success": base}, "baseline_body_armor": {"rush_success": base}}
+    steady = [row(2.5, 0.3, 0.3), row(5.0, 0.3, 0.3), row(8.0, 0.3, 0.3)]
+    assert not R.rush_sweep_flips(steady, verdict_pass=True, reps=3000)
+    slow_drop = [row(2.5, 0.3, 0.1), row(5.0, 0.3, 0.3), row(8.0, 0.3, 0.3)]
+    assert R.rush_sweep_flips(slow_drop, verdict_pass=True, reps=3000)
+    # the verdict speed itself never counts as a flip
+    assert not R.rush_sweep_flips([row(5.0, 0.3, 0.1)], verdict_pass=True, reps=3000)
 
 
 def test_aim_sweep_flags_a_near_top_change():
@@ -1208,7 +1270,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 26
+    assert R.SCENARIO_VERSION == 27
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
