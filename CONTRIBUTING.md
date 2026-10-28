@@ -38,8 +38,8 @@ touched `app/src`, `webapp/mc/src`, a UI gate or an e2e script): that is the fin
 suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
-(about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 7.5 min on a 32-core box). `pnpm run test:all -- site mcp` runs only the jobs whose names
+(about 3 to 5 min on this box, set by the slowest Python jobs, `mcp-core` and `mcp-sim`, which run in parallel; their `secs` in `scripts/lib/jobs.mjs` are 300). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
+`webapp/mc` e2e script (about 7 min on a 32-core box, set by `app-screens`). `pnpm run test:all -- site mcp` runs only the jobs whose names
 match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free ports, and
 writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 

@@ -43,10 +43,19 @@ One-time: `cd app && npx playwright install chromium` (`playwright` is a devDepe
   backoff once the ring drains, keeping MC's original `reason` — the gate drives a real assign/config/start
   push to hold it a second time from ARMED. Platform reads `web` in Chromium; only a device proves
   `android`/`ios`.
+- **`postmatch-e2e.mjs`** (with `postmatch_mc.py` and `lib/postmatch-checks.mjs`) — the post-match end-to-end gate (F635): a real demo MC, four phone HUDs and a hill station in one Chromium. A WebSocket tap records every frame MC sends each phone, and a snapshot reads every field a player can see. `ONLY=<case>` runs one case. `postmatch_mc.py` is the test-only MC launcher that sets a short result-release bound.
+- **`alert-gallery.mjs`** — frozen renders of the real HUD alert lanes (day and night, both screen widths) for review. It asserts nothing. Pass an output folder as the first argument; the shots never go in the repo.
+- **`koth-capture-alert-gallery.mjs`** — the same kind of gallery for the King of the Hill "capture begins" alert, beside the hill badges that ship. It asserts nothing.
+- **`medal-gallery.mjs`** — the medal icon gallery (sizes, day and night, the multi-kill strip, the recap tabs). It asserts nothing.
+- **`gun-audio-sim.mjs`** — a pure, deterministic model of the gun's audio channel (`docs/audio-queue-scenarios.md`). Input is the timed writes; output is each clip's start, end and latency.
+- **`audio-scenarios.mjs`** — the deterministic audio cases for `docs/audio-queue-scenarios.md`, built on `gun-audio-sim.mjs`.
+- **`hill-fairness-sweep.mjs`** — F464 sweep: capture time the delayed decay costs a phone inside the circle, by advert gap and loss. It prints a table: `cd app && node tools/hill-fairness-sweep.mjs`.
+- **`hud-html-states.mjs`** — captures stage engine states for the fixed HUD HTML test. It needs `--write-golden` and replaces the golden fixtures, so use it only for a deliberate HTML change.
+- **`record-traces.mjs`** — records the golden traces in `test/fixtures/traces/` through the real `src/engine.js`. It refuses to overwrite a changed `expect` without `--accept`. Read the diff first.
+- **`monotonic-date.mjs`** — a helper that gives every gate page a monotonic `Date.now()`, so a stepped host clock cannot expire timers early.
 - The `?mc=&gun=` page works in ANY browser too — open it on the desktop next to the MC UI for manual poking.
 
-Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor thenable-proxy
-incident, FOLLOWUPS 2026-08-26).
+Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor plugin-proxy note in `app/README.md`, Notes).
 
 ## `node tools/e2e.mjs` — the browser suite
 

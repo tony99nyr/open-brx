@@ -82,7 +82,7 @@ cd ../..
 
 **`~/.brx-mcp/armory.json` is NOT in git and never will be** — it is keyed on the headset
 serial/PIN. Copy it from the Windows machine
-(`C:\Users\Tony\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
+(`%USERPROFILE%\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
 stickers and the KNOWN GUNS section is empty. It is re-read per request, so no restart is needed.
 
 ## 2. The change-to-screen loop — READ THIS ONE
@@ -140,7 +140,7 @@ port is the one on the main Wireless debugging screen (it is not the pairing por
 when the phone reboots or reconnects to Wi-Fi). `ADB_CONNECT=<ip> npm run android:install` reads the
 current port from mDNS itself (F544). USB works too, once the phone trusts the Mac.
 
-**Copy `~/.android/debug.keystore` from the Windows machine** (`C:\Users\Tony\.android\debug.keystore`;
+**Copy `~/.android/debug.keystore` from the Windows machine** (`%USERPROFILE%\.android\debug.keystore`;
 it is the same file WSL uses) before the first Mac build. A debug apk is signed with the building
 machine's throwaway key, and a phone that holds a build from another key refuses the upgrade
 (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). The script explains this when it happens and never uninstalls
@@ -207,7 +207,7 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 |---|---|
 | Every open MVP issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) → *System proofs* |
-| The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
+| The lab notebook — append after every session | [`experiment-log/`](experiment-log/), the current month's file |
 | Open work (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) (MVP), [`post-mvp.md`](post-mvp.md) (the rest) |
 
 **Record a refuted theory as loudly as a confirmed one.** In one session `outdoorMode`, daylight, gun
