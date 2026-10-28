@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 import { freePort } from '../../scripts/lib/ports.mjs';
 import { HONOR_HOLDERS_SHOWN } from '../src/hud/result.js';
+import { RESULT_SETTLE_MS } from '../src/engine.js';
 import { compareFrames, welcomeResult, keepsResult, expectedHonours, mmssToS, sameJson, fieldDiff } from './lib/postmatch-checks.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -45,10 +46,8 @@ const STUCK_S = 25;                       // the test bound (postmatch_mc.py); M
 const CONSOLE_STUCK_S = Number(/export const SYNC_STUCK_S = (\d+);/.exec(fs.readFileSync(path.join(REPO, 'webapp/mc/src/api/contract.gen.ts'), 'utf8'))?.[1]);
 if (!Number.isFinite(CONSOLE_STUCK_S)) { console.error('FATAL: no SYNC_STUCK_S in webapp/mc/src/api/contract.gen.ts'); process.exit(3); }
 const TL_TDM = 30, TL_KOTH = 60;          // match lengths: room for the scripted kills, and for the hill to go quiet more than 10 s before the whistle
-// The phone's own settle time (engine.js RESULT_SETTLE_MS, not exported): an unlinked phone says RESULT PENDING for this long
-// after its end, then MC NOT REACHED. Read from the source, as CONSOLE_STUCK_S is.
-const SETTLE_MS = Number(/const RESULT_SETTLE_MS = (\d+);/.exec(fs.readFileSync(path.join(ROOT, 'src/engine.js'), 'utf8'))?.[1]);
-if (!Number.isFinite(SETTLE_MS)) { console.error('FATAL: no RESULT_SETTLE_MS in app/src/engine.js'); process.exit(3); }
+// The phone's own settle time: an unlinked phone says RESULT PENDING for this long after its end, then MC NOT REACHED.
+const SETTLE_MS = RESULT_SETTLE_MS;
 const SETTLE_BAND_MS = 4000;              // either headline is right this close to the boundary (the phone's end is not MC's)
 
 // ---------- log and checks ----------

@@ -93,7 +93,7 @@ const LINK_STALE_MS = 150000;
 const LINK_WATCHDOG_ENABLED = false;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
-const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the results screen says PENDING for this long; only
+export const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the results screen says PENDING for this long; only
                                     // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
 const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/$LCD, assume the write took anyway — same
                                      // "the real duration has never been timed" precedent as `switchWindowMs()`, so SWITCHING… never hangs forever
