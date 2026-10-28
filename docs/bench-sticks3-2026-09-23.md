@@ -35,7 +35,7 @@ CLI="/mnt/c/Users/<you>/AppData/Local/Programs/Arduino IDE/resources/app/lib/bac
 URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
 "$CLI" core install m5stack:esp32 --additional-urls $URL && "$CLI" lib install M5Unified
 mkdir -p /mnt/c/Users/<you>/brx-sticks3/m5sticks3 && cp hardware/m5sticks3/*.ino hardware/m5sticks3/*.h /mnt/c/Users/<you>/brx-sticks3/m5sticks3/
-cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc" --additional-urls $URL '%USERPROFILE%\brx-sticks3\m5sticks3'
+cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc" --additional-urls $URL 'C:\Users\<you>\brx-sticks3\m5sticks3'
 ```
 
 **Pass:** the compile ends with a sketch size under the 3 MB app partition. **Log:** core and library versions.
@@ -45,7 +45,7 @@ cd /mnt/c && "$CLI" compile --fqbn "m5stack:esp32:m5stack_sticks3:PartitionSchem
 **Restart: single-click the small side button** (docs.m5stack.com/en/core/StickS3).
 
 1. Tony plugs the Stick into the laptop by USB-C and powers it on. The agent lists ports and picks the `0x303a` one.
-2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> '%USERPROFILE%\brx-sticks3\m5sticks3'`. The
+2. The agent flashes: `"$CLI" upload --fqbn <as gate 0> -p COM<n> 'C:\Users\<you>\brx-sticks3\m5sticks3'`. The
    factory firmware ignores a software reset, so the first flash needs download mode: Tony holds the Stick's
    SMALL side button (this is also the power button) while plugging in USB, then replugs without the button.
    Later flashes worked without it. The Stick's USB-C cable must carry data: a charge-only cable makes it

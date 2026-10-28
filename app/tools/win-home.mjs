@@ -7,7 +7,7 @@ import os from 'node:os';
 export function winHome() {
   if (process.env.BRX_WIN_HOME) return process.env.BRX_WIN_HOME;
   try {
-    const win = execFileSync('cmd.exe', ['/c', 'echo %USERPROFILE%'], { cwd: '/mnt/c', timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const win = execFileSync('cmd.exe', ['/c', 'chcp 65001>nul & echo %USERPROFILE%'], { cwd: '/mnt/c', timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     const wsl = execFileSync('wslpath', ['-u', win], { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     if (win && wsl) return wsl;
   } catch { /* not WSL: fall through */ }

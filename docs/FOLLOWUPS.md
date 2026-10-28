@@ -142,7 +142,7 @@ cites are its history, and the NEXT step wins where they differ.
   countdown; keep the at-station claim feedback (HOLD STILL / CONFIRMING / ON TRIGGER) as is; this also answers
   the multi-pickup display question (each spawn gets its own alert, not a shared timer). Storyboard first. Owner:
   brx2 (storyboard) then the HUD lane. `build`. **→ 2026-09-26 built (Tony picked A):** storyboard
-  `C:\Users\Tony\brx-pickup-alert` (options A/B/C), Tony picked A, the plain one: nothing new added, just drop the
+  `%USERPROFILE%\brx-pickup-alert` (options A/B/C), Tony picked A, the plain one: nothing new added, just drop the
   countdown and the TAKEN hint. Tony's rationale: "Halo never told you it was taken or who took it. I think not
   knowing is better for gameplay." `engine.js`'s `powerupView()` no longer computes the `taken`/`taken_by` hint
   kinds (and drops the now-dead `_puNextInMs`); `hud.js`'s `_puHint` no longer renders them; the CSS that sized

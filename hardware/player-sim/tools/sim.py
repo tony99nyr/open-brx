@@ -25,7 +25,8 @@ SKETCH_DIR = Path(__file__).resolve().parent.parent  # hardware/player-sim
 def _windows_home() -> tuple[Path, str]:
     """The Windows user folder, as seen from WSL and as Windows writes it. `BRX_WIN_HOME` (a WSL path such as
     /mnt/c/Users/<you>) overrides; otherwise Windows is asked once for %USERPROFILE%. Off Windows (CI, a Mac) the
-    home folder stands in, so the module still imports; the Windows-side commands need WSL anyway."""
+    home folder stands in, so the module still imports; the Windows-side commands need WSL anyway (and without wslpath
+    an override's Windows form is the POSIX path). sim.py and stick.py carry the same copy: each is a standalone tool."""
     override = os.environ.get("BRX_WIN_HOME")
     if override:
         wsl = Path(override)
@@ -35,13 +36,16 @@ def _windows_home() -> tuple[Path, str]:
             win = ""
         return wsl, win or str(wsl)
     try:
-        win = subprocess.run(["cmd.exe", "/c", "echo %USERPROFILE%"], capture_output=True, text=True, timeout=5,
-                             cwd="/mnt/c").stdout.strip()
+        # chcp 65001: cmd.exe writes the OEM code page when piped, and a non-ASCII user name must still decode.
+        win = subprocess.run(["cmd.exe", "/c", "chcp 65001>nul & echo %USERPROFILE%"], capture_output=True, timeout=5,
+                             cwd="/mnt/c").stdout.decode("utf-8", "replace").strip()
         wsl = subprocess.run(["wslpath", "-u", win], capture_output=True, text=True, timeout=5).stdout.strip()
         if win and wsl:
             return Path(wsl), win
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError):
         pass
+    if os.environ.get("WSL_DISTRO_NAME"):
+        print("could not ask Windows for %USERPROFILE%; set BRX_WIN_HOME=/mnt/c/Users/<you>", file=sys.stderr)
     return Path.home(), str(Path.home())
 
 
