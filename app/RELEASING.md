@@ -37,7 +37,8 @@ Android ships ON; the iOS default is written but uncompiled (B21, `DEFAULT_ON` i
 6. Install it on one bench Pixel, following the tester steps below, and bind it to a Mission Control from `main`.
 7. Commit `webapp/download/build.json` on top, then push, then **publish at once**: the release `app-v<version>`
    with `webapp/download/brx-companion-<version>-android-release.apk` and `release-notes/app-v<version>.md` as its
-   body. Until the release exists, the download page's link 404s.
+   body. Until the release exists, the download page's link 404s. Once the release exists, its body is the record:
+   delete `release-notes/app-v<version>.md` in a later commit.
 
 ## Every tester coming from 0.4.5 or earlier, once
 

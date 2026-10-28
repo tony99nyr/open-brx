@@ -1,7 +1,7 @@
 # Experiment log — index
 
 The lab notebook: what was sent, what happened, what it means, one entry per session. **Append after every
-session** to the current month's file, [`experiment-log/2026-09.md`](experiment-log/2026-09.md) (new month = new
+session** to the current month's file, [`experiment-log/2026-10.md`](experiment-log/2026-10.md) (new month = new
 file, add a row here). Entry = date, machine, tagger state, experiment, wire evidence, human observation,
 conclusion. Name guns by `Tactix-XXXX` (MAC suffix), never by the headset sticker.
 
@@ -20,6 +20,7 @@ summarise). A month's own headline-per-session list already exists for free: `gr
 |---|---|---|
 | 2026-08 | [2026-08](experiment-log/2026-08.md) | first contact through the docs cold-read audit |
 | 2026-09 | [2026-09](experiment-log/2026-09.md) | King of the Hill, the LED night, the manual rebuild, the 2026-09-13 field night, the arsenal merge and on |
+| 2026-10 | [2026-10](experiment-log/2026-10.md) | the 2026-10-17 field day and its fixes, the result release (A81, A83), balance 0.4.31 and on |
 
 Add a row here **only when a new month's file is created**; append every session's own entry to the current
 month's file regardless.

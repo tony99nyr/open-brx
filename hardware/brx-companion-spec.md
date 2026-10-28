@@ -248,8 +248,8 @@ They are open design questions.
   Wi-Fi AP; firmware version shown/gated in the readiness board.
 - **Mount** — exact slim body location + sight-clearance, from **caliper measurements on the real
   gun** (the CAD blocker in `print-files.md`); positive-lock + tether.
-- **ADR-0001 confirmations: answered.** `$SFLASH` from our stack greens the sight (bench gate G4,
-  2026-08-25). The phone node has hosted whole matches since 2026-08-30, and the game logic stops when
-  the phone leaves Bluetooth range (`docs/manual/operate.md`).
+- **ADR-0001 confirmations.** (b) is answered: `$SFLASH` from our stack greens the sight (bench gate G4,
+  2026-08-25). (a) is still owed: arm a game our way, disconnect, and watch the sight (ADR-0001 item 1,
+  post-MVP row Q25).
 - **`$SFLASH`/`$PLAY` from the Companion end-to-end** — the KillAnnouncer logic (B18) runs on the
   Companion, not MC; validate the full per-kill burst (`$SFLASH` → `$PLAY,,4,6,V3A`) from the rider.
