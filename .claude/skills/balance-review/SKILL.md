@@ -52,8 +52,10 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
      fn-23 Haze row fails only when its candidate blind sweep crosses `HAZE_WIN_BAR` from a passing baseline.
    - `op_rule`: no loadout weapon's pull, or crit pull, one-shots the lowest pool a player can field on Standard
      or Shields, with any visible perk (rule 7).
-   - `marksman_rush_counter`: marksman rows only. Strong against players who do not rush (peek-kill, and near
-     the top in `MARKSMAN_STRONG_COLUMN`), beaten by plain AR and AR + Body Armor rushers at 20 m. The report also says when any candidate moves
+   - `marksman_rush_counter`: marksman rows only, a flip test (F578, Tony 2026-10-27): fails only when the change
+     makes the plain AR or AR + Body Armor rush from 20 m weaker than the shipped baseline, past `rush_drop_margin`.
+     A new marksman is compared with the shipped Sniper (`RUSH_NEW_MARKSMAN_REF`). Peek-kill and the old 0.50 bar
+     are reported only. The report also says when any candidate moves
      the other marksman rows' rush numbers.
    - `pickup_utility`: pickup-only rows need at least 1.00 Standard kills per full stock at `REAL_AIM` and a
      median undefended Standard first kill within 2,500 ms.
@@ -129,7 +131,7 @@ Scenario version 12 uses these models:
   apart. The report names each scoring horizon: the matrix 1v1 cells score first kill within 10 seconds,
   long contact allows 20 seconds, and the field ratio uses a 150-second kill-count match.
 - The rush table checks every marksman and combo kit against plain AR, SMG and Shotgun rushers from
-  20 m and 30 m. `marksman_rush_counter` separately gates plain AR and AR + Body Armor at 20 m.
+  20 m and 30 m. `marksman_rush_counter` separately compares plain AR and AR + Body Armor at 20 m with the baseline.
   The marksman verdict also reports both opponents at 30 m.
 - A marksman candidate also reports rush success against both 20 m AR opponents at 2.5, 5 and 8 m/s.
   The sensitivity report flags any verdict change. It does not change the main rush bar.
