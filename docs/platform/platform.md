@@ -64,20 +64,20 @@ Each phone holds a Bluetooth link to one tagger. Taggers hit each other by infra
 - **Wi-Fi is allowed to drop.** Kills, deaths and objective time queue on the phone and flush the next time it reaches Mission Control. Results can arrive late, but they are not lost.
 - **No signal at go.** The start is a clock time agreed in advance. Every phone counts itself down, so the first second of the match needs no network at all.
 - **Backhaul for phones with data.** Turn the tunnel on in Mission Control and any phone with a data plan reaches it from wherever it has signal. Nothing to install or set up on the phone: the join code carries both addresses.
-- **Coverage is counted, not assumed.** Mission Control counts a phone as covered only when it joined through the tunnel and says it is on mobile data. When every phone is, the score cap and last-one-standing ends reach every phone that keeps its signal. Either way, a phone Mission Control cannot hear finishes on the time limit.
+- **Coverage is counted, not assumed.** Mission Control counts which phones can still reach it away from the Wi-Fi; the rule is on [Run a match](/docs/run-a-game). When every phone is covered, the score cap and last-one-standing ends reach every phone that keeps its signal. Either way, a phone Mission Control cannot hear finishes on the time limit.
 
 What the shape costs, stated plainly:
 
 - **You always know you died. You may learn the kill later.** A kill is seen by the tagger that took it. The confirm reaches the shooter through Mission Control, so out of coverage it lands when both phones next have a path.
 - **One phone, one tagger.** A dead phone takes its player out of the match. There is no spare link.
 - **Backhaul needs the host online.** The tunnel needs internet at the laptop, and the phone needs a plan and a signal. A park with no cell service plays exactly as it does without it.
-- **The board settles when everyone is home.** Kills live in the victims' reports, so the scoreboard is provisional until every phone has flushed.
+- **The winner waits for everyone.** Kills live in the victims' reports, so Mission Control holds the winner until every phone has sent its results, the operator taps FINALISE, or 2 minutes pass after the whistle.
 
 ## Recap
 
 ### Scores come home when the phones do.
 
-Every phone keeps its own tally. As each one comes back into range, Mission Control collects kills, deaths and objective time, names the winner, and lets you export the sheet.
+Every phone keeps its own tally. As each one comes back into range, Mission Control collects kills, deaths and objective time. It shows RESULTS PENDING until the last phone is in, or until FINALISE or the 2 minute limit releases the result. Then it names the winner and lets you export the sheet. The whole wait is on [Run a match](/docs/run-a-game).
 
 ## brx-mcp
 
