@@ -82,7 +82,7 @@ is the proven Jay/JEDGE pattern (ESP32 tagger-rider, no gun mod). **Companion = 
 | **MC-only, live over BLE** | ❌ rejected | MC is stationary; cannot hold BLE to guns scattered across a field. Viable only for a pilot/lobby game where everyone stays in range. |
 | **Lean on the firmware's native gun-menu mode** (guns self-fire) | ❌ not primary | No synced start, no MC setup control, no custom modes/loadouts, manual per-gun. Kept only as a fallback for the simplest phoneless play. |
 | **Per-player phone app (B2)** | ◐ BYOD option — **native, not PWA** | A dedicated rider beats phones for a rental/club fleet (no BYOD, cheap to replace, ruggedizable, fleet-manageable). **The Web-Bluetooth PWA path is ruled out** (ADR-0003): Chrome reported "Web Bluetooth globally disabled" + needed flags on the test phone, and **iOS has no Web Bluetooth at all**. So the phone option is a **native app** (Capacitor/RN, native BLE) reusing the shared web UI/engine — kept for personal/BYOD, not primary. |
-| **nRF mesh tap only (D1)** | ❌ not for feedback | Observes native traffic / could give attribution, but does **not drive** host-mode feedback, and native-mode feedback isn't customizable. nRF work **re-scoped to P2 only**. |
+| **nRF mesh tap only (D1)** | ❌ not for feedback | Observes native traffic / could give attribution, but does **not drive** host-mode feedback, and native-mode feedback isn't customisable. nRF work **re-scoped to P2 only**. |
 
 **Why the Companion wins:** it is the only thing that is simultaneously (a) **connected to the
 gun during live, dispersed play**, (b) running **our** logic (custom modes + scoring), (c) able
@@ -110,7 +110,7 @@ inter-Companion mesh, IR player-id decode) — all **without touching the tagger
   bulky/heavy. Prefer a **slim clip to the gun body** (side / under-barrel) or the sling hard
   point, **kept out of the sight line**; the **top Picatinny rail is only viable if thin + low +
   offset** (the sight lives there — anything tall blocks aim). No gun mod; positive-lock + tether;
-  mass low and centered; **BLE-only, no wire to the gun** (removes the top failure mode). Exact
+  mass low and centred; **BLE-only, no wire to the gun** (removes the top failure mode). Exact
   location + fit needs **caliper measurements on the real gun** (the CAD blocker in `print-files.md`).
 - **Power:** sized to outlast the gun (~2 battery cycles); USB-C **fleet charging** or swappable
   18650; battery % surfaced in MC's **muster/readiness board** (alongside the B18b headset gate).

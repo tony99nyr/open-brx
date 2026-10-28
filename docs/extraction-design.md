@@ -3,7 +3,7 @@
 **Post-MVP.** Extraction is not in the MVP mode set. The open work is row S3 in `post-mvp.md`.
 
 The design of the Extraction mode, split out of `game-modes.md` on 2026-09-12 because it is a mode
-*design* and that file is the infrastructure-tier *catalog*. The catalog entry, the tier it needs and
+*design* and that file is the infrastructure-tier *catalogue*. The catalogue entry, the tier it needs and
 the props it needs stay there; everything below is the mechanic. The rules engine that implements it is
 `mcp/brx_mcp/modes/extraction.py` (`python -m brx_mcp extraction-sim`).
 

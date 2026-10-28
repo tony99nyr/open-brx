@@ -9,11 +9,11 @@ environmental effects. Not copied; marketing paraphrased. Sources at the bottom.
 
 ## EDGE software (v7.0, Jan 2026) — what it is
 
-A Windows PC game engine every Battle Company tagger connects to (license: **one computer, one
+A Windows PC game engine every Battle Company tagger connects to (licence: **one computer, one
 location**), plus an **EDGE Terminal** tablet admin app and the **CallSign** player phone app
 (iOS+Android). A global cloud backend handles accounts/CallSign.
 
-**Game/modes:** 35 customizable preset modes + unlimited custom presets (grouped into staff
+**Game/modes:** 35 customisable preset modes + unlimited custom presets (grouped into staff
 categories); 90+ weapons via a builder; 15 abilities (power weapons, missiles, air strikes, care
 packages); 9 melee weapons; player-types/classes with loadouts; special-rules engine; **killstreak
 system** (15+, COD-style, activated from CallSign); damage/effect types (ice/poison/shields/heal);
@@ -103,7 +103,7 @@ chaining/CTF/control points).
 **Where we can differentiate / leapfrog:**
 - **Native, open DMX + scriptable effects** (their DMX is UBox-mediated and closed).
 - **Open networking** (they don't publish WiFi/base-station scaling; ours is documented + pluggable).
-- **No per-location license, no $600–1,600/yr subscription** — MIT, self-hosted.
+- **No per-location licence, no $600–1,600/yr subscription** — MIT, self-hosted.
 - **Field play without venue WiFi** (our station-mesh + data-mule model, ADR-0002) —
   Edge assumes venue WiFi coverage.
 

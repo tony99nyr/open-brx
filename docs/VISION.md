@@ -39,7 +39,7 @@ open, cheap, moddable, and field-capable — not by out-enterprising Edge for bi
 
 The BRX is effectively a **fully programmable IR-tag endpoint over BLE**, and we've decoded the
 control surface: `$WEAP` (custom weapons), `$GSET`/`$PSET` (settings/loadouts, incl. the per-game player id),
-`$SIR` (IR effects: damage, multipliers, heal, armor, shield, audio suppression), `$AMMO`/`$SPAWN` (go live),
+`$SIR` (IR effects: damage, multipliers, heal, armour, shield, audio suppression), `$AMMO`/`$SPAWN` (go live),
 the 2,477-file sound bank (+ USB sound-pack swap), and the `QUERY`/`SETUP` serial console. Because **the gun
 holds no game state**, the host controls essentially everything the gun can do. The real limits are
 ergonomic/physical, not protocol: no on-gun screen (the phone/rider adds it), no on-gun WiFi (the rider
