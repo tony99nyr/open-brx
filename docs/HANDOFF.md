@@ -35,25 +35,15 @@ plan is in `/home/tony/reviews-2026-10-17/` (outside the repo).
 Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State:** 2026-10-24: the field push's tooling and balance work is landed (log 2026-10-18): F565, F571 and a pool
-flake; single-shot weapons player-paced and retuned; reserves doubled under a proven-reserve ceiling; the
-balance-review tool and skill (`mcp/tools/balance_review.py`, `.claude/skills/balance-review/SKILL.md`); FOLLOWUPS
-bookkeeping from the report and the lanes' FIXED lines. The Sniper is a 75-damage bolt action with a 2.2 s bolt
-(Tony's call, `docs/balance-decisions.md`); he judges it in the next real match. The balance sims now model heat,
-the secondary slot, Armour Piercing, the Toxin Rifle, the Haze, melee and the field's pace (scenario version 2).
-The review also gained rush from 20 and 30 m at every marksman, a KOTH hill hold column, an ammo stress column and
-the pistol finisher (scenario version 8).
-The Codex sim critique is folded in too: heat in the rule engines with three cooling branches (fail on a flip),
-Shields regen, stricter pickup, domination, marksman and noise gates, and sensitivity sweeps (scenario 12; 13 since F579's field-pace duels; 14 since F581's bolt cycle).
-Phase B (2026-10-24) is done: no one-field set passes; Tony's three calls are F578.
-F576 (2026-10-24): compile publishes the field fight interval for single-shot weapons, from one constant the sims
-import; Tony set the Shotgun's band floor to 0.85 s and tests "pistols weak" on the R10b duel. F579: the duel engine
-runs at field pace too, with USP damage 10 and the Shotgun gun word 19 (Tony's calls, `docs/balance-decisions.md`).
-**Next:** the 0.4.26 bench sheet [`bench-0426.md`](bench-0426.md) (2026-10-25): it carries the Shotgun headset reach,
-the 2.2 s bolt and the CR heat-while-firing rows. F538's rig ack check stays in `~/reviews-2026-10-17/bench.md`. F512
-again once F574 has a cause.
-R4/T5 read-only research is authorised; flashing stays decision first.
-**Blocked:** F575 on the CR heat-while-firing bench row, then Tony; F578 on Tony.
+**State (2026-10-27):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
+on the scenario list in its `SCENARIO_VERSION`. Tony's decisions are in `docs/balance-decisions.md`. F578: the
+marksman rush counter becomes a flip test against the shipped baseline (Tony, "Relative"). The change is on its way
+to main with the 0.4.31 AMR verdict. The local gate splits Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
+The root, tooling and hardware doc-rot pass is landed. CLAUDE.md and the skill edits wait for Tony.
+**Next:** the bench after 0.4.31 is the NEXT list in [`bench-plan.md`](bench-plan.md). The 0.4.30 release notes
+stay on their own unmerged branch until brx1 cuts. R4/T5 read-only research is authorised; flashing needs
+a decision first.
+**Blocked:** F575 on the CR heat-while-firing bench row, then Tony.
 ## Lane: brx3, releases and Mission Control
 **State (2026-10-27):** everything is landed or in the land queue:
 - **Balance 0.4.31:** `11107dbdf`.
