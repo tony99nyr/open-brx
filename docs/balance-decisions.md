@@ -246,3 +246,13 @@ The log is append-only, so these corrections do not edit the sections they name.
 | op_rule | pass |
 | marksman_rush_counter | pass |
 | heat_sensitivity | pass |
+
+## 2026-10-28: a new marksman's rush baseline is the shipped Sniper (F578)
+
+- Tony's call (2026-10-28, relayed by brx1): "Shipped Sniper". A brand-new marksman, or a row that becomes one, is
+  compared with the shipped Sniper Rifle in `marksman_rush_counter`, not with the hardest shipped marksman to rush
+  (the AMR). This settles the "pending Tony" note in the 2026-10-27 section above.
+- `balance_review.py` already used the Sniper (`RUSH_NEW_MARKSMAN_REF`, scenario version 27), so no verdict number
+  changes. If a catalogue ever has no shipped Sniper, each rusher falls back to the shipped marksman it finds hardest.
+- A changed marksman is still compared with itself as shipped. The AMR verdict of 2026-10-27 is unaffected.
+- Command: recorded by hand; no `--record-from` run.
