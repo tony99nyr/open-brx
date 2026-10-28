@@ -1,4 +1,4 @@
-# Extraction (raid-and-extract) — mode design
+# Extraction (raid-and-extract): mode design
 
 **Post-MVP.** Extraction is not in the MVP mode set. The open work is row S3 in `post-mvp.md`.
 
@@ -8,7 +8,7 @@ the props it needs stay there; everything below is the mechanic. The rules engin
 `mcp/brx_mcp/modes/extraction.py` (`python -m brx_mcp extraction-sim`).
 
 The extraction-shooter genre (Escape from Tarkov, Hunt: Showdown, CoD DMZ, The Cycle, Marathon) is the
-popular shape in shooters right now, and **it maps beautifully onto laser tag** — the signature tension
+popular shape in shooters right now, and **it maps well onto laser tag**: the signature tension
 is *"channel a loud extraction while exposed and everyone converges on you,"* which is exactly what this
 hardware is good at. **Battle Company's Edge has nothing like it**, so it is a candidate differentiator.
 

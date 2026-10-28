@@ -5,7 +5,7 @@ below come from shipped-shooter community analysis and one probability-theory pa
 come from `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`, and `mcp/brx_mcp/mc/compile.py`.
 
 > ⚠️ **This page keeps the reasoning, not the numbers.** Every weapon number below is frozen at
-> the date its own section was written (2026-09-11 and 2026-09-17); none of it was updated for the
+> the date its own section was written (mostly 2026-09-11); none of it was updated for the
 > 2026-09-23 sidearm and Burst Rifle changes (R6/R10, `docs/weapon-design.md`'s Balance rules table).
 > **For the numbers a weapon ships with today, read `docs/weapon-design.md`'s Balance rules table and
 > §2.2 — never this page.** Keeping two synchronised copies of the same wire values is how this page

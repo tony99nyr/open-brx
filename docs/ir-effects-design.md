@@ -383,7 +383,7 @@ already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. 
 
 ### 6.3f Two axes the firmware has and we have never used
 
-Both from the 2026-09-18 V4_31 trace (LaserTagMods session). Traces, not bench proof, but both are
+Both from our reading of the firmware (2026-09-18). Traces, not bench proof, but both are
 concrete enough to design against.
 
 **A real alt-fire.** `$WEAP` tokens 7 to 11 are live: **t7 is a chance percentage, t8/t9 are the `$SIR`
@@ -430,7 +430,7 @@ fixed backdrop.
 
 ### 6.5 Range is a carrier frequency, so our range ladder is largely fiction
 
-⭐ **2026-09-18, V4_31 disassembly via the LaserTagMods session** (trace, not bench proof). The range tokens set the IR
+⭐ **2026-09-18, our reading of the firmware** (trace, not bench proof). The range tokens set the IR
 carrier frequency, not the emitter power. The barrel and headset formulas are in
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) §6 (the `2, 41` row); this section uses the barrel one.
 

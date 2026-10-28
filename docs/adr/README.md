@@ -14,6 +14,6 @@ way the experiment log bannered the superseded landmark entry).
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-companion-rider-architecture.md) | Per-player Companion (BLE rider) for live in-game feedback & scoring | Accepted |
+| [0001](0001-companion-rider-architecture.md) | Per-player Companion (BLE rider) for live in-game feedback & scoring | Accepted (amended 2026-10-27) |
 | [0002](0002-laptop-mission-control-host.md) | Laptop is Mission Control + local host; phones are companions/HUDs | Accepted |
 | [0003](0003-native-app-over-web-bluetooth.md) | Native app over Web Bluetooth for the player node | Accepted |

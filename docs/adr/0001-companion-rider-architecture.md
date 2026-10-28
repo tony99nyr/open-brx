@@ -128,7 +128,7 @@ start.** Reuses the muster/readiness pattern already designed for the headset ga
 
 ## Confirmations
 
-1. **Host-mode requires a live host.** No bench run has confirmed this. The Companion decision does not depend on it.
+1. **Host-mode requires a live host.** No bench run has confirmed this. The open bench item is the post-MVP row Q25 in `docs/post-mvp.md`. The Companion decision does not depend on it. The manual gives a partial answer in `docs/manual/dev.md` (*Death and respawn are host-driven* and the state survival matrix): a dead gun needs the host to respawn it, and a gun that is alive stays alive across a BLE drop. It does not yet say whether a live gun keeps resolving hits with no host, which is what Q25 asks.
 2. **`$SFLASH` from our stack greens the sight.** Confirmed 2026-08-25 (bench gate G4), with `$PLAY` speak (G3) and a full config and spawn arm (G5). See the 2026-08 entry "NATIVE app validated on hardware" in `docs/experiment-log/2026-08.md`.
 
 ## Amended 2026-10-27 (phone is the MVP node)
