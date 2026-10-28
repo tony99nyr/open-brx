@@ -60,7 +60,7 @@ Mostly no. Your gun sees the grenade's IR signal and plays those sounds from its
 
 A voice pack is the run of sound ids at the tail of `$PSET`, one per game event: death alarm, pain, respawn cry, kill line. The BRX does not ship "a male voice" and "a female voice" as one big pack. The characters you pick in the app are just pre-filled sets of those ids.
 
-The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the order below. The alignment is confirmed from Battle Company's field table and the v4.30 firmware image, and the pool-sound positions were checked on hardware.
+The voice pack has **seventeen wire slots**, `$PSET` tokens 7 through 23, in the order below. The alignment is confirmed from Battle Company's field table and our own reading of the firmware, and the pool-sound positions were checked on hardware.
 
 | Declared field | Event it fires on |
 |---|---|
