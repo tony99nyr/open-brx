@@ -16,7 +16,7 @@ them there.
   `Xcode.app/Contents/Developer`. If it names CommandLineTools, stop and ask Tony to run
   `! sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` (sudo is his, not yours).
 - Read `docs/mac-dev-runbook.md` §1 if this Mac has never built the app.
-- Do not execute `setup-mac.sh`, `start.sh` or any other setup script unless Tony asks. A reviewer
+- Do not execute `start.sh`, `app/scripts/*.sh` or any other setup script unless Tony asks. A reviewer
   once ran one and overwrote `~/.zshrc`.
 - Build from a clean main. `ios:push` bakes the **working tree** and marks it `-dirty`.
 

@@ -68,8 +68,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   (`.github/ISSUE_TEMPLATE/bug_report.yml`). To read one: unzip, then `python -m brx_mcp.mc.diag session.sqlite`.
   The scrub's rules and its guard live in `report.py`'s docstring; a guard refusal means a scrub gap, never
   loosen the guard to get a zip out. Tests: `test_mc_report.py`, `test_launcher.py`, `test/e2e/report.mjs`.
-- **Which tests to run.** Run `pnpm run test:all` from the repo root before committing (about 30 s), not the
-  suites one by one. Add `-- --ui` (about 7.5 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
+- **Which tests to run.** Run `pnpm run test:all` from the repo root before committing (a few minutes; see CONTRIBUTING.md), not the
+  suites one by one. Add `-- --ui` (about 7 min) before the FIRST push of a change to `app/src`, `webapp/mc/src`,
   a UI gate or an e2e script: **CI runs only `mc-play` of the browser gates (blocking since F512)**, and `site`
   not at all. The lander runs them all, but a red there costs a whole batch. After merging `origin/main`, use
   `pnpm run test:all -- --changed <base>` instead of the full suite. It uses a per-checkout lock and a shared
@@ -80,7 +80,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   <id>` (in the background; it drives an idle queue). For a red or a conflict, merge `origin/main`, fix it, and submit
   again. The steps and every exit code are in `scripts/README.md` → *The land lane*.
 - **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
-  - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
+  - Bind a free port (listen on 0), or read the port from an env var. Never a literal port. A `webapp/mc/test/e2e/`
+    script reads `MC_PORT`/`MC_WS_PORT`/`VITE_PORT` and uses `freePort()` (CONTRIBUTING.md → *Running things*).
   - Write output to the test's own folder, never a folder another test writes.
   - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
   - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
@@ -107,7 +108,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 | `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
 | `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `cd app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` user skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/doc-rot-review/SKILL.md`) |
 | `webapp/` | **The Cloudflare deploy root**: the site generator's git-ignored output lands here beside the hand-kept `webapp/mc/` and `webapp/download/` | — |
-| `hardware/` | STLs/BOM, the Companion + Station specs | `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`, `hardware/inventory.md` |
+| `hardware/` | ESP32 rigs (`esp32-ir-bridge/`, `m5sticks3/`, `player-sim/`), the Companion + Station paper specs, inventory | `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`, `hardware/inventory.md` |
 | `protocol/` + `docs/` | Reference | `docs/README.md` |
 | `site/` | The static generator for the public site. **Two doors, one source:** `docs/platform/*.md` → `/`, `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*` | The whole contract is `docs/site/FORMAT.md`; how to run it is `docs/site/README.md`. A push to `main` deploys the site and Cloudflare rebuilds it itself (`wrangler.toml`'s `[build]`); the built pages are git-ignored, so there is nothing to rebuild before committing |
 
