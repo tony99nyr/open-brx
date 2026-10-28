@@ -1,6 +1,6 @@
 ---
 name: ui-storyboard
-description: Build an Open BRX storyboard gallery so Tony can make a UI design call from frozen renders of the REAL phone HUD or Mission Control, without playing every scenario in a game. Sequences over time, every relevant state, both widths and both skins, options side by side, clash storyboards for layered UI, and the open questions at the top; the page goes to C:\Users\Tony\brx-<topic>\ and you stop for Tony's pick. Use whenever the user says "storyboard", "gallery", "show me the options", "how do these interact", "do these clash", "what does X look like when Y happens", or before any HUD or MC design choice that Tony must make (alert style, medal art, layout, timing, what overlays what). Not a quality audit of finished screens (that is ui-vqa).
+description: Build an Open BRX storyboard gallery so Tony can make a UI design call from frozen renders of the REAL phone HUD or Mission Control, without playing every scenario in a game. Sequences over time, every relevant state, both widths and both skins, options side by side, clash storyboards for layered UI, and the open questions at the top; the page goes to %USERPROFILE%\brx-<topic>\ and you stop for Tony's pick. Use whenever the user says "storyboard", "gallery", "show me the options", "how do these interact", "do these clash", "what does X look like when Y happens", or before any HUD or MC design choice that Tony must make (alert style, medal art, layout, timing, what overlays what). Not a quality audit of finished screens (that is ui-vqa).
 ---
 
 # UI storyboard
@@ -51,7 +51,7 @@ yet, add one; the stage stays as a screens gate later.
 
 ## 4. Publish to Tony and stop
 
-- Write the page and its PNGs to `/mnt/c/Users/Tony/brx-<topic>/` (Windows: `C:\Users\Tony\brx-<topic>\index.html`).
+- Write the page and its PNGs to `%USERPROFILE%\brx-<topic>\` (from WSL, the same folder under `/mnt/c/Users/<you>/`; open `index.html` there).
   Screenshots never go in the repo.
 - Keep the generator in `app/tools/<topic>-gallery.mjs`, with the output folder as `argv[2]` and the
   Windows folder as the default. It asserts nothing; `app/tools/screens.mjs` is the gate.

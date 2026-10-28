@@ -16,10 +16,10 @@ run works with Tony: the [`bench-session` skill](../.claude/skills/bench-session
 
 ## Before you start
 
-- **The APK** is `/home/tony/apk-0.4.26/brx-companion-0.4.26-android-release.apk`. Its sha256 must be
-  `1e7aa24b4c5397a57bac5e464a2e36fb276cb10c148fc6430e71e9585a3473a7` (`/home/tony/apk-0.4.26/build.json`, which also
+- **The APK** is `~/apk-0.4.26/brx-companion-0.4.26-android-release.apk`. Its sha256 must be
+  `1e7aa24b4c5397a57bac5e464a2e36fb276cb10c148fc6430e71e9585a3473a7` (`~/apk-0.4.26/build.json`, which also
   reads `"dirty": false` and `"git": "29c755645"`). Each phone's `versionName` reads 0.4.26. If brx3 cuts 0.4.27
-  tonight, use `/home/tony/apk-0.4.27/` instead and check its `build.json` the same way.
+  tonight, use `~/apk-0.4.27/` instead and check its `build.json` the same way.
 - **Volume 65** (`$VOL,65`) for every laptop-held gun. MC runs with `--bench-volume 65`. Never use a venue volume on
   the bench.
 - **Arm from the compiled frames** (`compile.resolve()` or the MC push), never from a capture.

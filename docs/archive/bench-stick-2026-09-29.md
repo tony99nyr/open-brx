@@ -21,7 +21,7 @@ FOLLOWUPS row.
 - **Drive MC through its API** (`Authorization: Bearer <token>`, `mcp/brx_mcp/mc/API.md`); station edits are
   `PUT /api/stations/{id}`.
 - **Read each phone's log over CDP**:
-  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
   The station lines are `powerup: station N advert state S taker T value V seq Q (… dBm, … ms old)`.
 - **Log the Stick serial for every powerup match**, not only the first:
   `python3 hardware/m5sticks3/tools/stick.py cmd <secs> PING > ~/stick-<step>.log`. COM10 takes one program at
@@ -33,7 +33,7 @@ FOLLOWUPS row.
 ## Setup (about 25 min)
 
 1. `adb connect` the grey and green Pixels (and the black one for step 4). Install the 0.4.18 APK:
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.18/brx-companion-0.4.18-android-release.apk`, then log
+   `adb -s <ip:port> install -r ~/apk-0.4.18/brx-companion-0.4.18-android-release.apk`, then log
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`.
 2. Start MC from the latest `main`, detached:
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.

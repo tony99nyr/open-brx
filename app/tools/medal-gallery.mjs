@@ -3,15 +3,16 @@
 // recap (AWARDS and PLAYERS tabs) with the icons in.
 // It asserts nothing (app/tools/screens.mjs is the gate). Run from app/ after `npm run build`:
 //   node tools/medal-gallery.mjs [out-dir]
-// The default out-dir is C:\Users\Tony\brx-medals (WSL: /mnt/c/Users/Tony/brx-medals). Nothing here goes in the repo.
+// The default out-dir is %USERPROFILE%\brx-medals (from WSL, the same folder under /mnt/c; win-home.mjs). Nothing here goes in the repo.
 import { chromium } from 'playwright';
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { winHome } from './win-home.mjs';
 import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 import { medalIcon, roundelIcon, MEDAL_PALETTE } from '../src/hud/medalicons.js';
 import { MEDALS, AWARDS } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)), WWW = path.resolve(HERE, '..', 'www');
-const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-medals');
+const OUT = path.resolve(process.argv[2] || path.join(winHome(), 'brx-medals'));
 fs.mkdirSync(OUT, { recursive: true });
 for (const f of fs.readdirSync(OUT)) if (/^mock-.*\.png$/.test(f)) fs.rmSync(path.join(OUT, f));   // no stale style A/C mocks
 if (!fs.existsSync(path.join(WWW, 'app.js'))) throw new Error('www/app.js is missing: run `npm run build` first');

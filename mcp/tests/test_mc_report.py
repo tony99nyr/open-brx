@@ -388,14 +388,14 @@ def test_local_host_names_are_aliased():
         ev, armory = _one_shot(root, [("status", {"hp": 1})])
         (ev / "mc.log").write_text("serving on http://gamebox.local:8765/ and falcon.tail9f3c.ts.net\n"
                                    "router.lan answered; nas.home.arpa too; s.lan[\"ip\"] is code\n"
-                                   "try tonys-mac.local.\n",
+                                   "try someones-mac.local.\n",
                                    encoding="utf-8")
         (ev / "manifest.json").write_text(json.dumps({"launch_id": "launch-x", "url": "http://gamebox.local:8765/"}),
                                           encoding="utf-8")
         res = report.build_report(ev, root / "out", armory_path=armory, roster_path=root / "none.json")
         files = members(res.zip_path)
         blob = b"".join(files.values()).decode("utf-8", "replace").lower()
-        for host in ("gamebox", "falcon", "tail9f3c", "router.lan", "nas.home", "tonys-mac"):
+        for host in ("gamebox", "falcon", "tail9f3c", "router.lan", "nas.home", "someones-mac"):
             assert host not in blob, host
         log = files["mc.log"].decode()
         assert "http://HOST-1:8765/" in log and 's.lan["ip"]' in log, log

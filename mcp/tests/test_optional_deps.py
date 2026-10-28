@@ -2,7 +2,7 @@
 
 2026-09-12 polish pass. `mcp/pyproject.toml` carries the only written record of what each venv needs
 (CLAUDE.md "Environment": the WSL `.venv` runs Mission Control and wants the `mc` extra; the Windows
-venv `C:\\Users\\Tony\\.brx-mcp\\venv` runs the bench tools and wants `bench`). Neither venv is built by
+venv `%USERPROFILE%\\.brx-mcp\\venv` runs the bench tools and wants `bench`). Neither venv is built by
 `pip install -e ./mcp` today, so nothing ever exercised that list — and it had drifted: `matplotlib`,
 which `tools/soundbank_analyze.py` imports, was in neither extra. The cost of that is paid at the bench
 with a gun in hand: a tool dies on `ModuleNotFoundError` and the run stops while somebody works out

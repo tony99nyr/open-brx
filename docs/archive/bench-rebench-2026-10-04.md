@@ -14,7 +14,7 @@ holds the history and the fix; this sheet holds the procedure. How a bench run w
 - Three Pixel 5s, in the 2026-10-02 roles: the black Pixel is player 1, the green Pixel player 2, and the grey Pixel
   the phone station (the powerup station, then the KOTH hill), on its charger. Phones ride on the rail.
 - This box: WSL for MC and the tools, Windows Python for anything that touches a gun
-  (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
+  (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 - A tape measure (the hill ladder needs 12 m), a stopwatch, and a wall for the self-hit step.
 - No Stick and no MacBook: those are [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) and
   [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md).
@@ -24,7 +24,7 @@ holds the history and the fix; this sheet holds the procedure. How a bench run w
 - **Drive MC through its API**, not by clicking, except where a step tests the console itself. Every non-GET
   `/api/*` call takes `Authorization: Bearer <token>` (the token is in MC's boot banner; `mcp/brx_mcp/mc/API.md`).
 - **Read each phone's log over CDP** after each step, before the next one starts:
-  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
 - **Read a gun's pools with `$LIFE,0,0,0`** (a read probe). The laptop MCP reaches a gun only while no phone
   holds it: force-stop that phone's app first. Arm a laptop-held gun from `compile.resolve()`, never from a capture.
 - **Volume:** MC runs with `--bench-volume` (65), except step 8, which plays at the venue value. Tony raised the
@@ -39,10 +39,10 @@ holds the history and the fix; this sheet holds the procedure. How a bench run w
    run `adb pair <ip>:<pairing port> <code>`. Then Tony reads the connect `ip:port` from the Wireless debugging
    screen; run `adb connect <ip:port>`. Check with `adb devices`: three phones, each `device`.
 2. **Install 0.4.18 on all three:**
-   `adb -s <ip:port> install -r /home/tony/apk-0.4.18/brx-companion-0.4.18-android-release.apk`. The same
+   `adb -s <ip:port> install -r ~/apk-0.4.18/brx-companion-0.4.18-android-release.apk`. The same
    release key installs over 0.4.16 with no uninstall. Log each phone's version:
    `adb -s <ip:port> shell dumpsys package com.openbrx.companion | grep versionName`. Log the APK's sha from
-   `/home/tony/apk-0.4.18/build.json`; it must be at or after the land of F442, F444 and F448 (brx1 confirms).
+   `~/apk-0.4.18/build.json`; it must be at or after the land of F442, F444 and F448 (brx1 confirms).
 3. **Start MC from the latest `main`**, with no match ARMED or LIVE anywhere, detached from the agent shell:
    `cd mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`.
    Rebuild `webapp/mc/dist` first if it is older than main. Powerups are on by default. Log the boot banner, the

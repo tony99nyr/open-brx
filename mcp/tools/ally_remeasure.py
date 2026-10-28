@@ -19,7 +19,7 @@ from an ENEMY team, and a rejected shot emits NO $HIR at all (it is invisible, n
 Usage:  python ally_remeasure.py <victim_addr> [emitter_com=COM8] [fns=10,11,9,15,31,32,34]
 
 Runs from Windows Python (WSL2 has no Bluetooth):
-    /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/ally_remeasure.py <addr>
+    /mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/ally_remeasure.py <addr>
 
 Needs the emitter board (B) aimed at the victim and the receiver serial monitor CLOSED --
 Windows COM ports are exclusive and the Arduino monitor silently steals the port.
