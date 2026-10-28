@@ -1668,3 +1668,37 @@ def test_every_top_level_doc_is_in_the_docs_index():
     missing = _unindexed((DOCS / "README.md").read_text(encoding="utf-8"), names)
     assert not missing, f"docs/README.md does not link {missing}: add a row, or archive the page"
     assert _unindexed("[a](a.md) [b](b.md#x)", ["a.md", "b.md", "c.md", "README.md"]) == ["c.md"]
+
+
+# The field LAN's own host addresses (the MC laptop, the bench phones' adb, a field hotspot) were scrubbed from the
+# docs on 2026-10-27 and from app/ and mcp/ on 2026-10-28. They may not come back in ANY tracked text file, code
+# included. They are held here as sha256 prefixes, so this test does not carry the addresses it forbids. Generic
+# examples (192.168.1.x, 192.0.2.x, the sweep subnets) stay legal.
+_FIELD_HOST_SHA = frozenset("211b032972cab328 3d0e00cd99325657 8133e8bc6affb3f0 5b464493c7cae109 89f53e2e660e2ff4".split())
+_ANY_IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.]|\.\d)")
+
+
+def _field_hosts(text: str) -> list[str]:
+    return [m.group(0) for m in _ANY_IPV4.finditer(text)
+            if hashlib.sha256(m.group(0).encode()).hexdigest()[:16] in _FIELD_HOST_SHA]
+
+
+def test_no_field_host_address_anywhere_in_the_repo():
+    hits = []
+    for path in _tracked_files():
+        if not path.is_file() or path.suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".zip", ".apk",
+                                                  ".pdf", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".ltp", ".bin"):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        hits += [f"{path.relative_to(REPO).as_posix()}: a field host" for _ in _field_hosts(text)]
+    assert not hits, "a field LAN host address came back (use <mc-lan-ip> or a 192.0.2.x example): " + "; ".join(hits[:8])
+
+
+def test_the_field_host_check_can_actually_fail():
+    assert len(_FIELD_HOST_SHA) == 5
+    probe = ".".join(("192", "168", "0", "55"))   # built, not written, so the file stays clean
+    assert _field_hosts(f"ws://{probe}:8766/ws") == [probe]
+    assert _field_hosts("ws://192.0.2.10:8765/ws 192.168.1.5 192.168.0.0/24") == []
