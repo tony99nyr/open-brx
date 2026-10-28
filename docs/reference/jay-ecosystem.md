@@ -12,7 +12,7 @@ stations, ESP-NOW/LoRa field networking, browser-based config, store-and-forward
 **JBOX** are LaserTagMods projects (github.com/LaserTagMods, `lasertagmods.md`), and that is who this
 repo credits for the protocol work. Whether Jay builds these boards, sells them, or demonstrates
 someone else's is not something the video transcripts settle. The numbers and behaviours below are
-the point of this file; the ownership line is not, and it is an open question in `../FOLLOWUPS.md`.
+the point of this file; the ownership line is not. The question is R3 in `../post-mvp.md`. `../manual/credits.md` already credits "Jay of LaserTagMods" for the audio sheet. This warning stands until Tony settles R3.
 
 This doc distills ~30 of his videos (transcript analysis; credit the channel — subscribe/support him).
 It complements `grenade.md` (his grenade videos), `lasertagmods.md` (JEDGE/JBOX from LaserTagMods),

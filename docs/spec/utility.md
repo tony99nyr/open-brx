@@ -860,13 +860,12 @@ bit and nothing else. Same division of labour as the rest of §5d: the station m
 
 - **Scan while connected** is normal on Android and iOS; the HUD uses the same scan the gun picker does,
   at scanMode 1 after connecting. Android demotes a scan past ~30 min and throttles apps that restart scans
-  often (restart on a timer — TODO). iOS coalesces duplicates only in the background; the HUD is foreground.
+  often (the scan restart cadence is in `post-mvp.md`, the scan-throttle note). iOS coalesces duplicates only in the background; the HUD is foreground.
 - **Permissions:** Android 12+ `BLUETOOTH_ADVERTISE` is a runtime permission — the plugin requests it on
   `start()`, the manifest carries it (plugin manifest + `android-setup.sh`). iOS: the existing
   `NSBluetoothAlwaysUsageDescription` covers peripheral mode.
 - **iOS advertising:** name + service UUIDs only; no TX power; foreground only. The Swift side queues the start
-  until the peripheral manager is powered on. ⚠️ **Not yet built on a Mac** — the Android path is the one
-  exercised first (2026-09-04).
+  until the peripheral manager is powered on. The iOS build waits on the MacBook (FOLLOWUPS **B21**).
 - **Android advertising:** non-connectable, TX power per the four levels, device name excluded (it is the
   phone's Bluetooth name, not ours).
 

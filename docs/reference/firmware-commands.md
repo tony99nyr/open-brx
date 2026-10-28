@@ -81,7 +81,7 @@ not an older-firmware substitute. First use on real older hardware remains a ben
 | `$CDFU` | 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | tagger 2.02c+ sampled |
 | `$CHASE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32, H1.27, H1.34 | yes | known-safe | claimed | all sampled taggers/headsets |
 | `$CLEAR` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven | all sampled taggers |
-| `$CLEARDEVICE` | 2.02c, 2.02e, 2.08b, 4.32 | **no** | denied | never sent | tagger 2.02c+ sampled |
+| `$CLEARDEVICE` | 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | tagger 2.02c+ sampled |
 | `$CONNECT` | 2.08b, 4.32 | yes | known-safe | claimed | tagger 2.08b+ sampled |
 | `$DDFU` | 2.02c, 2.02e, 2.08b | yes | denied | never sent | legacy: tagger 2.02c-2.08b |
 | `$DEV` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | denied | never sent | all sampled taggers |
@@ -96,7 +96,7 @@ not an older-firmware substitute. First use on real older hardware remains a ben
 | `$FIREX` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | claimed | all sampled taggers |
 | `$FL` | 4.32 | yes | confirm-required | never sent | tagger 4.32 only sampled |
 | `$FLED` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | never sent | all sampled taggers |
-| `$FREE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | **no** | confirm-required | never sent | all sampled taggers |
+| `$FREE` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | confirm-required | never sent | all sampled taggers |
 | `$FTST` | 2.08b, 4.32 | yes | denied | never sent | tagger 2.08b+ sampled |
 | `$GAMEPAD` | 2.08b | yes | confirm-required | never sent | legacy: tagger 2.08b only |
 | `$GLED` | 2.01U, 2.02c, 2.02e, 2.08b, 4.32 | yes | known-safe | proven | all sampled taggers |

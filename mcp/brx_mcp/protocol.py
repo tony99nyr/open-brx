@@ -97,7 +97,7 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
     "CLEAR": _c(0, True, "[bench] wipes game state AND the $SIR table (F11): re-send $SIR after it"),
     "START": _c(0, True, "[bench] config mode; [disasm] also ARMS IR reception ($STOP disarms it)"),
     "STOP": _c(0, True, "[bench] first frame of every connect; [disasm] drops every IR word while set"),
-    "SPAWN": _c(None, True, "[bench] $SPAWN,,* goes live; [disasm] v4.30 reads starting shield but corrected v4.32 consumes no argument; A/B unproven"),
+    "SPAWN": _c(None, True, "[bench] $SPAWN,,* goes live; [disasm] v4.30 reads starting shield but corrected v4.32 consumes no argument (label unproven); A/B unproven"),
     "CONNECT": _c(0, True, "[bench] no reply on v4.32"),
     "INIT": _c(0, True, "[bench] no reply on v4.32"),
     "PHONE": _c(0, True, "[bench] opens the event tap"),
@@ -152,8 +152,9 @@ KNOWN_COMMANDS: dict[str, CommandInfo] = {
 # Back-compat name: the set of command words the instrument sends without confirm=true.
 KNOWN_SAFE_COMMANDS = frozenset(KNOWN_COMMANDS)
 
-# Known names whose corrected v4.32 shape/effect conflicts with older evidence. They use the same
-# explicit-confirm path as an unknown command until the discriminating bench step settles the version.
+# Known names whose v4.32 shape or effect is unbenched, or conflicts with older evidence (the label
+# is unproven after the 2026-10-26 re-check). They use the same explicit-confirm path as an unknown
+# command until a bench step settles the name.
 CONFIRM_REQUIRED_COMMANDS: dict[str, CommandInfo] = {
     "PRES": _c(None, False, "a per-cell damage percent on the $SIR cells, zeroed by $CLEAR [disasm, 2026-10-26 re-check]; not bench-proven"),
     "INVU": _c(None, False, "v4.30 says invulnerability/$TMP t8; the v4.32 handler label is unproven after the 2026-10-26 re-check"),
@@ -170,7 +171,7 @@ DENIED_COMMANDS: dict[str, str] = {
     "CDFU": "puts the central BT radio into DFU (bootloader) mode [disasm]",
     "HEADDFU": "puts the headset into DFU (bootloader) mode [disasm]",
     "DDFU": "the v2.x DFU entry [disasm]",
-    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage; which link must pair again is not in the code [disasm]",
+    "CLEARDEVICE": "wipes the radio module's stored pairings and formats its storage; so a link must pair again, and which one is unproven; code read only [disasm]",
     "RESET": "reset routine of unknown scope; drops the link mid-match at best [disasm]",
     "IRT": "Arena/Retail IR word-format switch: a gun on the other format hears nobody [disasm]",
     "DEV": "developer-mode toggle, persistence unknown [disasm]",
