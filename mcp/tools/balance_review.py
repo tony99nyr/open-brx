@@ -23,8 +23,8 @@ runs the same versioned scenario list in both, and prints a verdict with eight n
                          other kit loses its baseline niche through a material score drop.
   op_rule                no non-pickup weapon one-shots the lowest pool a player can field on a gated
                          preset (rule 7: one-shot weapons are a pickup tier).
-  marksman_rush_counter  marksman candidates only: strong against players who do not rush, beaten by
-                         plain AR and AR with Body Armor rushes at 20 m (Tony, 2026-10-17).
+  marksman_rush_counter  marksman candidates only, a flip test (Tony, 2026-10-27, F578): fails only when the change
+                         makes the plain AR or AR with Body Armor rush from 20 m weaker than the shipped baseline.
   pickup_utility         pickup-only candidates: enough Standard kills per full stock and a prompt
                          undefended Standard first kill at REAL_AIM.
   heat_sensitivity       when heat is involved, no rule, niche-score, domination or pickup utility
@@ -196,7 +196,10 @@ MARKSMAN_STRONG_BAR = 0.50    # peek-kill rate against a player who does not rus
 # The strong side also needs the marksman's kit near the top in this column. Pending brx1: it may move to
 # "peek mid" (then peek-kill plus near the top at peek). A one-line switch; do not change it without Tony.
 MARKSMAN_STRONG_COLUMN = "1v1 long"
-MARKSMAN_RUSH_BAR = 0.50      # rush success against the same marksman from the 20 m start
+MARKSMAN_RUSH_BAR = 0.50      # the old absolute rush bar from the 20 m start; reported, not gated (F578)
+# F578 (Tony, 2026-10-27, "Relative"): the rush counter is a flip test. A drop in rush success counts only when it
+# is larger than this floor and than the 95% binomial noise of the two rates.
+RUSH_FLIP_FLOOR = 0.02
 SIDEARM_VALUE_MARGIN = 0.10   # a sidearm adds value when its finish time is within 10% of the best
 PICKUP_STOCK_KILL_FLOOR = 1.00  # shipped minimum is about 1.62; leave about 0.62 kills of room
 PICKUP_TTK_BAR_MS = 2500.0     # practical median against an undefended Standard target
@@ -293,7 +296,8 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "anchors": "the perk choice, the field ratio and the ambush always use the baseline world's AR",
         "near_top_margin": dict(NEAR_TOP_MARGIN), "viable_field_floor": VIABLE_FIELD_FLOOR,
         "marksman_bars": {"strong": MARKSMAN_STRONG_BAR, "strong_column": MARKSMAN_STRONG_COLUMN,
-                          "rush": MARKSMAN_RUSH_BAR, "rush_start_m": RUSH_STARTS_M[0],
+                          "rush": MARKSMAN_RUSH_BAR, "rush_rule": "relative to the shipped baseline (F578)",
+                          "rush_flip_floor": RUSH_FLIP_FLOOR, "rush_start_m": RUSH_STARTS_M[0],
                           "rush_opponents": ["plain AR", "AR with Body Armor"]},
         "perk_exemption": "a row with reload_type 'bolt' ignores ammo_mult, ammo_mult_pistol and reload_mult",
         "rule_bars": {"standard": RULE_BAR_STANDARD, "overrides": dict(RULE_BAR_OVERRIDES),
@@ -1518,10 +1522,25 @@ def rush_speed_sweep(marksman: Kit, plain: Kit, armoured: Kit, reps: int,
             for speed in RUSH_SPEED_SWEEP]
 
 
-def rush_sweep_flips(rows: list[dict], *, strong_ok: bool, verdict_pass: bool) -> bool:
-    return any((strong_ok and row["plain"]["rush_success"] >= MARKSMAN_RUSH_BAR
-                and row["body_armor"]["rush_success"] >= MARKSMAN_RUSH_BAR) != verdict_pass
-               for row in rows)
+def rush_drop_margin(base_rate: float, cand_rate: float, reps: int) -> float:
+    """The drop in rush success that counts: RUSH_FLIP_FLOOR, or the 95% noise of the two rates if larger."""
+    se = math.sqrt((base_rate * (1 - base_rate) + cand_rate * (1 - cand_rate)) / max(reps, 1))
+    return max(RUSH_FLIP_FLOOR, 1.96 * se)
+
+
+def rush_weaker(base_rate: float, cand_rate: float, reps: int) -> bool:
+    """F578: True when the rush against the candidate is weaker than against the baseline, past the noise."""
+    return cand_rate < base_rate - rush_drop_margin(base_rate, cand_rate, reps)
+
+
+def rush_sweep_flips(rows: list[dict], *, verdict_pass: bool, reps: int) -> bool:
+    """True when the relative verdict at some sweep speed differs from the verdict at RUSH_SPEED_MS. Each row
+    carries the candidate's rates and the baseline's rates at that speed. The RUSH_SPEED_MS row is the verdict
+    itself, measured at more reps, so it is skipped."""
+    def passes(row):
+        return not (rush_weaker(row["baseline_plain"]["rush_success"], row["plain"]["rush_success"], reps)
+                    or rush_weaker(row["baseline_body_armor"]["rush_success"], row["body_armor"]["rush_success"], reps))
+    return any(passes(row) != verdict_pass for row in rows if row["speed_m_s"] != RUSH_SPEED_MS)
 
 
 def rush_table(world: World, specs: list[KitSpec], reps: int, n_jobs: int,
@@ -3069,13 +3088,24 @@ def review(src, *, reps_scale: float = 1.0, n_jobs: int = 1, haze: bool = False,
             ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[0]),
             ("rush", mk, ar, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[1]),
             ("rush", mk, ar_ba, rush_reps, heat_cool_while_firing, RUSH_STARTS_M[1])], n_jobs)
+        base_mk, base_ar, base_ba, base_r, base_r_ba, baseline_from = rush_baseline(
+            base, wid, rush_reps, n_jobs, heat_cool_while_firing)
         tests["marksman_rush_counter"] = marksman_verdict(
-            r, r_ba, mc["near_top"].get(subject_kit, []), r30, r_ba30)
-        rush_sweep = rush_speed_sweep(mk, ar, ar_ba, _reps("rush_sweep", reps_scale),
+            r, r_ba, mc["near_top"].get(subject_kit, []), r30, r_ba30,
+            base=base_r, base_ba=base_r_ba, reps=rush_reps, baseline_from=baseline_from)
+        sweep_reps = _reps("rush_sweep", reps_scale)
+        rush_sweep = rush_speed_sweep(mk, ar, ar_ba, sweep_reps,
                                       heat_cool_while_firing, verdict_plain=r, verdict_armoured=r_ba)
-        rush_flip = rush_sweep_flips(rush_sweep,
-                                     strong_ok=tests["marksman_rush_counter"]["numbers"]["strong_ok"],
-                                     verdict_pass=tests["marksman_rush_counter"]["pass"])
+        same = base_mk["body_armor"] is base_mk["plain"]
+        base_plain_rows = rush_speed_sweep(base_mk["plain"], base_ar, base_ba, sweep_reps, heat_cool_while_firing,
+                                           verdict_plain=base_r, verdict_armoured=base_r_ba if same else None)
+        base_ba_rows = (base_plain_rows if same else
+                        rush_speed_sweep(base_mk["body_armor"], base_ar, base_ba, sweep_reps,
+                                         heat_cool_while_firing, verdict_plain=None, verdict_armoured=base_r_ba))
+        for row, bp, bb in zip(rush_sweep, base_plain_rows, base_ba_rows):
+            row["baseline_plain"], row["baseline_body_armor"] = bp["plain"], bb["body_armor"]
+        rush_flip = rush_sweep_flips(rush_sweep, verdict_pass=tests["marksman_rush_counter"]["pass"],
+                                     reps=sweep_reps)
     else:
         tests["marksman_rush_counter"] = _test(None, {}, "not a marksman candidate")
         rush_sweep, rush_flip = None, False
@@ -3352,22 +3382,58 @@ def op_rule(shipped: World, base: World, world: World, scope: list[str], changed
 
 
 def marksman_verdict(r: dict, r_ba: dict, near_cols: list,
-                     r30: dict | None = None, r_ba30: dict | None = None) -> dict:
-    """Tony 2026-10-17: strong until players learn to rush. Strong = peek-kill at or over MARKSMAN_STRONG_BAR
-    AND the kit near the top in MARKSMAN_STRONG_COLUMN; counter = rush success at or over MARKSMAN_RUSH_BAR."""
+                     r30: dict | None = None, r_ba30: dict | None = None, *,
+                     base: dict, base_ba: dict, reps: int, baseline_from: dict | None = None) -> dict:
+    """F578 (Tony, 2026-10-27, "Relative"): a flip test, like the heat branches. The change fails only when the plain
+    AR or the AR with Body Armor rush from 20 m succeeds less often against the candidate than against the shipped
+    baseline, past rush_drop_margin. base and base_ba are the baseline's rates against the same two rushers. The
+    strong side (peek-kill, near the top in MARKSMAN_STRONG_COLUMN) and the old absolute bar are reported only."""
     col_near = MARKSMAN_STRONG_COLUMN in near_cols
     strong = r["peek_kill"] >= MARKSMAN_STRONG_BAR and col_near
-    counter = r["rush_success"] >= MARKSMAN_RUSH_BAR and r_ba["rush_success"] >= MARKSMAN_RUSH_BAR
-    return _test(strong and counter, {
+    plain_weaker = rush_weaker(base["rush_success"], r["rush_success"], reps)
+    ba_weaker = rush_weaker(base_ba["rush_success"], r_ba["rush_success"], reps)
+    counter = not (plain_weaker or ba_weaker)
+    return _test(counter, {
         "vs_plain_ar": r, "vs_ar_body_armor": r_ba,
         "vs_plain_ar_30m": r30, "vs_ar_body_armor_30m": r_ba30,
+        "baseline_vs_plain_ar": base, "baseline_vs_ar_body_armor": base_ba,
+        "baseline_from": baseline_from or {"plain": "the same weapon, shipped", "body_armor": "the same weapon, shipped"},
+        "margins": {"plain": rush_drop_margin(base["rush_success"], r["rush_success"], reps),
+                    "body_armor": rush_drop_margin(base_ba["rush_success"], r_ba["rush_success"], reps)},
+        "plain_weaker": plain_weaker, "body_armor_weaker": ba_weaker,
         "strong_column": MARKSMAN_STRONG_COLUMN,
         "near_top_in_strong_column": col_near, "strong_ok": strong, "counter_ok": counter,
-        "plain_counter_ok": r["rush_success"] >= MARKSMAN_RUSH_BAR,
-        "body_armor_counter_ok": r_ba["rush_success"] >= MARKSMAN_RUSH_BAR,
-        "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR},
+        "absolute_bar_met": r["rush_success"] >= MARKSMAN_RUSH_BAR and r_ba["rush_success"] >= MARKSMAN_RUSH_BAR,
+        "bars": {"strong": MARKSMAN_STRONG_BAR, "rush": MARKSMAN_RUSH_BAR, "flip_floor": RUSH_FLIP_FLOOR},
         "rush_start_m": RUSH_STARTS_M[0]},
-        f"strong against non-rushers (peek-kill, and near the top in {MARKSMAN_STRONG_COLUMN!r}), beaten by rushers from 20 m")
+        "the plain AR and AR with Body Armor rushes from 20 m are no weaker than against the shipped baseline (F578)")
+
+
+def rush_baseline(base: World, wid: str, reps: int, n_jobs: int = 1, heat_cool_while_firing=True):
+    """F578: the shipped marksman a candidate is compared with, and its 20 m rush rates against the baseline
+    world's plain AR and AR with Body Armor. A changed weapon is compared with itself as shipped. A new marksman is
+    compared, per rusher, with the shipped marksman that rusher finds hardest, so it fails only when it is harder to
+    rush than every shipped one."""
+    ar = make_kit(base, "AR (plain)", ANCHOR)
+    ar_ba = make_kit(base, "AR+BA", ANCHOR, perk="body_armor") if base.perks.has("body_armor") else ar
+    if wid in base.cat._by_id:
+        ids = [wid]
+    else:
+        ids = [w for w in roster_ids(base)[0] if base.cat._row(w).get("role") == "marksman"]
+    if not ids:
+        raise ValueError("F578: no shipped marksman to compare a new marksman with")
+    kits = {w: make_kit(base, f"{_name(base, w)} (plain)", w) for w in ids}
+    res = run_cells([("rush", kits[w], rusher, reps, heat_cool_while_firing, RUSH_STARTS_M[0])
+                     for w in ids for rusher in (ar, ar_ba)], n_jobs)
+    plain = {w: res[2 * i] for i, w in enumerate(ids)}
+    armoured = {w: res[2 * i + 1] for i, w in enumerate(ids)}
+    w_plain = min(ids, key=lambda w: plain[w]["rush_success"])
+    w_ba = min(ids, key=lambda w: armoured[w]["rush_success"])
+    label = "the same weapon, shipped" if ids == [wid] else None
+    baseline_from = {"plain": label or f"{w_plain}, the hardest shipped marksman to rush",
+                     "body_armor": label or f"{w_ba}, the hardest shipped marksman to rush"}
+    return ({"plain": kits[w_plain], "body_armor": kits[w_ba]}, ar, ar_ba,
+            plain[w_plain], armoured[w_ba], baseline_from)
 
 
 def marksman_watch(base: World, world: World, subject: str | None, reps: int, n_jobs: int,
@@ -3566,12 +3632,27 @@ def report_markdown(v: dict) -> str:
                        f"{'pickup-only' if r['pickup_only'] else ('ok' if r['pass'] else 'ONE-SHOTS')} |")
         out.append("")
     mr = t["marksman_rush_counter"]["numbers"]
-    if mr:
-        a, b = mr["vs_plain_ar"], mr["vs_ar_body_armor"]
+    a, b = (mr["vs_plain_ar"], mr["vs_ar_body_armor"]) if mr else ({}, {})
+    if mr and "baseline_vs_plain_ar" not in mr:     # a verdict written before F578 (absolute bar)
         out += ["## Marksman rush counter", "",
-                f"Against a plain AR: peek-kill {a['peek_kill']:.2f} (bar {MARKSMAN_STRONG_BAR}), near the top in "
-                f"{mr['strong_column']!r}: {mr['near_top_in_strong_column']}; rush success from {RUSH_STARTS_M[0]:g} m {a['rush_success']:.2f} (bar {MARKSMAN_RUSH_BAR}). "
-                f"Against an AR with Body Armor: peek-kill {b['peek_kill']:.2f}, rush success {b['rush_success']:.2f}.", ""]
+                f"An absolute-bar verdict from before F578: rush success from {RUSH_STARTS_M[0]:g} m "
+                f"{a['rush_success']:.2f} (plain AR), {b['rush_success']:.2f} (AR with Body Armor), bar "
+                f"{MARKSMAN_RUSH_BAR}.", ""]
+    elif mr:
+        ba_, bb_ = mr["baseline_vs_plain_ar"], mr["baseline_vs_ar_body_armor"]
+        out += ["## Marksman rush counter", "",
+                f"A flip test (F578): it fails only when a rush from {RUSH_STARTS_M[0]:g} m succeeds less often "
+                f"against the candidate than against the baseline, by more than the margin.", "",
+                "| rusher | baseline | candidate | margin | weaker | baseline is |",
+                "|---|---:|---:|---:|---|---|",
+                f"| plain AR | {ba_['rush_success']:.3f} | {a['rush_success']:.3f} | {mr['margins']['plain']:.3f} | "
+                f"{mr['plain_weaker']} | {mr['baseline_from']['plain']} |",
+                f"| AR with Body Armor | {bb_['rush_success']:.3f} | {b['rush_success']:.3f} | "
+                f"{mr['margins']['body_armor']:.3f} | {mr['body_armor_weaker']} | {mr['baseline_from']['body_armor']} |",
+                "",
+                f"Reported only: peek-kill against a plain AR {a['peek_kill']:.2f} (bar {MARKSMAN_STRONG_BAR}), near the "
+                f"top in {mr['strong_column']!r}: {mr['near_top_in_strong_column']}; the old absolute rush bar "
+                f"{MARKSMAN_RUSH_BAR} met: {mr['absolute_bar_met']}.", ""]
         if mr.get("vs_plain_ar_30m"):
             out += [f"From {RUSH_STARTS_M[1]:g} m: plain AR rush success "
                     f"{mr['vs_plain_ar_30m']['rush_success']:.2f}; AR with Body Armor "
@@ -3580,11 +3661,14 @@ def report_markdown(v: dict) -> str:
         sweep = v["rush_speed_sweep"]
         out += ["## Rush speed sensitivity", "",
                 f"Subject marksman against both AR rushers from {RUSH_STARTS_M[0]:g} m. "
-                f"The rush success bar is {MARKSMAN_RUSH_BAR:.2f}. Verdict flips inside sweep: {sweep['verdict_flips']}.", "",
-                "| speed (m/s) | plain AR rush success | AR with Body Armor rush success |",
+                f"Each speed compares the candidate with the baseline. Verdict flips inside sweep: {sweep['verdict_flips']}.", "",
+                "| speed (m/s) | plain AR: baseline / candidate | AR with Body Armor: baseline / candidate |",
                 "|---:|---:|---:|"]
         for row in sweep["rows"]:
-            out.append(f"| {row['speed_m_s']:g} | {row['plain']['rush_success']:.2f} | "
+            bp = row.get("baseline_plain", {}).get("rush_success")
+            bb = row.get("baseline_body_armor", {}).get("rush_success")
+            out.append(f"| {row['speed_m_s']:g} | {'-' if bp is None else f'{bp:.2f}'} / "
+                       f"{row['plain']['rush_success']:.2f} | {'-' if bb is None else f'{bb:.2f}'} / "
                        f"{row['body_armor']['rush_success']:.2f} |")
         out.append("")
     moved_m = {w: r for w, r in (v.get("marksman_watch") or {}).items() if r["moved"]}
