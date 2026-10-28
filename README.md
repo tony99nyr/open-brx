@@ -10,7 +10,7 @@ and headset, built from `docs/manual/` and served at <https://open-brx.iamrossi.
 
 Today the per-player phone app (the BRX Combat HUD) and the Mission Control console run whole matches on
 real taggers. On 2026-10-17 four players played four matches: Free For All, Team Deathmatch and two King of
-the Hill games, with two phones as respawn stations. Each match ran for 10 to 14 minutes. The phone-node path
+the Hill games, with two phones as respawn stations. Each match ran for 10 to 14 minutes. [`docs/field-2026-10-17.md`](docs/field-2026-10-17.md) lists the issues the day found. The phone-node path
 is what lifts the laptop's BLE-range limit.
 
 **Start here: [`docs/README.md`](docs/README.md)**, the documentation index. It points to
