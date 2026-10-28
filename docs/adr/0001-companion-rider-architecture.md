@@ -126,16 +126,11 @@ The operational loop: **charge the rack overnight → clip any Companion on any 
 OTA-updates them and shows every gun green (gun batt / headset / Companion batt+fw / link) →
 start.** Reuses the muster/readiness pattern already designed for the headset gate.
 
-## Confirmations still owed (honesty)
+## Confirmations
 
-This ADR rests partly on **strong inference**, not yet fully bench-confirmed:
-1. **Host-mode requires a live host.** Test: arm a game our way, **disconnect**, play a couple
-   of kills, watch the sight — prediction: it stays **red/silent** (confirming a live host is
-   needed). If instead it self-fires, the native-mode fallback widens.
-2. ✅ **`$SFLASH` from *our* stack greens the sight — CONFIRMED 2026-08-25.** Our native Capacitor
-   app (native BLE, no Web Bluetooth) sent `$SFLASH,*` and the sight went green (bench gate G4). Also
-   confirmed from our stack: `$PLAY` speak (G3) and a full config+spawn arm with chunked >20-byte
-   frames (G5, countdown live). See exp-log "NATIVE app validated on hardware."
+1. **Host-mode requires a live host.** No bench run has confirmed this. The Companion decision does not depend on it.
+2. **`$SFLASH` from our stack greens the sight.** Confirmed 2026-08-25 (bench gate G4), with `$PLAY` speak (G3) and a full config and spawn arm (G5). See the 2026-08 entry "NATIVE app validated on hardware" in `docs/experiment-log/2026-08.md`.
 
-If (1) reverses, revisit the native-mode fallback; the Companion decision otherwise stands on
-the offline-dispersed-field fact alone (MC can't be live in the field regardless).
+## Amended 2026-10-27 (phone is the MVP node)
+
+The phone is the MVP node. The Companion is the post-MVP rider, and it exists as a spec only (`docs/spec/README.md`, `docs/architecture-topology.md`). Read "Companions own live play" and "the phone is kept for personal use, not primary" above as the post-MVP target. The original decision text above stays as written. The decision that a rider on the player, not the laptop, owns live play still holds. The phone fills that role today.
