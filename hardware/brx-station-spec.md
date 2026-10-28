@@ -26,8 +26,9 @@ reliable, any-mode, and driven live by Mission Control.
    CTF/Assault all centre on *places*, not players.
 3. **A base scores standalone, even through a phone disconnect** — proven on real hardware
    (`jay-ecosystem.md` §6). Store-and-forward isn't a hope; the box holds truth locally and syncs later.
-4. **Every interaction is IR** — the station shoots and gets shot exactly like a player, using the same
-   980 nm / 38 kHz BRX IR (`docs/reference/brx-extended-user-guide.md`). No BLE, no gun mod.
+4. **IR is the long-term interface.** The station shoots and gets shot like a player, with the same
+   980 nm / 38 kHz BRX IR (`docs/reference/brx-extended-user-guide.md`), and no gun mod. The MVP Stick
+   stations use Bluetooth instead (`hardware/m5sticks3/README.md`, *Bluetooth stations (MVP)*).
 
 ## Platform: ESP32
 
@@ -67,7 +68,7 @@ The station both **receives** hits (capture) and **emits** tags (perks, respawn,
 - **Receiver:** a 38 kHz IR demodulator (TSOP-class) on a GPIO with an interrupt; decode the BRX hit
   to get **team**, and **player id** in hosted/Callsign games (offline ids are randomised — team-only).
   The BRX hit payload also carries a **~7–8-bit damage value** (explosive/grenade tags score higher),
-  which enables **damage-weighted scoring** — see followup **P10** to confirm the exact decode.
+  which enables **damage-weighted scoring**. The D field is 8 bits and equals `$WEAP` t5 (`protocol/brx-ir-protocol.md`).
 - **Emitter — two power options (this is the range knob):**
   1. **Mini/simple:** drive the IR LED from the ESP's **3.3 V** GPIO path through a **~10 Ω** series
      resistor + a switching transistor. Simplest, but a **weaker beam / shorter capture range**
@@ -117,8 +118,8 @@ Cite ADR-0001/ADR-0002 and `jay-ecosystem.md` §5 for the numbers:
 
 Multi-point coordination uses the crawl-observed convention: **`1410`** = game over (last digit =
 winning team), **`1433`** = "closing in on victory" warning broadcast. Master/slave domination scales
-to **1 master + 9 slaves** (10 stations); hosted KotH to **~21 boxes**. Adopting LoRa-*standard* is
-tracked as followup **D2**.
+to **1 master + 9 slaves** (10 stations); hosted KotH to **~21 boxes**. Adopting LoRa-*standard* is an
+open design question (see below); no followup row tracks it.
 
 ## Modes served — ONE box, every objective, Mission-Control-programmable
 
@@ -218,9 +219,11 @@ the zero-cost alternative for weapon-pickup / flag props where a powered box is 
 ## Open hardware questions (before a build)
 
 - **IR bit layout: done** (2026-08-26; see above). The gating task is now packaging, not research.
-- **P10** — confirm the BRX IR **damage-value** decode (~7–8 bits) so damage-weighted scoring is exact
-  (`docs/FOLLOWUPS.md`).
-- **D2** — adopt **LoRa-standard** + **ESP-NOW-with-antenna** as the field/arena baseline (measured).
+- **IR damage value: done.** The D field is 8 bits (`protocol/brx-ir-protocol.md`).
+
+The questions below are design questions. No followup row tracks them.
+
+- Adopt **LoRa-standard** + **ESP-NOW-with-antenna** as the field/arena baseline (measured).
 - IR **emitter range** at each power option — SPL-style test: how far does a capture/respawn beacon
   reach indoors vs. outdoors, Mini (3.3 V) vs. full (5 V port)?
 - **Capture debounce / anti-spam** — how many hits, over what window, should flip ownership (utility-box
