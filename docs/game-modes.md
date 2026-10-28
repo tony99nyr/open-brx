@@ -144,14 +144,14 @@ directly: **`$LIFE,addedHP,addedArmor,addedShields`**. ⚠️ **CORRECTED 2026-0
 on v4.32 — it does nothing in either direction. Use `$LIFE` only.** `$LIFE` is additive and clamped at max, it
 self-emits `$HP`, and it also **accepts NEGATIVES and drains** (per pool, floors at 0, no spill into the next
 pool) — which is what makes damage-over-time buildable at all (S16). The live test
-found **no native armor regen** (armor held through 30 s idle), so any "regen" must be **host-driven** (node
+found **no native armour regen** (armour held through 30 s idle), so any "regen" must be **host-driven** (node
 watches `$HP`, refills). The shield fills over BLE too (Hard ceilings #7), so all three pools are writable.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
 | **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | MC routes `$LIFE` to the **exact** killer's node via `apply{frames}` (`$HIR` tok3 names the shooter) | reaches the killer only while their node is in coverage (contracts A6.4) |
-| **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven**: the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills any pool, shield included (`$LIFE,0,0,<n>,*`); the Shields preset ships this recharge |
-| **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armor on the pickup (roadmap K3) | a shield or armour overshield, both over BLE; the shield is capped by the game's `$PSET` shield ceiling |
+| **Halo shields (regen after no-damage)** | health/armour refills to full after T s without taking damage | **node-driven**: the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills any pool, shield included (`$LIFE,0,0,<n>,*`); the Shields preset ships this recharge |
+| **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armour on the pickup (roadmap K3) | a shield or armour overshield, both over BLE; the shield is capped by the game's `$PSET` shield ceiling |
 | **Medic / Lifesteal support role** | a role heals teammates | `$SIR` dual-polarity functions heal allies and damage enemies in firmware (`ir-effects-design.md` §6.3), or the node grants `$LIFE` | role logic like General/VIP |
 
 > **Corroboration (FB group crawl):** native shields + medic behaviour are real on stock BRX today —

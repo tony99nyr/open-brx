@@ -190,7 +190,7 @@ The log is append-only, so these corrections do not edit the sections they name.
 ## 2026-10-25: balance review sign-off (0.4.31)
 
 - Verdict: none from `balance_review.py` for the set as a whole. The evidence is the phase C sandbox passes 6, 7a,
-  7b, 7c, 7d and 7e (`~/reviews-2026-10-18-sandbox/phase-c/report.md`); pass 7e's Standard-only gate on scenario 22
+  7b, 7c, 7d and 7e (the phase C sandbox report of the 2026-10-18 review, kept off the repo); pass 7e's Standard-only gate on scenario 22
   passed Body Armor +20 / reload ×1.25. The sim's field ratios carry the F607 caveat (field contacts are not
   independent timers).
 - Tony's call (2026-10-25, relayed by brx1, from his signed-off review page):

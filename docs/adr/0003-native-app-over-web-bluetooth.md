@@ -4,7 +4,7 @@
 - **Date:** 2026-08-25
 - **Deciders:** Tony (owner)
 - **Related:** `docs/adr/0001-companion-rider-architecture.md`, `docs/adr/0002-laptop-mission-control-host.md`,
-  `app/README.md`, `docs/experiment-log.md` (2026-08-25 Web-Bluetooth spike).
+  `app/README.md`, `docs/experiment-log/2026-08.md` (2026-08-25 Web-Bluetooth spike).
 
 ---
 

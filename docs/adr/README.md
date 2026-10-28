@@ -6,11 +6,11 @@ that boxed us in, the decision, the alternatives rejected, and the consequences*
 survives even as the code moves.
 
 Not every choice needs one — reserve ADRs for decisions that shape the platform's architecture.
-Smaller open work lives in `../FOLLOWUPS.md`; findings/history live in `../experiment-log.md`.
+Smaller open work lives in `../FOLLOWUPS.md`; findings/history live in `../experiment-log/`.
 
 **Convention:** `NNNN-kebab-title.md`, numbered in order. Status is `Proposed` → `Accepted` →
 (later) `Superseded by ADR-XXXX` (never delete a superseded ADR — mark it and link forward, the
-way `experiment-log.md` bannered the superseded landmark entry).
+way the experiment log bannered the superseded landmark entry).
 
 | ADR | Title | Status |
 |---|---|---|

@@ -363,21 +363,6 @@ per-player BLINK ME (`$HLED` white ×2); DOWN-screen copy for scanner players wh
 ("YOUR HEADSET IS FLASHING GREEN. EVERYONE CAN SEE YOU ARE OUT. Walk to your station." / night: "… call OUT as you
 walk"); a HUD pill when `$HIR` and the trigger both go silent while alive (headset asleep).
 
-## 7. Build plan (S10), by subagent (as planned 2026-09-06; FOLLOWUPS S10 holds what is still open)
+## 7. Build plan
 
-Contract first, then four parallel lanes with disjoint files, sonnet for the mechanical lanes:
-
-1. **Contract** (main session): A16 text in `contracts.md` §3 + FrameBundle, `presentation.lights` shape, bundle
-   tables (§5), `HEADSET_TIDS`, `$LED` shape decision after bench L2.
-2. **MC lane** (`presentation.py`, `compile.py`, `poolgauge.py`, `state.py` validation, `test_presentation.py`,
-   `test_poolgauge.py`): lights block + overlay + collapse map; identity team table; readout tables; role
-   states; down block; delete `is_night_mode`; docstring sweep.
-3. **Engine lane** (`engine.js`, `engine.test.mjs`): readout with hold/coalesce/reload glance; died ends dark;
-   down pulse quiet gaps + eliminated cadence; respawn flash at +1.0 s; role re-assert after hits; `_lightGen`;
-   delay floor. HUD copy goes to the brx-hud session.
-4. **Console lane** (`AdvancedPresentation.tsx`, `types.ts`, `client.ts`, mock): lights block editor + preset
-   preview sentence + muster lights check (`ui-build-verify`).
-5. **Docs lane** (haiku/sonnet): protocol rows (`$LED` shape, `$HLED` blank), manual "reading the headset" table,
-   gotchas line, `poolgauge.py` header, FOLLOWUPS/HANDOFF.
-Gate: the bench ladder (§6 of the flash-control sheet) before lane 3's down-signal timing is final; everything
-else can build now.
+The S10 build plan (2026-09-06) is closed and archived. The build half of S10 closed on 2026-10-03. The open rest is in `post-mvp.md`.

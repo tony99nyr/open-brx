@@ -11,36 +11,6 @@ damage model (§0), the arsenal table and its derivations (§2), the wire levers
 (§5) and the triangle (§7). A bare §0 to §5 or §7 below means that page. §7r means
 the archived session-findings-2026-08 §7r, the archived August notebook.
 
-## Status
-
-This note was the banner at the top of `weapon-design.md`. It concerns this page only.
-
-> **✅ FIXED 2026-09-18 — the Energy Launcher's zero damage had a one-line cause**
-> Its `$WEAP` key `<t3,t4> = <9,3>` landed on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
-> into **every** game head, and **fn 24 applies no damage at all**. Reproduced and fixed on hardware in
-> one minute, same weapon, same word, one row changed: on **fn 24** a magnitude-115 word moved the victim
-> **999 → 999**; on **fn 1** it moved **999 → 884**. The row now ships as `$SIR,9,3,,1,0,0,1,,*` and the
-> weapon deals its full 115.
->
-> The same bench showed fn 24 is worse than inert: it leaves the victim's gun **manufacturing a phantom
-> `$HIR` every 5.07 s until the next `$SPAWN`**, with sound, vibration and a headset flash, so one hit
-> reads to the player as being shot every five seconds for the rest of the life. 25, 26 and 27 do the
-> same. **Never ship fn 24-27 on a cell a weapon can reach** (P18, closed; `protocol/brx-protocol.md` §5).
->
-> ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
-> lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
-> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, which WAS the
-> MC default until the 2026-09-17 arsenal review set it to **0**, because BRX players aim at the
-> headset: 4 of the 5 sensors are on it. At t7=0 every function lands the raw magnitude on both
-> sensors, so the five weapons named next no longer gain anything from a headset hit) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
-> five weapons — Burst Rifle, Bolt Rifle, AMR (fn 37), Force Rifle, Sniper Rifle (fn 36) — deal more
-> than their `t5` on a HEADSET hit only; a body hit is exactly `t5`. This reconciles rather than
-> overturns the two earlier readings: 2026-08-27's ×1.0 matrix was rig-pinned to the gun body
-> (correct — body is always ×1) and 2026-09-02's ×1.25/×2 reading was taken on the headset at t7=50
-> (also correct). §6.2.
-
----
-
 ## 6. The `$SIR` layer — damage is a negotiation, not a number
 
 **Added 2026-08-26 (third pass), from the IR-emitter bench sessions.** Everything in `weapon-design.md` §0 to §5
@@ -63,7 +33,7 @@ reading any negative result in this area.
 > ✅ **Scope: resolved — the classes travel.** An earlier revision of this note warned that each class
 > had been measured at a single IR protocol and might not generalise. A controlled matrix across
 > protocols **0, 5, 7, 9 and 10** has since found **no cell varying by protocol** (`fad28f2`), with fn 1
-> holding a correct 40 as control throughout. So "fn 6 is armor-piercing" can be read plainly, and a
+> holding a correct 40 as control throughout. So "fn 6 is armour-piercing" can be read plainly, and a
 > weapon designed on protocol 9 gets the same behaviour as one on protocol 0. The caveat was
 > over-cautious and is withdrawn.
 >
@@ -78,10 +48,10 @@ every game head (`gameconfig._SIR_TABLE`, sent by `Compiler.compile()`).
 - The row is indexed by the composite key **`<protocol, subtype>`** = `$WEAP` **`t3`,`t4`** =
   IR-word fields **B**,**U** (`brx-ir-protocol.md`). 4 bits × 2 bits = **64 addressable effect
   cells**. A hit with no matching row is **silently dropped**.
-- The row's **function** decides the effect: damage, add-HP, add-armor, add-shield, or a status
+- The row's **function** decides the effect: damage, add-HP, add-armour, add-shield, or a status
   event that touches no pool (experiment-log, *"SPECIAL-WEAPONS TIER"* — *"`D8` is not 'damage' — it
   is the MAGNITUDE"*).
-- Pools drain **shields → armor → HP**, and armor overflow spills into shields. The phone engine
+- Pools drain **shields → armour → HP**, and armour overflow spills into shields. The phone engine
   counts the shield in `hit_taken.dmg` and the HUD shows it; what is still open is `docs/spec/node.md`
   §10 Q12 (FOLLOWUPS Q12′).
 - **Shield fill.** `$PSET` t5 sets the shield CAPACITY, not a fill (P16). The pool fills from an IR
@@ -140,7 +110,7 @@ warning:
 |---|---|---|
 | **no row** for that key | every hit **silently dropped** | the quietest failure of the four — it looks exactly like the hardware refusing, and cost several wasted bench trials |
 | function in the **no-pool** family | registers a `$HIR`, moves nothing | the Energy Launcher |
-| **zero damage on a damage row** | registers a `$HIR`, takes nothing off the pool | round-3 FIELD-4 (2026-09-13): a catalog row or override at `dmg: 0` is unkillable by a different door, and `hits_to_kill` returns 0 for zero damage so the magazine guard skips it entirely. Grant rows (heals/armour/shields) are exempt — they are not meant to deal damage |
+| **zero damage on a damage row** | registers a `$HIR`, takes nothing off the pool | round-3 FIELD-4 (2026-09-13): a catalogue row or override at `dmg: 0` is unkillable by a different door, and `hits_to_kill` returns 0 for zero damage so the magazine guard skips it entirely. Grant rows (heals/armour/shields) are exempt — they are not meant to deal damage |
 | function is a **multiplier** (36/37) | lands ×1.25 or ×2 | not broken, but `htk`/`ttk_ms` in `weapons.json` are computed on raw `t5` and are wrong for that weapon |
 
 > 🔴 **The first three cases are ERRORS** (round-2 fix pass 2026-09-12; the zero-damage row added by
@@ -167,11 +137,11 @@ applied (headset)   = t5 × headset_multiplier(fn, t7)          → fn 36/37 onl
                                                                 which goes straight to HP
 ```
 
-**3. `htk = ceil(pool / dmg)` — quoted here at the default 115 pool (§2.5) — assumes a standard row, no crit, no shields, and armor present.** Against
-an armor-piercing row the effective pool is **45 (HP only)**; against a shielded target it is larger
+**3. `htk = ceil(pool / dmg)` — quoted here at the default 115 pool (§2.5) — assumes a standard row, no crit, no shields, and armour present.** Against
+an armour-piercing row the effective pool is **45 (HP only)**; against a shielded target it is larger
 than 115. The `mag ≥ htk` invariant in `validate()` uses the raw-`t5` reading, which is the
 *conservative* direction for standard weapons (it over-estimates htk) but **under**-estimates it for
-armor-piercing — worth revisiting if AP ever ships.
+armour-piercing — worth revisiting if AP ever ships.
 
 **4. §5's U6 ("damage is always t5") held only for standard-damage rows** (`<0,0>`, `<10,0>`, `<6,0>`), which
 is all that test exercised; `t3`/`t4` are the `$SIR` lookup key and two of the three subtypes in use are
@@ -185,12 +155,12 @@ be half the `$SIR` key. Reverting it would have collapsed three distinct effect 
 
 Five levers that did not exist in the `weapon-design.md` §0 model.
 
-**Armor-piercing — a real defensive-layer bypass.** Functions **2, 6** (and **17, 21** on their enemy
+**Armour-piercing — a real defensive-layer bypass.** Functions **2, 6** (and **17, 21** on their enemy
 side) hit HP directly: measured **HP 45 → 25 → 5 with armour untouched at 70** **[two-sided map]**. That turns armour from a flat +70 into
 something a weapon class can be built to ignore, and it makes the effective pool weapon-dependent:
 115 for a standard weapon, **45** for an AP one. An AP weapon wants a *lower* `t5` than its TTK
 suggests. Natural fits: the AMR (already `armor-piercing` in its `t3` semantics), the Rail Gun
-(`t3 = 6`), and a dedicated anti-armor pickup.
+(`t3 = 6`), and a dedicated anti-armour pickup.
 
 **Damage multipliers live victim-side.** Fn 36 (×1.25) and 37 (×2) **[two-sided map]** mean a weapon's
 punch can be changed **without touching its frame** — by pushing a different `$SIR` table. That is a
@@ -219,7 +189,7 @@ logic.**
 
 **Crit is a live mechanic, and it is NOT the same axis as `$GSET criticalShotModifier`.** The IR word's
 **C** bit is emittable and echoes on `$HIR` tok6 (`brx-ir-protocol.md`, bench-verified) — **×1.5
-damage**, replicated with alternating legs: at magnitude 20, `crit=0` gave per-hit armor deltas of 20
+damage**, replicated with alternating legs: at magnitude 20, `crit=0` gave per-hit armour deltas of 20
 and `crit=1` gave 30 **[two-sided map]**. It reads 0 on every stock weapon: not dead, just never set.
 That is a whole unused axis — a weapon with a crit chance, a headshot bonus (recall `$HIR` tok1 == 1
 is a headset hit, §7r), or a "marked target" perk. ⚠ **Bench 2026-09-11 confirmed `$HIR` tok6 stayed 0
@@ -229,14 +199,14 @@ the two "crit" names are separate mechanisms, and F62 (`docs/FOLLOWUPS.md`) plan
 isolates t6 (`primaryCritChance`) from t7 cleanly.
 
 **Three overflow flavours make support weapons distinct.** The add-HP functions differ *only* in
-where the overflow goes — **nowhere** (10, 17), **into armor** (9, 12, 16, 19), or **into shields**
+where the overflow goes — **nowhere** (10, 17), **into armour** (9, 12, 16, 19), or **into shields**
 (14, 21) (experiment-log, *"FUNCTION MAP enumerated"*). That is a genuine class distinction rather
 than a number tweak:
 
 | medic type | function | what a full-health ally gets |
 |---|---|---|
 | **Field medic** | 10 | nothing — pure top-up, no waste, no reward for overhealing |
-| **Armorer** | 9 / 12 / 16 / 19 | plate: healthy allies gain armor |
+| **Armorer** | 9 / 12 / 16 / 19 | plate: healthy allies gain armour |
 | **Overshielder** | 14 / 21 | overshield: healthy allies gain a shield buffer that drains first |
 
 Plus **fn 13/15/20/22** (armour only), **fn 11** (shields only — the sole way shields enter the game),

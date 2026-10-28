@@ -82,7 +82,7 @@ is the proven Jay/JEDGE pattern (ESP32 tagger-rider, no gun mod). **Companion = 
 | **MC-only, live over BLE** | ❌ rejected | MC is stationary; cannot hold BLE to guns scattered across a field. Viable only for a pilot/lobby game where everyone stays in range. |
 | **Lean on the firmware's native gun-menu mode** (guns self-fire) | ❌ not primary | No synced start, no MC setup control, no custom modes/loadouts, manual per-gun. Kept only as a fallback for the simplest phoneless play. |
 | **Per-player phone app (B2)** | ◐ BYOD option — **native, not PWA** | A dedicated rider beats phones for a rental/club fleet (no BYOD, cheap to replace, ruggedizable, fleet-manageable). **The Web-Bluetooth PWA path is ruled out** (ADR-0003): Chrome reported "Web Bluetooth globally disabled" + needed flags on the test phone, and **iOS has no Web Bluetooth at all**. So the phone option is a **native app** (Capacitor/RN, native BLE) reusing the shared web UI/engine — kept for personal/BYOD, not primary. |
-| **nRF mesh tap only (D1)** | ❌ not for feedback | Observes native traffic / could give attribution, but does **not drive** host-mode feedback, and native-mode feedback isn't customizable. nRF work **re-scoped to P2 only**. |
+| **nRF mesh tap only (D1)** | ❌ not for feedback | Observes native traffic / could give attribution, but does **not drive** host-mode feedback, and native-mode feedback isn't customisable. nRF work **re-scoped to P2 only**. |
 
 **Why the Companion wins:** it is the only thing that is simultaneously (a) **connected to the
 gun during live, dispersed play**, (b) running **our** logic (custom modes + scoring), (c) able
@@ -110,7 +110,7 @@ inter-Companion mesh, IR player-id decode) — all **without touching the tagger
   bulky/heavy. Prefer a **slim clip to the gun body** (side / under-barrel) or the sling hard
   point, **kept out of the sight line**; the **top Picatinny rail is only viable if thin + low +
   offset** (the sight lives there — anything tall blocks aim). No gun mod; positive-lock + tether;
-  mass low and centered; **BLE-only, no wire to the gun** (removes the top failure mode). Exact
+  mass low and centred; **BLE-only, no wire to the gun** (removes the top failure mode). Exact
   location + fit needs **caliper measurements on the real gun** (the CAD blocker in `print-files.md`).
 - **Power:** sized to outlast the gun (~2 battery cycles); USB-C **fleet charging** or swappable
   18650; battery % surfaced in MC's **muster/readiness board** (alongside the B18b headset gate).
@@ -126,16 +126,11 @@ The operational loop: **charge the rack overnight → clip any Companion on any 
 OTA-updates them and shows every gun green (gun batt / headset / Companion batt+fw / link) →
 start.** Reuses the muster/readiness pattern already designed for the headset gate.
 
-## Confirmations still owed (honesty)
+## Confirmations
 
-This ADR rests partly on **strong inference**, not yet fully bench-confirmed:
-1. **Host-mode requires a live host.** Test: arm a game our way, **disconnect**, play a couple
-   of kills, watch the sight — prediction: it stays **red/silent** (confirming a live host is
-   needed). If instead it self-fires, the native-mode fallback widens.
-2. ✅ **`$SFLASH` from *our* stack greens the sight — CONFIRMED 2026-08-25.** Our native Capacitor
-   app (native BLE, no Web Bluetooth) sent `$SFLASH,*` and the sight went green (bench gate G4). Also
-   confirmed from our stack: `$PLAY` speak (G3) and a full config+spawn arm with chunked >20-byte
-   frames (G5, countdown live). See exp-log "NATIVE app validated on hardware."
+1. **Host-mode requires a live host.** No bench run has confirmed this. The Companion decision does not depend on it.
+2. **`$SFLASH` from our stack greens the sight.** Confirmed 2026-08-25 (bench gate G4), with `$PLAY` speak (G3) and a full config and spawn arm (G5). See the 2026-08 entry "NATIVE app validated on hardware" in `docs/experiment-log/2026-08.md`.
 
-If (1) reverses, revisit the native-mode fallback; the Companion decision otherwise stands on
-the offline-dispersed-field fact alone (MC can't be live in the field regardless).
+## Amended 2026-10-27 (phone is the MVP node)
+
+The phone is the MVP node. The Companion is the post-MVP rider, and it exists as a spec only (`docs/spec/README.md`, `docs/architecture-topology.md`). Read "Companions own live play" and "the phone is kept for personal use, not primary" above as the post-MVP target. The original decision text above stays as written. The decision that a rider on the player, not the laptop, owns live play still holds. The phone fills that role today.
