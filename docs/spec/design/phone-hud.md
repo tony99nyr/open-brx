@@ -3,9 +3,8 @@
 **Package for:** the player's phone. Shared brand/constraints: the header of `mission-control.md`.
 **The shipping HUD is the source of truth** (`app/www/index.html` + `app/src/hud/`, 844×390 landscape; iterate
 with `cd app && npm run ui:stage`, prove with `npm run ui:screens`). The 2026-08-25 Claude Design export it was
-built from (Phone HUD v2: landscape, rail-mounted, ten screen states) is archived at
-`docs/archive/design/hud-export/` for re-seeding the design tool; per Tony (2026-08-26) the exports were
-inspiration, not definitive.
+built from (Phone HUD v2: landscape, rail-mounted, ten screen states) is in git history only; per Tony
+(2026-08-26) the exports were inspiration, not definitive.
 
 One phone, one gun, one player. Two jobs: a few **setup screens** (before the match) and the **in-game
 HUD** (during). The HUD is the star: a **first-person-shooter heads-up display** — instantly readable at
@@ -14,25 +13,13 @@ a glance, in sun or dark, while the player is moving and getting shot at.
 **Landscape (844×390), rail-mounted on the gun/forearm. Minimal chrome. Big numbers. No scrolling during play.**
 
 ### B0 · Lifecycle → what the screen shows
+The state-to-screen table lives in `../node.md` §4.4 (single source of truth), the overlays in §4.5. Three states have design notes that are not in node.md:
+
 | State | Screen |
 |---|---|
-| **IDLE** | "Set my gun" connect screen (B1) |
-| **CONNECTED** | gun named; "waiting for kit-out from Mission Control" |
-| **KITTED** | your loadout (weapon, team, name, **#number** 1–63) + the big **READY-UP** toggle (ready-up is a KITTED action). *2026-08-27:* the loadout plates are **two tappable slots** (PRIMARY / SECONDARY) that open the **LOADOUT browser** (B6) when the host's rules allow; locked slots show a padlock + "Set by the host" |
-| **LOBBY** | "armed-pending": gun configured, waiting for the host's start — team + name + number, no controls |
-| **ARMED** | full-screen **countdown** (T-minus); the gun is also beeping |
-| **LIVE / ALIVE** | the **HUD** (B2) |
-| **LIVE / DOWN** | **death/respawn** overlay (B3) |
-| **match over** | brief "MATCH OVER", then back to **KITTED** (gun + player kept) — never "Set my gun" |
-| any + Wi-Fi/MC lost | small, non-alarming "reconnecting" chip; the HUD keeps running (normal for most of a park match) |
-| any + gun link lost | red "GUN LINK LOST" strip; values freeze |
-| gun relinked (LIVE) | the **RECONCILING takeover**: GUN RELINKED · SYNCING WITH YOUR GUN · WEAPON DISARMED FOR A MOMENT (3 s fill); real pools kept, never a heal, no trigger pull asked (S7.1, 2026-09-04; node.md §3.10) |
-| gun relinked (LOBBY/ARMED) | amber **"GUN RELINKED"** prompt while the head is re-written (~10 s) |
-| respawned / revived (LIVE) | the **REDEPLOYED moment** (A44): REDEPLOYED · WEAPONS HOT · `<max HP> HP · <max ARMOR> ARMOR · MAG FULL`, for the weapon delay + 0.4 s (1.9 s at the 1.5 s default, A74). It marks the end of spawn protection, not the spawn itself: the node arms hit reception on the gun's first proof it can fire, or 2100 ms after the write. The DOWN countdown label is **REDEPLOY IN**, and **AWAITING REDEPLOY** while no clock is running (`hud/moments.js _redeploy`) |
 | stunned (LIVE) | **A20 host-driven stun (F15).** A proto-8 hit empties every live slot for `config.stun.duration_s` (10 s by default) and the node puts the live counts back when the timer runs out. The HUD has **no stun state today**: the ammo readout simply reads empty, so the player cannot tell a stun from a real reload. Design an explicit takeover (a named EMP cue and the remaining seconds) before the stun ships in a game |
 | operator action (ARMED/LIVE) | **A47.** The operator can push RESYNC GUN, FORCE RESPAWN or RELINK to this phone from the Mission Control LIVE board. RESYNC runs the ordinary resync prompt ladder (pull the trigger, then the reload handle); FORCE RESPAWN redeploys the player; RELINK re-applies the config. The phone answers with an `operator_result` fact, so MC reports the outcome. Nothing here is a new screen yet: the player sees the resync or redeploy state the phone already has |
 | pool stale (LIVE) | **A45/A47.** The phone claims `pool_stale` on `status` when the gun has gone quiet for 185 s (`silent`), when three trigger presses in a row got no shot back (`no_fire`), or when this life's spawn or revive write was lost (`write_lost`). **The claim is for MC, not for the screen**: the console shows a grey `GUN SILENT` cue and the HUD shows nothing. Deliberate, so a suspect reading never becomes an alarm mid-firefight. Decide whether the player deserves a quiet cue of their own |
-| any + preflight fail | small red preflight chip (Wi-Fi / MC / phone battery / screen / gun / headset) → diagnostics |
 
 ### B1 · Set my gun (connect)
 - A **"Set my gun"** button opens a **scanning sheet**: live list of nearby taggers, each with its

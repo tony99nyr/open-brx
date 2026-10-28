@@ -2259,7 +2259,7 @@ KNOWN_UNMIRRORED = {
     "respawnAutoTeams", "timedRespawn",
     # transport / MC session: the stage talks to a gun, never to Mission Control
     "onMcMessage", "onBleConnected", "onBleDropped", "setWsState", "hydrate", "statusBody", "resume",
-    "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait", "markReached",
+    "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait", "markReached", "_leaveEnded",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
     # F293: BrxLink's `$VERSION` headset probe. The frames it sends and the headset state it shows the HUD; no game rule

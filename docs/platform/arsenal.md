@@ -1,6 +1,6 @@
 # The whole arsenal. Three slots.
 
-Sixteen weapons, six classes, and one rule underneath all of them: a weapon is defined by how many hits it takes to kill, not by a damage number. You choose the health pool, and Mission Control works out the damage that lands on it.
+Six classes, and one rule underneath all of them: every weapon keeps one damage number, and the health pool you choose sets how many hits it takes to kill.
 
 - [Run a match](/docs/run-a-game)
 - [The platform](/platform)
@@ -8,9 +8,9 @@ Sixteen weapons, six classes, and one rule underneath all of them: a weapon is d
 
 ## Rule
 
-### Hits to kill, not damage
+### One damage number, and the pool sets the hits
 
-Set a pool of 115 and an assault rifle takes 13 hits. Set 45 for a hardcore match and it still takes 13, because the compiler scales every weapon to the pool before it writes a single frame. Nothing in the catalogue is a fixed damage number pretending to be balance.
+The hits to kill are the pool divided by the weapon's damage, rounded up. So the hit count moves with the pool, and the damage stays the same. The default pool is 115 (Standard: 45 health and 70 armour), and there an assault rifle takes 13 hits. The same rifle takes 17 hits if the host raises the pool to 150, and 5 in a Hardcore match (45). The hit counts in the list below are for the default pool.
 
 That is the whole reason the arsenal can be retuned between matches without anyone touching a tagger. The weapon is data. The gun runs stock firmware and always will.
 
@@ -34,15 +34,14 @@ arsenal
 
 ## Counters
 
-### There are five ways to take someone down
+### There are four ways to take someone down
 
-Every weapon in the list above is one of these, and each one beats something and loses to something else. That is the whole design, and it is why the arsenal is not a ladder with a best weapon at the top.
+Every weapon in the list above is one of these, and so is the Armor Piercing perk, and each one beats something and loses to something else. That is the whole design, and it is why the arsenal is not a ladder with a best weapon at the top.
 
 - **Plain damage.** Drains shield, then armour, then health. Against a bare target nothing is faster. Against a big pool it is the slowest thing you can carry.
 - **Armour piercing.** Goes straight to health and ignores the armour entirely. It has to be priced down to pay for that, so against someone wearing nothing it is strictly worse than the rifle you gave up.
 - **Stripping.** Removes every protective layer and cannot kill. Devastating against a heavily armoured target with a teammate behind you, and literally nothing against a bare one.
-- **Denial.** Drops the target's accuracy to zero for a few seconds. It beats anyone who has to aim and does nothing at all to someone who simply walks away.
-- **Damage over time.** The Toxin Rifle poisons on every hit: the target's own phone keeps draining its pools for a few seconds after it breaks contact. It is the answer to walking away, and therefore the natural counter to denial.
+- **Damage over time.** The Toxin Rifle poisons on every hit: the target's own phone keeps draining its pools for a few seconds after it breaks contact. It is the answer to walking away.
 
 ## Limits
 
@@ -50,7 +49,7 @@ Every weapon in the list above is one of these, and each one beats something and
 
 This is a platform built on someone else's firmware, over a serial protocol, and being honest about the edges is more useful than pretending there are none.
 
-- **Range is a threshold, not a distance.** We measured the range field in a garden with two taggers. A very low value barely lands at all, there is a sharp change somewhere between 13 and 26, and between about 31 and 100 every value reaches as far as anyone has been able to pace out. So a short-range weapon is not something the hardware lets us simply ask for.
+- **Range is a hit-odds setting, not a distance.** The range field changes how likely a shot is to register. It does not shorten the beam. We measured it in a garden with two taggers. A very low value barely lands at all, there is a sharp change somewhere between 13 and 26, and between about 31 and 100 every value reaches as far as anyone has been able to pace out. So a short-range weapon is not something the hardware lets us simply ask for.
 - **Some weapons fire twice.** Three of them send a second infrared word from the shooter's own headset, about 88 milliseconds behind the first, with its own damage and its own reach. We measured it on the wire rather than reading it off a spec.
 - **The firmware is never modified.** Every weapon here is assembled from frames the tagger already understands. That is a hard rule, not a limitation we are working around.
 

@@ -1,5 +1,5 @@
 # Modes and game setup
-Last verified: 2026-10-03
+Last verified: 2026-10-27
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
@@ -10,13 +10,16 @@ Three of the modes have been run on real taggers with a scoreboard at the end. T
 and covered by tests, but have never been fired at a person. That gap is real: a mode that has never
 met a tagger can still surprise you.
 
+On 2026-10-17 a field session played all three, with four player phones and two station phones: one
+Free-for-all, one Team Deathmatch and two King of the Hill matches.
+
 **Played on hardware:**
 
 | Mode | The rule | Proven by |
 |---|---|---|
 | Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | The laptop-only path on 2026-08-25: two taggers, one command, spawn, hits, deaths, host-driven respawn, a frag limit and the correct winner. The Mission Control plus phones path ran outdoors on 2026-09-01 with two Android phones, and the frag limit ends the match from Mission Control's own scorer. |
 | Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
-| King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10, using a BRX Smart Grenade in hill mode: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. The grenade hill still works and stays selectable, but it is now post-MVP: the default hill is a spare phone in the utility role, captured by presence. A Stick hill (2026-09-26) and a phone hill (2026-10-02) have each run a two-player match on the bench. On the phone hill the hold target ended the match and the recap named the winner. The hill heard one phone only now and then, so the contest failed. A fix is built and waits for the bench. |
+| King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10, using a BRX Smart Grenade in hill mode: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. The grenade hill still works and stays selectable, but it is now post-MVP: the default hill is a spare phone in the utility role, captured by presence. A Stick hill (2026-09-26) and a phone hill (2026-10-02) have each run a two-player match on the bench. On the phone hill the hold target ended the match and the recap named the winner. On 2026-10-17 a bench run passed a two-team capture, contest and flip on the phone hill, and the field session then played King of the Hill twice on phone hills. |
 
 **Written, never played on taggers:**
 
@@ -64,7 +67,7 @@ Every player carries three slots.
 | Slot | Holds | Notes |
 |---|---|---|
 | Primary | Any of the twelve weapons that can kill. Not a support weapon, not a pickup. | Required. Never empty. |
-| Secondary | Any of the fourteen, including the two pistols and the support weapons | Optional. |
+| Secondary | Any of the thirteen, including the two pistols and the support weapon | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
 Four perks are offered today. Body Armor gives 20 extra armour and
@@ -72,10 +75,12 @@ slows your reload by a quarter. Extended Mags doubles the primary's magazine in 
 it by half in Shields. The reserve grows up to 384 rounds, and weapon swaps take 30% longer. Fast Hands
 halves reload and swap times, except for the Sniper Rifle bolt. It leaves ammunition and armour unchanged.
 Armour Piercing sends your
-primary straight through armour and shields to health, with damage and cycle costs set per weapon.
-Four more are in the catalogue and not yet offered. Motion Tracker puts nearby enemies on your HUD.
+primary straight through armour and shields to health, with damage and cycle costs set per weapon,
+and the primary cannot land a critical hit.
+Five more are in the catalogue and not yet offered. Motion Tracker puts nearby enemies on your HUD.
 Second Wind lets you survive the hit that would finish you, once a life. Med Kit heals a teammate you
-tag. Concussion jams an enemy's weapon for a few seconds. The last two wait for a hardware test.
+tag. Concussion jams an enemy's weapon for a few seconds. Med Kit and Concussion wait for a hardware
+test. EMP throws a pulse on the LEFT button that jams every enemy gun around you for a few seconds.
 
 Body Armor buys survival with reload speed. Armour Piercing counters Body Armor: against a bare
 target it kills no faster than a normal rifle, and against a heavily armoured one it ignores the
@@ -85,7 +90,7 @@ Who picks is set per slot, per game:
 
 | Policy | Primary | Secondary | Perk |
 |---|---|---|---|
-| Open | player picks, whole catalog | player picks, whole catalog | player picks |
+| Open | player picks, whole catalogue | player picks, whole catalogue | player picks |
 | No heavies | player picks, heavy weapons excluded | player picks, heavy weapons excluded | player picks |
 | Snipers | fixed to the Sniper Rifle | off | off |
 | Custom | whatever you set, slot by slot | | |
@@ -108,10 +113,10 @@ weapon is data, not firmware, and a game can hand out numbers Battle Company nev
 
 The catalogue holds 25 entries: the 19 weapons captured from the Callsign app, melee among them,
 three pistols we added (Glock-18, USP-S, Desert Eagle), and three of our own that the stock app has
-no equivalent for. Sixteen are in the game. Nine rows are hidden, because the full list is mostly
-duplicates and a player should not have to tell four grenade launchers apart. Of the sixteen, two are
+no equivalent for. Fifteen are in the game. Ten rows are hidden, because the full list is mostly
+duplicates and a player should not have to tell four grenade launchers apart. Of the fifteen, two are
 never in a starting kit: the Rocket Launcher and the Rail Gun are pickups. A player takes one from a
-powerup station during the match. Pickups have worked on the bench; they have not yet run at a field. So a player building a loadout chooses from fourteen, counting the two
+powerup station during the match. Pickups have worked on the bench; they have not yet run at a field. So a player building a loadout chooses from thirteen, counting the two
 pistols on their own tab. Melee is always loaded and never shown.
 
 Every weapon starts from the real frame Battle Company sent. Only the balance numbers are
@@ -136,7 +141,7 @@ A control point is a place on the field a team can own: the King of the Hill poi
 
 **A phone as a control point is King of the Hill's default (2026-09-24).** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep its owner after you walk away.
 
-| | Smart Grenade, Hill mode (post-MVP) | A phone as a control point (the King of the Hill default; one bench match so far) |
+| | Smart Grenade, Hill mode (post-MVP) | A phone as a control point (the King of the Hill default; played at a field on 2026-10-17) |
 |---|---|---|
 | How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
 | More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
@@ -147,13 +152,11 @@ A control point is a place on the field a team can own: the King of the Hill poi
 | A point nobody is standing on | ownership travels only over IR and only a gun receives IR, so nobody learns that a far point flipped until a player walks into range | the phone sits on the point all match and keeps its own state, so the point stays held with nobody there. It scores for its owner only while a living owner stands on it |
 | Points talking to each other | no | yes, with no network at all. The adverts are broadcast, so a respawn station can read a control point |
 | Presence range | you aim a gun at it | a circle around the point, the same for every phone, with no direction at all. Its size at the default setting is not yet measured outdoors |
-| It fights back | yes. An enemy-held hill emits an ordinary damage word, so pushing onto a point you do not own costs you health | no |
+| It fights back | yes. A tagger near an enemy-held hill takes damage from its own internal table. No damage shot goes through the air. So pushing onto a point you do not own costs you health | no |
 | Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
 | What it costs | about $200 for ours, bought from Battle Company | a second-hand Android phone, a small fraction of that |
 
 The money does not buy capability, then. It buys the interaction: you can shoot the grenade, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on.
-
-**One caveat if you run a grenade hill game today.** An enemy-held grenade hill emits an ordinary damage word, so in a hosted game its chip damage is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses) and it has not been tested.
 
 ## What is not built yet
 
@@ -162,5 +165,4 @@ The money does not buy capability, then. It buys the interaction: you can shoot 
 - Syphon and regenerating health are laptop-only for the same reason.
 - Mission Control arms utility phones from the muster items panel: a spare phone can be armed as a respawn station or a control point before the match. An M5StickS3 has run as a hill in a two-phone King of the Hill match on the bench. It has not yet run at a field. The Smart Grenade is set by its own button, not by Mission Control.
 - A phone can land in utility mode by accident (an idle player phone reads seven taps and a hold as the switch). If nobody has armed it as a station yet, a HOLD TO EXIT button on its screen takes it straight back to being your HUD, about a one second press. Once it is armed as a real station, that button is hidden on purpose, whether Mission Control armed it or someone armed it by hand on the phone, and it stays hidden while the station is live. The operator brings it back with RELEASE on the items panel, or with the seven-tap gesture at the phone itself.
-- Per-player handicaps stop at the health and armor pool. Damage, fire rate, respawn delay and lives are not adjustable per player.
-- No match has been run with more than two player phones.
+- Per-player handicaps stop at the health and armour pool. Damage, fire rate, respawn delay and lives are not adjustable per player.

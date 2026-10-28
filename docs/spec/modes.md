@@ -162,8 +162,7 @@ for a mode we cannot ship) and infection's seed teams (on the MC path the teams 
 
 ## 3. WeaponCatalog
 
-Static data owned by M-MODES: **`mcp/brx_mcp/mc/weapons.json`** (22 rows: the 19 captured Callsign weapons,
-the three A12 sidearms, melee), each row carrying `capture.frame` (the real frame Battle Company sent), a `wire`
+Static data owned by M-MODES: **`mcp/brx_mcp/mc/weapons.json`** (every row ships here: captured Callsign weapons, the A12 sidearms, melee, and later additions), each row carrying `capture.frame` (the real frame Battle Company sent), a `wire`
 block naming only the balance tokens we overwrite, optional declared `overrides`, `htk`/`ttk_ms`, `tags`, `role`.
 **Why the numbers are what they are is `docs/weapon-design.md`** (the damage model, the rebalance table, the
 token appendix); the `$SIR` layer and the IR-effects study are `docs/ir-effects-design.md`; the public arsenal
@@ -176,8 +175,7 @@ page is `docs/manual/gameplay.md`.
   **Token 15 is the swap delay**, and it is written.
 - `spawnAmmo(weapon_id) → (mag, reserve)` drives the `$AMMO` frames in `spawn`/`revive`; perks scale it.
 - **Melee** is always loaded to slot 4; hidden from the picker.
-- **Provenance discipline:** `verified: true` only where the shipped row equals the capture byte for byte
-  (Bolt Rifle, Melee); the byte-diff pinning test (`test_mc_compile.py`) blocks every change outside
+- **Provenance discipline:** `verified: true` means the shipped row equals the capture byte for byte. No row is verified today. The byte-diff pinning test (`test_mc_compile.py`) blocks every change outside
   the balance tokens and declared overrides.
 - ⚠ **Damage is a property of the (weapon, `$SIR` table) pair.** `Compiler.validate()` cross-checks each
   weapon's `<t3,t4>` against the table MC pushes. Two cases are errors (since 2026-09-12): no row (hits silently

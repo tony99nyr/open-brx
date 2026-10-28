@@ -36,6 +36,7 @@ import { galleryState } from './gallery';
 import { recapSync } from '../api/recapSync';
 import { PENDING_CSV_URL } from './csv';
 import type { RecapSyncRow, RecapSyncStage } from '../api/recapSync';
+import type { ReleaseReason } from '../api/types';
 import { scorerMissing, sessionMarkFlushedLive, sessionScorerRecap, sessionSettling } from '../rules/recap';
 import { sessionVersions } from '../rules/versions';
 import { sessionGameSentN } from '../rules/game';
@@ -1203,6 +1204,7 @@ export class MockBackend implements Api {
   private syncReported = new Set<string>();
   private syncFinalised = false;
   private syncReleased = false;
+  private syncReleasedBy: ReleaseReason | null = null;
   private syncFinalWinner: string | undefined;
   private syncResultChanged = false;
   private syncReopenedUntil = new Map<string, number>();
@@ -1242,12 +1244,18 @@ export class MockBackend implements Api {
       rows.push({ kind: 'station', id: String(st.id), name: `${(STATION_KIND_LABEL as Record<string, string>)[st.kind] ?? st.kind.toUpperCase()} ${st.id}`,
         team_id: null, stage, transport: null, end_unconfirmed: false, idle_s: idle, stuck: stage !== 'received' && idle >= SYNC_STUCK_S });
     }
-    if (this.syncFinalised || rows.every(r => r.stage === 'received')) this.syncReleased = true;
+    // `_recap_sync`, `finalise_recap` and `_release_on_timeout`: what ended the wait, latched once.
+    if (!this.syncReleased) {
+      this.syncReleasedBy = this.syncFinalised ? 'finalise' : rows.every(r => r.stage === 'received') ? 'sync'
+        : elapsed >= SYNC_STUCK_S * 1000 ? 'timeout' : null;
+      this.syncReleased = this.syncReleasedBy !== null;
+    }
     const pending = !this.syncReleased;
     const key = JSON.stringify(recap.winner);
     if (!pending && this.syncFinalWinner === undefined) this.syncFinalWinner = key;
     else if (this.syncFinalWinner !== undefined && key !== this.syncFinalWinner) this.syncResultChanged = true;
-    return { rows, pending, finalised: this.syncFinalised, result_changed: this.syncResultChanged } as unknown as NonNullable<RecapView['sync']>;   // typed by api/recapSync.ts, not the generated name clash
+    return { rows, pending, finalised: this.syncFinalised, result_changed: this.syncResultChanged, released_by: this.syncReleasedBy,
+      ...(pending ? { release_in_s: Math.max(0, Math.ceil((SYNC_STUCK_S * 1000 - elapsed) / 1000)) } : {}) } as unknown as NonNullable<RecapView['sync']>;   // typed by api/recapSync.ts, not the generated name clash
   }
   /** `state.py finalise_recap`: the operator releases the result although phones are missing. 409 outside RECAP. */
   async finaliseRecap() {
@@ -1563,7 +1571,7 @@ export class MockBackend implements Api {
     const bound = this.players.filter(p => p.node_id);
     this.syncBase = bound.map(p => ({ player_id: p.player_id, node_id: p.node_id! }));
     this.syncReported.clear();
-    this.syncFinalised = false; this.syncReleased = false; this.syncFinalWinner = undefined; this.syncResultChanged = false; this.syncReopenedUntil.clear();
+    this.syncFinalised = false; this.syncReleased = false; this.syncReleasedBy = null; this.syncFinalWinner = undefined; this.syncResultChanged = false; this.syncReopenedUntil.clear();
     const knownNodes = new Set(Object.keys(this.nodeReports));
     const faultNode = this.demoFaults ? bound[bound.length - 1]?.node_id : undefined;
     if (faultNode) this.disconnectedNodes.add(faultNode);

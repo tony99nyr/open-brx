@@ -14,11 +14,11 @@ that never stick. See [`../docs/adr/0001-companion-rider-architecture.md`](../do
 ```
 src/engine.js        DOM/BLE-free state machine (node.md §3): lifecycle, frames→facts, §3.10 resync
 src/brxlink.js       the seed's hardware-proven BLE plumbing behind a thin interface
-src/transport/       the M-NET client (Transport) — owned by a separate lane; see its README
+src/transport/       the M-NET client (Transport); see its README
 src/hud/hud.js       the Phone HUD v2 renderer (a pure function of engine state)
 src/app.js           composition: engine + brxlink + transport + hud + Capacitor plugins
 src/demo.js          ?demo — a scripted fake gun + fake MC for desktop-browser development
-www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md; the 2026-08-25 export is archived at docs/archive/design/hud-export/)
+www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md)
 ```
 
 **Where the wire types come from:** `src/transport/contract.gen.js` is generated, not hand-kept — see
@@ -111,7 +111,7 @@ TURN ON LOCATION TO FIND YOUR TAGGER with a button to the Location settings. And
 
 ## Prerequisites
 
-**Everyone:** [Node.js](https://nodejs.org/) 20+ (`brew install node`, or nvm). That's all you need
+**Everyone:** [Node.js](https://nodejs.org/) 22.12+ (`brew install node`, or nvm). That's all you need
 to build the web bundle.
 
 **To build for iOS** — macOS only:
@@ -211,7 +211,7 @@ debug path, it copies the APK into `webapp/download/` and writes the `build.json
 the one shared writer (`scripts/apk-sidecar.mjs`); `APK_OUT_DIR` sends a dry run elsewhere.
 
 The cut itself (rebuild, fingerprint check, what every tester does, what to do when an install fails) is
-[`RELEASING.md`](RELEASING.md); each release's notes are in [`release-notes/`](release-notes/).
+[`RELEASING.md`](RELEASING.md); the notes of releases not yet published are in [`release-notes/`](release-notes/); a published release keeps its notes on GitHub.
 
 **The key never lives in this repo.** `android-setup.sh` patches the generated
 `android/app/build.gradle` with a `signingConfigs.release` block that reads four values, in order,
@@ -327,7 +327,7 @@ CoreBluetooth or the camera without the corresponding usage string**, and the cr
   features are still being built. `isInspectable` needs iOS 16.4; below that (or on any build where the
   native call fails) the panel shows the switch as UNSUPPORTED rather than ON/OFF or an error. The iOS
   plugin is written but not yet built with Xcode — the `iphone-build` skill exercises it on the MacBook.
-- **iOS deployment target is 15.0**, so an iPhone X (which tops out at iOS 16.7) is supported.
+- **iOS deployment target is 16.2** (`scripts/ios-setup.sh` writes it), so an iPhone X (which tops out at iOS 16.7) is supported.
 - The app's arm sequence in `src/app.js` mirrors `mcp/brx_mcp/gameconfig.py`. If you change the
   protocol frames, change both — the Python side is the reference implementation and has the tests.
 - **Never let a Capacitor plugin proxy be a promise's resolution value.** Plugin objects are proxies with

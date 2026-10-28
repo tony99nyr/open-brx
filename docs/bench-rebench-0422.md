@@ -1,7 +1,7 @@
 # Bench sheet: the re-bench on APK 0.4.22
 
 Updated: 2026-10-16. **Run in part on 2026-10-16** (Sittings A and C; each step below carries its result line). Sheet errors found: RECALL is now ABORT (with a confirm); VA7 is the pain-relief line (`$PSET` t15), not a respawn cue; MC refuses to push or start with a phone offline, so A.8 and A.11 use the reachable orders (reconnect after END; close the phone during the countdown); C.5's hill phone normally lies on the ground in a game, so run the ladder at chest height AND flat; the energy-rifle refill band in A.6 is old. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
-ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22 (versionCode 422, not published), built
+ran) and the 0.4.19 sheet (both archived). It runs on APK 0.4.22 (versionCode 422, not published), built
 on 2026-10-13 from main `221d4fe1` (release commit `be55fbd7` on `release/app-0.4.22`, `dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
 **minimum build** it needs. The row holds the history and the fix; this sheet holds the procedure. How a bench run
@@ -22,7 +22,7 @@ the brx MCP tools run current code too.
    built" page). Log `git rev-parse --short HEAD`: that is the bench sha for MC and the Sticks.
 3. **Install 0.4.22 on all four Pixels** (Setup 2): the black and green Pixel 5s (players 1 and 2), the grey Pixel 5
    (station 1) and the Pixel 10 Pro (station 2). The APK is
-   `/home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`; its sha256 must be
+   `~/apk-0.4.22/brx-companion-0.4.22-android-release.apk`; its sha256 must be
    `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77`.
 4. **Start MC** with the full command in Setup 4 (`--advertise <the laptop's LAN address> --bench-volume 65`).
 5. **The Sticks are optional** (Sitting B, last). If Sitting B runs, flash each Stick from the main checkout:
@@ -62,7 +62,7 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 - The IR rig: the receiver for F521 (a), and the emitter (the `ir-emit` CLI) as Sitting A's shooter, so a hit or a
   kill needs no second gun.
 - This box: WSL for MC and the tools, Windows Python for anything that touches a gun
-  (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
+  (`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`, [`wsl-dev-runbook.md`](wsl-dev-runbook.md)).
 - A tape measure (the hill ladder needs 12 m), a stopwatch, a wall for the self-hit step, and a target for melee.
 
 ## Method (it worked on 2026-10-02; keep it)
@@ -74,7 +74,7 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
 - **Drive MC through its API**, not by clicking, except where a step tests the console itself. Every non-GET
   `/api/*` call takes `Authorization: Bearer <token>` (the token is in MC's boot banner; `mcp/brx_mcp/mc/API.md`).
 - **Read each phone's log over CDP** after each step, before the next one starts:
-  `cd ~/gitrepos/battlecompany && /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
+  `cd ~/gitrepos/battlecompany && /mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe mcp/tools/webview_eval.py "window.brx.log.slice(-40)" --serial <ip:port>`.
 - **Read a gun's pools with `$LIFE,0,0,0,*`** (a read probe). `$LIFE` and `$QUERY` are on the known-safe list
   (`mcp/brx_mcp/protocol.py`), so they need no `confirm=true`. The laptop MCP reaches a gun only while no
   phone holds it: force-stop that phone's app first. Arm a laptop-held gun from the Sitting A recipe or the CLI's
@@ -90,9 +90,9 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    the installs). Open *Pair device with pairing code* again (the dialog closes after one pair), Tony
    reads out the new `ip:port` and code, and run `adb.exe pair <ip>:<pairing port> <code>` (Windows, which `webview_eval.py` uses for every CDP read). Then Tony reads the connect `ip:port`; run `adb connect <ip:port>` and `adb.exe connect <ip:port>`. Check
    with `adb devices` and `adb.exe devices`: four phones, each `device`, on both.
-2. **Install 0.4.22 on all four.** Check the file first: `sha256sum /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
+2. **Install 0.4.22 on all four.** Check the file first: `sha256sum ~/apk-0.4.22/brx-companion-0.4.22-android-release.apk`
    must print `c3337e6ec52e1a8ffd8f6ee05b778b20efcc20f7e03a33bd71c6a188667ebc77` (the `sha256` in
-   `/home/tony/apk-0.4.22/build.json`, which also reads `"dirty": false` and `"git": "be55fbd7"`). Then `adb -s <ip:port> install -r /home/tony/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
+   `~/apk-0.4.22/build.json`, which also reads `"dirty": false` and `"git": "be55fbd7"`). Then `adb -s <ip:port> install -r ~/apk-0.4.22/brx-companion-0.4.22-android-release.apk` (the
    same release key installs over a release build with no uninstall). The Pixel 10 Pro may hold a debug build signed
    with another key: if its install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, run
    `adb -s <ip:port> uninstall com.openbrx.companion` first (this wipes its saved MC address), then install. Log each phone's version:
@@ -101,8 +101,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    Close F395 if it is clean on all four. Min: `4fb379d8`.
 3. **Update the checkout** (*Before you start* step 2). There is no other `start.sh` run.
 4. **Start MC from the main checkout**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
-   (192.168.0.55 is the laptop's Windows LAN address, from `ipconfig`: check it first).
+   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
+   (<mc-lan-ip> is the laptop's Windows LAN address, from `ipconfig`: check it first).
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
    token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or
@@ -162,7 +162,7 @@ closes. If they reload like bullet weapons, the HUD's HOLD TO RECHARGE wording i
 **Result 2026-10-16 (brx1): CONFIRMED: all three energy weapons refill on a 50 ms tap at t19 + 0.5-0.6 s. The Energy Rifle control band above is old; it measured about 3.0 s.**
 
 **A.7. F515, a gun armed from the CLI matches MC (20 min; Min: `fa5b31d4`).** The CLI now arms MC's own compiled head.
-Run `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
+Run `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe -m brx_mcp deathmatch <addr> 5 15 65` (Windows
 Python, the default venue), then the same with `--venue indoor`; also try a
 5-gun `arena` with five addresses and `3 15 65`. Pass the volume: both commands default to 69. **Control:** a
 gun armed from the Sitting A recipe fires and takes hits at desk range. **Pass:** the gun shoots after the spawn and
@@ -267,7 +267,7 @@ reserve from the recipe's own `$AMMO,0,...` line). Hold a charge, then pull the 
 to the first refill `$ALCD`. Row: F226.
 
 **A.18. F277, a reload that never completes (15 min; Min: any 0.4.22).** The Energy Rifle on a phone-held gun.
-Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) Sitting 5 item 2). Read the
+Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) NEXT step 25). Read the
 log against F445 and F436 first: a timeout is what a slot desync produces. **Pass:** a repro, or a clear "no repro
 in 10 tries"; log every `reload partial` line. Row: F277.
 
@@ -749,7 +749,7 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 |---|---|---|---|
 | B21 | the MacBook | `BrxDebugPlugin.swift` compiles and runs | [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) step 1 |
 | F232 | the rig, outdoors or a range | misses do not cluster on pulls 1 and 2 | the row's probe |
-| F264 | two guns, a stall repro | the two-frame revive cures a real stall, and the next death is not dark | [`bench-plan.md`](bench-plan.md) Sitting 5 item 1 |
+| F264 | two guns, a stall repro | the two-frame revive cures a real stall, and the next death is not dark | [`bench-plan.md`](bench-plan.md) NEXT steps 18 and 39 |
 | F269, F270 | the laptop, `raw-bytes` | the paced A7/A8 halves | [`bench-2026-09-24.md`](bench-2026-09-24.md) Block 2 |
 | F272, F274 | screamer and soak runs | A1c, A13, three two-hour soaks | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) |
 | F322 | the IR rig | what one protocol-9/10 hit sends from the victim's headset | [`bench-2026-09-24.md`](bench-2026-09-24.md) Block 2b |
@@ -757,7 +757,7 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 | F340 | the Android 11 Pixel | the picker shows TURN ON LOCATION and finds the gun once Location is on | [`bench-2026-09-24.md`](bench-2026-09-24.md) step 4.15 |
 | F311, F309 | a no-internet field Wi-Fi, cellular | the phone stays bound on LAN; the transport counts | the rows |
 | F296 | eyes, a down player | the slow re-arm reads as "down", not a hit | the row |
-| F275, F231 | outdoor space | the t13 and t2 ladders (Tony picks t2 30 or 40) | [`bench-plan.md`](bench-plan.md) Sitting 10 |
+| F275, F231 | outdoor space | the t13 and t2 ladders (Tony picks t2 30 or 40) | [`bench-plan.md`](bench-plan.md) NEXT steps 92 and 93 |
 | F308 (3) | outdoor space | the Shotgun's range at t2 30 | the row |
 | F464 (dense adverts) | a labelled `fix/koth-dense-adverts` APK | capture rate against gun write latency; sets the KOTH scan budget | the row |
 | F452 (b) | 64 advertisers | the Stick loop under a 64-player flood (the kit makes a lower bound only) | the row |

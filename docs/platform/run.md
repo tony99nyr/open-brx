@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-10-03
+Last verified: 2026-10-27
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -24,10 +24,12 @@ Companion, which holds the Bluetooth link to that player's tagger and runs that 
 Control on a laptop writes the game, starts it and adds up the results over the field Wi-Fi. This
 is what scales to a real field, because the Bluetooth link rides the player instead of sitting on
 the laptop. It has run whole matches: a 300 second free-for-all on 2026-08-30 with two iPhones and
-a MacBook host, and an outdoor Team Deathmatch on 2026-09-01 with two Android phones. It is also
-unfinished and changes week to week, and the published Android build can be behind the current game
-rules. Four things have never been run: a dispersed start with players out of Wi-Fi range before
-T-0, a recovery after real coverage loss, more than two phones, and a 20 minute soak.
+a MacBook host, and an outdoor Team Deathmatch on 2026-09-01 with two Android phones. On 2026-10-17 a
+field session played four matches (Free-for-all, Team Deathmatch and two King of the Hill) with four
+player phones and two station phones. It is also unfinished and changes week to week, and the
+published Android build can be behind the current game rules. Three things have never been run: a
+dispersed start with players out of Wi-Fi range before T-0, a recovery after real coverage loss, and
+a 20 minute soak. The 2026-10-17 field day does not count as that recovery, because all four player phones stayed on the Wi-Fi and kept sending status all day. It did lead to the result-wait fixes F595 and F596, which the desk then measured and tested.
 
 ## What you need
 
@@ -41,12 +43,12 @@ For the laptop-only way:
 For Mission Control plus phones, all of the above, and:
 
 - A Wi-Fi router for the field. It needs no internet. A battery travel router is the recommended
-  option and is what both live matches used. The laptop's own hotspot works for a small game.
+  option and is what the first two live matches used. The laptop's own hotspot works for a small game.
 - One phone per player, with the BRX Companion installed and paired to that player's tagger
   **before** match day. Install it at home, where there is internet.
 - The armory map for your taggers (`~/.brx-mcp/armory.json`) on the machine that will host.
 - Optional, for phones that have a data plan: internet at the laptop and `cloudflared` installed (the
-  start script offers to install it for you). See *Reaching phones over the internet* below.
+  start script offers to install it for you and keeps it at version 2026.10.2 or later). See *Reaching phones over the internet* below.
 
 Every `python -m brx_mcp` command on this page runs through the virtual environment the install step
 created: `.venv/bin/python` on macOS and Linux, `.venv\Scripts\python.exe` on Windows, or activate the
@@ -96,8 +98,11 @@ This is the per-game arming, and it is where a bad start gets caught.
    and no voice line. This is the single most common cause of "only two of the three taggers started".
    A settled headset shows its team colour before the game and goes dark once play begins, which is
    normal.
-2. **Get each player onto a tagger.** Add the player in Mission Control and assign their tagger; the
-   player opens the HUD and taps Set My Tagger. The player's row goes from "no node" to linked.
+2. **Get each player onto a tagger.** Add the player in Mission Control. Assign the player's tagger in
+   KIT, in the gun list on the player's row. Mission Control then waits for that tagger. On the phone,
+   the player taps **SET MY GUN** and then taps their own tagger in the list under SCANNING FOR
+   TAGGERS. The phone connects to that tagger and reports it to Mission Control. To swap to another tagger before the match, use **CHANGE TAGGER** on the
+   phone's diagnostics panel.
 3. **Kit them out.** Set display name, team, weapon and voice. A weapon change can push a silent
    try-out so the player fires and reloads to feel it. A configured but unspawned tagger ignores
    incoming shots, so try-outs are safe in a crowd. Point the tagger away from people anyway.
@@ -169,9 +174,31 @@ backgrounded phone pauses the HUD's timers until it is back in front.
 
 ## After
 
-At the time limit, or when you end the match, Mission Control works out the winner, per-player
-kills, deaths, accuracy and medals. The recap stays **provisional** until every player's phone has
-flushed its events, so a player still walking back can still change a number.
+At the time limit, or when you end the match, Mission Control works out per-player kills, deaths,
+accuracy and medals. It names the winner only after every player phone and every control point has
+sent its last results, or until the operator taps FINALISE, or until 2 minutes pass after the whistle. A kill lives in the victim's report, so a phone that is still out of range
+can change the winner.
+
+While Mission Control waits, the recap shows the wait:
+
+- The header reads MATCH OVER · WAITING FOR RESULTS. The panel reads **RESULTS PENDING**, with no
+  winner and no team score.
+- WAITING FOR names the phones and hills that are still missing, for example WAITING FOR ECHO,
+  CONTROL POINT 1. A long list becomes a count, for example WAITING FOR 5 PHONES · 1 HILL.
+- FINAL IN m:ss counts down to the automatic release, 2 minutes after the whistle.
+- **FINALISE** releases the result at once. It takes two taps. After the first tap the button reads
+  TAP AGAIN: FINAL WITHOUT 2 PHONES (or whatever is missing). The second tap confirms.
+
+After the release the panel names the winner. A line under it names what the result left out: FINAL
+WITHOUT after FINALISE, or FINAL AFTER 2 MIN WITHOUT after the automatic release. A phone that syncs
+later still merges in. If it changes the result, the recap shows RESULT CHANGED.
+
+On the player's phone the results screen reads RESULT PENDING until the result arrives. It reads MC NOT
+REACHED · SEE MISSION CONTROL only when two things are true: the phone has not reached Mission Control since the whistle,
+and 30 seconds have passed. Walk that phone back into Wi-Fi range. A phone that reached Mission Control
+after the whistle and then dropped stays on RESULT PENDING. A phone that still holds unsent results gets no result until it has sent them. A result
+released without every phone shows PROVISIONAL · SCORES STILL ARRIVING. If a late phone then changes
+the winner or the outcome, the phone shows RESULT UPDATED.
 
 The kill medals (First Blood, Double Kill up to Killionaire, Killing Spree, Unstoppable) are named after the
 voice lines built into the Battle Company tagger's own sound bank, except Beat Down (Halo's name, over the gun's

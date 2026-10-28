@@ -44,7 +44,7 @@ Validated against capture `$GSET,0,0,1,0,1,0,50,1,*`:
 | 8 | gameMods | 1 | game-mods flags |
 
 **Key consequence:** there is **no respawn / game-time / lives field** — proving (again) those
-are app-side, not on the gun. Settles experiment-log #17 from the source side.
+are app-side, not on the gun. Settles `docs/experiment-log/2026-08.md` #17 from the source side.
 
 ## WEAP — weapon definition (source-derived)
 

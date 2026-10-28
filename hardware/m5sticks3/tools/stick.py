@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import os
 import shutil
 import subprocess
 import sys
@@ -34,16 +35,45 @@ from pathlib import Path
 TOOLS_DIR = Path(__file__).resolve().parent
 SKETCH_DIR = TOOLS_DIR.parent  # hardware/m5sticks3
 
+
+def _windows_home() -> tuple[Path, str]:
+    """The Windows user folder, as seen from WSL and as Windows writes it. `BRX_WIN_HOME` (a WSL path such as
+    /mnt/c/Users/<you>) overrides; otherwise Windows is asked once for %USERPROFILE%. Off Windows (CI, a Mac) the
+    home folder stands in, so the module still imports; the Windows-side commands need WSL anyway (and without wslpath
+    an override's Windows form is the POSIX path). sim.py and stick.py carry the same copy: each is a standalone tool."""
+    override = os.environ.get("BRX_WIN_HOME")
+    if override:
+        wsl = Path(override)
+        try:
+            win = subprocess.run(["wslpath", "-w", str(wsl)], capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            win = ""
+        return wsl, win or str(wsl)
+    try:
+        # chcp 65001: cmd.exe writes the OEM code page when piped, and a non-ASCII user name must still decode.
+        win = subprocess.run(["cmd.exe", "/c", "chcp 65001>nul & echo %USERPROFILE%"], capture_output=True, timeout=5,
+                             cwd="/mnt/c").stdout.decode("utf-8", "replace").strip()
+        wsl = subprocess.run(["wslpath", "-u", win], capture_output=True, text=True, timeout=5).stdout.strip()
+        if win and wsl:
+            return Path(wsl), win
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    if os.environ.get("WSL_DISTRO_NAME"):
+        print("could not ask Windows for %USERPROFILE%; set BRX_WIN_HOME=/mnt/c/Users/<you>", file=sys.stderr)
+    return Path.home(), str(Path.home())
+
+
+WIN_HOME_WSL, WIN_HOME = _windows_home()
+
 # ---------------------------------------------------------------------------
 # Windows-side paths and IDs (2026-09-23 bench facts; see hardware/m5sticks3/README.md)
 # ---------------------------------------------------------------------------
-CLI_EXE = ("/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/"
-           "resources/arduino-cli.exe")
-WIN_PYTHON = "/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe"
+CLI_EXE = str(WIN_HOME_WSL / "AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe")
+WIN_PYTHON = str(WIN_HOME_WSL / ".brx-mcp/venv/Scripts/python.exe")
 BOARD_URL = "https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json"
 FQBN = "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc"
-STAGE_DIR_WSL = Path("/mnt/c/Users/Tony/brx-sticks3/m5sticks3")  # folder name must match the .ino
-STAGE_DIR_WIN = r"C:\Users\Tony\brx-sticks3\m5sticks3"
+STAGE_DIR_WSL = WIN_HOME_WSL / "brx-sticks3" / "m5sticks3"  # folder name must match the .ino
+STAGE_DIR_WIN = WIN_HOME + r"\brx-sticks3\m5sticks3"
 STAGE_CWD = "/mnt/c"  # avoid the UNC-cwd warning arduino-cli prints when launched from a WSL path
 
 # USB identity (2026-09-23 bench): the Stick enumerates vendor id 0x303a; pid 0x1001 running our

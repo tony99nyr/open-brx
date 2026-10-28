@@ -4,8 +4,8 @@
 // Output = each clip's start and end, which clips a `$PLAYX` or token-1 clip cuts, and each cue's latency.
 //
 // Every rule below is either a bench measurement (the date and gun are named) or marked ASSUMPTION / ESTIMATE. An
-// assumption is a lever: a bench answer changes one constant, and `docs/audio-queue-scenarios.md` (Bench plan) names
-// the step that settles each one.
+// assumption is a lever: a bench answer changes one constant, and `docs/audio-queue-scenarios.md` (Bench results) points
+// to the bench results that settle each one.
 
 export const PLAYX = '$PLAYX,0,*';
 /** The slot-4 queued clip frame every announcer line uses (`$PLAY,,4,6,<id>,,,,*`). */

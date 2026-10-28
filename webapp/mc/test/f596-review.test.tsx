@@ -48,7 +48,7 @@ describe('1 · SPECTATE follows the pending rule', () => {
     const m = await spectate(PENDING);
     const t = strip(m.text());
     expect(t).toContain('RESULTS PENDING');
-    expect(t).toMatch(/WAITING FOR 2 PHONES/);
+    expect(t).toMatch(/WAITING FOR 2 PHONES/);   // the public board counts; the console names them (A83)
     expect(t).not.toMatch(/WINS|TIE —/);
     expect(m.find('[data-spectate="final"]').length, 'the winner card').toBe(0);
     expect(m.find('[data-team-score]').length, 'no team score').toBe(0);
@@ -72,7 +72,7 @@ describe('2 · LIVE during RECAP', () => {
     expect(strip(m.text())).toContain('RESULTS PENDING');
     expect(m.find('[data-team-score]').length, 'no TeamScore headline').toBe(0);
     const t = m.text();
-    const at = NAMES.map(n => t.indexOf(n));
+    const at = NAMES.map(n => t.lastIndexOf(n));   // the waiting line above the board names the missing phones too
     expect(at.every(i => i >= 0), 'the board is still there').toBe(true);
     expect(at, 'in ROSTER order (ALPHA..DELTA), not kill order (BRAVO first)').toEqual([...at].sort((a, b) => a - b));
     expect(m.find('[data-testid="live-open-recap"]').length).toBe(1);
@@ -193,15 +193,15 @@ describe('6 · the strip is a list a screen reader can read', () => {
   });
 });
 
-describe('7 · phones and hills are counted apart', () => {
-  it('the header counts phones, and adds the hill', async () => {
+describe('7 · the header names the missing phones, then the hills (A83)', () => {
+  it('the header names the phone, and adds the hill', async () => {
     const m = await recapOf(syncOf([phone('p1'), phone('p2', { stage: 'linked', transport: 'wifi' }), HILL]));
-    expect(strip(m.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR 1 PHONE · 1 HILL');
+    expect(strip(m.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR BRAVO, CONTROL POINT 1');
     m.unmount();
   });
-  it('only a hill missing: WAITING FOR 1 HILL', async () => {
+  it('only a hill missing: it is named', async () => {
     const m = await recapOf(syncOf([phone('p1'), HILL]));
-    expect(strip(m.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR 1 HILL');
+    expect(strip(m.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR CONTROL POINT 1');
     m.unmount();
   });
   it('FINAL WITHOUT names a missing hill by its label', async () => {

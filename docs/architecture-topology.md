@@ -139,7 +139,7 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 
 | Thing | Limit | Why | Status |
 |---|---|---|---|
-| Guns per BLE radio | **3 proven**. Three guns held on one laptop radio for a synced start. The maximum is untested | one central radio shares connection events | 3 guns proven (B10, `archive/pre-2026-09-06-followups-snapshot.md`), max unmeasured |
+| Guns per BLE radio | **3 proven**. Three guns held on one laptop radio for a synced start. The maximum is untested | one central radio shares connection events | 3 guns proven (B10, closed before 2026-09-06), max unmeasured |
 | Guns per phone node | **exactly 1** | the link rides one player | by design |
 | Players per game | **63** | the gun accepts `$PSET` ids 0–63 (bench-proven); Open BRX reserves wire id 0, so a match has ids 1–63 (`docs/spec/contracts.md` A5.1) | proven |
 | Native hardware teams | **4** | `$TID` is masked to 2 bits | proven, bench 2026-08-26 |
@@ -147,7 +147,7 @@ and per-phone VPNs (Tailscale on every phone is setup on every phone).
 
 The wire itself is `spec/contracts.md` §5; the gun↔headset and config-survival facts are
 `docs/archive/session-findings-2026-08.md` §7r; the counting limits are also sourced to
-B10 (`docs/archive/pre-2026-09-06-followups-snapshot.md`), `docs/spec/contracts.md` A5.1, `docs/archive/session-findings-2026-08.md` §7p
+B10 (closed before 2026-09-06), `docs/spec/contracts.md` A5.1, `docs/archive/session-findings-2026-08.md` §7p
 and `docs/game-modes.md` §Team structure.
 
 ---
@@ -281,12 +281,9 @@ drops the link).
 
 ## 7. Proven vs. specified — read this before trusting a diagram
 
-The resolution to trust, in one line: **Tier 0 is proven on two guns; two phones have played whole matches
-([`release-1.0.md`](release-1.0.md)); nobody has run more than two player phones, a dispersed
-timed start, or store-and-forward recovery across a real outage; backhaul is proven on one phone only.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
-utility *phone* station and the StickS3 station are built and bench-proven.
+The Companion is spec only. Every other claim of proof, by evidence, lives in [`release-1.0.md`](release-1.0.md). This page does not repeat it.
 
-**A green test suite is not a working field.** That distinction is stated in B15 (`archive/pre-2026-09-06-followups-snapshot.md`) in the
+**A green test suite is not a working field.** That distinction is stated in B15 (closed before 2026-09-06) in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
 
 For the current status of every feature, by evidence, read [`release-1.0.md`](release-1.0.md); for what
@@ -299,29 +296,27 @@ still needs players, space or time, read [`post-mvp.md`](post-mvp.md) → *Syste
 Starting inventory assumed: 4 BRX taggers (+ headsets), 2 Smart Grenades, and a laptop or phone you
 already own. No mods, no builds, no purchases required beyond Tier 0.
 
-- **Tier 0 — $0, exactly what you own** (proven): a laptop in BLE range drives the guns directly, so
-  a room, a yard or a small field works. Setup, start, spawn, live hit/death tracking, host-driven
-  respawn and a synced start are proven. TDM is proven; FFA / Infection / LMS engines and the laptop
-  scoreboard are software-tested only. Custom weapons (`$WEAP`: damage, rate, mag, reload type,
-  per-fire sounds; all 19 Callsign weapons captured and rebalanced), diagnostics, and custom
-  on-tagger sound packs over USB are proven. Grenade objectives (Hill / Respawn / Assault / CTF / CS
-  bomb) are proven, with CTF team-assign still open. Limit: everyone stays in the laptop's BLE range,
+- **Tier 0 — $0, exactly what you own** (status: [`release-1.0.md`](release-1.0.md)): a laptop in BLE range drives the guns directly, so
+  a room, a yard or a small field works. It covers setup, start, spawn, live hit and death tracking,
+  host-driven respawn and a synced start. It also covers custom weapons (`$WEAP`: damage, rate, mag,
+  reload type, per-fire sounds), diagnostics, custom on-tagger sound packs over USB, and grenade
+  objectives (Hill / Respawn / Assault / CTF / CS bomb). Limit: everyone stays in the laptop's BLE range,
   and there is no per-player HUD.
 - **Tier 1 — old Android/iOS phones as nodes, ~$0 if you have them (else ~$30–50 used)**: the biggest
   jump in capability for the least money, because the link rides the player. Full-field roaming for
   every Tier-0 mode, a per-player HUD, offline play with results syncing at the base. Native app on
-  Android + iOS (ADR-0003), one phone per gun. Two phones have run whole matches on real hardware
-  ([`release-1.0.md`](release-1.0.md)); more than two player phones is untested.
+  Android + iOS (ADR-0003), one phone per gun. The number of phones proven in a match is in
+  [`release-1.0.md`](release-1.0.md).
   **Optional, ~$0–50 more:** internet at the laptop (a SIM travel router, or tether it) turns on **backhaul**
   (§2.1): any player phone with a data plan then reaches Mission Control from anywhere it has signal, with
-  nothing to set up on the phone (proven on one phone, 2026-09-12).
+  nothing to set up on the phone (status: [`release-1.0.md`](release-1.0.md)).
 - **Tier 2 — ESP32 Companion per tagger, ~$12–25 each** (specified, not built): a purpose-built,
   rugged, phone-free node that rebuilds the native kill flash and audio. Power-ups (extra life,
   faster fire, damage boost, shields) as decoded command sequences. ESP-NOW mesh between Companions
   for instant field-wide kill-confirm. Optional +$5–7 loud custom audio, +$8–12 on-gun HUD.
 - **Tier 3: objective stations, ~$5–15 each (+ paper QR ~$0)** (the M5StickS3 respawn, pickup and hill
   stations are built; status in [`release-1.0.md`](release-1.0.md); the device is
-  [`../hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md); IR emit proven):
+  [`../hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md)):
   Domination (multi-point + live scoreboard), KotH, CTF variants, Assault, Extraction point, bomb
   site, respawn stations (data-mule sync). Grenades cover single-objective modes for $0; stations are
   for multi-point play, live ownership and scoring, and respawn.

@@ -9,7 +9,7 @@ import { columnEdges, type Column } from './columns';
 import { Blink, ClockSub, GhostButton, Num, PrimaryButton, ScrollX, Tag, shortCoverageLine, coverageColor, useTick } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { recapSync } from '../api/recapSync';
-import { waitingLine } from './SyncStrip';
+import { waitingLine, waitingNames } from './SyncStrip';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 import { floorSource, heldSeconds, hillOwner, sitesNote, stationSource } from './objective';
 import { objectiveWord } from '../rules/scoring';
@@ -195,7 +195,7 @@ export function Live() {
       {pending ? (
         <div data-testid="live-pending" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', padding: '14px 22px', marginBottom: 16, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `4px solid ${T.warn}` }}>
           <span style={{ font: F.osw(700, 30), letterSpacing: '.08em' }}>RESULTS PENDING</span>
-          {waitingLine(pendingSync!.rows) && <span style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(pendingSync!.rows)}</span>}
+          {waitingLine(pendingSync!.rows) && <span title={`Waiting for ${waitingNames(pendingSync!.rows)}`} style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(pendingSync!.rows)}</span>}
           <span style={{ flex: 1 }} />
           <span data-testid="live-open-recap"><PrimaryButton size={13} onClick={() => setView('recap')}>OPEN RECAP ▸</PrimaryButton></span>
         </div>

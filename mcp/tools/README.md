@@ -11,7 +11,8 @@ PATH, so no personal machine path is hardcoded.
 
 | Tool | Purpose |
 |---|---|
-| `gen_contract.py` | Generates `contract.gen.ts` / `.js` / `.d.ts` from `mcp/brx_mcp/mc/types.py` + `envelope.py`. Regenerate after you edit the source, or a test fails (`mcp/tests/test_contract_generated.py`). |
+| `gen_contract.py` | Generates `contract.gen.ts` / `.js` / `.d.ts` and `hardware/m5sticks3/contract.gen.h` from `mcp/brx_mcp/mc/types.py` + `envelope.py`. Regenerate after you edit the source, or a test fails (`mcp/tests/test_contract_generated.py`). |
+| `gen_clip_ms.py` | Generates `app/src/clipms.gen.js`, the phone's clip-length table, from `sound_catalog.json` and the golden bundle. Run `--check` to detect a stale file (`mcp/tests/test_clip_ms_generated.py`). |
 | `gen_ui_catalog.py` | Regenerates the weapon and perk catalogue blocks in `webapp/mc/src/mock/data.ts` and `app/src/demo-catalog.js` from the server's own catalogues. Regenerate after you edit the source, or a test fails (`mcp/tests/test_ui_catalog_generated.py`). |
 | `gen_weapon_ttk.py` | Regenerates only the derived `ttk_ms` values in `weapons.json`. Run `--check` to detect stale values. |
 
@@ -27,7 +28,6 @@ PATH, so no personal machine path is hardcoded.
 |---|---|
 | `ally_remeasure.py` | Re-measures ally `$SIR` functions from a depleted victim pool, so a heal/grant does not clamp and get mis-binned as a status function. Windows-side (Bluetooth). |
 | `armgen.py` | Prints one complete arm sequence with `$WEAP` token overrides and `$SIR` edits, verified complete. Sends nothing; runs under the WSL venv. |
-| `beacon_scan.py` | Watches Open BRX station/player BLE adverts and their RSSI, standing in for a player phone. Windows-side (BLE scan only). One-off bench experiment, kept for reference. |
 | `derive_callsign_data.py` | Restates raw Callsign APK config assets (sound durations, medal text) as our own derived JSON. Reads a local, gitignored input path only. |
 | `ff_ab.py` | Controlled A/B test of whether `$GSET` friendly-fire token gates IR registration. Windows-side (Bluetooth). |
 | `firemode_probe.py` | Pushes one weapon with raw token overrides and leaves the gun live, for probing a single `$WEAP` token. |
@@ -38,14 +38,11 @@ PATH, so no personal machine path is hardcoded.
 | `loopback.py` | Rig calibration: checks that the emitter board's IR reaches the receiver board bit-exact, before trusting any other IR result. |
 | `mc_driver_bench.py` | End-to-end bench test of the real Mission Control `GameDriver` arming path, including the F11 `$CLEAR`/`$SIR` recovery. |
 | `native_capture.py` | Captures a native gun's IR words (abilities, alt-fires, grenades), working around the F12 frame-splitting bug in the receiver firmware. |
-| `quick_victim.py` | Minimal victim arming config, kept small so a flaky BLE link can finish the push. One-off bench experiment, kept for reference. |
 | `range_step.py` | Runs one rung of a distance ladder, reporting witnessed hit rate at that range, to separate emitter margin from tagger fault. |
-| `raw_weapon.py` | Pushes one raw `$WEAP` frame with full tutorial arming scaffolding. One-off bench experiment, kept for reference. |
 | `sendframes.py` | Sends one or more raw frames to a tagger and prints each reply. |
-| `victim_count.py` | Arms a victim properly and counts `$HIR` registrations over a timed window. One-off bench experiment, kept for reference. |
 | `weapon_range.py` | Cycles every catalogue weapon onto one bench gun for a fixed dwell each, for a full-arsenal firing pass. |
 | `webview_eval.py` | Runs a JavaScript expression inside the BRX app's WebView over `adb` port-forward, for driving/inspecting the live app engine. Windows-side (adb port-forward needs Windows localhost). |
-| `coldconn.sh` | F297's phone cold-connect loop: force-stop the app, launch it, and time process start to GATT service discovery from `logcat`, N runs per phone (`coldconn.sh <adb-serial> <label> <runs> <hold_s> [out_dir]`). Used by `docs/bench-standard-2026-09-29.md`. It reads `ADB`, not `BRX_ADB`, for the adb binary. |
+| `coldconn.sh` | F297's phone cold-connect loop: force-stop the app, launch it, and time process start to GATT service discovery from `logcat`, N runs per phone (`coldconn.sh <adb-serial> <label> <runs> <hold_s> [out_dir]`). Used by the 2026-09-29 standard bench sheet (archived). It reads `ADB`, not `BRX_ADB`, for the adb binary. |
 
 ## Offline analysis and conversion (no gun, no BLE)
 

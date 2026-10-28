@@ -38,8 +38,8 @@ touched `app/src`, `webapp/mc/src`, a UI gate or an e2e script): that is the fin
 suite on its own.
 
 **Everything at once:** `pnpm run test:all` from the repo root runs the unit gates of all four pieces in parallel
-(about 30 s). `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
-`webapp/mc` e2e script (about 7.5 min on a 32-core box). `pnpm run test:all -- site mcp` runs only the jobs whose names
+(about 3 to 5 min on a 32-core box). The slowest jobs, `mcp-core` and `mcp-sim`, set that time; they run in parallel, at `secs` 300 each in `scripts/lib/jobs.mjs`. `pnpm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and every
+`webapp/mc` e2e script (about 7 min on a 32-core box, set by `app-screens`). `pnpm run test:all -- site mcp` runs only the jobs whose names
 match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free ports, and
 writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 
@@ -87,9 +87,15 @@ against `base` (tracked changes plus any untracked files), maps the changed path
 and prints the selection and why. Default base: `HEAD^1` if HEAD is a merge commit (its first parent is the
 branch before the merge), else the merge-base with `origin/main`. Right after `git merge origin/main`, though,
 that merge-base IS origin/main's own tip, so the default omits everything the merge just brought in: pass the
-base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. If only docs
-came in, `mcp` (docs hygiene), `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when
-`docs/announcer.md` changed (its test reads that file). An unknown top-level directory selects `mcp` only. An unmapped path inside a known
+base you last tested explicitly whenever you are not calling `--changed` immediately after the merge. The Python
+suite is three jobs (F626): `mcp-docs` (docs hygiene and the other files in `run_tests.py`'s `docs` group), `mcp-sim`
+(the balance sims) and `mcp-core` (the rest). A job filter matches a substring of the name, so `mcp` runs all three,
+and no job name may sit inside another (the lander reruns a failed job by its name). If only docs came in, `mcp-docs`
+and `site` (which renders `docs/platform`/`docs/manual`) are needed, plus `app-test` when `docs/announcer.md` changed
+(its test reads that file), plus `mcp-core` or `mcp-sim` for the few pages their tests read (`MCP_DOCS_READERS` in
+`scripts/lib/changed.mjs`). An unknown top-level directory selects all three. A new test that reads docs widely goes
+into the `docs` group. `mcp/tests/test_test_all_changed.py` checks the docs paths the other test files name against
+these rules; it is a static check, so a path built at run time can still slip past it. An unmapped path inside a known
 tree, or a change to the runner itself, the root `package.json`/`pnpm-lock.yaml` or a CI workflow file
 (`FULL_SUITE_TRIGGERS` in `scripts/lib/changed.mjs`), selects everything: fail safe, never a
 narrower guess. A job name typed after `--changed` (e.g. `--changed [base] mcp site`) ADDS to that selection, a
@@ -97,7 +103,7 @@ union, never a replacement: if the diff's own fail-safe already picked everythin
 nothing, it never narrows the run back down to just the names typed. The line printed just before the jobs
 start lists the final selection and why each job is in it (from the diff, or named on the command line).
 `--changed` adds `--ui` itself whenever the selection includes a UI-only job. CI runs only `mc-play` of the browser gates, as a
-non-blocking job (F512), and does not run `site`. The lander runs all UI gates, but a red result costs a batch.
+blocking job (F512), and does not run `site`. The lander runs all UI gates, but a red result costs a batch.
 The full `--ui` gate stays the rule before the FIRST push of a UI change in a branch.
 
 **After you edit a generator's source**, run `node scripts/regen.mjs --check`. It names each stale output and the
@@ -134,16 +140,20 @@ cd mcp && python3 run_tests.py            # everything
 cd mcp && python3 run_tests.py modes cs   # only files matching these substrings
 cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs every file in one process, streamed
 cd mcp && python3 run_tests.py chaos      # chaos testing only (its own `chaos` job in test:all; docs/chaos-testing.md)
+cd mcp && python3 run_tests.py --group sim          # only a named group of files (GROUPS in run_tests.py)
+cd mcp && python3 run_tests.py --exclude-group sim  # everything except that group
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
 missing rather than failing the run. `test:all` runs this suite under the repo `.venv` (or `MC_PY`), so it never
 shows a missing-extra import. When you import an optional extra, also run `cd mcp && python3 run_tests.py` under
-system python, as CI's first pass does. Two places refuse such skips (`run_tests.py --no-skip <name>`): CI's second
-pass, after it installs the extras, and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc`
-extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
+system python, as CI's `mcp` job does. CI runs three jobs in parallel (F627): `mcp` (system python) and
+`mcp-extras` (with the extras) each run everything but the `sim` group, and `mcp-sim` runs that group once. CI's jobs
+are not test:all's: CI runs the `docs` group inside its `mcp` and `mcp-extras` jobs. Three
+places refuse such skips (`run_tests.py --no-skip <name>`): `mcp-extras`, after it installs the extras; `mcp-sim`,
+whose group needs none; and `test:all` with the repo `.venv`, for websockets and uvicorn (its `mc` extra). A filter that matches no file exits 2. The suite includes a static-type gate: `pip install pyright`
 once (the WSL venv already has it), then `cd mcp && python3 -m pyright` for the full list of errors.
 `run_tests.py pyright` is what actually gates the suite — it SKIPS cleanly where pyright isn't
-installed (the bench box's system python), and CI installs pyright for its second, with-extras pass.
+installed (the bench box's system python), and CI installs pyright for its `mcp-extras` job.
 
 **Phone app (`app/`)**, native Capacitor app for Android + iOS:
 ```bash

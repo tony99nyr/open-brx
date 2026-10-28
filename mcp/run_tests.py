@@ -8,6 +8,8 @@ The system Python here has no pytest/pip, so this is the suite entry point:
     python3 run_tests.py --inline   # the old way: every file in THIS process, output streamed
     python3 run_tests.py --exclude chaos   # every file except those matching (repeatable)
     python3 run_tests.py --no-skip starlette   # fail if a test skips for want of starlette (repeatable; CI's extras pass)
+    python3 run_tests.py --group sim           # only the files of a named group (GROUPS below; repeatable)
+    python3 run_tests.py --exclude-group sim   # every file except a group's (repeatable)
 
 A filter that matches no file exits 2: a mistyped filter ran nothing, which is not a pass.
 
@@ -69,6 +71,19 @@ SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_ser
          "test_sticks3_core": 4,  # the host tests, built once with revive feedback off and once on
          "test_land": 3, "test_test_all_pool": 3,  # pool admission windows use real child processes
          "test_mc_shutdown_flush": 3}  # five real MC subprocesses (SIGTERM, SIGINT, SIGHUP, the route, nohup), ~3.5 s each
+
+
+# F627 / F626 (2026-10-26): named groups of whole files, so CI's jobs and test-all's jobs split the suite the same
+# way from one list. `sim` is about 60% of the suite's CPU and needs no extra, so CI runs it once on its own.
+# `docs` is test-all's mcp-docs job, the only mcp job a docs-only change selects (scripts/lib/changed.mjs). It holds
+# the cheap files that read real docs widely: the whole tree, docs/FOLLOWUPS.md, or a generated page. A code test that
+# reads one docs page stays in mcp, and changed.mjs MCP_DOCS_READERS sends that page to mcp.
+# Exact file stems, not substrings: test_every_group_names_real_test_files fails when a file is renamed.
+GROUPS = {
+    "sim": ("test_balance_review", "test_balance_review_field_kit", "test_balance_sim"),
+    "docs": ("test_docs_hygiene", "test_suite_registry", "test_amendment_citations", "test_site_external_links",
+             "test_generated_fresh", "test_fw_commands", "test_run_tests_guards"),
+}
 
 
 def run_file(stem: str, chunk: tuple[int, int] | None = None) -> dict:
@@ -191,6 +206,8 @@ def main(argv: list[str]) -> int:
     filters: list[str] = []
     excludes: list[str] = []
     no_skip: list[str] = []
+    groups: list[str] = []
+    exclude_groups: list[str] = []
     it = iter(argv)
     for a in it:
         if a == "--inline":
@@ -199,6 +216,10 @@ def main(argv: list[str]) -> int:
             excludes.append(next(it))
         elif a == "--no-skip":          # T7: a skip whose reason contains this fails the run (CI's extras pass)
             no_skip.append(next(it))
+        elif a == "--group":            # F627: only the files of this group
+            groups.append(next(it))
+        elif a == "--exclude-group":    # F627: drop the files of this group
+            exclude_groups.append(next(it))
         elif a in ("-j", "--jobs"):
             jobs = int(next(it))
         elif a.startswith("-j") and a[2:].isdigit():
@@ -206,7 +227,15 @@ def main(argv: list[str]) -> int:
         else:
             filters.append(a)
 
+    unknown = [g for g in groups + exclude_groups if g not in GROUPS]
+    if unknown:
+        print(f"error: unknown group {' '.join(unknown)} (known: {' '.join(GROUPS)})", file=sys.stderr)
+        return 2
     files = sorted((ROOT / "tests").glob("test_*.py"))
+    if groups:
+        files = [f for f in files if any(f.stem in GROUPS[g] for g in groups)]
+    if exclude_groups:
+        files = [f for f in files if not any(f.stem in GROUPS[g] for g in exclude_groups)]
     if filters:
         files = [f for f in files if any(s in f.stem for s in filters)]
     if excludes:
@@ -214,6 +243,8 @@ def main(argv: list[str]) -> int:
     stems = [f.stem for f in files]
     if not files:   # T7: a mistyped filter ran nothing, and that must not read as green
         print(f"error: no test file matches {' '.join(filters) or '(all)'}"
+              + (f" in --group {' '.join(groups)}" if groups else "")
+              + (f" after --exclude-group {' '.join(exclude_groups)}" if exclude_groups else "")
               + (f" after --exclude {' '.join(excludes)}" if excludes else ""), file=sys.stderr)
         return 2
 

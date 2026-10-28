@@ -43,7 +43,9 @@ Tony's daughter cannot work the reload lever, so it must never compete with a ba
 
 ## 2. The core set
 
-Six picks. Each one has a distinct role; Fast Hands is a free convenience pick.
+Four picks are live: Body Armor, Armour Piercing, Fast Hands and Extended Mags. Two more are designed and stay
+`hidden: true` in `perks.json`: Motion Tracker and Second Wind. They stay hidden until the node half lands (row S50 in
+[post-mvp.md](post-mvp.md)). Each pick has a distinct role; Fast Hands is a free convenience pick.
 
 | perk | what the player gets | what it costs | beaten by |
 |---|---|---|---|
@@ -88,13 +90,11 @@ nothing to the Toxin Rifle's (360 to 384); its magazine
 doubling still applies. Tony kept the perk as it is with the cap in view (2026-10-17: "ok yeah i mean thats still a good perk then"): the magazine doubling carries it. It still doubles the reserve below the ceiling: the Charge Rifle 160 to 320, the AMR
 112 to 224; on a pistol the USP 240 to 360. The bench that lifts it is `bench-field-1017.md` P1.0.
 
-**Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
-compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
-the preset was designed not to have. Under Shields, Body Armor grants **shield**, not armour. That is a
-branch in `armed_armor()`, and it is on the list below. **Superseded 2026-10-25 (Tony via brx1):** the
-Shields preset refuses Body Armor and Armour Piercing outright (`Compiler.preset_block`, from the perk's
-effects). No picker offers them there, and a switch to Shields clears them from every loadout with no warning.
-The `armed_armor()` branch stays for Hardcore and custom zero-armour games.
+**Body Armor and the Shields preset.** The Shields preset (45 HP, 105 shield, no armour) has no armour layer for
+a grant to add to. `Compiler.preset_block` in `compile.py` refuses Body Armor there, and it refuses Armour Piercing
+there too. No picker offers them, and a switch to Shields clears them from every loadout with no warning. The shield
+branch of `armed_armor()` still serves Hardcore and custom zero-armour games. In those games `is_shields_preset()` is
+true, and the grant goes to the shield pool through `armed_shield()`.
 
 **Extended Mags (2026-10-25).** Standard uses an ammunition multiplier of ×2. Shields uses ×1.5.
 Weapon swap is ×1.3 slower. Pistol primaries keep the separate +50% ammunition rule.

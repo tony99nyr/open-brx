@@ -1133,7 +1133,7 @@ def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
     """P(at least `htk` hits in `shots` independent trials at hit chance `p`) -- binomial, exact.
 
     2026-09-17 arsenal review, Tony's decision: replaces "total kills from a full kit" as a dominance
-    axis (see `docs/reference/ttk-model.md` §Sidearm proposal for the same formula on the three
+    axis (see `docs/archive/ttk-model-history.md` §5 Sidearm proposal for the same formula on the three
     pistols). Reserve is no longer an axis at all -- a respawn refills the kit, so how many kills a
     whole KIT could theoretically produce says nothing about a single life."""
     if htk <= 0:

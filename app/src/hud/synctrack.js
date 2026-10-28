@@ -1,5 +1,5 @@
 // Phone sync track (Tony 2026-10-25: "MC shows your phone not synced and you wonder wait im right here why"; gallery
-// C:/Users/Tony/brx-phone-sync, option A). After the whistle the phone shows MC's own F596 stages (state.py
+// brx-phone-sync, not in the repo, option A). After the whistle the phone shows MC's own F596 stages (state.py
 // `_sync_stage`): NOT LINKED, LINKED, SENDING N LEFT, RECEIVED. RECEIVED needs what MC needs: a status with nothing
 // pending sent after the whistle (`transport.drainedAt`), and it latches through a later drop, as MC's does. MC
 // confirms the end from that same status (A42 `_note_end_confirm`), so "end not confirmed" is not a separate state here.
@@ -63,4 +63,13 @@ export function chipHtml(t) {
   const mark = t.tone === 'ok' ? '✓' : t.tone === 'warn' ? '!' : '•';
   const why = t.reason || t.action ? `<div class="why">${t.reason || ''}${t.reason && t.action ? ' · ' : ''}${t.action ? `<span class="act">▸ ${t.action}</span>` : ''}</div>` : '';
   return `<div class="sychip ${t.tone}" data-sync="${t.stage}"><div class="l1">${mark} ${label}</div>${why}</div>`;
+}
+
+/** F595: how long after the whistle the phone stays urgent (a beat as soon as its ring empties, redials on a 2 s cap)
+ *  while no result has come. Past it the ordinary 10 s cap and the normal beats finish the job without the battery cost. */
+export const SYNC_URGENT_MAX_MS = 10 * 60 * 1000;
+/** F595: should the transport be urgent? From the end until the result arrives, for at most SYNC_URGENT_MAX_MS.
+ *  `es` is engine.state(); `now` is on the engine's clock, as `endedAt` is. */
+export function syncUrgent(es, now) {
+  return !!(es && es.ended && !es.result && es.endedAt && now - es.endedAt < SYNC_URGENT_MAX_MS);
 }

@@ -59,22 +59,95 @@ def test_no_skip_fails_a_run_whose_skip_reason_matches_and_only_then():
                 banned.stderr
 
 
-def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
+def test_groups_select_and_exclude_whole_files_by_name():
+    # F627 / F626 (2026-10-26): CI and test-all split the suite by named groups, so both read one list (GROUPS).
+    with tempfile.TemporaryDirectory() as tmp:
+        root = pathlib.Path(tmp)
+        shutil.copy(MCP / "run_tests.py", root / "run_tests.py")
+        (root / "tests").mkdir()
+        shutil.copy(MCP / "tests" / "_skip.py", root / "tests" / "_skip.py")
+        for stem in ("test_balance_review", "test_balance_review_field_kit", "test_balance_sim", "test_docs_hygiene",
+                     "test_suite_registry", "test_other"):
+            (root / "tests" / f"{stem}.py").write_text("def test_passes():\n    assert True\n")
+        for inline in (True, False):
+            sim = _run_tests(root, "--group", "sim", inline=inline)
+            assert sim.returncode == 0 and "across 3 file(s)" in sim.stdout, (inline, sim.stdout + sim.stderr)
+            rest = _run_tests(root, "--exclude-group", "sim", "--exclude-group", "docs", inline=inline)
+            assert rest.returncode == 0 and "across 1 file(s)" in rest.stdout, (inline, rest.stdout + rest.stderr)
+            both = _run_tests(root, "--group", "sim", "--group", "docs", inline=inline)
+            assert both.returncode == 0 and "across 5 file(s)" in both.stdout, (inline, both.stdout + both.stderr)
+        bad = _run_tests(root, "--group", "no_such_group")
+        assert bad.returncode == 2 and "unknown group no_such_group" in bad.stderr, bad.stdout + bad.stderr
+
+
+def test_every_group_names_real_test_files():
+    # A renamed file must not drop out of its group silently, and out of the CI job that runs the group.
+    src = (MCP / "run_tests.py").read_text()
+    groups = ast.literal_eval(re.search(r"^GROUPS = (\{.*?\n\})", src, re.M | re.S).group(1))
+    assert set(groups) >= {"sim", "docs"}, groups
+    for name, stems in groups.items():
+        for stem in stems:
+            assert (MCP / "tests" / f"{stem}.py").exists(), (name, stem)
+    # a new balance test belongs with the sim, or it puts sim CPU back into both CI passes (Fable)
+    balance = {p.stem for p in (MCP / "tests").glob("test_balance_*.py")}
+    assert balance <= set(groups["sim"]), sorted(balance - set(groups["sim"]))
+
+
+def _ci_job(name: str) -> str:
+    """One job's block of ci.yml, from `  <name>:` to the next top-level job."""
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
-    lines = ci.splitlines()
+    return re.split(r"\n  [a-z][\w-]*:\n", ci.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]
+
+
+def test_ci_extras_pass_forbids_a_skip_for_every_extra_it_installs():
+    job = _ci_job("mcp-extras")
+    lines = job.splitlines()
     pip = next(i for i, l in enumerate(lines) if "pip install" in l and "starlette" in l)
     run = next(l for l in lines[pip + 1:] if "run_tests.py" in l)
     for extra in ("starlette", "uvicorn", "websockets", "httpx", "pyright", "bleak"):
         assert f"--no-skip {extra}" in run, (extra, run)
 
 
-def test_ci_checks_followups_freshness_on_main_push_only():
+def _mcp_runs() -> list[str]:
+    """Every `run_tests.py` step of CI's mcp, mcp-extras and mcp-sim jobs, with its env lines."""
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
     mcp = ci.split("  mcp:\n", 1)[1].split("\n  webapp-mc:", 1)[0]
-    runs = re.findall(r"^      - run: cd mcp && python3 run_tests.py.*(?:\n        .*)*", mcp, re.M)
-    assert len(runs) == 2, runs
-    for run in runs:
+    return re.findall(r"^      - run: cd mcp && python3 run_tests.py.*(?:\n        .*)*", mcp, re.M)
+
+
+def test_ci_checks_followups_freshness_on_main_push_only():
+    # the two passes run test_docs_hygiene, the only reader; mcp-sim does not
+    runs = _mcp_runs()
+    assert len(runs) == 3, runs
+    for run in runs[:2]:
         assert "BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}" in run, run
+
+
+def _positionals(line: str) -> list[str]:
+    """The file filters on a run_tests.py command line: every token that is not a flag or a flag's value."""
+    tokens, out = iter(line.split("run_tests.py", 1)[1].split()), []
+    for t in tokens:
+        if t in ("--group", "--exclude-group", "--exclude", "--no-skip", "-j", "--jobs"):
+            next(tokens, None)
+        elif not t.startswith("-"):
+            out.append(t)
+    return out
+
+
+def test_ci_runs_every_test_file_in_both_passes_or_in_the_sim_job():
+    # F627: the system-python and extras passes leave out only the sim group, and mcp-sim runs exactly that group with
+    # the extras pass's --no-skip list, so a sim test that starts needing an extra fails there instead of skipping.
+    system, extras, sim = (r.split("\n")[0] for r in _mcp_runs())
+    # parse the selections, not substrings: a second --exclude-group would drop that group from every job (Fable)
+    picked = lambda line, flag: re.findall(rf"(?:^|\s){flag} (\S+)", line)
+    for line in (system, extras):
+        assert picked(line, "--exclude-group") == ["sim"] and not picked(line, "--group") and not picked(line, "--exclude"), line
+        assert not _positionals(line), ("a positional filter narrows a pass", line)
+    assert picked(sim, "--group") == ["sim"] and not picked(sim, "--exclude-group") and not picked(sim, "--exclude"), sim
+    flags = lambda line: sorted(re.findall(r"--no-skip \S+", line))
+    assert flags(sim) == flags(extras) and flags(extras), (sim, extras)
+    # the no-skip list proves the sim needs no extra only while that job installs none
+    assert "pip install" not in _ci_job("mcp-sim") and "pip install" not in _ci_job("mcp"), "mcp and mcp-sim stay bare"
 
 
 def test_test_all_jobs_never_see_a_single_scripts_debug_switch():
@@ -142,13 +215,13 @@ def test_split_keys_name_existing_files_and_have_multiple_chunks():
                for key, chunks in split.items()), split
 
 
-def test_ci_browser_gate_stays_non_blocking_until_its_row_closes():
-    # T17 (2026-10-11): one browser gate in CI, non-blocking for its first week. The switch to blocking is a decision
-    # with a date, so the job and FOLLOWUPS F512 must change together: blocking only once F512 is closed.
+def test_ci_browser_gate_is_blocking_exactly_when_f512_is_closed():
+    # T17 (2026-10-11): one browser gate in CI, made blocking when F512 closed (2026-10-26). The job and the row change
+    # together: this keeps the job blocking unless F512 is reopened.
     ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
     job = ci.split("\n  mc-play:\n")[1].split("\n\n  ")[0]
     assert "test/e2e/play.mjs" in job and "MC_PY=" in job and "timeout-minutes:" in job, job
     followups = (REPO / "docs" / "FOLLOWUPS.md").read_text()
     open_row = "- **F512 " in followups
     assert ("continue-on-error: true" in job) == open_row, (
-        "mc-play is non-blocking exactly while F512 is open: close F512 when you remove continue-on-error")
+        "mc-play is blocking exactly when F512 is closed: reopen F512 if you add continue-on-error back")

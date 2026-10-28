@@ -41,7 +41,7 @@ with open(d / "priority.txt", "a") as f:
 with open(d / "index_fresh.txt", "a") as f:
     f.write(os.environ.get("BRX_FOLLOWUPS_INDEX_FRESH", "") + "\n")
 cfg = json.loads((d / "cfg.json").read_text()) if (d / "cfg.json").exists() else {}
-jobs = ["mcp", "site"]
+jobs = cfg.get("jobs", ["mcp", "site"])   # F626: a test may give the real Python job names instead
 if "--changed" in args:
     jobs = ["mcp"]   # test-all's --changed narrows; a docs-only pick here is just mcp
 if "--list" in args:
@@ -109,10 +109,10 @@ if (wt / "OUTSIDELOAD_OTHER").exists() and not (d / "outsideloaded-other").exist
     print("waiting on outside load for mcp: 30000 tasks, top: chrome")
 fail = set()
 if (wt / "RED").exists():
-    fail.add("mcp")
+    fail.add(cfg.get("red_job", "mcp"))
 if (wt / "FLAKE").exists() and not (d / "flaked").exists():
     (d / "flaked").write_text("")
-    fail.add("site")
+    fail.add(cfg.get("flake_job", "site"))
 closeflake = (wt / "CLOSEFLAKE").exists() and not (d / "closeflaked").exists()
 if closeflake:
     (d / "closeflaked").write_text("")
@@ -1297,6 +1297,38 @@ def test_an_incomplete_failed_gate_is_red_without_a_flake_rerun():
         candidate_calls = [json.loads(line) for line in (t.dir / "candidate_calls.jsonl").read_text().splitlines()]
         assert len(candidate_calls) == 1, candidate_calls
         assert not (t.dir / "state-a" / "flakes.jsonl").exists()
+
+
+# F626 (Fable): the lander reruns one failed job, and probes main for it, with the job's NAME as a test-all filter, and
+# expects exactly one row back. Filters are substrings, so a name inside another name (the old `mcp` beside mcp-docs
+# and mcp-sim) selected three jobs: a flake was never credited and a green main read as red. The real registry's names
+# are checked by test_test_all_jobs.py; these two tests run the lander over the real Python job names.
+PY_JOBS = ["mcp-core", "mcp-docs", "mcp-sim", "site"]
+
+
+def test_a_flake_in_one_python_job_is_rerun_alone_and_credited():
+    with Lane() as t:
+        t.cfg(jobs=PY_JOBS, flake_job=PY_JOBS[0])
+        a = t.submit("a", {"FLAKE": "fails mcp-core once"})
+        r = t.land("run")
+        assert r.returncode == 0, r.stdout + r.stderr
+        _assert_landed(t, a)
+        flakes = [json.loads(line) for line in (t.dir / "state-a" / "flakes.jsonl").read_text().splitlines()]
+        assert [f["job"] for f in flakes] == [PY_JOBS[0]], flakes
+        calls = [json.loads(line) for line in (t.dir / "calls.jsonl").read_text().splitlines()]
+        rerun = [c for c in calls if "--no-cache" in c]
+        assert rerun and [a for a in rerun[0] if not a.startswith("--")] == [PY_JOBS[0]], rerun
+
+
+def test_a_red_python_job_on_a_green_main_is_blamed_on_the_branch():
+    with Lane() as t:
+        t.cfg(jobs=PY_JOBS, red_job=PY_JOBS[0])
+        a = t.submit("a", {"RED": "breaks mcp-core"})
+        r = t.land("run")
+        assert "red on its own" not in r.stderr, r.stdout + r.stderr   # main's probe of mcp-core alone is green
+        res = t.result(a)
+        assert res["status"] == "red" and res["failed_jobs"] == [PY_JOBS[0]], res
+        assert f"refs/heads/land-failed/{a}" in t.remote_refs()
 
 
 def test_a_red_main_is_not_blamed_on_the_branch():

@@ -1,8 +1,6 @@
 # Powerups: a station grants an item (design, 2026-09-24)
 
-Status: **BUILT, ON by default (F372, Tony 2026-09-25: "rockets, railgun, overshield as powerup/pickups. yes
-lets enable them").** `--no-powerups` is the opt-out. Sitting A's slot and button checks ran on 2026-09-24
-(bench 3.3, below); steps 3.4, 3.5 and 4.11 remain as verification, not as a condition for the default.
+Status: Built; open items: F434, F450.
 Tony's model: a station (a utility phone or an M5Stick) is assigned a kind and its data by Mission Control
 (MC) per game. A powerup station grants an item, for example a pickup-only heavy (rockets). Contract row: A56.
 Roadmap entry it replaces: K3 in the archived utility-roadmap; the station half of S46.
@@ -438,7 +436,7 @@ the F400 row (`docs/FOLLOWUPS.md`).
 
 Prompted by a multi-pickup display question (the old hint showed only the nearest or claiming station's timer,
 and could flip between stations at equal range): "idk if we need the pickups timer on hud the whole time... use
-the left-side game alert 'X AVAILABLE' when a pickup spawns." Storyboard: `C:\Users\Tony\brx-pickup-alert`, three
+the left-side game alert 'X AVAILABLE' when a pickup spawns." Storyboard: Tony's storyboard (not in the repo), three
 options; Tony picked **A**, the plain one: drop the always-on countdown and the TAKEN hint, add nothing new.
 
 **Tony's rationale:** "Halo never told you it was taken or who took it. I think not knowing is better for

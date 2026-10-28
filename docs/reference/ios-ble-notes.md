@@ -90,9 +90,4 @@ Two things worth building into the scan work:
 - **`Info.plist` needs `NSBluetoothAlwaysUsageDescription`** or iOS *terminates* the app the moment
   `initialize()` runs, with no useful diagnostic. `ios/` is git-ignored, so this is applied by
   `app/scripts/ios-setup.sh` — **put any future iOS setting there, not in Xcode.**
-- iOS deployment target is **15.0**; the iPhone X (iOS 16.7) is supported.
-
-## Status
-
-The app is **running on the iPhone X** — installed, Bluetooth permission granted, both guns
-connecting. Build instructions incl. every real-device gate: `app/README.md`.
+- iOS deployment target is **16.2** (`app/scripts/ios-setup.sh` raises it); the iPhone X (iOS 16.7) is supported.

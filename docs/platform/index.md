@@ -35,7 +35,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 
 ### Your phone, on the tagger.
 
-The BRX Companion holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armor, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
+The BRX Companion holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armour, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
 
 ![Live HUD: health, rounds, the match clock, weapons hot](/shots/hud-live.jpg)
 
@@ -48,7 +48,7 @@ The BRX Companion holds the Bluetooth link to one tagger and shows what the tagg
 
 ### Every rule yours.
 
-Play the defaults or change the cap, the clock, respawn, health, armor and what each slot may carry. Save it. Modes are Python, and new ones are welcome.
+Play the defaults or change the cap, the clock, respawn, health, armour and what each slot may carry. Save it. Modes are Python, and new ones are welcome.
 
 ```data
 modes
@@ -58,9 +58,9 @@ modes
 
 ### The whole arsenal. Three slots.
 
-Every player carries a primary, a secondary and a perk. Sixteen weapons are in the game, in six classes. Twelve of them can take the primary slot and fourteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are pickups: you take one from a station during the match. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
+Every player carries a primary, a secondary and a perk. The weapons in the game fall into six classes. Twelve weapons can take the primary slot and thirteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are pickups: you take one from a station during the match. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
-Five perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
+Four perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
 
 - [See every weapon](/arsenal)
 

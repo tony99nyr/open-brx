@@ -1,12 +1,13 @@
 // The HUD alert lanes gallery (docs/announcer.md "The three lanes", F351/F352): frozen renders of the REAL HUD (?demo)
 // for Tony's review, day and night, at both screen-gate widths. It asserts nothing (app/tools/screens.mjs is the gate).
 // Run from app/ after `npm run build`: node tools/alert-gallery.mjs [out-dir]
-// The default out-dir is C:\Users\Tony\brx-alerts (WSL: /mnt/c/Users/Tony/brx-alerts). The screenshots never go in the repo.
+// The default out-dir is %USERPROFILE%\brx-alerts (from WSL, the same folder under /mnt/c; win-home.mjs). The screenshots never go in the repo.
 import { chromium } from 'playwright';
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'node:url';
+import { winHome } from './win-home.mjs';
 import { startStaticServer } from '../../scripts/lib/static-server.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), WWW = path.resolve(HERE, '..', 'www');
-const OUT = path.resolve(process.argv[2] || '/mnt/c/Users/Tony/brx-alerts');
+const OUT = path.resolve(process.argv[2] || path.join(winHome(), 'brx-alerts'));
 fs.mkdirSync(OUT, { recursive: true });
 const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', decodePath: true });
 const VIEWS = [{ name: 'pixel', width: 891, height: 411, label: '891×411' }, { name: 'se', width: 667, height: 375, label: '667×375' }];   // = screens.mjs VIEWS

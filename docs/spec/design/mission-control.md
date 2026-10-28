@@ -2,9 +2,8 @@
 
 **Package for:** the operator console (`webapp/mc/`, React/TS; server⇄UI contract `mcp/brx_mcp/mc/API.md`).
 Real weapon data is `mcp/brx_mcp/mc/weapons.json` (the public arsenal page is `docs/manual/gameplay.md`).
-The shipping UI is the visual source of truth. The Claude Design export it started from is archived at
-`docs/archive/design/mc-export/` for re-seeding the design tool; per Tony, the exports were inspiration, not
-definitive. This brief also carries the shared foundation section and the screen sections of the retired
+The shipping UI is the visual source of truth. The Claude Design export it started from is in git history only; per Tony, the exports were
+inspiration, not definitive. This brief also carries the shared foundation section and the screen sections of the retired
 `spec/mission-control.md`.
 
 ## 0. Shared foundation (both UIs: this console and `phone-hud.md`)
@@ -113,20 +112,7 @@ phone bound, because the two have different fixes. A zero-of-zero is never green
 (they carry baked-in text). Saved games are gone (F411): the host picks on PLAY or loads a FAVOURITE
 (`games-presets.md` §6).
 
-**GAME DESIGNER** (a page, not a phase — opened by CREATE / EDIT / CUSTOMIZE): one scrolling page — 1 BASE MODE
-→ 2 RULES (teams, time, score, respawn type + delay + gate, health) → 3 LOADOUT (three columns PRIMARY /
-SECONDARY / PERK: who picks player / host / fixed / off, class quick-filter chips ON / ◐ partial (n/N) / OFF with
-a one-line legend, a tappable weapon grid where a tile dimmed by a chip is still tappable, fixed pick shows
-candidates at full opacity and "TAP THE WEAPON EVERYONE GETS"; the SECONDARY column's kind chips are `WEAPONS ·
-SIDEARMS` (A12), the PERK column has its own grid; OPEN / NO HEAVIES / SNIPERS are starting templates) → 4
-PRESENTATION (preset + the announcer / gun flash / headset / gun-body switches, per-event sound + colours; the
-ADVANCED read-only rows from `GET /api/presentation`) → 5 NAME & NOTES — with a sticky rail that reads like the
-card will and holds `PLAY THIS NOW ▸` / `SAVE` / `SAVE AS NEW`. Edits a DRAFT; nothing touches the live game
-until PLAY, which applies the draft, LOADs its frameless phone announcement, then enters KIT (an unnamed draft
-plays without being saved, and says so). The pool is computed ON THE CLIENT from the
-rules being edited (`POST /api/loadout/pool` only re-confirms the preset name). Discard guards on BACK TO GAMES.
-Mode-card click applies defaults on *change* only (round 4 #15). Phones show "setting up the game" until the
-host continues to KIT, then the BRIEFING (`phone-hud.md` B7), then their kit.
+The GAME DESIGNER page is gone: BUILD (F411, `screens/Build.tsx`) replaces it; see `games-presets.md`.
 
 ### A3 · KIT — each player, the centerpiece
 A **per-player card**, filled while the player gears up and sizes their strap. **Player number** (1–63,
@@ -184,8 +170,7 @@ operator the match ended: any GAMES or KIT action after the whistle (an edit, LO
 match the same way. MC rolls on that first action, not at the whistle, so the recap stays on screen until the
 operator moves on and stays in the history picker after. Bench 2026-09-17: the command bar's own NEW SESSION
 control was cut (redundant with NEXT MATCH ▸ and the LOAD-rolls-forward path); Armory's NEW SESSION, CLEAR
-ROSTER (shown after a restore) still drops the roster there. **Provisional state** until every phone has flushed: "N players still out — kills provisional"
-+ a provisional export, finalized vs provisional designed distinctly. **Honors** as award cards — none under 3
+ROSTER (shown after a restore) still drops the roster there. **Results pending** until every phone and hill is in, the host presses FINALISE, or 120 s pass (A81, A83; `contracts.md` §4 recap sync): the status reads "MATCH OVER · WAITING FOR RESULTS", the page shows RESULTS PENDING with the sync strip and FINAL IN m:ss, and it shows no winner and offers no export (both CSV routes return 409). **Honors** as award cards — none under 3
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.
 

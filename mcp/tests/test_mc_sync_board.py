@@ -12,7 +12,7 @@ import tempfile
 import json
 import asyncio
 
-from _session import go_live, go_live_stored, restart_session, mk_stored_session, online, kill
+from _session import after_end, go_live, go_live_stored, restart_session, mk_stored_session, online, kill
 from brx_mcp.mc.types import SYNC_STUCK_S
 from brx_mcp.mc.state import END_RETRY_MS
 from brx_mcp.mc.net import NetServer
@@ -30,15 +30,15 @@ def _row(s, pid):
     return next(r for r in s.recap()["sync"]["rows"] if r["id"] == pid)
 
 
-def _status(net, clock, i, pid, pending, **extra):
-    net.simulate_status(f"node{i}", {"player_id": pid, "pending": pending, **extra}, clock["t"])
+def _status(s, net, clock, i, pid, pending, **extra):
+    net.simulate_status(f"node{i}", after_end(s, {"player_id": pid, "pending": pending, **extra}), clock["t"])
 
 
 def test_fresh_zero_after_whistle_and_after_a_late_batch():
     s, net, clock, ps, info = _ended()
     pid = ps[0]["player_id"]
     assert _row(s, pid)["stage"] == "linked"
-    _status(net, clock, 0, pid, 2)
+    _status(s, net, clock, 0, pid, 2)
     assert _row(s, pid)["stage"] == "sending"
     assert _row(s, pid)["pending"] == 2
     clock["t"] += 1
@@ -47,7 +47,7 @@ def test_fresh_zero_after_whistle_and_after_a_late_batch():
                                   "shooter_num": ps[1]["player_num"], "shooter_team": 2, "dmg": 1}], clock["t"])
     assert _row(s, pid)["stage"] == "sending"
     clock["t"] += 1
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     net.simulate_event("node0", {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"],
                                   "player_id": pid, "shooter_num": ps[1]["player_num"],
@@ -58,7 +58,7 @@ def test_fresh_zero_after_whistle_and_after_a_late_batch():
 def test_a_later_event_in_the_same_millisecond_reopens_a_received_row():
     s, net, clock, ps, info = _ended()
     pid = ps[0]["player_id"]
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     net.simulate_event("node0", {"type": "hit_taken", "t": clock["t"], "match_id": info["match_id"],
                                   "player_id": pid, "shooter_num": ps[1]["player_num"],
@@ -69,7 +69,7 @@ def test_a_later_event_in_the_same_millisecond_reopens_a_received_row():
 def test_a_status_without_pending_keeps_a_received_claim():
     s, net, clock, ps, _ = _ended()
     pid = ps[0]["player_id"]
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     clock["t"] += 1
     net.simulate_status("node0", {"player_id": pid}, clock["t"])
@@ -83,9 +83,9 @@ def test_hello_pending_old_phone_disconnect_transport_and_loss():
     assert _row(s, pid)["stage"] == "unlinked"
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=3)
     assert (_row(s, pid)["stage"], _row(s, pid)["pending"]) == ("sending", 3)
-    _status(net, clock, 0, pid, 3, transport="cellular")
+    _status(s, net, clock, 0, pid, 3, transport="cellular")
     assert _row(s, pid)["transport"] == "cellular"
-    _status(net, clock, 0, pid, 0, transport="wifi", outbox_lost={"match_id": info["match_id"], "n": 2})
+    _status(s, net, clock, 0, pid, 0, transport="wifi", outbox_lost={"match_id": info["match_id"], "n": 2})
     assert (_row(s, pid)["stage"], _row(s, pid)["transport"], _row(s, pid)["lost"]) == ("received", "wifi", 2)
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, via="backhaul")
@@ -142,7 +142,7 @@ def test_archived_recap_has_no_live_sync():
 def test_every_phone_received_ends_the_wait_and_records_the_winner():
     s, net, clock, ps, _ = _ended()
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert not s.recap()["sync"]["pending"]
     assert s.match.final_winner == s.recap()["winner"]
     assert all(row["stage"] == "received" for row in s.recap()["sync"]["rows"])
@@ -151,7 +151,7 @@ def test_every_phone_received_ends_the_wait_and_records_the_winner():
 def test_received_stays_released_across_disconnect_stale_and_plain_hello():
     s, net, clock, ps, info = _ended()
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     pid = ps[0]["player_id"]
     assert not s.recap()["sync"]["pending"]
     net.simulate_disconnect("node0")
@@ -175,7 +175,7 @@ def test_received_stays_released_across_disconnect_stale_and_plain_hello():
 def test_recap_resume_preserves_receipts_and_whistle_side_effects():
     s, net, clock, ps, info = _ended(stored=True)
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-    _status(net, clock, 0, ps[0]["player_id"], 0,
+    _status(s, net, clock, 0, ps[0]["player_id"], 0,
             arm_state="kitted", match_id=info["match_id"])
     _row(s, ps[1]["player_id"])
     s.match.sync_nodes["node1"]["changed_mono"] -= 120_000
@@ -229,11 +229,11 @@ def test_sync_progress_resets_monotonic_stuck_age():
     s.mono_ms = lambda: mono["t"]
     s.control("end")
     pid = ps[0]["player_id"]
-    _status(net, clock, 0, pid, 2)
+    _status(s, net, clock, 0, pid, 2)
     assert _row(s, pid)["stage"] == "sending"
     mono["t"] += SYNC_STUCK_S * 1000
     clock["t"] += SYNC_STUCK_S * 1000
-    _status(net, clock, 0, pid, 1)
+    _status(s, net, clock, 0, pid, 1)
     assert _row(s, pid)["stage"] == "sending"
     assert _row(s, pid)["idle_s"] == 0
     assert not _row(s, pid)["stuck"]
@@ -281,7 +281,7 @@ def test_hill_hello_waits_for_its_late_tally_before_recording_winner():
     net.simulate_disconnect(hill)
     s.control("end")
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert s.recap()["sync"]["pending"]
     clock["t"] += 1
     net.simulate_utility_hello(hill, node_key=net.nodes[hill].node_key)
@@ -314,7 +314,7 @@ def test_pending_recap_survives_restart_and_can_be_finalised():
     s, net, clock, ps, _ = go_live_stored(2, "tdm")
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s.control("end")
-    _status(net, clock, 0, ps[0]["player_id"], 3)
+    _status(s, net, clock, 0, ps[0]["player_id"], 3)
     assert s.recap()["sync"]["pending"]
     s2, _ = restart_session(s, clock)
     assert s2.resume_match() == "recap"
@@ -339,7 +339,7 @@ def test_respawn_station_does_not_hold_result_open():
     s.control("end")
     net.simulate_disconnect("util-respawn")
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert [r for r in s.recap()["sync"]["rows"] if r["kind"] == "station"] == []
     assert not s.recap()["sync"]["pending"]
 
@@ -349,7 +349,7 @@ def test_recorded_winner_ends_wait_after_restart():
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s.control("end")
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert s.match.final_winner is not None
     s2, _ = restart_session(s, clock)
     assert s2.resume_match() == "recap"
@@ -383,14 +383,14 @@ def test_finished_whistle_map_survives_handover_and_restart():
 def test_backward_clock_does_not_hide_late_batch_or_zero_status():
     s, net, clock, ps, info = _ended()
     pid = ps[0]["player_id"]
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     clock["t"] -= 10_000
     net.simulate_batch("node0", [{"type": "hit_taken", "seq": 42, "t": clock["t"],
                                   "match_id": info["match_id"], "player_id": pid,
                                   "shooter_num": ps[1]["player_num"], "shooter_team": 2, "dmg": 1}], clock["t"])
     assert _row(s, pid)["stage"] == "sending"
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=2)
@@ -400,7 +400,7 @@ def test_backward_clock_does_not_hide_late_batch_or_zero_status():
 def test_multi_event_batch_after_zero_reopens_the_row_but_not_the_wait():
     s, net, clock, ps, info = _ended()
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert not s.recap()["sync"]["pending"]
     pid = ps[0]["player_id"]
     net.simulate_batch("node0", [
@@ -410,7 +410,7 @@ def test_multi_event_batch_after_zero_reopens_the_row_but_not_the_wait():
     assert _row(s, pid)["stage"] == "sending"
     assert not s.recap()["sync"]["pending"]
     assert s.match.released
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
     assert not s.recap()["sync"]["pending"]
 
@@ -419,7 +419,7 @@ def test_late_batch_keeps_released_result_and_flags_winner_flip_in_process():
     s, net, clock, ps, info = go_live_stored(2, "tdm")
     s.control("end")
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     assert s.match.released and not s.recap()["sync"]["pending"]
     previous = s.recap()["winner"]
     clock["t"] += 1
@@ -445,7 +445,7 @@ def test_late_batch_keeps_released_result_after_restart():
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s.control("end")
     for i, p in enumerate(ps):
-        _status(net, clock, i, p["player_id"], 0)
+        _status(s, net, clock, i, p["player_id"], 0)
     previous = s.recap()["winner"]
     assert json.loads(s._persist_path.read_text())["match"]["released"] is True
     s2, net2 = restart_session(s, clock)
@@ -517,11 +517,11 @@ def test_first_zero_status_after_reconnect_receives_and_stale_count_sends():
     pid = ps[0]["player_id"]
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=2)
-    _status(net, clock, 0, pid, 2)
+    _status(s, net, clock, 0, pid, 2)
     assert _row(s, pid)["stage"] == "sending"
     net.simulate_disconnect("node0")
     net.simulate_hello("node0", "GUN-A-3D4F", node_key=net.nodes["node0"].node_key, pending=0)
-    _status(net, clock, 0, pid, 0)
+    _status(s, net, clock, 0, pid, 0)
     assert _row(s, pid)["stage"] == "received"
 
 
@@ -532,7 +532,7 @@ def test_recap_change_does_not_build_full_scorer_sheet():
         raise AssertionError("a heartbeat built the full recap")
     s.match.scorer.recap = no_sheet
     try:
-        _status(net, clock, 0, ps[0]["player_id"], 1)
+        _status(s, net, clock, 0, ps[0]["player_id"], 1)
     finally:
         s.match.scorer.recap = original
 

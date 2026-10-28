@@ -88,8 +88,7 @@ JBOX does it with a physical IR box. Our platform can support both.
 - **LoRa via RYLR896** on a hardware UART @115200, `AT+` commands, incoming frames prefixed `+RCV`.
   UI ranges: LoRa Fast/Mid/Long + "ESPNOW LR".
 - **nRF24L01** for the NRFL-Bases domination mesh. **This is likely the `NRFhost 1`/`NRFslave 1`
-  our `QUERY` reported** — the BRX may already carry an nRF radio, which is the field-range lead
-  in followup D.
+  our `QUERY` reported**: the BRX may already carry an nRF radio, which is the field-range lead.
 
 ## Firmware / product lineup (from the `autoupdate` manifest)
 

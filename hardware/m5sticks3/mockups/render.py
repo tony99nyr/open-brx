@@ -71,12 +71,13 @@ TEAM_INK = {
 # Fonts. House look is Saira Condensed bold, condensed + uppercase. Fall back to
 # DejaVu Sans Condensed Bold (bundled with the OS) if the repo copy isn't found.
 
+_REPO_FONTS = Path(__file__).resolve().parents[3] / "app" / "www" / "fonts"   # tracked in the repo
 _BOLD_CANDIDATES = [
-    "/home/tony/brx4-l3/app/www/fonts/saira-condensed-700.ttf",
+    str(_REPO_FONTS / "saira-condensed-700.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
 ]
 _SEMI_CANDIDATES = [
-    "/home/tony/brx4-l3/app/www/fonts/saira-condensed-600.ttf",
+    str(_REPO_FONTS / "saira-condensed-600.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
 ]
 

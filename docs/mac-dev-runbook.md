@@ -32,6 +32,12 @@ the match. ARM never waits for it. Phones stay on the Wi-Fi and use the tunnel o
 Pass `--no-tunnel` (`pnpm mc -- --no-tunnel`) to keep it manual. A dev run with `--demo`, `--ephemeral` or
 `--fake-net` never starts it.
 
+**Keeping `cloudflared` current.** `./start.sh` installs `cloudflared` on request. On every start it updates the
+copy that brew installed to the newest release, with `brew upgrade cloudflared`, and warns in red when the version is
+below Cloudflare's minimum (2026.10.2). It asks GitHub for the newest release at most once a day, and `--no-update`
+skips that check. If brew did not install it, or brew has no newer build yet, the script prints what to do by hand.
+A failed update never blocks the start.
+
 **Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
 and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
 in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
@@ -76,7 +82,7 @@ cd ../..
 
 **`~/.brx-mcp/armory.json` is NOT in git and never will be** — it is keyed on the headset
 serial/PIN. Copy it from the Windows machine
-(`C:\Users\Tony\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
+(`%USERPROFILE%\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
 stickers and the KNOWN GUNS section is empty. It is re-read per request, so no restart is needed.
 
 ## 2. The change-to-screen loop — READ THIS ONE
@@ -131,9 +137,10 @@ brew install android-platform-tools openjdk@21     # adb + the JDK Capacitor 8 w
 *Pair device with pairing code*; then `adb pair <ip>:<pairing port> <code>`. On a Mac `adb mdns
 services` then finds the phone by itself; if not, `adb connect <ip>:<connect port>`, where the connect
 port is the one on the main Wireless debugging screen (it is not the pairing port, and it changes
-when the phone reboots). USB works too, once the phone trusts the Mac.
+when the phone reboots or reconnects to Wi-Fi). `ADB_CONNECT=<ip> npm run android:install` reads the
+current port from mDNS itself (F544). USB works too, once the phone trusts the Mac.
 
-**Copy `~/.android/debug.keystore` from the Windows machine** (`C:\Users\Tony\.android\debug.keystore`;
+**Copy `~/.android/debug.keystore` from the Windows machine** (`%USERPROFILE%\.android\debug.keystore`;
 it is the same file WSL uses) before the first Mac build. A debug apk is signed with the building
 machine's throwaway key, and a phone that holds a build from another key refuses the upgrade
 (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). The script explains this when it happens and never uninstalls
@@ -200,7 +207,7 @@ txt = ''.join(json.loads(b)['chunk'] for b, in c.execute(
 |---|---|
 | Every open MVP issue reported from a live session | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 | Shipped-but-unconfirmed fixes, with what would prove/disprove each | [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) → *System proofs* |
-| The lab notebook — append after every session | [`experiment-log.md`](experiment-log.md) |
+| The lab notebook — append after every session | [`experiment-log/`](experiment-log/), the current month's file |
 | Open work (Mac-only capture jobs: `capture-runbook.md`) | [`FOLLOWUPS.md`](FOLLOWUPS.md) (MVP), [`post-mvp.md`](post-mvp.md) (the rest) |
 
 **Record a refuted theory as loudly as a confirmed one.** In one session `outdoorMode`, daylight, gun

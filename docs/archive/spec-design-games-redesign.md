@@ -3,7 +3,7 @@
 **Status: approved for build.** Tony, 2026-09-26, reading the storyboard: "yeah this makes sense." Build starts
 after the 2026-09-25/26 bench session; brx1 routes the work. This brief is self-contained: read it without the
 chat that produced it. The full storyboard (real `webapp/mc` screenshots plus proposed frames, at both widths)
-is `C:\Users\Tony\brx-games-flow\index.html` — open it for the visual detail this brief only describes in
+is `%USERPROFILE%\brx-games-flow\index.html` — open it for the visual detail this brief only describes in
 words. Followups row: [`FOLLOWUPS.md`](../../FOLLOWUPS.md) F411.
 
 Ground truth this brief builds against: `mcp/brx_mcp/mc/types.py` (`GameConfig`), `policy.py`, `compile.py`

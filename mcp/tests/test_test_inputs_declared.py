@@ -27,7 +27,7 @@ def _inputs():
 
 
 def _entries(job):
-    if job in {"mcp", "chaos"}:
+    if job in {"mcp-core", "mcp-docs", "mcp-sim", "chaos"}:   # every mcp job runs files of mcp/tests (F626)
         return [REPO / "mcp/run_tests.py", *sorted((REPO / "mcp/tests").glob("*.py"))]
     if job.startswith("mc-"):
         name = job[3:]
@@ -45,7 +45,7 @@ def _entries(job):
     if job == "app-test":
         return sorted((REPO / "app/test").glob("*.test.mjs"))
     tools = {"app-screens": "screens.mjs", "app-logsync": "logsync-gate.mjs",
-             "app-moments": "moments.mjs", "app-e2e": "e2e.mjs"}
+             "app-moments": "moments.mjs", "app-e2e": "e2e.mjs", "app-postmatch": "postmatch-e2e.mjs"}
     return [REPO / "app/tools" / tools[job]]
 
 
@@ -167,6 +167,7 @@ def test_missing_cross_tree_inputs_are_explicit_regressions():
         "site": ["webapp/download/build.json", "webapp/favicon.svg", "webapp/.assetsignore"],
         "app-logsync": ["webapp/download/build.json"],
         "app-e2e": ["webapp/download/build.json"],
+        "app-postmatch": ["webapp/download/build.json"],
     }
     cases.update({name: ["webapp/download/build.json"] for name in inputs
                   if name.startswith("mc-") and name not in {"mc-tsc", "mc-vitest"}})

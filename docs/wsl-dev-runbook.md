@@ -13,9 +13,9 @@ different interpreters:
 
 - **`brx-mcp` (anything that touches a gun)** runs on **Windows Python**, reached from WSL over the
   interop shim:
-  - Windows venv: `C:\Users\Tony\.brx-mcp\venv` (from WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`).
+  - Windows venv: `%USERPROFILE%\.brx-mcp\venv` (from WSL: `/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`).
   - Installed editable from the UNC path to this checkout:
-    `\\wsl.localhost\Ubuntu-24.04\home\tony\gitrepos\battlecompany\mcp` — code edits made in WSL take
+    `\\wsl.localhost\<distro>\<checkout>\mcp` — code edits made in WSL take
     effect immediately, no reinstall.
   - First contact from a Windows shell: `python.exe -m brx_mcp scan|identify|listen`.
 - **Mission Control (`python -m brx_mcp.mc`) is the exception.** Its one radio route — the match-day
@@ -27,7 +27,7 @@ different interpreters:
 
 Anything the server writes at runtime — captures, `~/.brx-mcp/known-devices.json` — lands in
 `~/.brx-mcp/` **on the machine actually running the server**. On this box that means
-`C:\Users\Tony\.brx-mcp\`, not a WSL home directory, because the process doing the writing is Windows
+`%USERPROFILE%\.brx-mcp\`, not a WSL home directory, because the process doing the writing is Windows
 Python.
 
 ## Passing arguments across the WSL→Windows boundary
@@ -67,7 +67,7 @@ Mirrored WSL networking (where the Windows host and WSL share one IP) makes the 
 no-op, but this box runs NAT mode, so treat the portproxy as required until that changes.
 
 The one-MC-per-home lock (`mcp/brx_mcp/mc/README.md` → *Start it*) does not cross the WSL/Windows boundary. Never point a WSL MC at the Windows home with
-`BRX_MCP_HOME=/mnt/c/Users/Tony/.brx-mcp` while a Windows MC runs on it: both would write the same
+`BRX_MCP_HOME=/mnt/c/Users/<you>/.brx-mcp` while a Windows MC runs on it: both would write the same
 `session.json`, `pieces.json` and `favourites.json`.
 
 ## Soak

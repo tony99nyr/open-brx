@@ -13,7 +13,7 @@ committed here as a temporary exception and removed 2026-09-07 (`RAW_ASSETS_NOTE
 id → duration map is restated as `mcp/brx_mcp/data/sound_ids.json`.
 **2166 sound IDs** with playback durations. IDs are the app's own names; there is no friendlier
 label in the app (the protocol uses these codes directly). This retires the microphone-sweep
-approach (which failed because unknown ids play a fallback — see experiment-log #7).
+approach (which failed because unknown ids play a fallback, see `docs/experiment-log/2026-08.md` #7).
 
 `MaxMusicVolume` = 100.
 

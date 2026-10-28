@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-reload-failed', 'live-bolt', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-updated', 'result-updated-acked', 'result-rescored', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2010,6 +2010,26 @@ for (const view of VIEWS) {
     must(/\bwin\b/.test(r.cls), 'headline is not marked as a win: ' + r.cls);
     must(r.fs >= 30, 'the headline is not the biggest thing on the screen: ' + r.fs);
     must(/TDM/.test(r.meta) && /WIN BY KILLS/.test(r.meta), 'the screen is not mode-aware: ' + r.meta);
+  });
+  // Bounded A81 wait (2026-10-26): MC releases without a late phone, then re-sends `result` when that phone's sync changes
+  // it. A phone that showed WIN must see that it changed (the phone decides: its winner or outcome differs).
+  await step(`${view.name} A81 result-updated: a changed result says RESULT UPDATED; a first or a score-only one does not`, async () => {
+    const meta = async st => { const pg = await open(view, st);
+      const r = await pg.evaluate(() => ({ h: document.querySelector('.result .rh1').textContent.trim(),
+        meta: (document.querySelector('.result .rmeta') || {}).textContent || '' })); await pg.close(); return r; };
+    const upd = await meta('result-updated'), win = await meta('result-win-team'), rescored = await meta('result-rescored');
+    must(upd.h === 'LOSE', 'the updated headline is the new outcome: ' + upd.h);
+    must(/^RESULT UPDATED\b/.test(upd.meta), 'the meta line does not lead with RESULT UPDATED: ' + upd.meta);
+    must(!/RESULT UPDATED/.test(win.meta), 'a first result claims it was updated: ' + win.meta);
+    must(rescored.h === 'WIN' && !/RESULT UPDATED/.test(rescored.meta), 'a score-only re-send claims the result was updated: ' + rescored.meta);
+  });
+  await step(`${view.name} A81 result-updated-acked: a player who tapped OK on the old outcome is shown the change`, async () => {
+    const pg = await open(view, 'result-updated-acked');
+    const r = await pg.evaluate(() => { const h = document.querySelector('.result .rh1');
+      return { h: h ? h.textContent.trim() : null, meta: (document.querySelector('.result .rmeta') || {}).textContent || '' }; });
+    await pg.close();
+    must(r.h === 'LOSE', 'the results screen did not open again on the changed result: ' + r.h);
+    must(/^RESULT UPDATED\b/.test(r.meta), 'the reopened screen does not say RESULT UPDATED: ' + r.meta);
   });
   for (const [stage, word] of [['result-draw', 'DRAW'], ['result-undecided', 'UNDECIDED']]) {
     await step(`${view.name} A24 ${stage}: the headline reads ${word}`, async () => {
@@ -5314,7 +5334,7 @@ await step('QA-15 stage result: a result MC just delivered never reads OUT OF RA
   must(r.ws === 'bound', 'the stage did not deliver the result over a bound link: ' + JSON.stringify(r));
   must(r.stage === 'received' && !/NOT LINKED/.test(r.line), 'the sync track contradicts the link that just delivered the result: ' + JSON.stringify(r));
 });
-// Phone sync track (Tony 2026-10-25, gallery C:/Users/Tony/brx-phone-sync, option A): MC's own stages after the whistle,
+// Phone sync track (Tony 2026-10-25, gallery brx-phone-sync, not in the repo, option A): MC's own stages after the whistle,
 // a sentence-case reason and one action, at both widths, never overlapping the OK button.
 const SYNC_CASES = [
   ['result-sync-sending', 'sending', /SENDING 12 LEFT/, null],

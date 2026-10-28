@@ -43,7 +43,7 @@ from .types import ROSTER_PHASES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
-                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, Event, FeedEntry,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_TEAM_ANY, SYNC_STUCK_S, ReleaseReason, Event, FeedEntry,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     GamePick, LastMatch, MatchItemKey, PieceKind,
                     KitView, LanPublic, LanView, TunnelAuto, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
@@ -87,6 +87,7 @@ END_RETRY_MS = (2_000, 5_000, 10_000, 20_000, 40_000, 60_000)
 # for why the absence of a denial must never be read as one.
 END_CONFIRM_PHASES = ("kitted",)
 VICTORY_STING_MAX_S = 30
+_RELEASE_REASONS = get_args(ReleaseReason)
 
 
 def release_app_version() -> str | None:
@@ -1353,7 +1354,7 @@ class Session:
         that the HUD shows "Mission Control is setting up the game" (Tony, 2026-08-27)."""
         return self.phase == "kit" and not self.lobby_pushed
 
-    def _assign_body(self, p: Player) -> dict:
+    def _assign_body(self, p: Player, *, welcome: bool = False) -> dict:
         pol = _policy.node_view(self.policy(), self.loadout_pool())
         pol["kit_open"] = self.kit_open()
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
@@ -1364,7 +1365,16 @@ class Session:
                 # believed". That is exactly how a benched player whose phone locked or walked out of
                 # range before the operator tapped PLAY came back still SITTING OUT, with no frames, no
                 # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
-                "standby": p["player_id"] in self.standby}
+                "standby": p["player_id"] in self.standby,
+                # F634: every assign names the match MC holds (armed, live or RECAP). A phone that has ended THAT match
+                # keeps its results on it: a debrief edit (F631), or an operator edit in the window between a phone's
+                # own whistle and MC's RECAP. Any other assign after an end (NEW SESSION's re-assign above all) names no
+                # match, or another one, and the phone leaves its results, as before. `recap: true` is F632's key, kept
+                # in RECAP for a phone built between F632 and F634 that reads only it.
+                # Not in a welcome: there `node.match_id` names the start it carries (`_hydrate`), and every phone build reads
+                # it that way. `_loss_match_id` is the match MC holds: in play, or in RECAP.
+                **({"match_id": mid} if not welcome and (mid := self._loss_match_id()) is not None else {}),
+                **({"recap": True} if self.phase == "recap" else {})}
 
     def _send_assign(self, p: Player, extra: dict | None = None) -> bool:
         """Push `assign` to `p`'s node and record that this phone has been told the ANNOUNCED game.
@@ -1834,8 +1844,8 @@ class Session:
             # config head (compile.py), and A30 locks the head once the match starts -- so a mid-match
             # re-team used to move only the beacon/LED/scorer while combat kept resolving on the OLD team
             # (a same-team shot does no damage). MC must never let the roster's team and the gun's $TID
-            # silently disagree, so this is refused LOUDLY. The scorer's own re-team (below) is reached
-            # only in pre-start or recap now, where the head is free to be rewritten.
+            # silently disagree, so this is refused LOUDLY. Before the start the head is free to be rewritten; in
+            # RECAP the edit is for the next match and never reaches this match's scorer (F631).
             # F-5 (2026-09-13): an explicit `team_id: null` used to hit this same check -- `_check_team(None)`
             # is `None`, which reads as a "change" against any rostered player's real team and 409'd on
             # what a caller meant as NO instruction (some client always carries the field). `None` here
@@ -1900,9 +1910,15 @@ class Session:
                 p["voice_slots"] = fields["voice_slots"]
             else:
                 p.pop("voice_slots", None)
-        sc = self._m().scorer
-        if "team_id" in fields and sc and pid in sc.stats:
-            sc.stats[pid].team_id = p["team_id"]   # team scores + friendly rule follow a mid-match re-team
+        # F631: the scorer is never re-teamed here. A35 refuses a real team change while a match is armed or live, and a
+        # team edit in RECAP is for the next match: this match's result stays the roster as played. A display-name edit
+        # is cosmetic, so it reaches the roster as played too (honours, the replay and the result all name the player
+        # the same way).
+        played = self.match.played if self.match is not None else None
+        if "display" in fields and fields["display"] is not None and played and pid in played:
+            played[pid]["display"] = p["display"]
+            if self.phase == "recap":
+                self._restore_recap()   # every phone holding the result gets the new name now, not on the next fact
         if "gun_id" in fields:
             self._adopt_node_for_gun(p)
         self._after_player_change(p)
@@ -3071,6 +3087,25 @@ class Session:
                 entry["changed_mono"] = self.mono_ms()
             entry["stage"] = stage
 
+    def _sync_owes(self, nid: str) -> bool:
+        """A83 (brx4's end-to-end check): this node still owes facts for the match in hand, by its own count or a late
+        batch with no fresh zero after it. MC withholds its `result` until they are in, so a late phone's first result is
+        the one its own facts made: it shows RESULT PENDING, never a stale result and then RESULT UPDATED. A node that
+        rejoins with an empty queue owes nothing and gets the result in its welcome as before."""
+        entry = self._sync_entry(nid)
+        if entry is None or entry.get("received"):
+            return False
+        # A phone that has not ended this match (its last beat still armed or live: it missed the END) has its end facts
+        # to book, whatever its queue says now.
+        if self.nodes.get(nid, {}).get("arm_state") in ("armed", "live"):
+            return True
+        pending = entry.get("pending")
+        if isinstance(pending, int) and not isinstance(pending, bool) and pending > 0:
+            return True
+        # Any empty-queue claim (a hello or a status) after the last late batch clears what that batch owed.
+        event_rev = entry.get("event_rev", 0)
+        return event_rev > 0 and entry.get("zero_rev", -1) < event_rev
+
     def _sync_hello(self, nid: str, pending: object) -> None:
         entry = self._sync_entry(nid)
         if entry is None:
@@ -3083,6 +3118,8 @@ class Session:
             entry["pending"] = pending
             if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
+            elif pending == 0:
+                entry["zero_rev"] = entry.get("event_rev", 0)
         else:
             entry.pop("pending", None)
         if entry.get("pending") != old:
@@ -3090,10 +3127,17 @@ class Session:
             entry["changed_mono"] = self.mono_ms()
         self._sync_update(nid, self.now_ms())
 
-    def _sync_status(self, nid: str, pending: object, at: int) -> None:
+    def _sync_status(self, nid: str, pending: object, at: int, *, match_id: object = None,
+                     arm_state: object = None, owed: bool | None = None) -> None:
         entry = self._sync_entry(nid)
-        if entry is None:
+        sc = self._m().scorer
+        if entry is None or sc is None:
             return
+        # A beat the phone sent before its own end (still "armed"/"live", or naming no match or another one) read its
+        # outbox before the end facts were booked. Its count stands, but it is not a drained claim for this match.
+        ended_here = match_id == sc.match_id and arm_state not in ("armed", "live")
+        if owed is None:
+            owed = self._sync_owes(nid)
         if _is_count(pending):
             if isinstance(pending, int) and pending > 0:
                 entry["received"] = False
@@ -3101,12 +3145,19 @@ class Session:
                 entry["changed_t"] = at
                 entry["changed_mono"] = self.mono_ms()
             entry["pending"] = pending
+            if pending == 0 and ended_here:
+                entry["zero_rev"] = entry.get("event_rev", 0)
+        if _is_count(pending) and ended_here:
             entry["status_t"] = at
             entry["status_rev"] = entry.get("event_rev", 0)
         else:
             entry.pop("status_t", None)
             entry.pop("status_rev", None)
         self._sync_update(nid, at)
+        # The beat that drains a withheld node sends its result now: nothing else would (no late fact may follow).
+        if (owed and self.match is not None and self.match.released and not self.match.release_pending
+                and not self._sync_owes(nid)):
+            self._restore_recap()   # F630: the recap as it stands now (it pushes, being released), not the stored copy
 
     def _sync_events(self, nid: str, events: list[Event], at: int) -> None:
         entry = self._sync_entry(nid)
@@ -3122,7 +3173,7 @@ class Session:
     def _recap_sync(self, winner: WinnerView | None, stations: list[RecapStationRow]) -> RecapSyncView:
         match = self.match
         if match is None or match.scorer is None:
-            return {"rows": [], "pending": False, "finalised": False, "result_changed": False}
+            return {"rows": [], "pending": False, "finalised": False, "result_changed": False, "released_by": None}
         now = self.now_ms()
         unconfirmed = {r["player_id"] for r in (self._end_delivery_view() or {}).get("unconfirmed", [])}
         rows: list[RecapSyncRow] = []
@@ -3185,6 +3236,7 @@ class Session:
         if not pending:
             if not match.released:
                 match.release_pending = True
+                match.release_reason = "sync"
                 changed = True
             match.released = True
             if match.scorer.match_id in self._ended:
@@ -3192,8 +3244,12 @@ class Session:
         if changed:
             self._persist_dirty = True
             self.persist_now()
-        return {"rows": rows, "pending": pending, "finalised": match.finalised,
-                "result_changed": match.result_changed}
+        view: RecapSyncView = {"rows": rows, "pending": pending, "finalised": match.finalised,
+                               "result_changed": match.result_changed,
+                               "released_by": match.release_reason if match.released else None}
+        if pending and match.release_due_mono is not None:
+            view["release_in_s"] = max(0, -(-(match.release_due_mono - self.mono_ms()) // 1000))
+        return view
 
     def _station_hold(self, nid: str) -> tuple[str, dict, int | None] | None:
         """F555: (site, hold_ms) of a control station's tally for THIS match, else None. Only the tally `_keep_tally` keyed
@@ -3752,7 +3808,11 @@ class Session:
         self._prune_unbound_nodes()
         self._changed()
         if p and self.phase == "recap" and self.match is not None and self.match.released:
-            self._push_result()   # a restarted MC has no prior delivery record for this returning socket
+            # A restarted MC has no prior delivery record for this returning socket. Re-take the recap first (after the
+            # bind, so a node that rejoined with nothing pending now counts as flushed) and tell only this node, unless
+            # the re-take itself moved the recap: then that is news for every phone (F633).
+            moved = self._restore_recap(push=False)
+            self._push_result(only=None if moved else nid)
             self._push_scores()   # welcome carries the score; this also retries a failed release push
         return self.node_player.get(nid)
 
@@ -3780,7 +3840,7 @@ class Session:
             # the body is their own context plus the bench fact, and nothing that could arm a gun.
             parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
             if parked is not None:
-                return self._assign_body(parked)
+                return self._assign_body(parked, welcome=True)
         if not p and (self.in_play() or self.phase == "recap"):   # F487: a phone first back after the whistle too
             # Cross-lane review #1 (2026-10-04): a resumed match knows which player each node ran (`match.nodes`, from
             # the snapshot). A new process with a corrupt or dismissed armory (O2), or any re-hello both lookups above
@@ -3798,7 +3858,7 @@ class Session:
         if not p:
             return None
         self._bind(hello["node_id"], p)
-        node = self._assign_body(p)                          # A10: welcome carries catalog + policy too
+        node = self._assign_body(p, welcome=True)            # A10: welcome carries catalog + policy too
         # ...and it carries `game_brief()` exactly as an `assign` does (`engine.js _welcome` stores
         # `node.game` from both), so this IS a delivery of the announced game and is recorded as one.
         # It is the commonest delivery there is: a night LOADs at build and the players walk up
@@ -3833,10 +3893,16 @@ class Session:
             if row:
                 node["score"] = dict(row, board=self._score_board(sc), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
         if (self.phase == "recap" and self.match is not None and self.match.released
-                and self.last_recap and self._played_this_match(p["player_id"])):
+                and self.last_recap and self._played_this_match(p["player_id"])
+                and not self._sync_owes(str(hello.get("node_id", "")))):
             # A24/A81: a returning phone gets the released result even if it missed the push.
-            # A player added DURING the debrief was not in it, so there is no result to carry.
-            node["result"] = self._result_body(self.last_recap, p)
+            # A player added DURING the debrief was not in it, so there is no result to carry. The recap is re-taken
+            # first, so a welcome never carries a stored copy older than the facts (F633). The bind callback re-takes
+            # it again once this node counts as bound.
+            if self._restore_recap(push=False):
+                self._push_result()   # the re-take settled something: news for every phone holding the result
+            if self.last_recap:
+                node["result"] = self._result_body(self.last_recap, p)
         return node
 
     def _node_seq_hi(self, nid: str) -> int | None:
@@ -3934,8 +4000,10 @@ class Session:
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
+        owed = self._sync_owes(nid)          # A83: read before the beat's own arm_state lands in the node view
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
-        self._sync_status(nid, body.get("pending"), t_recv)
+        self._sync_status(nid, body.get("pending"), t_recv, match_id=body.get("match_id"), arm_state=body.get("arm_state"),
+                          owed=owed)
         # O6/O10: the loss counts are scoped AT THE SOURCE: the phone names the match its count belongs to
         # (`outbox_lost {match_id, n}`), the Stick the game byte it was armed with (`actions_dropped_game`).
         # MC stores the latest report as sent; the snapshot shows it only against the current match / game.
@@ -4346,12 +4414,17 @@ class Session:
         p = self.players.get(pid) if pid else None
         current_match = (self.match if self.phase == "recap" and self.match is not None
                          and self.match.scorer is not None and self.match.scorer.match_id == mid else None)
+        if current_match is not None and current_match.released and self._restore_recap(push=False):
+            # F633: the recap as it stands, never the stored copy. A node outside the whistle roster is the one that is
+            # told here (a whistle phone still reporting live owes its end facts); a move is news for every phone.
+            self._push_result()
         recap = ((self.last_recap if current_match.released else None) if current_match else
                  (ended.get("recap") if ended and ended.get("released") else None))
         told_result = False
         current_pending = current_match is not None and not current_match.released
         roster = (current_match.played if current_match else ended.get("players") if ended else None) or self.players
-        if p and recap and not current_pending and (current_match or ended) and p["player_id"] in roster:
+        if (p and recap and not current_pending and (current_match or ended) and p["player_id"] in roster
+                and not (current_match and self._sync_owes(nid))):   # A83: it ends first, and drains before its result
             self.net.push(nid, "result", self._result_body(recap, p, match_id=mid, roster=roster))
             told_result = True
         # The `start` is the E5 hot join, and it is NOT sent in the same breath as a `result`: `startAt`
@@ -4660,6 +4733,19 @@ class Session:
             self.end_reason = match.end_reason
             end_t = m.get("end_t")
             scorer.set_end(end_t if isinstance(end_t, int) and not isinstance(end_t, bool) else self.now_ms())
+            reason = m.get("release_reason")
+            match.release_reason = (cast(ReleaseReason, reason) if reason in _RELEASE_REASONS else
+                                    "finalise" if match.finalised else "sync" if match.released else None)
+            if not match.released:
+                # The bounded wait resumes with the time it had left at the write, less the time MC was down, by the wall
+                # clock: a step back counts as none, a step forward as time down (it can release early, the safe way, as
+                # the sync rows' idle age does). A snapshot from before the bound is timed from end_t.
+                due_in = m.get("release_due_in_ms")
+                if not isinstance(due_in, int) or isinstance(due_in, bool) or due_in < 0:
+                    due_in = max(0, SYNC_STUCK_S * 1000 - max(0, self.now_ms() - (scorer.end_t or self.now_ms())))
+                elif isinstance(saved_ms, int) and not isinstance(saved_ms, bool):
+                    due_in = max(0, due_in - max(0, self.now_ms() - saved_ms))
+                match.release_due_mono = self.mono_ms() + due_in
             frozen = m.get("frozen_stations")
             if isinstance(frozen, list):
                 match.frozen_stations = [row for raw in frozen
@@ -5364,7 +5450,7 @@ class Session:
         self._push_scores()
         self._changed()
 
-    def _restore_recap(self) -> None:
+    def _restore_recap(self, *, push: bool = True) -> bool:
         """Re-write the stored recap when a fact lands AFTER the match ended.
 
         `_finish()` wrote it once. Facts held in a node's store-and-forward outbox arrive later — that
@@ -5375,21 +5461,25 @@ class Session:
         showing understated scores (review 2026-09-01).
         """
         if self.phase != "recap":
-            return
+            return False
         sc = self._m().scorer
         if not sc:
-            return
+            return False
+        before = self.last_recap
+        self._mark_flushed_live()   # F630: `provisional` as the console reads it, whichever path re-stores
         try:
             self.last_recap = self._scorer_recap(sc, self._m().frozen_stations)
             if sc.match_id in self._ended:
                 self._ended[sc.match_id]["recap"] = self.last_recap
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self._archive("match_ended", sc.match_id, self.last_recap, sc.end_t)   # F560: the match's own end
-            if self._m().released:
-                self._push_result()      # A81: late facts cannot reveal a pending result
+            m = self._m()
+            if push and m.released and not m.release_pending:
+                self._push_result()      # A81: late facts cannot reveal a pending result; the release flush sends its own
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
+        return self.last_recap != before   # F633: did the re-take move the result?
 
     def _push_scores(self, *, release_flush: bool = False):
         """A7: push each player's ScoreRow to its node when it changed (best-effort; only reaches nodes in coverage)."""
@@ -5504,7 +5594,7 @@ class Session:
                 body[k] = value
         return body
 
-    def _push_result(self) -> int:
+    def _push_result(self, *, only: str | None = None) -> int:
         """A24: push `result` to every BOUND player node, best-effort, and again whenever it changes.
 
         Sent when the result releases and re-sent on every late fact that moves the recap — including the A24/M2
@@ -5523,8 +5613,8 @@ class Session:
         for pid in roster:
             p = self.players.get(pid)
             node_id = p.get("node_id") if p else None
-            if p is None or not node_id:
-                continue
+            if p is None or not node_id or (only is not None and node_id != only) or self._sync_owes(node_id):
+                continue   # A83: a node still sending gets the result its facts make, once they are in
             body = self._result_body(self.last_recap, p)
             key = {k: v for k, v in body.items() if k != "t"}
             delivery = (pid, node_id)
@@ -5536,12 +5626,42 @@ class Session:
             sent += 1
         return sent
 
+    def _release_on_timeout(self) -> None:
+        """Tony 2026-10-26: the A81 wait is bounded. SYNC_STUCK_S after the whistle, on MC's monotonic clock, the result
+        releases without the phones and hills still missing. Their rows stay on the sync track; a late sync merges in,
+        re-sends `result`, and RESULT CHANGED says so on the console if it moves the winner."""
+        match = self.match
+        if (self.phase != "recap" or match is None or match.scorer is None or match.released
+                or match.release_due_mono is None):
+            return
+        left_ms = match.release_due_mono - self.mono_ms()
+        if left_ms > 0:
+            # A silent field changes nothing else, so each second left is a change of its own: the console's FINAL IN
+            # counts down, and the snapshot keeps the time left within the persist debounce for a crash. The session.json
+            # write every 2 s while pending is deliberate.
+            left_s = -(-left_ms // 1000)
+            if left_s != match.release_in_told:
+                match.release_in_told = left_s
+                self._changed()
+            return
+        match.release_pending = True
+        match.release_reason = "timeout"
+        match.released = True
+        if match.scorer.match_id in self._ended:
+            self._ended[match.scorer.match_id]["released"] = True
+        self.recap()  # capture the winner shown when the wait ends, as FINALISE does
+        self._changed()
+        self.persist_now()
+
     def _flush_result_release(self) -> None:
         """Send an A81 release marked by recap sync, after the caller leaves its getter."""
         match = self.match
         if match is None or not match.release_pending or self._resuming_recap:
             return
-        self._push_result()
+        # F630: release the recap as it stands now. The stored one can predate the phones' last beats (the bound
+        # releases minutes after the whistle), and a stale copy made a later, unchanged report push a second result.
+        self._restore_recap()
+        self._push_result()   # deduplicated: a no-op when the re-store already sent it
         self._score_pushed.clear()
         self._push_scores(release_flush=True)
         if (match.whistle_mono_ms is not None and match.whistle_wall_ms is not None
@@ -7622,8 +7742,9 @@ class Session:
         played_roster = self._m().played
         for pid, played in (played_roster if played_roster is not None else self.players).items():
             p = self.players.get(pid)
-            if not p or not p.get("node_id"):
-                continue
+            node_id = p.get("node_id") if p else None
+            if not p or not node_id or self._sync_owes(node_id):
+                continue   # A83: a phone still sending gets no cue its own facts could contradict
             won = (wt is not None and played.get("team_id") == wt) or (wp is not None and pid == wp)
             if won:
                 # feedback.player_id is required by the envelope contract (contracts §5)
@@ -7659,6 +7780,7 @@ class Session:
             match.end_reason = self.end_reason
             match.whistle_mono_ms = self.mono_ms()
             match.whistle_wall_ms = self.now_ms()
+            match.release_due_mono = match.whistle_mono_ms + SYNC_STUCK_S * 1000
         if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}
@@ -7728,6 +7850,7 @@ class Session:
         # A42: ABOVE the head gate on purpose. `_finish()` clears the head, and RECAP is the
         # only phase an end re-delivery ever runs in. Below the gate it would be dead code.
         self._retry_end_delivery(self.now_ms())
+        self._release_on_timeout()
         self._flush_result_release()
         head = self._m().head
         if not head:
@@ -7775,6 +7898,7 @@ class Session:
             self.match.finalised = True
             if not self.match.released:
                 self.match.release_pending = True
+                self.match.release_reason = "finalise"
             self.match.released = True
             self.recap()  # capture the winner shown when the wait first ends
             self._changed()
@@ -7807,7 +7931,9 @@ class Session:
             p = self.players.get(pid) or {}
             nv = self.nodes.get(p.get("node_id") or "", {})
             fresh = nv and (now - nv.get("last_seen_ms", 0)) < 30_000
-            if fresh and nv.get("pending") == 0:
+            # F633: a node that still owes facts for the match (its hello's count, which the node view never holds) is
+            # not flushed, whatever its last status said.
+            if fresh and nv.get("pending") == 0 and not self._sync_owes(p.get("node_id") or ""):
                 st.flushed = True
 
     def settling(self) -> dict:

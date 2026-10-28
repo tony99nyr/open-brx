@@ -1,7 +1,6 @@
 # M-LOADOUT — three slots (primary, secondary, perk), loadout policy, phone self-serve kitting
 
-- **Status:** **A14 perk slot (2026-09-04): a perk is its OWN slot beside PRIMARY / SECONDARY** — server (`policy.py`,
-  `tests/test_mc_perk_slot.py`), MC KIT/DESIGNER and the phone HUD built the same day; no backwards path (FOLLOWUPS S6). A12 sidearms (three pistols + `sidearm` slot kind) BUILT server-side 2026-09-04 (`weapons.json`, `policy.py`, `tests/test_mc_sidearms.py`; UI lanes in progress). §8's old whole-game saved-game store (BUILT 2026-08-27) was REPLACED by F411 (GAMES = PLAY picks, BUILD creates, 2026-09-26): see §8 below. Server side BUILT 2026-08-27 (`policy.py`, `perks.py`/`perks.json`, `views.py`, state/compile/api/envelope; tests `tests/test_mc_loadout.py` + a real-stack e2e). UI lanes in progress. Amends `contracts.md` (**A10** — A9 was already `apply.preview`) — §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
+- **Status:** Built; open items: S6 (`docs/post-mvp.md`). A14 made the perk its own slot beside PRIMARY / SECONDARY; F411 replaced the §8 saved-game store (see §8). Amends `contracts.md` (**A10**) §2 `Loadout`, §3 `GameConfig`, §5 wire kinds.
   Binding for `mcp/brx_mcp/mc` (server), `webapp/mc` (MC UI) and `app/` (phone node). Field names are identical
   in Python TypedDicts, `API.md`, `types.ts` and the phone engine.
 - **Owns:** the shape of a player's kit (primary + optional secondary + optional perk), the **loadout policy** a host
@@ -67,7 +66,7 @@ rows were already excluded by `pickup_only`. **The pickup/station mechanism itse
 heavy weapon from a physical station mid-match — is future work** (see `hardware/brx-station-spec.md`);
 `pickup_only` only says these weapons are catalogue-visible and never player-selectable at kit-out.
 
-### 1.2 Perks — NEW `mcp/brx_mcp/mc/perks.json`, `GET /api/perks → PerkView[]`
+### 1.2 Perks — `mcp/brx_mcp/mc/perks.json`, `GET /api/perks → PerkView[]`
 
 **S50 (2026-09-17, perk balance pass).** The v1 set was a ladder, not a choice: `body_armor` was a
 flat +50 armour (+43% effective health on the 45+70 default) at zero cost, while every other perk
@@ -77,7 +76,7 @@ stacking, and `easy_reload` left the slot entirely (§2) — it is accessibility
 
 ```jsonc
 PerkView {
-  perk_id: string,                 // "body_armor" | "extended_mags" | "fast_hands" | "armor_piercing" | "motion_tracker" | "second_wind" | "med_kit" | "concussion"
+  perk_id: string,                 // the ids are the rows of perks.json (`emp` since A79)
   name: string, desc: string,      // house-written, human (no protocol jargon)
   tags: string[],                  // "passive" | "utility"
   mechanism: "passive" | "slot_frame",
@@ -142,8 +141,11 @@ PerkView {
   },
   verified: boolean,               // effect proven on hardware
   hidden: boolean                  // true → never listed to UIs (med_kit, concussion until benched)
+  // Also on the wire: blocked_primary / blocked_secondary (F551) and blocked_presets (A80). A picker hides the
+  // perk where the compile guards would refuse it, so the pool never offers an illegal pick.
 }
 ```
+This block keeps only the per-field rationale. The canonical field list is `PerkView` in `mcp/brx_mcp/mc/types.py` (generated into `contract.gen.ts`).
 v1 rows: `body_armor` (verified), `extended_mags` (verified), `fast_hands` (unverified),
 `armor_piercing` (unverified, new — S50), `motion_tracker`
 + `second_wind` (unverified, new — S50, node-local: `effects: {}`, no compile-time lever, docs/perk-design.md
@@ -232,7 +234,7 @@ from every preset's pool BEFORE `exclude_tags:["heavy"]` is even applied — the
 So `open` and `no_heavies` currently land on the **same pool**: `no_heavies`'s `exclude_tags` rule has
 nothing left to exclude that `pickup_only` had not already excluded. This is a real, deliberate
 consequence, not a bug — but a class chip/preset that can never change the pool it names may read as
-broken in the DESIGNER (its HEAVY chip permanently reads PARTIAL, never fully on). Worth a second look
+broken in BUILD (its HEAVY chip permanently reads PARTIAL, never fully on). Worth a second look
 once the pickup/station mechanism exists: either give `no_heavies` a new distinguishing exclusion, or
 retire it as redundant with `open`.
 

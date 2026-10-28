@@ -199,8 +199,8 @@ original command appendix. Do not re-run them.
 5. A shell in WSL:
 
 ```bash
-PY=/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe
-cd /home/tony/gitrepos/battlecompany/mcp/tools
+PY=/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe
+cd ~/gitrepos/battlecompany/mcp/tools
 GUN=DF:F5:DA:08:94:98
 ```
 

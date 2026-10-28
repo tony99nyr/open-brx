@@ -64,7 +64,7 @@ State {
   lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,
          auth_required?: boolean,   // whether an operator token is in force (Operator auth, above)
          // F143 (field 2026-09-12): `"unknown"` is GONE. It was hard-coded at launch and the REACH panel
-         // printed it as a display word — "UNKNOWN · 192.168.28.167:8765". MC now detects the SSID per
+         // printed it as a display word — "UNKNOWN · <ip>:8765". MC now detects the SSID per
          // platform (best effort, 2 s cap, never fatal); when nothing answers the mode is `"lan"` and
          // `ssid` is null, which renders as "LAN · <ip>:<port>". `router`/`hotspot` are reserved for a
          // detector that can tell them apart. NEVER render a mode value that is not a real word.
@@ -344,7 +344,10 @@ RecapView { winner: Winner|null, score: { [team_id]: number }, rows: ScoreRow[],
                            phones_by_team?: { [team_id]: number } /* F555: the phones' merge, the cross-check */ },
             stations?: RecapStationRow[],
             sync?: RecapSyncView /* F596, live match only; archived recaps omit it */ }
-RecapSyncView { pending: boolean, finalised: boolean, result_changed: boolean, rows: RecapSyncRow[] }
+RecapSyncView { pending: boolean, finalised: boolean, result_changed: boolean,
+                released_by: "sync"|"timeout"|"finalise"|null /* A83: what ended the wait; null while pending */,
+                release_in_s?: number /* A83: whole seconds until the 120 s bound releases it, only while pending */,
+                rows: RecapSyncRow[] }
 RecapSyncRow { kind: "phone"|"station", id: string /* player_id or station id */, name: string,
                team_id: string|null, stage: "unlinked"|"linked"|"sending"|"received",
                linked?: boolean /* phone socket link; receipt stays received when false */,
@@ -655,7 +658,7 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   post-whistle facts into the official tally after the field was already told `control{end}` —
   and the feed says so: `END MOVED BACK N.Ns …` / `THE WINNER CHANGED on re-scored facts`. `shots` (a
   status sample, not an event) and the `flushed` marks are carried over, not replayed.
-- **Recap** is provisional until every rostered node has flushed (`provisional`, `missing`, `settling`); late
+- **Recap** is provisional until every rostered node has flushed (`provisional`, `missing`, `settling`); the winner is withheld and both CSV routes return 409 while the result is pending (A81, A83 release rule, above); late
   `event_batch`es and parked events reconcile in; honors need ≥ 3 scored players (F116: the per-kill medals
   in `ScoreRow.medals` do not, which is what gives a 1v1 a medals column); the roster the replay scores
   against is FROZEN at the whistle, so a re-team made in the debrief never moves a finished match onto

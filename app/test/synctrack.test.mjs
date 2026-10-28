@@ -1,5 +1,5 @@
 // Phone sync track (Tony 2026-10-25: "MC shows your phone not synced and you wonder wait im right here why"; gallery
-// C:/Users/Tony/brx-phone-sync, option A). After the whistle the phone shows MC's own F596 stages, by MC's own rule
+// brx-phone-sync, not in the repo, option A). After the whistle the phone shows MC's own F596 stages, by MC's own rule
 // (state.py `_sync_stage`): RECEIVED only once a status with nothing pending reached MC after the whistle, and it latches.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

@@ -232,6 +232,9 @@ no on-device scoring / "how do I see my score?" — by being the score-keeper an
 
 ## Open hardware questions (before a build)
 
+The Companion is a paper design (`docs/post-mvp.md`, B1). No followup row tracks the questions below.
+They are open design questions.
+
 - Wi-Fi + BLE coexistence throughput under real load — measure; may want BLE-priority.
 - Speaker/enclosure acoustic tuning to actually match the tagger — prototype and SPL-measure.
 - Does re-pushing `$WEAP` mid-game glitch the active weapon (reload/ammo reset)? Test on hardware.
@@ -245,8 +248,8 @@ no on-device scoring / "how do I see my score?" — by being the score-keeper an
   Wi-Fi AP; firmware version shown/gated in the readiness board.
 - **Mount** — exact slim body location + sight-clearance, from **caliper measurements on the real
   gun** (the CAD blocker in `print-files.md`); positive-lock + tether.
-- **Two ADR-0001 confirmations owed** — (a) a host-armed game does NOT self-fire feedback out of
-  range (arm our way, disconnect, play, watch the sight); (b) `$SFLASH` from *our* stack greens the
-  sight on hardware. Both are first-up next bench session.
+- **ADR-0001 confirmations.** (b) is answered: `$SFLASH` from our stack greens the sight (bench gate G4,
+  2026-08-25). (a) is still owed: arm a game our way, disconnect, and watch the sight (ADR-0001 item 1,
+  post-MVP row Q25).
 - **`$SFLASH`/`$PLAY` from the Companion end-to-end** — the KillAnnouncer logic (B18) runs on the
   Companion, not MC; validate the full per-kill burst (`$SFLASH` → `$PLAY,,4,6,V3A`) from the rider.

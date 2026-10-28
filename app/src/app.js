@@ -11,6 +11,7 @@ import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset 
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
+import { syncUrgent } from './hud/synctrack.js';                   // F595: the transport is urgent from the end until the result, bounded
 import { parseMcJoin, MC_URL_KEY, kickHeld } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
@@ -820,6 +821,8 @@ setInterval(() => { try {
     unboundAt: o && o.unboundAt != null ? o.unboundAt : _syncUnboundAt, whistleAt: _syncWhistleAt };
   // A81: once MC has this phone's post-whistle report (the track's RECEIVED), MC NOT REACHED would be false
   if (es.ended && drainedAt && drainedAt >= (_syncWhistleAt || es.endedAt) && !(pending > 0)) engine.markReached();
+  // F595: from the end until the result is in, the transport beats as soon as its ring is empty and redials on a 2 s cap
+  if (transport) transport.setUrgent(syncUrgent(es, engine.now()));
   if (transport) hud.sessionId = transport.sessionId || null;
 } catch (_) { /* ignore */ } }, 1000);   // never joined → stays null (OVERALL); the harness may set it
 

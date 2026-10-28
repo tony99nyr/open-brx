@@ -14,7 +14,7 @@ the four readings still open there, deliberately self-contained. Come back here 
 
 **Read first:** the pre-flight in [`gotchas.md`](gotchas.md) §"Before a bench session" — in order, every
 time. It is not repeated here, and it has grown since this sheet was written. `$PY` below = the Windows venv python,
-`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. Rig: board A = receiver **COM7**, board B =
+`/mnt/c/Users/<you>/.brx-mcp/venv/Scripts/python.exe`. Rig: board A = receiver **COM7**, board B =
 emitter **COM8**. Never end a run on a bare `$CLEAR` (F11) — close with
 `bench_common.teardown_frames()`.
 

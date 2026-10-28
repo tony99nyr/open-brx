@@ -8,10 +8,12 @@ on:
 
 jobs:
   mcp:
-    name: Python server + Mission Control
+    name: Python server + Mission Control (system python)
     runs-on: ubuntu-latest
-    # OP14: about 4x the slowest of 15 green runs (5.4 min), so a hang frees the runner, not after GitHub's 6 h.
-    timeout-minutes: 20
+    # F627 (2026-10-26): one job ran both passes and the balance sim twice, 14.8 min median and 19.7 p90 against a
+    # 20 min cap, so 19 of 61 main runs from 2026-10-19 were cancelled. The passes now run in parallel, and the sim
+    # group (about 60% of the suite's CPU) runs once, in mcp-sim. Each cap is 4x or more its job's expected p90 (OP14).
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,19 +21,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # System-python pass first: no extras installed, matches the bench box's system python3
+      # System-python pass: no extras installed, matches the bench box's system python3
       # (CLAUDE.md); tests needing websockets/starlette/etc. skip cleanly rather than failing.
-      - run: cd mcp && python3 run_tests.py
+      - run: cd mcp && python3 run_tests.py --exclude-group sim
         env:
           BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
-      # Second pass with the MC extras installed, so the Mission Control tests actually run.
+
+  mcp-extras:
+    name: Python server + Mission Control (extras)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # as in mcp
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The pass with the MC extras installed, so the Mission Control tests actually run.
       # pyright pinned to the version the WSL dev venv runs: a stricter upstream release must not
       # turn an unrelated commit red (2026-09-12).
       - run: pip install -c mcp/constraints.txt -e ./mcp starlette uvicorn websockets httpx zeroconf pyright==1.1.414
       # T7: a failed or partial install must not turn the MC tests into skips and stay green.
-      - run: cd mcp && python3 run_tests.py --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
+      - run: cd mcp && python3 run_tests.py --exclude-group sim --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
         env:
           BRX_FOLLOWUPS_INDEX_FRESH: ${{ github.event_name == 'push' && '1' || '' }}
+
+  mcp-sim:
+    name: Balance sim (sim group)
+    runs-on: ubuntu-latest
+    # The sim group once, on system python. It needs no extra, so the extras pass would only repeat it; the --no-skip
+    # list fails this job if a sim test ever starts needing one, and then it belongs in the extras pass too.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cd mcp && python3 run_tests.py --group sim --no-skip starlette --no-skip uvicorn --no-skip websockets --no-skip httpx --no-skip pyright --no-skip bleak
 
   webapp-mc:
     name: Mission Control web UI
@@ -58,14 +85,15 @@ jobs:
       - run: cd app && npm ci && npx playwright install --with-deps chromium && npm run typecheck && npm test
 
   mc-play:
-    name: Console browser gate (mc-play, non-blocking)
+    name: Console browser gate (mc-play)
     runs-on: ubuntu-latest
     # T17 (2026-10-11): the one browser gate in CI. The lander runs every browser gate before a land, so this covers
     # what skips it: an emergency direct push, a fork's PR, and ubuntu-vs-WSL drift. play.mjs is the whole operator
-    # path on a real MC (start, lobby, arm, live, end): 45 s locally, no flake in 7 days.
-    # Non-blocking from 2026-10-11 (FOLLOWUPS F512): make it blocking after 7 green days on main.
-    continue-on-error: true
-    timeout-minutes: 15
+    # path on a real MC (start, lobby, arm, live, end): 45 s locally. Non-blocking from 2026-10-11, blocking from
+    # 2026-10-26 (F512): the job passed on main every time since 2026-10-12, and F574 fixed the two earlier causes.
+    # 30 min, not 15: on 2026-10-26 the Playwright install alone took up to 12 min while the apt mirror stalled, and a
+    # blocking job must not go red on a slow mirror. The suite itself takes about 2 min.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

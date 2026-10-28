@@ -76,11 +76,6 @@ interrupts, and the phone sends no death stop when the scream is known (docs/ann
 - The F375 engine test crosses low health, delays the `$PLAY` for the reserved gap, then applies death. The engine cancels the pending `VA86` write.
 - F347 ships t23 EMPTY. The historical A10 hum blocked the FIFO, and `$PLAYX` did not stop it.
 
-## Sitting A results, 2026-09-25
+## Bench results
 
-1. `$PLAYX` did not stop the hum. Shield 0 stopped it and released the queued line.
-2. Empty t23 had no hum. VAA played at once at 3 s, 25 s and after a refill.
-3. FIFO held for lines 3.5 s apart. A zero-gap four-clip burst dropped VA6E in both runs.
-4. Three `$PLAYX` frames in one write cleared every clip, including VAA.
-5. An idle stop did nothing. VAA played in full 200 ms later.
-6. With empty t23, `$SFLASH` then a stop-plus-line write played VAA. The F348 spawn burst played VAI at once.
+The Sitting A results (2026-09-25, one gun) are in `docs/experiment-log/2026-09.md`, entry "2026-09-25 (desk) F347 and F350 from sitting A".

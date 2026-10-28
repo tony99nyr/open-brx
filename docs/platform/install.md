@@ -34,7 +34,11 @@ to install it (Homebrew on a Mac, winget on Windows). Then it prints five number
    folder and installs the Mission Control package into it.
 3. It installs and builds the Mission Control console, the web page you open in your browser.
 4. It asks once whether to install the optional `cloudflared` tool, for reaching phones over the
-   internet. The default answer is no. It remembers your answer in `~/.brx-mcp/start.json`.
+   internet. The default answer is no. It remembers your answer in `~/.brx-mcp/start.json`. If
+   `cloudflared` is already installed through Homebrew or winget, the script updates it to the newest
+   release on every start. Otherwise it prints the command to run. It warns when the installed
+   version is below Cloudflare's minimum (2026.10.2). It checks for a newer release at most once a
+   day. A failed update never stops the start.
 5. It starts Mission Control and opens it in your browser.
 
 Run the script again for every match. It skips every step it already did.
@@ -59,7 +63,8 @@ The script cannot update a download: to get a newer version, download it again. 
 
 - `--demo` runs a demo instead: 8 pretend players and phones, no taggers, nothing saved.
 - `--setup-only` sets everything up, then stops instead of starting Mission Control.
-- `--no-update` skips the GitHub update check.
+- `--no-update` skips the GitHub update check and the `cloudflared` update. It still warns when
+  `cloudflared` is older than the minimum.
 - `--yes` accepts the default answer to every question, for an unattended run. It never deletes a
   broken `.venv` folder: it stops and asks you to delete it.
 - `--cloudflared` asks about `cloudflared` again, even if you said no before.
@@ -96,7 +101,7 @@ macOS and Linux, `.venv\Scripts\python.exe` on Windows. Activate the venv first
 from `webapp/mc/dist`, which is not in the repository and is not rebuilt for you:
 
 ```
-cd webapp/mc && npm install && npm run build
+cd webapp/mc && npm ci && npm run build
 ```
 
 Requires Node.js 22.12 or later. A page that says "UI not built" means this step was skipped. A
@@ -152,8 +157,13 @@ directly: scan, connect, send, wait for events, read diagnostics, and panic.
 
 Optional, and only needed for players whose phone has a data plan but no Wi-Fi. Reaching phones over
 the internet needs `cloudflared` on the Mission Control laptop. The start script above offers to
-install it for you; by hand it is `brew install cloudflared` on a Mac, or
-`winget install Cloudflare.cloudflared` on Windows. No account is needed. See
+install it for you and keeps it current (version 2026.10.2 or later). By hand it is `brew install cloudflared`
+on a Mac, or `winget install Cloudflare.cloudflared` on Windows. To update it by hand, run
+`brew upgrade cloudflared` on a Mac or `winget upgrade -e --id Cloudflare.cloudflared` on Windows. On
+Debian or Ubuntu, download the `.deb` for your CPU from the
+[cloudflared releases](https://github.com/cloudflare/cloudflared/releases/latest) and run
+`sudo dpkg -i` on it. On other Linux distributions, use the
+[Cloudflare downloads page](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/). No account is needed. See
 [Running a match](/docs/run-a-game/).
 
 ## The Android app

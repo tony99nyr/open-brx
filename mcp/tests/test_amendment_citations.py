@@ -28,7 +28,7 @@ CODE_DIRS = (
 )
 TEST_DIR = REPO / "mcp" / "tests"
 _GREPPABLE = {".py", ".js", ".mjs", ".ts", ".tsx", ".html"}      # not .json: the sound catalog is ~10 MB
-_FILENAME = re.compile(r"\.(py|js|mjs|ts|tsx|md|json|html)$")
+_FILENAME = re.compile(r"\.(py|js|mjs|ts|tsx|md|json|html|h|cpp)$")   # .h/.cpp: the Stick's firmware (hardware/)
 
 # A symbol shape an English word cannot take: snake_case, a dotted path, an API route, a repo-relative
 # PATH, a SCREAMING_CASE constant, or a CamelCase/camelCase name. A bare lowercase word in backticks is
@@ -132,6 +132,12 @@ def _haystack() -> tuple[str, set[str]]:
     for f in (REPO / "docs").rglob("*.md"):
         names.add(f.name)
         names.add(f.relative_to(REPO).as_posix())
+    # The Stick's firmware, by name only. Before .h/.cpp counted as file names, `station_link.h` was resolved as
+    # the "symbol" `h`, which any one-letter variable satisfied.
+    for ext in ("*.h", "*.cpp"):
+        for f in (REPO / "hardware").rglob(ext):
+            names.add(f.name)
+            names.add(f.relative_to(REPO).as_posix())
     return "\n".join(text), names
 
 
@@ -160,9 +166,24 @@ def _unresolved(cited: dict[str, set[str]], source: str, names: set[str]) -> dic
                     missing[aid].append(s)
                 continue
             needle = s if s.startswith("/api/") else s.split(".")[-1]
-            if needle not in source:
+            if not _whole_symbol_in(needle, source):
                 missing[aid].append(s)
     return missing
+
+
+def _whole_symbol_in(needle: str, source: str) -> bool:
+    """True when `needle` appears in `source` as a WHOLE symbol, not inside a longer one.
+
+    A plain substring test passed a renamed symbol whose new name contains the old one: A73 cited
+    `_give_up_hole` for months after the function became `_give_up_holes`. The edges are explicit
+    lookarounds rather than `\\b`, because `\\b` means nothing beside a non-word edge character: a needle
+    that starts with `_` or `/` still needs "no word character before it". A route also refuses a
+    following `/` or `.`, so `/api/match` does not resolve on `/api/match/next`, nor `/api/recap` on
+    `/api/recap.csv`."""
+    if needle not in source:          # cheap prefilter; most needles resolve or fail here
+        return False
+    tail = r"(?![A-Za-z0-9_/.-])" if needle.startswith("/api/") else r"(?![A-Za-z0-9_])"
+    return re.search(r"(?<![A-Za-z0-9_])" + re.escape(needle) + tail, source) is not None
 
 
 def test_every_amendment_citation_resolves():
@@ -191,11 +212,12 @@ _FAKE_CONSTANT = "NO_SUCH_" + "CONSTANT_XYZ"
 _FAKE_VIEW = "NoSuch" + "ViewXyz"
 _FAKE_FILE = "no_such_" + "module.py"
 _FAKE_TEST_FILE = "mcp/tests/no_such_" + "test_file.py"
+_FAKE_PREFIX = "weapon_" + "vie"      # a real symbol cut short: a substring match passed it
 _FAKE_SECTION = rf"""## 10. Amendment index
 
 | id | date | what | folded into |
 | --- | --- | --- | --- |
-| A99 | 2026-09-12 | a fabricated row with an escaped \| marker | `weapon_view`, `_finish`, `END_RETRY_MS`, `EndDeliveryView`, `mcp/tests/test_mc_end_delivery.py`, `{_FAKE_SYMBOL}`, `{_FAKE_CONSTANT}`, `{_FAKE_VIEW}`, `{_FAKE_FILE}`, `{_FAKE_TEST_FILE}` |
+| A99 | 2026-09-12 | a fabricated row with an escaped \| marker | `weapon_view`, `_finish`, `END_RETRY_MS`, `EndDeliveryView`, `mcp/tests/test_mc_end_delivery.py`, `{_FAKE_SYMBOL}`, `{_FAKE_CONSTANT}`, `{_FAKE_VIEW}`, `{_FAKE_FILE}`, `{_FAKE_TEST_FILE}`, `{_FAKE_PREFIX}`, `compile.headset_lag_ms` |
 
 ## 11. Next
 """
@@ -211,8 +233,9 @@ def test_the_citation_check_can_actually_fail():
     result. Asserting only that an invented string is absent from the haystack (what this test did
     before) passes just as happily when the resolver is broken, because it never calls it.
     """
-    real = {"weapon_view", "_finish", "END_RETRY_MS", "EndDeliveryView", "mcp/tests/test_mc_end_delivery.py"}
-    fake = {_FAKE_SYMBOL, _FAKE_CONSTANT, _FAKE_VIEW, _FAKE_FILE, _FAKE_TEST_FILE}
+    real = {"weapon_view", "_finish", "END_RETRY_MS", "EndDeliveryView", "mcp/tests/test_mc_end_delivery.py",
+            "compile.headset_lag_ms"}
+    fake = {_FAKE_SYMBOL, _FAKE_CONSTANT, _FAKE_VIEW, _FAKE_FILE, _FAKE_TEST_FILE, _FAKE_PREFIX}
     cited = _cited_symbols(_FAKE_SECTION)
     assert "A99" in cited, f"the row parser did not read the fabricated §10 row: {dict(cited)}"
     assert (real | fake) <= cited["A99"], (
@@ -224,6 +247,10 @@ def test_the_citation_check_can_actually_fail():
     assert set(missing.get("A99", [])) == fake, (
         "the resolver must report every invented citation and no real one — it would otherwise pass a "
         f"§10 index pointing at nothing, or fail everything: {dict(missing)}")
+    # A route must not resolve on a longer route that extends it through `/` or `.`.
+    assert _whole_symbol_in("/api/recap", 'get("/api/recap")')
+    assert not _whole_symbol_in("/api/recap", 'get("/api/recap.csv")')
+    assert not _whole_symbol_in("/api/match", 'get("/api/match/next")')
 
 
 def test_the_citation_haystack_includes_the_tests_that_amendments_name():

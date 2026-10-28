@@ -1,6 +1,6 @@
 # BRX Serial Command Protocol Reference
 
-**Status:** reference, current as of 2026-10-16. Each row states the current reading only. The dated
+**Status:** reference, current as of 2026-10-27. Each row states the current reading only. The dated
 bench write-ups that produced it, with every retraction, are in
 [the archived session-findings-2026-08](../docs/archive/session-findings-2026-08.md) (archived) and `docs/experiment-log/`
 (the live notebook). The published developer reference built from this file is
@@ -213,7 +213,7 @@ host-to-host). The headset's own vocabulary is separate (`$IRTX`, `$SGREN`, `$HL
 instrument sends without confirm, with the token count the V4_30 handler reads and whether our v4.32 guns have
 shown the effect; an unproven one is sent and the reply says so. `DENIED_COMMANDS` is refused **even with
 confirm**, with the reason: everything above that writes persistent state, re-pairs or re-flashes a radio, switches
-the IR word format or runs a factory test, plus `$CLEARDEVICE` (`[disasm]`, 2026-10-26 re-check: it wipes the radio module's stored pairings and formats the module's storage, so the phone and headset must pair again), `$ZombieKeyActive` (the zombie unlock key) and the USB console word `SETUP` (the factory provisioning menu, never a `$` command over BLE). The gun's settings reset is reached from `$FACTORY`, not `$CLEARDEVICE`. `$DPLAY` is not in it (see below). `$FREE` is not in it either: `[disasm]` (2026-10-26 re-check, unbenched) it is a read-only query, and the gun answers `$CHAN` with the busy flag of each of its four audio channels.
+the IR word format or runs a factory test, plus `$CLEARDEVICE` (`[disasm]`, 2026-10-26 re-check: code read only, never sent: it wipes the radio module's stored pairings and formats the module's storage, so a radio link must pair again; which link (phone, headset or both) is unproven), `$ZombieKeyActive` (the zombie unlock key) and the USB console word `SETUP` (the factory provisioning menu, never a `$` command over BLE). The gun's settings reset is reached from `$FACTORY`, not `$CLEARDEVICE`. `$DPLAY` is not in it (see below). `$FREE` is not in it either: `[disasm]` (2026-10-26 re-check, unbenched) it is a read-only query, and the gun answers `$CHAN` with the busy flag of each of its four audio channels.
 `DENIED_COMMANDS` and `HANG_PRONE_COMMANDS` both reach the phone as `NODE_DENIED_COMMANDS` and the node drops such a frame at its one write path;
 the compiler refuses to build a bundle that carries one (`docs/spec/transport-hardening.md` §4). The hang-prone
 class (`HANG_PRONE_COMMANDS`, today `$DPLAY`) has one door for the bench: `send` with `confirm=true` AND
@@ -501,11 +501,7 @@ the gun send `$DISCONNECT,*` and drop the link; a power-cycled gun needs its hea
 row sent once at arm still registers hits after a `$SPAWN,,*` with no re-send. `$SPAWN` DOES zero every `$TMP`
 token, so a per-life `$TMP` write (spawn protection, live accuracy, …) must land AFTER `$SPAWN`, never before it.
 
-**Still open on v4.32:** `$AS` / `$UP` / `$SP` winner and end-game semantics (the `$SP,99,*` panic effect is
-proven) and the `$RV`/`$RP`/`$KK`… family; the `$PB*` enum tables; `$BHIT`'s v4.32 shape and effect; `$HFIRE`'s
-11-field behavior; `$LCD` and
-`$VOLTS` tokens 3–4; `$SIR` p5–p8 and the "registers, no pool change" functions; the gun↔headset link protocol
-and the nRF radio (`NRFhost 1` / `NRFslave 1` in the USB record); Gen1 command differences.
+**Still open on v4.32:** `$AS` / `$UP` effects are P4, the `$PB*` enums are P12, the nRF radio is D1, and the rest (`$BHIT`, `$HFIRE`, `$LCD`/`$VOLTS` tokens 3 to 4, `$SIR` p5 to p8, `$RV`/`$RP`/`$KK`, `$SP` end-game, the gun-to-headset link, Gen1 differences) is R5, all in `docs/post-mvp.md`.
 
 ## 8. Safe testing notes
 

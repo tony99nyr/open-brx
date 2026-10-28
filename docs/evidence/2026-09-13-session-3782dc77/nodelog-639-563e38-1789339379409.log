@@ -1,7 +1,7 @@
 [22:30:24] app resumed
 [22:30:24] BLE ready — Set my gun
 [22:30:24] match in progress — reconnecting to Tactix-FE30…
-[22:30:24] MC address remembered — connecting: ws://192.168.0.55:8766/ws
+[22:30:24] MC address remembered — connecting: ws://<lan-ip-1>:8766/ws
 [22:30:24] MC link connecting
 [22:30:26] write reopen event tap on relink: 1 frame(s)
 [22:30:26] watching for utility items
@@ -14,7 +14,7 @@
 [22:30:34] MC link connecting
 [22:30:34] MC connect: connect: no welcome within 10000 ms
 [22:30:36] MC link offline
-[22:30:38] QR scanned — connecting: ws://192.168.0.171:8766/ws
+[22:30:38] QR scanned — connecting: ws://<lan-ip-2>:8766/ws
 [22:30:38] MC link connecting
 [22:30:38] MC link open
 [22:30:38] MC link bound
