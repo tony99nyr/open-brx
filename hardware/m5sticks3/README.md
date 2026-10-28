@@ -112,10 +112,10 @@ WSL cannot see USB, so every flash and serial command runs on the Windows side. 
 day use. This section is the one-time setup underneath it.
 
 1. Install the M5Stack board core and M5Unified once, using the Arduino IDE's own bundled
-   `arduino-cli.exe` so Tony's Arduino config is not rewritten:
+   `arduino-cli.exe` so your own Arduino config is not rewritten:
 
    ```
-   CLI="/mnt/c/Users/Tony/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
+   CLI="/mnt/c/Users/<you>/AppData/Local/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe"
    URL=https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
    "$CLI" core install m5stack:esp32@3.3.9 --additional-urls $URL   # has the m5stack_sticks3 board
    "$CLI" lib install M5Unified@0.2.21 M5GFX@0.2.28 WebSockets@2.7.2
@@ -126,8 +126,9 @@ day use. This section is the one-time setup underneath it.
    `toolchain.json` in its own commit and bench the Stick.
 
 2. `stick.py compile` and `stick.py flash` stage the sketch to
-   `C:\Users\Tony\brx-sticks3\m5sticks3` before building, because the Windows `arduino-cli` cannot
-   build from a `\\wsl.localhost` path. The FQBN is
+   `%USERPROFILE%\brx-sticks3\m5sticks3` before building, because the Windows `arduino-cli` cannot
+   build from a `\\wsl.localhost` path. The Windows paths are constants at the top of `tools/stick.py`
+   (`CLI_EXE`, `WIN_PYTHON`, `STAGE_DIR_WSL`, `STAGE_DIR_WIN`); set them for your account. The FQBN is
    `m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc`: `default_8MB` gives a
    3 MB app partition (BLE plus M5Unified does not fit the 1.2 MB default), and `CDCOnBoot=cdc` is
    required or the upload cannot find the port.
@@ -234,7 +235,7 @@ or state change and at most once a second on a value-only change.
 
 **Status: built 2026-09-24 and flashed.** The respawn station and the pickup are proven: a gun respawned at a Stick
 and Mission Control counted it (2026-09-24), and a Stick pickup worked online and offline (sitting B, 2026-09-25; H9
-closed). HELD mode as a whole is still bench pending (`docs/release-1.0.md`): H8, F389, F391, F392 and F397 are open.
+closed). HELD mode as a whole is still bench pending (`docs/release-1.0.md`). Open Stick work lives in `docs/FOLLOWUPS.md`.
 The host tests are `test/test_link.cpp` and `test/test_ui.cpp`.
 
 The Stick is a Wi-Fi utility node exactly like a phone in the `utility` role (`docs/spec/utility.md`
@@ -344,9 +345,7 @@ The separate -57 advert value applies only while the hill uses its unedited defa
 
 **Proven on the bench:** the MC link, the respawn station and the pickup, online and offline (2026-09-24 and
 sitting B, 2026-09-25); the button holds and the A + B force restart (2026-09-24); every station screen, lit (F333).
-**Still open (not a complete list; `docs/FOLLOWUPS.md` has every row):** HELD mode itself (H8: the Wi-Fi 4 plus BLE 5
-coexistence jitter on the advert, §5g.4, and the battery cost), the link rows F389, F391, F392 and F397, the
-claim-ready-to-grant time after the 100 ms arbitration (F399, target about 1 s), and the pickup rows F374 and F380. `SCAN_PERIOD_MS`,
+Open Stick work lives in `docs/FOLLOWUPS.md`. `SCAN_PERIOD_MS`,
 `SCAN_WINDOW_S` and `SCAN_WINDOW_UNITS` in `mc_link_glue.h` are still first guesses. The `available:true`
 refuse/accept rule mirrors `app/src/powerup.js` and is held to it by `app/test/fixtures/powerup-station-cases.json`.
 
@@ -515,10 +514,10 @@ SPAWN-screen overlap stood out.
 the Stick picks in every state, and what that screen says, without a Stick:
 
 ```
-python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/Tony/brx-stick-sim
+python3 hardware/m5sticks3/sim/stick_sim.py --copy-to /mnt/c/Users/<you>/brx-stick-sim
 ```
 
-Then open `C:\Users\Tony\brx-stick-sim\index.html` (or `hardware/m5sticks3/sim/out/index.html`).
+Then open `%USERPROFILE%\brx-stick-sim\index.html` (or `hardware/m5sticks3/sim/out/index.html`).
 Each scenario drives the real `StationLink`, `ControlPoint`, `PlayerPresence` and button state
 machines with real MC messages. It maps the result through the firmware's own `build_stick_state()`
 (`stick_state.h`, shared with the .ino) and `compute_screen()`. It then draws the screen with the
