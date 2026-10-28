@@ -162,8 +162,6 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the Updated stamp, id, 
   `manual/dev.md`.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
-  [`mc-warning-audit-2026-09-16.md`](mc-warning-audit-2026-09-16.md) is the full audit of its amber/red
-  warnings, with Tony's keep/quieter/remove call against each.
 - **[manual/README.md](manual/README.md)** — the public site: how a fact gets in. **[site/README.md](site/README.md)**
   (how to run the build + gate) and **[site/FORMAT.md](site/FORMAT.md)** (the page contract).
 

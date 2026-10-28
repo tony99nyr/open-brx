@@ -1,31 +1,14 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-26. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-27. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-**Parts 1 and 2 ran (2026-09-26 and 2026-09-28).** The bench after 0.4.31 is NEXT ([below](#next-the-bench-after-0431-2026-10-26)), then Part 3's other sheets: [below](#part-3-2026-09-29-three-independent-sheets). Part 2's results
-are in `experiment-log/2026-09.md`'s 2026-09-28 entry.
+The next bench is NEXT ([below](#next-the-bench-after-0431-2026-10-26)): every MVP bench row, in rig order.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
-## Part 3: 2026-09-29, three independent sheets
-
-Tony splits today into three benches. Each sheet stands alone, with its own kit, setup commands, steps (each with a
-control, a pass rule and its FOLLOWUPS row), a time estimate and the method from Part 2. A fresh session opens
-one sheet and runs it. The procedures live in the sheets; this index holds none.
-
-| Sheet | Needs | Core steps | Time |
-|---|---|---|---|
-| ~~[`bench-standard-2026-09-29.md`](bench-standard-2026-09-29.md)~~ RAN 2026-10-02 (`experiment-log/2026-10.md`): steps 1-9, 8b, 13 and 14-17; steps 10-12b, 13b and 13c moved to the re-bench sheet | this box, three Pixels, two guns, no Stick | F297's 10-run repeat, brx4's powerup rechecks (F418, F381, F436 with the `$GLED` gun test), F348 with the poison and shield reads, F394, 4.0, GAMES 9 TEAMS | about 2 h 40 min, plus 70 min lower priority |
-| [`bench-stick-2026-09-29.md`](bench-stick-2026-09-29.md) | the M5StickS3, two Pixels, two guns | reflash, -45 powerup default (F434), the 4.11 ladder, 11.2 with the ARMORY overrides, 11.6, the F417 race | about 3 h |
-| [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook, the iPhone X, the grey Pixel | the IPHONE block, 11.7 over real mDNS, the iPhone as player 2 | about 75 min |
-
-**Build under test:** the standard sheet ran on 0.4.16. The Stick and Mac sheets never ran. Every Stick row of theirs
-that is still open is in the 0.4.22 re-bench (Sittings B and C, checked 2026-10-13), so run that sheet, not the
-Stick sheet. The Mac sheet still holds B21 (the re-bench's *Not in this sitting* table points there).
-
-### NEXT: the bench after 0.4.31 (2026-10-26)
+## NEXT: the bench after 0.4.31 (2026-10-26)
 
 Every open bench row in [`FOLLOWUPS.md`](FOLLOWUPS.md) (91 on 2026-10-26, after Q13 and F537 closed) in one ordered
 list, plus the unrun fix checks of the 0.4.24 and 0.4.26 sheets. It replaces both NEXT blocks below. The groups run in
@@ -61,7 +44,7 @@ while a gun powers on (F545), except in step 28. Guns, as the source sheets pin 
 (0426, 1017, 0422 Sitting A), Tactix-E20D is 0426's second gun and outdoor target, and Tactix-FE30 is player 1 in 0422
 Sitting C. Tactix-XXXX marks a gun no sheet pins.
 
-#### Group A: one gun alone on the laptop MCP (1 gun, no phone, about 225 min)
+### Group A: one gun alone on the laptop MCP (1 gun, no phone, about 225 min)
 
 Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm from the 0422 Sitting A recipe.
 
@@ -128,7 +111,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    min; pings again only if the writer run ends clean. Read: the time and frame count at any lock-up, the per-gun
    traffic budget. F274 still needs its three soaks (*Unattended*, below). (screamers A13)
 
-#### Group B: one gun and both IR rig boards (1 gun, the laptop MCP, about 31 min)
+### Group B: one gun and both IR rig boards (1 gun, the laptop MCP, about 31 min)
 
 16. **F449** and **F538**, the rig itself (10 min). Control: a single `ir-emit` word at a hit-ready headset hits (4/4
    on 2026-10-16). A/B/A: single word; one word with a gap, reading the ack's `bits=`; single word. Closes both: if
@@ -145,7 +128,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    life, A16), and a pull fires. Closes the 2026-10-26 code read: a positive `$LIFE` frees the trigger and `$SIR` does
    not. F264 stays open for step 39. Keep `$GSET` t8 at its compiled value. (FOLLOWUPS F264)
 
-#### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 175 min)
+### Group C: one gun, its phone, MC and the rig emitter (1 gun, a second phone in steps 30-32, about 175 min)
 
 Tactix-9498 with the green Pixel 5. The rig emitter is the shooter wherever a step needs a hit or a kill (0422 Sitting
 A).
@@ -207,7 +190,7 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-#### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 90 min)
+### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 90 min)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old
@@ -225,7 +208,7 @@ A).
    constant 2, duplicates land within 600 ms, and fn 34 answers whether dead players hear callouts. Restore fn 28,
    then power-cycle both. (runbook Block 7 steps 1-10)
 
-#### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
+### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 
 Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 
@@ -294,7 +277,7 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
    hit with the stun off does plain damage; a cloth at 3 m gives no `$HIR`. Pass: P2.5 to P2.11 of 0426. The perk
    stays hidden until they pass. (0426 P2.5-P2.11)
 
-#### Group F: hills and stations in a 12 m hall (2 guns, both player phones, the grey Pixel and the Pixel 10 Pro as stations, about 125 min)
+### Group F: hills and stations in a 12 m hall (2 guns, both player phones, the grey Pixel and the Pixel 10 Pro as stations, about 125 min)
 
 54. **F525**, two hill points (15 min). F537 closed on 2026-10-26 from the 2026-10-17 bench. Control: both points on,
    player 1 on A for 60 s with no "different point" line. 5 runs. Closes F525: `different point` 2 to 3 s after A
@@ -323,7 +306,7 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
    advert rate. A/B/A: shipped, dense (about 100 ms), shipped. Read: capture rate against gun write latency, which
    sets the KOTH scan budget. (0422 *Not in this sitting*)
 
-#### Group G: the Sticks (every Stick on USB, MC, both player phones, one gun, the rig receiver, about 327 min)
+### Group G: the Sticks (every Stick on USB, MC, both player phones, one gun, the rig receiver, about 327 min)
 
 The procedure is 0422 Sitting B; run it with the m5stick-bench skill.
 
@@ -382,7 +365,7 @@ The procedure is 0422 Sitting B; run it with the m5stick-bench skill.
 84. **F452** (b), optional: the Stick loop under a flood (20 min). Time the loop during a scan flood (the player-sim
    board gives a lower bound only). Closes: it stays under its tick budget. (FOLLOWUPS F452)
 
-#### Group H: the field network (1 gun, two phones with mobile data, MC, a router with no uplink, about 50 min)
+### Group H: the field network (1 gun, two phones with mobile data, MC, a router with no uplink, about 50 min)
 
 85. The backhaul is a fallback (15 min; F595 is a desk row). Control: before the match, with the tunnel up, every
    phone stays on the LAN and MC logs no new hello. Pass: as 0426 P2.4 and its two variants. (0426 P2.4)
@@ -394,7 +377,7 @@ The procedure is 0422 Sitting B; run it with the m5stick-bench skill.
    field Wi-Fi drops to zones; (4) data off mid-lobby drops the count within one heartbeat; and a Wi-Fi-only match
    names no phone OFF-GRID. (FOLLOWUPS F309)
 
-#### Group I: outdoors, 25 m or more in shade (2 guns and headsets, the rig, a 30 m tape, about 165 min)
+### Group I: outdoors, 25 m or more in shade (2 guns and headsets, the rig, a 30 m tape, about 165 min)
 
 Tactix-9498 shoots and Tactix-E20D is the target (0426 P3), both from `compile.resolve()`, the target at full Standard
 health, a full capture. Indoor range is bounce: no range claim indoors.
@@ -417,12 +400,12 @@ health, a full capture. Indoor range is bounce: no range claim indoors.
    (runbook Block 5)
 93. **F231**, the shaded t2 ladder (30 min). t2 30, 40 and 100, full magazines, the first two pulls discarded (step
    88). A/B/A: t2 100 first and last. Closes: the reach at 40 and 100; Tony then keeps the Shotgun, Breacher and Haze
-   at 30 or moves them to 40. (levers §20, Sitting 10)
+   at 30 or moves them to 40. (levers §20)
 94. **F157**, after the next field match (opportunistic: only after a real field match, no bench minutes). Control:
    the 2026-10-17 bundle's 49 to 130 offers a minute. Read the MC log. Closes: no `log_offer` burst, and the LOGS
    button works after the match. (FOLLOWUPS F157)
 
-#### Group J: the MacBook (no gun, about 20 min)
+### Group J: the MacBook (no gun, about 20 min)
 
 95. **B21**, `BrxDebugPlugin.swift` compiles and runs (about 20 min). Control: the Android toggle shows its state in
    the diag panel. Closes: the iOS switch builds and shows its state, or UNSUPPORTED below iOS 16.4; Tony then picks
@@ -460,21 +443,13 @@ F444 is blocked too: it waits for the enemy-captured card build.
 **Not in this sheet.** Q13 and F537 closed on 2026-10-26 (brx2, from the 2026-10-16 and 2026-10-17 logs).
 F595 is a desk row; its bench half is step 85.
 
-### NEXT: the re-bench on APK 0.4.24
-
-Superseded by the sheet above. P1 ran on 2026-10-17 (the log's morning entry), and every open P2 to P4 step is in it.
-
-### NEXT: the bench on APK 0.4.26 (2026-10-25)
-
-Superseded by the sheet above. None of its steps had run; the sheet above carries all of them and the open steps of
-[`bench-field-1017.md`](bench-field-1017.md).
-
 ## History
 
-Part 1 (2026-09-26) and Part 2 (2026-09-28) ran. Their results are in
-[`experiment-log/2026-09.md`](experiment-log/2026-09.md), under those dates. Each open row from them has a step in the
-current re-bench sheet (NEXT, above). The Part 2 procedure text was removed on 2026-10-13; to read it, run
-`git show 5280d67e:docs/bench-plan.md`.
+Parts 1 and 2 ran on 2026-09-26 and 2026-09-28, and the Part 3 standard sheet ran on 2026-10-02; the results are in
+the experiment log under those dates. The 0.4.24 re-bench ran its P1 on 2026-10-17, and the 0.4.26 sheet never ran:
+NEXT carries every open step of both. The run sheets that NEXT no longer needs are archived. The levers and screamers
+research sittings, with the list of what already ran, moved to [`post-mvp.md`](post-mvp.md) §9 on 2026-10-27: they
+gate post-MVP rows, or MVP rows that NEXT now runs. Older order text: `git log -p -- docs/bench-plan.md`.
 
 ## Rules for every sitting
 
@@ -492,122 +467,6 @@ rule and the close: the [`bench-session` skill](../.claude/skills/bench-session/
 Short names: **levers** = [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md),
 **screamers** = [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md).
 
-## Done: do not re-run
-
-Levers session 1 ran in three sittings on 2026-09-18 (the log's three "firmware levers session 1" entries):
-§1 runs a-e, §4 step 1, §5 (all, including the shield flag and the sound token), §6 step 4 and §10 fn 34 (both
-answered by §16), §12 steps 1 and 3 (answered by §23), §13 step 1 and step 3 (magnitudes 1-39), §16 steps 1-3 and
-6.1-6.2, §18, §19 step 15 (answered by F71 and F263: one Shotgun pull sends two words), §21 steps 1-10 and 15-18 (t4,
-t5, t6, t7, t8, t9), §22 steps 1-6, and §23 (all five steps). Screamers A1 and A2. F276 (the Shotgun words). The whole perks sheet
-(the archived bench-perks-2026-09-18, §1-§8). F230 closed, so levers §19 step 18 is dropped.
-
-**Pre-game check, 2026-09-19.** Levers §1 run f passed (F206's last gate). The write-up is the log's 2026-09-19
-pre-game entry.
-
-**The 2026-09-24 runbook, [`bench-2026-09-24.md`](bench-2026-09-24.md).** Blocks 0, 1, 1.4, 3.1-3.3, 4.3 and 7 step 11
-ran. The results are in the log's 2026-09-24 entries.
-
-**The archived bench-2026-09-25, sittings A and B.** The results are in the log's 2026-09-25 entries.
-
-## Sittings, in priority order
-
-### Sitting 1: screamers Phase A, transport half (about 55 min; 1 gun, a laptop)
-
-Screamers are P0. Screamers A1c (the nonblocking loop control, **F272**), A3, A5, A6, A11, A12; A4, A7, A7b, A7c and A8 run in the runbook's Block 2. A7 and A8 give the block-pacing
-numbers (**F269**, **F270**); a lock-up feeds **F272**. Keep the block pause off until A7 and A8 give a number.
-A3 repeats A1 on other channels and can lock the gun: power-cycle and re-arm before the next step.
-
-### Sitting 2: the rest of levers session 1 (about 100 min; 2 guns, ears, the rig for steps 8 and 9)
-
-1. Levers §21 step 19, `$TMP` t10 crit chance, including the same-value re-send control (10 min). **S50**, **F285**.
-2. Levers §21 step 11, and one run that asks whether t9 applies per slot or once for every slot (10 min). Extended
-   Mags on `$TMP` waits on this. **S50**.
-3. Levers §21 steps 12-14, t1-t3 pool maxima, repeating each same non-zero write before the second read (15 min). **S50**, **F285**.
-4. `$TMP` t6 re-send: send t6 = 50 twice, then time one reload (5 min; method in the row). **F285**, **F281**.
-5. Complete the F285 table: repeat same non-zero t5 and t7 writes and compare fire timing/damage; for t11 first
-   prove the missing-row default sound, then write two distinct ids and identify which one plays (15 min). **F285**.
-6. Levers §12 step 2 (does `$STOP` gate the trigger?), then §4 step 2 (a `$SIR` p5 stun on hit) (10 min). **U11′**.
-7. **F262**: the shield-hit sound by sensor, ten shots at the headset and ten at the gun body (10 min, ears).
-8. ~~Levers §2, melee.~~ **K4** closed 2026-09-24: melee works in our compiled game (bench 2026-09-24 entry, `archive/followups-closed.md`). Steps 5 and 7 (the `$BHIT`/`$FIREX` controls) stay optional, not blocking.
-9. Levers §16 step 6.3: does `$CLEAR` stop a headset `$IRTX` loop? (5 min, the rig). **S57**.
-10. **F282**: the compiled Suppressor against the compiled AR in a dark room: does either flash, and which is quieter?
-   Then `$WEAP` t25/t26 at 0 and at a large value on one weapon (10 min; eyes, ears; method in the row).
-
-### Sitting 3: the recoil numbers, groups A and B (about 30 min; 2 guns on a fixed mount)
-
-Levers §26 groups A and B, pinned with `$TMP` t4 (§21 answered how; see "If §21 moves the mechanism"): the
-measured recoil numbers behind the shipped rungs. Groups C, D, E and F go into sitting 8.
-
-### Sitting 4: screamers Phase A, IR half (about 50 min; 1 gun, the rig)
-
-Screamers A8b, A9, A10, A13. A13 gives the per-gun traffic budget (**F274**). A13 replays the shipped recoil writer,
-which writes `$TMP` t4 only (S55, shipped).
-
-### Runbook Block 2b: the native kill word and the R4 readings (70 min, plus 20 optional)
-
-The old sittings 4a and 4b. Kit: 2 guns and their headsets, the rig, a laptop and a camera, plus Phones + MC for
-the hosted trials. The procedure is [Block 2b of `bench-2026-09-24.md`](bench-2026-09-24.md): native
-Death Match kills N1-N3, and the short R4 checks (**F320**, **F321**, **F322**, fn 36/37 on domes 1-3, fn 18/22 on
-an enemy, the stored-ID compare, native Survival and FFA). The hosted trials H1-H3 ride on Block 4.2's kills, so
-they need both Pixels and Mission Control. Do not send `$AS,1`.
-
-### Sitting 5: match verification (about 60 min; 2 guns, Phones + MC, film)
-
-Levers §1 run f (F206's proof) **already ran and passed**, 2026-09-19; do not re-run it here.
-1. **F264** in a live match. If a gun stalls, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` BEFORE any force respawn,
-   and watch for a trigger answer. The row holds the gate. If the gun revives, prove its next death still shows the
-   native flash (A16).
-2. Levers §22 step 7: reproduce the timed-out partial reload on the Energy Rifle. **F277**.
-3. ~~F237~~ closed 2026-10-16 (C.28 re-picked 5 times, quick links).
-4. The stun cue: hit a player with the EMP and listen for `X17` on the victim's gun (commit `273e949a`; the row is **U11′** in [`post-mvp.md`](post-mvp.md)).
-5. ~~The shield recharge cues~~ (F349) closed 2026-10-16 (A.15, Tony approved).
-
-### Sitting 6: levers session 2 (two sittings; 2 guns, the rig for §9 step 5)
-
-- 6a (about 50 min): §3 `$BHIT`, §6 steps 1-3 (the shield levers), §7 (**S50**), §8 the fuse; use the levers sheet as the procedure source.
-- 6b (about 40 min): §9 the crit bonus (**S50**), §10 fn 35, 38, 30, 33, 50-52 (**U11′**), §15 a headless gun (**B26**).
-
-### Sitting 7: levers session 4, the IR rig (two sittings; 2 guns, the rig)
-
-- 7a (about 50 min): §11 splash, §16 step 4 (field 4 = 1), §17 station words (research: the MVP respawn station runs over Bluetooth).
-- 7b (about 45 min): §20 indoor half (**S48**, **Q15**), §24 the proc block (**F63**). §13 steps 2 and 3
-  (magnitudes 40-63) are optional now (**S57**).
-
-### Sitting 8: the recoil numbers, groups C to F (about 35 min; 2 guns, Phones + MC)
-
-Levers §26 groups C, D, E and F, on the phone's node. The rung basis is settled (S54, `aa7b08b9`); the rungs to
-expect are the recoil table in `spec/node.md` §3.15.
-
-### Sitting 9: levers gap sweep (two sittings; 2 guns, the rig for two steps)
-
-- 9a (about 45 min): §19 steps 1-9.
-- 9b (about 40 min): §19 steps 10, 11, 14, 16 and 17. Step 17 (`$AS,4`) runs only after sittings 1 and 4. Steps 12
-  and 13 moved to §21 and §22; step 15 is answered (F71, F263; the emitter and its reach are F275, sitting 10); step
-  18 is dropped.
-
-### Sitting 10: outdoor (about 60 min; 2 guns, outdoor, the rig or the S49 receiver)
-
-**F275** (the `t13` ladder: where the headset word stops arriving). Then the outdoor half of levers §20. Then **F171**
-and **F195** (aim tolerance in degrees) if time allows. ⚠ F254 is CLOSED (the eleven-row `$SIR` table). The outdoor
-headset-word row was F254 before its renumber and is F275 now.
-
-### Unattended and long runs (no sitting)
-
-- **Screamers Phase C** runs 1-4, 2 h each, one gun and a laptop (now unblocked with `soak --phone-pacing` built). Run 3 soaks the `$TMP` t4 recoil writer (S55, shipped).
-- **Screamers Phase D** (3 h, all guns, Phones + MC, the rig), after the Phase B rules are built.
-- **Screamers Phase E** (20 min), after the lock-up detector (**F272**) passes its bench validation.
-
-### Backlog (no fixed order; pick by setup)
-
-- [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md): the M5StickS3 gates. Gate 2 (IR receive, **F314**) is
-  post-MVP (**F338**, Tony 2026-09-24); the Stick MVP runs over Bluetooth, Block 9 of the runbook.
-  Kit: a Stick, the rig, a laptop, one gun for gates 4 and 5.
-- [`bench-grenade.md`](bench-grenade.md) "Still to run": B0 first, then X, Z1-Z3, D, B, E, F (C is answered).
-- The unrun rungs of the archived bench-queue-2026-09-09 that the table below does not mark as
-  moved. Do not run BQ-A2 (`$AS,1`): it starts a native game, a screamer path.
-- Rows whose method is in the row itself: **F232** and the other "Later" rows of the FOLLOWUPS MVP BENCH group
-  that no sheet names yet, and the post-MVP **F167**, **F168** and **F169**.
-
 ## Desk work (no gun)
 
 The HANDOFF lanes point here. Each item names its row, its lane, and what blocks it.
@@ -615,19 +474,19 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 | row | lane | the work | blocked by |
 |---|---|---|---|
 | **F300** | levers and screamers | decode the remaining `$QUERY` sound/gyro/per-slot loop before extending arming read-back | stock-image/capture decode |
-| **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | sittings 1 and 4 (A7, A8, A8b) |
-| screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | sittings 1 and 4 |
-| **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | sitting 2 steps 1, 3-5 |
-| **F274** | playtest and node | measure the recoil writer's BLE write budget and complete the hardware soaks | A13 and the three two-hour hardware runs; S55 is shipped |
-| **F277** | playtest and node | a detector for a reload that never completes | sitting 5 step 2 (a repro) |
-| **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | sitting 2 step 4 (t6 absolute or additive) |
-| **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | sitting 2 step 2 (per slot or not) |
+| **F269** | levers and screamers | switch the block pause on, and decide the runt `$SIR` rows | NEXT steps 13 and 14 (A7, A8, A8b) |
+| screamers Phase B: **F270**, plus one new row per trigger that Phase A reproduces | levers and screamers | one rule in code per reproduced trigger (write with response; the `$PB*`/`$AS` deny list) | NEXT steps 12 to 15 |
+| **F285** | levers and screamers | desk table is done; replace its UNMEASURED cells only from recorded bench results | post-mvp §9 research sitting 2, steps 1 and 3-5 |
+| **F274** | playtest and node | measure the recoil writer's BLE write budget and complete the hardware soaks | NEXT step 15 (A13) and the three two-hour hardware runs; S55 is shipped |
+| **F277** | playtest and node | a detector for a reload that never completes | NEXT step 25 (a repro) |
+| **F281** | weapons and perks | move Quick Hands onto `$TMP` t6 in one piece, or not at all | post-mvp §9 research sitting 2, step 4 (t6 absolute or additive) |
+| **S50** | weapons and perks | Extended Mags on `$TMP` t9 (one write per life, after `$SPAWN`, then an `$AMMO` fill) | post-mvp §9 research sitting 2, step 2 (per slot or not) |
 
 ## Preconditions (build these first)
 
 | tool or change | blocks | row |
 |---|---|---|
-| Screamers Phase B rules in code | Phase D | after sittings 1 and 4 |
+| Screamers Phase B rules in code | Phase D | after NEXT steps 12 to 15 |
 | The lock-up detector's bench validation (built) | Phase E | F272 |
 | Block pacing switched on, at the A7/A8 values | Phase C and D results that count | F269 |
 
@@ -635,14 +494,15 @@ The HANDOFF lanes point here. Each item names its row, its lane, and what blocks
 
 | sheet | status | owns |
 |---|---|---|
-| [`bench-rebench-0419.md`](bench-rebench-0419.md), [`bench-rebench-2026-10-04.md`](bench-rebench-2026-10-04.md) | superseded, never ran | nothing: the current re-bench sheet (NEXT) carries their open steps |
-| [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | claims 1-27, §1-§26 |
+| [`bench-rebench-0422.md`](bench-rebench-0422.md) | live, ran in part 2026-10-16 | the procedure of most NEXT steps (Sittings A, B and C) |
+| [`bench-0426.md`](bench-0426.md), [`bench-field-1017.md`](bench-field-1017.md), [`bench-rebench-0424.md`](bench-rebench-0424.md) | live, procedure only | the NEXT steps that cite 0426, 1017 and 0424 |
+| [`bench-2026-09-24.md`](bench-2026-09-24.md) (runbook) | live, procedure only | Blocks 1.5, 2, 2b.3, 5 and 7, as NEXT cites them |
 | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0 | the screamers: Phases A-E (A1, A2 done) |
-| the archived bench-perks-2026-09-18 | history | every section answered 2026-09-18 |
-| [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live | the M5StickS3 bring-up gates (**F314**, H7); run with the `m5stick-bench` skill, no fixed sitting |
-| [`bench-grenade.md`](bench-grenade.md) | open, backlog | the grenade and hill rungs |
-| the archived bench-queue-2026-09-09 | superseded as the order | the method of its unrun rungs. Moved: BQ-C2 answered (perks §1); BQ-C3 is levers §24; BQ-D2 is levers §2; BQ-D6 is levers §10; BQ-C8 is levers §19 step 11 |
-| the 2026-09-05 flash-control, 2026-09-07 super-indoor and 2026-09-11 critical sheets | history | archived 2026-09-24: grep only. Critical: BC-A2 is levers §21 step 16 (done) plus grenade Z1; BC-B3 is grenade X; BC-C1 is levers §6; BC-C2 is answered (perks §2). Super-indoor: Q15; Tony defined S48 on 2026-09-23, and its sweep is Block 6 of the runbook. Flash-control: L1-L9 answered; BQ-D8 cites its rungs 9-10 |
+| [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live | §20 for NEXT; the rest is post-MVP research (post-mvp §9) |
+| [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | live, never ran | B21's iPhone steps (NEXT, the Mac group) |
+| [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | method | the M5StickS3 bring-up gates; run with the `m5stick-bench` skill |
+| [`bench-grenade.md`](bench-grenade.md) | post-MVP method | the grenade and hill rungs (every open rung gates a post-MVP row) |
 | [`capture-runbook.md`](capture-runbook.md) | method | how to take a capture; no status |
-| the 2026-09-13 runbook and the 2026-09-17 weapons sheet | history | already archived: grep only, open no step from them |
 | [`FOLLOWUPS.md`](FOLLOWUPS.md) MVP BENCH, and [`post-mvp.md`](post-mvp.md) | register | the ids (MVP, then post-MVP); this plan is the order |
+
+Every other bench sheet is archived: grep `docs/archive/`, and open no step from it.

@@ -1,7 +1,7 @@
 # Bench sheet: the re-bench on APK 0.4.22
 
 Updated: 2026-10-16. **Run in part on 2026-10-16** (Sittings A and C; each step below carries its result line). Sheet errors found: RECALL is now ABORT (with a confirm); VA7 is the pain-relief line (`$PSET` t15), not a respawn cue; MC refuses to push or start with a phone offline, so A.8 and A.11 use the reachable orders (reconnect after END; close the phone during the countdown); C.5's hill phone normally lies on the ground in a game, so run the ladder at chest height AND flat; the energy-rifle refill band in A.6 is old. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
-ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22 (versionCode 422, not published), built
+ran) and the 0.4.19 sheet (both archived). It runs on APK 0.4.22 (versionCode 422, not published), built
 on 2026-10-13 from main `221d4fe1` (release commit `be55fbd7` on `release/app-0.4.22`, `dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
 **minimum build** it needs. The row holds the history and the fix; this sheet holds the procedure. How a bench run
