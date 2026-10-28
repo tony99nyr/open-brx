@@ -593,7 +593,7 @@ proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
 `$HIR` tok5 is the raw magnitude, and the applied damage depends on the sensor and `$GSET` t7: the rule is in
-[`protocol/brx-protocol.md`](../protocol/brx-protocol.md) (`$GSET` t7). Open BRX compiles t7 = 0, so every hit lands at its raw magnitude.
+[`protocol/brx-protocol.md`](../protocol/brx-protocol.md) (`$GSET` t7). Open BRX compiles t7 = 0, so every hit lands at its raw magnitude: players already aim at the headset (four of the five sensors), so a headset multiplier would only make that aim pay twice.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
 **A simulated gun that answers instantly is not a gun.** Twice on 2026-09-18 a test suite passed while the

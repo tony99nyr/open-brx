@@ -11,7 +11,7 @@ Do not copy a procedure into this file. When a sitting ends, strike its steps he
 ## NEXT: the bench after 0.4.31 (2026-10-26)
 
 Every open bench row in [`FOLLOWUPS.md`](FOLLOWUPS.md) (91 on 2026-10-26, after Q13 and F537 closed) in one ordered
-list, plus the unrun fix checks of the 0.4.24 and 0.4.26 sheets. It replaces both NEXT blocks below. The groups run in
+list, plus the unrun fix checks of the 0.4.24 and 0.4.26 sheets. The groups run in
 rig order, one-gun groups first, so the rig changes as few times as possible. The Stick group (G) and the network
 group (H) need one gun only, but they come after the two-gun groups because each replaces the rig: the Sticks on USB
 with their own MC set-up, and a field router with no uplink. Each step gives its minutes, its control, its A/B/A, the
@@ -227,7 +227,7 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 39. **F264**, a live stall (opportunistic: only if a gun stalls in this group, no extra minutes). Control: MC shows
    `pool_stale: no_fire` on the stalled gun. Before any force respawn, send `$LIFE,<hp>,0,0,1,*` then `$HLED,,6,*` and
    watch for a trigger answer. Closes: the two frames cure a real stall, and the next death still shows the native
-   flash (A16). (FOLLOWUPS F264, Sitting 5 item 1)
+   flash (A16). (FOLLOWUPS F264)
 40. **F298** and **S57**, a two-phone Shields fight (15 min). Read only: the pass is a read of a live match, so there
    is no B to change. Control: a single `$IRTX` callout word received alone. Closes F298: the recharge cues and the
    pool readout are right on both HUDs. S57: each kill names the victim on the other gun (DOWN 250 to 800 ms after

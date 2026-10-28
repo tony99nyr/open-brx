@@ -2,7 +2,7 @@
 
 **How every protocol fact in this repo was obtained, and how to take the next one.** This page is the
 method for each instrument. It does not track which capture jobs are still open — that status lives in
-[`post-mvp.md`](post-mvp.md) §9 (its "Capture" line, and each job's own row: **P8**, **P12**, **P14**,
+[`post-mvp.md`](post-mvp.md) (the "Capture" line in §9, and each job's own row: **P8**, **P12**, **P14**,
 **G3**, **G4**, **R2**, and any new one), so it cannot go stale here the way a duplicated job list would.
 
 ---

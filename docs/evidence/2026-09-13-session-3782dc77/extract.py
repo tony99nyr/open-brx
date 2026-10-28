@@ -56,7 +56,7 @@ KEEP_STATE = (
 
 
 # An RFC1918 host address. Not a subnet (`/24`), not a wildcard (`.x`), not part of a longer dotted number.
-_LAN_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?![\d/]|\.\d)")
+_LAN_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
 _LAN_NAMES: dict[str, str] = {}
 
 

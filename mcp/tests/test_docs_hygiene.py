@@ -684,10 +684,10 @@ def test_no_memory_slugs_in_tracked_markdown():
 
 # HANDOFF is capped at 150 LINES, which one long line per bullet walks straight through: the file that
 # triggered the rule was 836 lines, but the shape it keeps coming back as is 30 paragraph-length bullets.
-# The intent is 9,000 bytes (~one screen). 2026-09-12: the file measures 12,752, so the cap is pinned just
-# above that. This is a CEILING, not an auto-ratchet: nothing in this suite lowers it on its own. Lower
+# The intent is 9,000 bytes (~one screen). 2026-09-12: the file measured 12,752, so the cap was pinned just
+# above that. 2026-10-27: the rewrite measures about 7,200, so the cap is the intent. This is a CEILING, not an auto-ratchet: nothing in this suite lowers it on its own. Lower
 # it by hand, to the new size plus a small margin, the next time a HANDOFF rewrite lands well under it.
-_HANDOFF_MAX_BYTES = 13_400
+_HANDOFF_MAX_BYTES = 9_000
 
 
 def test_handoff_is_one_screen_by_bytes_too():
@@ -852,9 +852,9 @@ _CITED_ID_ALLOW: set = {
 }
 
 
-# Ids that only the pre-2026-09-06 FOLLOWUPS snapshot defined, and that living pages still cite. The snapshot was
+# Ids that only the pre-2026-09-06 FOLLOWUPS snapshot named, and that living pages still cite. The snapshot was
 # deleted on 2026-10-27 (read it with `git show c55119667:docs/archive/pre-2026-09-06-followups-snapshot.md`).
-# P1 and P2 here are also the bench sheets' part labels. Never add an id: a new cite needs a living row.
+# P1 and P2 are also the bench sheets' part labels, and G9/G10 the Stick's pins. Never add an id: a new cite needs a living row.
 _SNAPSHOT_IDS = frozenset({"D2", "D3", "D4", "F11", "G4", "G6", "G7", "G8", "G9", "G10", "K5", "P1", "P2"})
 
 
@@ -1527,8 +1527,10 @@ def test_the_firmware_address_scan_can_actually_fail():
 # person's network, and the path names one person's account (a field bundle once named the MacBook's account). Write
 # a placeholder: `<mc-lan-ip>` in a command, `<lan-ip-1>`, `<lan-ip-2>` in a quoted log. A subnet (`/24`) or a
 # wildcard (`192.168.0.x`) is a sweep range, not a host, so it never matches. Generic addresses are allowed by value.
-_PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?![\d/]|\.\d)")
-_ACCOUNT_PATH = re.compile(r"/Users/(?!Tony\b|<)[A-Za-z][\w.-]*|/home/(?!tony\b|<|example\b)[a-z][\w.-]*")
+# Scope: the docs trees only. Code and tests under app/ and mcp/ carry example addresses of their own.
+_PRIVATE_IP = re.compile(r"(?<![\d.])(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}(?!\d|\.\d|/\d{1,2}\b)")
+_ACCOUNT_PATH = re.compile(r"/Users/(?!Tony\b|<)[A-Za-z][\w.-]*|/home/(?!tony\b|<|example\b)[a-z][\w.-]*"
+                           r"|[A-Za-z]:\\Users\\(?!Tony\b|<|Public\b)[A-Za-z][\w.-]*")
 _PRIVATE_IP_ALLOWED = {
     "192.168.4.1": "the factory Wi-Fi access point of the JBOX and other ESP32 boxes, the same on every unit",
     "192.168.16.1": "an example WSL host address, assigned per boot",
@@ -1563,11 +1565,13 @@ def test_no_private_lan_address_or_account_path_in_the_docs():
 
 def test_the_privacy_scan_can_actually_fail():
     rel = "docs/x.md"
-    for bad in ("--advertise 192.168.0.55 --x", "ws://192.168.0.171:8766/ws", "at 10.0.0.7.", "172.20.10.2",
-                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x"):
+    for bad in ("--advertise 192.168.0.2 --x", "ws://192.168.0.3:8766/ws", "at 10.0.0.7.", "172.20.10.2",
+                "`/Users/someone/brx-handoff.tar.gz`", "/home/someone/x",
+                "http://192.168.0.2/", "ws://192.168.0.3/ws", "http://10.1.2.3/ws", r"C:\Users\someone\x"):
         assert _privacy_problems(rel, bad), bad
     for good in ("sweep 192.168.0.0/24", "192.168.0.x, 172.20.10.x", "http://192.168.4.1", "v10.5.1.2.3",
-                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/Tony/x", "/home/tony/x"):
+                 "8.8.8.8", "<mc-lan-ip>", "/Users/<you>/x", "/mnt/c/Users/Tony/x", "/home/tony/x",
+                 r"C:\Users\Tony\x", "10.0.0.0/8"):
         assert not _privacy_problems(rel, good), good
 
 
