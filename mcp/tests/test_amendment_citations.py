@@ -178,10 +178,11 @@ def _whole_symbol_in(needle: str, source: str) -> bool:
     `_give_up_hole` for months after the function became `_give_up_holes`. The edges are explicit
     lookarounds rather than `\\b`, because `\\b` means nothing beside a non-word edge character: a needle
     that starts with `_` or `/` still needs "no word character before it". A route also refuses a
-    following `/`, so `/api/match` does not resolve on `/api/match/next`."""
+    following `/` or `.`, so `/api/match` does not resolve on `/api/match/next`, nor `/api/recap` on
+    `/api/recap.csv`."""
     if needle not in source:          # cheap prefilter; most needles resolve or fail here
         return False
-    tail = r"(?![A-Za-z0-9_/-])" if needle.startswith("/api/") else r"(?![A-Za-z0-9_])"
+    tail = r"(?![A-Za-z0-9_/.-])" if needle.startswith("/api/") else r"(?![A-Za-z0-9_])"
     return re.search(r"(?<![A-Za-z0-9_])" + re.escape(needle) + tail, source) is not None
 
 
@@ -246,6 +247,10 @@ def test_the_citation_check_can_actually_fail():
     assert set(missing.get("A99", [])) == fake, (
         "the resolver must report every invented citation and no real one — it would otherwise pass a "
         f"§10 index pointing at nothing, or fail everything: {dict(missing)}")
+    # A route must not resolve on a longer route that extends it through `/` or `.`.
+    assert _whole_symbol_in("/api/recap", 'get("/api/recap")')
+    assert not _whole_symbol_in("/api/recap", 'get("/api/recap.csv")')
+    assert not _whole_symbol_in("/api/match", 'get("/api/match/next")')
 
 
 def test_the_citation_haystack_includes_the_tests_that_amendments_name():

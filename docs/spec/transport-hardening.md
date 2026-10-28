@@ -1,6 +1,7 @@
 # Transport hardening: what a node may write to a gun, how fast, and how it knows the gun is still there
 
-- **Status:** Built; open items: F269, F272, F286, F300.
+- **Status:** Built; open items: F269, F272 (`docs/FOLLOWUPS.md`), F286, F300 (`docs/post-mvp.md`).
+  "Bench A7", "A8" and "A8b" below are steps in Phase A of `docs/bench-screamers-2026-09-19.md`.
   Binds to `node.md` §7 (the BLE plumbing), `contracts.md` §8 (the frame contract) and `protocol/brx-protocol.md`
   §1 to §2 (the serial parser).
 - **Owner interface:** the node (`app/src/brxlink.js`, `app/src/engine.js`), the bench stage (`mcp/brx_mcp/stage/`),

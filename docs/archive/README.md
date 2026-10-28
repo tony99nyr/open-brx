@@ -29,3 +29,8 @@ closure is last.
   in `protocol/brx-protocol.md`.
 - `field-issues.md`: the field issue register. Open field issues are rows in `docs/FOLLOWUPS.md` §6. Its three
   still-open "Check next match" items (V3, V4, V5) are bullets in §10; V1, V2 and V8 were already F28, F29 and F3; V6 was F31 (closed) and V7 is F32.
+
+**Moved on 2026-10-27:**
+
+- `contracts-amendments-2026-08-to-09.md`: the full text of the `docs/spec/contracts.md` §10 rows dated 2026-08-25 to
+  2026-09-26. Each rule is folded into the contracts body or the spec its row names; §10 keeps one line per row.

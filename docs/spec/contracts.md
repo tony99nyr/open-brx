@@ -97,7 +97,7 @@ Player {
 
 Team { team_id: string, name: string, color: "blue"|"yellow"|"red"|"purple"|string, tid: number } // tid → $TID (LED colour + friendly-fire class); tid 3 is "purple" [A69, F423]: it paints purple, though it still fights as green ON THE WIRE (F35).
      // [A16.2] team COLOUR is decoupled from `$TID` (`poolgauge.display_colour`); FFA paints white; `$TID` is validated to 0..3.
-     // `presentation.PALETTE[3]` (the raw wire and LED palette) stays "green" on purpose. A preset, saved game or snapshot
+     // `poolgauge.LED_PALETTE[3]` (the raw wire and LED palette) stays "green" on purpose. A preset, saved game or snapshot
      // that still says `green` migrates to purple on load.
 
 Loadout {
@@ -111,7 +111,7 @@ Loadout {
 WeaponSel { weapon_id: string }   // references WeaponCatalog (M-MODES)
 
 RosterEntry { player_id, player_num, display, team_id, weapons?: RosterWeapon[] }
-                             // what nodes get so the HUD can name a killer. [S56 "what hit me", A52] `weapons`
+                             // [A4.10] what nodes get (`assign.roster`, `config.roster`) so the HUD can name a killer. [S56 "what hit me", A52] `weapons`
                              // is that player's loadout in SLOT ORDER (index == gun slot); absent means an
                              // older MC, so the phone names no weapon. Compiled, not catalogue-only: a perk
                              // (Armour Piercing) moves the numbers, and `RosterEntry.weapons` follows it.
@@ -221,6 +221,13 @@ GameConfig {
   hit_audio_class?: boolean, hit_audio_rekey?: boolean,   // [A17] per-weapon $SIR sounds; both default off
 }
 ```
+
+**`assign.game.mc_verify` [A31]: the "verify at MC" line.** The briefing `game` in `assign` carries one compiled
+line (`compile.mc_verify`) when three things hold. MC decides the end (a `frag_limit`, an objective `win_by`, or
+LMS or infection). The venue is not full coverage (`compile.full_coverage`: `opts.coverage` wins, then
+`coverage`; absent = partial). At least one rostered phone has no backhaul (`state.py _off_grid`). The phone shows
+the line on its ARMED screen. Presence is the rule: no key, nothing to show. The host's copy, which names the
+off-grid phones, is `State.notices.mc_verify` (`mc/API.md`).
 
 **`GameConfig.mode_params` [A18, E1] — the mode's own rules, declared by its engine.** The wire config used
 to be mode-agnostic (`mode, health, respawn, scoring, teams, loadout_policy, presentation`), so an objective
@@ -468,9 +475,13 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
                                      // [A15.3] THE PAINS ARE OURS (bench 2026-09-06): `pset.melee_grunt` / `short_pain` / `long_pain` are "" (a
                                      //   $PSET with the voice fields empty still registers hits) and the node plays `cues.pain_*` / one of
                                      //   `cue_pools.pain_*` on each $HIR, the pool chosen by the hit: proto 13 (melee) -> pain_melee; damage
-                                     //   (token 5) >= `voice.pain_long_min` (40: shotgun, snipers, power weapons) -> pain_long (slots E F);
+                                     //   >= `voice.pain_long_min` (40: shotgun, snipers, power weapons) -> pain_long (slots E F);
                                      //   else pain_short (G H D C). At most one pain line per 600 ms; none on the lethal hit. `events.hit_taken`
                                      //   keeps no sound of its own. `voice.pset_pool` lists the scream id per `pset_pool` frame.
+                                     // [A17.1] The pain line plays only when the hit reached HEALTH (`engine.js _pain`, A16's
+                                     //   `movedPool`). A hit that armour or shield absorbs plays the gun's material sound instead.
+                                     // [A17.3] The damage that sizes the pain is the TOTAL pools lost (hp + armour + shield), not
+                                     //   the health part and not $HIR token 5. A hit that breaks through armour is a long pain.
   perk_effects?: { perk_id: string, mag?: ValuePair, reserve?: ValuePair, reload_ms?: ValuePair,
                     swap_ms?: ValuePair, max_hp?: ValuePair, max_armor?: ValuePair, max_shield?: ValuePair },
                                      // [S50 build 4] this player's compiled perk effect (loadout.md §1.2/§2), absent when they
@@ -580,11 +591,10 @@ Event =
  |   // below and never resolves it itself.
  //   sensor = $HIR tok1: 0-3 are ALL HEADSET sensors (four of them), 4 = gun body. Added 2026-09-01;
  //   before that `ir_proto` was read from tok1 and so carried the SENSOR, with no version marker.
- |   // ⚠ `dmg` = the hp+armor delta, so it is BLIND TO SHIELDS: a hit a shield fully absorbs moves
- |   // neither pool and, strictly read, emits no event at all. Latent until a shield-granting station
- |   // exists (now buildable). Decision pending — node.md §10-Q12. NB `dmg` is deliberately NOT $HIR
- |   // token 5: tok5 is the RAW magnitude and ignores the $SIR multiplier, so the delta is the correct
- |   // source and happens to be multiplier-safe already.
+ |   // `dmg` = the drop in hp + armor + shield (`engine.js _hpTakePools`), so a hit a shield fully absorbs
+ |   // still emits a hit_taken. Whether the shield delta also gets its own field is node.md §10-Q12.
+ |   // `dmg` is deliberately NOT $HIR token 5: tok5 is the RAW magnitude and ignores the $SIR multiplier,
+ |   // so the delta is the correct source and is multiplier-safe.
  | { type:"death",       t, match_id, node_id, player_id, shooter_num, shooter_team, desync?, dot?, melee?, credit? }   // $HP→0; shooter = last $HIR if fresher than DEATH_LATCH_MS, else 0. [S16] dot:true = the node's own poison tick killed; shooter = the last applier. [A62] melee:true = that fresh $HIR was the melee proto (13): the melee medal. [A65] credit:"team" = the damaging hit was lost and only a non-damaging word (smoke, EMP) was fresh: shooter_num 0, shooter_team = that word's team, and the TEAM gets the kill
  | { type:"respawn",     t, match_id, node_id, player_id, resync?, station?, operator?, protect_ms? }   // resync?: LEGACY (A6.8 retired it for the live path; still set by a lobby/armed resync revive). station?: A13.2 — the station id that revived the player (absent for a timer revive). operator?: A47, true = MC's FORCE RESPAWN, which keeps the streak
  | { type:"team_change", t, match_id, node_id, player_id, tid, protect_ms? }                           // infection: this gun moved to `tid` [A5.8]
@@ -1083,7 +1093,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 
 ## 10. Amendment index (dates; what; where it now lives)
 
-Rows dated before 2026-09-27 are one line each: the title and where the rule now lives. Their full text is in [`archive/contracts-amendments-2026-08-09.md`](../archive/contracts-amendments-2026-08-09.md), unchanged. Ids are never reused.
+Rows dated before 2026-09-27 are one line each: the title and where the rule now lives. Their full text is in [`archive/contracts-amendments-2026-08-to-09.md`](../archive/contracts-amendments-2026-08-to-09.md). Ids are never reused.
 
 | id | date | what | folded into |
 |---|---|---|---|
@@ -1115,7 +1125,7 @@ Rows dated before 2026-09-27 are one line each: the title and where the rule now
 | A59 | 2026-09-24 | F339 ONE GAME BYTE PER MATCH | body §3 `GameConfig`; `types.py`; `state.py` (`_wire_config`); `app/src/beacon.js`, `app.js`; `mcp/tests/test_mc_stations_game_byte.py`, `app/test/game-byte.test.mjs`; chaos invariant `game_byte_matches_stations` |
 | A58 | 2026-09-24 | STATION TAMPER LOCK | body §5 `station_config`; `types.py`; `stations.py` (`_station_lock_s`, `_note_station_lock`, `_note_boot`, `station_tamper_flags`, `unlock_stations`); `mc/API.md`; `mcp/tests/test_station_lock.py` |
 | A57 | 2026-09-24 | F315 HIT CELLS | body §2 (`RosterWeapon`, `HirCell`, `WeaponView.cells`); `types.py`; `state.py` (`_roster_weapons`); `views.py` (`weapon_view`) |
-| A56 | 2026-09-24 | POWERUPS, PROPOSED | body §3 (`stations[].item`, `powerups`), §4 (`pickup`), §5 (`station_config.item`, `station_action`, `station_update`); powerups.md; `types.py` (`StationItem`, `PowerupSlot`); `mcp/brx_mcp/mc/powerups.py` |
+| A56 | 2026-09-24 | POWERUPS (on by default, F372) | body §3 (`stations[].item`, `powerups`), §4 (`pickup`), §5 (`station_config.item`, `station_action`, `station_update`); powerups.md; `types.py` (`StationItem`, `PowerupSlot`); `mcp/brx_mcp/mc/powerups.py` |
 | A55 | 2026-09-24 | S57 NAMES THE VICTIM | No contracts body text (phone-to-phone IR only, no MC or wire change): `docs/ir-callouts.md`; `app/src/engine.js` (`CALLOUT_NAME_GAP_MS`, `CALLOUT_PAIR_MIN_MS`, `CALLOUT_PAIR_MS`) |
 | A54 | 2026-09-23 | S57 THE IR CALLOUT BUS | body §3 (`FrameBundle`), docs/ir-callouts.md |
 | A53 | 2026-09-23 | F289 POSSIBLY PROTECTED | §4 union, §5 `status` row + the F289 paragraph; `app/src/engine.js` (`_protectOwedMs`); `state.py` (`_with_pool_stale`); `types.py`; `mc/API.md` `LiveRow` |
@@ -1132,15 +1142,15 @@ Rows dated before 2026-09-27 are one line each: the title and where the rule now
 | A42 | 2026-09-13 | THE END IS A DELIVERY, AND THE HEARTBEAT IS THE RECEIPT | §5 `control`; `state.py` (`_arm_end_delivery`, `_end_delivery_tried`, `_note_end_confirm`, `_retry_end_delivery`, `_say_end_unconfirmed`, `_end_delivery_view`, `_broadcast_control`, `END_RETRY_MS`); `API.md`; `webapp/mc/src/api/types.ts` (`EndDeliveryView`), `webapp/mc/src/api/derive.ts` (`endDeliveryLine`), `webapp/mc/src/screens/Live.tsx`, `webapp/mc/src/screens/Recap.tsx`; `mcp/tests/test_mc_end_delivery.py`; `webapp/mc/test/end-delivery.test.tsx`; `app/test/engine.test.mjs` |
 | A41 | 2026-09-13 | A PLAYER CAN GET OUT OF UTILITY MODE ALONE | §5 `control` cmd table; `state.py release_station`; `types.py CONTROL_CMDS`; `api.py` `/api/stations/{nid}/release`; `API.md`; `app/src/utility.js` (`exitToHud`, `wireExit`, the `control`/`release_utility` branch in `connectMc`'s `onMessage`); `app/www/utility.html` (`#infoProg`, `#exitHud`); `docs/spec/utility.md` §1/§5c; `docs/platform/modes.md`; `mcp/tests/test_mc_stations.py`, `mcp/tests/test_mc_api.py`; `app/tools/screens.mjs`; `webapp/mc/src/screens/Items.tsx`, `webapp/mc/src/api/client.ts`, `webapp/mc/src/mock/backend.ts`, `webapp/mc/test/items.test.tsx` |
 | A40 | 2026-09-13 | THE BENCH FACT IS STATED, NEVER INFERRED | §3 `assign`; `state.py` (`_assign_body`, `_hydrate`, `_schedule`, `_standby_node_ids`, `unrostered_phone_count`); `app/src/engine.js` (`hydrate`, `startAt`, `_assign`); `app/src/hud/hud.js` (the SITTING OUT sub-line); `API.md`; `mcp/tests/test_mc_standby.py`, `mcp/tests/test_mc_state.py`; `app/test/engine.test.mjs`; `app/tools/screens.mjs`; `webapp/mc/src/mock/backend.ts`, `webapp/mc/test/unrostered-phones.test.tsx` |
-| A39 | 2026-09-13 | `ReadinessSnapshot` gains **`unrostered_phones: int`** — connected companion phones with a gun set that nobody on the roster has claimed and… | `mcp/brx_mcp/mc/state.py` (`_find_player_for_gun`, `unrostered_phone_count`, `readiness`); `types.py ReadinessSnapshot` (+ `contract.gen.ts`); `webapp/mc/src/ui/UnrosteredPhones.tsx`, `webapp/mc/src/screens/Kit.tsx`, `webapp/mc/src/screens/Lobby.tsx`; `API.md`; `mcp/tests/test_mc_state.py`; `webapp/mc/test/unrostered-phones.test.tsx` |
+| A39 | 2026-09-13 | `ReadinessSnapshot` gains `unrostered_phones`: connected phones with a gun that no roster entry claims | `mcp/brx_mcp/mc/state.py` (`_find_player_for_gun`, `unrostered_phone_count`, `readiness`); `types.py ReadinessSnapshot` (+ `contract.gen.ts`); `webapp/mc/src/ui/UnrosteredPhones.tsx`, `webapp/mc/src/screens/Kit.tsx`, `webapp/mc/src/screens/Lobby.tsx`; `API.md`; `mcp/tests/test_mc_state.py`; `webapp/mc/test/unrostered-phones.test.tsx` |
 | A38 | 2026-09-13 | THE BENCHED PHONE IS TOLD IT IS BENCHED | §3 `assign`; `state.py` (`stand_down`); `app/src/engine.js` (`standby`, `_assign`, `_applyConfig`, `state()`); `app/src/hud/hud.js` (`_structure`, `_lobby` 'standby' mode, the render signature); `API.md` STAND DOWN row; `mcp/tests/test_mc_standby.py`; `app/test/engine.test.mjs` |
-| A37 | 2026-09-13 | A36's THREE PROOFS, CORRECTED BY REVIEW (polish loop, iteration 1) — each of them could go red on a gun that was running the right config | `state.py` (`_check_pool`, `_note_pool_life`, `cured_by_push`, `PUSH_CURES`, `push_config`, `_echo_fault`, `_refuse_echo_mismatch`, `_pool_ambers`, `_unroster`); `frames.py`; `API.md`; `types.py ReadinessRow.echo`, `Event.pool_src` (+ `contract.gen.ts`); `app/src/engine.js` (`butSinceHead`, `poolSrc`); `webapp/mc/src/api/derive.ts` (`PUSH_CURES`, `blocksPush`), `webapp/mc/src/screens/Lobby.tsx`, `webapp/mc/src/screens/Armory.tsx`, `webapp/mc/src/mock/backend.ts`; `api.py` (`diag_matches`, `_AuthMiddleware._TOKEN_GETS`); `diag.py` (`_pushed_pool`, `first_live_pool`); `app/src/logring.js`, `app/src/logsync.js`; `mcp/tests/test_mc_config_proof.py`, `mcp/tests/test_mc_api.py`, `webapp/mc/test/config-proof.test.tsx`, `webapp/mc/test/e2e/game-edit.mjs`, `app/test/engine.test.mjs`, `app/test/logring.test.mjs` |
+| A37 | 2026-09-13 | A36's THREE PROOFS, CORRECTED BY REVIEW: each could go red on a gun running the right config | `state.py` (`_check_pool`, `_note_pool_life`, `cured_by_push`, `PUSH_CURES`, `push_config`, `_echo_fault`, `_refuse_echo_mismatch`, `_pool_ambers`, `_unroster`); `frames.py`; `API.md`; `types.py ReadinessRow.echo`, `Event.pool_src` (+ `contract.gen.ts`); `app/src/engine.js` (`butSinceHead`, `poolSrc`); `webapp/mc/src/api/derive.ts` (`PUSH_CURES`, `blocksPush`), `webapp/mc/src/screens/Lobby.tsx`, `webapp/mc/src/screens/Armory.tsx`, `webapp/mc/src/mock/backend.ts`; `api.py` (`diag_matches`, `_AuthMiddleware._TOKEN_GETS`); `diag.py` (`_pushed_pool`, `first_live_pool`); `app/src/logring.js`, `app/src/logsync.js`; `mcp/tests/test_mc_config_proof.py`, `mcp/tests/test_mc_api.py`, `webapp/mc/test/config-proof.test.tsx`, `webapp/mc/test/e2e/game-edit.mjs`, `app/test/engine.test.mjs`, `app/test/logring.test.mjs` |
 | A36 | 2026-09-13 | MC PROVES THE CONFIG IT PUSHED IS THE CONFIG THE GUNS ARE RUNNING | `state.py` (`_ack_is_current`, `_stale_ack_id`, `_echo_fault`, `_refuse_stale_ack`, `_check_pool`, `_note_pool_life`, `all_acked`, `readiness`, `new_session`, `_merge_config`, `_check_stale_live`); `frames.py` (`head_spawn_ammo`, `head_pool`, `alcd_ammo`); `types.py POOL_CHECK_SETTLE_MS`; `app/src/engine.js` (`ammoEcho`, `_checkEcho`, `statusBody`); `fakes.py`/`mock_node.py` (echo + pool from the pushed head); `webapp/mc/src/screens/Lobby.tsx`; `mcp/tests/test_mc_config_proof.py`, `mcp/tests/test_mc_stale_live.py`; `webapp/mc/test/config-proof.test.tsx`; `app/test/engine.test.mjs` |
 | A35 | 2026-09-12 | EDITING A LOADED GAME KEEPS THE GUNS CURRENT, AND A LIVE RE-TEAM IS REFUSED | §5 `config`; `state.py` (`set_config`, `_repush_lobby_config`, `patch_player`); `app/src/engine.js` (`_writeHead`, `_checkTeamVsHead`, `_assign`); `loadout.md` §4.4 / A30 |
 | A34 | 2026-09-12 | MC ENDS A PHONE IT FINDS STILL LIVE IN A RETIRED MATCH | §5 `control`; `state.py` (`_record_ended`, `_check_stale_live`, `_reconcile_stale_live`, `_result_body(match_id=, roster=)`); `types.py STALE_LIVE_RETELL_MS`; `engine.js control()`; `mcp/tests/test_mc_stale_live.py`; `app/test/engine.test.mjs` |
 | A33 | 2026-09-12 | ONE MACHINE SOURCE FOR THE NODE↔MC WIRE | `mcp/brx_mcp/mc/envelope.py` (`ACCEPT_MIN`, `REQUIRED`, `EVENT_REQUIRED`); `mcp/tools/gen_contract.py`; `mcp/tests/test_contract_generated.py`; `app/src/transport/envelope.js`; `webapp/mc/src/api/types.ts` |
 | A32 | 2026-09-12 | A SUSTAINED BLE LINK PROVES THE HEADSET | §4 Readiness; `state.py readiness()`; `types.py HEADSET_LINK_PROOF_MS`; `mc/API.md` ReadinessRow.headset; `Armory.tsx`; `manual/hardware.md` (fact already there) |
-| A31 | 2026-09-12 | THE "VERIFY AT MC" PRE-GAME WARNING | "partial"`, absent = partial, `opts.coverage` still wins), `assign.game.mc_verify` (presence IS the rule), `State.notices.mc_verify` names the phones. F309 (2026-09-23): "has backhaul" = joined through the tunnel AND reports `status.transport: "cellular"` (F595: or on the LAN, cellular, with `has_pub: true`) (`state.py _independent_path`, the test `coverage` uses); an older app is off-grid. |
+| A31 | 2026-09-12 | THE "VERIFY AT MC" PRE-GAME WARNING | §3 `assign.game.mc_verify` (no `FrameBundle` field); `compile.py` (`mc_verify`, `full_coverage`; `GameConfig.coverage?: "full"\|"partial"`); `Lobby.tsx`/`Armed.tsx`; the HUD's ARMED screen and results (`moments.js`, `result.js`); `state.py _independent_path` (F309, F595: what counts as backhaul) |
 | A30 | 2026-09-12 | THE KIT LOCKS AT START | §5 `loadout_request`/`loadout_ack`, `config`; `mc/API.md`; `state.py` (`_push_config_to`, `_on_loadout_request`, `_after_player_change`); `loadout.md` §4.4 |
 | A29 | 2026-09-12 | PHONES REPORT THEIR REAL BUILD, AND MC WANTS ONE VERSION AT MUSTER | §5 `hello`/`status`; `mc/API.md` NodeView + ReadinessRow; `app/package.json` build script (esbuild define); `state.py readiness()`; `Armory.tsx` **Server built 2026-09-12:** `types.APP_MAJOR`/`APP_MINOR`, `parse_app_ver()`, `compatible()` (0.x compares `(major, minor)`, ≥1.0 compares `major`; build metadata after `+` ignored). Shipped wording: red `APP <x.y.z> INCOMPATIBLE WITH MC (NEEDS <tier>) — UPDATE THE APP` (one string for both regimes); amber `APP OLDER THAN THE FIELD (…)`, `APP OLDER THAN THE RELEASE (…)`, and `APP VERSION UNKNOWN (<raw>)` for an unparsable value (never red). An incompatible build is excluded from `newest`, so one rogue phone cannot amber every correct one. `State.versions = {field, newest, release, mc_major}` (`mc_major` is the tier string, `"0.1"` on 0.x). Phone side: `app/scripts/build.mjs` bakes `__APP_VER__` = `<package.json version>+<sha>[-dirty]`; `hello` and every `status` carry `app_ver` + `platform` (Capacitor's platform, `web` outside the app). |
 | A28 | 2026-09-12 | BACKHAUL | §5 tables, **§5d** |
@@ -1154,25 +1164,25 @@ Rows dated before 2026-09-27 are one line each: the title and where the rule now
 | A20 | 2026-09-11 | HOST-DRIVEN STUN | §3 GameConfig; `node.md` §3.12; `mcp/brx_mcp/mc/compile.py` (`_STUN_SIR_ROW`); `protocol/brx-protocol.md` §5 fn 23 |
 | A19 | 2026-09-11 | HELD ROLES REACH THE NODE | §3, §5 `alert`; `mc/presentation.py role_alert_body` |
 | A18 | 2026-09-11 | MODE PARAMS | §3; `docs/spec/modes.md` §2.1 |
-| A16.5 | 2026-09-09 | **An emptied pool HANDS OVER inward** (`poolgauge.handover_pool`): the drain still animates to level 0, then the readout paints the next poo… | §3 `FrameBundle.gun.readout` (NODE RULE) |
-| A16.4 | 2026-09-09 | **The gun body rests on the TEAM COLOUR at DIM brightness** (`GUN_DEFAULT.in_play` back to `team`, painted via `poolgauge.team_frame(..., di… | §3 `FrameBundle.gun.readout` |
+| A16.5 | 2026-09-09 | An emptied pool hands over inward (`poolgauge.handover_pool`); an empty `$GLED` colour token is red | §3 `FrameBundle.gun.readout` (NODE RULE) |
+| A16.4 | 2026-09-09 | The gun body rests on the team colour at DIM brightness, and the readout paints FULL (F56) | §3 `FrameBundle.gun.readout` |
 | A17 | 2026-09-07 | HIT AUDIO, **bench-confirmed**: what a hit sounds like to the player who took it (`mcp/brx_mcp/hitaudio.py`) | §2 GameConfig, §3 FrameBundle; `mcp/brx_mcp/hitaudio.py`; `protocol/brx-protocol.md` §`$PSET`; `docs/manual/sound.md` |
-| A16.3 | 2026-09-07 | The gun-body pool bar becomes SEVEN levels with a drop animation: `gun.readout.levels` (7 x [solid, blink\|null] per pool) + `lead_ms`/`blink… | §3 |
-| A16.2 | 2026-09-07 | LEDs part 2: `presentation.lights` groundwork — `night` becomes a DIM/shorten overlay and a separate `blackout` switch is the only thing tha… | §2 `Team`, §3 `GameConfig.night` |
+| A16.3 | 2026-09-07 | The gun-body pool bar has seven levels and a drop animation (`gun.readout.levels`); a half-step blinks | §3 |
+| A16.2 | 2026-09-07 | LEDs part 2: `night` dims, only `blackout` empties the light tables, and team colour is apart from `$TID` | §2 `Team`, §3 `GameConfig.night` |
 | A16 | 2026-09-07 | LEDs, bench-driven: `$HLED,,6` disables the firmware death flash for the life ⇒ in-play dark is `$HLED,9,0` and effect 6 is teardown-only | §3, §4 |
 | A15 | 2026-09-06 | CHARACTER VOICES: `Player.voice_slots` picks for the six `$PSET` voice fields + the kill line (ids on the gun only) | §2 Player, §3 FrameBundle; `mcp/brx_mcp/voices.py`; `docs/gun-stage.md` §8 |
-| A14 | 2026-09-04 | PERK SLOT: A14.1 a perk is its own slot beside a secondary, A14.2 a phone pick knocks the other slot out (`loadout_ack.dropped`), A14.4 `loa… | §2, §5; `loadout.md` §2-§5 |
-| A13 | 2026-09-04 | UTILITY: A13.1 `respawn.gate` + `stations[]`, A13.2 `respawn.station`, A13.3 the station/player advert, A13.4 node `state().station`/`respaw… | §3, §4, §5; full text `utility.md` |
+| A14 | 2026-09-04 | PERK SLOT: A14.1 its own slot beside a secondary, A14.2 a pick knocks the other out, A14.4 `loadout_pool` | §2, §5; `loadout.md` §2-§5 |
+| A13 | 2026-09-04 | UTILITY: A13.1 `respawn.gate`, A13.2 `respawn.station`, A13.3 adverts, A13.4 node state, A13.5 `station_config` | §3, §4, §5; full text `utility.md` |
 | A12 | 2026-09-04 | SIDEARMS: A12.1 `glock`/`usp`/`deagle` as ordinary weapons with role `sidearm`, A12.2 `SlotRule.kinds` gains `"sidearm"` | §2, §3; `loadout.md` §1.1 |
-| A11 | 2026-09-04 | PRESENTATION: A11.1 profile, A11.2 bundle `cues`+`leds`, A11.3 node plays its own events, A11.4 HUD-driven events + `alert` + medals, A11.5… | §3, §4, §5 |
-| A10 | 2026-08-27 | M-LOADOUT: A10.1 an empty slot 1 is legal, A10.2 `loadout_policy`, A10.3 phone self-serve picks (`loadout_request`/`browse`/`ack`), A10.4 re… | §2, §5; full text `loadout.md` |
+| A11 | 2026-09-04 | PRESENTATION: A11.1 profile, A11.2 `cues`+`leds`, A11.3 node events, A11.4-A11.8 alerts, classes, LEDs | §3, §4, §5 |
+| A10 | 2026-08-27 | M-LOADOUT: A10.1 empty slot 1 is legal, A10.2 `loadout_policy`, A10.3 phone self-serve picks, A10.4 ready | §2, §5; full text `loadout.md` |
 | A9 | 2026-08-26 | A9.1 `apply.preview` | §5 `apply` |
 | A8 | 2026-08-25 | A8.1 operator auth, A8.2 node re-claim key, A8.3 input hardening | §5b |
 | A7 | 2026-08-25 | MC→node `score` push | §5 |
-| A6 | 2026-08-25 | A6.1 end freeze, A6.2 hot-swap shots, A6.3 cues are pre-composed frames (two node templates), A6.4 `apply{frames}`, A6.5 `player_num_base`,… | §4, §3, §5, §6 |
-| A5 | 2026-08-25 | A5.1 wire id 0 reserved, A5.2 roster-based friendly (never in FFA), A5.3 observe-before-write resync, A5.4 readiness cannot deadlock + probe… | §2, §4, §5, §6, §9 |
-| A4 | 2026-08-25 | **P2 closed over BLE**: A4.1 exact `shooter_num` (no `approx`), A4.2 frames compiled by MC (`FrameBundle`), A4.3 `match_id` + parking, A4.4… | §2-§6 throughout |
-| A3 | 2026-08-25 | `status.dropped`, `arm_state:connected`, `log_data`, `assign` re-sent on change, native multikill is NOT free under BLE (host-`$PLAY`, LAN-g… | §4, §5 |
+| A6 | 2026-08-25 | A6.1 end freeze, A6.2 hot-swap shots, A6.3 pre-composed cues, A6.4 `apply`, A6.5-A6.8 resync and rejoin | §4, §3, §5, §6 |
+| A5 | 2026-08-25 | A5.1-A5.11: wire id 0 reserved, roster friendly fire, resync, readiness, hydration, all lands in KITTED | §2, §4, §5, §6, §9 |
+| A4 | 2026-08-25 | P2 closed over BLE (A4.1-A4.12); A4.11 mounted, foreground phone: README §6; A4.12: module Interfaces | §2-§6 throughout |
+| A3 | 2026-08-25 | `status.dropped`, `arm_state:connected`, `log_data`, `assign` re-sent on change, multikill needs host `$PLAY` | §4, §5 |
 | A2 | 2026-08-25 | `assign` split from `config` | §5, §6, §9 |
 | A1 | 2026-08-25 | `ready`, `ack{seq_hi}`, `start.seq`/`countdown_s` + `abort_start`, `status.arm_state`, battery amber-not-red | §5 tables, §4, §1.1 |
 
