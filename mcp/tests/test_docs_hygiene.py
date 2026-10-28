@@ -1668,3 +1668,45 @@ def test_every_top_level_doc_is_in_the_docs_index():
     missing = _unindexed((DOCS / "README.md").read_text(encoding="utf-8"), names)
     assert not missing, f"docs/README.md does not link {missing}: add a row, or archive the page"
     assert _unindexed("[a](a.md) [b](b.md#x)", ["a.md", "b.md", "c.md", "README.md"]) == ["c.md"]
+
+
+# The field LAN's own host addresses (the MC laptop, the bench phones' adb, a field hotspot) were scrubbed from the
+# docs on 2026-10-27 and from app/ and mcp/ on 2026-10-28. They may not come back in ANY tracked text file, code
+# included. They are held as sha256 prefixes so their plain text does not reappear in the repo or in a grep; the
+# hashes are trivially reversible, so this is not a secret. Generic examples (192.168.1.x, 192.0.2.x, the sweep
+# subnets) stay legal.
+_FIELD_HOST_SHA = frozenset("211b032972cab328 3d0e00cd99325657 8133e8bc6affb3f0 5b464493c7cae109 89f53e2e660e2ff4".split())
+_ANY_IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?!\d|\.\d)")
+
+
+def _host_sha(addr: str) -> str:
+    return hashlib.sha256(addr.encode()).hexdigest()[:16]
+
+
+def _field_hosts(text: str, shas: frozenset = _FIELD_HOST_SHA) -> list[tuple[int, str]]:
+    """(line, address) for every address in `text` whose hash is in `shas`."""
+    return [(text.count("\n", 0, m.start()) + 1, m.group(0)) for m in _ANY_IPV4.finditer(text)
+            if _host_sha(m.group(0)) in shas]
+
+
+def test_no_field_host_address_anywhere_in_the_repo():
+    hits = []
+    for path in _tracked_files():
+        if not path.is_file() or path.suffix in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".ico", ".zip", ".apk",
+                                                  ".pdf", ".woff", ".woff2", ".ttf", ".mp3", ".wav", ".ltp", ".bin",
+                                                  ".btsnoop"):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        hits += [f"{path.relative_to(REPO).as_posix()}:{n}: a field host" for n, _ in _field_hosts(text)]
+    assert not hits, "a field LAN host address came back (use <mc-lan-ip> or a 192.0.2.x example): " + "; ".join(hits[:8])
+
+
+def test_the_field_host_check_can_actually_fail():
+    assert len(_FIELD_HOST_SHA) == 5 and all(len(h) == 16 for h in _FIELD_HOST_SHA)
+    dummy = "192.0.2.77"                            # a documentation address stands in for a field host
+    shas = frozenset({_host_sha(dummy)})
+    for text in (f"ws://{dummy}:8766/ws", f"see {dummy}.", f"host {dummy}. Next", f'"{dummy}"', f"| {dummy} |",
+                 f"adb@{dummy}"):
+        assert [a for _, a in _field_hosts(text, shas)] == [dummy], text
+    assert _field_hosts(f"line one\n{dummy}", shas) == [(2, dummy)]
+    assert _field_hosts("ws://192.0.2.10:8765/ws 192.168.1.5 192.168.0.0/24 v1.192.0.2.77.3", shas) == []
