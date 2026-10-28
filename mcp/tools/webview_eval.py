@@ -7,7 +7,7 @@ promise if it returns one), printing the JSON result. No screen taps, no guessin
 
 Runs under the Windows venv: adb's port forward binds Windows localhost, which WSL cannot reach.
 
-Usage: python webview_eval.py <js expression> [--serial 192.168.0.48:42183] [--pkg com.openbrx.companion] [--port 9222]
+Usage: python webview_eval.py <js expression> [--serial <ip:port>]  (default: $ADB_DEVICE, else adb's only device) [--pkg com.openbrx.companion] [--port 9222]
   e.g.  python webview_eval.py "window.brx.engine.phase"
         python webview_eval.py "window.brx.switchRole('utility')"
         python webview_eval.py "window.brxUtility.settings"
@@ -30,13 +30,13 @@ PORT = 9222
 
 
 def adb(serial, *args):
-    return subprocess.run([ADB, "-s", serial, *args], capture_output=True, text=True, timeout=20).stdout.strip()
+    return subprocess.run([ADB, *(["-s", serial] if serial else []), *args], capture_output=True, text=True, timeout=20).stdout.strip()
 
 
 def forward(serial, pkg):
     pid = adb(serial, "shell", "pidof", pkg)
     if not pid:
-        raise SystemExit(f"{pkg} is not running on {serial}")
+        raise SystemExit(f"{pkg} is not running on {serial or 'the attached phone'}")
     adb(serial, "forward", "--remove-all")
     adb(serial, "forward", f"tcp:{PORT}", f"localabstract:webview_devtools_remote_{pid}")
     return pid
@@ -63,7 +63,7 @@ def main():
     args = sys.argv[1:]
     if not args:
         raise SystemExit(__doc__)
-    serial = "192.168.0.48:42183"
+    serial = os.environ.get("ADB_DEVICE") or None   # None: adb talks to its only device
     pkg = "com.openbrx.companion"
     expr_parts = []
     i = 0

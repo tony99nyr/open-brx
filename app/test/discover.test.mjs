@@ -67,6 +67,10 @@ test('F139: with no address source, the subnet comes from the CURRENT join — t
   // and the common ranges still follow, so a phone with neither source is no worse off than before
   for (const sn of DEFAULT_SUBNETS) assert.ok(plan.subnets.includes(sn), `${sn} still swept`);
   assert.equal(new Set(plan.subnets).size, plan.subnets.length, 'no subnet swept twice');
+  // The dedup proper: a join on one of the DEFAULT subnets is swept first and only once.
+  const onDefault = sweepPlan({ localIp: null, joinUrl: 'ws://192.168.1.12:8766/ws' });
+  assert.equal(onDefault.subnets[0], '192.168.1');
+  assert.equal(onDefault.subnets.filter(sn => sn === '192.168.1').length, 1, 'a default subnet the join names is not swept twice');
 });
 
 test('F139: a join on a non-default port sweeps that port first, then the default', () => {
