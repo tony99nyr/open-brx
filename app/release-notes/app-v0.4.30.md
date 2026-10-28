@@ -24,6 +24,7 @@ This build installs over 0.4.6 or later. It includes everything in 0.4.29. The S
 - **A phone no longer stays on PROVISIONAL after the 2-minute release** (F630), and no second, identical result arrives.
 - **A team change after the whistle no longer changes that match's result** (F631, a Mission Control change).
 - **A rename or team change in the debrief no longer clears that player's result on their phone** (F632). Only the next match's setup leaves the results screen.
+- **A host edit in the last moments of a timed match no longer clears a phone's result** (F634). A phone keeps its result for the match it ended, even if the host renames or re-teams a player before Mission Control reaches the debrief.
 - **A phone that rejoins after the release gets the current result, never the old one first** (F633). While it waits, the console shows MATCH OVER · WAITING FOR RESULTS.
 - **The Mission Control operator menu stays in view** (F615) when a new line appears above the board, until you scroll or tap elsewhere.
 
