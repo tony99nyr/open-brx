@@ -26,7 +26,7 @@
 [22:33:37] sweep: 10.0.0.0/24
 [22:33:40] app resumed
 [22:33:40] network up (wifi)
-[22:33:43] QR scanned — connecting: ws://192.168.0.171:8766/ws
+[22:33:43] QR scanned — connecting: ws://<lan-ip-2>:8766/ws
 [22:33:43] MC link connecting
 [22:33:43] sweep found no Mission Control — QR/manual join
 [22:33:43] sweep found no Mission Control — QR/manual join

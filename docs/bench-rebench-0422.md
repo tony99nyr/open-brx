@@ -1,7 +1,7 @@
 # Bench sheet: the re-bench on APK 0.4.22
 
 Updated: 2026-10-16. **Run in part on 2026-10-16** (Sittings A and C; each step below carries its result line). Sheet errors found: RECALL is now ABORT (with a confirm); VA7 is the pain-relief line (`$PSET` t15), not a respawn cue; MC refuses to push or start with a phone offline, so A.8 and A.11 use the reachable orders (reconnect after END; close the phone during the countdown); C.5's hill phone normally lies on the ground in a game, so run the ladder at chest height AND flat; the energy-rifle refill band in A.6 is old. This sheet replaces the 0.4.21 sheet (the same steps, walked against main `5280d67e`; it never
-ran) and [`bench-rebench-0419.md`](bench-rebench-0419.md). It runs on APK 0.4.22 (versionCode 422, not published), built
+ran) and the 0.4.19 sheet (both archived). It runs on APK 0.4.22 (versionCode 422, not published), built
 on 2026-10-13 from main `221d4fe1` (release commit `be55fbd7` on `release/app-0.4.22`, `dirty: false`). It carries every open MVP BENCH row in [`FOLLOWUPS.md`](FOLLOWUPS.md), and a table of the rows that need
 another setup (*Not in this sitting*, at the end). Each step has a control, a pass rule, its FOLLOWUPS row and the
 **minimum build** it needs. The row holds the history and the fix; this sheet holds the procedure. How a bench run
@@ -101,8 +101,8 @@ POINT, plus about 3 h below it, so it takes two days. Sitting B about 4 h 30 min
    Close F395 if it is clean on all four. Min: `4fb379d8`.
 3. **Update the checkout** (*Before you start* step 2). There is no other `start.sh` run.
 4. **Start MC from the main checkout**, with no match ARMED or LIVE anywhere, detached from the agent shell:
-   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
-   (192.168.0.55 is the laptop's Windows LAN address, from `ipconfig`: check it first).
+   `cd ~/gitrepos/battlecompany/mcp && setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise <mc-lan-ip> --bench-volume 65 > ~/mc-$(date +%Y%m%d-%H%M).log 2>&1 &`
+   (<mc-lan-ip> is the laptop's Windows LAN address, from `ipconfig`: check it first).
    **Pass:** the banner says "BENCH VOLUME 65: not for a real game", and the console opens at the banner's URL (a
    plain "UI not built" page means `webapp/mc/dist` is missing: rerun *Before you start* step 2). Log the banner, the
    token and the bench sha. A restart forgets `--bench-volume`: always restart MC with the same command, and never while a match is ARMED or
@@ -267,7 +267,7 @@ reserve from the recipe's own `$AMMO,0,...` line). Hold a charge, then pull the 
 to the first refill `$ALCD`. Row: F226.
 
 **A.18. F277, a reload that never completes (15 min; Min: any 0.4.22).** The Energy Rifle on a phone-held gun.
-Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) Sitting 5 item 2). Read the
+Try to reproduce a timed-out partial reload on purpose ([`bench-plan.md`](bench-plan.md) NEXT step 25). Read the
 log against F445 and F436 first: a timeout is what a slot desync produces. **Pass:** a repro, or a clear "no repro
 in 10 tries"; log every `reload partial` line. Row: F277.
 
@@ -749,7 +749,7 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 |---|---|---|---|
 | B21 | the MacBook | `BrxDebugPlugin.swift` compiles and runs | [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) step 1 |
 | F232 | the rig, outdoors or a range | misses do not cluster on pulls 1 and 2 | the row's probe |
-| F264 | two guns, a stall repro | the two-frame revive cures a real stall, and the next death is not dark | [`bench-plan.md`](bench-plan.md) Sitting 5 item 1 |
+| F264 | two guns, a stall repro | the two-frame revive cures a real stall, and the next death is not dark | [`bench-plan.md`](bench-plan.md) NEXT steps 18 and 39 |
 | F269, F270 | the laptop, `raw-bytes` | the paced A7/A8 halves | [`bench-2026-09-24.md`](bench-2026-09-24.md) Block 2 |
 | F272, F274 | screamer and soak runs | A1c, A13, three two-hour soaks | [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) |
 | F322 | the IR rig | what one protocol-9/10 hit sends from the victim's headset | [`bench-2026-09-24.md`](bench-2026-09-24.md) Block 2b |
@@ -757,7 +757,7 @@ These open MVP BENCH rows need a setup this sheet does not have. Each keeps its 
 | F340 | the Android 11 Pixel | the picker shows TURN ON LOCATION and finds the gun once Location is on | [`bench-2026-09-24.md`](bench-2026-09-24.md) step 4.15 |
 | F311, F309 | a no-internet field Wi-Fi, cellular | the phone stays bound on LAN; the transport counts | the rows |
 | F296 | eyes, a down player | the slow re-arm reads as "down", not a hit | the row |
-| F275, F231 | outdoor space | the t13 and t2 ladders (Tony picks t2 30 or 40) | [`bench-plan.md`](bench-plan.md) Sitting 10 |
+| F275, F231 | outdoor space | the t13 and t2 ladders (Tony picks t2 30 or 40) | [`bench-plan.md`](bench-plan.md) NEXT steps 92 and 93 |
 | F308 (3) | outdoor space | the Shotgun's range at t2 30 | the row |
 | F464 (dense adverts) | a labelled `fix/koth-dense-adverts` APK | capture rate against gun write latency; sets the KOTH scan budget | the row |
 | F452 (b) | 64 advertisers | the Stick loop under a 64-player flood (the kit makes a lower bound only) | the row |

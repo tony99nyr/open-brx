@@ -212,3 +212,37 @@ The log is append-only, so these corrections do not edit the sections they name.
      the AMR).
 - The Shields perk pool is Fast Hands and Extended Mags. Body Armor and AP stay refused there (A80).
 - Command: recorded by hand; no `--record-from` run.
+
+## 2026-10-27: the marksman rush counter becomes a flip test (F578)
+
+- Tony's call (2026-10-27, relayed by brx1, from his answer to F578 (a)): "Relative". `marksman_rush_counter`
+  becomes a flip test like the heat branches: a change fails only when it makes the rifle rush weaker than the
+  shipped baseline. Parts (b) and (c) of F578 were answered by the 2026-10-25 sign-off above.
+- The rule (scenario version 27): the plain AR and the AR with Body Armor rush the marksman from 20 m in both
+  worlds. The change fails when either rush wins less often than in the baseline world, by more than 2 points or
+  the 95% binomial noise of the two rates, whichever is larger. A changed marksman is compared with itself as
+  shipped. A new marksman is compared with the shipped Sniper (pending Tony: the hardest shipped marksman to
+  rush is the AMR, which would make the bar lenient). Peek-kill, "near the top at long range" and the old
+  absolute 0.50 bar are reported only.
+- Verdict for the 0.4.31 AMR change (fire interval 350 to 450 ms): **PASS** (scenario version 26 with the flip
+  rule at `64c406fad`, seed 7, full scale, fingerprint `622e16401616c81a`). The run read the catalogue from before
+  the 0.4.31 set (`edfe7319b^`), so the tree was dirty and `--record-from` refuses it. Version 27 changes only how a
+  new marksman picks its baseline, so this verdict reads the same under 27. Kept off the repo in
+  `~/reviews-2026-10-18-sandbox/phase-c/f578/`.
+- Rush success from 20 m, baseline (350 ms) to candidate (450 ms): plain AR 0.002 to 0.018, AR with Body Armor
+  0.008 to 0.060 (margin 0.02 each). Peek-kill stays about 0.71. The rush is stronger, not weaker, so the gate
+  passes. Under the old absolute bar it would still fail (both far below 0.50). The speed sweep shows no flip.
+- The rest of the 0.4.31 set (Body Armor, Fast Hands, Extended Mags, the AP pairs) changes perks, so the rush
+  counter does not apply. Their phase C verdicts stand unchanged.
+- Command: recorded by hand; no `--record-from` run.
+
+| test | result |
+|---|---|
+| value_addition | pass |
+| no_domination | pass |
+| viable | pass |
+| pickup_utility | n/a |
+| balance_kept | pass |
+| op_rule | pass |
+| marksman_rush_counter | pass |
+| heat_sensitivity | pass |

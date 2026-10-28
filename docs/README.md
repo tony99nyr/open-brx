@@ -37,7 +37,11 @@ historical context; the running order is always [`bench-plan.md`](bench-plan.md)
 |---|---|
 | **[`archive/game-test-2026-09-13.md`](archive/game-test-2026-09-13.md)** | archived 2026-09-24. **The 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
 | **[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/)** | the sanitised MC store behind that sheet — compiled heads, gun echoes, event timeline, node logs, and the `extract.py` that rebuilds them |
-| **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
+| **[`bench-plan.md`](bench-plan.md)** | **open this first.** NEXT: every MVP bench row in one order, grouped by rig, with each step's control and pass rule, and which sheet owns what |
+| [`bench-rebench-0422.md`](bench-rebench-0422.md) | the procedures behind most NEXT steps (Sittings A, B and C); ran in part 2026-10-16 |
+| [`bench-0426.md`](bench-0426.md), [`bench-field-1017.md`](bench-field-1017.md), [`bench-rebench-0424.md`](bench-rebench-0424.md) | procedures NEXT cites (the 0.4.26 checks, the 2026-10-17 field checks, the 0.4.24 re-bench); not an order |
+| [`bench-mac-2026-09-29.md`](bench-mac-2026-09-29.md) | the MacBook and iPhone X steps (B21); never ran |
+| [`field-2026-10-17.md`](field-2026-10-17.md) | the 2026-10-17 field report: four player phones, four matches, thirteen issues, each traced to a log line |
 | [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
 | [`bench-2026-09-24.md`](bench-2026-09-24.md) | the step procedures `bench-plan.md` cites; not an order |
 | [`bench-sticks3-2026-09-23.md`](bench-sticks3-2026-09-23.md) | live: the M5StickS3 first-bring-up gate sheet (F314, IR receive after transmit) |
@@ -162,8 +166,6 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the Updated stamp, id, 
   `manual/dev.md`.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
-  [`mc-warning-audit-2026-09-16.md`](mc-warning-audit-2026-09-16.md) is the full audit of its amber/red
-  warnings, with Tony's keep/quieter/remove call against each.
 - **[manual/README.md](manual/README.md)** — the public site: how a fact gets in. **[site/README.md](site/README.md)**
   (how to run the build + gate) and **[site/FORMAT.md](site/FORMAT.md)** (the page contract).
 
