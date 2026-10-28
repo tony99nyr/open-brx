@@ -15,13 +15,8 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 [`protocol/brx-protocol.md`](../protocol/brx-protocol.md) and [`manual/dev.md`](manual/dev.md).
 
 ## Lane: brx1, orchestration
-**State:** 2026-10-24: Stick U002 IR bench and the outdoor range walk done (log 2026-10-24). The Unit IR sends on G9 and
-receives on G10. Its receiver hears a real BRX gun at 3 to 30 m (10/10 pulls each) and at 67 m (11/11). Box to headset IR
-reaches only about 1.5 m outdoors; the indoor 3 m results were bounce. A ground box needs side-facing receivers. Melee
-(t2 60) reached the U002 to about 7 m and the Shotgun headset word to about 10 m, but that receiver is not a headset, so
-the victim cutoffs are F580. A MacBook serial open restarts the Stick, so AUTO needs an open sercmd session. The field push
-plan is in `~/reviews-2026-10-17/` (outside the repo).
-**Next:** F580 (victim-side melee and Shotgun cutoffs) and the Stick-to-Stick IR range. Then the next APK cut on Tony's go.
+**State:** 2026-10-28: the MVP desk is empty (F630 to F635 closed). Tony's calls: the marksman rush test is relative with the shipped Sniper as the baseline (F578), F607 moved to post-MVP, and F324 stays behaviour-level only. The doc accuracy, DRY and archive pass landed in four lanes (docs/ about 441 KB smaller, contracts.md 280 to 192 KB, every review P1 re-checked gone on main). The 0.4.30 notes are on main, untagged. The Stick IR range results of 2026-10-24 are in the log.
+**Next:** build the 0.4.30 APK locally from main (Tony asked); publish only on his separate yes. Then F580 (victim-side melee and Shotgun cutoffs) and the Stick-to-Stick IR range.
 **Blocked:** B21 on the MacBook; publishing waits for Tony's go. Power-cycle the gun after a CLI `deathmatch` run: the
 Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
 
