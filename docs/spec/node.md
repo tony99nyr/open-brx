@@ -863,9 +863,9 @@ These questions carry no ids. Anything that needs tracking gets a row in [`../FO
 which is where open work lives; closed questions are in git history.
 
 - **Q2: a station beacon as a presence source (`$HIR` tok2 = 15).** Post-MVP: FOLLOWUPS/post-mvp **F338**.
-- **Q4: the `$VOLTS` token map** (tok 3 vs tok 4 for pack %). `post-mvp.md` §10, "`$VOLTS` % token" (no id).
-- **Q5: cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from cache without MC in range? `CONFIG_TTL_MS` plus a stale-config warning. No row yet.
-- **Q6: keep-awake vs. battery.** Measure the drain over a long event. No row yet.
-- **Q7: a side-effect-free gun state probe** (the only way to catch a gap-death, §3.10). No row yet.
-- **Q10: iOS queued BLE notifications on resume.** `post-mvp.md` §10, "iOS locked-phone BLE" (no id).
+- **Q4: the `$VOLTS` token map** (tok 3 vs tok 4 for pack %). Q20 in `post-mvp.md`.
+- **Q5: cached-context rejoin (§3.7).** How much of a prior game may a power-cycled phone re-arm from cache without MC in range? `CONFIG_TTL_MS` plus a stale-config warning. Q22 in `post-mvp.md`.
+- **Q6: keep-awake vs. battery.** Measure the drain over a long event. Q23 in `post-mvp.md`.
+- **Q7: a side-effect-free gun state probe** (the only way to catch a gap-death, §3.10). Q24 in `post-mvp.md`.
+- **Q10: iOS queued BLE notifications on resume.** Q21 in `post-mvp.md`.
 - **Q12: should `hit_taken` carry the shield delta as its own field?** `dmg` already counts it (§3.2). FOLLOWUPS/post-mvp **Q12′**.

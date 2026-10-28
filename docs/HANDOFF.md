@@ -65,6 +65,8 @@ R4/T5 read-only research is authorised; flashing stays decision first.
 - **F634, both halves (A84):** MC names the held match on every assign, and the phone keeps its results only for
   the match it ended.
 
+The doc-rot pass (spec and protocol lane) is in the land queue: the design briefs, API.md, the protocol references,
+and contracts.md folded and compacted, with §10's older rows in `archive/contracts-amendments-2026-08-to-09.md`.
 **Next:** none open in this lane. Wait for brx1.
 **Blocked:** none.
 
