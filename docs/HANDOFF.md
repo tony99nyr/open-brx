@@ -6,7 +6,7 @@ What 1.0.0 ships is [`release-1.0.md`](release-1.0.md); the roadmap after it is 
 Update only the lane you worked.
 ## State of main (2026-10-27)
 **App 0.4.29 is the last published build** (`app-v0.4.29`, 2026-10-25). Publishing waits for Tony's own go. The next
-bench is the NEXT list in [`bench-plan.md`](bench-plan.md), "the bench after 0.4.31": every MVP BENCH row in rig order;
+bench is the Sunday AM sheet at the top of [`bench-plan.md`](bench-plan.md) (2026-11-01), then NEXT, "the bench after 0.4.30": every MVP BENCH row in rig order;
 each step cites the sheet that holds its procedure. Reflash every Stick from main before a Stick step. The iPhone X
 build (B21 iOS half) is Tony's MacBook step, `.claude/skills/iphone-build`. The 2026-10-17 field report
 ([`field-2026-10-17.md`](field-2026-10-17.md)) is closed at the desk; its evidence bundle is unscrubbed and stays off
