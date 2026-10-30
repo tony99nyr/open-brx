@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-28. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-10-30. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -49,7 +49,7 @@ A keyboard is enough. Highest value first.
 
 ## MVP BENCH
 
-Grouped by setup. The run order is the NEXT list in [`bench-plan.md`](bench-plan.md) ("the bench after 0.4.31"):
+Grouped by setup. The run order is the NEXT list in [`bench-plan.md`](bench-plan.md) ("the bench after 0.4.30"; the Sunday AM sheet runs first):
 it covers every row below, and each of its steps names the sheet that holds the procedure. A row's own sheet and step
 cites are its history, and the NEXT step wins where they differ.
 

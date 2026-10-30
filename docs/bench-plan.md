@@ -1,14 +1,90 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-27. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-10-30. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-The next bench is NEXT ([below](#next-the-bench-after-0431-2026-10-26)): every MVP bench row, in rig order.
+The next bench is the Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)): gameplay first,
+for a game that afternoon. NEXT ([below](#next-the-bench-after-0430-2026-10-26)) is every MVP bench row, in rig order.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
-## NEXT: the bench after 0.4.31 (2026-10-26)
+## Sunday AM: the bench before the game on 2026-11-01
+
+Tony benches in the morning and wants to play a game in the afternoon. This sheet puts gameplay first and the Stick
+last. It re-orders NEXT ([below](#next-the-bench-after-0430-2026-10-26)) and cites its steps; the procedures stay
+where NEXT points. Tier 0 and Tier 1 together take about 3 h. Every phone runs 0.4.30 (`288d69597`, which holds
+`11107dbdf`, `6e0a6391`, `87e3dca82`, `3d07b60f` and `644d8a89`), and MC runs from current main.
+
+### Pre-flight, before Tony arrives (about 30 min)
+
+| # | step | who |
+|---|---|---|
+| P1 | Fast-forward the main checkout to `origin/main` (`git merge --ff-only`). The Windows venv runs that checkout, so steps 3 and 33 need it. First check that no session has uncommitted work there. | an agent, on Tony's go |
+| P2 | Check the APK: `sha256sum` of `brx-companion-0.4.30-android-release.apk` (from the local 0.4.30 release worktree, `webapp/download/`) reads `2ac7e64e…`, as its build.json says. | an agent |
+| P3 | Install that APK on both player Pixels and on the grey Pixel (the hill). Open the app once; its build reads 0.4.30. | Tony, or an agent over wireless adb if Tony says so |
+| P4 | Start MC from the main checkout, detached, with `pnpm mc -- --bench-volume 65`. Check that the banner shows the main sha and the BENCH VOLUME line. | an agent |
+| P5 | Charge every gun, headset and phone. Pick two guns and their headsets (Tactix-FE30 and Tactix-9498, as Group E pins them). | Tony |
+| P6 | `$VOL,65` on every gun for the laptop MCP steps (the bench-session skill). | an agent |
+
+### Tier 0: go or no-go for the afternoon (about 85 min)
+
+Both guns, both player phones, MC, and the grey Pixel as the hill. Run in this order.
+
+| step | minutes | what it proves | control and pass |
+|---|---|---|---|
+| AM1 | 5 | the build | Each phone's build.json `git` reads `288d69597`. Before any result counts, run the build gate below (`git merge-base --is-ancestor`). |
+| AM2 | 10 | phone-to-gun connect | Control: phone 1 links its gun. A/B/A: phone 1, phone 2, phone 1, then the 5 re-picks of 0422 C.28 on each phone. Pass: each link within 20 s, with no loop and no "No guns found". Fail: log the time and the phone log. |
+| AM3 | 15 | the catalogue on the guns | NEXT step 19 (the SMG through MC, 5 min), then NEXT step 37 (the AR, Shotgun and USP on the gun, 10 min). Pass: as those steps write them. A weapon that fails comes out of the afternoon kits. It does not stop the game. |
+| AM4 | 20 | TDM, start to result | A 5 min TDM match from a preset (MC arm, START). Control: the first kill of the match scores on both HUDs and on the MC board. Then each player: 3 kills, a timed respawn after each, and 5 ALT swaps with a shot after each. Pass: every kill scores once, the down player stays down until the respawn (no HUD cards, F296's down loop on the headset), each respawn fires, no life starts at 0/0 (F533), and no swap leaves the HUD on a weapon that does not fire (F542). At the whistle: RESULT PENDING, then the result on both phones and the debrief on MC. |
+| AM5 | 20 | KOTH and the hill | A KOTH match with the grey Pixel as the hill, 5 min, every phone on the hill (this also gives NEXT step 52's F342 numbers: read them from this match). Control: one player alone captures and the hill banks HELD time. Then a contest, then the owner killed on the hill (1017 L4: no banking while down). Pass: capture, contest and bank as L4 writes them; at the whistle the console shows WAITING FOR CONTROL POINT 1 until the hill reports, and the result counts the hill. |
+| AM6 | 10 | FFA and the result wait (A83) | A 3 min FFA match. At the whistle, put phone 2 in airplane mode. Pass: the console names phone 2 with FINAL IN, phone 1 shows RESULT PENDING, and at 2 min the console shows FINAL AFTER 2 MIN WITHOUT. Airplane mode off: phone 2 gets the current result, never PROVISIONAL (the F630 and F633 fixes). Then in the debrief, rename one player and move one to the other team: no result changes or clears (the F631, F632 and F634 fixes). |
+| AM7 | 5 | outdoor play volume | Stop MC (no match ARMED or LIVE), restart it with plain `pnpm mc`, and check that the BENCH VOLUME line is gone. Arm one gun for an outdoor match: its head sends `$VOL,90`. Outdoors at about 10 m, Tony hears the shot and the kill sounds. Control: the same gun on the bench MC at 65. Then restart MC with `--bench-volume 65` for Tier 1. |
+
+**GO / NO-GO for the afternoon.** GO for TDM and FFA when AM2, AM4 and AM7 pass. GO for KOTH when AM5 passes too.
+NO-GO for every mode when a phone cannot link its gun (AM2), or a match will not arm or start, or kills do not score
+(AM4). A failed AM5 removes KOTH only: play TDM or FFA. A failed AM6 does not stop the game: the host reads the MC
+board and presses FINALISE. A weapon that fails AM3 comes out of the kits. Inaudible play at 90 (AM7) needs Tony's
+call before any game.
+
+### Tier 1: gameplay rows by value per minute (about 95 min)
+
+Each step is the NEXT step it names, run as NEXT writes it. Steps 3 and 7 move to the laptop MCP (Group A's rig);
+step 18 needs the IR rig boards.
+
+| order | NEXT step | minutes | why it is here |
+|---|---|---|---|
+| 1 | 20 (F533, F416, F541's tap) | 20 | a lost spawn write at go-live starts a player with no ammo |
+| 2 | 22 (F530) | 15 | the host's FORCE RESPAWN in a real game |
+| 3 | 21 (F532) | 10 | a gun power-cycled mid-match must not book a death |
+| 4 | 3 (F226 and the F575 heat read) | 25 | the heat table is F575's input to Tony; a lock below one charge takes the Charge Rifle out of the kits |
+| 5 | 18 (F264) | 15 | how a dead gun leaves its dead state; RESYNC GUN depends on it |
+| 6 | 52 (F342) | 5 | read only: the numbers come from AM5's match; 5 min is the log read |
+| 7 | 7 (B26) | 5 | local play with no headset; not an MC game blocker |
+
+**Past 3 h, in this order:** step 23 (F542, 45 min), step 33 (F618, 30 min), then NEXT in its own order. Step 33 does
+not gate the game: the compiler refuses Armour Piercing on the AMR, the Burst Rifle and the USP until it passes.
+
+### Tier 2: optional
+
+Group G (the Sticks, NEXT steps 63 to 84) and Group H (the field network, steps 85 to 87). Run them only after Tier
+1, and only if Tony wants to.
+
+### The afternoon game
+
+- **Mode:** TDM or FFA; KOTH only if AM5 passed (the GO line above).
+- **Venue:** outdoors, so play volume is 90. MC runs with no `--bench-volume`: the console header shows no BENCH VOL
+  tag.
+- **MC:** from the main checkout root, `pnpm mc`. Restart it only between matches, never while a match is ARMED or
+  LIVE.
+- **Phones and guns:** each player's Pixel on 0.4.30 with the gun it linked in AM2; the grey Pixel is the hill for
+  KOTH. Use only guns that passed AM2 and AM3. Do not open the Callsign app on any of them.
+- **A phone drops mid-match:** the player keeps playing. Reopen the app; the link comes back by itself within about
+  20 s, or tap TO RECONNECT. If the gun is dead and the HUD shows alive, the host uses RESYNC GUN, then FORCE
+  RESPAWN. After the whistle the result waits for that phone for up to 2 min; the host can press FINALISE sooner.
+- **Never push config to a gun after START.** Change kits in the lobby only.
+
+## NEXT: the bench after 0.4.30 (2026-10-26)
 
 Every open bench row in [`FOLLOWUPS.md`](FOLLOWUPS.md) (91 on 2026-10-26, after Q13 and F537 closed) in one ordered
 list, plus the unrun fix checks of the 0.4.24 and 0.4.26 sheets. The groups run in
@@ -23,14 +99,14 @@ and says why. The procedure stays in the sheet each step cites. Short names: 042
 h 45 min (steps 1 to 95), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
 min) are not in it.
 
-**Build gate: run on the newest APK, and check the fix each step tests.** On 2026-10-26 `app/package.json` reads 0.4.29
-and there is no 0.4.31 tag (Tony cuts it). Step 33 (F618) runs from the laptop MCP, not a phone: it needs the 0.4.31
-catalogue in `compile.resolve()` (the AP re-key and zero crit under AP, `11107dbdf`), so run the MCP from a checkout at
-or after that commit (the Windows venv runs the main checkout's code). Steps 21, 22 and 23 test
-F532's down-player reboot check (`6e0a6391`), F530's operator-respawn hold until 2.5 s after the death (`87e3dca82`),
-and F542's old-slot round and post-spawn ALT rule (`3d07b60f`, after the `$LCD`-slot fix `644d8a89`); all four are
-already in 0.4.29 (`fa831f663`). Before a result counts, check the step's commit against the installed APK's build.json
-`git` with `git merge-base --is-ancestor`.
+**Build gate: run on the newest APK, and check the fix each step tests.** The newest APK is 0.4.30, built locally
+on 2026-10-28 from `288d69597` (not published). It holds the balance set of 25 October (`11107dbdf`), F532's
+down-player reboot check (`6e0a6391`), F530's operator-respawn hold until 2.5 s after the death (`87e3dca82`), and
+F542's old-slot round and post-spawn ALT rule (`3d07b60f`, after the `$LCD`-slot fix `644d8a89`). Steps 21, 22 and 23
+test the last three. Step 33 (F618) runs from the laptop MCP, not a phone: it needs the AP re-key in
+`compile.resolve()`, so run the MCP from a checkout at or after `11107dbdf` (the Windows venv runs the main checkout's
+code). Before a result counts, check the step's commit against the installed APK's build.json `git` with
+`git merge-base --is-ancestor`.
 
 **Start here (about 2 h 20 min).** Steps 1, 2, 3 and 7 (Group A), step 18 on the rig (Group B), then steps 19, 20, 21
 and 23 (Group C). This cut covers the red rows F548, F226, B26, F264, F533 and F542. Every other step stays in the
