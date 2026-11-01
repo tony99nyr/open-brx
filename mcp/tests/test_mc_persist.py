@@ -995,6 +995,15 @@ def test_a_loaded_game_survives_an_mc_restart():
     online(s2, net2, clock, ps[0], 0)                    # the re-hello's welcome tells it again, and that is recorded
     rows = {r["player_id"]: r["phone_game"] for r in s2.sync_summary()["rows"]}
     assert rows == {ps[0]["player_id"]: True, ps[1]["player_id"]: False}, rows
+    # review r1: the bench symptom was the heartbeat retry never running. A phone whose welcome delivery did not land
+    # gets the announcement again from its next heartbeat (`_on_status`, gated on game_loaded), and it is recorded.
+    pid = ps[0]["player_id"]
+    s2.game_sent.pop(pid)
+    net2.pushed.clear()
+    clock["t"] += 6_000
+    net2.simulate_status("node0", {"player_id": pid, "shots": 0, "alive": True, "synced": True, "pending": 0}, clock["t"])
+    assert [k for (n, k, _b) in net2.pushed if n == "node0" and k == "assign"] == ["assign"], net2.pushed
+    assert s2.game_sent.get(pid) == cfg
 
 
 def test_a_snapshot_without_a_load_record_restores_as_not_loaded():
