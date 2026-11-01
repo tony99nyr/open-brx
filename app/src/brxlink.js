@@ -39,6 +39,12 @@ export const LATE_RESENDS = 2;
  *  (a busy chunk did not go; any other late error may or may not have gone), and after one the gun's parser may
  *  hold a partial frame. This link writes `PARSER_RESET` before the next frame it sends after any chunk error. */
 export const PARSER_RESET = '$*';
+/** F542 (bench 2026-11-01): the frame ring kept 60 frames, so a share made a minute after a fault had already lost the
+ *  frames that showed it. 2000 frames is about 90 KB of text and a few hundred KB of small objects on the phone. The
+ *  background log sync sends only the newest `FRAME_RING_SYNC` of them (app.js `logSnapshot`), so the pulls stay well
+ *  inside MC's 1 MB per-match log budget; a manual SHARE LOG sends the whole ring. */
+export const FRAME_RING = 2000;
+export const FRAME_RING_SYNC = 300;
 
 /** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
  *  Native builds take a hex string (what BleClient sends); the web build takes the DataView.
@@ -255,7 +261,7 @@ export class BrxLink {
     this._relinking = false;
     this._relinkRestart = false;
     this._scanTaps = new Set();   // relink review: a recovery listens through whatever scan is open (BeaconWatch's), never stops it
-    this.frames = [];      // last frames in/out (diagnostics)
+    this.frames = [];      // the last FRAME_RING frames in/out (diagnostics)
     // Every connect()/disconnect() bumps the generation. A retry loop carries the generation it
     // started in and exits the moment it goes stale, so a loop chasing an abandoned gun can never
     // outlive its device — nor hold `_reconnecting` and block the next gun's reconnect.
@@ -403,7 +409,7 @@ export class BrxLink {
   }
 
   _log(m, cls) { this.log(m, cls); }
-  _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
+  _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > FRAME_RING) this.frames.shift(); }
 
   /** `onAttempt(i, of)` runs before each native connect attempt (the picker shows "Retrying (2 of 5)…"). */
   async connect(deviceId, advertName, { onAttempt = null } = {}) {

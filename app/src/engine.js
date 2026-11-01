@@ -3541,7 +3541,7 @@ export class Engine {
     if (ps.frame) this.pu.setPset(ps.frame);   // A56: the overshield raises THIS frame's shield max, and restores it
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27). `_writeSpawnBurst` set `_shieldFillAt` (F348).
-    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.downReason = null; this.deadAt = 0; this.am.dropReload(); this.held = {};
+    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.downReason = null; this.deadAt = 0; this.am.dropReload(); this.am.cancelSwap(); this.held = {};
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._gunLifeAt = this._spawnAt; this._armedThisLife = false;   // B5/F272: settle and silence clocks start with this life
@@ -4246,7 +4246,7 @@ export class Engine {
     if (!noMatch) this._reportPossession(this.now(), true);
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
-    this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.rc.clear(); this.start = null; this._resyncRevive = false; this.am.dropReload(); this.held = {};
+    this.spawned = false; this.alive = false; this.downReason = null; this.resync = null; this.rc.clear(); this.start = null; this._resyncRevive = false; this.am.dropReload(); this.am.cancelSwap(); this.held = {};
     this.stunned = null;   // F15: the end frames own the gun now
     this._poisonClear('match end'); this._smokeClear('match end');   // S16/S53: no life left to tick or to tell about
     this._life = this._freshLedger(); this._lastLife = null;   // S56: nor a "what hit me" ledger to carry into the next lobby
@@ -4284,6 +4284,7 @@ export class Engine {
     }
     const live = this.am.liveAmmo();
     this.stunned = { at: now, until: now + ms, ammo: live };
+    if (this.am.reloading) this.am.reloading.blind = true;   // F542 review: its `$ALCD`s are dropped, so its silence proves nothing
     // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
     // never repeated on an extend above, and never per tick (F274).
     this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`);
@@ -6756,7 +6757,7 @@ export class Engine {
     const c = this.frames && this.frames.cues;
     const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
     // logged explicitly: after the last field session we could not tell whether the alert had
-    // fired at all, because the frame ring only holds 60 frames and had rolled past it.
+    // fired at all, because the frame ring then held only 60 frames and had rolled past it.
     this.log(`low-health alert: hp ${h.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
     if (fr.length) this._hurtLineArm(fr);
   }
