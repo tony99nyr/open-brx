@@ -74,7 +74,7 @@ contracts §3 `FrameBundle` fields like this:
   ever ships one.
 - **Volume** = `compile.head_volume(config)`: the game's `volume` when set, else `compile.play_volume(environment)`,
   **80 indoors / 90 outdoors** (`--bench-volume` overrides both) (2026-08-30: 69 was inaudible
-  outdoors); try-outs `VOL_TRYOUT = 69`; the diagnostic `30` never reaches a game head.
+  outdoors); a try-out plays at the same `head_volume` (Tony 2026-11-01); the diagnostic `30` never reaches a game head.
 - Nothing in `compile` reads a clock or the network — the dispersed-start timing (M-START) wraps `spawn`.
 - `compile` is re-run (and the bundle re-pushed) whenever `player.loadout`, `player_num`, `team` or
   `voice` changes after the lobby push (contracts §5 `config`).
@@ -185,7 +185,7 @@ page is `docs/manual/gameplay.md`.
 ## 4. Tutorial arming (phase 3a) — private try-out, compiled by MC
 
 When a weapon is picked at kit-out (host on KIT, or a phone `loadout_request{try:true}`), MC calls
-`tutorial_frames(weapon, environment)` and sends the node **`tutorial{weapon, frames}`** — the node writes
+`tutorial_frames(weapon, environment, config=config)` and sends the node **`tutorial{weapon, frames}`** — the node writes
 `frames` verbatim. The gun arms **that one weapon, privately**, so the player can pull the trigger and reload to
 *feel* it — **no game starts, no scoring team, audio limited to the weapon's own fire/reload**.
 
@@ -193,7 +193,7 @@ When a weapon is picked at kit-out (host on KIT, or a phone `loadout_request{try
 
 | | Real arm (`compile`) | Tutorial arm (`tutorial_frames`) |
 |---|---|---|
-| Volume | `$VOL,80|90` | `$VOL,69` (`VOL_TRYOUT`: fired at arm's length from the player's own head) |
+| Volume | `$VOL,<head_volume>` | the same `$VOL,<head_volume>` (Tony 2026-11-01: kit sounds at game volume) |
 | Game start | `$START`; `$PLAY,VA81` in the T-0 tail | **no `$START`, no start voice** (the `$SPAWN` chirp is silenced by `$PLAYX,0`) |
 | Player id | `$PSET,<player_num>,…` | `$PSET,0,…` — no identity; a stray try-out hit reports shooter 0, which MC never credits |
 | Team | `$TID,<team>` | **no `$TID` written** — the gun keeps its last colour (no "no team" colour exists) |
@@ -318,8 +318,8 @@ apply_policy()                   -> re-fixes every loadout to the ruleset (loado
 
 // Frames (pure; no clock, no BLE) — the compiler
 compile(config, player)          -> FrameBundle        // §1.1
-tutorial_frames(weapon, environment) -> string[]        // §4
-play_volume(environment)         -> 80 | 90            // VOL_TRYOUT = 69
+tutorial_frames(weapon, environment, config=None) -> string[]   // §4, at head_volume(config)
+play_volume(environment)         -> 80 | 90            // head_volume: the K8 knob, else this
 
 // Data
 weapon_catalog() / weapon_views(catalog, pool) -> Weapon[] / WeaponView[]   // §3; views re-derive htk/ttk at the host's pool

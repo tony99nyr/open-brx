@@ -1,14 +1,15 @@
 """K8 (Tony, field 2026-09-12): the host's per-game volume knob, `GameConfig.volume`.
 
 Absent or null = the venue volume (80 indoors, 90 outdoors), exactly as before. Set = an integer
-60..100 for the match head's `$VOL`. `--bench-volume` still wins, a try-out keeps 69, and a GAMES pick
+60..100 for the match head's `$VOL`. `--bench-volume` still wins, a try-out plays at the same head volume
+(Tony 2026-11-01: kit sounds at game volume), and a GAMES pick
 never touches it (F411, games-presets.md §3.7: MVP is outdoors-only, so MATCH SETTINGS has no volume
 field at all).
 
 Run: python3 run_tests.py game_volume
 """
 from _skip import needs
-from brx_mcp.mc.compile import GAME_VOLUME_MAX, GAME_VOLUME_MIN, Compiler, VOL_TRYOUT
+from brx_mcp.mc.compile import GAME_VOLUME_MAX, GAME_VOLUME_MIN, Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from _session import match_config
@@ -32,9 +33,10 @@ def _head_vol(compiler, env="indoor", **extra):
     return vols[0]
 
 
-def _tryout_vol(compiler):
+def _tryout_vol(compiler, **extra):
     weapon = {"weapon_id": "assault_rifle"} if isinstance(compiler, FakeCompiler) else compiler.weapon_catalog()[0]
-    return [int(f.split(",")[1]) for f in compiler.tutorial_frames(weapon, "outdoor") if f.startswith("$VOL,")]
+    cfg = dict(match_config("tdm", teams=_TEAMS_YELLOW_TID3), environment="outdoor", **extra) if extra else None
+    return [int(f.split(",")[1]) for f in compiler.tutorial_frames(weapon, "outdoor", config=cfg) if f.startswith("$VOL,")]
 
 
 def test_the_range_keeps_an_audible_floor():
@@ -70,10 +72,11 @@ def test_head_volume_default_set_bench_and_tryout():
         assert _head_vol(c, "outdoor", volume=None) == 90                         # null: the venue
         assert _head_vol(c, "indoor", volume=65) == 65
         assert _head_vol(c, "outdoor", volume=100) == 100
-        assert _tryout_vol(c) == [VOL_TRYOUT]                                     # the knob never reaches a try-out
+        assert _tryout_vol(c) == [90]                                             # a try-out: the outdoor venue volume
+        assert _tryout_vol(c, volume=70) == [70]                                  # ...or the K8 knob (Tony 2026-11-01)
     for c in (Compiler(bench_volume=55), FakeCompiler(bench_volume=55)):
         assert _head_vol(c, "indoor", volume=90) == 55                            # --bench-volume wins
-        assert _tryout_vol(c) == [55]
+        assert _tryout_vol(c) == [55] and _tryout_vol(c, volume=90) == [55]
 
 
 def test_the_real_compiler_game_config_carries_the_knob():

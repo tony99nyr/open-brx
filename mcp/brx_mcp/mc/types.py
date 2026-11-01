@@ -959,8 +959,8 @@ class GameConfigBase(TypedDict):
     volume: NotRequired[int | None]              # K8: the host's match-head $VOL, an integer 60..100
     #                                              (`compile.GAME_VOLUME_MIN/MAX`). Absent or null = the venue volume
     #                                              (`compile.play_volume`: 80 indoors, 90 outdoors); a null PUT removes
-    #                                              the key. `--bench-volume` overrides this value and try-outs; without
-    #                                              it, a try-out plays at VOL_TRYOUT (69), never this value.
+    #                                              the key. `--bench-volume` overrides it. Every $VOL MC sends before
+    #                                              START (a try-out, the kit-link $VOL) plays at this same value.
     hill: NotRequired[HillSettings | None]       # F559: capture time and net cap for every control station. A set key
     #                                              wins on every arming; absent = the station keeps its own. A PUT of
     #                                              null clears it; a mode change carries it, like `volume`.

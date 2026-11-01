@@ -102,8 +102,8 @@ def test_play_volume_follows_the_venue():
     # indoors, and the wrong direction on a hearing-exposure default is not a neutral choice.
     assert all(play_volume(v) == 80 for v in (None, "", "mixed", "INDOOR", " Indoor ")), "unknown venue -> quieter"
     assert play_volume("OUTDOOR") == 90, "case-insensitive"
-    from brx_mcp.mc.compile import VOL_TRYOUT
-    assert VOL_TRYOUT == 69, "a try-out is fired at arm's length — it keeps the quiet value"
+    import brx_mcp.mc.compile as _compile
+    assert not hasattr(_compile, "VOL_TRYOUT"), "Tony 2026-11-01: a try-out plays at the game volume, no second number"
     out = C.compile(dict(_cfg(), environment="outdoor"), _player(), TEAMS)["head"][0]
     assert out == "$VOL,90,0,*", out
 
@@ -294,8 +294,7 @@ def test_tutorial_is_reduced_and_identity_zero():
     assert any(f.startswith("$SIR") for f in frames), "tutorial needs a $SIR row so a shot registers"
     assert any(f.startswith("$SPAWN") for f in frames), "tutorial spawns the gun live"
     assert any(f.startswith("$PSET,0,") for f in frames), "tutorial identity is 0 (uncredited)"
-    from brx_mcp.mc.compile import VOL_TRYOUT
-    assert f"$VOL,{VOL_TRYOUT},0,*" in frames  # audible
+    assert "$VOL,90,0,*" in frames  # the outdoor game volume (Tony 2026-11-01)
     assert any(f.startswith("$WEAP,0,") for f in frames)
 
 

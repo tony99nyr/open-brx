@@ -41,7 +41,7 @@ def _parse(*argv):
 def test_flag_absent_keeps_the_venue_volumes():
     assert _parse().bench_volume is None
     for c in (Compiler(), FakeCompiler()):
-        assert _vols(c) == {"indoor": [80], "outdoor": [90], "tryout-indoor": [69], "tryout-outdoor": [69]}
+        assert _vols(c) == {"indoor": [80], "outdoor": [90], "tryout-indoor": [80], "tryout-outdoor": [90]}
 
 
 def test_flag_without_a_value_is_55_everywhere():

@@ -15,6 +15,7 @@ import logging
 import math
 import pathlib
 from typing import Any, Literal, cast
+from collections.abc import Mapping
 
 import random as _random
 
@@ -64,9 +65,9 @@ HEADSET_ALERT_BRIGHTNESS = 10
 
 VOL_BY_ENV = {"indoor": VENUE_VOLUME_INDOOR, "outdoor": VENUE_VOLUME_OUTDOOR}
 VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (see play_volume)
-VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
-                                   # so it keeps the quieter Callsign value (review 2026-08-31).
-                                   # The field complaint was about hearing a game across a field.
+# Tony 2026-11-01: "when players are kitting ... the volume is game volume". Every $VOL MC compiles before
+# START (a try-out, the kit-time link `$VOL` in `Session._kit_volume`) uses the game's head volume
+# (`head_volume`), so KIT sounds as loud as the match. The old quieter try-out value (69) is retired.
 # `--bench-volume [N]` (bench 2026-09-16): a bench run plays every $VOL MC compiles at N (the bare flag means
 # 65, set in `__main__.py`). 30 is barely audible and the venue value is too loud at a bench. Not for a real game.
 
@@ -95,7 +96,7 @@ def check_volume(value) -> int:
 # the venue volume (`play_volume`). The bounds live in types.py (GAME_VOLUME_MIN/MAX, generated into
 # the console): the floor is on-gun level 1 (`gameconfig.VOLUME_LEVELS`, 60), since 55 is barely audible
 # at a bench and 30 is inaudible for game audio. `--bench-volume` still wins,
-# try-outs included (`Compiler.tryout_volume`); without it a try-out plays at VOL_TRYOUT.
+# try-outs included; without it a try-out plays at this same head volume (`Compiler.head_volume`).
 
 
 def check_game_volume(value) -> int | None:
@@ -2073,9 +2074,6 @@ class Compiler:
         """The $VOL for a match head: the bench volume when set, else the K8 knob, else the venue volume."""
         return head_volume(config) if self.bench_volume is None else self.bench_volume
 
-    def tryout_volume(self) -> int:
-        """The $VOL for a try-out: the bench volume when set, else VOL_TRYOUT."""
-        return VOL_TRYOUT if self.bench_volume is None else self.bench_volume
 
     def perk_effects(self, player: Player | None) -> dict:
         """The passive knobs of the player's slot-2 perk (loadout.md §1.2/§2); {} when none."""
@@ -3144,8 +3142,10 @@ class Compiler:
         assert_no_denied_frames(ctx.bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
 
 
-    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
-        """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
+    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False,
+                        config: Mapping[str, object] | None = None) -> list[str]:
+        """§4 private try-out: one weapon, identity 0 (uncredited), at the game's head volume (`head_volume` of
+        `config`, else the venue volume of `environment`; Tony 2026-11-01). Needs $START + a $TID to
         actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard.
 
         The try-out is a real armed head after its `$CLEAR`, so it uses the same catalogue-driven hit plan
@@ -3160,7 +3160,7 @@ class Compiler:
         # F206: token 2 = 1, the same team as the `$TID,1` below (one team byte, last writer wins).
         pset = "$PSET,0,1,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"
         frames = [
-            f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
+            f"$VOL,{self.head_volume(config or {'environment': environment})},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
             f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",    # FF off; t2 stays safe at every venue; t7 (crit_modifier) matches the GameConfig default of 0 (2026-09-17)
             pset,

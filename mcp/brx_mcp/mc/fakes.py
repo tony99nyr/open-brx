@@ -7,11 +7,12 @@ import asyncio
 import random
 import secrets
 import time
+from collections.abc import Mapping
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
 from ..protocol import PANIC_SEQUENCE
-from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, base_cues, kill_line, SPAWN_PROTECT_OFF, SPAWN_PROTECT_ON, TRIGGER_HELD, TRIGGER_LIVE, check_capture_row_fn, check_volume, head_volume, life_frames, respawn_settings, shield_frame   # one volume policy for the real and the fake paths
 from . import presentation as _pres
 from .net import REORDER_WINDOW, _key_eq
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
@@ -111,6 +112,10 @@ class FakeCompiler:
     # Candidate 9: the members Session used to reach with getattr, each answering as its old missing-attribute fallback
     # did, so a fake session behaves exactly as before (Opus r1: inheriting the real Compiler gave fake sessions real
     # hit plans and perk numbers, and emptied the Protocol check).
+    def head_volume(self, config) -> int:
+        """As Compiler.head_volume: the bench volume when set, else the K8 knob, else the venue volume."""
+        return head_volume(config) if self.bench_volume is None else self.bench_volume
+
     def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
         return self.cues(voice, slots).get("kill")
 
@@ -127,7 +132,7 @@ class FakeCompiler:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
-        head = [f"$VOL,{head_volume(config) if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{self.head_volume(config)},0,*", "$CLEAR,*", "$START,*",
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
@@ -162,13 +167,14 @@ class FakeCompiler:
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
                 "cues": self.cues(player.get("voice", "male"), night=bool(config.get("night")))}
 
-    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False) -> list[str]:
+    def tutorial_frames(self, weapon: Weapon, environment: str, silent: bool = False,
+                        config: Mapping[str, object] | None = None) -> list[str]:
         # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
         # silently ignores EVERY hit while reporting alive and healthy (F11, bench-proven 2026-09-02).
         # This class was once a runtime fallback (`mc/__main__.py` no longer selects it, DRY review H1); it
         # keeps the row anyway, because without it a bundle that reached a real tagger would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
-        return [f"$VOL,{VOL_TRYOUT if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
+        return [f"$VOL,{self.head_volume(config or {'environment': environment})},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
