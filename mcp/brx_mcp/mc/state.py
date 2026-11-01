@@ -4081,9 +4081,14 @@ class Session:
         # `readiness()` reads this, not the instantaneous flag. A false or missing `gun_linked` resets it,
         # so a drop un-proves the headset and a re-link has to earn it again.
         if ((nv.get("preflight") or {}).get("gun_linked")) is True:
+            # A fresh gun link: set the game volume before any kit sound. Retried on each beat of the link
+            # until sent, so a beat that lands before the node is bound still gets it once the bind lands.
+            if not nv.get("kit_vol_sent") and self._kit_volume(nid):
+                nv["kit_vol_sent"] = True
             nv.setdefault("gun_linked_since", t_recv)
         else:
             nv.pop("gun_linked_since", None)
+            nv.pop("kit_vol_sent", None)   # the next link sets the volume again (a power cycle forgets it)
             # …and the ECHO proof goes with it. `headset = "proven"` set by an `ack_config` gun echo was
             # never cleared, so A32's "falls back to unknown when the link drops" did not apply to a gun
             # that had answered once: the operator could switch the headset off, watch GUN LINK LOST go
@@ -6569,6 +6574,25 @@ class Session:
                                            **({"dropped": dropped} if dropped else {}), "loadout": p["loadout"]})
         self._changed()
 
+    def _kit_volume(self, nid: str) -> bool:
+        """Tony 2026-11-01: "when players are kitting ... the volume is game volume". The phone writes no `$VOL`
+        when it links the gun in KIT, so the gun kept its last level (a preview or a try-out could play quiet).
+        On each fresh gun link, MC sends one `$VOL` at the game's head volume. It rides the `tutorial` end
+        message, which a KITTED phone already writes verbatim (0.4.30 included), so no phone change is needed.
+        A phone in any other phase drops it. Skipped once the game is pushed (the head carries the volume) and
+        during a try-out (the try-out frames carry it, and an end message would close that try-out).
+        Returns whether it was sent; the caller retries on the next beat of the same link when it was not."""
+        pid = self.node_player.get(nid)
+        if pid is None or pid in self.trying or self.lobby_pushed or self.in_play():
+            return False
+        try:
+            vol = self.compiler.head_volume(self.config)
+        except ValueError as e:   # never let a bad config abort heartbeat handling
+            logging.getLogger("brx.mc").warning("kit volume not sent to %s: %s", nid, e)
+            return True
+        self.net.push(nid, "tutorial", {"end": True, "frames": [f"$VOL,{vol},0,*"]})
+        return True
+
     def tryout(self, pid: str, weapon_id: str | None) -> None:
         p = self.players[pid]
         if weapon_id is None:
@@ -6586,7 +6610,8 @@ class Session:
         if not w:
             raise KeyError(weapon_id)
         frames = self.compiler.tutorial_frames(w, self.config["environment"],   # F282: a silenced game tries the quiet frame
-                                               silent=bool(_pres.resolve(self.config).get("silent_weapons")))
+                                               silent=bool(_pres.resolve(self.config).get("silent_weapons")),
+                                               config=self.config)   # the game's head volume (Tony 2026-11-01)
         self.trying[pid] = weapon_id
         if p.get("node_id"):
             # A WeaponView, not the raw catalog row: the HUD's stat block draws from `bars`, which only

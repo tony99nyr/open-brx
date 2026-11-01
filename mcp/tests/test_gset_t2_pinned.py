@@ -7,7 +7,7 @@ instead of silently making outdoor games unplayable again.
 """
 from _session import TEAMS
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.mc.compile import Compiler, VOL_TRYOUT
+from brx_mcp.mc.compile import Compiler, play_volume
 from brx_mcp.mc.fakes import FakeCompiler
 from _session import match_config
 
@@ -77,6 +77,6 @@ def test_utility_tryouts_pin_t2_at_both_venues_in_real_and_fallback_compilers():
         for environment in ("indoor", "outdoor"):
             frames = compiler.tutorial_frames(weapon, environment)
             assert _frame_t2(frames) == "0", f"{type(compiler).__name__}/{environment}"
-            assert frames[0] == f"$VOL,{VOL_TRYOUT},0,*", (
+            assert frames[0] == f"$VOL,{play_volume(environment)},0,*", (
                 f"{type(compiler).__name__}/{environment}: try-out volume policy changed"
             )

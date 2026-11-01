@@ -222,7 +222,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 
 - **Official apps:** Android Callsign sends `$VOL,100`. iOS Callsign sends `$VOL,69`.
 - **Play:** set from the venue, see [Modes and setup](/docs/modes). MVP games run outdoors only, so every match plays at 90. The quieter indoor level (80) stays as the fallback for a venue the software does not recognise, a safety net rather than a choice. Volume 69 measures at roughly on-gun level 2, and it was inaudible on a field (2026-08-30).
-- **Try-outs:** 69. A try-out is fired at arm's length from the player's own head, so it stays quiet.
+- **Kit and try-outs:** the game volume. A try-out, and the volume set when a player's gun links during kit, use the same level as the match (2026-11-01).
 - **Protocol probing:** 30 or lower. It keeps the neighbours happy and still confirms the command path (the gun echoes its state, you just will not hear it). Never use it for games.
 - **Bench runs you need to hear:** 65.
 

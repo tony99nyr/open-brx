@@ -17,6 +17,11 @@ from brx_mcp.mc.state import Session, default_config
 from _session import match_config, mk_loadout_session, online, T0
 
 C = Compiler()
+
+
+def _kit_vol(body):
+    """The kit-link `$VOL` (`Session._kit_volume`, Tony 2026-11-01): a `tutorial` end carrying one `$VOL` only."""
+    return body.get("end") is True and [f[:5] for f in body.get("frames") or []] == ["$VOL,"]
 W = [w for w in C.weapon_catalog()]
 # the RAW catalogue rows (not the trimmed views): `ap_dmg` and the other design fields live here
 ROWS = C.catalog._rows if hasattr(C.catalog, "_rows") else list(C.catalog._by_id.values())
@@ -853,7 +858,7 @@ def test_loadout_request_reject_paths_each_deliver_an_ack():
         if reason:
             assert ack["reason"] == reason, (slot, kind, rid, ack["reason"])
         assert ack["loadout"] == before                                  # rejected → nothing stored
-    assert s.players[pid]["loadout"] == before and not net.pushes("tutorial")
+    assert s.players[pid]["loadout"] == before and not [b for _, _, b in net.pushes("tutorial") if not _kit_vol(b)]
     # host-locked and hud_select off
     s.set_config({"loadout_policy": {"preset": "open", "primary": {"choice": "host"}}})
     _req(net, 0, "primary", "weapon", "smg")
@@ -900,7 +905,7 @@ def test_ready_ends_that_players_tryout_only():
     assert ps[0]["player_id"] not in s.trying and s.trying.get(ps[1]["player_id"]) == "shotgun"
     end = net.pushes("tutorial", "node0")[-1][2]
     assert end.get("end") is True and "$CLEAR,*" in end["frames"]      # teardown DELIVERED to the node
-    assert not any(b.get("end") for _, _, b in net.pushes("tutorial", "node1"))
+    assert not any(b.get("end") and not _kit_vol(b) for _, _, b in net.pushes("tutorial", "node1"))
     # host READY override does the same
     s.set_ready(ps[1]["player_id"], True, host_override=True)
     assert not s.trying and net.pushes("tutorial", "node1")[-1][2].get("end") is True

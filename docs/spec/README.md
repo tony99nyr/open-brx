@@ -73,7 +73,7 @@ time-synced local countdown and local time-expiry end, `time_limit_s` required �
 and cannot deadlock (A5.4) · a live BLE rejoin reconciles from persisted state and never heals (A6.8) · after a
 match nodes return to KITTED (A5.9) · runway default 30 s (A5.10) · MC = Python server + local web UI, node =
 Capacitor · full `config` + bundle at lobby all-ready, then only `start` at go time · play volume 80 indoors /
-90 outdoors, try-outs 69 (2026-08-30) · a perk is its own slot (A14).
+90 outdoors (2026-08-30), try-outs and KIT at the same volume (2026-11-01) · a perk is its own slot (A14).
 
 Closed on the bench 2026-08-25 (§7r of the [archived August notebook](../archive/session-findings-2026-08.md)): a 2-min hold-across-disperse then `$SPAWN` goes
 live with config intact (5-min run still owed); the head write is silent; headset off drops the link, so link +
