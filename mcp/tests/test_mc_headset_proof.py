@@ -135,6 +135,22 @@ def test_a_gun_that_answered_with_no_config_blames_the_kit_not_the_headset():
     assert r["status"] == "red"
 
 
+def test_a_no_config_gun_is_cured_by_an_ordinary_re_push():
+    """Bench 2026-11-01 (brx1, F636): on 0.4.31 `no_config` means the gun answered but slot 0 did not load, so a
+    re-push is the first action. It must not refuse an unforced re-push (the console showed "OVER 1 BLOCKED")."""
+    from brx_mcp.mc.state import cured_by_push
+    s, net, clock, ps = mk_session(1)
+    hello(net, clock, ps[0]); beat(net, clock, ps[0])
+    clock["t"] += HEADSET_LINK_PROOF_MS; beat(net, clock, ps[0])
+    s.push_config(force=True)
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": False,
+                                                      "err": "no_config"}, clock["t"])
+    assert cured_by_push(GUN_DID_NOT_TAKE_CONFIG)
+    assert headset_row(s)["blockers"] == [GUN_DID_NOT_TAKE_CONFIG], headset_row(s)["blockers"]
+    s.push_config()                                  # unforced: raises "readiness blocks the push" if not cured
+    assert GUN_DID_NOT_TAKE_CONFIG not in headset_row(s)["blockers"], "the re-push replaces the old ack's judgement"
+
+
 def test_a_node_that_has_never_sent_a_status_reads_as_before():
     """Bound but silent: unknown, no proof, and no CONFIRMING count-up for a link nobody reported."""
     s, net, clock, ps = mk_session(1)
