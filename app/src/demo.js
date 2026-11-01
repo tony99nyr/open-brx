@@ -335,7 +335,7 @@ export function startDemo({ engine, log }) {
       tap: sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; },   // a real tap through the app's data-act delegation (A14 two-tap confirm)
       // A26: a weapon pick is DEBOUNCED 400 ms on the node; the stage is instantaneous, so flush it at once —
       // the `tryout` stage measures the try-out PANEL, which only exists after MC's tutorial reply.
-      tryout: id => { engine.requestLoadout('primary', 'weapon', id || 'smg', true); if (engine._flushPick) engine._flushPick(); },
+      tryout: id => { engine.requestLoadout('primary', 'weapon', id || 'suppressor', true); if (engine._flushPick) engine._flushPick(); },
       slowAck: ms => { ackDelayMs = ms == null ? 6000 : ms; },                       // A26: hold the row on ⟳
       // A30: the server refusal a pick earns once the match has started. MC writes the copy; the HUD prints it.
       refuse: reason => engine.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false,
@@ -421,11 +421,11 @@ export function startDemo({ engine, log }) {
       view: v => { const h = hud(); if (!h) return; h.view = v || null; h.sig = null; h.render(engine.state()); },
       rtab: t => { const h = hud(); if (!h) return; h.rtab = t; h.sig = null; h.render(engine.state()); },
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
-      twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
+      twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'suppressor' }], perk: player.loadout.perk || null }; ev.assign(); },
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
       fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'fast_hands' }; ev.assign(); },   // A14: AR + pistol + Fast Hands
       empPerk: () => { player.loadout = { ...player.loadout, perk: 'emp' }; bundle.emp = { cooldown_s: 45, duration_s: 3 }; ev.assign(); },   // the hidden EMP perk; MC ships `emp` on every bundle of a match with a holder
-      fastHands: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'fast_hands' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
+      fastHands: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'suppressor' }], perk: 'fast_hands' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
       chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },
@@ -628,20 +628,20 @@ export function startDemo({ engine, log }) {
       'kitted-ready':      [...kitted, [400, () => ev.ready(true)]],
       'loadout-primary':   [...kitted, [400, () => ev.openLoadout('primary')]],
       'loadout-secondary': [...kitted, [400, () => ev.openLoadout('secondary')]],
-      'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'smg')]],
+      'loadout-picked':    [...kitted, [400, () => ev.openLoadout('primary')], [600, () => ev.pick('primary', 'weapon', 'suppressor')]],
       'loadout-sidearms':  [[0, () => { policy.secondary.kinds = ['sidearm']; policy.secondary.allowed_weapon_ids = DEMO_WEAPONS.filter(w => w.role === 'sidearm').map(w => w.weapon_id); }], ...kitted, [400, () => ev.openLoadout('secondary')]],
       'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'fast_hands')]],
       'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
       'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
       // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.
-      'loadout-arming':    [...kitted, [400, () => ev.slowAck(9000)], [500, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:smg"]')]],
+      'loadout-arming':    [...kitted, [400, () => ev.slowAck(9000)], [500, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:suppressor"]')]],
       'loadout-info':      [...kitted, [400, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:shotgun"] .linfo')]],   // the ⓘ READS a row without equipping it
       // S50 (2026-09-17): Easy Reload LEFT the perk slot for the per-player accessibility block, so the two-tap
       // ALT-button conflict it used to raise here cannot happen from the picker any more. The fixture keeps the
       // two-weapon kit, because that is the state the conflict needed, and the screen-truth step now proves the
       // retirement instead of the warning.
       'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')]],
-      'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
+      'tryout':            [...kitted, [400, () => ev.tryout('suppressor')]],
       'lobby':             lobby,
       // Bench 2026-09-16: readied up in the kit, then the host pushed the lobby (the state Tony saw grey).
       'lobby-ready':       [...kitted, [400, () => ev.ready(true)], [700, 'config']],

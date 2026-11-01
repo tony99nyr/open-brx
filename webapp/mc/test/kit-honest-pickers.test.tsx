@@ -30,8 +30,8 @@ describe('KIT · honest pickers', () => {
     await act(async () => { sniper.click(); });
     expect(patches).toEqual([]);
     // control: a primary it can ride with stays offered
-    const smg = m.find('[aria-label^="SMG,"]')[0];
-    expect(smg.getAttribute('aria-disabled')).toBeNull();
+    const sup = m.find('[aria-label^="Suppressor,"]')[0];
+    expect(sup.getAttribute('aria-disabled')).toBeNull();
     m.unmount();
   });
 

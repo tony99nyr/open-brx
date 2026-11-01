@@ -180,6 +180,8 @@
    "role": "cqb",
    "types": ["close"],
    "class": "ballistic",
+   "hidden": true,
+   "hidden_why": "F638 (Tony, 2026-11-01: disable the SMG for today, need to fix it): its headset word queues behind the 100 ms barrel and lands for seconds after release. The SMG stays hidden until the headset-backlog fix lands.",
    "mag": 54,
    "reserve": 384,
    "reload_ms": 2500,

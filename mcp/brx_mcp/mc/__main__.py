@@ -433,7 +433,7 @@ def build(args):
         # Kit page shows every slot-2 state without anyone typing (docs/spec/loadout.md §5)
         demo_loadouts = [
             {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]},
-            {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"},
+            {"weapons": [{"weapon_id": "toxin_rifle"}], "perk": "body_armor"},   # was the SMG, hidden for F638
             {"weapons": [{"weapon_id": "burst_rifle"}]},
             {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"},
             {"weapons": [{"weapon_id": "amr"}, {"weapon_id": "energy_rifle"}]},

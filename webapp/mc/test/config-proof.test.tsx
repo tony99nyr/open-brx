@@ -325,10 +325,10 @@ describe('R2-2 · the console refuses only what the server refuses', () => {
   it('the three A36 prefixes are the SERVER\'s strings, not a paraphrase', async () => {
     const { PUSH_CURES } = await import('../src/api/derive');
     const gen = await import('../src/api/contract.gen');
-    for (const name of ['STALE_ACK_FAULT', 'ECHO_FAULT', 'POOL_FAULT', 'GUN_CONFIG_FAULT'] as const) {
+    for (const name of ['STALE_ACK_FAULT', 'ECHO_FAULT', 'POOL_FAULT', 'GUN_CONFIG_FAULT', 'GUN_DID_NOT_TAKE_CONFIG'] as const) {
       expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(gen[name])}`).toContain(gen[name]);
     }
-    expect(PUSH_CURES.length).toBe(4);
+    expect(PUSH_CURES.length).toBe(5);
   });
 
   it('a pool red left over from a RECALL does not disable the PUSH the server would accept', async () => {
