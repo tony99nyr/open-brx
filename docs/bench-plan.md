@@ -243,12 +243,16 @@ A).
    about 100 ms of a death, 5 times; each press logs its hold until 2.5 s after the death. Closes: the headset goes
    dark 5/5 and the trigger fires 5/5. Reopens: a stuck flash; try a settle gap before the respawn `$HLED` first.
    (0424 P1.4, 0422 A.10)
-23. **F542**, the ALT swallow matrix (45 min). Control: ALT on a settled life, six times, at the start and the end.
-   Six trials of each of the five conditions, at swap 500 (the two pistols), then 1105 (the AMR and the Shotgun), with
-   L2's HUD checks, the lever on a full magazine (no `$ALCD`) and the Desert Eagle's reload time (expect 2.7 to 2.8 s;
-   the AR is its control). Closes: ALT with no shot moves the HUD, a shot on the old slot snaps it back with GUN WAS
-   ON, and ALT then the lever settles on the gun's slot. Reopens: a HUD weapon that does not fire; the swap counts
-   pick the fix. (0426 P1.2, 1017 P1.2, P1.3, P2.3 and L2)
+23. **F542**, the lever after a swap reloads the slot that fired last (30 min). The AR in slot 0 and the USP in slot 1,
+   a full capture, an APK with `ae5998c0b` and its review fixes. Control: on a settled life, fire the AR, then the lever:
+   a normal AR reload. A/B, six times each: (A) fire the AR, ALT, three USP shots, ALT back, the lever with no shot: expect
+   `$ALCD,…,1` rising (the USP reloads), the HUD stays on the AR, the ammo block says PULL THE TRIGGER, THEN RELOAD, and
+   no GUN WAS ON; (B) the same, but one AR shot after the ALT back, then the lever: expect a normal AR reload
+   (`$ALCD,…,0` rising). Then the empty-weapon case: the AR empty, ALT, one USP shot, ALT back, the lever (the USP
+   reloads), one DRY trigger pull, the lever again: expect the second lever to reload the AR (`$ALCD,…,0` rising).
+   Unproven: whether a dry pull clears the gun's last-fired latch; log the slot of the second lever's `$ALCD`. Also: a
+   shot on the other slot snaps the HUD back with GUN WAS ON. Closes: A and B as expected. Reopens: a HUD weapon that
+   does not fire. (0426 P1.2, 1017 P1.2, P1.3 and L2)
 24. The Sniper's 2.2 s bolt (10 min; no open row). Control: the AMR fires its magazine with no lever between shots.
    A/B/A: AMR; the Sniper three times, then with Quick Hands and with Extended Mags; AMR. Pass: one lever pull a shot,
    a press during the bolt fires nothing, the HUD shows BOLT, and the bolt stays 2.2 s with a magazine of 1. (0426
