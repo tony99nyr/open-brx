@@ -266,7 +266,7 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 90 min)
+### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 135 min)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old
@@ -283,6 +283,20 @@ A).
    28, fn 34, fn 28). Closes: B hears 5/5 from a dead sender, field 4 = 2 answers whether the callout team is a
    constant 2, duplicates land within 600 ms, and fn 34 answers whether dead players hear callouts. Restore fn 28,
    then power-cycle both. (runbook Block 7 steps 1-10)
+101. **Energy Rifle heat per shot** on the shipped frame (20 min). Two bench reads of the same frame (t24 6, t38 150)
+   disagree: about +3 a shot and a lock after about 30 rounds (2026-09-17, `Tactix-E20D`), against about +1 a shot and
+   a lock at 100 after 76 rounds in 11.6 s (2026-09-18, `Tactix-FE30`). Arm each gun in turn with the Energy Rifle
+   from `compile.resolve()`. Control: one single shot from cold reads `$ALCD` token 5 above 0. A/B/A: gun 1, gun 2, gun
+   1, each a held full-auto burst from cold to the lock; log token 5 per round, rounds to the lock, and seconds. Closes:
+   both guns agree, and the number goes into the weapon's `caution` (it shows on the MC console) and `heat.per_shot`
+   (the balance sims). Reopens: the guns differ, so the caution states the range and the sims keep the faster lock.
+102. **F638**, the SMG headset backlog (25 min). Shooter armed with the SMG from `compile.resolve()`, the rig receiver
+   at the shooter's headset, the victim's `$HIR` stream logged. Control: the Shotgun (one pull per 400 ms) shows no
+   headset word after the last pull. A/B/A: the shipped SMG, then the SMG with t1 = 0 and t12 empty (barrel only), then
+   the shipped SMG; each a 2 s full-auto burst, then release. Log every headset word's time and the victim's 2-damage
+   hits after release. Closes: the shipped SMG keeps sending headset words about every 0.21 s for over 1 s after
+   release, and the barrel-only frame sends none. Then one more run at t14 = 250 answers whether a slower SMG drains
+   with no tail. The fix itself is Tony's call (FOLLOWUPS F638).
 
 ### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 
