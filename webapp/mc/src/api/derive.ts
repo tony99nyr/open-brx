@@ -4,7 +4,7 @@
 // shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
 // talks to the network; everything is a pure function of `State`.
 import type { EndDeliveryView, LiveRow, NodeView, State } from './types';
-import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_FAULT } from './contract.gen';
+import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, POOL_FAULT, STALE_ACK_FAULT } from './contract.gen';
 import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
@@ -121,7 +121,8 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
 /** The readiness amber `state.py readiness()` writes while the phone reports `preflight.gun_flapping`
  *  (`GUN_FLAPPING_LINE` there). The Armory card shows it in the GUN row, so it drops the list copy. */
 export { GUN_FLAPPING_LINE };   // generated from `types.py` (A14)
-export const PUSH_CURES = [STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT] as const;
+// `state.py PUSH_CURES`: bench 2026-11-01 added GUN_DID_NOT_TAKE_CONFIG (a no_config gun answered; re-push first, F636)
+export const PUSH_CURES = [STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
 export { STALE_ACK_FAULT, GUN_CONFIG_FAULT };

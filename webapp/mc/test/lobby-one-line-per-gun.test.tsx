@@ -72,7 +72,18 @@ describe('LOBBY after a push: one line per gun, one summary, the override', () =
     expect(override?.textContent, 'the HOST OVERRIDE stays').toContain(bad[0].display);
     const arm = (m.find('[data-lobby-primary] button') as HTMLButtonElement[])[0];
     expect(arm.disabled, 'ARM stays refused').toBe(true);
-    expect(arm.title, 'and says why on its title, naming a gun').toMatch(/GUN-|REAPER|VIPER/);
+    expect(arm.title, 'and says why on its title: the re-push that cures them').toMatch(/2 guns need config re-pushed: RE-PUSH CONFIG/);
+    m.unmount();
+  });
+
+  it('a no_config gun is cured by an ORDINARY re-push, never "OVER N BLOCKED" (state.py PUSH_CURES)', async () => {
+    const { d, state } = await noConfigLobby(2);
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const repush = m.find('[data-repush="1"]')[0] as HTMLButtonElement | undefined;
+    expect(repush, 'RE-PUSH is on screen').toBeTruthy();
+    expect(repush!.textContent).not.toContain('BLOCKED');
+    expect(repush!.getAttribute('data-repush-force'), 'and it is not about to force').toBeNull();
+    expect(repush!.disabled).toBe(false);
     m.unmount();
   });
 

@@ -328,7 +328,9 @@ KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 # `all_acked()` was true and the whistle blew on a gun that had just said it is carrying something
 # else. The pool fault is deliberately not a START gate: it can only be earned
 # in LIVE, by which time this game's whistle has already gone.
-PUSH_CURES = (STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT)
+# Bench 2026-11-01 (brx1): GUN_DID_NOT_TAKE_CONFIG too. On 0.4.31 a `no_config` ack is a gun that answered with slot 0
+# not loaded (F636), so a re-push is its first action; counting it as uncurable made the console offer "OVER N BLOCKED".
+PUSH_CURES = (STALE_ACK_FAULT, ECHO_FAULT, POOL_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG)
 
 # R2-4/R2-6: the same question asked where the pool can only SUGGEST an answer. Both are AMBER --
 # they ride in `ReadinessRow.ambers`, they gate nothing, and their instruction is the same one the
@@ -338,7 +340,7 @@ _POOL_ARMOR_ADVISORY = "GUN ARMOR ABOVE CONFIG"
 
 
 def cured_by_push(blocker: str) -> bool:
-    """Is this readiness blocker one of the four proof prefixes a re-push replaces?"""
+    """Is this readiness blocker one a re-push replaces (the four proofs, and a `no_config` ack)?"""
     return blocker.startswith(PUSH_CURES)
 
 
