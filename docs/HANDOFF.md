@@ -22,13 +22,13 @@ Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
 **State (2026-11-01):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
-on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. The Sunday AM
-bench ran on 2026-11-01; its results are in [`bench-plan.md`](bench-plan.md) and the log. The local gate splits
+on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. The 2026-11-01
+bench (morning and afternoon) is recorded in [`bench-plan.md`](bench-plan.md) and the log. The local gate splits
 Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
-**Next:** the F542 swap fix (confirm the ALT swap from the gun's `$ALCD`, and a larger link frame ring) is on branch
-`fix/f542-alt-confirm`; it lands only when brx1 says (the 0.4.31 cut). Then NEXT in `bench-plan.md`. R4/T5 read-only research is authorised;
+**Next:** F575: rerun the balance review for 73/14 against 70/16 on the measured cooling branch, then Tony picks.
+Then NEXT in `bench-plan.md`. R4/T5 read-only research is authorised;
 flashing needs a decision first.
-**Blocked:** F575 on NEXT step 3's heat read, then Tony.
+**Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
 **State (2026-10-27):** everything is landed or in the land queue:
 - **Balance 0.4.31:** `11107dbdf`.
