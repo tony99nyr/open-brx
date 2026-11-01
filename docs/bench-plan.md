@@ -63,6 +63,22 @@ New rows from the morning: F636 (`no_config` after any push but the first), F637
 F638 (the SMG backlog) and F639 (a game piece pick resets the loadout exclusions). MC now ends an open try-out
 before a push (`4b08223bd`).
 
+**Results, 2026-11-01 afternoon (0.4.31 and 0.4.32, MC from main, brx1 recording):**
+
+| step | result |
+|---|---|
+| AM6 again (Wi-Fi and data off at the whistle) | pass: at 2 min 03 s the result released final with the Pixel 10 Pro listed as awaited, MC kept retrying, and with data back on the phone synced and showed FINAL |
+| F636 | confirmed fixed: a try-out then a push acked ok on both guns, and so did later pushes |
+| NEXT 20 (F533) | partial: 1 of 5 relink runs, healed |
+| NEXT 21 (F532) | pass |
+| NEXT 22 (F530) | pass, 6 of 6 |
+| NEXT 3 (F226, F575) | done: the lock delays the reload; the gun cools while it fires |
+| NEXT 7 (B26) | not run as written; F641 is new |
+| NEXT 37 | AR and Shotgun done; the USP is left |
+| NEXT 101 (F638) | partial and confounded |
+| NEXT 102 (Energy Rifle heat) | done: 76 rounds to the lock on both guns |
+| F542 | a new model: after ALT the lever reloads the slot fired last, until a shot on the new weapon |
+
 ### Tier 1: gameplay rows by value per minute (about 95 min)
 
 Each step is the NEXT step it names, run as NEXT writes it. Steps 3 and 7 move to the laptop MCP (Group A's rig);
@@ -148,11 +164,8 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    `$AMMO,0,300,384,1,*` echoes 384. A/B/A: shipped, then t17 1200 with t40 600, then t17 2400 with t40 1200, then
    shipped. Closes: each echo reads the reserve sent and falls by the rounds loaded; then raise `RESERVE_PROVEN_MAX`
    in compile.py. Reopens: a 600 echo after `$AMMO` alone means `$AMMO` clamps to t17. (0426 P2.2, 1017 P1.0)
-3. **F226**, the Charge Rifle below one charge, with F575's heat read (25 min). Control: from exactly 10 rounds a
-   charge fires. A/B/A: 10 rounds; about 4 rounds, hold a charge, pull the lever twice, read the `$ALCD` magazine and
-   heat; refill with the recipe's `$AMMO,0,...` and fire 10 again. For F575: a full charge, then 6 fast taps, heat
-   after each round, 3 times. Closes F226: the read says whether the reload is refused or only delayed by the lockout.
-   The heat table goes to Tony (F575: keep 70/16 or 73/14). (0426 P1.5)
+3. **F226** and F575's heat read: done 2026-11-01 (log). The lockout delays the reload, it does not refuse it; the
+   heat table is in F575.
 4. **F562**, is t14 a floor between pulls? (5 min). Control: the Assault Rifle held fires about 10 rounds a second.
    A/B/A: the AMR held for 10 s, taps at 250 ms, taps at 400 ms, held again. Closes: 250 ms taps give no more rounds
    than 400 ms taps. Reopens: they give more, so the player-paced TTK (Balance rules row 14) goes back to brx2. (1017
@@ -167,7 +180,8 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    re-equip and pull. Closes part 2: the `$ALCD` slot after the write says whether `$AMMO,0` moves the trigger.
    (FOLLOWUPS F592)
 7. **B26**, a gun with no headset in local play (5 min). Control: the same gun with its headset fires. A/B/A: headset
-   on, removed, on. Closes: fires or refuses; the answer updates `docs/manual/fix.md` "Won't fire" step 1. (0422 A.19)
+   on, removed, on. Closes: fires or refuses; the answer updates `docs/manual/fix.md` "Won't fire" step 1. (0422 A.19) **→ 2026-11-01:** not run as written (local play). An app game on 0.4.32 showed a headset dropped mid-match does
+   not stop the barrel for at least 3 s: that is F641, step 107.
 8. **S10**, the L10 hold (5 min, eyes). Control: on a spawned gun with the strip blanked (`$GLED,,,,5,,,*`),
    `$GLED,3,3,9,0,1,,*` paints two dim green segments and a dark third. A/B/A: the paint; each of the four frames of
    0422 A.20 sent one at a time; the paint re-read after each. Closes: it holds 60 s and survives all four. Reopens: a
@@ -234,15 +248,9 @@ A).
    `window.brx.link.relink()` about 1 s before go-live, then 3 with the phone about 10 m from its gun; control. Closes
    F533: each start that logs `write err` fires at go-live or heals once, and no life starts at 0/0. F416: a lost
    write logs the re-send and a closing match. A start with no `write err` tests neither: say so. (0426 P1.3, 0424
-   P1.1, 0422 C.4b)
-21. **F532**, a power-cycle mid-match (10 min). Control: a life with no power-cycle. A/B/A: control; power-cycle while
-   alive (no death, it fires at its pools after the relink); kill, power-cycle at once, let the timed respawn run with
-   the gun off, relink (the respawn fires and the headset lights); control. Reopens: a death booked on the reboot, or
-   a respawn with no weapon. (0426 P1.3)
-22. **F530**, five fast operator respawns (15 min). Control: a timed respawn before and after. B: FORCE RESPAWN within
-   about 100 ms of a death, 5 times; each press logs its hold until 2.5 s after the death. Closes: the headset goes
-   dark 5/5 and the trigger fires 5/5. Reopens: a stuck flash; try a settle gap before the respawn `$HLED` first.
-   (0424 P1.4, 0422 A.10)
+   P1.1, 0422 C.4b) **→ 2026-11-01:** 1 of 5 relink runs done (healed; log). Run the other 4 and the 3 far-phone runs.
+21. **F532**: done 2026-11-01, PASS (log; F532 closed, its other items are F640).
+22. **F530**: done 2026-11-01, PASS 6 of 6 (log; F530 closed).
 23. **F542**, the lever after a swap reloads the slot that fired last (30 min). The AR in slot 0 and the USP in slot 1,
    a full capture, an APK with `ae5998c0b` and its review fixes. Control: on a settled life, fire the AR, then the lever:
    a normal AR reload. A/B, six times each: (A) fire the AR, ALT, three USP shots, ALT back, the lever with no shot: expect
@@ -309,7 +317,7 @@ A).
    Shotgun (also two words). Read: the time and count of headset words after release. Then the SMG with t1 = 0 and t12
    empty (barrel only: expect no words after release) and the SMG at t14 = 250 (expect no tail), the two fix candidates.
    The desk cause: the shooter's headset spaces words at least 200 ms apart, and the SMG fires every 100 ms. The
-   FOLLOWUPS row holds the rest; the fix itself is Tony's call. (FOLLOWUPS F638)
+   FOLLOWUPS row holds the rest; the fix itself is Tony's call. (FOLLOWUPS F638) **→ 2026-11-01:** partial and confounded (log). Run again with long holds on a target that stays alive.
 102. **Energy Rifle heat per shot** on the shipped frame (20 min). Two bench reads of the same frame (t24 6, t38 150)
    disagree: about +3 a shot and a lock after about 30 rounds (2026-09-17, `Tactix-E20D`), against about +1 a shot and
    a lock at 100 after 76 rounds in 11.6 s (2026-09-18, `Tactix-FE30`). Arm each gun in turn with the Energy Rifle
@@ -333,6 +341,10 @@ A).
 106. **F575**, the Charge Rifle lockout length (10 min, one gun). Drive heat to the lock (charges back to back), time
    from the lock to the next shot that fires, three times. Closes: whether `lockout_ms` 4800 still holds. (FOLLOWUPS
    F575)
+107. **F641**, a headset dropped mid-match (15 min). A phone-hosted TDM game. Control: a hit with the shooter's
+   headset on lands both words. B: switch the shooter's headset off mid-match, fire one round every 5 s for 60 s at a
+   live target, and log each `$HIR` and the phone's headset state. Then the headset on again. Read: when, if ever, the
+   gun stops firing or landing. The manual waits for this. (FOLLOWUPS F641)
 
 ### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 
@@ -341,10 +353,11 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 36. **F395** and **F21**, glances at install (5 min, eyes; the Pixel 4 and the Pixel 10 too). No control: both close
    on sight. F395: the first cold launch shows the plain background, no stretched logo, on every phone. F21: nothing
    sits under the status bar or the display corner on the Pixel 4 and the Pixel 10. (FOLLOWUPS F395, F21)
-37. The F579 weapons on the gun (10 min; no open row). Control: the AR's `$HIR` reads 8 a round. A/B/A: AR; the
+37. The F579 weapons on the gun (10 min; no open row). Control: the AR's `$HIR` reads 9 a round (the catalogue's value; the 2026-11-01 bench read 9). A/B/A: AR; the
    Shotgun (`$HIR` 19, then 20 about 88 ms later; three pulls kill a full Standard target) and the USP (10 a hit,
    magazine 12); AR. Taps for 5 s: no two rounds closer than t14 (USP 190 ms, Shotgun 400 ms). Ask Tony how each
-   feels. A mismatch goes back to the F579 caveat in balance-decisions.md. (0426 P1.4)
+   feels. A mismatch goes back to the F579 caveat in balance-decisions.md. (0426 P1.4) **→ 2026-11-01:** AR 9 a hit; Shotgun 19 + 20 per pull, 30 to 74 ms apart, and 3 pulls killed a full 115. The USP
+   is left (F542 was in the way).
 38. **F438**, the self-hit restore path (15 min). Control: the other player's hit moves the victim's pools. A/B/A: 5
    sniper shots at a wall 1 to 2 m away in TDM, then FFA, then TDM; log every `$HIR` shooter id. Closes: an own word
    comes back and logs `self-hit: own shot ... restored` (or revived), with no hit or death on the HUD, MC or the
