@@ -75,6 +75,7 @@ export function _live(st) {
           : overheating ? `<span class="reload hot solid"><span class="unskew">${starved ? 'NOT ENOUGH ENERGY' : 'OVERHEAT'}</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
           : st.reloadFailed ? `<span class="reload solid"><span class="unskew">RELOAD DID NOT TAKE</span></span>`   // F277: before RECHARGE, a failed recharge must say so
+          : st.fireFirst ? `<span class="reload solid"><span class="unskew">FIRE ONCE, THEN RELOAD</span></span>`   // F542: the lever reloaded the slot fired last
           : energyLow ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
           : lowMag && !st.bolt ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}

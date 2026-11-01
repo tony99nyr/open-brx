@@ -4284,7 +4284,6 @@ export class Engine {
     }
     const live = this.am.liveAmmo();
     this.stunned = { at: now, until: now + ms, ammo: live };
-    if (this.am.reloading) this.am.reloading.blind = true;   // F542 review: its `$ALCD`s are dropped, so its silence proves nothing
     // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
     // never repeated on an extend above, and never per tick (F274).
     this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`);
@@ -7736,7 +7735,10 @@ export class Engine {
       // F277 (field 2026-10-17): a reload that timed out with no gain is said on the ammo block for RELOAD_FAILED_SHOW_MS
       // review: only on the slot it was about, and a shot since retires it (the player has moved on)
       reloadFailed: (o => !!(o && !o.ok && o.why === 'timeout' && this.alive && !this.am.reloading && now - o.at < RELOAD_FAILED_SHOW_MS
-        && o.slot === this.activeSlot && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.reloadOutcome),
+        && o.slot === this.activeSlot && o.lastFired == null && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.reloadOutcome),
+      // F542: the lever reloaded the slot that fired last, not the weapon in hand; FIRE ONCE, THEN RELOAD on the ammo block
+      fireFirst: (o => !!(o && this.alive && o.life === this._lifeSeq && !this.am.reloading && now - o.at < RELOAD_FAILED_SHOW_MS
+        && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.fireFirst),
       held: this.heldMs(), lastButton: this.lastButton,
       hits: this.score ? this.score.hits : null,
       board: (() => { const s = this.config && this.config.scoring; const b = this.score ? this.score.board : null; const killScored = !!(s && (s.win_by == null || s.win_by === '' || s.win_by === 'kills')); return !killScored && b && typeof b === 'object' ? { ...b, cap: null } : b; })(),
