@@ -2,7 +2,7 @@
 
 A `$WEAP` with t1 = 2 (gun AND headset) relays a second word to the SHOOTER's own headset on every shot, and the headset
 spaces its words at least 200 ms apart (`protocol/brx-protocol.md`, the t12/t13/t42 row). The SMG fires every 100 ms,
-so its headset words queue: after release the victim kept taking the 2-damage word about every 0.21 s for about 2 s,
+so its headset words queue: after release the victim kept taking the 2-damage word about every 0.21 s for 2 to 3 s,
 even across a respawn (MC session 20261101T172409Z-8403e3). The Shotgun (400 ms) and the Rocket Launcher (1000 ms)
 are slower than the headset and drain.
 
@@ -20,11 +20,13 @@ OPEN_EXCEPTIONS = {"smg": "F638"}
 def _dual_cadences():
     c = Compiler()
     out = {}
-    for w in c.weapon_catalog():
+    for w in c.catalog._rows:                                 # hidden rows too: a saved roster can still ship one
         s = c.catalog.resolve(w["weapon_id"], 0, environment="outdoor").split(",")
         tok = lambda n: s[n + 1] if n + 1 < len(s) else ""   # noqa: E731
         if tok(1) in ("2", "4"):                              # GunAndHead, DoubleGunAndHead
-            out[w["weapon_id"]] = int(tok(14) or 0)
+            repeat = int(tok(38) or 0)                        # t38 = N >= 2 sends the word N + 1 times a shot
+            words = repeat + 1 if repeat >= 2 else 1
+            out[w["weapon_id"]] = int(tok(14) or 0) // words  # ms of cadence per headset word
     return out
 
 
