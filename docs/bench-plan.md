@@ -1,6 +1,6 @@
 # Bench plan: every open bench step, and the desk work that gates it
 
-Updated: 2026-10-30. **Open this file first at the bench.** How a live bench run works with Tony (who drives
+Updated: 2026-11-01. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
 The next bench is the Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)): gameplay first,
@@ -23,7 +23,7 @@ where NEXT points. Tier 0 and Tier 1 together take about 3 h. Every phone runs 0
 | P1 | Fast-forward the main checkout to `origin/main` (`git merge --ff-only`). The Windows venv runs that checkout, so steps 3 and 33 need it. First check that no session has uncommitted work there. | an agent, on Tony's go |
 | P2 | Check the APK: `sha256sum` of `brx-companion-0.4.30-android-release.apk` (from the local 0.4.30 release worktree, `webapp/download/`) reads `2ac7e64e…`, as its build.json says. | an agent |
 | P3 | Install that APK on both player Pixels and on the grey Pixel (the hill). Open the app once; its build reads 0.4.30. | Tony, or an agent over wireless adb if Tony says so |
-| P4 | Start MC from the main checkout, detached, with `pnpm mc -- --bench-volume 65`. Check that the banner shows the main sha and the BENCH VOLUME line. | an agent |
+| P4 | Start MC from the main checkout, detached, with `pnpm mc --bench-volume 65` (not `pnpm mc -- ...`: `scripts/mc.mjs` passes a bare `--` on to MC). Check that the banner shows the main sha and the BENCH VOLUME line. | an agent |
 | P5 | Charge every gun, headset and phone. Pick two guns and their headsets (Tactix-FE30 and Tactix-9498, as Group E pins them). | Tony |
 | P6 | `$VOL,65` on every gun for the laptop MCP steps (the bench-session skill). | an agent |
 
@@ -46,6 +46,22 @@ NO-GO for every mode when a phone cannot link its gun (AM2), or a match will not
 (AM4). A failed AM5 removes KOTH only: play TDM or FFA. A failed AM6 does not stop the game: the host reads the MC
 board and presses FINALISE. A weapon that fails AM3 comes out of the kits. Inaudible play at 90 (AM7) needs Tony's
 call before any game.
+
+**Results, 2026-11-01 (0.4.30, brx1 recording):** GO; the afternoon game ran.
+
+| step | result |
+|---|---|
+| AM1 | pass |
+| AM2 | pass: about 1 s to link, first try on both phones |
+| AM3 | SMG disabled for the day (F638, its headset emitter backlog); the USP swap diverged twice in about 10 swaps (F542) |
+| AM4 | pass: 9 kills and 9 deaths, each booked once, result not provisional |
+| AM5 | pass: capture, contest, no banking while the owner was down; hill red 80 s, blue 51 s. The hill radius stayed at the default -78 dBm (Tony: "a good level") |
+| AM6 | partial: the result reached the phone in 26 s over the mobile backhaul, so the 2 min wait never ran. Run again with mobile data off too |
+| AM7 | pass: 90 is audible outdoors |
+
+New rows from the morning: F636 (`no_config` after any push but the first), F637 (a second `$START` on a started gun),
+F638 (the SMG backlog) and F639 (a game piece pick resets the loadout exclusions). MC now ends an open try-out
+before a push (`4b08223bd`).
 
 ### Tier 1: gameplay rows by value per minute (about 95 min)
 
@@ -284,9 +300,13 @@ A).
    constant 2, duplicates land within 600 ms, and fn 34 answers whether dead players hear callouts. Restore fn 28,
    then power-cycle both. (runbook Block 7 steps 1-10)
 
-#### Group D, added 2026-11-01
-
-101. **Energy Rifle heat per shot** on the shipped frame (20 min). Two bench reads of the same frame (t24 6, t38 150)
+101. **F638**, the SMG headset backlog (25 min). The rig receiver at the target's headset. Control: a
+   single-emitter weapon stops its words at release. A/B/A: that weapon, the SMG held for 3 s, that weapon; then the
+   Shotgun (also two words). Read: the time and count of headset words after release. Then the SMG with t1 = 0 and t12
+   empty (barrel only: expect no words after release) and the SMG at t14 = 250 (expect no tail), the two fix candidates.
+   The desk cause: the shooter's headset spaces words at least 200 ms apart, and the SMG fires every 100 ms. The
+   FOLLOWUPS row holds the rest; the fix itself is Tony's call. (FOLLOWUPS F638)
+102. **Energy Rifle heat per shot** on the shipped frame (20 min). Two bench reads of the same frame (t24 6, t38 150)
    disagree: about +3 a shot and a lock after about 30 rounds (2026-09-17, `Tactix-E20D`), against about +1 a shot and
    a lock at 100 after 76 rounds in 11.6 s (2026-09-18, `Tactix-FE30`). Arm each gun in turn with the Energy Rifle
    from `compile.resolve()`. Control: one single shot from cold reads `$ALCD` token 5 above 0. A/B/A: gun 1, gun 2, gun
@@ -294,13 +314,6 @@ A).
    both guns agree, and the number goes into the weapon's `caution` (it shows on the MC console) and `heat.per_shot`
    (the balance sims). Reopens: the guns differ, so the caution states the range and the sims keep the faster lock.
    (post-mvp F229)
-102. **F638**, the SMG headset backlog (25 min). Shooter armed with the SMG from `compile.resolve()`, the rig receiver
-   at the shooter's headset, the victim's `$HIR` stream logged. Control: the Shotgun (one pull per 400 ms) shows no
-   headset word after the last pull. A/B/A: the shipped SMG, then the SMG with t1 = 0 and t12 empty (barrel only), then
-   the shipped SMG; each a 2 s full-auto burst, then release. Log every headset word's time and the victim's 2-damage
-   hits after release. Confirms the cause: the shipped SMG keeps sending headset words about every 0.21 s for over 1 s
-   after release, and the barrel-only frame sends none. Then one run at t14 = 250. Pass for a candidate fix: no
-   headset hit lands more than one beat after release. The fix itself is Tony's call (FOLLOWUPS F638).
 
 ### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 
