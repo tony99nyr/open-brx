@@ -141,6 +141,7 @@ export const ENERGY_REFILL_MAX_MS = 3900;
 const ALT_LATE_ROUND_MS = 250;
 // E10 review: a rise on the other slot this soon after a lever pull is that pull's reload, so it is news about the slot.
 const GUN_WAS_LEVER_MS = 6000;
+const FIRE_FIRST_SHOW_MS = 3000;   // F542: how long the ammo block says PULL THE TRIGGER, THEN RELOAD (as RELOAD DID NOT TAKE)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 
 export class Ammo {
@@ -340,7 +341,7 @@ export class Ammo {
     // own slot and never moves the trigger, the ALT pointer or the ammo block. A round still moves the trigger below.
     const ls = this.lastShot;
     const lastFiredReload = !oldSlotReload && !ownEcho && !lcd && prev != null && mag > prev && slot < 2 && this.host.activeSlot < 2
-      && slot !== this.host.activeSlot && !!ls && ls.life === this.host.lifeSeq && ls.slot === slot;
+      && slot !== this.host.activeSlot && !!ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot === slot;
     if (lastFiredReload && this.reloading && this.reloading.slot !== slot) {
       // The phone opened its takeover on the weapon in hand; the gun reloaded the last-fired slot. End it there, cleanly.
       const r = this.reloading;
@@ -373,7 +374,7 @@ export class Ammo {
     // the RELOAD nag: the magazine came back, so the dry spell is over and the RELOAD nag counts from one again. Keyed on
     // the gun's own rising count rather than on `endReload`, because that is what "the player reloaded" means
     // on the wire -- a shell-by-shell shotgun chain, a swap onto a loaded slot and a spawn refill all land here.
-    if (prev != null && mag > prev) this.dryPulls = 0;
+    if (prev != null && mag > prev && !lastFiredReload && !oldSlotReload) this.dryPulls = 0;   // F542 review: another slot's reload leaves the weapon in hand dry
     if (oldSlotReload) {
       this.prevAmmo[slot] = mag;
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
@@ -471,6 +472,7 @@ export class Ammo {
     const slot = this.host.activeSlot;
     const reserve = this.prevReserve[slot];
     if (!(reserve > 0)) return;
+    if (this.fireFirstShown()) return;   // F542 review: PULL THE TRIGGER, THEN RELOAD is the advice for these pulls; no RELOAD over it
     this.dryPulls = (this.dryPulls || 0) + 1;
     if (this.dryPulls < RELOAD_NAG_FIRST || (this.dryPulls - RELOAD_NAG_FIRST) % RELOAD_NAG_EVERY !== 0) return;
     this.host.log(`dry pull ${this.dryPulls} on an empty magazine with ${reserve} in reserve: RELOAD`, 'li');
@@ -596,11 +598,11 @@ export class Ammo {
     else if (!gained) this.host.log(`reload did NOT take (${why}) — mag still ${r.mag}`, 'le');
     else if (!this.reloadOutcome.filled) this.host.log(`reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
     // E10 review: GUN WAS ON under the RELOAD takeover is never seen and holds the lanes, so a moved reload shows it at its end
-    if (r.gunWas && why !== 'dropped' && why !== 'swapped') this.gunWasOn(r.slot);
+    if (r.gunWas && why !== 'dropped' && why !== 'swapped' && why !== 'last_fired') this.gunWasOn(r.slot);
     // F542: a lever the gun spent on the full LAST-FIRED slot is silent, so the takeover on the weapon in hand times out.
     // That is no failed reload: the hint says why, in place of RELOAD DID NOT TAKE (engine.js `state().reloadFailed`).
     const ls = this.lastShot;
-    if (why === 'timeout' && !gained && r.slot === this.host.activeSlot && r.slot < 2 && ls && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== r.slot) {
+    if (why === 'timeout' && !gained && r.slot === this.host.activeSlot && r.slot < 2 && ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== r.slot) {
       this.reloadOutcome.lastFired = ls.slot;
       this.fireFirst = { slot: ls.slot, at: this.host.now(), life: this.host.lifeSeq };
     }
@@ -638,9 +640,21 @@ export class Ammo {
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */
   equipped(slot, mag, res) {
     if (this.reloading) this.endReload('swapped');
+    // F542 review: after a phone equip the gun's last-fired latch is unknown, so the last-fired reload rule waits for a fresh
+    // round. A switch-back from a heavy then an ALT the gun ignores (F436) must still snap back with GUN WAS ON on the lever.
+    // The round itself stays: the shot-ready cue and the ALT gate still read it (golden trace `ammo-heavy-alt`).
+    if (this.lastShot) this.lastShot = { ...this.lastShot, afterEquip: true };
     this.switching = null; this.host.setActiveSlot(slot); this.host.clearPull();
     this.altEvidencePending = null;
     this.publish(slot, mag, res);
+  }
+  /** F542: is PULL THE TRIGGER, THEN RELOAD on the ammo block? The lever reloaded the slot that fired last, not the weapon
+   *  in hand: while alive, in that life, on another slot than the trigger's (a lever inside the swap back to the last-fired
+   *  slot reloads the weapon the swap moves to), with no takeover open, for FIRE_FIRST_SHOW_MS, and until a round. PURE. */
+  fireFirstShown(now = this.host.now()) {
+    const o = this.fireFirst;
+    return !!(o && this.host.alive && o.life === this.host.lifeSeq && o.slot !== this.host.activeSlot && !this.reloading
+      && now - o.at < FIRE_FIRST_SHOW_MS && !(this.lastShot && this.lastShot.at > o.at));
   }
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
   altPressed() {

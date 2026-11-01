@@ -7736,9 +7736,8 @@ export class Engine {
       // review: only on the slot it was about, and a shot since retires it (the player has moved on)
       reloadFailed: (o => !!(o && !o.ok && o.why === 'timeout' && this.alive && !this.am.reloading && now - o.at < RELOAD_FAILED_SHOW_MS
         && o.slot === this.activeSlot && o.lastFired == null && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.reloadOutcome),
-      // F542: the lever reloaded the slot that fired last, not the weapon in hand; FIRE ONCE, THEN RELOAD on the ammo block
-      fireFirst: (o => !!(o && this.alive && o.life === this._lifeSeq && !this.am.reloading && now - o.at < RELOAD_FAILED_SHOW_MS
-        && !(this.am.lastShot && this.am.lastShot.at > o.at)))(this.am.fireFirst),
+      // F542: the lever reloaded the slot that fired last, not the weapon in hand; PULL THE TRIGGER, THEN RELOAD on the ammo block
+      fireFirst: this.am.fireFirstShown(now),
       held: this.heldMs(), lastButton: this.lastButton,
       hits: this.score ? this.score.hits : null,
       board: (() => { const s = this.config && this.config.scoring; const b = this.score ? this.score.board : null; const killScored = !!(s && (s.win_by == null || s.win_by === '' || s.win_by === 'kills')); return !killScored && b && typeof b === 'object' ? { ...b, cap: null } : b; })(),

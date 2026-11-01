@@ -1000,7 +1000,7 @@ class GunStage:
         self._last_shot_life: int | None = None    # ammo.js `lastShot.life`: the life of the last round from slot 0 or 1
         self._last_shot_slot: int | None = None    # ammo.js `lastShot.slot` (F542: the lever reloads it until the new weapon fires)
         self._lever_at: float | None = None        # ammo.js `leverAt`: the last lever pull while live and alive, refused or not
-        self._fire_first: dict | None = None       # ammo.js `fireFirst` (F542): {slot, at, life} behind FIRE ONCE, THEN RELOAD
+        self._fire_first: dict | None = None       # ammo.js `fireFirst` (F542): {slot, at, life} behind PULL THE TRIGGER, THEN RELOAD
         self._burst_reached: dict | None = None    # engine.js `_burstReached`: {life, at} when this life's burst reached the gun
         self._cure: dict | None = None
         self._cure_life: int | None = None
@@ -2513,6 +2513,13 @@ class GunStage:
         if self._shot_due_at is None:
             self._shot_due_at = self.now()
 
+    def _fire_first_shown(self) -> bool:
+        """ammo.js `fireFirstShown` (F542): PULL THE TRIGGER, THEN RELOAD while alive, in the life it was set, on another slot
+        than the trigger's, with no takeover open, for FIRE_FIRST_SHOW_S. A round clears `_fire_first` (`_on_ammo`)."""
+        o = self._fire_first
+        return bool(o and self.alive and o["life"] == self._life_queued and o["slot"] != self.active_slot
+                    and not self.reloading and self.now() - o["at"] < self.FIRE_FIRST_SHOW_S)
+
     def _dry_pull(self) -> None:
         """ammo.js `dryPull`: the RELOAD nag (Tony, bench 2026-09-18). Reached from `_await_shot` ONLY, below its stand-down
         table, so overheat / a swap / a reload / a stun / being down have all returned already and the empty
@@ -2523,6 +2530,8 @@ class GunStage:
         reserve = self._prev_reserve.get(self.active_slot)
         if not (reserve and reserve > 0):
             return
+        if self._fire_first_shown():
+            return   # F542 review (ammo.js `dryPull`): PULL THE TRIGGER, THEN RELOAD is the advice for these pulls
         self._dry_pulls += 1
         if self._dry_pulls < RELOAD_NAG_FIRST or (self._dry_pulls - RELOAD_NAG_FIRST) % RELOAD_NAG_EVERY != 0:
             return
@@ -5530,8 +5539,8 @@ class GunStage:
         # the RELOAD nag (ammo.js `onAmmo`): the magazine came back, so the dry spell is over and the RELOAD nag counts
         # from one again. Keyed on the gun's own rising count rather than on `_end_reload`, because that is what
         # "the player reloaded" means on the wire -- a shell-by-shell chain and a swap onto a loaded slot too.
-        if prev is not None and mag > prev:
-            self._dry_pulls = 0
+        if prev is not None and mag > prev and not last_fired_reload and not old_slot_reload:
+            self._dry_pulls = 0   # F542 review (ammo.js `onAmmo`): another slot's reload leaves the weapon in hand dry
         if old_slot_reload and r0 is not None:
             self._prev_ammo[slot] = mag
             if reserve is not None:
@@ -6545,6 +6554,7 @@ class GunStage:
     # F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs ~1.22-1.29x the catalog reload_ms (AR 1701 vs
     # 1400, burst 2160 vs 1700, charge 3220 vs 2500), so the ceiling is flat-OR-proportional, whichever is larger.
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
+    FIRE_FIRST_SHOW_S = 3.0  # ammo.js FIRE_FIRST_SHOW_MS: how long the ammo block says PULL THE TRIGGER, THEN RELOAD
     GUN_WAS_LEVER_S = 6.0  # ammo.js GUN_WAS_LEVER_MS: a rise this soon after a lever is that lever's reload
     ALT_LATE_ROUND_S = 0.25  # ammo.js ALT_LATE_ROUND_MS (F542 cause 2): an old-slot round this long after ALT was not in flight
     RELOAD_GRACE_S = 0.6
@@ -7238,7 +7248,7 @@ class GunStage:
                       "beacon": dict(self.beacon) if self.beacon else None,
                       "pool_stale": self.pool_stale(),   # F208 (engine.js `state().poolStale`)
                       # F542 (engine.js `state().fireFirst`): the last lever reloaded the slot fired last; null after a shot
-                      "fire_first": dict(self._fire_first) if self._fire_first and self._fire_first["life"] == self._life_queued else None,
+                      "fire_first": self._fire_first_shown(),
                       "cure": dict(self.cure) if self.cure else None,   # F264 (engine.js `state().cure`): null, or {verdict, at}
                       "hill": dict(self.hill) if self.hill else None,
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.

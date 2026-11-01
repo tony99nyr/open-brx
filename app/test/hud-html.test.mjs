@@ -42,16 +42,16 @@ test('the whole HUD (patchers, moments, lanes, scores, diagnostics, picker rows)
   for (const name of Object.keys(golden)) assert.deepEqual(actual[name], golden[name], name);
 });
 
-// F542 last-fired (Tony on 0.4.32): the lever reloaded the slot that fired last, so the ammo block says FIRE ONCE, THEN
-// RELOAD, in the same prompt slot and style as RELOAD DID NOT TAKE. A down player sees no live ammo block, so no hint.
-test('F542: the ammo block shows FIRE ONCE, THEN RELOAD while state().fireFirst is set, and not without it', () => {
+// F542 last-fired (Tony on 0.4.32): the lever reloaded the slot that fired last, so the ammo block says PULL THE TRIGGER,
+// THEN RELOAD, in the same prompt slot and style as RELOAD DID NOT TAKE. A down player sees no live ammo block, so no hint.
+test('F542: the ammo block shows PULL THE TRIGGER, THEN RELOAD while state().fireFirst is set, and not without it', () => {
   const priorDocument = globalThis.document;
   globalThis.document = { activeElement: null, querySelector: () => null };
   try {
     const base = fixtures.live;
     const on = renderHtml({ ...base, state: { ...base.state, fireFirst: true } }).screen;
-    assert.match(on, /<span class="reload solid"><span class="unskew">FIRE ONCE, THEN RELOAD<\/span><\/span>/);
+    assert.match(on, /<span class="reload solid"><span class="unskew">PULL THE TRIGGER, THEN RELOAD<\/span><\/span>/);
     const off = renderHtml({ ...base, state: { ...base.state, fireFirst: false } }).screen;
-    assert.doesNotMatch(off, /FIRE ONCE/);
+    assert.doesNotMatch(off, /PULL THE TRIGGER/);
   } finally { globalThis.document = priorDocument; }
 });
