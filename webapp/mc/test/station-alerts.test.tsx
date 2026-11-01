@@ -112,10 +112,17 @@ describe('StationAlerts — the STATION #N attention lines', () => {
     expect(m.text()).not.toContain('needs attention');
     const note = m.find('[data-station-note]');
     expect(note.length, 'the strength edit is a note').toBe(1);
-    expect(note[0].getAttribute('data-sev')).toBe('neutral');
     expect(note[0].textContent).toContain('Phone b963');
     expect(note[0].textContent).toContain('STRENGTH EDITED ON STATION MEDIUM → HIGH');
     expect(note[0].textContent, 'no warning glyph on a note').not.toContain('▲');
+    m.unmount();
+  });
+
+  it('a line the catalogue does not know stays an amber alert chip, never a quiet note', async () => {
+    const { m } = await alerts([station('a', { attention: ['SOMETHING NEW MC SAYS: DO A THING'] })], { phase: 'lobby' });
+    expect(m.find('[data-station-alert]').length).toBe(1);
+    expect(m.find('[data-station-note]').length).toBe(0);
+    expect(m.find('[data-station-alert] [data-sev]')[0]?.getAttribute('data-sev')).toBe('amber');
     m.unmount();
   });
 

@@ -483,10 +483,14 @@ export function Lobby() {
                 <span style={{ font: F.osw(700, 14), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>
                   {g.name || g.r.sticker}{g.name && <span style={{ font: F.mono(500, 11), color: T.micro }}> {g.r.sticker}</span>}
                 </span>
-                <Alert id={g.id} sev={g.sev} variant="row" title={g.more.length ? [g.text, ...g.more].join('\n') : undefined}
-                  style={{ flex: '1 1 240px', minWidth: 0 }}>
-                  {g.text}{g.more.length ? ` (+${g.more.length} MORE)` : ''}
-                </Alert>
+                {/* the first action leads; any other blocker is on screen under it, never behind a hover (tablets) */}
+                <span style={{ flex: '1 1 240px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Alert id={g.id} sev={g.sev} variant="row">{g.text}</Alert>
+                  {g.more.map(b => {
+                    const l = serverLine(b, 'blocker');
+                    return <Alert key={b} id={l.id} sev={l.sev} variant="row" size={10.5} testid="gun-line-more">{b}</Alert>;
+                  })}
+                </span>
               </div>
             ))}
           </div>

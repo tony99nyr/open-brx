@@ -229,8 +229,10 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   // Bench 2026-11-01 (Tony, "too many" warnings): after the push LOBBY's rail names every gun that is not
   // ready, one line each (GUNS READY), so this panel lists only what the rail does not carry: a bound
   // phone that missed LOAD. Every row is still one tap away on ALL, and the counts stay.
-  const listed = pushed ? fails.filter(x => x.m.phone === 'fail' && x.r.bound) : fails;
-  const shown = showAll ? marked : pushed ? listed : [...fails, ...acking];
+  // only when LOBBY actually draws GUNS READY (it reads `readiness.board`); an older MC without one keeps every row
+  const railOwns = pushed && (state.readiness?.board?.length ?? 0) > 0;
+  const listed = railOwns ? fails.filter(x => x.m.phone === 'fail' && x.r.bound) : fails;
+  const shown = showAll ? marked : railOwns ? listed : [...fails, ...acking];
   const col = (k: keyof ReturnType<typeof marksOf>) => marked.some(x => x.m[k] === 'fail');
   // ONE headline, read off the same marks the columns show, so the two can never disagree. That is
   // the rule the old verdict broke: "GUNS NOT CONFIGURED YET" sat beside GUNS PUSHED 2/2.
@@ -244,7 +246,8 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
         : allClear
           ? 'IN SYNC: EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME'
           // the rail's GUNS READY line names them; a neutral pointer, never a second warning
-          : 'GUNS: SEE GUNS READY BELOW';
+          : railOwns ? 'GUNS: SEE GUNS READY BELOW'
+            : `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`;
   const tone = allClear ? T.ok : listed.length > 0 ? colourOf('frame-prearm-action') : T.micro;
 
   return (

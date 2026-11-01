@@ -629,9 +629,10 @@ describe('F8 · one instruction, one count', () => {
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const line = m.find('[data-not-ready-gun]')[0];
-    expect(line?.textContent, 'that gun is also off the net: a re-push alone will not start it, so the link leads')
-      .toMatch(/^.*GUN LINK LOST.*\(\+1 MORE\)/);
-    expect(line?.querySelector('[title]')?.getAttribute('title')).toContain('ACKED AN OLDER CONFIG');
+    const parts = Array.from(line?.querySelectorAll('[data-alert]') ?? []).map(e => e.textContent ?? '');
+    expect(parts[0], 'that gun is also off the net: a re-push alone will not start it, so the link leads').toContain('GUN LINK LOST');
+    // review r1 (Medium): the second blocker is on screen, not behind a hover a tablet does not have
+    expect(line?.querySelector('[data-testid="gun-line-more"]')?.textContent).toContain('ACKED AN OLDER CONFIG');
     m.unmount();
   });
 

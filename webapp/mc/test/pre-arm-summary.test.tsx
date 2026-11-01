@@ -364,6 +364,15 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     });
   }
 
+  it('an older MC with no readiness board keeps the panel\'s own rows and verdict (no GUNS READY to point at)', async () => {
+    const rows = [row(), row({ player_id: 'p2', display: 'VIPER', gun_acked: false, gun_echo: null, ack_state: 'failed' })];
+    const d = await demo();
+    const v = await lobby(syncOf(rows), { readiness: { ...d.state.readiness, board: [] } } as Partial<State>);
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('▲ 1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
+    expect(v.all('[data-testid="pre-arm-row"]').length).toBe(1);
+    v.m.unmount();
+  });
+
   it('a push still in flight is a neutral WAITING mark, and the headline points at the rail', async () => {
     const rows = [row({ gun_acked: false, gun_echo: null, ack_state: 'waiting' }),
                   row({ player_id: 'p2', display: 'VIPER', gun_acked: false, gun_echo: null, ack_state: 'waiting' })];

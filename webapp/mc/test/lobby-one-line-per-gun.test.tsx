@@ -49,7 +49,8 @@ describe('LOBBY after a push: one line per gun, one summary, the override', () =
     expect(lines.map(l => l.getAttribute('data-not-ready-gun')).sort())
       .toEqual(board.filter(r => r.status === 'red').map(r => r.sticker).sort());
     for (const p of bad) {
-      const line = lines.find(l => l.getAttribute('data-not-ready-gun') === p.gun_id)!;
+      const sticker = board.find(r => r.player_id === p.player_id)!.sticker;
+      const line = lines.find(l => l.getAttribute('data-not-ready-gun') === sticker)!;
       expect(line.textContent, `${p.display}'s line names the player`).toContain(p.display);
       expect(line.textContent).toContain(GUN_DID_NOT_TAKE_CONFIG);
     }
@@ -71,7 +72,7 @@ describe('LOBBY after a push: one line per gun, one summary, the override', () =
     expect(override?.textContent, 'the HOST OVERRIDE stays').toContain(bad[0].display);
     const arm = (m.find('[data-lobby-primary] button') as HTMLButtonElement[])[0];
     expect(arm.disabled, 'ARM stays refused').toBe(true);
-    expect(arm.title, 'and says why on its title').toMatch(/\S/);
+    expect(arm.title, 'and says why on its title, naming a gun').toMatch(/GUN-|REAPER|VIPER/);
     m.unmount();
   });
 
@@ -92,7 +93,7 @@ describe('LOBBY after a push: one line per gun, one summary, the override', () =
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const n = state.players.length;
     expect(m.text().toUpperCase()).toContain(`GUNS READY ${n - 1}/${n}`);
-    const line = m.find(`[data-not-ready-gun="${pending.gun_id}"]`)[0];
+    const line = m.find('[data-not-ready-gun]').find(l => (l.textContent ?? '').includes(pending.display));
     expect(line?.textContent).toContain(pending.display);
     expect(line?.textContent?.toUpperCase()).toContain('WAITING FOR THE GUN TO CONFIRM');
     m.unmount();
