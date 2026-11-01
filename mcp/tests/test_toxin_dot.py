@@ -32,7 +32,7 @@ def test_the_victim_gets_the_shooters_tick_numbers_keyed_by_protocol():
     """The victim carries an SMG and nothing else. Its bundle must still hold the Toxin Rifle's numbers, because
     the plan is the MATCH's, and the key is the protocol on the wire (t3 = 11), as a string."""
     c = default_compiler()
-    shooter, victim = _player("tox", 1, "blue", "toxin_rifle"), _player("vic", 2, "yellow", "smg")
+    shooter, victim = _player("tox", 1, "blue", "toxin_rifle"), _player("vic", 2, "yellow", "suppressor")
     plan = c.hit_plan([shooter, victim])
     b = c.compile(_CONFIG, victim, _CONFIG["teams"], plan=plan)
     assert b["dot"] == {"11": {"weapon_id": "toxin_rifle", "per_tick": 4, "tick_ms": 1000, "duration_ms": 5000}}
@@ -57,7 +57,7 @@ def test_breacher_and_toxin_share_one_match_without_tripping_the_a17_guard():
     both conditional SIR rows, and the poison table reaches both phones."""
     c = default_compiler()
     specialist = _player("specialist", 1, "blue", "toxin_rifle", "stripper")
-    victim = _player("victim", 2, "yellow", "smg")
+    victim = _player("victim", 2, "yellow", "suppressor")
     roster = [specialist, victim]
     result = c.validate(_CONFIG, roster)
     assert result["ok"], result
@@ -79,7 +79,7 @@ def test_session_push_builds_breacher_and_toxin_plan_from_real_player_records():
     s.set_config(cfg)
     s.add_player("SPECIALIST", "blue", "GUN-A",
                  loadout={"weapons": [{"weapon_id": "toxin_rifle"}, {"weapon_id": "stripper"}]})
-    s.add_player("VICTIM", "yellow", "GUN-B", loadout={"weapons": [{"weapon_id": "smg"}]})
+    s.add_player("VICTIM", "yellow", "GUN-B", loadout={"weapons": [{"weapon_id": "suppressor"}]})
     result = s.push_config(force=True)
     assert result["ok"] and set(s._pinned_hit_plan.cells) >= {"toxin_rifle", "stripper"}
     for bundle in s.bundles.values():
@@ -119,7 +119,7 @@ def test_the_poison_cell_ships_a_plain_damage_row_only_in_a_game_that_carries_it
     pool sound plays, F38) and the same tail. A game without the weapon does not spend a row on it
     (`hitaudio.MAX_SIR_ROWS`). The head carries the cell as the fn-28 pregame registrar (F121)."""
     c = default_compiler()
-    shooter, victim = _player("tox", 1, "blue", "toxin_rifle"), _player("vic", 2, "yellow", "smg")
+    shooter, victim = _player("tox", 1, "blue", "toxin_rifle"), _player("vic", 2, "yellow", "suppressor")
     plan = c.hit_plan([shooter, victim])
     b = c.compile(_CONFIG, victim, _CONFIG["teams"], plan=plan)
     plain = _sir(b["sir_pool"][0], ("0", "0"))[0]
@@ -128,7 +128,7 @@ def test_the_poison_cell_ships_a_plain_damage_row_only_in_a_game_that_carries_it
     assert _sir(b["head"], ("11", "0")) == ["$SIR,11,0,,28,0,0,1,,*"]
     assert c.validate(_CONFIG, [shooter, victim])["ok"]
 
-    plain_game = [_player("a", 1, "blue", "assault_rifle"), _player("b", 2, "yellow", "smg")]
+    plain_game = [_player("a", 1, "blue", "assault_rifle"), _player("b", 2, "yellow", "suppressor")]
     b2 = c.compile(_CONFIG, plain_game[1], _CONFIG["teams"], plan=c.hit_plan(plain_game))
     assert not _sir(b2["sir_pool"][0], ("11", "0")) and not _sir(b2["head"], ("11", "0"))
 
@@ -149,7 +149,7 @@ def test_a_game_with_no_poison_weapon_ships_no_table():
     """Absent, not empty: an older node sees nothing new, and the golden bundle is unchanged in shape."""
     assert "dot" not in golden_bundle()
     c = default_compiler()
-    p = _player("a", 1, "blue", "assault_rifle", "smg")
+    p = _player("a", 1, "blue", "assault_rifle", "suppressor")
     assert "dot" not in c.compile(_CONFIG, p, _CONFIG["teams"])
 
 
@@ -160,7 +160,7 @@ def test_a_plain_weapon_sharing_the_poison_protocol_is_refused():
     base = default_compiler()
     rows = [dict(r) for r in base.catalog._rows]
     c_ok = Compiler(catalog=type(base.catalog)(rows))
-    assert c_ok.dot_table(c_ok.hit_plan([_player("t", 1, "blue", "toxin_rifle", "smg")]))["11"]
+    assert c_ok.dot_table(c_ok.hit_plan([_player("t", 1, "blue", "toxin_rifle", "suppressor")]))["11"]
     clone = dict(next(r for r in rows if r["weapon_id"] == "toxin_rifle"))
     clone["weapon_id"] = "plain_eleven"
     clone.pop("dot")

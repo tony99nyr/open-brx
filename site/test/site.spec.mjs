@@ -858,10 +858,10 @@ it('12j · the live HUD demo on the landing is the real app: pick a weapon, read
   await expect(hud.locator('[data-act="onPickItem"]').first()).toBeVisible();
   const picks = await hud.locator('[data-act="onPickItem"]').count();
   expect(picks, 'the loadout browser shows weapons to pick').toBeGreaterThan(3);
-  await hud.locator('[data-act="onPickItem"][data-arg="weapon:smg"]').click();
+  await hud.locator('[data-act="onPickItem"][data-arg="weapon:suppressor"]').click();
   await hud.locator('[data-act="onLoReview"]').click();   // A26: REVIEW KIT ▸ is the primary; CLOSE keeps onLoDone
   // the plate now names the pick, and ready-up flips to READY
-  await expect(hud.locator('#hud')).toContainText(/SMG/i);
+  await expect(hud.locator('#hud')).toContainText(/Suppressor/i);
   const ready = hud.locator('[data-act="onReady"]');
   await expect(ready).toContainText(/READY UP/i);
   await ready.click();

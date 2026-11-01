@@ -72,9 +72,9 @@ describe('KIT · perk slot (A14)', () => {
     const { m, patches, tile, state } = await kitFor('p6');
     expect(state.players.find(p => p.player_id === 'p6')!.loadout).toEqual(
       { weapons: [{ weapon_id: 'assault_rifle' }], perk: null, overrides: { easy_reload: true } });
-    await tile('SMG,');                                  // a new PRIMARY: nothing to do with the ALT button
+    await tile('Suppressor,');                                  // a new PRIMARY: nothing to do with the ALT button
     expect(patches).toEqual(
-      [{ weapons: [{ weapon_id: 'smg' }], perk: null, overrides: { easy_reload: true } }]);
+      [{ weapons: [{ weapon_id: 'suppressor' }], perk: null, overrides: { easy_reload: true } }]);
     m.unmount();
   });
 
@@ -84,14 +84,14 @@ describe('KIT · perk slot (A14)', () => {
     // before S50 moved Easy Reload to `loadout.overrides` and left this path keyed on a dead perk effect.
     const { m, patches, tile } = await kitFor('p6');
     await m.click('SECONDARY');
-    await tile('SMG,');
+    await tile('Suppressor,');
     expect(patches.length, 'the first tap sends nothing').toBe(0);
     expect(m.text()).toContain('DROPS EASY RELOAD');
     expect(m.text()).toContain('DROPS EASY RELOAD: TAP AGAIN');
     expect(m.text()).not.toContain('DROPS EASY RELOAD — TAP AGAIN');
-    await tile('SMG,');
+    await tile('Suppressor,');
     expect(patches.length, 'the second tap sends').toBe(1);
-    expect(patches[0].weapons).toEqual([{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }]);
+    expect(patches[0].weapons).toEqual([{ weapon_id: 'assault_rifle' }, { weapon_id: 'suppressor' }]);
     expect(patches[0].overrides, 'the switch that owned the button is dropped with it').toBeUndefined();
     m.unmount();
   });
