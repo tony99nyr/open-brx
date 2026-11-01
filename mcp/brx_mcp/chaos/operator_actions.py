@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import random
 
-from .registry import action
+from .registry import InvariantError, action
 from .stack import push_when_ready, until
 from .world import World
 
@@ -62,6 +62,20 @@ async def old_phone_pending(world: World) -> None:
 async def operator_phase(world: World, *, phase: str) -> None:
     """Move the operator to a pre-match screen through the Session phase API."""
     world.session.set_phase(phase, force=True)
+
+
+@action("operator_load", pick=_never)
+async def operator_load(world: World) -> None:
+    """LOAD the game (GAMES): announce it to the phones before the push, as an operator does at BUILD."""
+    world.session.load_game()
+
+
+@action("expect_loaded", pick=_never)
+async def expect_loaded(world: World) -> None:
+    """Scenario check: the LOAD announcement is still on record (GAMES shows it, the heartbeat retry runs)."""
+    s = world.session
+    if not (s.game_loaded and s.game_cfg):
+        raise InvariantError("load_survives_restart", f"game_loaded={s.game_loaded} game_cfg={s.game_cfg!r} after a restart")
 
 
 @action("lobby_push", pick=_never)

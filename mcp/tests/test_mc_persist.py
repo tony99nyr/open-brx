@@ -725,7 +725,10 @@ def _assert_pre_delivery(s2, net2, clock, ps, old_cfg):
     from brx_mcp.mc.fakes import demo_armory
     snap = s2.snapshot()
     assert snap["phase"] == "muster", "a restart must not resume a phase the new process never reached"
-    assert snap["game"] == {"loaded": False, "sent": 0, "total": 2}, "no LOAD has happened in this process"
+    # bench 2026-11-01: the LOAD announcement is the host's decision and comes back (GAMES, the retry); what this
+    # process has DELIVERED starts at nothing
+    assert {k: snap["game"][k] for k in ("loaded", "sent", "total")} == {"loaded": True, "sent": 0, "total": 2}, \
+        "the announcement survives, its deliveries do not"
     assert snap["lobby"]["pushed"] is False and snap["lobby"]["acks"] == {}
     assert head_of(s2) is None
     assert s2.config["config_id"] == old_cfg, "the config itself is durable and comes back"
@@ -736,7 +739,8 @@ def _assert_pre_delivery(s2, net2, clock, ps, old_cfg):
         for key in ("config", "frames", "start", "match_id"):
             assert key not in node, f"a re-hello after a restart must not carry `{key}` nobody sent"
         assert node["policy"]["kit_open"] is False
-    assert s2.snapshot()["game"]["sent"] == 0
+    # each welcome re-delivers the announced game (a brief, never a gun write: no config, frames or start above)
+    assert s2.snapshot()["game"]["sent"] == 2
     assert not [k for (_n, k, _b) in net2.pushed if k in ("config", "start")]
 
 
@@ -970,3 +974,41 @@ def test_a_restart_outside_a_match_keeps_the_koth_hold_target():
     s2 = _fresh(path)
     s2.restore_snapshot()
     assert s2.config["scoring"].get("hold_target_s") == 120
+
+
+def test_a_loaded_game_survives_an_mc_restart():
+    """Bench 2026-11-01 (brx1, 0.4.32): session.json did not keep the LOAD, so after a restart GAMES read NOT
+    LOADED, every PHONE cell read MISSED LOAD and the heartbeat retry (gated on `game_loaded`) never ran. The
+    announcement, its config id and who was told now come back with the session."""
+    from _session import online, restart_session
+    s, net, clock, ps = mk_session(2)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    online(s, net, clock, ps[0], 0)                      # player 1's phone is not here at the LOAD
+    s.load_game()
+    cfg = s.game_cfg
+    assert s.game_loaded and cfg and s.game_sent == {ps[0]["player_id"]: cfg}, "control"
+    s2, net2 = restart_session(s, clock)
+    assert s2.game_loaded is True and s2.game_cfg == cfg, "GAMES still shows the loaded game"
+    assert s2.game_sent == {}, "2026-09-16: a new process claims no delivery the old one made"
+    assert {k: s2.snapshot()["game"][k] for k in ("loaded", "sent", "total", "config_id")} == \
+        {"loaded": True, "sent": 0, "total": 2, "config_id": cfg}
+    online(s2, net2, clock, ps[0], 0)                    # the re-hello's welcome tells it again, and that is recorded
+    rows = {r["player_id"]: r["phone_game"] for r in s2.sync_summary()["rows"]}
+    assert rows == {ps[0]["player_id"]: True, ps[1]["player_id"]: False}, rows
+
+
+def test_a_snapshot_without_a_load_record_restores_as_not_loaded():
+    """Additive: a session.json from before the field (or a bad one) restores as nothing loaded, no version bump."""
+    from _session import restart_session
+    s, net, clock, ps = mk_session(2)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(s._persist_path.read_text())
+    assert "load" not in snap, "nothing loaded, nothing written"
+    for bad in ({"cfg": None}, {"cfg": 7}, {"cfg": ""}, "junk", []):
+        snap["load"] = bad
+        s._persist_path.write_text(json.dumps(snap))
+        from _session import restart_no_repersist
+        s2, _ = restart_no_repersist(s, clock)
+        assert s2.game_loaded is False and s2.game_cfg is None and s2.game_sent == {}, bad
