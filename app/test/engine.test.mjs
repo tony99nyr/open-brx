@@ -5133,6 +5133,8 @@ test('F542 2026-11-01: an assumed swap never rolls back on time alone, nor when 
   assert.equal(h.eng.state().activeSlot, 1, 'no rollback');
 });
 test('F542 2026-11-01: a real swap to a full slot, then a silent lever, never rolls back', () => {
+  // Two guards hold this: `reloadPulled` opens no takeover on a full slot, and `rollBackSilentSwap` needs the assumed
+  // slot below its cap. The test fails only with both removed (break-checked 2026-11-01).
   const h = liveSwapHarness();
   f542SilentSwap(h, { assumeTo1: false });
   const cap = h.eng.am.ammoBySlot()[1];
@@ -5146,6 +5148,29 @@ test('F542 2026-11-01: a real swap to a full slot, then a silent lever, never ro
   assert.equal(h.eng.state().activeSlot, 1, 'setup: the swap to the full USP is assumed');
   h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'a full USP ignores the lever too, so the silence proves nothing');
+});
+test('F542 review: a stun during the lever makes its silence no proof, so no rollback', () => {
+  const h = liveSwapHarness();
+  f542SilentSwap(h);
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'setup: the lever opens a reload on the USP');
+  h.adv(200); h.eng._stun(2000);
+  assert.ok(h.eng.stunned, 'setup: stunned inside the reload');
+  h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'a stun dropped the frames, so the trigger stays on the USP');
+});
+test('F542 review: a late reload on the slot the rollback left moves the trigger back quietly', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  f542SilentSwap(h);
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: rolled back to the AR');
+  h.adv(400); h.frame('$ALCD,12,100,1,281,0,*');
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 1, 'the late USP reload proves the swap had taken');
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, undefined, 'no second GUN WAS ON');
+  assert.ok(logs.some(l => /late reload on slot 1/.test(l)), 'logged');
+  assert.equal(h.eng.am.rolledBack, null, 'the rollback is spent');
 });
 test('F542 2026-11-01: an $ALCD round on the old slot after an assumed swap snaps back and ends the pending rollback', () => {
   const h = liveSwapHarness();
