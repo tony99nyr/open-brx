@@ -22,6 +22,7 @@ summarise). A month's own headline-per-session list already exists for free: `gr
 | 2026-08 | [2026-08](experiment-log/2026-08.md) | first contact through the docs cold-read audit |
 | 2026-09 | [2026-09](experiment-log/2026-09.md) | King of the Hill, the LED night, the manual rebuild, the 2026-09-13 field night, the arsenal merge and on |
 | 2026-10 | [2026-10](experiment-log/2026-10.md) | the 0.4.16 standard bench, the 0.4.22 re-bench, the 2026-10-17 field matches and the field push, the Stick IR bench, the CI and land-lane work |
+| 2026-11 | [2026-11](experiment-log/2026-11.md) | the Sunday AM bench and game of 2026-11-01 |
 
 Add a row here **only when a new month's file is created**; append every session's own entry to the current
 month's file regardless.
