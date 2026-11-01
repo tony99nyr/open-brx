@@ -460,3 +460,26 @@ def test_an_old_slot_round_at_exactly_250_ms_closes_the_swap():
         st._on_rx("$ALCD,30,100,0,182,0,*")
         assert st.switching is None
     asyncio.run(go())
+
+
+def test_f542_a_silent_lever_on_the_assumed_slot_rolls_the_swap_back_to_the_full_old_slot():
+    """ammo.js `rollBackSilentSwap` (bench 2026-11-01): the AR full, ALT assumed onto a part-used USP, the lever gets no
+    `$ALCD` (the fake gun stayed on the full AR) and times out. CONTROL: with the AR not full, the gun answers the lever
+    with a reload on slot 0, and that rise moves the trigger, not the rollback."""
+    async def go():
+        for full in (True, False):
+            st, _gun, clock = await _live()
+            st._on_rx("$ALCD,3,100,1,120,0,*")
+            st._on_rx("$ALCD,32,100,0,182,0,*" if full else "$ALCD,20,100,0,182,0,*")
+            _alt(st)
+            await _tick(st, clock, st._switch_window_s() + 0.05)
+            assert st.active_slot == 1 and st._assumed_swap is not None
+            st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+            assert st.reloading and st.reloading["slot"] == 1
+            for _ in range(20):
+                await _tick(st, clock, 0.5)
+            assert st.active_slot == 0 and st._alt_ptr == 0, (full, st.active_slot, st._alt_ptr)
+            rolled = any("swap to slot 1 rolled back" in t for t in _texts(st))
+            assert rolled == full, (full, _texts(st)[-5:])
+            assert st.reload_outcome and st.reload_outcome["why"] == ("timeout" if full else "filled"), st.reload_outcome
+    asyncio.run(go())

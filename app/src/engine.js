@@ -6734,7 +6734,7 @@ export class Engine {
     const c = this.frames && this.frames.cues;
     const fr = c ? [c.hurt, c.hurt_led].filter(Boolean) : [];
     // logged explicitly: after the last field session we could not tell whether the alert had
-    // fired at all, because the frame ring only holds 60 frames and had rolled past it.
+    // fired at all, because the frame ring then held only 60 frames and had rolled past it.
     this.log(`low-health alert: hp ${h.hp} < ${LOW_HEALTH_HP} — ${fr.length} frame(s)`, 'lk');
     if (fr.length) this._hurtLineArm(fr);
   }

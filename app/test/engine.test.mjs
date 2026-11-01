@@ -5055,6 +5055,93 @@ test('F542 E10 review: a lever the phone refuses (a full slot) and a rise on the
   assert.equal(s.activeSlot, 0);
   assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
 });
+// Bench 2026-11-01 (Pixel 10 Pro, 0.4.30, AR in slot 0, USP in slot 1): the AR's reload landed, ALT, and no `$ALCD` followed.
+// The phone assumed the USP; every later lever got no `$ALCD` and timed out on slot 1, because the gun stayed on the full AR.
+// The gun sends no `$ALCD` on ALT (F394), so only the silent lever can undo the assumed swap. Setup: both slots used, AR full.
+function f542SilentSwap(h, { assumeTo1 = true } = {}) {
+  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(600); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,5,100,1,288,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: the USP round confirms slot 1');
+  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(600); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: the AR round confirms slot 0');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500); h.frame('$ALCD,32,100,0,382,0,*');
+  assert.equal(h.eng.state().reloading, false, 'setup: the AR reload filled the magazine');
+  if (!assumeTo1) return;
+  h.adv(300); h.frame('$BUT,1,1,*'); h.adv(176); h.frame('$BUT,1,0,*');
+  h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: the swap to the USP is assumed');
+}
+test('F542 2026-11-01: a silent lever on an assumed slot rolls the swap back to the full old slot, with GUN WAS ON', () => {
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  f542SilentSwap(h);
+  assert.equal(h.eng.state().ammo, 5, 'setup: the HUD shows the USP count');
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'the phone opens the reload on the USP it assumed');
+  h.adv(8000); h.eng.tick();
+  const s = h.eng.state();
+  assert.equal(s.reloadOutcome.why, 'timeout'); assert.equal(s.reloadOutcome.slot, 1);
+  assert.equal(s.activeSlot, 0, 'the trigger rolls back to the AR');
+  assert.equal(s.ammo, 32, 'the ammo block shows the full AR');
+  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
+  assert.equal(s.reloadFailed, false, 'no RELOAD DID NOT TAKE over the AR');
+  assert.ok(logs.some(l => /swap to slot 1 rolled back/.test(l)), 'the rollback is logged');
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'a lever on the full AR opens no takeover');
+  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'the next ALT targets the USP again');
+});
+test('F542 2026-11-01: a reload after a rolled-back swap targets slot 0', () => {
+  const h = liveSwapHarness();
+  f542SilentSwap(h);
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: rolled back');
+  h.adv(500); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,382,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  let s = h.eng.state();
+  assert.equal(s.reloading, true, 'the lever opens a reload');
+  assert.equal(h.eng.am.reloading.slot, 0, 'on the AR');
+  h.adv(1500); h.frame('$ALCD,32,100,0,381,0,*');
+  s = h.eng.state();
+  assert.equal(s.reloadOutcome.ok, true); assert.equal(s.reloadOutcome.slot, 0); assert.equal(s.activeSlot, 0);
+});
+test('F542 2026-11-01: a swap a round confirmed never rolls back on a silent lever', () => {
+  const h = liveSwapHarness();
+  f542SilentSwap(h, { assumeTo1: false });
+  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  h.adv(600); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,4,100,1,288,0,*'); h.frame('$BUT,0,0,*');
+  let s = h.eng.state();
+  assert.equal(s.activeSlot, 1, 'the USP round confirms the swap');
+  assert.equal(s.moment.data.assumed, undefined, 'confirmed, not assumed');
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
+  s = h.eng.state();
+  assert.equal(s.reloadOutcome.why, 'timeout', 'setup: the lever timed out');
+  assert.equal(s.activeSlot, 1, 'the gun proved slot 1, so the trigger stays');
+});
+test('F542 2026-11-01: an assumed swap never rolls back on time alone, nor when the old slot could have reloaded', () => {
+  let h = liveSwapHarness();
+  f542SilentSwap(h);
+  h.adv(20000); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'a real swap with no shot sends nothing, so no timeout undoes it');
+  // the old slot is not full: a gun on it would have reloaded it, so the silence names neither slot
+  h = liveSwapHarness();
+  f542SilentSwap(h);
+  h.eng.am.acct[0].mag = 20; h.eng.am.prevAmmo[0] = 20;
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.state().reloadOutcome.why, 'timeout', 'setup');
+  assert.equal(h.eng.state().activeSlot, 1, 'no rollback');
+});
+test('F542 2026-11-01: an $ALCD round on the old slot after an assumed swap snaps back and ends the pending rollback', () => {
+  const h = liveSwapHarness();
+  f542SilentSwap(h);
+  assert.notEqual(h.eng.am.assumedSwap, null, 'setup: the swap is unproven');
+  h.adv(500); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,382,0,*'); h.frame('$BUT,0,0,*');
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the old-slot round puts the HUD back on the AR');
+  assert.equal(s.moment.data.gunWas, true, 'with GUN WAS ON');
+  assert.equal(h.eng.am.assumedSwap, null, 'the gun has spoken: nothing left to roll back');
+});
 test('F542 review: a pull while the life burst waits in the play queue does not arm ALT for that life', () => {
   const h = liveSwapHarness();
   h.eng._lifeBurst = { life: h.eng._lifeSeq, at: h.eng.now(), sent: false, reached: false };   // the revive's `$SPAWN` not on the gun yet

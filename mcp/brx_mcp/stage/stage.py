@@ -1091,6 +1091,7 @@ class GunStage:
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
+        self._assumed_swap: dict | None = None   # F542 (ammo.js `assumedSwap`): {from, to, life} of a swap no round proved
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
         self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
@@ -5525,6 +5526,8 @@ class GunStage:
             self._log(f"reload landed on slot {slot} after the swap to slot {r0['swap_to']}; the trigger stays", "info")
             return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
+        if moves and slot < 2:
+            self._assumed_swap = None   # F542 (ammo.js `onAmmo`): the gun has spoken for its slot
         if moves and self.switching and slot != self.switching["from"] and slot < 2:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
             self.last_switch_s = round(self.now() - self.switching["at"], 2)
@@ -5648,6 +5651,7 @@ class GunStage:
         self._alt_ptr = target
         self._alt_evidence_pending = target
         self.switching = {"at": self.now(), "from": source, "to": target}
+        self._assumed_swap = None
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
 
     def _alt_cycle(self) -> list[int]:
@@ -5679,6 +5683,7 @@ class GunStage:
         to = sw.get("to", self._next_alt_slot())
         self.switching = None
         self.active_slot = to; self._alt_ptr = to
+        self._assumed_swap = {"from": sw.get("from"), "to": to, "life": self._life_queued}   # F542: unproven until a round leaves `to`
         self._recoil_arm("swap (assumed)")   # S42 (ammo.js `switchTick`): the new slot's weapon gets its own profile
         self._show_slot_ammo(to)   # F394: the gun sends no $ALCD on ALT, so the new slot's counts come from the node
         self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
@@ -6563,6 +6568,26 @@ class GunStage:
             self._log(f"reload partial: {r['from']} -> {r['mag']} of {r['cap']} ({why})", "info")
         else:
             self._log(f"reload done: slot {r['slot']} mag {r['from']} -> {r['mag']}", "info")
+        self._roll_back_silent_swap(r, why, gained)
+
+    def _roll_back_silent_swap(self, r: dict, why: str, gained: int) -> None:
+        """ammo.js `rollBackSilentSwap` (F542, bench 2026-11-01): the gun sends no `$ALCD` on ALT and ignores a lever on
+        a full magazine, so a reload on an ASSUMED slot that is not full, timing out with no gain while the old slot is
+        full, means the gun stayed on the old slot. The trigger and the ALT pointer go back. A timeout alone is no
+        evidence: a real swap with no shot sends nothing either."""
+        a = self._assumed_swap
+        if not a or why != "timeout" or gained > 0:
+            return
+        self._assumed_swap = None
+        if a["life"] != self._life_queued or r["slot"] != a["to"] or self.active_slot != a["to"] or a["from"] == a["to"]:
+            return
+        cap, old = self._ammo_by_slot().get(a["from"]), self._live_ammo().get(a["from"])
+        if not cap or cap <= 0 or not old or old[0] is None or old[0] < cap:
+            return   # the old slot could have reloaded too: the silence names neither
+        self._log(f"swap to slot {a['to']} rolled back: the lever got no reload, and slot {a['from']} is full", "info")
+        self.active_slot = a["from"]; self._alt_ptr = a["from"]; self._alt_evidence_pending = None
+        self._recoil_arm("swap (rolled back)")
+        self._show_slot_ammo(a["from"])
 
     def _reload_tick(self) -> None:
         """ammo.js `reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from

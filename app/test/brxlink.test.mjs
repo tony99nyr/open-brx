@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay, reconnectCapMs, RECONNECT_GIVE_UP, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133 } from '../src/brxlink.js';
+import { BrxLink, flapDelay, reconnectCapMs, RECONNECT_GIVE_UP, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133, FRAME_RING } from '../src/brxlink.js';
 import { BeaconWatch } from '../src/scanwatch.js';
 import { Presence } from '../src/beacon.js';
 import { useClock } from './_helpers.mjs';
@@ -1168,4 +1168,12 @@ test('F541: recovery releases BeaconWatch before connecting, then Presence resum
   assert.equal(watch.open, true, 'BeaconWatch reopens after the connect settles');
   assert.equal(watch.listening, true);
   assert.equal(presence.paused, false, 'the reopen resumes Presence');
+});
+// F542 (bench 2026-11-01): 60 frames rolled past the fault before the share; the ring now keeps FRAME_RING.
+test('F542: the frame ring keeps the last FRAME_RING frames, oldest dropped first', () => {
+  const link = new BrxLink({ ble: {}, log: () => {} });
+  assert.ok(FRAME_RING >= 2000);
+  for (let i = 0; i < FRAME_RING + 5; i++) link._note('rx', `$F,${i},*`);
+  assert.equal(link.frames.length, FRAME_RING);
+  assert.equal(link.frames[0].f, '$F,5,*'); assert.equal(link.frames[FRAME_RING - 1].f, `$F,${FRAME_RING + 4},*`);
 });
