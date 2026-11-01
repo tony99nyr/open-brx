@@ -179,6 +179,7 @@ class World:
     def __init__(self, sc: Scenario, seed: int, workdir: pathlib.Path, *, nodes: int | None = None):
         self.scenario = sc
         self.seed = seed
+        self.loaded_cfg: str | None = None   # the config id `operator_load` announced (`expect_loaded`)
         self.rng = random.Random(seed)
         self.workdir = pathlib.Path(workdir)
         self.n_nodes = nodes or sc.nodes

@@ -61,6 +61,8 @@ class SnapshotHost(Protocol):
     _sync_pending: dict[str, str]
     _end_delivery: dict[str, Any]
     _end_delivery_told: str | None
+    game_loaded: bool                 # the LOAD announcement (session.json `load`)
+    game_cfg: str | None
     restored_from: RestoredFromView | None
     demo_session: bool
     powerup_ledger: PowerupLedger

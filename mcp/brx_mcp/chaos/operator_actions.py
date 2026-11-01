@@ -73,7 +73,7 @@ async def operator_load(world: World) -> None:
 @action("expect_loaded", pick=_never)
 async def expect_loaded(world: World) -> None:
     """Scenario check: the LOAD announcement is still on record (GAMES shows it, the heartbeat retry runs)."""
-    s, want = world.session, getattr(world, "loaded_cfg", None)
+    s, want = world.session, world.loaded_cfg
     if not (s.game_loaded and want and s.game_cfg == want):
         raise InvariantError("load_survives_restart",
                              f"game_loaded={s.game_loaded} game_cfg={s.game_cfg!r} (loaded {want!r}) after a restart")
