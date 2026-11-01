@@ -45,8 +45,8 @@ describe('StationAlerts — the STATION #N attention lines', () => {
   it('renders a RESTARTED line', async () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 RESTARTED 2 TIMES: CHECK THE STATION'] })]);
     expect(m.find('[data-testid="station-alerts"]').length, m.text()).toBe(1);
-    expect(m.text()).toContain('Respawn 1 needs attention');
-    await m.click('Respawn 1 needs attention');
+    expect(m.text()).toContain('Respawn 1 restarted');
+    await m.click('Respawn 1 restarted');
     expect(m.text()).toContain('STATION #4 RESTARTED 2 TIMES: CHECK THE STATION');
     m.unmount();
   });
@@ -77,8 +77,8 @@ describe('StationAlerts — the STATION #N attention lines', () => {
 
   it('renders a LOCK EXPIRES MID-MATCH line', async () => {
     const { m } = await alerts([station('a', { attention: ['STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER'] })]);
-    expect(m.text()).toContain('Respawn 1 needs attention');
-    await m.click('Respawn 1 needs attention');
+    expect(m.text()).toContain('Respawn 1 lock expires mid-match');
+    await m.click('Respawn 1 lock expires mid-match');
     expect(m.text()).toContain('STATION #4 LOCK EXPIRES MID-MATCH: TAKE IT BACK THROUGH MUSTER');
     m.unmount();
   });
@@ -89,15 +89,41 @@ describe('StationAlerts — the STATION #N attention lines', () => {
       station('a', { attention: ['STATION #1 RESTARTED', 'BATTERY LOW'] }),
       station('b', { attention: ['STATION #2 OFFLINE'] }),
     ]);
-    expect(m.text()).toContain('Respawn 1 needs attention');
+    expect(m.text()).toContain('Respawn 1 restarted');
     expect(m.text()).toContain('Respawn 1 offline');
     expect(m.text()).toContain('Respawn 1 battery low');
-    await m.click('Respawn 1 needs attention');
+    await m.click('Respawn 1 restarted');
     await m.click('Respawn 1 offline');
     await m.click('Respawn 1 battery low');
     expect(m.text()).toContain('STATION #1 RESTARTED');
     expect(m.text()).toContain('STATION #2 OFFLINE');
     expect(m.text()).toContain('BATTERY LOW');
+    m.unmount();
+  });
+
+  it('bench 2026-11-01: two alerts on one phone get two DIFFERENT headers, and an edit note is not an alert', async () => {
+    const hill = { kind: 'control' as const, team: 255, id: 2, threshold: -74, at: 0 };
+    const { m } = await alerts([station('phone-b963', { platform: 'android', assigned: hill, attention: [
+      'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF',
+      'STRENGTH EDITED ON STATION MEDIUM → HIGH',
+    ] })], { phase: 'lobby' });
+    const chips = m.find('[data-station-alert] [data-alert]').map(e => (e.textContent ?? '').replace(/[▾▴]/g, '').trim());
+    expect(chips, 'one alert chip, named for its alert').toEqual(['Phone b963 not armed: no hill in this mode']);
+    expect(m.text()).not.toContain('needs attention');
+    const note = m.find('[data-station-note]');
+    expect(note.length, 'the strength edit is a note').toBe(1);
+    expect(note[0].getAttribute('data-sev')).toBe('neutral');
+    expect(note[0].textContent).toContain('Phone b963');
+    expect(note[0].textContent).toContain('STRENGTH EDITED ON STATION MEDIUM → HIGH');
+    expect(note[0].textContent, 'no warning glyph on a note').not.toContain('▲');
+    m.unmount();
+  });
+
+  it('a station with only an edit note is not headed STATION ALERTS', async () => {
+    const { m } = await alerts([station('a', { attention: ['STRENGTH EDITED ON STATION MEDIUM → HIGH'] })], { phase: 'lobby' });
+    expect(m.find('[data-station-alert]').length).toBe(0);
+    expect(m.find('[data-station-note]').length).toBe(1);
+    expect(m.text()).not.toContain('STATION ALERTS');
     m.unmount();
   });
 

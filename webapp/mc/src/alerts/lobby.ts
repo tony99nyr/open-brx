@@ -54,7 +54,9 @@ export const LOBBY_ALERTS: Record<string, AlertDef> = {
 
   // ---- GUNS READY (QA-02, visual QA round 1, 2026-09-26) ----------------------------------------
   'lobby-guns-ready-line': { sev: 'amber', text: 'GUNS READY {N}/{M}' },
-  'lobby-guns-not-ready-line': { sev: 'amber', text: '{STICKER} NOT READY: {WHAT}' },
+  'lobby-guns-not-ready-line': { sev: 'amber', text: 'NO PHONE: CONNECT IT' },
+  // Bench 2026-11-01: a gun the push reached that has not answered yet; ARM waits for it, nothing is wrong
+  'lobby-gun-waiting-confirm': { sev: 'neutral', text: 'WAITING FOR THE GUN TO CONFIRM' },
 
   // ---- PreArmSummary ------------------------------------------------------------------------------
   'frame-prearm-action': { sev: 'amber', text: '{N} OF {M} PLAYER(S) NEED(S) ACTION: SEE BELOW' },

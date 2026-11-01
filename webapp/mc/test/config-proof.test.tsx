@@ -147,10 +147,13 @@ describe('LOBBY · a stale ack is not an ack', () => {
   }
 
   it('U-1: the stale-ack sentence renders on the state the server really sends (a RED row)', async () => {
-    const { d, state, p0 } = await staleAsTheServerSendsIt();
+    const { d, state, p0, sticker } = await staleAsTheServerSendsIt();
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text(), 'the generic "N guns cannot start" count must not swallow the one thing to DO')
-      .toContain(`${p0.display} STILL ANSWERING FOR AN OLDER CONFIG`);
+    // Bench 2026-11-01: after the push the rail names each gun once, in the server's words for it
+    const line = m.find(`[data-not-ready-gun="${sticker}"]`)[0];
+    expect(line?.textContent, 'the gun line carries the one thing to DO').toContain(p0.display);
+    expect(line?.textContent).toMatch(/ACKED AN OLDER CONFIG.*RE-PUSH/);
+    expect(m.text().toUpperCase(), 'no generic count beside it').not.toContain('CANNOT START');
     m.unmount();
   });
 
@@ -427,9 +430,11 @@ describe('R2-8 · the rail states the count once', () => {
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' },
       [p1.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
-    expect(m.text(), 'every red IS the stale ack — saying it twice is not a second fault')
-      .not.toContain('cannot start');
+    const lines = m.find('[data-not-ready-gun]').map(l => l.textContent ?? '');
+    expect(lines.length).toBe(2);
+    for (const l of lines) expect(l).toContain('ACKED AN OLDER CONFIG');
+    expect(m.text().toUpperCase(), 'every red IS the stale ack — saying it twice is not a second fault')
+      .not.toContain('CANNOT START');
     m.unmount();
   });
 
@@ -440,9 +445,10 @@ describe('R2-8 · the rail states the count once', () => {
     const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
-    // F221 polish r1: this suffix is upper case now, drawn through the same catalogue id as the line above it.
-    expect(m.text().toUpperCase()).toContain('CANNOT START');
+    // Bench 2026-11-01: each gun gets its own line, so the second fault is named, not merely counted
+    const lines = m.find('[data-not-ready-gun]').map(l => l.textContent ?? '');
+    expect(lines.some(l => l.includes('ACKED AN OLDER CONFIG'))).toBe(true);
+    expect(lines.some(l => l.includes('GUN LINK LOST'))).toBe(true);
     m.unmount();
   });
 });
@@ -472,7 +478,9 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
     delete acks[pending.player_id];
     const state = { ...base, lobby: { ...base.lobby, acks, all_acked: false } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain(`Waiting for config verification from ${pending.display}`);
+    const line = m.find('[data-not-ready-gun]').find(l => (l.textContent ?? '').includes(pending.display));
+    expect(line?.textContent).toContain('WAITING FOR THE GUN TO CONFIRM');
+    expect(line?.getAttribute('data-sev') ?? line?.querySelector('[data-sev]')?.getAttribute('data-sev'), 'pending is not a fault').toBe('neutral');
     expect(m.text()).not.toContain('No config echo from  —');
     expect(btn(m, 'ARM COUNTDOWN')!.title).toContain('verification');
     m.unmount();
@@ -498,8 +506,10 @@ describe('F1 · the RE-PUSH is offered whenever a re-push would change something
     delete acks[pending.player_id];
     const state = { ...base, lobby: { ...base.lobby, acks, all_acked: false } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain(`No config echo from ${failed.display}`);
-    expect(m.text()).toContain(`Waiting for config verification from ${pending.display}`);
+    // Bench 2026-11-01: one line per gun, each in its own words: a fault for one, a neutral wait for the other
+    const lineOf = (name: string) => m.find('[data-not-ready-gun]').find(l => (l.textContent ?? '').includes(name))?.textContent ?? '';
+    expect(lineOf(failed.display)).toContain('GUN DID NOT ANSWER CONFIG');
+    expect(lineOf(pending.display)).toContain('WAITING FOR THE GUN TO CONFIRM');
     const title = btn(m, 'ARM COUNTDOWN')!.title;
     expect(title).toContain(failed.display);
     expect(title).toContain(pending.display);
@@ -605,7 +615,8 @@ describe('F8 · one instruction, one count', () => {
     const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('RE-PUSH CONFIG on LOBBY');
+    expect(btn(m, 'RE-PUSH CONFIG'), 'the control the gun line names is on screen').toBeTruthy();
+    expect(m.find('[data-not-ready-gun]')[0]?.textContent).toContain('RE-PUSH');
     expect(m.text()).not.toContain('push again');
     m.unmount();
   });
@@ -617,8 +628,10 @@ describe('F8 · one instruction, one count', () => {
     const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
       [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text().toUpperCase()).toContain('STILL ANSWERING FOR AN OLDER CONFIG');
-    expect(m.text().toUpperCase(), 'that gun is also off the net: a re-push alone will not start it').toContain('CANNOT START');
+    const line = m.find('[data-not-ready-gun]')[0];
+    expect(line?.textContent, 'that gun is also off the net: a re-push alone will not start it, so the link leads')
+      .toMatch(/^.*GUN LINK LOST.*\(\+1 MORE\)/);
+    expect(line?.querySelector('[title]')?.getAttribute('title')).toContain('ACKED AN OLDER CONFIG');
     m.unmount();
   });
 

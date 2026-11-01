@@ -1979,7 +1979,8 @@ class RecapSyncView(TypedDict):
 
 class RecapView(TypedDict):
     winner: WinnerView | None  # null while this RECAP result waits for its bound phones and hills
-    score: dict[str, int]
+    score: dict[str, int]      # kills plus team credit, in EVERY mode (never the objective tally: that is `possession`)
+    win_by: NotRequired[WinBy]  # the rule the scorer ran this match by; the console headlines held time on "objective"
     rows: list[ScoreRow]
     honors: list[Honor]
     provisional: bool

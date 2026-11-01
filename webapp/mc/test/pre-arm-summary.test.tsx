@@ -52,7 +52,9 @@ async function lobby(sync: State['sync'], over: Partial<State> = {}) {
   const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
   const q = (sel: string) => m.el.querySelector(sel) as HTMLElement | null;
   const all = (sel: string) => Array.from(m.el.querySelectorAll(sel)) as HTMLElement[];
-  return { m, q, all };
+  // Bench 2026-11-01: after the push LOBBY's rail names the guns, so the panel's gun rows open on ALL
+  const openAll = async () => { await act(async () => { q('[data-testid="pre-arm-toggle"]')!.click(); }); };
+  return { m, q, all, openAll };
 }
 
 describe('PRE-ARM CHECK — nothing checked is never something satisfied', () => {
@@ -76,6 +78,7 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
   it('a player with NO PHONE BOUND is reported as absent on every fact, and told what to do', async () => {
     const away = row({ player_id: 'p2', display: 'DRIFT', bound: false, phone_game: false, gun_sent: false, gun_acked: false, gun_echo: 'not_echoed' });
     const v = await lobby(syncOf([row(), away]));
+    await v.openAll();
     const line = v.all('[data-testid="pre-arm-row"]').find(r => (r.textContent ?? '').includes('DRIFT'));
     expect(line, 'the absent player has a row').toBeTruthy();
     // F221 polish r1: the todo lines are upper case, WHAT: DO, with a glyph now.
@@ -97,6 +100,7 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
   it('a gun that was sent a head but has NOT acked is named differently from an absent one', async () => {
     const silent = row({ player_id: 'p2', display: 'VIPER', bound: true, phone_game: true, gun_sent: true, gun_acked: false, gun_echo: 'not_echoed' });
     const v = await lobby(syncOf([row(), silent]), { lobby: { ready: 2, total: 2, pushed: true, acks: {} } } as Partial<State>);
+    await v.openAll();
     const line = v.all('[data-testid="pre-arm-row"]').find(r => (r.textContent ?? '').includes('VIPER'));
     expect(line!.textContent, 'a silent gun is a re-push, not a hunt for a phone').toMatch(/RE-PUSH CONFIG/);
     expect(line!.textContent).not.toMatch(/No phone bound/);
@@ -104,8 +108,11 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
   });
 
   it('only the problem rows show by default, and the toggle reveals the whole roster', async () => {
-    const rows = [row(), row({ player_id: 'p2', display: 'VIPER' }), row({ player_id: 'p3', display: 'DRIFT', gun_acked: false })];
-    const v = await lobby(syncOf(rows));
+    // before the push the panel lists its own problems; after it the rail's GUNS READY names a gun problem
+    const rows = [row({ gun_sent: false, gun_acked: false, gun_echo: null }),
+                  row({ player_id: 'p2', display: 'VIPER', gun_sent: false, gun_acked: false, gun_echo: null }),
+                  row({ player_id: 'p3', display: 'DRIFT', bound: false, phone_game: false, gun_sent: false, gun_acked: false, gun_echo: null })];
+    const v = await lobby(syncOf(rows), { lobby: { ready: 0, total: 3, pushed: false, acks: {} } } as unknown as Partial<State>);
     expect(v.all('[data-testid="pre-arm-row"]').length, 'just the one that needs doing').toBe(1);
     await act(async () => { v.q('[data-testid="pre-arm-toggle"]')!.click(); });
     expect(v.all('[data-testid="pre-arm-row"]').length, 'and all of them on request').toBe(3);
@@ -211,6 +218,7 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
     // LOBBY's GUNS READY line is the one outcome now -- so this proves the axis word on the row column
     // that is left, PUSHED, which the toggle above always shows for a row that needs doing.
     const v = await lobby(syncOf([row({ gun_acked: false })]));
+    await v.openAll();
     const panel = v.q('[data-testid="pre-arm-summary"]')!.textContent ?? '';
     expect(panel, 'the row column still says PUSHED').toMatch(/PUSHED/);
     expect(panel, 'neither the row column nor anything else may say SENT of a gun').not.toMatch(/GUNS? SENT/);
@@ -356,14 +364,16 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     });
   }
 
-  it('a push still in flight is a neutral WAITING mark, and the headline says so', async () => {
+  it('a push still in flight is a neutral WAITING mark, and the headline points at the rail', async () => {
     const rows = [row({ gun_acked: false, gun_echo: null, ack_state: 'waiting' }),
                   row({ player_id: 'p2', display: 'VIPER', gun_acked: false, gun_echo: null, ack_state: 'waiting' })];
     const v = await lobby(syncOf(rows));
+    await v.openAll();
     const panel = v.q('[data-testid="pre-arm-summary"]')!;
     expect(panel.querySelectorAll('[data-mark="fail"]').length, 'waiting is not a fault').toBe(0);
     expect(panel.querySelectorAll('[data-col="ack"] [data-mark="wait"]').length).toBe(2);
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('WAITING FOR 2 OF 2 GUNS TO CONFIRM');
+    // Bench 2026-11-01: the rail's GUNS READY lists the guns still answering, one line each
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('GUNS: SEE GUNS READY BELOW');
     expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color).toBe(rgb(T.micro));
     expect(v.all('[data-testid="pre-arm-todo"]').map(t => t.style.color), 'no yellow while waiting').not.toContain(rgb(T.warn));
     v.m.unmount();
@@ -372,10 +382,13 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
   it('red only for a real failure: the server calls the ack FAILED', async () => {
     const rows = [row(), row({ player_id: 'p2', display: 'VIPER', gun_acked: false, gun_echo: null, ack_state: 'failed' })];
     const v = await lobby(syncOf(rows));
+    // Bench 2026-11-01: a failed ack is a gun the rail names; the panel does not say it a second time
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('GUNS: SEE GUNS READY BELOW');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/IN SYNC/);
+    await v.openAll();
     const bad = v.q('[data-testid="pre-arm-summary"] [data-col="ack"] [data-mark="fail"]');
     expect(bad, 'the failed ack is a red cross').toBeTruthy();
     expect(bad!.style.color).toBe(rgb(T.bad));
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('▲ 1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
     v.m.unmount();
   });
 

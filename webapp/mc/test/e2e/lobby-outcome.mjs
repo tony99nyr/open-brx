@@ -2,7 +2,7 @@
 // (entirely client-side, no python MC needed -- the same pattern as play.mjs/build.mjs).
 //
 //   node test/e2e/lobby-outcome.mjs
-//   ONLY=<step> node test/e2e/lobby-outcome.mjs    # all-ready | one-not-ready | operator-note | koth-no-stations
+//   ONLY=<step> node test/e2e/lobby-outcome.mjs    # all-ready | one-not-ready | no-config-once | operator-note | koth-no-stations
 //   VITE_PORT=…   HEADED=1   KEEP_SHOTS=1
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -150,11 +150,40 @@ step('one-not-ready', async ({ browser, base }) => {
   const notReady = line.locator('[data-not-ready-gun]');
   expect(await notReady.count() === 1, 'exactly one gun is named as not ready');
   const row = (await notReady.first().innerText()).toUpperCase();
-  expect(row.includes('GUN-D') && row.includes('NOT READY'), `the row names the gun (saw "${row}")`);
-  expect(row.includes('NO PHONE'), `a no-phone gun is reported as NO PHONE, not "has not confirmed" (saw "${row}")`);
+  // bench 2026-11-01: one line per gun, in the server's own words for it (a waiting row: WAITING FOR THE PHONE)
+  expect(row.includes('GUN-D') && row.includes('DRIFT'), `the row names the gun and its player (saw "${row}")`);
+  expect(row.includes('WAITING FOR THE PHONE'), `a no-phone gun is reported as waiting for its phone, not "has not confirmed" (saw "${row}")`);
+  expect(!row.includes('CHECK IT IS ON'), `never the generic "check it is on" (saw "${row}")`);
   expect(!row.includes('CONFIRM'), `the no-phone row never says "confirmed" (saw "${row}")`);
-  ok(`7/8 ready, GUN-D named NO PHONE   ${await shot(pg, 'one-not-ready-1280')}`);
+  ok(`7/8 ready, GUN-D named WAITING FOR THE PHONE   ${await shot(pg, 'one-not-ready-1280')}`);
   await pg.context().close();
+});
+
+// Bench 2026-11-01 (Tony, "lots of warnings here. too many"): a gun that acked no_config was named about six
+// times on LOBBY. After the push: one GUNS READY summary, one line per gun, and the HOST OVERRIDE.
+step('no-config-once', async ({ browser, base }) => {
+  for (const w of [1280, 393]) {
+    const pg = await open(browser, base, '?mock&faults=noconfig#lobby', w);
+    await until(() => pg.locator('text=Team Assignment').count().then(n => n > 0), 8000, 'LOBBY');
+    await pg.evaluate(async () => { const m = window.__MC_MOCK__; await m.loadGame(); await m.setPhase('lobby', true); await m.readyAll(); await m.pushLobby(true); });
+    await until(() => pg.locator('[data-not-ready-gun="GUN-A"]').count().then(n => n > 0), 8000, 'the GUN-A line');
+    const text = (await pg.locator('.screen').innerText()).toUpperCase();
+    const n = text.split('GUN DID NOT TAKE THE CONFIG').length - 1;
+    expect(n === 1, `${w}px: the no_config fact is said once (saw ${n})`);
+    expect(!text.includes('CHECK IT IS ON AND RECONNECT IT'), `${w}px: never "check it is on" about a gun that was on`);
+    expect(!text.includes('NEED ACTION') && !text.includes('CANNOT START'), `${w}px: no PRE-ARM verdict, no "cannot start"`);
+    expect(await pg.locator('[data-testid="override-risk"]').count() === 0, `${w}px: no warning above the override repeating it`);
+    const gunA = (await pg.locator('[data-not-ready-gun="GUN-A"]').innerText()).toUpperCase();
+    expect(gunA.includes('REAPER') && gunA.includes('RE-PUSH'), `${w}px: the gun line names the player and the action (saw "${gunA}")`);
+    expect(await pg.locator('[data-testid="pre-arm-row"]').count() === 0, `${w}px: PRE-ARM rows wait for ALL`);
+    expect(await pg.locator('[data-arm-why]').count() === 0, `${w}px: no sentence beside ARM`);
+    const summary = (await pg.getByTestId('lobby-guns-ready').innerText()).toUpperCase();
+    expect(/GUNS READY \d+\/\d+/.test(summary), `${w}px: one summary line (saw "${summary.slice(0, 40)}")`);
+    expect(await pg.locator('[data-override] button').isVisible(), `${w}px: the HOST OVERRIDE stays`);
+    expect(await pg.locator('[data-lobby-primary] button').isDisabled(), `${w}px: ARM stays refused`);
+    ok(`${w}px: one summary, one line per gun, the override   ${await shot(pg, `no-config-once-${w}`)}`);
+    await pg.context().close();
+  }
 });
 
 // QA-04: the operator note remains on ARMED, while LOBBY uses its visible phase and controls without a duplicate note.

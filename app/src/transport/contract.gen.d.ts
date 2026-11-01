@@ -2341,7 +2341,10 @@ export interface RecapSyncView {
 export interface RecapView {
   /** null while this RECAP result waits for its bound phones and hills */
   winner: WinnerView | null;
+  /** kills plus team credit, in EVERY mode (never the objective tally: that is `possession`) */
   score: Record<string, number>;
+  /** the rule the scorer ran this match by; the console headlines held time on "objective" */
+  win_by?: WinBy;
   rows: ScoreRow[];
   honors: Honor[];
   provisional: boolean;

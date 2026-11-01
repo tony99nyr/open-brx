@@ -240,12 +240,36 @@ export function Lobby() {
   // untouched above) or the detailed PRE-ARM CHECK / rail counts elsewhere on this screen -- it adds the
   // single headline the audit found missing, naming a no-phone gun as NO PHONE, never as "has not
   // confirmed" (a fact about a phone that was never here, not about a config it never answered).
+  //
+  // Bench 2026-11-01 (Tony, "lots of warnings here. too many"): after the push this block is the ONE place
+  // LOBBY names a gun that is not ready: one line per gun, in the server's own words for it (its first
+  // readiness blocker), so the PRE-ARM verdict, the sentence beside ARM, the fault rows and the override's
+  // "N GUNS HAVE NOT CONFIRMED" no longer repeat it. A gun that has not answered the push yet is listed
+  // too, neutrally, and is not counted ready: ARM refuses it (`allAcked`), so READY n/m must not count it.
+  // The generic "CHECK IT IS ON AND RECONNECT IT" is gone: a `no_config` ack is a gun that was on and
+  // linked (F636), and the server's line already says what to do.
   const board = readiness.board ?? [];
   const gunsTotal = board.length;
-  const notReadyGuns = board.filter(r => r.status === 'red' || r.status === 'waiting');
-  const gunsReady = gunsTotal - notReadyGuns.length;
-  const gunsAllReady = gunsTotal > 0 && notReadyGuns.length === 0;
-  const notReadyReason = (r: { present: boolean }): string => (r.present ? 'CHECK IT IS ON AND RECONNECT IT' : 'NO PHONE: CONNECT IT');
+  const nameOfPid = (pid: string) => players.find(p => p.player_id === pid)?.display ?? '';
+  const answered = (pid: string) => Object.hasOwn(lobby.acks, pid);
+  const gunLines = board.flatMap(r => {
+    if (r.status === 'red' || r.status === 'waiting') {
+      // the one action first: a blocker no re-push can clear leads (a stale ack beside a lost link is the link)
+      const bl = [...(r.blockers ?? [])].sort((x, y) => Number(curedByPush(x)) - Number(curedByPush(y)));
+      const text = bl[0] ?? (r.status === 'waiting' || !r.present ? 'NO PHONE: CONNECT IT' : 'NOT READY: SEE ITS CARD ON ARMORY');
+      const line = bl[0] ? serverLine(bl[0], 'blocker') : { id: 'lobby-guns-not-ready-line', sev: sevOf('lobby-guns-not-ready-line') };
+      return [{ r, name: nameOfPid(r.player_id), text, more: bl.slice(1), ...line }];
+    }
+    const bound = !!r.player_id && state.nodes.some(n => n.player_id === r.player_id);
+    return lobby.pushed && bound && !answered(r.player_id)
+      ? [{ r, name: nameOfPid(r.player_id), text: 'WAITING FOR THE GUN TO CONFIRM', more: [] as string[],
+           id: 'lobby-gun-waiting-confirm', sev: sevOf('lobby-gun-waiting-confirm') }]
+      : [];
+  });
+  const gunsReady = gunsTotal - gunLines.length;
+  const gunsAllReady = gunsTotal > 0 && gunLines.length === 0;
+  // the rail lists the guns itself, so the copies of the same facts elsewhere on this screen stand down
+  const listing = lobby.pushed && gunsTotal > 0 && gunLines.length > 0;
 
   return (
     <div className="screen">
@@ -428,7 +452,7 @@ export function Lobby() {
               The reason sits beside the button, in amber. */}
           {/* polish r1: before the push this is a short count (the rail line below already names the phones),
               with the whole reason on the tooltip, and no live region re-announcing it on every arrival. */}
-          {armDisabled && armWhy && lobby.pushed && (
+          {armDisabled && armWhy && lobby.pushed && !listing && (
             <span data-arm-why="1" role="status" style={{ font: F.chk(600, 12), lineHeight: 1.45, color: colourOf('lobby-arm-why-pushed'), maxWidth: 420 }}>{GLYPH} {updatingWhy || armWhy}</span>
           )}
           {armDisabled && armWhy && !lobby.pushed && prePushShort && (
@@ -453,10 +477,17 @@ export function Lobby() {
             <span style={{ font: F.chk(700, 13), letterSpacing: '.06em', color: gunsAllReady ? T.ok : colourOf('lobby-guns-ready-line') }}>
               {gunsAllReady ? `GUNS READY ${gunsReady}/${gunsTotal}` : glyphed('amber', `GUNS READY ${gunsReady}/${gunsTotal}`)}
             </span>
-            {!gunsAllReady && notReadyGuns.map(r => (
-              <span key={r.player_id} data-not-ready-gun={r.sticker} style={{ font: F.chk(600, 12), letterSpacing: '.04em', color: colourOf('lobby-guns-not-ready-line') }}>
-                {glyphed('amber', `${r.sticker} NOT READY: ${notReadyReason(r)}`)}
-              </span>
+            {gunLines.map(g => (
+              <div key={`${g.r.sticker}-${g.r.player_id}`} data-not-ready-gun={g.r.sticker}
+                style={{ display: 'flex', gap: '2px 12px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                <span style={{ font: F.osw(700, 14), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>
+                  {g.name || g.r.sticker}{g.name && <span style={{ font: F.mono(500, 11), color: T.micro }}> {g.r.sticker}</span>}
+                </span>
+                <Alert id={g.id} sev={g.sev} variant="row" title={g.more.length ? [g.text, ...g.more].join('\n') : undefined}
+                  style={{ flex: '1 1 240px', minWidth: 0 }}>
+                  {g.text}{g.more.length ? ` (+${g.more.length} MORE)` : ''}
+                </Alert>
+              </div>
             ))}
           </div>
         )}
@@ -468,6 +499,14 @@ export function Lobby() {
             `notReady.length || armDisabled` amber the audit missed, so "not ready yet" and "waiting
             for verification" read as a fix-before-the-next-match line, not grey status text. */}
         {(() => {
+          if (listing && !notReady.length) return null;
+          if (listing) {
+            return (
+              <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5, color: colourOf('lobby-status-line-amber') }}>
+                {glyphed(sevOf('lobby-status-line-amber'), alertWords(`Not ready yet: ${notReady.join(', ')}`))}
+              </div>
+            );
+          }
           const amberWaiting = armDisabled;   // by the time NOT READY has its own branch below, notReady.length is 0
           const lineColorId = staleAckLine ? STALE_ACK_LINE_ALERT_ID
             : faults.length ? 'lobby-status-line-red'
@@ -515,7 +554,7 @@ export function Lobby() {
           );
         })()}
 
-        {faults.length > 0 && (
+        {faults.length > 0 && !listing && (
           <div style={{ borderTop: `1px solid ${T.line}`, padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {faults.map(f => (
               <div key={f.who} style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
@@ -550,9 +589,12 @@ export function Lobby() {
               statement, quiet cure). It was a tooltip, and this runs on a tablet where there is no
               hover at all — so the one sentence that could have stopped the 2026-09-12 start was
               unreachable on the device the operator was holding. */}
-          {lobby.pushed && override.warn.length > 0 && (
+          {/* Bench 2026-11-01: "N GUNS HAVE NOT CONFIRMED" is dropped here; the gun lines above and the
+              button's own label already name them. A gun that was never SENT this config stays: it arms on
+              the previous game's head, which nothing else on the screen says. */}
+          {lobby.pushed && override.warn.some(w => w.kind !== 'unconfirmed') && (
             <div data-testid="override-risk" role="status" style={{ flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {override.warn.map(w => (
+              {override.warn.filter(w => w.kind !== 'unconfirmed').map(w => (
                 <span key={w.head} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <span style={{ font: F.chk(700, 12), color: colourOf('lobby-override-risk-block'), lineHeight: 1.5 }}>{GLYPH} {w.head}</span>
                   <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14, lineHeight: 1.5 }}>{w.hint}</span>

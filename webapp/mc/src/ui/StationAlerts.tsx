@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import type { StationView } from '../api/types';
 import { F, T } from '../tokens';
 import { serverLine } from '../alerts';
+import { STATION_NO_HILL } from '../api/contract.gen';
 import { FaultPill, ItemChip } from './Compact';
 import { GhostButton, SectionRule } from './index';
 
@@ -57,6 +58,19 @@ function UnlockStations() {
 const KIND_WORD: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACT', bomb: 'BOMB', control: 'CONTROL' };
 const KIND_LABEL: Record<string, string> = { respawn: 'Respawn', powerup: 'Powerup', extraction: 'Extract', bomb: 'Bomb', control: 'Hill' };
 
+/** Bench 2026-11-01: two different alerts on one phone both read "Phone b963 needs attention", so the
+ *  operator could not tell them apart without opening each. The chip now names its alert. */
+const ALERT_WORDS: Record<string, string> = {
+  'station-attention-bring-back': 'out of range', 'station-attention-offline': 'offline', 'frame-station-offline': 'offline',
+  'station-attention-battery-low': 'battery low', 'station-attention-phone-not-armed': 'not armed',
+  'station-attention-armed-older-game': 'armed for an older game', 'station-attention-id-mismatch': 'advertises the wrong ID',
+  'station-attention-restarted': 'restarted', 'station-attention-lock-expires': 'lock expires mid-match',
+  'station-attention-claims-dropped': 'dropped claim reports', 'station-attention-nvs-fail': 'cannot save its settings',
+  'station-attention-stick-fw-old': 'firmware too old',
+};
+const alertName = (id: string, line: string): string =>
+  line === STATION_NO_HILL ? 'not armed: no hill in this mode' : ALERT_WORDS[id] ?? 'needs attention';
+
 function stationLabel(s: StationView): string {
   if (s.platform === 'android' || s.platform === 'ios') return `Phone ${s.node_id.slice(-4)}`;
   return `${KIND_LABEL[s.assigned!.kind] ?? s.assigned!.kind} ${s.assigned!.id}`;
@@ -89,28 +103,31 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
       </div>
     );
   }
-  const lines = stations.flatMap(s => s.attention.map(t => ({
+  const all = stations.flatMap(s => s.attention.map(t => ({
     key: `${s.node_id}-${t}`, t,
     label: stationLabel(s),
     // a line that names no station ("BATTERY LOW") says which one it is about
     who: t.startsWith(STATION_PREFIX) ? null : `${KIND_WORD[s.assigned!.kind] ?? s.assigned!.kind.toUpperCase()} ${s.assigned!.id}`,
   })));
+  // Bench 2026-11-01: a NEUTRAL line (STRENGTH EDITED ON STATION …) is a note, not an alert: no chip, no
+  // glyph, no amber, and it never makes the strip read STATION ALERTS on its own.
+  const lines = all.filter(l => serverLine(l.t, 'amber').sev !== 'neutral');
+  const notes = all.filter(l => serverLine(l.t, 'amber').sev === 'neutral');
   const lockActive = stations.some(s => !!s.lock_until_ms && s.lock_until_ms > serverNow());   // MC's clock, as the ITEMS card
-  if (!lines.length && !(showUnlock && lockActive)) return null;
+  if (!lines.length && !notes.length && !(showUnlock && lockActive)) return null;
+  const heading = lines.length || (showUnlock && lockActive) ? 'STATION ALERTS' : 'STATION NOTES';
   return (
     <div data-testid="station-alerts" data-compact={compact ? '1' : undefined} style={{ margin: compact ? '0 0 10px' : '0 0 14px' }}>
-      {!compact && <SectionRule label="STATION ALERTS" />}
+      {!compact && <SectionRule label={heading} />}
       <div role="status" aria-live="polite" style={{ display: 'flex', flexDirection: compact ? 'row' : 'column', flexWrap: 'wrap', alignItems: compact ? 'center' : undefined, gap: 6 }}>
-        {compact && <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim }}>STATION ALERTS</span>}
+        {compact && <span style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim }}>{heading}</span>}
         {lines.map(({ key, t, who, label }) => {
           let { id, sev } = serverLine(t, 'amber');
           // F221 round 1: MC's own words cannot tell ARMED from LIVE, but this screen knows the phase.
           // A held station going offline is RED (act now) only while the match it is held for is LIVE;
           // in LOBBY or ARMED it is AMBER (fix before the next match), same as every other attention line.
           if (id === 'station-attention-offline' && state?.phase === 'live') { id = 'frame-station-offline'; sev = 'red'; }
-          const short = id === 'station-attention-bring-back' ? `${label} out of range`
-            : id === 'station-attention-offline' || id === 'frame-station-offline' ? `${label} offline`
-            : id.includes('battery') ? `${label} battery low` : `${label} needs attention`;
+          const short = `${label} ${alertName(id, t)}`;
           const detail = `${who ? `${who} · ` : ''}${t}`;
           return (
             <div key={key} data-station-alert={t} style={{ padding: compact ? '2px 0' : '3px 0' }}>
@@ -118,6 +135,11 @@ export function StationAlerts({ showUnlock = false, compact = false, unlockOnly 
             </div>
           );
         })}
+        {notes.map(({ key, t, label }) => (
+          <div key={key} data-station-note={t} data-sev="neutral" style={{ font: F.chk(500, 12), color: T.micro, padding: compact ? '2px 0' : '3px 0' }}>
+            {label} · {t}
+          </div>
+        ))}
         {showUnlock && lockActive && <UnlockStations />}
       </div>
     </div>

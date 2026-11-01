@@ -7,7 +7,7 @@ import { SYNC_STUCK_S } from '../api/contract.gen';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { isObjectiveScored, objectiveWord } from '../rules/scoring';
+import { objectiveWord } from '../rules/scoring';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -207,7 +207,10 @@ export function Recap() {
   // reported the numbers are still the kill score, and are labelled KILLS so nobody reads them as held.
   const scoring = past ? (past.config?.scoring as State['config']['scoring'] | undefined) : state.config.scoring;
   const mode = past ? past.mode : state.config.mode;
-  const objective = !!scoring && isObjectiveScored({ scoring }) && scores.length >= 2;
+  // Bench 2026-11-01: the draft config is not the match (an adopted match has none of its own), so the recap's own
+  // `win_by`, the rule the scorer ran, decides; the config is only the fallback for an older MC that omits it.
+  const winBy = rc.win_by ?? scoring?.win_by;
+  const objective = winBy === 'objective' && scores.length >= 2;
   const heldBy = objective && rc.possession ? rc.possession.by_team : null;
   const lengthLabel = playedS == null && past ? ''
     : playedS == null ? (limitS ? ` · LIMIT ${fmtDuration(limitS)}` : '')
