@@ -243,12 +243,16 @@ A).
    about 100 ms of a death, 5 times; each press logs its hold until 2.5 s after the death. Closes: the headset goes
    dark 5/5 and the trigger fires 5/5. Reopens: a stuck flash; try a settle gap before the respawn `$HLED` first.
    (0424 P1.4, 0422 A.10)
-23. **F542**, the ALT swallow matrix (45 min). Control: ALT on a settled life, six times, at the start and the end.
-   Six trials of each of the five conditions, at swap 500 (the two pistols), then 1105 (the AMR and the Shotgun), with
-   L2's HUD checks, the lever on a full magazine (no `$ALCD`) and the Desert Eagle's reload time (expect 2.7 to 2.8 s;
-   the AR is its control). Closes: ALT with no shot moves the HUD, a shot on the old slot snaps it back with GUN WAS
-   ON, and ALT then the lever settles on the gun's slot. Reopens: a HUD weapon that does not fire; the swap counts
-   pick the fix. (0426 P1.2, 1017 P1.2, P1.3, P2.3 and L2)
+23. **F542**, the lever after a swap reloads the slot that fired last (30 min). The AR in slot 0 and the USP in slot 1,
+   a full capture, an APK with `ae5998c0b` and its review fixes. Control: on a settled life, fire the AR, then the lever:
+   a normal AR reload. A/B, six times each: (A) fire the AR, ALT, three USP shots, ALT back, the lever with no shot: expect
+   `$ALCD,…,1` rising (the USP reloads), the HUD stays on the AR, the ammo block says PULL THE TRIGGER, THEN RELOAD, and
+   no GUN WAS ON; (B) the same, but one AR shot after the ALT back, then the lever: expect a normal AR reload
+   (`$ALCD,…,0` rising). Then the empty-weapon case: the AR empty, ALT, one USP shot, ALT back, the lever (the USP
+   reloads), one DRY trigger pull, the lever again: expect the second lever to reload the AR (`$ALCD,…,0` rising).
+   Unproven: whether a dry pull clears the gun's last-fired latch; log the slot of the second lever's `$ALCD`. Also: a
+   shot on the other slot snaps the HUD back with GUN WAS ON. Closes: A and B as expected. Reopens: a HUD weapon that
+   does not fire. (0426 P1.2, 1017 P1.2, P1.3 and L2)
 24. The Sniper's 2.2 s bolt (10 min; no open row). Control: the AMR fires its magazine with no lever between shots.
    A/B/A: AMR; the Sniper three times, then with Quick Hands and with Extended Mags; AMR. Pass: one lever pull a shot,
    a press during the bolt fires nothing, the HUD shows BOLT, and the bolt stays 2.2 s with a magazine of 1. (0426
@@ -313,8 +317,10 @@ A).
    1, each a held full-auto burst from cold to the lock; log token 5 per round, rounds to the lock, and seconds. Closes:
    both guns agree, and the number goes into the weapon's `caution` (it shows on the MC console) and `heat.per_shot`
    (the balance sims). Reopens: the guns differ, so the caution states the range and the sims keep the faster lock.
-   (post-mvp F229)
-   Run 2026-11-01: both guns locked at heat 100 after 76 rounds (about 1.3 a round).
+   (post-mvp F229) **CONFIRMED 2026-11-01 (0.4.32, `FE30` and `E20D`):** both guns locked at heat 100 after 76 rounds from
+   300, about 1.3 heat a round, one round about every 0.15 s. Heat at 290/280/270/260/250/240/230 read 16/30/42-43/55/67/80/92.
+   A held lever vented 100, 65, 30, 0 over 0.5 s and refilled 0.15 s after release, debiting exactly the 76 used. The
+   caution now says about 75 rounds. `heat.per_shot` and the sims are not changed here (brx3, for Tony).
 103. **F575**, Energy Rifle cooling between bursts (10 min, one gun). From cold, five 2 s bursts with 3 s gaps; log
    `$ALCD` token 5 at the end and start of each burst. Closes: whether heat falls while unlocked (the sim's
    `cool_per_s` 0 assumes not). (FOLLOWUPS F575)

@@ -39,7 +39,9 @@ export function _live(st) {
     // hot for up to 19 s after the word had gone. The engine always sets the field, so there is no fallback.
     const overheating = !!(st.alive && st.overheatShown);
     // F238 reopened (field 2026-10-17, F226): a charge from a cell below one full charge spikes the heat and fires nothing,
-    // and waiting never clears it. OVERHEAT told the player to wait, so NOT ENOUGH ENERGY wins the word and the prompt.
+    // and waiting never clears it. OVERHEAT told the player to wait, so NOT ENOUGH ENERGY wins the prompt. F226 (Tony, 2026-11-01:
+    // "janky super large"): no full-screen word or vignette for this case; the red prompt on the ammo block says it, and the
+    // phone reloads the cell itself (engine.js `_chargeLock`).
     const starved = overheating && belowCharge && st.ammo > 0;
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
@@ -54,7 +56,7 @@ export function _live(st) {
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
     return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}${st.alive && st.stunned ? ' stunned' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
-      ${overheating ? `<div class="heatvig"></div><div class="heatword">${starved ? 'NOT ENOUGH ENERGY' : 'OVERHEAT'}</div>` : ''}
+      ${overheating && !starved ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
@@ -75,6 +77,7 @@ export function _live(st) {
           : overheating ? `<span class="reload hot solid"><span class="unskew">${starved ? 'NOT ENOUGH ENERGY' : 'OVERHEAT'}</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
           : st.reloadFailed ? `<span class="reload solid"><span class="unskew">RELOAD DID NOT TAKE</span></span>`   // F277: before RECHARGE, a failed recharge must say so
+          : st.fireFirst ? `<span class="reload solid"><span class="unskew">PULL THE TRIGGER, THEN RELOAD</span></span>`   // F542: the lever reloaded the slot fired last
           : energyLow ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
           : lowMag && !st.bolt ? (energy ? `<span class="reload solid"><span class="unskew">${RECHARGE_PROMPT}</span></span>`
             : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}

@@ -2076,12 +2076,12 @@ _AMMO_PAIRS = {
     "am.heatBlocksFire": "_heat_blocks_fire",
     # the reload takeover (F123)
     "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
-    "am.reloadTick": "_reload_tick",
+    "am.reloadTick": "_reload_tick", "am.autoReload": "_auto_reload",
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.rollBackSilentSwap": "_roll_back_silent_swap", "am.switchWindowMs": "_switch_window_s",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
     # one ammo report, and the RELOAD nag
-    "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull",
+    "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull", "am.fireFirstShown": "_fire_first_shown",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
     "am.acctWroteRows": "_acct_wrote_rows", "am.holdEchoes": "_hold_echoes", "am.forgetCounts": "_forget_counts",
     # bug 3 r1 M1: the window restarts when the write lands
