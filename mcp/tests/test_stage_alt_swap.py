@@ -483,3 +483,22 @@ def test_f542_a_silent_lever_on_the_assumed_slot_rolls_the_swap_back_to_the_full
             assert rolled == full, (full, _texts(st)[-5:])
             assert st.reload_outcome and st.reload_outcome["why"] == ("timeout" if full else "filled"), st.reload_outcome
     asyncio.run(go())
+
+
+def test_f542_a_real_swap_to_a_full_slot_then_a_silent_lever_never_rolls_back():
+    """ammo.js `rollBackSilentSwap`: a full slot ignores the lever too, so with BOTH slots full (just after a spawn) the
+    silence proves nothing and a real swap to the full USP must stay. CONTROL: the part-used USP of the test above."""
+    async def go():
+        st, _gun, clock = await _live()
+        cap = st._ammo_by_slot()[1]
+        st._on_rx(f"$ALCD,{cap},100,1,120,0,*")
+        st._on_rx("$ALCD,32,100,0,182,0,*")
+        _alt(st)
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        assert st.active_slot == 1 and st._assumed_swap is not None
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        for _ in range(20):
+            await _tick(st, clock, 0.5)
+        assert st.active_slot == 1, (st.active_slot, _texts(st)[-5:])
+        assert not any("rolled back" in t for t in _texts(st))
+    asyncio.run(go())

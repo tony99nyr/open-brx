@@ -5132,6 +5132,21 @@ test('F542 2026-11-01: an assumed swap never rolls back on time alone, nor when 
   assert.equal(h.eng.state().reloadOutcome.why, 'timeout', 'setup');
   assert.equal(h.eng.state().activeSlot, 1, 'no rollback');
 });
+test('F542 2026-11-01: a real swap to a full slot, then a silent lever, never rolls back', () => {
+  const h = liveSwapHarness();
+  f542SilentSwap(h, { assumeTo1: false });
+  const cap = h.eng.am.ammoBySlot()[1];
+  // the gun reports a full USP on slot 1, an AR round moves it back, and an AR reload fills the AR: both slots full
+  h.adv(300); h.frame(`$ALCD,${cap},100,1,288,0,*`);
+  h.adv(500); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,381,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500); h.frame('$ALCD,32,100,0,380,0,*');
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: on the full AR');
+  assert.deepEqual(h.eng.am.liveAmmo()[1].slice(0, 1), [cap], 'setup: the USP is full');
+  h.adv(300); h.frame('$BUT,1,1,*'); h.adv(176); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: the swap to the full USP is assumed');
+  h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'a full USP ignores the lever too, so the silence proves nothing');
+});
 test('F542 2026-11-01: an $ALCD round on the old slot after an assumed swap snaps back and ends the pending rollback', () => {
   const h = liveSwapHarness();
   f542SilentSwap(h);

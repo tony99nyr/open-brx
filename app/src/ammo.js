@@ -596,6 +596,8 @@ export class Ammo {
     if (A.life !== this.host.lifeSeq || r.slot !== A.to || this.host.activeSlot !== A.to || A.from === A.to) return;
     const cap = this.ammoBySlot()[A.from], old = this.liveAmmo()[A.from];
     if (!(cap > 0) || !old || !(old[0] >= cap)) return;   // the old slot could have reloaded too: the silence names neither
+    const toCap = this.ammoBySlot()[A.to], cur = this.liveAmmo()[A.to];
+    if (!(toCap > 0) || !cur || !(cur[0] < toCap)) return;   // a full assumed slot ignores the lever too: no proof
     this.host.log(`swap to slot ${A.to} rolled back: the lever got no reload, and slot ${A.from} is full`, 'li');
     this.host.setActiveSlot(A.from);
     this.altPtr = A.from; this.altEvidencePending = null;

@@ -6584,6 +6584,9 @@ class GunStage:
         cap, old = self._ammo_by_slot().get(a["from"]), self._live_ammo().get(a["from"])
         if not cap or cap <= 0 or not old or old[0] is None or old[0] < cap:
             return   # the old slot could have reloaded too: the silence names neither
+        to_cap, cur = self._ammo_by_slot().get(a["to"]), self._live_ammo().get(a["to"])
+        if not to_cap or to_cap <= 0 or not cur or cur[0] is None or cur[0] >= to_cap:
+            return   # a full assumed slot ignores the lever too: no proof
         self._log(f"swap to slot {a['to']} rolled back: the lever got no reload, and slot {a['from']} is full", "info")
         self.active_slot = a["from"]; self._alt_ptr = a["from"]; self._alt_evidence_pending = None
         self._recoil_arm("swap (rolled back)")
