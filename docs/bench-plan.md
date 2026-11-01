@@ -127,8 +127,8 @@ result that closes the row, and the result that reopens it. A step marked "read 
 and says why. The procedure stays in the sheet each step cites. Short names: 0422, 0424, 0426 and 1017 are
 [`bench-rebench-0422.md`](bench-rebench-0422.md), [`bench-rebench-0424.md`](bench-rebench-0424.md),
 [`bench-0426.md`](bench-0426.md) and [`bench-field-1017.md`](bench-field-1017.md); runbook is
-[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 24
-h 30 min (steps 1 to 95, 101 and 102), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
+[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 25
+h 10 min (steps 1 to 95, 101 to 106), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
 min) are not in it.
 
 **Build gate: run on the newest APK, and check the fix each step tests.** The newest APK is 0.4.30, built locally
@@ -181,7 +181,7 @@ Tactix-9498 and its headset. Force-stop any phone app that holds the gun. Arm fr
    (FOLLOWUPS F592)
 7. **B26**, a gun with no headset in local play (5 min). Control: the same gun with its headset fires. A/B/A: headset
    on, removed, on. Closes: fires or refuses; the answer updates `docs/manual/fix.md` "Won't fire" step 1. (0422 A.19) **→ 2026-11-01:** not run as written (local play). An app game on 0.4.32 showed a headset dropped mid-match does
-   not stop the barrel for at least 3 s: that is F641, step 103.
+   not stop the barrel for at least 3 s: that is F641, step 107.
 8. **S10**, the L10 hold (5 min, eyes). Control: on a spawned gun with the strip blanked (`$GLED,,,,5,,,*`),
    `$GLED,3,3,9,0,1,,*` paints two dim green segments and a dark third. A/B/A: the paint; each of the four frames of
    0422 A.20 sent one at a time; the paint re-read after each. Closes: it holds 60 s and survives all four. Reopens: a
@@ -294,7 +294,7 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 135 min)
+### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 175 min)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old
@@ -329,7 +329,19 @@ A).
    300, about 1.3 heat a round, one round about every 0.15 s. Heat at 290/280/270/260/250/240/230 read 16/30/42-43/55/67/80/92.
    A held lever vented 100, 65, 30, 0 over 0.5 s and refilled 0.15 s after release, debiting exactly the 76 used. The
    caution now says about 75 rounds. `heat.per_shot` and the sims are not changed here (brx3, for Tony).
-103. **F641**, a headset dropped mid-match (15 min). A phone-hosted TDM game. Control: a hit with the shooter's
+103. **F575**, Energy Rifle cooling between bursts (10 min, one gun). From cold, five 2 s bursts with 3 s gaps; log
+   `$ALCD` token 5 at the end and start of each burst. Closes: whether heat falls while unlocked (the sim's
+   `cool_per_s` 0 assumes not). (FOLLOWUPS F575)
+104. **F575**, the Charge Rifle's cooling curve (10 min, one gun). A full charge, then no input; poll heat every
+   200 ms for 5 s, three times. Closes: the decay's shape and floor (the bench saw 56 to about 25 in 1.3 s; the sim cools
+   in a straight line to 0). (FOLLOWUPS F575)
+105. **F575**, a second charge on leftover heat (10 min, one gun). A full charge, then a second full charge at once,
+   then again after 1 s and 3 s; log heat after each. Closes: whether charges stack and when the gun locks. (FOLLOWUPS
+   F575)
+106. **F575**, the Charge Rifle lockout length (10 min, one gun). Drive heat to the lock (charges back to back), time
+   from the lock to the next shot that fires, three times. Closes: whether `lockout_ms` 4800 still holds. (FOLLOWUPS
+   F575)
+107. **F641**, a headset dropped mid-match (15 min). A phone-hosted TDM game. Control: a hit with the shooter's
    headset on lands both words. B: switch the shooter's headset off mid-match, fire one round every 5 s for 60 s at a
    live target, and log each `$HIR` and the phone's headset state. Then the headset on again. Read: when, if ever, the
    gun stops firing or landing. The manual waits for this. (FOLLOWUPS F641)
