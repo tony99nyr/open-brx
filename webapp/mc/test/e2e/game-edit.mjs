@@ -646,8 +646,10 @@ async function runFaults(browser, viteBase) {
   await pg.locator('header nav button:has-text("LOBBY")').first().click();
   await until(() => onLobby(pg), 5000, 'the LOBBY to open from the nav');
   const rail = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
-  expect(/still answering for an older config/i.test(rail),
-    `the rail names the stale guns, not just a count (saw ${JSON.stringify(rail.slice(0, 200))})`);
+  // bench 2026-11-01: the rail names each gun once, on its own line under GUNS READY, in the server's words
+  const gunLines = (await pg.locator('[data-not-ready-gun]').allInnerTexts()).join(' | ');
+  expect(/ACKED AN OLDER CONFIG/i.test(gunLines),
+    `the rail names the stale guns, not just a count (saw ${JSON.stringify(gunLines.slice(0, 300))})`);
   expect(/Re-push/i.test(rail), 'the fault list keeps the RE-PUSH half of each A36 line');
   const arm = pg.locator('button:has-text("ARM COUNTDOWN")').first();
   const title = await arm.getAttribute('title');
@@ -683,7 +685,9 @@ async function runFaults(browser, viteBase) {
   expect(!/older config/i.test(armTitle ?? ''), `the ARM no longer blames a stale head (saw ${JSON.stringify(armTitle)})`);
   expect((armTitle ?? '').trim().length > 0, 'a disabled ARM is never silent about why');
   expect(/no push can clear/i.test(armTitle ?? ''), `...and names what is left (saw ${JSON.stringify(armTitle)})`);
-  expect(/WAITING FOR 1 PHONE:/.test(cured), 'the one row left is the phone nobody brought');
+  const left = await pg.locator('[data-not-ready-gun]').allInnerTexts();
+  expect(left.length === 1 && /WAITING FOR THE PHONE/.test(left[0]),
+    `the one row left is the phone nobody brought (saw ${JSON.stringify(left)})`);
   ok(`the re-push cured all four reds   ${await shot(pg, '55-faults-cured')}`);
   // …and NOT ECHOED survives it: that row is the v4.32 firmware, not a stale head.
   await onMuster(pg);

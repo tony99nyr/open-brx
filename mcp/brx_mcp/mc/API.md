@@ -320,7 +320,7 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
            //     nothing landed late, so presence never has to be tested for.
            after_end_kills: number, after_end_deaths: number
          }
-RecapView { winner: Winner|null, score: { [team_id]: number }, rows: ScoreRow[],
+RecapView { winner: Winner|null, score: { [team_id]: number } /* kills plus team credit in every mode */, win_by?: "kills"|"survival"|"objective" /* the scorer's own rule; objective => the console headlines `possession` */, rows: ScoreRow[],
             honors: { award: string, player_id: string, stat: string, key?: string }[], provisional: boolean, missing: string[], played_s?: number,
                                        // A63: `key` = the `types.AWARDS` row (contract.gen `AWARDS`: key, label, rule, tie);
                                        // `award` stays its label. A tie is SHARED: one row per tied player, so key React

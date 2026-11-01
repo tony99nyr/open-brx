@@ -1311,7 +1311,7 @@ export class MockBackend implements Api {
     const missing = this.matchMissing();
     return sessionScorerRecap({ winner: this.config.mode === 'ffa' ? { player_id: rows[0]?.player_id ?? null }
       : { team_id: tied.length === 1 ? tied[0] : null, ...(tied.length > 1 ? { tie: tied } : {}) },
-      score: live.score, rows, honors: [], provisional: true, missing,
+      score: live.score, win_by: this.config.scoring?.win_by ?? 'kills', rows, honors: [], provisional: true, missing,
       post_end: 0, post_end_facts: 0, parked: 0, ...settling }, this.recapStations(false));
   }
   private recapStations(ended: boolean): RecapStationRow[] {
@@ -1649,7 +1649,7 @@ export class MockBackend implements Api {
       facts: 3,
       by_player: { [late[0].player_id]: { kills: 1, deaths: 0 }, [late[1].player_id]: { kills: 0, deaths: 1 } },
     } : undefined;
-    this.recap_ = sessionScorerRecap({ winner, score, rows, honors,
+    this.recap_ = sessionScorerRecap({ winner, score, win_by: this.config.scoring?.win_by ?? 'kills', rows, honors,
                     played_s: Math.max(0, Math.floor((now() - l.go_live_t) / 1000)), provisional: missing.length > 0, missing,
                     post_end: after_end?.facts ?? 0, parked: 0,
                     ...(after_end ? { after_end, post_end_facts: after_end.facts } : {}),

@@ -175,9 +175,9 @@ describe('M5 · Station Alerts carry every attention line of an assigned station
     ] });
     const t = m.text();
     expect(t).toContain('Respawn 1 battery low');
-    expect(t).toContain('Respawn 2 needs attention');
+    expect(t).toContain('Respawn 2 restarted');
     await m.click('Respawn 1 battery low');
-    await m.click('Respawn 2 needs attention');
+    await m.click('Respawn 2 restarted');
     expect(m.text()).toContain('BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE');
     expect(m.text()).toContain('STATION #2 RESTARTED: CHECK THE STATION');
     expect(m.text(), 'a line that names no station says which one').toMatch(/RESPAWN 1/);
@@ -276,10 +276,11 @@ describe('M9 · LOBBY names the updating player and why ARM waits', () => {
       lobby: { ...d.state.lobby, pushed: true, ready: players.length, updating: 1, acks, all_acked: false } });
     const chips = m.find('[data-updating-chip]');
     expect(chips.map(c => c.getAttribute('data-updating-chip'))).toEqual([players[0].player_id]);
-    const why = m.find('[data-arm-why]')[0];
-    expect(why, 'the reason is on screen beside ARM').toBeTruthy();
-    expect(why.getAttribute('style') ?? '').toContain('rgb(255, 176, 32)');
-    expect(why.textContent).toMatch(new RegExp(players[0].display));
+    // Bench 2026-11-01: the reason is the gun's own line under GUNS READY, right below ARM, said once
+    const line = m.find('[data-not-ready-gun]').find(l => (l.textContent ?? '').includes(players[0].display));
+    expect(line, 'the reason is on screen below ARM').toBeTruthy();
+    expect(line!.textContent).toContain('WAITING FOR THE GUN TO CONFIRM');
+    expect(m.find('[data-arm-why]').length, 'and not a second time beside it').toBe(0);
     m.unmount();
   });
 });

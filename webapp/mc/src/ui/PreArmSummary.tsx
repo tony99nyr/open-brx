@@ -78,7 +78,7 @@ export interface ArmOverrideCopy {
   /** what goes ON SCREEN above the button: shouted statement, quiet instruction (the console's fault
    *  shape). A tooltip is not where a field-safety fact belongs — on the tablet this runs on there is
    *  no hover at all. */
-  warn: { head: string; hint: string }[];
+  warn: { head: string; hint: string; kind: 'nocheck' | 'holding' | 'unconfirmed' }[];
 }
 
 /** Up to `cap` names on the control itself; the rest are counted, and the title carries the full
@@ -102,7 +102,7 @@ export function armOverrideCopy(sync: State['sync']): ArmOverrideCopy {
       title: `${FORCED} This server sends no pre-arm check, so MC CANNOT TELL YOU which guns are on this config. `
         + 'A gun that never took it is not inert — it arms on the head it is still holding and plays that '
         + "game's team and weapons. Restart MC to get the check back.",
-      warn: [{ head: 'MC CANNOT CHECK THE GUNS ON THIS SERVER',
+      warn: [{ kind: 'nocheck', head: 'MC CANNOT CHECK THE GUNS ON THIS SERVER',
                hint: 'Nothing here has confirmed that any gun is on this config — this MC predates the pre-arm '
                  + 'check. Restart it before trusting the board.' }],
     };
@@ -133,6 +133,7 @@ export function armOverrideCopy(sync: State['sync']): ArmOverrideCopy {
   const warn: ArmOverrideCopy['warn'] = [];
   if (n > 0) {
     warn.push({
+      kind: 'holding',
       head: `${n} GUN${n === 1 ? '' : 'S'} ${n === 1 ? 'HAS' : 'HAVE'} NEVER TAKEN THIS CONFIG: ${holding.join(', ')}`,
       hint: `Not inert: ${n === 1 ? 'it arms' : 'each arms'} on the head it is still holding, so it plays the `
         + "previous game's team and weapons. PUSH CONFIG, or stand them down, before the whistle." + late,
@@ -140,6 +141,7 @@ export function armOverrideCopy(sync: State['sync']): ArmOverrideCopy {
   }
   if (u > 0) {
     warn.push({
+      kind: 'unconfirmed',
       head: `${u} GUN${u === 1 ? '' : 'S'} ${u === 1 ? 'HAS' : 'HAVE'} NOT CONFIRMED THIS CONFIG: ${unconfirmed.join(', ')}`,
       hint: 'MC pushed a head and the gun has not answered for it, so whether it took it is unknown. RE-PUSH '
         + 'CONFIG to find out.',
@@ -224,24 +226,32 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   const fails = marked.filter(x => failing(x.m));
   // after the push, a gun still answering is worth listing (neutrally); before it, every gun waits
   const acking = marked.filter(x => !failing(x.m) && pushed && x.m.ack === 'wait');
-  const shown = showAll ? marked : [...fails, ...acking];
+  // Bench 2026-11-01 (Tony, "too many" warnings): after the push LOBBY's rail names every gun that is not
+  // ready, one line each (GUNS READY), so this panel lists only what the rail does not carry: a bound
+  // phone that missed LOAD. Every row is still one tap away on ALL, and the counts stay.
+  // only when LOBBY actually draws GUNS READY (it reads `readiness.board`); an older MC without one keeps every row
+  const railOwns = pushed && (state.readiness?.board?.length ?? 0) > 0;
+  const listed = railOwns ? fails.filter(x => x.m.phone === 'fail' && x.r.bound) : fails;
+  const shown = showAll ? marked : railOwns ? listed : [...fails, ...acking];
   const col = (k: keyof ReturnType<typeof marksOf>) => marked.some(x => x.m[k] === 'fail');
   // ONE headline, read off the same marks the columns show, so the two can never disagree. That is
   // the rule the old verdict broke: "GUNS NOT CONFIGURED YET" sat beside GUNS PUSHED 2/2.
   const allClear = rows.length > 0 && pushed && fails.length === 0 && acking.length === 0;
   const verdict = rows.length === 0
     ? 'NOBODY IS ROSTERED: NOTHING TO CHECK'
-    : fails.length > 0
-      ? `${fails.length} OF ${rows.length} PLAYER${rows.length === 1 ? '' : 'S'} NEED${fails.length === 1 ? 'S' : ''} ACTION: SEE BELOW`
+    : listed.length > 0
+      ? `${listed.length} OF ${rows.length} PLAYER${rows.length === 1 ? '' : 'S'} NEED${listed.length === 1 ? 'S' : ''} ACTION: SEE BELOW`
       : !pushed
         ? 'EVERY PHONE HAS THE GAME: GUNS ARE CONFIGURED AT THE PUSH'
-        : acking.length > 0
-          ? `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`
-          : 'IN SYNC: EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME';
-  const tone = allClear ? T.ok : fails.length > 0 ? colourOf('frame-prearm-action') : T.micro;
+        : allClear
+          ? 'IN SYNC: EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME'
+          // the rail's GUNS READY line names them; a neutral pointer, never a second warning
+          : railOwns ? 'GUNS: SEE GUNS READY BELOW'
+            : `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`;
+  const tone = allClear ? T.ok : listed.length > 0 ? colourOf('frame-prearm-action') : T.micro;
 
   return (
-    <div data-testid="pre-arm-summary" data-state={allClear ? 'clear' : fails.length ? 'action' : 'waiting'}
+    <div data-testid="pre-arm-summary" data-state={allClear ? 'clear' : listed.length ? 'action' : 'waiting'}
       // F221 polish r1: an amber verdict used to give the whole panel an amber border and left rule,
       // a panel reading as a banner, which Tony's rule reserves for RED. AMBER is one line, never a
       // border, so the frame is now neutral whatever the verdict says; only the all-clear green stays.
@@ -252,7 +262,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
         {/* F221 polish r1: the amber verdict ("N NEED ACTION") had no ▲, so it is routed through
             `<Alert>` now, which carries the glyph and the catalogue's colour; the waiting/all-clear
             verdicts are status, not alerts, and stay plain. */}
-        {fails.length > 0
+        {listed.length > 0
           ? <Alert id="frame-prearm-action" what={verdict} testid="pre-arm-verdict" role="status" style={{ font: F.chk(700, 12), letterSpacing: '.08em' }} />
           : <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: tone }}>{verdict}</span>}
         <span style={{ flex: 1 }} />

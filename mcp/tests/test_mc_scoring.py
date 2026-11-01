@@ -431,3 +431,14 @@ def test_q13_a_solo_lms_kill_is_a_kill_not_a_team_kill():
     sc2 = Scorer("m1", SCORER_T0, 600, "lms", ps, two, {"n0": "p0", "n1": "p1"}, {"n0": True, "n1": True},
                  now_ms=lambda: SCORER_T0 + 2000, win_by="survival")
     assert sc2._friendly("p0", "p1") is True
+
+
+def test_recap_names_the_rule_the_scorer_ran_by():
+    """Bench 2026-11-01: the console headlined kills on a KOTH recap because it read the DRAFT config's win_by, which an
+    adopted match does not share. The recap carries the scorer's own `win_by`; `score` stays kills plus team credit."""
+    ps, teams = scoring_players("koth"), scoring_teams("koth")
+    for win_by in ("objective", "kills"):
+        sc = Scorer("m1", SCORER_T0, 600, "koth", ps, teams, {f"n{i}": f"p{i}" for i in range(4)},
+                    {f"n{i}": True for i in range(4)}, now_ms=lambda: SCORER_T0 + 2000, win_by=win_by)
+        assert sc.recap().get("win_by") == win_by
+        assert set(sc.recap()["score"]) == {t["team_id"] for t in teams}     # still the kill tally, per team

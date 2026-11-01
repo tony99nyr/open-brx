@@ -1383,7 +1383,7 @@ class Scorer:
     def recap(self, provisional_override: bool | None = None,
               stations: Sequence[RecapStationRow] | None = None) -> RecapView:
         missing = self.missing()
-        out: RecapView = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
+        out: RecapView = {"winner": self.winner(), "score": self.team_scores(), "win_by": self.win_by, "rows": self.rows(),
                "honors": self.honors(),
                "provisional": bool(missing) if provisional_override is None else provisional_override,
                "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),

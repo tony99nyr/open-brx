@@ -101,6 +101,21 @@ describe('1 · a KOTH RECAP headlines held time', () => {
     expect(strip(h.textContent ?? '')).toContain('KILLS');
   });
 
+  it('bench 2026-11-01: the recap\'s own win_by decides the headline, not the console draft config', async () => {
+    // The draft config (an adopted match has none of its own) says TDM and kills; the scorer ran an objective match.
+    const m = await recap({}, { possession: { ...HELD, by_team: { blue: 51, yellow: 80 } }, win_by: 'objective' }, false);
+    const h = m.find('[data-testid="recap-headline"]')[0];
+    expect(h.dataset.headline).toBe('held');
+    expect(strip(h.textContent ?? '')).toMatch(/1:20.*KILLS -1.*0:51.*KILLS 1/);
+    m.unmount();
+  });
+
+  it('a recap whose own win_by is kills stays a kill headline even when the draft config says objective', async () => {
+    const m = await recap({}, { possession: HELD, win_by: 'kills' }, true);
+    expect(m.find('[data-testid="recap-headline"]')[0].dataset.headline).toBe('kills');
+    m.unmount();
+  });
+
   it('leaves a kill-scored match as it was', async () => {
     const m = await recap({}, { possession: HELD, winner: { team_id: 'blue' } }, false);
     const h = m.find('[data-testid="recap-headline"]')[0];
