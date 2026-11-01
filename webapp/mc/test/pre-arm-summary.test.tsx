@@ -87,6 +87,18 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
     v.m.unmount();
   });
 
+  it('bench 2026-11-01: a phone whose gun ACKED this config is never MISSED LOAD, and the header agrees', async () => {
+    // what an MC from before the fix sent after a restart: no LOAD on record, so phone_game false beside an ack
+    const rows = [row({ phone_game: false }), row({ player_id: 'p2', display: 'VIPER', phone_game: false })];
+    const v = await lobby(syncOf(rows));
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent, 'the header agrees with GUNS READY').toMatch(/IN SYNC/);
+    expect(v.q('[data-count="PHONES TOLD"]')!.textContent).toContain('2/2');
+    await v.openAll();
+    expect(v.q('[data-testid="pre-arm-summary"]')!.textContent).not.toMatch(/MISSED LOAD/i);
+    expect(v.all('[data-col="phone"] [data-mark="ok"]').length).toBe(2);
+    v.m.unmount();
+  });
+
   it('a bound phone that missed LOAD tells the operator MC is retrying automatically', async () => {
     const missed = row({ player_id: 'p2', display: 'VIPER', bound: true, phone_game: false,
                          gun_sent: false, gun_acked: false, gun_echo: 'not_echoed' });
@@ -176,11 +188,11 @@ const rgb = (hex: string) => {
 describe('PRE-ARM CHECK — the verdict can never be greener than the rows beneath it', () => {
   it('a phone that never took this game is not "IN SYNC", however happy the gun columns are', async () => {
     // `totals.in_sync` is computed server-side from the GUN columns ALONE (`state.py sync_summary`:
-    // gun_sent and gun_acked), so this fixture — every gun pushed and acked, one phone that never
-    // took the game — made the panel print "IN SYNC: EVERY GUN HAS THIS CONFIG" in green directly
+    // gun_sent and gun_acked), so this fixture — every gun pushed, one phone that never took the game
+    // (its gun not answered yet: bench 2026-11-01, a gun that ACKED proves the phone was told) — made the panel print "IN SYNC: EVERY GUN HAS THIS CONFIG" in green directly
     // above a row rendering PHONE ✕. LOAD split those two halves; a verdict that only reads one of
     // them is the `(0/8)` false reassurance in a new place.
-    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
+    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false, gun_acked: false, gun_echo: null, ack_state: 'waiting' })]));
     const verdict = v.q('[data-testid="pre-arm-verdict"]')!;
     expect(verdict.textContent, `saw ${JSON.stringify(verdict.textContent)}`).not.toMatch(/IN SYNC/);
     // F221 polish r1: the amber verdict now goes through `<Alert>`, so it carries the glyph.
@@ -190,7 +202,7 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
   });
 
   it('…and the panel is not painted green while it is listing somebody', async () => {
-    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
+    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false, gun_acked: false, gun_echo: null, ack_state: 'waiting' })]));
     expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color, 'amber, not the green of an all-clear').toBe(rgb(T.warn));
     // F221 polish r1: AMBER is one line, never a banner border. The panel's own frame stays neutral
     // whatever the verdict says; only the all-clear green still colours it.
@@ -202,7 +214,7 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
     // Not a state today's MC can produce — it is what an older or a newer one might send. The green
     // is derived from the RENDERED rows for exactly this reason: whatever the totals claim, the panel
     // must not call itself clear while it is naming somebody.
-    const s = syncOf([row({ phone_game: false })]);
+    const s = syncOf([row({ phone_game: false, gun_acked: false, gun_echo: null, ack_state: 'waiting' })]);
     const v = await lobby({ ...s, totals: { ...s.totals, in_sync: true, phone_game: 1 } });
     expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/IN SYNC/);
     expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color).toBe(rgb(T.warn));
@@ -233,7 +245,7 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
     const setWidth = (px: number) => Object.defineProperty(window, 'innerWidth', { value: px, configurable: true, writable: true });
     try {
       setWidth(393);
-      const v = await lobby(syncOf([row({ phone_game: false })]));
+      const v = await lobby(syncOf([row({ phone_game: false, gun_acked: false, gun_echo: null, ack_state: 'waiting' })]));
       expect(v.q('[data-testid="pre-arm-todo"]')!.getAttribute('data-narrow'), 'full-width at 393 px').toBe('1');
       expect(v.q('[data-testid="pre-arm-row"]')!.getAttribute('data-compact')).toBe('1');
       expect(v.q('[data-testid="pre-arm-summary"]')!.textContent, 'the header it would label is gone with it').not.toContain('WHAT TO DO');
