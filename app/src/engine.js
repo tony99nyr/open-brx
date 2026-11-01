@@ -28,7 +28,7 @@ import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_ST
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
-import { Ammo, TRIGGER_NO_FIRE_MS } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
+import { Ammo, TRIGGER_NO_FIRE_MS, HEAT_LOCKOUT } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
 import { perkForHealth } from './health.js';   // the one Shields rule: the console and the server read the same three numbers
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
@@ -706,7 +706,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
   // the config handshake and the head on the gun
   headEcho: 'config echo window', echoProof: 'config echo window', headStartSeen: 'config echo window', configRefused: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
-  configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _headWeap0: 'config echo window',
+  configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _chargeLockFix: 'one F226 reload per charge lock (a pending write is not evidence after a restart)', _headWeap0: 'config echo window',
   _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
   _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
@@ -4908,6 +4908,36 @@ export class Engine {
    *  on the gun. Polish review 2026-09-18: this used to mark dirty unconditionally, including when the
    *  writer was already idle (no verify open, nothing to lose) -- a redundant re-send of the SAME value
    *  every hold. */
+  /** F226 (bench 2026-11-01, 0.4.32, Charge Rifle): a charge from a cell below one full charge (`rounds_per_charge`)
+   *  fires nothing, and the gun answers with an `$ALCD` at the same magazine and a heat at or past the lockout (156).
+   *  The lever then does nothing for several seconds (a lever 8 s later reloaded); `$AMMO` refills the cell and ends
+   *  the lock (bench 2026-09-17). So the phone does the reload for the player, once per lock: the spawn cap from the
+   *  reserve, never more than the reserve holds, booked as the phone's own write (`acctWrote`) like every phone `$AMMO`.
+   *  An empty reserve writes nothing: the HUD's NOT ENOUGH ENERGY says why. */
+  _chargeLock(slot, prevMag, mag, res, heat) {
+    const L = this._chargeLockFix;
+    const hot = heat != null && !Number.isNaN(heat) && heat >= HEAT_LOCKOUT;
+    if (L && L.slot === slot && (!hot || (prevMag != null && mag !== prevMag))) this._chargeLockFix = null;   // the lock is over
+    if (!hot || prevMag == null || mag !== prevMag) return;
+    if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) return;
+    if (slot !== this.activeSlot || slot > 1) return;
+    const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && ws[slot];
+    const row = w && this.weaponRow(w.weapon_id); const cost = row && row.rounds_per_charge != null ? +row.rounds_per_charge : 1;
+    if (!(cost > 1) || !(mag < cost)) return;
+    if (this._chargeLockFix && this._chargeLockFix.slot === slot && this._chargeLockFix.life === this._lifeSeq) return;   // once per lock
+    this._chargeLockFix = { slot, life: this._lifeSeq, at: this.now() };
+    const cap = this.am.ammoBySlot()[slot];
+    if (!(res > 0) || !(cap > mag)) { this.log(`charge lock on slot ${slot}: cell ${mag}, reserve ${res ?? '?'}: nothing to reload (F226)`, 'li'); this._changed(); return; }
+    const give = Math.min(cap - mag, res), to = mag + give, left = res - give;
+    this.log(`charge lock on slot ${slot}: cell ${mag} below a ${cost}-round charge, heat ${heat}: reloading for the player ${mag} → ${to}, reserve ${res} → ${left} (F226)`, 'li');
+    this.am.acctWrote(slot, to, left);
+    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player');
+    this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
+    // F226 review (Opus): `$AMMO` ends the lock, and a full cell is no starved cell, so a lockout still on the books (or one an
+    // echo at the old heat refreshes) would put the full-screen OVERHEAT word up. The next real report sets the heat again.
+    if (this.am.heatLock && this.am.heatLock.slot === slot) this.am.heatLock = null;
+    this.am.autoReload(slot, mag, to, cap);
+  }
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
     this._accHoldWhy = why;   // published as `state().accHold`: a reader should never have to guess which write took the gun
@@ -5746,7 +5776,12 @@ export class Engine {
         // and ammo.js `heatBlocksFire()` is the one reading of it (the accuracy writer's guard included).
         this._smokeObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);   // S53: before the recoil reader, which ignores why accuracy moved
         this._recoilObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
-        this.am.onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
+        {
+          const slot = t[3] !== undefined && t[3] !== '' ? +t[3] : 0, prevMag = this.am.prevAmmo[slot];
+          const mag = +t[1] || 0, res = t[4] !== undefined ? +t[4] : null, heat = t[5] !== undefined && t[5] !== '' ? +t[5] : null;
+          this.am.onAmmo(mag, res, slot, heat);
+          this._chargeLock(slot, prevMag, mag, res, heat);   // F226: after the account has the frame
+        }
         break;
       }
       case 'HIR': {

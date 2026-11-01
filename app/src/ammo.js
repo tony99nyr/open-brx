@@ -89,7 +89,7 @@ export const ECHO_HOLD_MAX_MS = 8000;
 // "above 100". The Charge Rifle (about +8 a shot) stopped at about 103-108 and locked for ~4.8 s; the Energy
 // Rifle (about +3 a shot) stopped firing AT 99, never above 100, and locked for 10-23 s. `heat >= 99` holds
 // both; the old `> 100` never saw the Energy Rifle's lockout at all.
-const HEAT_LOCKOUT = 99;
+export const HEAT_LOCKOUT = 99;
 // ---- the three heat windows move together (maint review 2026-09-17) --------------------------------
 // OVERHEAT_SHOWN_MS < HEAT_STALE_MS < OVERHEAT_CAP_MS, and engine.test.mjs asserts that order.
 //   OVERHEAT_SHOWN_MS  the DISPLAY window: how long the HUD keeps the word and the bar hot after the last
@@ -507,6 +507,9 @@ export class Ammo {
    *  it, or a round leaving the slot without such a reading, ends it. `prev` is the slot's last mag (null = none). */
   heatLockFrame(slot, heat, prev, mag) {
     const now = this.host.now(), hot = heat != null && !Number.isNaN(heat) && heat >= HEAT_LOCKOUT, L = this.heatLock;
+    // F226 review: while the phone's own reload shows, a hot reading on its slot is the gun's echo of the phone's `$AMMO` at the
+    // old heat; the `$AMMO` ended the lock (bench 2026-09-17), so it must not put OVERHEAT back up over a full cell.
+    if (hot && this.reloading && this.reloading.auto && this.reloading.slot === slot) return;
     if (hot) { if (L && L.slot === slot) L.lastAt = now; else this.heatLock = { slot, at: now, lastAt: now }; return; }
     if (!L || L.slot !== slot) return;
     if ((heat != null && !Number.isNaN(heat)) || (prev != null && mag < prev)) this.heatLock = null;   // cooled, or it fired
@@ -611,7 +614,22 @@ export class Ammo {
   /** tick(): end a takeover the gun has stopped feeding. The decision lives HERE, not in `reloadingMs()`,
    *  which stays pure — but both read the same deadline, so a render between ticks can never disagree. */
   reloadTick(now) {
+    // F226: the phone's own reload (`autoReload`) needs no gun evidence: the gun's echo of the phone's `$AMMO` is bookkeeping.
+    if (this.reloading && this.reloading.auto && now >= this.reloading.at + this.reloading.ms) { this.endReload('filled'); return; }
     if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');
+  }
+  /** F226 (bench 2026-11-01): a charge from a cell below one full charge locks the gun, and the lever does nothing
+   *  for several seconds. The phone writes the reload itself (engine.js `_chargeLock`); this shows it on the HUD as a
+   *  reload for the weapon's reload time, then books it as filled. `to` is what the phone wrote. */
+  autoReload(slot, from, to, cap) {
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id); const secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    const now = this.host.now();
+    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)), slot, from, cap: cap || null, mag: to, lastGainAt: now,
+                       releasedAt: null, energy: true, bolt: false, swapTo: null, auto: true };
+    this.reloadOutcome = null;
+    this.host.reloadGlance();
+    this.host.changed();
   }
   /** Milliseconds into the current reload, or null when none is running (PURE, read by state()). */
   reloadingMs() {
@@ -683,7 +701,8 @@ export class Ammo {
     // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
     // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
-    if (r && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
+    if (r && !r.auto && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
+      this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
     // life. That bench measured phone equips; ALT before the first pull is the field report's bench #2 row (brx1's call to
     // ship it, 2026-10-17). Field 2026-10-17 (F542, F445): every assumed swap after a bare spawn preceded a failed reload.

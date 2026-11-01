@@ -3815,13 +3815,14 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   }
 }
 // F238 reopened (field 2026-10-17, F226): a charge from a cell below one full charge spikes the heat and fires nothing, and
-// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the word and the prompt.
-await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY, never OVERHEAT', async () => {
+// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the prompt. F226 (Tony,
+// 2026-11-01, "janky super large"): no full-frame word or vignette for this case; the red prompt alone says it.
+await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY on the ammo block only, never OVERHEAT', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
   const r = await heatState(pg);
   const note = await pg.evaluate(() => document.querySelectorAll('.ammo .enote').length);
-  must(r.overlay && r.word === 'NOT ENOUGH ENERGY', `the full-frame word must be NOT ENOUGH ENERGY: ${JSON.stringify(r)}`);
+  must(!r.overlay && r.word === null, `no full-frame word or vignette: ${JSON.stringify(r)}`);
   must(r.prompt === 'NOT ENOUGH ENERGY', `the prompt must be NOT ENOUGH ENERGY, not OVERHEAT: ${JSON.stringify(r)}`);
   must(note === 0, `no second NOT ENOUGH ENERGY note under the digits: ${note}`);
   const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
@@ -4149,7 +4150,7 @@ for (const view of VIEWS) {
 // F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    for (const [cell, word] of [[12, 'OVERHEAT'], [3, 'NOT ENOUGH ENERGY']]) {
+    for (const [cell, word] of [[12, 'OVERHEAT']]) {   // F226: a starved cell (3) draws no full-frame word, so only OVERHEAT can clash
     await step(`${tag} ${word} ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       await setAmmo(pg, 'charge_rifle', 0, 40, 80, cell, 108);
@@ -6921,16 +6922,17 @@ for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber
   must(r.railW >= 4, `night: the rails must be >= 4 px: ${r.railW}`);
   must(mr + mg + mb < 60, `night: the overshield must be hollow (dark between the rails): ${r.mid}`);
 });
-// R2-14: during the lockout the ammo block names ONE cause (OVERHEAT), never NOT ENOUGH ENERGY beside it
+// R2-14: during the lockout the ammo block names ONE cause, never a second NOT ENOUGH ENERGY note beside it
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
   const pg = await open(view, 'live', night ? '&night' : '');
   await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
-  await until(pg, () => !!document.querySelector('.heatword')); await settled(pg);
-  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  // F226: a starved cell draws no full-frame word; the lockout shows as the ammo block's one NOT ENOUGH ENERGY prompt
+  await until(pg, () => ((document.querySelector('.ammo .reload .unskew') || {}).textContent || '') === 'NOT ENOUGH ENERGY'); await settled(pg);
+  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null, enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
   await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await until(pg, () => !document.querySelector('.heatword') && ((document.querySelector('.ammo .enote') || {}).textContent || '') === 'NOT ENOUGH ENERGY');
   const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
   await pg.close();
-  must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
+  must(hot.prompt === 'NOT ENOUGH ENERGY' && !hot.word, `pre-condition: the lockout is up, as the prompt only (F226): ${JSON.stringify(hot)}`);
   must(!hot.enote, `during the lockout the ammo block also says ${hot.enote}: two causes`);
   must(!cool.word && cool.enote === 'NOT ENOUGH ENERGY', `CONTROL: after the lockout, 3 of a 10-cost cell says NOT ENOUGH ENERGY again: ${JSON.stringify(cool)}`);
 });

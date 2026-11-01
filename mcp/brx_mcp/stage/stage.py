@@ -1095,6 +1095,7 @@ class GunStage:
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
+        self._charge_lock_fix: dict | None = None  # F226: engine.js `_chargeLockFix`, one phone reload per charge lock
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
         self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
         # S42/F259 (engine.js `_recoil`): the ACTIVE weapon's accuracy model, or None (no profile, recoil off, no
@@ -4308,7 +4309,11 @@ class GunStage:
                 acc_slot = (_js_plus(t[2]) if t[2] != "" else math.nan, _js_plus(t[3]) if len(t) > 3 and t[3] != "" else 0)
                 self._smoke_observe(*acc_slot)    # S53: before the recoil reader, which ignores why accuracy moved
                 self._recoil_observe(*acc_slot)
-                self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0, heat)
+                a_slot = int(t[3]) if len(t) > 3 and t[3] != "" else 0
+                prev_mag = self._prev_ammo.get(a_slot)
+                a_mag, a_res = int(t[1] or 0), int(t[4]) if t[4] != "" else None
+                self._on_ammo(a_mag, a_res, a_slot, heat)
+                self._charge_lock(a_slot, prev_mag, a_mag, a_res, heat)   # F226: engine.js `_chargeLock`, after the account
             elif cmd == "BUT" and len(t) > 2:
                 # engine.js `feedFrame` BUT -> `_onButton`: id 1 = ALT (a swap; a one-slot loadout falls back to
                 # reload), id 2 = the reload handle. F123: BOTH edges are read now (state 1 press / 0 release), so a
@@ -5664,7 +5669,7 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
-        if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
+        if r and not r.get("auto") and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):   # F226: ammo.js `!r.auto`
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
         # ammo.js `altPressed` (F445, bench 2026-10-03): after `$SPAWN` the gun ignores a slot change until the first trigger
@@ -6605,9 +6610,59 @@ class GunStage:
             self.reload_outcome["last_fired"] = self._last_shot_slot
             self._fire_first = {"slot": self._last_shot_slot, "at": self.now(), "life": self._life_queued}
 
+    def _charge_lock(self, slot: int, prev_mag: int | None, mag: int, res: int | None, heat: int | None) -> None:
+        """engine.js `_chargeLock` (F226, bench 2026-11-01): a charge from a cell below one full charge fires nothing and
+        the gun answers at the same magazine with heat at or past the lockout. The phone writes the reload itself, once per
+        lock, never more than the reserve holds, booked as its own write."""
+        lk = self._charge_lock_fix
+        hot = heat is not None and heat >= self.HEAT_LOCKOUT
+        if lk and lk["slot"] == slot and (not hot or (prev_mag is not None and mag != prev_mag)):
+            self._charge_lock_fix = lk = None   # the lock is over
+        if not hot or prev_mag is None or mag != prev_mag:
+            return
+        if not (self.spawned and self.alive) or self.stunned:
+            return
+        if slot != self.active_slot or slot > 1:
+            return
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[slot] if slot < len(ws) else None) or {}
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}
+        cost = int(row.get("rounds_per_charge") or 1)
+        if not (cost > 1) or not (mag < cost):
+            return
+        if lk and lk["slot"] == slot and lk["life"] == self._life_queued:
+            return   # once per lock
+        self._charge_lock_fix = {"slot": slot, "life": self._life_queued, "at": self.now()}
+        cap = self._ammo_by_slot().get(slot)
+        if not (res is not None and res > 0) or not (cap and cap > mag):
+            self._log(f"charge lock on slot {slot}: cell {mag}, reserve {res}: nothing to reload (F226)", "info")
+            return
+        give = min(cap - mag, res); to = mag + give; left = res - give
+        self._log(f"charge lock on slot {slot}: cell {mag} below a {cost}-round charge, heat {heat}: reloading for the player {mag} -> {to}, reserve {res} -> {left} (F226)", "info")
+        self._acct_wrote(slot, to, left)
+        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0))
+        self._hold_accuracy_writes("F226 reload")
+        self._auto_reload(slot, mag, to, cap)
+
+    def _auto_reload(self, slot: int, frm: int, to: int, cap: int | None) -> None:
+        """ammo.js `autoReload` (F226): the phone's own reload shows as a reload for the weapon's reload time, then
+        books as filled; the gun's echo of the phone's `$AMMO` is bookkeeping, so no gun evidence is needed."""
+        now = self.now()
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[slot] if slot < len(ws) else None) or {}
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}
+        secs = float(row["reload_s"]) if row.get("reload_s") is not None else 1.5   # ammo.js `autoReload`: the row's reload_s, no perk
+        self.reloading = {"at": now, "s": max(0.3, secs), "slot": slot, "from": frm, "cap": cap or None, "mag": to,
+                          "last_gain_at": now, "released_at": None, "energy": True, "swap_to": None, "auto": True}
+        self.reload_outcome = None
+        self._gun_readout_reload_glance()
+
     def _reload_tick(self) -> None:
         """ammo.js `reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from
         `poll()` (the stage's tick) so a hand-driven clock reaches the timeout without the watchdog task."""
+        if self.reloading and self.reloading.get("auto") and self.now() >= self.reloading["at"] + self.reloading["s"]:
+            self._end_reload("filled")   # F226: the phone's own reload (ammo.js `reloadTick`)
+            return
         if self.reloading and self.now() > self._reload_deadline():
             self._end_reload("timeout")
 
