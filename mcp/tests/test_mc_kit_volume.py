@@ -88,3 +88,21 @@ def test_no_kit_link_vol_during_a_tryout_or_after_the_push():
     _beat(s, net, clock, ps[0], 0, False)
     _beat(s, net, clock, ps[0], 0, True)
     assert len(_kit_vol_pushes(net)) == n
+
+
+def test_a_link_reported_before_the_bind_still_gets_its_vol_once_bound():
+    s, net, clock, ps = mk_loadout_session(1, compiler=C)
+    s.set_config({"environment": "outdoor"})
+    s.node_player.pop("node0", None)
+    _beat(s, net, clock, ps[0], 0, True)                   # linked, but the node is not bound to a player yet
+    s.node_player["node0"] = ps[0]["player_id"]            # stand-in for the bind
+    _beat(s, net, clock, ps[0], 0, True)
+    assert [b["frames"] for b in _kit_vol_pushes(net)] == [["$VOL,90,0,*"]]
+
+
+def test_no_kit_link_vol_while_a_match_is_in_play():
+    s, net, clock, ps = mk_loadout_session(1, compiler=C)
+    online(s, net, clock, ps[0], 0, preflight={"gun_linked": False})
+    s.in_play = lambda: True                               # ARMED or LIVE: the head carries the volume
+    _beat(s, net, clock, ps[0], 0, True)
+    assert _kit_vol_pushes(net) == []

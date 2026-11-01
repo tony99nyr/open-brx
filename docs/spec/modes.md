@@ -202,7 +202,7 @@ When a weapon is picked at kit-out (host on KIT, or a phone `loadout_request{try
 | `$SIR` / scoring | full incoming-IR table | omitted — incoming hits do nothing to *this* gun |
 
 ```
-$VOL,69,0,*                       ; audible at arm's length
+$VOL,<head_volume>,0,*            ; the game volume (2026-11-01)
 $CLEAR,*                          ; wipe any prior arm
 $GSET,0,0,1,0,1,0,50,1,*          ; FF off, receiver kept sensitive; NO $START
 $PSET,0,0,45,70,70,50,,<voice tail>,*  ; identity 0

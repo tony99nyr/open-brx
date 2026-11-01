@@ -205,8 +205,8 @@ GameConfig {
                                       //   or a proto-8 station. node.md §3.12.
   volume?:     number | null,         // [K8] the match head's $VOL, an integer 60..100 (on-gun L1..max). Absent or null = the
                                       //   venue volume (80 indoors, 90 outdoors); anything else is a 400. A saved game keeps it.
-                                      //   MC's --bench-volume overrides it and try-outs; without that flag a try-out
-                                      //   plays at 69, never this value.
+                                      //   MC's --bench-volume overrides it. Every $VOL MC sends before START (a try-out,
+                                      //   the kit-link $VOL) plays at this value (2026-11-01).
   hill?:       {capture_s?: number, net_cap?: number} | null,  // [A77, F559] a control station's capture time (3..60 s) and
                                       //   net cap (1..6). A set key rides every station_config to a control station
                                       //   and wins over a station-side edit; an absent key keeps the station's own value.
