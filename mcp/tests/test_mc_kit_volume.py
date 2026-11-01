@@ -106,3 +106,24 @@ def test_no_kit_link_vol_while_a_match_is_in_play():
     s.in_play = lambda: True                               # ARMED or LIVE: the head carries the volume
     _beat(s, net, clock, ps[0], 0, True)
     assert _kit_vol_pushes(net) == []
+
+
+def test_the_push_ends_an_open_tryout_before_the_head():
+    """Bench 2026-11-01: a push with a try-out still open sent the head to a gun the try-out left started.
+    Its `$START` drew no zeroed `$LCD`, so the phone acked `no_config` (F549) for a gun that took the head.
+    The push now ends the try-out first: the node gets the teardown, `$STOP` included, ahead of its config."""
+    from brx_mcp.mc.state import TRYOUT_TEARDOWN
+    s, net, clock, ps = mk_loadout_session(2, compiler=C)
+    online(s, net, clock, ps[0], 0)
+    online(s, net, clock, ps[1], 1)
+    s.tryout(ps[0]["player_id"], "assault_rifle")
+    start = len(net.pushed)
+    s.push_config(force=True)
+    after = [(n, k, b) for (n, k, b) in net.pushed[start:] if n == "node0" and k in ("tutorial", "config")]
+    assert [k for (_, k, _) in after][:2] == ["tutorial", "config"], [k for (_, k, _) in after]
+    assert after[0][2] == {"end": True, "frames": list(TRYOUT_TEARDOWN)}
+    assert "$STOP,*" in after[0][2]["frames"]
+    assert s.trying == {}
+    # the player who was not trying gets no teardown, and nobody gets a second kit `$VOL` from the push
+    assert [k for (n, k, _) in net.pushed[start:] if n == "node1" and k == "tutorial"] == []
+    assert [k for (_, k, _) in after].count("tutorial") == 1
