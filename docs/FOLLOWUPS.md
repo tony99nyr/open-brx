@@ -1,6 +1,6 @@
 # Followups: open MVP work only
 
-Updated: 2026-10-30. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
+Updated: 2026-11-01. See [`experiment-log/2026-10.md`](experiment-log/2026-10.md) and [`HANDOFF.md`](HANDOFF.md) for the day's changes.
 
 **What's done:** [`archive/followups-closed.md`](archive/followups-closed.md), one dated line per closed row, newest last.
 **Not for MVP:** [`post-mvp.md`](post-mvp.md), the ideas and roadmap list (ids unchanged, not scheduled for MVP).
@@ -12,14 +12,15 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 93.** Desk 0 · bench 91 · decision 2.
+**MVP open: 95.** Desk 1 · bench 92 · decision 2.
 
-**MVP DESK (0),** a keyboard is enough:
+**MVP DESK (1),** a keyboard is enough:
+- 🟠 **F636**
 
-**MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
+**MVP BENCH (92),** needs a gun, a Stick, phones or a field (the order is the bench plan):
 - 🔴 **F533** · **F548** · **F464** · **F416** · **F438** · **F434** · **F440** · **B26** · **F232** · **F264** · **F226** · **F542**
 - 🟠 **F391** · **F562** · **F563** · **F157** · **F525** · **F526** · **F459** · **F511** · **F453** · **F452** · **F374** · **F383** · **F388** · **F389** · **F417** · **F436** · **F443** · **F444** · **F365** · **S57** · **F379** · **F460** · **F399** · **B21** · **F269** · **F272** · **F277** · **F50** · **F449** · **F448** · **F450** · **F293** · **F340** · **F345** · **F311** · **F275** · **F231** · **F541** · **F580**
-- 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F606** · **F618**
+- 🟡 **F532** · **F567** · **F128** · **F308** · **F515** · **F508** · **H8** · **F353** · **F392** · **F397** · **F398** · **F386** · **F442** · **F447** · **F425** · **F298** · **F3** · **F21** · **F380** · **F395** · **F396** · **F282** · **F270** · **F274** · **F322** · **F309** · **F296** · **F461** · **F463** · **S10** · **F504** · **F519** · **F521** · **F530** · **F536** · **F606** · **F618** · **F637**
 - 🟢 **F538** · **F545** · **F592**
 
 **MVP DECISION (2),** awaiting Tony:
@@ -30,7 +31,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F636 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F638 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -45,6 +46,8 @@ aliases (1.4, 4.4, A10a …) are in `post-mvp.md` → *Old bench rungs*.
 ## MVP DESK
 
 A keyboard is enough. Highest value first.
+
+- **F636 🟠 THE PHONE'S F549 PROOF NEEDS THE `$START` ANSWER, SO A HEALTHY GUN CAN ACK `no_config`.** Bench 2026-11-01 (0.4.30, brx1, brx4 diagnosis). The slot-0 `$ALCD` counts as proof only after `headStartSeen` (the zeroed `$LCD`) or `headWriteDone` (`engine.js` `ALCD` case). `$WEAP,0` is frame 6 of the 29-frame head, so its `$ALCD` always arrives before the write is done. When the gun sends no zeroed `$LCD` (a gun left started by a try-out, F637), a gun that took the head acks `no_config`. MC now ends an open try-out before the push (the narrow fix). Phone fix for the next APK: also accept a slot-0 `$ALCD` whose magazine and reserve match the head's own `$WEAP,0` frame (its last tokens carry the spawn magazine and reserve), with no `headStartSeen`. Keep F549's refusal for a gun that sends no slot-0 report. Owner brx4. `build`.
 
 
 ## MVP BENCH
@@ -66,6 +69,7 @@ cites are its history, and the NEXT step wins where they differ.
 
 ### One gun, no phones
 
+- **F637 🟡 BENCH: DOES `$START` ON A GUN THAT IS ALREADY STARTED SEND A SECOND ZEROED `$LCD`?** Bench 2026-11-01 (0.4.30, brx1). After a try-out (whose frames send `$START`) the head's `$CLEAR`/`$START` drew no `$LCD,0,0,0,0,0,0` on two guns, and both acked `no_config` (F636). After a power cycle the same head drew it about 115 ms after `$START`. The inference is that only a stopped gun answers `$START`; it is not measured. Bench: on one gun send `$START,*` twice, 1 s apart, then `$STOP,*`, `$START,*`. Pass: the log shows which `$START` writes get the zeroed `$LCD`. Owner brx4. `bench`.
 - **F530 🟡 BENCH: A FAST OPERATOR RESPAWN CLEARS THE HEADSET DEATH FLASH.** brx4, 2026-10-16 (bench A.10, 0.4.22, brx1). Five FORCE RESPAWNs 89-101 ms after a death: the trigger fired 5/5 (F493 passes), but the headset kept the death flash on 3/5. The only `$HLOOP,0,0` went out before the revive burst, and the gun's native death loop could start after it. **Desk half done:** the headset respawn write now leads with the stop, about 1 s after `$SPAWN` (a shield life gets the stop alone); the stage mirrors it (brx5 agreed). Bench: repeat the five fast operator respawns. Pass: the headset goes dark every time. **If it still sticks** (Opus review): the cause may be F13 (a `$SPAWN` within about 2 s of a death wedges the headset), which a stop may not clear; then hold the operator revive until 2.5 s after the death instead of adding stops. The stop goes out with no settle gap before the respawn `$HLED` (a gap would move the +1.0 s flash); if the bench shows the relay drops it, a gap is the first thing to try (Codex review). Owner brx4. `bench`. **Re-bench 2026-10-16 (0.4.23, brx1): FAILED, 2/5 stuck:** the late `$HLOOP,0,0` was on the wire at +1.14 s and did not clear it. **Next step done (brx4):** the row's own fallback, F13 (a `$SPAWN` within about 2 s of a death wedges the headset): an operator FORCE RESPAWN that lands under 2.5 s after the death (the bundle's `headset.down.rearm_after_ms`) is held until then, then revives as before; a second press inside the hold is ignored. Timed respawns never land that early. A link drop inside the hold ends it with no revive (the light generation moves); the down-loop rearm is skipped only while the hold is held, so the next tick re-arms it once the link is back, and MC can press again (brx5's review question). The stage mirrors it (`operator_respawn`, brx5 agreed). Reviews (Codex High, Opus Medium): a held press reports its `operator_result` when the hold fires (success, or why it did not revive), never at the press; a second press inside the hold is refused and says so; a reconcile that opened meanwhile cancels it (press again); the floor is never under 2 s. Open for MC (Codex re-check, brx3): MC matches an `operator_result` by player, match and command, with no press id, so a late result from an earlier press can relabel a newer one. Bench again: the five fast operator respawns.
 - **F536 🟡 INCONCLUSIVE: THE GUN PLAYED ITS PAIN-RELIEF LINE WHILE THE PLAYER WAS DOWN.** brx4, 2026-10-16 (bench C.12, 0.4.22, brx1). A player poisoned by the Toxin Rifle and killed by a lethal tick heard the death scream, then "Ugh, that's better" (VA7, the head's `$PSET` t15 pain relief) while down. The phone never wrote VA7: its tx `$PLAY` frames were `H12`, `VAD` (the lethal tick's pain), `$PLAYX,0` (a stop at the death) and `VAO` (the respawn). The armed low-health alert (`VA86` + an `$HLED`) was cancelled by the death and never went out. Six probes on Tactix-E20D did NOT reproduce it: (P1) a lethal `$LIFE` then `$PLAYX` 3 s later; (P2) `$LIFE,0,0,0` twice on a dead gun; (P3) a drain to 8 HP then a lethal `$LIFE`; (P4) the same with `$PLAY ... VAD` 60 ms before the lethal write, then `$PLAYX`; (P5) a rig toxin word with the head's `$SIR,11,0,,1` (one 8 armour hit, then NO native DOT for 20 s, no VA7) and with `$SIR,11,0,,24` (a hit with NO damage at all: fn 24 on proto 11 moves no pool, data for S16's "fn 24 unproven"). No speculative fix. If it recurs in play, capture the gun's rx stream around the death. (The 0.4.22 sheet's A.7 expectation of VA7 at a respawn was a sheet error: VA7 is pain relief.) Owner brx4. `bench`.
 - **F459 🟠 AN EMP INSIDE A RECONCILE WINDOW: BENCH THE EXPIRY RESTORE.** Desk 2026-10-04 (reconcile bugs 1+2): the window end now skips the `$AMMO` re-arm while the stun holds, so only `_stunRestore` re-arms the gun, and nobody has benched that expiry restore after a relink. Bench: kill the link, relink, EMP the player inside the 3 s window, check the gun cannot fire until the stun ends and then fires with its live counts. On main at `82426e56`: the stun deadline survives the relink, a window that ends with the link down writes nothing, a stun that expires inside the window re-arms once at `rc.end()`, and a held heavy on the trigger goes back on it at zero charges until the expiry restore (`node.md` §3.10). Also check the heavy cannot fire while stunned. Owner brx_engine. `trigger`.
