@@ -145,7 +145,7 @@ def test_a_secondary_the_fixed_perk_empties_is_refused_and_named_like_the_primar
     real_rows = s._catalog_rows
     def rows():
         weapons, perks = real_rows()
-        return weapons, [{**p, "blocked_secondary": ["smg"]} if p["perk_id"] == "armor_piercing" else p for p in perks]
+        return weapons, [{**p, "blocked_secondary": ["suppressor"]} if p["perk_id"] == "armor_piercing" else p for p in perks]
     s._catalog_rows = rows
     perk = next(p for p in rows()[1] if p["perk_id"] == "armor_piercing")
     pol = s.policy()

@@ -54,7 +54,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 60,
       "rof": 47,
-      "ammo": 45,
+      "ammo": 47,
       "ttk": 49
     }
   },
@@ -110,7 +110,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 40,
       "rof": 93,
-      "ammo": 75,
+      "ammo": 80,
       "ttk": 85
     }
   },
@@ -164,7 +164,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 50,
       "rof": 100,
-      "ammo": 82,
+      "ammo": 87,
       "ttk": 42
     }
   },
@@ -199,7 +199,7 @@ export const DEMO_WEAPONS = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
-    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left, a charge fires nothing and the phone reloads the cell for you.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -226,7 +226,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 80,
       "rof": 27,
-      "ammo": 57,
+      "ammo": 60,
       "ttk": 100
     }
   },
@@ -281,7 +281,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 60,
       "rof": 40,
-      "ammo": 38,
+      "ammo": 40,
       "ttk": 20
     }
   },
@@ -314,7 +314,7 @@ export const DEMO_WEAPONS = [
     "htk": 13,
     "ttk_ms": 1800,
     "rounds_per_charge": 1,
-    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
+    "caution": "Overheats after about 75 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
     "recoil": {
       "ceiling": 100,
       "floor": 70,
@@ -506,67 +506,8 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 70,
       "rof": 53,
-      "ammo": 32,
+      "ammo": 33,
       "ttk": 93
-    }
-  },
-  {
-    "weapon_id": "smg",
-    "name": "SMG",
-    "cls": "1",
-    "weapon_class": "ballistic",
-    "desc": "A close-combat hose. The barrel hits for 7 and the headset adds 2, so a target reached by both emitters takes 9; the magazine leaves faster than you meant it to.",
-    "clip": 54,
-    "mags": 7,
-    "reserve": 384,
-    "reload_s": 2.5,
-    "reload_ms": 2500,
-    "dmg": 8,
-    "rpm": 75,
-    "rng": 75,
-    "dmg_per_hit": 9,
-    "dual_emitter": true,
-    "reload_type": "magazine",
-    "pool": 115,
-    "verified": false,
-    "tags": [
-      "cqb"
-    ],
-    "role": "cqb",
-    "types": [
-      "close"
-    ],
-    "htk": 13,
-    "ttk_ms": 1200,
-    "rounds_per_charge": 1,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 60,
-      "per_shot": 15,
-      "recover_ms": 150
-    },
-    "hir": [
-      2,
-      7
-    ],
-    "cells": [
-      {
-        "proto": 0,
-        "subtype": 0,
-        "mag": 2
-      },
-      {
-        "proto": 0,
-        "subtype": 0,
-        "mag": 7
-      }
-    ],
-    "ammo_total": 438,
-    "bars": {
-      "power": 40,
-      "rof": 93,
-      "ammo": 88,
-      "ttk": 85
     }
   },
   {
@@ -620,7 +561,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 90,
       "rof": 20,
-      "ammo": 26,
+      "ammo": 27,
       "ttk": 27
     }
   },
@@ -675,7 +616,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 20,
       "rof": 80,
-      "ammo": 51,
+      "ammo": 53,
       "ttk": 78
     }
   },
@@ -729,7 +670,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 30,
       "rof": 73,
-      "ammo": 94,
+      "ammo": 93,
       "ttk": 56
     }
   },
@@ -782,7 +723,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 30,
       "rof": 87,
-      "ammo": 69,
+      "ammo": 73,
       "ttk": 71
     }
   },
@@ -837,7 +778,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 50,
       "rof": 60,
-      "ammo": 63,
+      "ammo": 67,
       "ttk": 35
     }
   }

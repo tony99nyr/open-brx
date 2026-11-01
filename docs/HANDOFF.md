@@ -25,8 +25,7 @@ Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run
 on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. The 2026-11-01
 bench (morning and afternoon) is recorded in [`bench-plan.md`](bench-plan.md) and the log. The local gate splits
 Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
-**Next:** F575: rerun the balance review for 73/14 against 70/16 on the measured cooling branch, then Tony picks.
-Then NEXT in `bench-plan.md`. R4/T5 read-only research is authorised;
+**Next:** NEXT in `bench-plan.md`; the balance review when brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised;
 flashing needs a decision first.
 **Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control

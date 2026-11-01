@@ -986,9 +986,9 @@ for (const view of VIEWS) {
     const r = await pg.evaluate(() => { const m = document.querySelector('.mo.switching'); if (!m) return null; return { t: m.querySelector('.t').textContent, from: m.querySelector('.wt.from .wn').textContent, to: m.querySelector('.wt.to .wn').textContent, w: parseFloat(m.querySelector('#swbar').style.width), chips: getComputedStyle(document.getElementById('chips')).opacity, fromLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.from .wl')).fontSize), toLabPx: parseFloat(getComputedStyle(m.querySelector('.wt.to .wl')).fontSize) }; });
     // F394: the demo gun now reports nothing on ALT (as the real gun), so ACTIVE comes from the engine's own swap window
     await pg.waitForFunction(() => !!document.querySelector('.mo.switched'), null, { timeout: 5000 }).catch(() => {}); const r2 = await pg.evaluate(() => { const m = document.querySelector('.mo.switched'); return { sw: !!document.querySelector('.mo.switching'), on: m ? m.querySelector('.wt.on .wn').textContent : null, lab: m ? m.querySelector('.wl').textContent : null, labPx: m ? parseFloat(getComputedStyle(m.querySelector('.wl')).fontSize) : 0, corner: document.querySelector('.ammo .wn').textContent, chips: getComputedStyle(document.getElementById('chips')).opacity }; }); await pg.close();
-    must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SMG' && r.w > 0 && r.chips === '0', JSON.stringify(r));
+    must(r, 'no SWITCHING overlay'); must(r.t === 'SWITCHING' && r.from === 'ASSAULT RIFLE' && r.to === 'SUPPRESSOR' && r.w > 0 && r.chips === '0', JSON.stringify(r));
     must(r.fromLabPx >= 11 && r.toLabPx >= 11, `STOWING/DRAWING label under the 11 px floor: ${JSON.stringify(r)}`);
-    must(!r2.sw && r2.on === 'SMG' && /ACTIVE/.test(r2.lab) && /SMG/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
+    must(!r2.sw && r2.on === 'SUPPRESSOR' && /ACTIVE/.test(r2.lab) && /SUPPRESSOR/.test(r2.corner) && r2.chips === '1', JSON.stringify(r2));
     must(r2.labPx >= 11, `ACTIVE label under the 11 px floor: ${r2.labPx}`);
   });
   await step(`${view.name} #40b F472: on a 20x slowed CPU the switch still reaches a drawn sweep, read by condition, not by clock`, async () => {
@@ -1103,7 +1103,7 @@ for (const view of VIEWS) {
     const offered = DEMO_PERKS.filter(p => !p.hidden).map(p => p.perk_id);
     must(JSON.stringify([...r.ids].sort()) === JSON.stringify(offered.sort()),
       'the perk picker must show every shipped perk: ' + JSON.stringify(r.ids));
-    must(r.sec === 'smg' && r.warned.length === 0, 'a two-weapon kit must raise no perk conflict now: ' + JSON.stringify(r));
+    must(r.sec === 'suppressor' && r.warned.length === 0, 'a two-weapon kit must raise no perk conflict now: ' + JSON.stringify(r));
   });
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
     const pg = await open(view, 'down-find', '', 6200); /* death at ~2.6 s + the 3 s scanner delay (the F34 floor) + margin */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');
@@ -2354,7 +2354,7 @@ for (const view of VIEWS) {
     await pg.close();
     must(r.tryIt === 0, 'TRY IT is still on screen');
     must(r.bar[0] === 'REVIEW KIT ▸' && r.bar[1] === 'CLOSE', 'action bar: ' + JSON.stringify(r.bar));
-    must(r.pendName === 'SMG', 'the tapped row is not the one marked arming: ' + r.pendName);
+    must(r.pendName === 'SUPPRESSOR', 'the tapped row is not the one marked arming: ' + r.pendName);
     must(r.pendMark === '⟳', 'the arming row must wear ⟳, got "' + r.pendMark + '"');
     must(r.ticks === 0, 'a ✓ is showing while the host has not acked yet');
     must(/ASKING THE HOST/.test(r.chip), 'the bar does not say the host is being asked: ' + r.chip);
@@ -2365,7 +2365,7 @@ for (const view of VIEWS) {
       pend: document.querySelectorAll('.lrow.pend').length, rack: document.querySelectorAll('.lo .lolist').length, takeover: document.querySelectorAll('.tryout').length,
       armed: window.brx.engine.state().tutorial, chip: (document.querySelector('.ackchip') || {}).textContent || '' }));
     await pg.close();
-    must(r.eq === 'SMG' && r.mark.trim() === '✓', 'the acked row does not read ✓: ' + JSON.stringify(r));
+    must(r.eq === 'SUPPRESSOR' && r.mark.trim() === '✓', 'the acked row does not read ✓: ' + JSON.stringify(r));
     must(r.pend === 0, 'still arming after the ack');
     must(r.armed === true, 'the pick did not ARM the weapon — A26 says a tap equips AND arms');
     must(r.rack === 1 && r.takeover === 0, 'the try-out panel ejected the player from the rack: ' + JSON.stringify(r));
@@ -2378,7 +2378,7 @@ for (const view of VIEWS) {
                arming: tag ? tag.classList.contains('arming') : null,
                fs: tag ? parseFloat(getComputedStyle(tag).fontSize) : null, color: tag ? getComputedStyle(tag).color : null,
                rowMark: (document.querySelector('.lrow.pend .st') || {}).textContent }; });
-    must(/SMG/.test(before.nm || ''), 'the hero is not focused on the arming row: ' + JSON.stringify(before));
+    must(/SUPPRESSOR/.test(before.nm || ''), 'the hero is not focused on the arming row: ' + JSON.stringify(before));
     must(before.rowMark && before.rowMark.trim() === '⟳', 'this stage is not mid-arm, so the step proves nothing: ' + JSON.stringify(before));
     must(before.tagText === 'ARMING…', 'the hero still claims EQUIPPED while the row reads ⟳: ' + JSON.stringify(before));
     must(before.arming === true, 'the hero tag is not wearing the amber .arming look: ' + JSON.stringify(before));
@@ -2389,7 +2389,7 @@ for (const view of VIEWS) {
     const after = await pg2.evaluate(() => { const nm = document.querySelector('.lodetail .nm'); const tag = nm ? nm.querySelector('.eqtag') : null;
       return { nm: nm ? nm.textContent.trim() : null, tagText: tag ? tag.textContent.trim() : null, arming: tag ? tag.classList.contains('arming') : null }; });
     await pg2.close();
-    must(/SMG/.test(after.nm || ''), 'the hero is not focused on the acked weapon: ' + JSON.stringify(after));
+    must(/SUPPRESSOR/.test(after.nm || ''), 'the hero is not focused on the acked weapon: ' + JSON.stringify(after));
     must(after.tagText === '✓ ON', 'the hero never turned to ✓ ON (QA-09: was EQUIPPED) once the ack landed: ' + JSON.stringify(after));
     must(after.arming === false, 'the hero kept the amber arming look after the ack: ' + JSON.stringify(after));
   });
@@ -3099,10 +3099,10 @@ await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UN
   const pg = await open(VIEWS[0], 'loadout-primary');
   await pg.evaluate(() => {
     const eng = window.brx.engine;
-    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    eng.requestLoadout('primary', 'weapon', 'suppressor', true);
     if (eng._flushPick) eng._flushPick('test');
-    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
-    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'suppressor' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'suppressor', name: 'Suppressor', clip: 72 }, frames: ['$WEAP,0,*'] } });
     eng.now = () => Date.now() + 3200; eng.tick();   // jump past TRYOUT_ARM_MAX_MS with no confirming report
     window.brx.hud.sig = null; window.brx.hud.render(eng.state());
   });
@@ -3127,14 +3127,14 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   await pg.evaluate(() => {
     const eng = window.brx.engine;
     // time out a PRIMARY weapon arm first (same recipe as the loadout-primary case above)
-    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    eng.requestLoadout('primary', 'weapon', 'suppressor', true);
     if (eng._flushPick) eng._flushPick('test');
-    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
-    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'suppressor' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'suppressor', name: 'Suppressor', clip: 72 }, frames: ['$WEAP,0,*'] } });
     eng.now = () => Date.now() + 3200; eng.tick();
     // now pick a PERK -- perks never arm a try-out at all, and must not inherit the weapon's stale flag
     eng.requestLoadout('perk', 'perk', 'body_armor');
-    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'suppressor' }], perk: 'body_armor' } } });
     window.brx.hud.lo.tab = 'perk'; window.brx.hud.sig = null; window.brx.hud.render(eng.state());
   });
   await settled(pg);
@@ -3176,12 +3176,12 @@ await step('press feedback: a data-act tile (SET MY GUN) presses on pointerdown 
 });
 await step('press feedback: a loadout row presses on pointerdown and clears on pointercancel', async () => {
   const pg = await open(VIEWS[0], 'loadout-primary');
-  const sel = '.lrow[data-arg="weapon:smg"]';
+  const sel = '.lrow[data-arg="weapon:suppressor"]';
   const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
   await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
-  must(/tap-press/.test(await cls()), 'pointerdown did not press the SMG row: ' + await cls());
+  must(/tap-press/.test(await cls()), 'pointerdown did not press the Suppressor row: ' + await cls());
   await pg.locator(sel).dispatchEvent('pointercancel', { pointerId: 1, bubbles: true });
-  must(!/tap-press/.test(await cls()), 'pointercancel did not clear the SMG row');
+  must(!/tap-press/.test(await cls()), 'pointercancel did not clear the Suppressor row');
   await pg.close();
 });
 await step('press feedback: a locked (disabled) loadout tab never shows pressed', async () => {
@@ -3815,13 +3815,14 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   }
 }
 // F238 reopened (field 2026-10-17, F226): a charge from a cell below one full charge spikes the heat and fires nothing, and
-// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the word and the prompt.
-await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY, never OVERHEAT', async () => {
+// waiting never clears it, so OVERHEAT (wait to cool) is the wrong word. NOT ENOUGH ENERGY wins the prompt. F226 (Tony,
+// 2026-11-01, "janky super large"): no full-frame word or vignette for this case; the red prompt alone says it.
+await step('starved se: a cell below one charge at heat 108 reads NOT ENOUGH ENERGY on the ammo block only, never OVERHEAT', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108);
   const r = await heatState(pg);
   const note = await pg.evaluate(() => document.querySelectorAll('.ammo .enote').length);
-  must(r.overlay && r.word === 'NOT ENOUGH ENERGY', `the full-frame word must be NOT ENOUGH ENERGY: ${JSON.stringify(r)}`);
+  must(!r.overlay && r.word === null, `no full-frame word or vignette: ${JSON.stringify(r)}`);
   must(r.prompt === 'NOT ENOUGH ENERGY', `the prompt must be NOT ENOUGH ENERGY, not OVERHEAT: ${JSON.stringify(r)}`);
   must(note === 0, `no second NOT ENOUGH ENERGY note under the digits: ${note}`);
   const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
@@ -4149,7 +4150,7 @@ for (const view of VIEWS) {
 // F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
   for (const night of [false, true]) {
-    for (const [cell, word] of [[12, 'OVERHEAT'], [3, 'NOT ENOUGH ENERGY']]) {
+    for (const [cell, word] of [[12, 'OVERHEAT']]) {   // F226: a starved cell (3) draws no full-frame word, so only OVERHEAT can clash
     await step(`${tag} ${word} ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       await setAmmo(pg, 'charge_rifle', 0, 40, 80, cell, 108);
@@ -6921,16 +6922,17 @@ for (const view of VIEWS) await step(`${view.name} R2-13 night overshield: amber
   must(r.railW >= 4, `night: the rails must be >= 4 px: ${r.railW}`);
   must(mr + mg + mb < 60, `night: the overshield must be hollow (dark between the rails): ${r.mid}`);
 });
-// R2-14: during the lockout the ammo block names ONE cause (OVERHEAT), never NOT ENOUGH ENERGY beside it
+// R2-14: during the lockout the ammo block names ONE cause, never a second NOT ENOUGH ENERGY note beside it
 for (const view of VIEWS) for (const night of [false, true]) await step(`${view.name} R2-14 overheat ${night ? 'night' : 'day'}: one cause during the lockout; CONTROL: the note is back after it`, async () => {
   const pg = await open(view, 'live', night ? '&night' : '');
   await pg.evaluate(() => { const e = window.brx.engine; e.player.loadout.weapons[0] = { weapon_id: 'charge_rifle' }; e.feedFrame('$ALCD,40,100,0,80,0,*'); e.feedFrame('$ALCD,3,100,0,80,108,*'); });
-  await until(pg, () => !!document.querySelector('.heatword')); await settled(pg);
-  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
+  // F226: a starved cell draws no full-frame word; the lockout shows as the ammo block's one NOT ENOUGH ENERGY prompt
+  await until(pg, () => ((document.querySelector('.ammo .reload .unskew') || {}).textContent || '') === 'NOT ENOUGH ENERGY'); await settled(pg);
+  const hot = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null, enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
   await pg.evaluate(() => window.brx.engine.feedFrame('$ALCD,3,100,0,80,0,*')); await until(pg, () => !document.querySelector('.heatword') && ((document.querySelector('.ammo .enote') || {}).textContent || '') === 'NOT ENOUGH ENERGY');
   const cool = await pg.evaluate(() => ({ word: !!document.querySelector('.heatword'), enote: (document.querySelector('.ammo .enote') || {}).textContent || null }));
   await pg.close();
-  must(hot.word, `pre-condition: OVERHEAT is up: ${JSON.stringify(hot)}`);
+  must(hot.prompt === 'NOT ENOUGH ENERGY' && !hot.word, `pre-condition: the lockout is up, as the prompt only (F226): ${JSON.stringify(hot)}`);
   must(!hot.enote, `during the lockout the ammo block also says ${hot.enote}: two causes`);
   must(!cool.word && cool.enote === 'NOT ENOUGH ENERGY', `CONTROL: after the lockout, 3 of a 10-cost cell says NOT ENOUGH ENERGY again: ${JSON.stringify(cool)}`);
 });

@@ -110,7 +110,8 @@ _OPEN_PRIMARY = _OPEN - len(_SUPPORT)
 
 def test_presets_and_pools():
     # F577 (Tony 2026-10-18): the Haze is hidden, so the stripper is the one support weapon left
-    assert _OPEN == 13, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
+    # F638 (Tony 2026-11-01): the SMG is hidden until its headset-backlog fix lands
+    assert _OPEN == 12, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
     assert _SUPPORT == {"stripper"}, _SUPPORT
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
@@ -156,48 +157,48 @@ def test_validate_and_apply_matrix():
     nh = P.preset_rules("no_heavies"); lp = P.pool(nh, W, PK)
     ok, why = P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}]}, W, PK)
     assert not ok and why == "Heavies are off for this game"
-    ok, why = P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "rocket_launcher"}]}, W, PK)
+    ok, why = P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "rocket_launcher"}]}, W, PK)
     assert not ok and "Heavies" in why
-    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}, W, PK) == (True, None)
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "suppressor"}], "perk": "body_armor"}, W, PK) == (True, None)
     sn = P.preset_rules("snipers"); lps = P.pool(sn, W, PK)
-    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "smg"}]}, W, PK)
+    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "suppressor"}]}, W, PK)
     assert not ok and "fixed to Sniper Rifle" in why and "BUILD" in why
     ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "body_armor"}, W, PK)
     assert not ok and why == "No perks this game"
-    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "smg"}]}, W, PK)
+    ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "suppressor"}]}, W, PK)
     assert not ok and why == "No secondary this game"
     # A14: a perk rides beside a secondary weapon
-    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "usp"}], "perk": "fast_hands"}, W, PK) == (True, None)
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "usp"}], "perk": "fast_hands"}, W, PK) == (True, None)
     # apply: fixed → set, off → cleared, out-of-pool → replaced
-    assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
+    assert P.apply(sn, lps, {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
     assert out == {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"max_hp": 60}}
     # a fixed perk is set for everyone
     armor = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "body_armor"}})
-    assert P.apply(armor, P.pool(armor, W, PK), {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
+    assert P.apply(armor, P.pool(armor, W, PK), {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}
     # S50: Easy Reload is `overrides.easy_reload` now, not a perk -- it also drops the second weapon
     # (the override wins, the host set it on purpose), and a chain-reload PRIMARY drops the override
     # instead (a primary is mandatory, so the weapon that just resolved is the one that stands).
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    held = {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
-    assert P.apply(op, lp, held, W, PK) == {"weapons": [{"weapon_id": "smg"}], "overrides": {"easy_reload": True}}
+    held = {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
+    assert P.apply(op, lp, held, W, PK) == {"weapons": [{"weapon_id": "suppressor"}], "overrides": {"easy_reload": True}}
     chain = {"weapons": [{"weapon_id": "shotgun"}], "overrides": {"easy_reload": True}}
     assert P.apply(op, lp, chain, W, PK) == {"weapons": [{"weapon_id": "shotgun"}]}
 
 
 def test_check_request_matrix():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    assert P.check_request(op, lp, "primary", "weapon", "smg", W, PK) == (True, None)
+    assert P.check_request(op, lp, "primary", "weapon", "suppressor", W, PK) == (True, None)
     assert P.check_request(op, lp, "perk", "perk", "body_armor", W, PK) == (True, None)
     assert P.check_request(op, lp, "secondary", "perk", "body_armor", W, PK) == (False, "Perks have their own slot this game")   # A14
-    assert P.check_request(op, lp, "perk", "weapon", "smg", W, PK) == (False, "Only a perk goes in the perk slot")
+    assert P.check_request(op, lp, "perk", "weapon", "suppressor", W, PK) == (False, "Only a perk goes in the perk slot")
     assert P.check_request(op, lp, "secondary", "none", None, W, PK) == (True, None)
     assert P.check_request(op, lp, "perk", "none", None, W, PK) == (True, None)
     assert P.check_request(op, lp, "primary", "none", None, W, PK)[1] == "A primary weapon is required"
     assert "perk" in P.check_request(op, lp, "primary", "perk", "body_armor", W, PK)[1].lower()
     assert P.check_request(op, lp, "primary", "weapon", "melee", W, PK)[1] == "Unknown weapon"
     hud_off = P.merge(op, {"hud_select": False})
-    assert P.check_request(hud_off, lp, "primary", "weapon", "smg", W, PK)[1] == "Loadout picks are host-side for this game"
+    assert P.check_request(hud_off, lp, "primary", "weapon", "suppressor", W, PK)[1] == "Loadout picks are host-side for this game"
     host = P.merge(op, {"primary": {"choice": "host"}})
     assert "locked" in P.check_request(host, P.pool(host, W, PK), "primary", "weapon", "smg", W, PK)[1]
     sn = P.preset_rules("snipers"); lps = P.pool(sn, W, PK)
@@ -689,7 +690,7 @@ def test_easy_reload_is_refused_beside_a_chain_reload_weapon():
     # override is fine on every magazine weapon
     for pid in ("body_armor", "extended_mags", "fast_hands", "armor_piercing"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "shotgun"}], "perk": pid}, W, PK)[0], pid
-    for wid in ("assault_rifle", "smg", "sniper_rifle", "amr", "charge_rifle"):
+    for wid in ("assault_rifle", "suppressor", "sniper_rifle", "amr", "charge_rifle"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "overrides": {"easy_reload": True}}, W, PK)[0], wid
     assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "fast_hands"}, W) is None
 

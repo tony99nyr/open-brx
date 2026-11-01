@@ -209,7 +209,16 @@ async function runStale(browser, viteBase, vp) {
   await pg.locator('button:has-text("MAKE REPORT")').click();
   await until(() => panel(pg).getAttribute('data-report-phase').then(p => p === 'error'), 8000, 'the error phase');
   expect(hits === 1, `exactly one request went out (${hits})`);
-  const text = (await panel(pg).innerText()).replace(/\s+/g, ' ');
+  // The failure text sits behind the fault pill's "Why? ▾", which also opens on mouse hover. Where the pointer was
+  // left by the MAKE REPORT click decided whether the text showed, so this step flaked (main-red 2026-11-01). Move the
+  // pointer away, pin the detail open with the button, and wait for the text instead of reading it once.
+  await pg.mouse.move(0, 0);
+  const pill = panel(pg).locator('[data-alert="frame-report-error"]');
+  const why = pill.getByRole('button', { name: /^Why\?/ });
+  if (await why.getAttribute('aria-expanded') !== 'true') await why.click();
+  const textNow = async () => (await panel(pg).innerText()).replace(/\s+/g, ' ');
+  await until(async () => /Not Found|HTTP 404/.test(await textNow()), 5000, 'the HTTP failure in the opened detail');
+  const text = await textNow();
   expect(/Not Found|HTTP 404/.test(text), `the panel shows the HTTP failure (saw ${JSON.stringify(text)})`);
   ok(`report 404: "${text.trim()}"   ${await shot(pg, '10-stale')}`);
   await pg.unroute('**/api/report');
