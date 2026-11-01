@@ -6977,9 +6977,10 @@ class Session:
         # missing objective source) has a more specific thing to say than "move somebody", and those
         # errors name the actual repair. This is the last gate before anything is sent.
         self._refuse_one_team()
-        # Bench 2026-11-01: end each open try-out through its own path, so the node writes the teardown (its
-        # `$STOP` included) BEFORE the head below. A gun left started by a try-out sent no zeroed `$LCD` for the
-        # head's `$START`, so the phone acked `no_config` (F549) for a gun that took the head.
+        # Bench 2026-11-01: end each open try-out through its own path, so the node writes the try-out's teardown
+        # before the head below instead of the try-out being dropped silently. This does NOT make the gun answer the
+        # head's `$START` with a zeroed `$LCD` (the wire showed none even after the teardown's `$STOP`); the phone's
+        # F636 proof is what stops that gun acking `no_config`.
         for pid in list(self.trying):
             if pid in self.players:
                 self.tryout(pid, None)

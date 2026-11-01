@@ -403,6 +403,17 @@ export function toks(f) {
   return s.split(',');
 }
 
+/** F636: the head's `$WEAP,0` frame, its spawn magazine (t39) and reserve (t40), and the frame written before it. */
+export function weap0Spawn(head) {
+  if (!Array.isArray(head)) return null;
+  const i = head.findIndex(f => typeof f === 'string' && f.startsWith('$WEAP,0,'));
+  if (i < 0) return null;
+  const tok = head[i].split(',');
+  if (tok.length < 43 || !/^\d+$/.test(tok[40]) || !/^\d+$/.test(tok[41])) return null;
+  // `prev` marks the frame only when it is unique in the head; otherwise the `$WEAP,0` frame itself marks it (later, still safe).
+  const prev = i > 0 && head.indexOf(head[i - 1]) === i - 1 && head.lastIndexOf(head[i - 1]) === i - 1 ? head[i - 1] : null;
+  return { frame: head[i], prev, first: i === 0, mag: +tok[40], res: +tok[41] };
+}
 /** F549: config proof from an `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>`: the first four tokens whole numbers, on slot 0,
  *  so a broken slot-0 `$WEAP` cannot ack green on another slot's report (Codex review). */
 export function alcdProof(t) { return t.length >= 5 && t.slice(1, 5).every(x => /^\d+$/.test(x)) && +t[3] === 0 && !(+t[1] === 0 && +t[2] === 0); }   // `$ALCD,0,0,0,0,0`: a wiped gun (manual dev.md)
@@ -695,7 +706,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _poolCheck: 'F341 check in flight', _poolRepair: 'F341 repair in flight', poolWrong: 'F341 verdict, re-earned on the next read-back', _writeLost: 'pl4: keyed on a life number that restarts',
   // the config handshake and the head on the gun
   headEcho: 'config echo window', echoProof: 'config echo window', headStartSeen: 'config echo window', configRefused: 'config echo window', headWrittenAt: 'config echo window', awaitingEcho: 'config echo window', headWriteDone: 'config echo window',
-  configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window',
+  configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _headWeap0: 'config echo window',
   _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
   _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
@@ -909,6 +920,7 @@ export class Engine {
     // window may equally be a round the player fired. `butSinceHead` closes the window on the gun's
     // first `$BUT`, and MC then gets NO weapon claim rather than a magazine one round short.
     this.ammoEcho = null; this.butSinceHead = false;
+    this._headWeap0 = null;      // F636: the head's own `$WEAP,0` spawn magazine and reserve, and whether it has started to go out
     this._gunTid = null;         // F206: the last $TID this node wrote (head, try-out or infection flip); `_write` restores it after any $PSET
     this._headTid = null;        // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
     this.spawned = false; this.ended = false;
@@ -2359,7 +2371,15 @@ export class Engine {
     const gen = this._headGen = (this._headGen || 0) + 1;
     this.headWriteDone = false;
     const written = () => { if (gen === this._headGen && this.awaitingEcho) { this.headWriteDone = true; this.headWrittenAt = this.now(); } };
-    const w = this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head');
+    // F636 (bench 2026-11-01): a gun that sends no zeroed `$LCD` for `$START` (one a try-out left started) still answers
+    // `$WEAP,0` with its slot-0 `$ALCD`. That report proves the head when its magazine and reserve equal this head's own
+    // `$WEAP,0` (t39, t40) and it came after that frame started to go out. The mark is set when the frame BEFORE `$WEAP,0`
+    // is sent, because `onFrameSent` fires only after a frame's last chunk and the gun can answer sooner. A stale report
+    // from the old weapon carries the old numbers.
+    const w0 = weap0Spawn(this.frames.head);
+    this._headWeap0 = w0 ? { mag: w0.mag, res: w0.res, sent: w0.first } : null;
+    const onFrameSent = w0 ? fr => { if (gen === this._headGen && this._headWeap0 && (fr === w0.prev || fr === w0.frame)) this._headWeap0.sent = true; } : undefined;
+    const w = this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head', onFrameSent ? { onFrameSent } : undefined);
     if (w && typeof w.then === 'function') w.then(written, written); else written();
     this.spawned = false; this.ended = false;
     if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
@@ -5698,7 +5718,9 @@ export class Engine {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         // F549 r2 review (Codex sol): an `$ALCD` before `$START` ran is the OLD weapon's (a late round or reload on a re-push).
         // Once `$START` answered, or the whole head is out, the gun holds no old weapon, so a slot-0 report is the new head's.
-        const newHead = this.headStartSeen || this.headWriteDone;
+        const w0 = this._headWeap0;   // F636: or the head's own slot-0 numbers, after its `$WEAP,0` started to go out
+        const newHead = this.headStartSeen || this.headWriteDone
+          || !!(w0 && w0.sent && alcdProof(t) && +t[1] === w0.mag && +t[4] === w0.res);
         if (this.awaitingEcho && newHead && alcdProof(t)) this.echoProof = true;   // F549: slot 0 loaded; a shot on it proves it too
         // A36: …and keep the SLOT-0 one, whether or not it was first. Token 3 is the weapon slot;
         // the head writes slot 0, 1 and 4, so the primary's frame is the only one whose mag/reserve
@@ -7357,7 +7379,7 @@ export class Engine {
   /** Every head write goes through here: the head starts with $CLEAR, so its $LCD,0,0,… echo must read as a
    *  reset (prev=0 per slot), never as a magazine dump into `shots`. */
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
-  _writeHead(label) {
+  _writeHead(label, options = undefined) {
     this._armPending = null; this._triggerPending = null;   // F209: a head is fn 28 throughout (and holds the trigger); only a spawn/revive starts a new arm
     this.am.forgetCounts(); this.activeSlot = 0; this._headCleared = false;
     this.am.acctWroteRows(this.frames.head, null, true);   // bug 3a: the gun echoes each `$WEAP` reset and `$AMMO` row (brx1, 2026-10-02); the echo is bookkeeping
@@ -7366,7 +7388,7 @@ export class Engine {
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
     const tidFrame = (this.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$TID,'));
     this._headTid = tidFrame ? Number(tidFrame.split(',')[1]) : this._headTid;
-    const r = this._write(this.frames.head, label);
+    const r = this._write(this.frames.head, label, options);
     // F529 review (Codex): a head write that FAILS leaves the gun without its head, so the mark comes back for the next
     // start. Only the newest write decides: an older one failing after a newer one went out says nothing.
     const gen = this._headMarkGen = (this._headMarkGen || 0) + 1;

@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
+import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
@@ -7456,6 +7456,89 @@ test('F549 r2: a slot-0 $ALCD from before the head reached the gun is no config 
   const ok = good.reports.find(r => r.k === 'ack_config');
   assert.equal(ok?.b.ok, true, 'the load after $START proves the head');
   assert.equal(ok?.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'MC compares the new load, not the stale round');
+});
+
+// F636 (bench 2026-11-01, 0.4.30): a gun a try-out left started sent no zeroed `$LCD` for the head's `$START`, but answered
+// `$WEAP,0` with a slot-0 `$ALCD` carrying the head's own spawn numbers. That report proves the head once the frame before
+// `$WEAP,0` has gone out. A report with other numbers (the old weapon), or one from before that point, proves nothing.
+// `link(h, upTo)`: a writer that marks each head frame sent up to `upTo` (a frame prefix) and holds the head write open.
+function heldLink(h) {
+  const st = { sent: [], upTo: null, release: null };
+  h.eng.writer = (fr, why, opts) => {
+    h.writes.push(...fr);
+    if (!String(why).startsWith('head')) return fr.length;
+    st.frames = fr; st.opts = opts;
+    return new Promise(res => { st.release = () => { res(true); }; });
+  };
+  st.sendThrough = prefix => {   // the link sends frames in order, up to and including the first that starts with `prefix`
+    for (const f of st.frames) { st.sent.push(f); st.opts?.onFrameSent?.(f); if (f.startsWith(prefix)) break; }
+  };
+  return st;
+}
+const flushIo = () => new Promise(r => setImmediate(r));
+
+test('F636: weap0Spawn reads the head\'s $WEAP,0 spawn magazine and reserve (t39, t40)', () => {
+  const f = '$WEAP,0,2,40,0,0,7,0,,,,,,2,100,100,850,54,384,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,54,192,75,100,*';
+  assert.deepEqual(weap0Spawn(['$VOL,90,0,*', '$PSET,1,*', f, '$WEAP,4,*']), { frame: f, prev: '$PSET,1,*', first: false, mag: 54, res: 192 });
+  assert.equal(weap0Spawn(['$VOL,90,0,*', '$WEAP,4,*']), null, 'no slot-0 frame, no rule');
+  assert.equal(weap0Spawn(['$SIR,1,*', '$SIR,1,*', f]).prev, null, 'a repeated frame never marks the send');
+});
+
+test('F636: with no $START $LCD, a slot-0 $ALCD with the head\'s own numbers after $WEAP,0 went out proves the head', async () => {
+  const h = harness().kit(); const link = heldLink(h); h.config_();
+  const w0 = weap0Spawn(h.bundle.head); assert.ok(w0, 'the golden head has a full $WEAP,0');
+  link.sendThrough('$WEAP,0,');
+  h.frame(`$ALCD,${w0.mag},100,0,${w0.res},0,*`);           // today's answer: no zeroed $LCD came first
+  assert.equal(h.eng.headStartSeen, false); assert.equal(h.eng.headWriteDone, false, 'the head is still on the link');
+  assert.equal(h.eng.echoProof, true, 'the matching slot-0 report proves $WEAP,0 loaded');
+  link.release(); await flushIo();
+  h.adv(1600); h.eng.tick(); h.queryConfig();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack?.b.ok, true, 'acks ok, not no_config');
+  assert.equal(ack?.b.gun_echo, `$ALCD,${w0.mag},100,0,${w0.res},0,*`, 'MC compares the slot-0 load');
+});
+
+test('F636: the frame before $WEAP,0 marks the send, so a fast gun answer still counts', async () => {
+  const h = harness().kit(); const link = heldLink(h); h.config_();
+  const w0 = weap0Spawn(h.bundle.head);
+  link.sendThrough(w0.prev);                                 // `$WEAP,0` is on the radio, its `onFrameSent` not yet fired
+  h.frame(`$ALCD,${w0.mag},100,0,${w0.res},0,*`);
+  assert.equal(h.eng.echoProof, true);
+});
+
+test('F636: the rule stays strict: old numbers, an early report, another slot or a wiped gun prove nothing', async () => {
+  const run = async (sendTo, frame) => {
+    const h = harness().kit(); const link = heldLink(h); h.config_();
+    if (sendTo) link.sendThrough(sendTo(weap0Spawn(h.bundle.head)));
+    h.frame(frame(weap0Spawn(h.bundle.head)));
+    link.release(); await flushIo();
+    h.adv(1600); h.eng.tick(); h.queryConfig();
+    return { h, ack: h.reports.find(r => r.k === 'ack_config') };
+  };
+  let r = await run(() => '$WEAP,0,', w => `$ALCD,${w.mag - 1},100,0,${w.res},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'a magazine one short is a round fired on the old weapon');
+  r = await run(() => '$WEAP,0,', w => `$ALCD,${w.mag},100,0,${w.res + 12},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'another reserve is the old weapon');
+  r = await run(null, w => `$ALCD,${w.mag},100,0,${w.res},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'matching numbers before $WEAP,0 went out are a stale report');
+  assert.equal(r.h.eng.ammoEcho, null, 'and it is not kept as the echo');
+  r = await run(() => { const hd = harness().bundle.head; return hd[hd.findIndex(f => f.startsWith('$WEAP,0,')) - 2]; }, w => `$ALCD,${w.mag},100,0,${w.res},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'sent up to the frame before the marking frame is still too early');
+  r = await run(() => '$WEAP,0,', w => `$ALCD,${w.mag},100,1,${w.res},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'slot 1 is no proof for slot 0');
+  r = await run(() => '$WEAP,0,', () => '$ALCD,0,0,0,0,0,*');
+  assert.equal(r.ack?.b.err, 'no_config', 'the wiped-gun report is no proof');
+});
+
+test('F636: a re-push drops the old head\'s mark, so its send never proves the new head', async () => {
+  const h = harness().kit(); const link = heldLink(h); h.config_();
+  const w0 = weap0Spawn(h.bundle.head);
+  link.sendThrough('$WEAP,0,');
+  const oldOpts = link.opts;
+  h.config_();                                               // the re-push: a fresh head, nothing sent yet
+  oldOpts.onFrameSent(w0.frame);                             // a late callback from the OLD batch
+  h.frame(`$ALCD,${w0.mag},100,0,${w0.res},0,*`);
+  assert.equal(h.eng.echoProof, false, 'the old batch cannot mark the new head');
 });
 
 test('F271: a head echo starts $QUERY readback and defers ack_config', () => {
