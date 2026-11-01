@@ -113,7 +113,7 @@ export const SESSION_STORE_V = 1;
 export const STATION_MIN_FW = 'h8-0.3';
 /** Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
  *  of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
- *  The four proof prefixes whose cure is the push itself (A36/A37): a re-push replaces them (`state.cured_by_push`). */
+ *  The four proof prefixes whose cure is the push itself (A36/A37), plus GUN_DID_NOT_TAKE_CONFIG: a re-push replaces them (`state.cured_by_push`). */
 export const STALE_ACK_FAULT = 'ACKED AN OLDER CONFIG';
 export const ECHO_FAULT = 'GUN ECHO ≠ CONFIG';
 export const POOL_FAULT = 'GUN POOL ≠ CONFIG';

@@ -133,7 +133,7 @@ def test_sidearm_kind_narrows_the_secondary_pool_to_the_pistols():
     # "weapon" already includes the pistols — adding "sidearm" beside it changes nothing
     a = P.pool(_pol(secondary={"kinds": ["weapon"]}), W, PK)
     b = P.pool(_pol(secondary={"kinds": ["weapon", "sidearm"]}), W, PK)
-    assert a == b and "usp" in a["secondary_weapons"] and "smg" in a["secondary_weapons"]
+    assert a == b and "usp" in a["secondary_weapons"] and "suppressor" in a["secondary_weapons"]
     # exclude_* still applies on top of the kind
     lp = P.pool(_pol(secondary={"kinds": ["sidearm"], "exclude_ids": ["deagle"]}), W, PK)
     assert lp["secondary_weapons"] == ["usp"]
@@ -143,7 +143,7 @@ def test_pistol_round_on_the_primary_slot():
     pol = _pol(primary={"kinds": ["sidearm"]}, secondary={"choice": "off"})
     lp = P.pool(pol, W, PK)
     assert lp["primary"] == list(PISTOLS)
-    fixed = P.apply(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}, W, PK)
+    fixed = P.apply(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}]}, W, PK)
     assert fixed == {"weapons": [{"weapon_id": "usp"}]}      # first allowed pistol; secondary cleared
     for bad in ({"primary": {"kinds": ["perk"]}},           # a perk never goes in slot 1
                 {"secondary": {"kinds": ["rifle"]}}):
@@ -159,14 +159,14 @@ def test_phone_path_copy_for_a_sidearm_only_slot():
     pol = _pol(secondary={"kinds": ["sidearm"]})
     lp = P.pool(pol, W, PK)
     assert P.check_request(pol, lp, "secondary", "weapon", "usp", W, PK) == (True, None)
-    ok, why = P.check_request(pol, lp, "secondary", "weapon", "smg", W, PK)
+    ok, why = P.check_request(pol, lp, "secondary", "weapon", "suppressor", W, PK)
     assert not ok and why == "Only sidearms go in the secondary slot this game"
     assert P.check_request(pol, lp, "perk", "perk", "body_armor", W, PK) == (True, None)
     # a pistol is requested as kind "weapon" — "sidearm" is not a request kind
     ok, why = P.check_request(pol, lp, "secondary", "sidearm", "usp", W, PK)
     assert not ok and why == "Unknown pick"
     # host side says the same thing
-    ok, why = P.validate_loadout(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}, W, PK)
+    ok, why = P.validate_loadout(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}]}, W, PK)
     assert not ok and why == "Only sidearms go in the secondary slot this game"
     assert P.validate_loadout(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "deagle"}]}, W, PK) == (True, None)
     # "no second weapon, perks open" is spelled with the perk rule now (A14)

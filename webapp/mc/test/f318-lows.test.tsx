@@ -37,7 +37,7 @@ describe('F318 item 1: the command bar while MC is offline', () => {
 describe('F318 items 5, 9 and 10: KIT', () => {
   it('item 5: a roster name ellipsises and carries its full name as a title', async () => {
     const d = await demo();
-    expect(d.state.kit.trying, 'the demo has someone TRYING').toMatchObject({ p4: 'smg' });
+    expect(d.state.kit.trying, 'the demo has someone TRYING').toMatchObject({ p4: 'suppressor' });
     const m = await mountScreen(<Kit />, { ...d, view: 'kit' });
     const name = m.find('[data-kit-name="p4"]')[0];
     const p4 = d.state.players.find(p => p.player_id === 'p4')!;

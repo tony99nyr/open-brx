@@ -624,8 +624,9 @@ RESTART_VOLATILE: dict[str, str] = {
     r"feed|feed\[.*":"the resume adds its own RESUMED line (checked separately: every old line stays, in order)",
     r"nodes|nodes\[.*": "live links: the nodes reconnect to the new MC on their own backoff",
     r"start\.per_node.*": "each node's live arm state, re-sent on its hello",
-    r"sync\.rows\[.*\]\.(ack_state|bound|gun_acked|gun_echo|gun_sent)|sync\.totals\..*|sync\.unconfigured":
-        "each row's ack and echo come from its bound node (the rows' bundles stay checked)",
+    r"sync\.rows\[.*\]\.(ack_state|bound|gun_acked|gun_echo|gun_sent|phone_game)|sync\.totals\..*|sync\.unconfigured":
+        "each row's ack and echo come from its bound node (the rows' bundles stay checked); `phone_game` is true once"
+        " that ack is in (told >= acked, bench 2026-11-01), so it follows `gun_acked`",
     r"versions\.(field|newest).*|coverage\.bound|kit\.kitted|mc_confidence\..*": "derived from the bound nodes",
     r"readiness\..*|lobby\.all_acked": "derived from the bound nodes (none are bound yet straight after a resume)",
     r"players\[.*\]\.node_id": "the binding returns on the node's hello",

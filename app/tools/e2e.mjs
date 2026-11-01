@@ -445,10 +445,10 @@ await step('MC shows both nodes LINKED on Kit', async () => {
 
 // ═══ F3 · try-out from the MC UI ═══
 flow('F3 tryout');
-await step('select ALPHA, tap the SMG card → TRYING chip pulses', async () => {
+await step('select ALPHA, tap the Suppressor card → TRYING chip pulses', async () => {
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
-  await mc.locator('div[role="button"][aria-label*="SMG"]').first().click();
-  await until(async () => (await mc.locator('text=TRYING SMG').count()) > 0, 6000, 'TRYING chip');
+  await mc.locator('div[role="button"][aria-label*="Suppressor"]').first().click();
+  await until(async () => (await mc.locator('text=TRYING SUPPRESSOR').count()) > 0, 6000, 'TRYING chip');
   // The chip sits in a no-wrap wrapper span since 88b4d202, and the wrapper's text also starts with TRYING.
   // Read the innermost span: that is the chip that carries the pulse.
   const a = await mc.evaluate(() => { const el = [...document.querySelectorAll('span')].find(x => x.textContent.startsWith('TRYING') && !x.querySelector('span')); return el ? getComputedStyle(el).animationName : null; });
@@ -456,15 +456,15 @@ await step('select ALPHA, tap the SMG card → TRYING chip pulses', async () => 
 });
 await step('hudA shows the try-out hero panel (art + stats)', async () => {
   await until(async () => (await hudA.locator('.tryout').count()) > 0, 6000, 'hero panel');
-  expect((await hudA.locator('.tryout .nm').textContent()).includes('SMG'), 'panel is not the SMG');
-  // The magazine comes from the catalogue the MC ships, not a literal: the SMG went 72 -> 54 and the literal went stale.
-  const smgMag = JSON.parse(fs.readFileSync(path.join(REPO, 'mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.find(w => w.weapon_id === 'smg').mag;
+  expect((await hudA.locator('.tryout .nm').textContent()).toUpperCase().includes('SUPPRESSOR'), 'panel is not the Suppressor');
+  // The magazine comes from the catalogue the MC ships, not a literal: the Suppressor went 72 -> 54 and the literal went stale.
+  const smgMag = JSON.parse(fs.readFileSync(path.join(REPO, 'mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.find(w => w.weapon_id === 'suppressor').mag;
   const ln = await hudA.locator('.tryout .ln').textContent();
   expect(ln.includes(`MAG ${smgMag} `), `panel missing MAG ${smgMag}: ${ln}`);
   // A26/defect-2 (2026-09-18): weapon art moved from a CSS background-image (no onerror hook) to an
   // <img>, so a missing jpg can show a fallback glyph instead of the empty box — see the .wpic step below.
   const src = await hudA.evaluate(() => document.querySelector('.tryout .art .wpic')?.getAttribute('src') || '');
-  expect(src.includes('smg.jpg'), 'panel art is not smg.jpg');
+  expect(src.includes('suppressor.jpg'), 'panel art is not suppressor.jpg');
   await shot(hudA, 'hudA-tryout'); await shot(mc, 'kit-trying');
 });
 await step('weapon description renders in the hero panel', async () => {
@@ -473,15 +473,15 @@ await step('weapon description renders in the hero panel', async () => {
   // 2026-09-18 and the phrase went with it, so the step was pinned to prose rather than to the thing
   // it meant to check. It now asserts the SELECTED weapon's own description off `demo-catalog.js`,
   // the artefact the UI renders from, so a rewording moves the step instead of breaking it.
-  const smg = DEMO_WEAPONS.find(w => w.weapon_id === 'smg');
-  expect(!!smg, 'the demo catalogue has no SMG to check a description against');
+  const smg = DEMO_WEAPONS.find(w => w.weapon_id === 'suppressor');
+  expect(!!smg, 'the demo catalogue has no Suppressor to check a description against');
   // a CONTIGUOUS phrase from the front of the description, escaped and joined on flexible
   // whitespace, so it matches the rendered text however the panel wraps it
   const words = (smg.desc || '').trim().split(/\s+/).slice(0, 5);
-  expect(words.length >= 4, `the SMG description is too short to assert on: ${smg.desc}`);
+  expect(words.length >= 4, `the Suppressor description is too short to assert on: ${smg.desc}`);
   const probe = new RegExp(words.map(rxLit).join('\\s+'), 'i');
   await until(async () => (await mc.locator(`text=${probe}`).count()) > 0, 6000,
-              `the SMG description did not render (looked for "${words.join(' ')}" from demo-catalog.js)`);
+              `the Suppressor description did not render (looked for "${words.join(' ')}" from demo-catalog.js)`);
 });
 await step('voice change makes the TAGGER speak (apply.preview reaches the gun)', async () => {
   const before = await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length);
@@ -549,9 +549,9 @@ await step('(a2) defect-2: a missing weapon photo on the KIT arsenal tile shows 
   try {
     await mc.locator('div[role="button"][aria-pressed]:has-text("PERK")').first().click();
     await mc.locator('div[role="button"]:has-text("PRIMARY")').first().click();
-    const tile = mc.locator('div[role="button"][aria-label*="SMG"]').first();
-    await until(async () => (await tile.locator('img').count()) === 0, 6000, 'the broken <img> is gone from the SMG tile');
-    expect((await tile.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG tile');
+    const tile = mc.locator('div[role="button"][aria-label*="Suppressor"]').first();
+    await until(async () => (await tile.locator('img').count()) === 0, 6000, 'the broken <img> is gone from the Suppressor tile');
+    expect((await tile.locator('svg').count()) > 0, 'no fallback glyph rendered on the Suppressor tile');
     const box = await tile.locator('svg').first().boundingBox();
     expect(!!box && box.width > 4 && box.height > 4, 'fallback glyph has no visible size: ' + JSON.stringify(box));
     // the WeaponHero panel (the big art beside the slot rail) uses the same component — same check
@@ -562,16 +562,16 @@ await step('(a2) defect-2: a missing weapon photo on the KIT arsenal tile shows 
     await shot(mc, 'kit-missing-art');
   } finally { await mc.unroute('**/assets/weapons/*.jpg'); expectHttpErrors = false; }
 });
-await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ → MC roster shows SMG (ack + catalog DELIVERED)', async () => {
+await step('(b) hudA: PRIMARY plate → browser → Suppressor row → EQUIPPED ✓ → MC roster shows Suppressor (ack + catalog DELIVERED)', async () => {
   await hudA.click('.plate.slot.tap[data-arg="primary"]');
   await until(async () => (await hudA.locator('.lo').count()) > 0, 5000, 'loadout browser open');
-  await hudA.click('.lrow[data-arg="weapon:smg"]');
+  await hudA.click('.lrow[data-arg="weapon:suppressor"]');
   await until(async () => (await hudA.locator('.ackchip.ok').count()) > 0, 6000, 'EQUIPPED chip');
   const ack = await hudA.evaluate(() => window.brx.engine.loadoutAck);
-  expect(ack && ack.ok && ack.key === 'weapon:smg', 'loadout_ack was not delivered for weapon:smg: ' + JSON.stringify(ack));
+  expect(ack && ack.ok && ack.key === 'weapon:suppressor', 'loadout_ack was not delivered for weapon:suppressor: ' + JSON.stringify(ack));
   const cat = await hudA.evaluate(() => (window.brx.engine.catalog || {}).weapons?.length || 0);
   expect(cat >= VISIBLE_WEAPONS, 'assign did not carry the catalog (weapons=' + cat + ', expected >= ' + VISIBLE_WEAPONS + ')');
-  await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('SMG'), 6000, 'MC roster line shows SMG');
+  await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).toUpperCase().includes('SUPPRESSOR'), 6000, 'MC roster line shows Suppressor');
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
 });
 await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyph, not a silent #0a1626 box', async () => {
@@ -584,20 +584,20 @@ await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyp
   try {
     await hudA.click('.lotab[data-arg="secondary"]');
     await hudA.click('.lotab[data-arg="primary"]');
-    const row = hudA.locator('.lrow[data-arg="weapon:smg"] .thumb');
-    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpic')).display)) === 'none', 6000, 'the broken <img> is hidden on the SMG row');
+    const row = hudA.locator('.lrow[data-arg="weapon:suppressor"] .thumb');
+    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpic')).display)) === 'none', 6000, 'the broken <img> is hidden on the Suppressor row');
     // Wait for the glyph too, do not assert it straight after the hide. `onerror` hides the <img> and
     // shows the fallback in two separate style writes, so a synchronous assert here races the second
     // one and fails intermittently with "the fallback glyph is not shown" while the UI is correct
     // (seen 2026-09-18). The repo's rule: wait for the condition, never for the previous condition.
-    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 6000, 'the fallback glyph is not shown on the SMG row');
-    expect((await row.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG row');
+    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 6000, 'the fallback glyph is not shown on the Suppressor row');
+    expect((await row.locator('svg').count()) > 0, 'no fallback glyph rendered on the Suppressor row');
     // .lrow .thumb is a fixed 66×36 CSS box (index.html) — the frame itself is scaled to fit the
     // viewport (`_fitMcLinked`-style transform), so read the authored size, not a scaled bounding rect.
     const size = await row.evaluate(el => ({ w: parseFloat(getComputedStyle(el).width), h: parseFloat(getComputedStyle(el).height) }));
     expect(Math.round(size.w) === 66 && Math.round(size.h) === 36, 'the fallback shifted the row-thumb size: ' + JSON.stringify(size));
     // the detail hero pane uses the same helper — same check there. ⓘ on a DIFFERENT row (shotgun, not
-    // yet equipped/rendered) so this is a fresh <img> under the route, not the already-focused SMG one
+    // yet equipped/rendered) so this is a fresh <img> under the route, not the already-focused Suppressor one
     // hud.js only just skipped re-rendering unchanged.
     await hudA.click('.lrow[data-arg="weapon:shotgun"] .linfo');
     await until(async () => (await hudA.locator('.lodetail .art .wpicfb').isVisible().catch(() => false)), 6000, 'hero pane fallback glyph');
@@ -605,11 +605,11 @@ await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyp
     await shot(hudA, 'hudA-loadout-missing-art');
   } finally { await hudA.unroute('**/assets/weapons/*.jpg'); expectHttpErrors = false; }
 });
-// A26 (S20): TRY IT is gone. The SMG row tapped in (b) equipped it AND armed it for test-firing, so MC's
+// A26 (S20): TRY IT is gone. The Suppressor row tapped in (b) equipped it AND armed it for test-firing, so MC's
 // TRYING chip must already be up with NO second control touched — and the player must still be in the rack,
 // because a try-out takeover on every pick would eject them from the list they are scrolling.
-await step('(c) A26: the (b) pick already armed the try-out — MC says TRYING SMG and the rack stays on screen', async () => {
-  await until(async () => (await mc.locator('text=TRYING SMG').count()) > 0, 6000, 'MC TRYING chip (no TRY IT was tapped)');
+await step('(c) A26: the (b) pick already armed the try-out — MC says TRYING Suppressor and the rack stays on screen', async () => {
+  await until(async () => (await mc.locator('text=TRYING SUPPRESSOR').count()) > 0, 6000, 'MC TRYING chip (no TRY IT was tapped)');
   expect((await hudA.locator('.tryout').count()) === 0, 'the try-out panel took over the browser — A26 says the rack stays');
   await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'still in the rack');
   expect((await hudA.locator('text=TRY IT').count()) === 0, 'TRY IT is gone (A26)');
@@ -680,17 +680,17 @@ await step('(g) BUILD + PLAY: a FIXED-primary piece (Silenced Sniper) picked on 
   expect((await mc.locator('[data-testid="picker-primary"]').getByRole('button', { name: 'Silenced Sniper' }).getAttribute('aria-pressed')) === 'true', 'Silenced Sniper option not marked picked');
   await shot(mc, 'games-snipers-reset'); await shot(hudA, 'hudA-locked-snipers');
 });
-await step('(g2) KIT under Silenced Sniper: both slot cards read FIXED (locked by the game); tapping the SMG tile leaves the loadout unchanged', async () => {
+await step('(g2) KIT under Silenced Sniper: both slot cards read FIXED (locked by the game); tapping the Suppressor tile leaves the loadout unchanged', async () => {
   await nav(2);
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
   await until(async () => (await mc.locator('text=/FIXED (BY THE GAME|· SET IN)/').count()) >= 2, 6000, 'both slot cards read FIXED (locked by the game)');
   const before = JSON.stringify((await st()).players.find(p => p.player_id === pA.player_id).loadout);
-  const smg = mc.locator('div[role="button"][aria-label*="SMG"]').first();
-  expect((await smg.getAttribute('aria-disabled')) === 'true', 'SMG tile is not aria-disabled under a fixed primary');
+  const smg = mc.locator('div[role="button"][aria-label*="Suppressor"]').first();
+  expect((await smg.getAttribute('aria-disabled')) === 'true', 'Suppressor tile is not aria-disabled under a fixed primary');
   await smg.click({ force: true });
   await sleep(700);
   expect(JSON.stringify((await st()).players.find(p => p.player_id === pA.player_id).loadout) === before, 'tapping a disabled tile changed the loadout');
-  expect((await mc.locator('text=TRYING SMG').count()) === 0, 'a disabled tile started a try-out');
+  expect((await mc.locator('text=TRYING SUPPRESSOR').count()) === 0, 'a disabled tile started a try-out');
   await shot(mc, 'kit-fixed-locked');
 });
 // F411 retired DESIGNER's whole-game create/edit/copy (a named SavedGame you both authored and played)
@@ -818,8 +818,8 @@ await step('restore OPEN rules + the run config so the match flow continues unch
   const c = cfgBeforeRules;
   await api('PUT', '/api/config', { mode: c.mode, environment: c.environment, night: c.night, time_limit_s: c.time_limit_s, respawn: c.respawn, scoring: c.scoring, health: c.health, teams: c.teams, loadout_policy: { preset: 'open' } });
   await api('PATCH', `/api/players/${pB.player_id}`, { team_id: bravoTeam, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } });
-  await api('PATCH', `/api/players/${pA.player_id}`, { loadout: { weapons: [{ weapon_id: 'smg' }] } });
-  await until(async () => { const s = await st(); return s.config.loadout_policy.preset === 'open' && s.players.find(p => p.player_id === pA.player_id).loadout.weapons[0].weapon_id === 'smg'; }, 6000, 'restored');
+  await api('PATCH', `/api/players/${pA.player_id}`, { loadout: { weapons: [{ weapon_id: 'suppressor' }] } });
+  await until(async () => { const s = await st(); return s.config.loadout_policy.preset === 'open' && s.players.find(p => p.player_id === pA.player_id).loadout.weapons[0].weapon_id === 'suppressor'; }, 6000, 'restored');
   await nav(2);
 });
 

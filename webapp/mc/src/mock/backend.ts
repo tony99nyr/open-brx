@@ -691,7 +691,7 @@ export class MockBackend implements Api {
     for (const [, tail, kind, , linkAge] of GUNS) {
       if (kind !== 'r') this.reportNode(`node_${tail}`, now() - linkAge * 1000);
     }
-    this.trying = { p4: 'smg' };
+    this.trying = { p4: 'suppressor' };   // was the SMG, hidden for F638
     this.browsing = { p6: now() };   // SABLE is browsing on the phone
     // F155 pass 1 (2026-09-12): GUN-F reported backhaul EARLIER this session, then dropped — `lastReach`
     // is what `readiness()` reads for the row's own `last_reach` (below), so it must be seeded before
