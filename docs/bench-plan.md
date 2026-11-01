@@ -111,8 +111,8 @@ result that closes the row, and the result that reopens it. A step marked "read 
 and says why. The procedure stays in the sheet each step cites. Short names: 0422, 0424, 0426 and 1017 are
 [`bench-rebench-0422.md`](bench-rebench-0422.md), [`bench-rebench-0424.md`](bench-rebench-0424.md),
 [`bench-0426.md`](bench-0426.md) and [`bench-field-1017.md`](bench-field-1017.md); runbook is
-[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 23
-h 45 min (steps 1 to 95), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
+[`bench-2026-09-24.md`](bench-2026-09-24.md); levers and screamers are in the Equipment key. Runnable total: about 24
+h 30 min (steps 1 to 95, 101 and 102), so it takes several sittings. The optional fix checks (35 min) and the blocked steps (30
 min) are not in it.
 
 **Build gate: run on the newest APK, and check the fix each step tests.** The newest APK is 0.4.30, built locally
@@ -282,7 +282,7 @@ A).
    off. Closes: the log's waits stay at about 10 s or less for 12 tries, then 30 s and 60 s, and the link rests after
    30 tries (expect about 20 min). Read: the battery drop per hour. (0426 P2.3)
 
-### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 90 min)
+### Group D: two guns on the laptop MCP and the rig receiver (2 guns, no phone, about 135 min)
 
 33. **F618**, AP on the AMR, the Burst Rifle and the USP after the re-key (30 min). A Tactix-XXXX victim with
    identical fn 1 rows at `<0,3>` and `<4,0>`, t7 = 0. Control: frames on the old key `<0,3>`. A/B/A per weapon: old
@@ -300,10 +300,20 @@ A).
    constant 2, duplicates land within 600 ms, and fn 34 answers whether dead players hear callouts. Restore fn 28,
    then power-cycle both. (runbook Block 7 steps 1-10)
 
-101. **F638**, the SMG headset backlog (15 min). The rig receiver at the target's headset. Control: a
+101. **F638**, the SMG headset backlog (25 min). The rig receiver at the target's headset. Control: a
    single-emitter weapon stops its words at release. A/B/A: that weapon, the SMG held for 3 s, that weapon; then the
-   Shotgun (also two words). Read: the time and count of headset words after release. The FOLLOWUPS row holds the
-   rest. (FOLLOWUPS F638)
+   Shotgun (also two words). Read: the time and count of headset words after release. Then the SMG with t1 = 0 and t12
+   empty (barrel only: expect no words after release) and the SMG at t14 = 250 (expect no tail), the two fix candidates.
+   The desk cause: the shooter's headset spaces words at least 200 ms apart, and the SMG fires every 100 ms. The
+   FOLLOWUPS row holds the rest; the fix itself is Tony's call. (FOLLOWUPS F638)
+102. **Energy Rifle heat per shot** on the shipped frame (20 min). Two bench reads of the same frame (t24 6, t38 150)
+   disagree: about +3 a shot and a lock after about 30 rounds (2026-09-17, `Tactix-E20D`), against about +1 a shot and
+   a lock at 100 after 76 rounds in 11.6 s (2026-09-18, `Tactix-FE30`). Arm each gun in turn with the Energy Rifle
+   from `compile.resolve()`. Control: one single shot from cold reads `$ALCD` token 5 above 0. A/B/A: gun 1, gun 2, gun
+   1, each a held full-auto burst from cold to the lock; log token 5 per round, rounds to the lock, and seconds. Closes:
+   both guns agree, and the number goes into the weapon's `caution` (it shows on the MC console) and `heat.per_shot`
+   (the balance sims). Reopens: the guns differ, so the caution states the range and the sims keep the faster lock.
+   (post-mvp F229)
 
 ### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 
