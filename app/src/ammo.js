@@ -500,6 +500,9 @@ export class Ammo {
    *  it, or a round leaving the slot without such a reading, ends it. `prev` is the slot's last mag (null = none). */
   heatLockFrame(slot, heat, prev, mag) {
     const now = this.host.now(), hot = heat != null && !Number.isNaN(heat) && heat >= HEAT_LOCKOUT, L = this.heatLock;
+    // F226 review: while the phone's own reload shows, a hot reading on its slot is the gun's echo of the phone's `$AMMO` at the
+    // old heat; the `$AMMO` ended the lock (bench 2026-09-17), so it must not put OVERHEAT back up over a full cell.
+    if (hot && this.reloading && this.reloading.auto && this.reloading.slot === slot) return;
     if (hot) { if (L && L.slot === slot) L.lastAt = now; else this.heatLock = { slot, at: now, lastAt: now }; return; }
     if (!L || L.slot !== slot) return;
     if ((heat != null && !Number.isNaN(heat)) || (prev != null && mag < prev)) this.heatLock = null;   // cooled, or it fired
@@ -699,7 +702,8 @@ export class Ammo {
     // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
     // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
-    if (r && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) { this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
+    if (r && !r.auto && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
+      this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
     // life. That bench measured phone equips; ALT before the first pull is the field report's bench #2 row (brx1's call to
     // ship it, 2026-10-17). Field 2026-10-17 (F542, F445): every assumed swap after a bare spawn preceded a failed reload.

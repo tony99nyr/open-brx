@@ -4934,6 +4934,9 @@ export class Engine {
     this.am.acctWrote(slot, to, left);
     this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player');
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
+    // F226 review (Opus): `$AMMO` ends the lock, and a full cell is no starved cell, so a lockout still on the books (or one an
+    // echo at the old heat refreshes) would put the full-screen OVERHEAT word up. The next real report sets the heat again.
+    if (this.am.heatLock && this.am.heatLock.slot === slot) this.am.heatLock = null;
     this.am.autoReload(slot, mag, to, cap);
   }
   _holdAccuracyWrites(why) {

@@ -5654,7 +5654,7 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
-        if r and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):
+        if r and not r.get("auto") and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):   # F226: ammo.js `!r.auto`
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
         # ammo.js `altPressed` (F445, bench 2026-10-03): after `$SPAWN` the gun ignores a slot change until the first trigger
@@ -6633,7 +6633,7 @@ class GunStage:
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[slot] if slot < len(ws) else None) or {}
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}
-        cost = row.get("rounds_per_charge") if row.get("rounds_per_charge") is not None else 1
+        cost = int(row.get("rounds_per_charge") or 1)
         if not (cost > 1) or not (mag < cost):
             return
         if lk and lk["slot"] == slot and lk["life"] == self._life_queued:

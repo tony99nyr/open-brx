@@ -4558,12 +4558,12 @@ test('A48: a weapon with no class or charge cost reports null, so the HUD falls 
 });
 
 // ---------- F226 (bench 2026-11-01, 0.4.32): a charge below one full charge locks the gun; the phone reloads it ----------
-function chargeHarness({ cost = 10, reserve = null } = {}) {
+function chargeHarness({ cost = 10, reserve = null, second = false } = {}) {
   const h = harness();
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  h.player.loadout.weapons = [{ weapon_id: 'charge_rifle' }];
+  h.player.loadout.weapons = second ? [{ weapon_id: 'charge_rifle' }, { weapon_id: 'usp' }] : [{ weapon_id: 'charge_rifle' }];
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: cost, clip: 40, reserve: 80, reload_s: 2 }], perks: [] } } });
+    catalog: { weapons: [{ weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: cost, clip: 40, reserve: 80, reload_s: 2 }, { weapon_id: 'usp', name: 'USP', clip: 12, reserve: 48 }], perks: [] } } });
   h.config_().echo().start(0); h.adv(10); h.eng.tick();
   h.adv(5000); h.eng.tick();                                 // past the spawn burst's echo windows
   const cap = h.eng.am.ammoBySlot()[0]; assert.ok(cap > 10, `the golden spawn has a slot-0 cap: ${cap}`);
@@ -4595,6 +4595,37 @@ test('F226: with no echo from the gun, the phone\'s reload still ends after the 
   h.adv(2100); h.eng.tick();                                 // reload_s 2: no gun report needed, the phone wrote the counts
   assert.equal(h.eng.state().reloading, false, 'the takeover ends on its own time, not the energy refill ceiling');
   assert.equal(h.eng.am.reloadOutcome?.why, 'filled');
+});
+
+test('F226: the gun\'s echo at the old heat does not put the full-screen OVERHEAT back over the refilled cell', () => {
+  const { h, cap, res } = chargeHarness();
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  assert.equal(h.eng.state().overheatShown, false, 'the lock reload clears the lockout on the books');
+  const give = Math.min(cap - 4, res);
+  h.frame(`$ALCD,${4 + give},100,0,${res - give},156,*`);  // the echo still carries the old heat
+  assert.equal(h.eng.state().overheatShown, false, 'no OVERHEAT word over a full cell');
+});
+
+test('F226: ALT during the phone\'s reload is a swap, not "ignored mid-reload"', () => {
+  const { h, res } = chargeHarness({ second: true });
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  assert.equal(h.eng.state().reloading, true);
+  h.frame('$BUT,1,1,*');                                     // ALT: the `$AMMO` is instant on the gun, so the gun takes it
+  assert.equal(h.eng.am.reloading, null, 'the swap ends the takeover instead of being ignored');
+});
+
+test('F226: the Energy Rifle\'s normal overheat (no multi-round charge) at heat 100 with a full cell gets no $AMMO', () => {
+  const h = harness();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600 }], perks: [] } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+  const cap = h.eng.am.ammoBySlot()[0];
+  const n = h.writes.filter(f => f.startsWith('$AMMO,0,')).length;
+  h.frame(`$ALCD,${cap - 1},100,0,600,99,*`); h.frame(`$ALCD,${cap - 1},100,0,600,100,*`);   // locked at 100, same magazine
+  assert.equal(h.writes.filter(f => f.startsWith('$AMMO,0,')).length, n, 'an ordinary overheat is never reloaded for the player');
+  assert.equal(h.eng.state().overheatShown, true, 'and it still reads OVERHEAT');
 });
 
 test('F226: never more than the reserve holds, and an empty reserve writes nothing', () => {
