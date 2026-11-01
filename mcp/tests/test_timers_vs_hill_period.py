@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "GUN_WAS_LEVER_S": "F542 (2026-11-01): how long after a lever, or a swap rollback, a slot's rising `$ALCD` still counts\n"
+                       "as that lever's reload. Measured from the lever or the rollback on the phone's clock; no beacon reaches it",
     "VICTORY_STING_MAX_S": "A81: MC measures the release window from the scorer's end time on its own clock. A hill beacon cannot reset it",
     "SYNC_STUCK_S": "F596: MC measures a recap row from its own receive and stage timestamps. A hill beacon cannot reset it",
     "STOPPING_WAIT_S": "round 2 L3 (2026-10-10): how long a relaunched MC waits at startup for a stopping MC to free\n"
