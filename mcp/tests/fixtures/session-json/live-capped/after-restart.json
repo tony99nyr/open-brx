@@ -320,6 +320,7 @@
           "blue": 0,
           "red": 3
         },
+        "win_by": "kills",
         "winner": {
           "team_id": "red"
         }

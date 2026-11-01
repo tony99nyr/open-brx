@@ -413,6 +413,7 @@
             "team": 1
           }
         ],
+        "win_by": "kills",
         "winner": {
           "team_id": null,
           "tie": [
