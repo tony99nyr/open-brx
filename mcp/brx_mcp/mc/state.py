@@ -1563,6 +1563,7 @@ class Session:
         if self.phase == "muster":
             self._set_phase("build")
         self._changed()
+        self.persist_now()     # the LOAD survives a restart (session.json `load`): do not leave it to the 2 s debounce
         return {"ok": True, "config_id": cfg_id, "sent": len(self.game_sent), "total": len(self.players)}
 
     def game_sent_n(self) -> int:

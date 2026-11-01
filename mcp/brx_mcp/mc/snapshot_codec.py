@@ -61,6 +61,8 @@ class SnapshotHost(Protocol):
     _sync_pending: dict[str, str]
     _end_delivery: dict[str, Any]
     _end_delivery_told: str | None
+    game_loaded: bool                 # the LOAD announcement (session.json `load`)
+    game_cfg: str | None
     restored_from: RestoredFromView | None
     demo_session: bool
     powerup_ledger: PowerupLedger
@@ -162,6 +164,11 @@ class SnapshotCodec:
                     "range_epoch": station["range_epoch"],
                     "hill_bytes": station["hill_bytes"],   # F535: a hill MC armed may still advertise these bytes
                     "join_secret": self.host.join_secret,
+                    # Bench 2026-11-01: the LOAD announcement (which game the host loaded). Without it a restart read NOT
+                    # LOADED on GAMES and the heartbeat retry never ran. Only the host's decision is kept, never who was
+                    # told: those are deliveries the old process made (2026-09-16), and each re-hello's welcome makes them
+                    # again. Additive: absent = nothing loaded, so no store version bump.
+                    **({"load": {"cfg": self.host.game_cfg}} if self.host.game_loaded and self.host.game_cfg else {}),
                     **({"match": m} if (m := self._match_snapshot()) else {}),
                     **({"end_delivery": {nid: dict(row) for nid, row in self.host._end_delivery.items()},
                         "end_delivery_told": self.host._end_delivery_told} if self.host._end_delivery else {}),
@@ -283,7 +290,17 @@ class SnapshotCodec:
     _RESTORE_ATTRS = ("players", "feed", "standby", "teams", "config", "game_pick", "last_match",
                       "nodes", "game_no", "_game_no_started", "join_secret", "_ended", "start_seq",
                       "_resume_pending", "_feed_seq", "_match_end_t", "_sync_pending", "restored_from",
-                      "_end_delivery", "_end_delivery_told")
+                      "_end_delivery", "_end_delivery_told", "game_loaded", "game_cfg")
+
+    def _restore_load(self, raw: object) -> None:
+        """The LOAD announcement, if well formed (a config id). Anything else restores as nothing loaded, which is
+        what a session.json from before this field means. `game_sent` starts empty: this process has told nobody yet,
+        and the welcome on each re-hello (`_hydrate`) and the heartbeat retry (`_on_status`) record it again."""
+        cfg = raw.get("cfg") if isinstance(raw, dict) else None
+        if not isinstance(cfg, str) or not cfg:
+            return
+        self.host.game_loaded = True
+        self.host.game_cfg = cfg
 
     def _move_aside(self, suffix: str) -> Path | None:
         path = self.host._persist_path
@@ -400,6 +417,7 @@ class SnapshotCodec:
                 self.host.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                                  "synced": False, "last_seen_ms": 0})
             self.host.game_no = snap.get("game_no", self.host.game_no)
+            self._restore_load(snap.get("load"))
             self.host._game_no_started = bool(snap.get("game_no_started", False))
             if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:
                 self.host.join_secret = snap["join_secret"]     # A28.2: the QRs already printed stay valid

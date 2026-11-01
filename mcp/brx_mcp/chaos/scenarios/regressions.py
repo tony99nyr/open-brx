@@ -347,6 +347,23 @@ scenario(Scenario(
 ))
 
 scenario(Scenario(
+    name="load-survives-restart", mode="tdm", nodes=4,
+    doc="Bench 2026-11-01 (0.4.32): session.json did not keep the LOAD, so after a restart GAMES read NOT LOADED and "
+        "the heartbeat retry never ran. The announcement now survives a BUILD and a LOBBY restart (state_survives_restart).",
+    setup_script=[
+        {"name": "field_join", "params": {}},
+        {"name": "operator_phase", "params": {"phase": "kit"}},
+        {"name": "operator_load", "params": {}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "expect_loaded", "params": {}},
+        {"name": "lobby_push", "params": {}},
+        {"name": "mc_restart", "params": {}},
+        {"name": "expect_loaded", "params": {}},
+    ],
+    script=[{"name": "end", "params": {}}], ci_seeds=(1,),
+))
+
+scenario(Scenario(
     name="play-clear-hold", mode="koth", nodes=4,
     doc="Review 2026-10-04 #3: PLAY clearing a KOTH target removes it from the next match.",
     setup_script=[

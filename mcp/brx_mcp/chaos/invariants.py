@@ -632,6 +632,7 @@ RESTART_VOLATILE: dict[str, str] = {
     r"players\[.*\]\.node_id": "the binding returns on the node's hello",
     r"live\.rows\[.*\]\.(sync_age_ms|status|respawn_in_s)": "derived from the node's last status",
     r"lobby\.pushed": "a resume never re-pushes: a re-hello carries no config (`resume_match`)",
+    r"game\.sent": "deliveries this process made (2026-09-16): the LOAD survives a restart, who was told is told again",
     r"recap\.parked": "other matches' facts; the resume imports only this match's",
     r"station_departures\[.*\]\.(line|returned)": "`returned` is set again on the station's next hello (`to_snapshot`"
         " drops it) and the line reads it and the station's link",
