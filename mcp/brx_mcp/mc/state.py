@@ -1615,7 +1615,10 @@ class Session:
                 "bound": bool(p.get("node_id")),
                 # the ANNOUNCED game (`game_cfg`), not the head: see `game_sent_n`. Guarded against
                 # `game_cfg` being None, or "told nobody" would compare equal to "told everybody".
-                "phone_game": bool(self.game_cfg) and self.game_sent.get(pid) == self.game_cfg,
+                # Bench 2026-11-01 (0.4.32): OR an ack for THIS config. The session file does not keep the LOAD, so
+                # after a restart nothing was "told" and the console said MISSED LOAD beside ACKED 2/2. A phone
+                # whose gun acked this config holds it, so told is never less than acked.
+                "phone_game": acked or (bool(self.game_cfg) and self.game_sent.get(pid) == self.game_cfg),
                 "gun_sent": sent,
                 "gun_acked": acked,
                 "gun_echo": self._echo_state(pid),

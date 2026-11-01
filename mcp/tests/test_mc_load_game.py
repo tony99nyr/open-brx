@@ -198,6 +198,27 @@ def test_a_bound_gun_that_has_not_acked_is_named_differently_from_an_absent_one(
 
 
 # ---------------------------------------------------------------- the summary is honest
+def test_a_phone_whose_gun_acked_this_config_was_told_even_with_no_load_since_a_restart():
+    """Bench 2026-11-01 (brx1, 0.4.32): MC restarted, then the host pushed. The session file does not keep the
+    LOAD (`game_loaded`, `game_cfg`, `game_sent`), so both phones read PHONES TOLD 0/2 and "PHONE MISSED LOAD: WAIT,
+    MC IS RETRYING" beside ACKED 2/2 and a green GUNS READY. A phone whose gun acked THIS config holds it: told >= acked.
+    This session never LOADs, which is exactly the state a restart leaves."""
+    s, net, clock, ps = mk_session(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    assert not s.game_loaded and s.game_cfg is None, "control: no LOAD on record, as after a restart"
+    s.push_config()
+    rows = s.sync_summary()["rows"]
+    assert [r["phone_game"] for r in rows] == [False, False], "control: no ack yet, nothing proves a phone has it"
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    sync = s.sync_summary()
+    assert [r["gun_acked"] for r in sync["rows"]] == [True, True]
+    assert [r["phone_game"] for r in sync["rows"]] == [True, True], sync["rows"]
+    assert sync["totals"]["phone_game"] == 2
+
+
 def test_sync_summary_is_not_satisfied_by_an_empty_roster():
     """A zero-of-zero must never read as in sync. This is the `ALL GUNS (0/8)` lesson as a test."""
     s, _net, _clock, _ps = mk_session(0)
