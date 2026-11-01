@@ -7522,6 +7522,8 @@ test('F636: the rule stays strict: old numbers, an early report, another slot or
   r = await run(null, w => `$ALCD,${w.mag},100,0,${w.res},0,*`);
   assert.equal(r.ack?.b.err, 'no_config', 'matching numbers before $WEAP,0 went out are a stale report');
   assert.equal(r.h.eng.ammoEcho, null, 'and it is not kept as the echo');
+  r = await run(w => { const hd = harness().bundle.head; return hd[hd.indexOf(w.prev) - 1]; }, w => `$ALCD,${w.mag},100,0,${w.res},0,*`);
+  assert.equal(r.ack?.b.err, 'no_config', 'sent up to the frame before the marking frame is still too early');
   r = await run(() => '$WEAP,0,', w => `$ALCD,${w.mag},100,1,${w.res},0,*`);
   assert.equal(r.ack?.b.err, 'no_config', 'slot 1 is no proof for slot 0');
   r = await run(() => '$WEAP,0,', () => '$ALCD,0,0,0,0,0,*');

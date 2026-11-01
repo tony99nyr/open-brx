@@ -403,8 +403,6 @@ export function toks(f) {
   return s.split(',');
 }
 
-/** F549: config proof from an `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>`: the first four tokens whole numbers, on slot 0,
- *  so a broken slot-0 `$WEAP` cannot ack green on another slot's report (Codex review). */
 /** F636: the head's `$WEAP,0` frame, its spawn magazine (t39) and reserve (t40), and the frame written before it. */
 export function weap0Spawn(head) {
   if (!Array.isArray(head)) return null;
@@ -416,6 +414,8 @@ export function weap0Spawn(head) {
   const prev = i > 0 && head.indexOf(head[i - 1]) === i - 1 && head.lastIndexOf(head[i - 1]) === i - 1 ? head[i - 1] : null;
   return { frame: head[i], prev, first: i === 0, mag: +tok[40], res: +tok[41] };
 }
+/** F549: config proof from an `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>`: the first four tokens whole numbers, on slot 0,
+ *  so a broken slot-0 `$WEAP` cannot ack green on another slot's report (Codex review). */
 export function alcdProof(t) { return t.length >= 5 && t.slice(1, 5).every(x => /^\d+$/.test(x)) && +t[3] === 0 && !(+t[1] === 0 && +t[2] === 0); }   // `$ALCD,0,0,0,0,0`: a wiped gun (manual dev.md)
 
 /** Persisted context keys (localStorage-like `storage`). */
