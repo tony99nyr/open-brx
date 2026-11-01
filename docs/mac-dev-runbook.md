@@ -29,7 +29,7 @@ already are.)
 **The backhaul starts itself (F595).** With `cloudflared` installed, MC starts the internet tunnel at the
 kit push (once a phone is bound), and again if a bound phone reports mobile data before the whistle or during
 the match. ARM never waits for it. Phones stay on the Wi-Fi and use the tunnel only after they lose it. The console switch still turns it off, and an OFF holds until Mission Control restarts or a new session starts.
-Pass `--no-tunnel` (`pnpm mc -- --no-tunnel`) to keep it manual. A dev run with `--demo`, `--ephemeral` or
+Pass `--no-tunnel` (`pnpm mc --no-tunnel`) to keep it manual. A dev run with `--demo`, `--ephemeral` or
 `--fake-net` never starts it.
 
 **Keeping `cloudflared` current.** `./start.sh` installs `cloudflared` on request. On every start it updates the

@@ -21,12 +21,13 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State (2026-10-30):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
-on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. F578 is closed
-(a flip test against the shipped Sniper). The 0.4.30 release notes are on main. The local gate splits Python into
-`mcp-core`, `mcp-docs` and `mcp-sim` (F626).
-**Next:** the Sunday AM sheet at the top of [`bench-plan.md`](bench-plan.md) (2026-11-01): Tier 0 decides the
-afternoon game, then Tier 1, then NEXT. R4/T5 read-only research is authorised; flashing needs a decision first.
+**State (2026-11-01):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
+on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. The Sunday AM
+bench ran on 2026-11-01; its results are in [`bench-plan.md`](bench-plan.md) and the log. The local gate splits
+Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
+**Next:** the F542 swap fix (confirm the ALT swap from the gun's `$ALCD`, and a larger link frame ring) is on branch
+`fix/f542-alt-confirm`; it lands only when brx1 says (the 0.4.31 cut). Then NEXT in `bench-plan.md`. R4/T5 read-only research is authorised;
+flashing needs a decision first.
 **Blocked:** F575 on NEXT step 3's heat read, then Tony.
 ## Lane: brx3, releases and Mission Control
 **State (2026-10-27):** everything is landed or in the land queue:
