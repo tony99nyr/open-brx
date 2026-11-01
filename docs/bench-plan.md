@@ -313,7 +313,10 @@ A).
    1, each a held full-auto burst from cold to the lock; log token 5 per round, rounds to the lock, and seconds. Closes:
    both guns agree, and the number goes into the weapon's `caution` (it shows on the MC console) and `heat.per_shot`
    (the balance sims). Reopens: the guns differ, so the caution states the range and the sims keep the faster lock.
-   (post-mvp F229)
+   (post-mvp F229) **CONFIRMED 2026-11-01 (0.4.32, `FE30` and `E20D`):** both guns locked at heat 100 after 76 rounds from
+   300, about 1.3 heat a round, one round about every 0.15 s. Heat at 290/280/270/260/250/240/230 read 16/30/42-43/55/67/80/92.
+   A held lever vented 100, 65, 30, 0 over 0.5 s and refilled 0.15 s after release, debiting exactly the 76 used. The
+   caution now says about 75 rounds. `heat.per_shot` and the sims are not changed here (brx3, for Tony).
 
 ### Group E: two guns, both phones, MC and the grey Pixel as a station (2 guns, 3 in step 53, about 215 min)
 

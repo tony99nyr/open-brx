@@ -4557,6 +4557,82 @@ test('A48: a weapon with no class or charge cost reports null, so the HUD falls 
   assert.equal(st.roundsPerCharge, null);
 });
 
+// ---------- F226 (bench 2026-11-01, 0.4.32): a charge below one full charge locks the gun; the phone reloads it ----------
+function chargeHarness({ cost = 10, reserve = null } = {}) {
+  const h = harness();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.player.loadout.weapons = [{ weapon_id: 'charge_rifle' }];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: cost, clip: 40, reserve: 80, reload_s: 2 }], perks: [] } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.adv(5000); h.eng.tick();                                 // past the spawn burst's echo windows
+  const cap = h.eng.am.ammoBySlot()[0]; assert.ok(cap > 10, `the golden spawn has a slot-0 cap: ${cap}`);
+  const res = reserve == null ? 40 : reserve;
+  h.frame(`$ALCD,5,100,0,${res},25,*`); h.frame(`$ALCD,4,100,0,${res},28,*`);   // taps down to 4, below one charge
+  return { h, cap, res, ammo: () => h.writes.filter(f => f.startsWith('$AMMO,0,')) };
+}
+
+test('F226: a charge from 4 rounds (heat 156, no round) gets one reload written by the phone, shown as a reload', () => {
+  const { h, cap, res, ammo } = chargeHarness();
+  const before = ammo().length;
+  h.frame(`$ALCD,4,100,0,${res},156,*`);                     // the bench frame: same magazine, heat at the lock
+  const give = Math.min(cap - 4, res);
+  assert.deepEqual(ammo().slice(before), [`$AMMO,0,${4 + give},${res - give},1,*`], 'the spawn cap from the reserve, debited as a reload');
+  assert.equal(h.eng.state().reloading, true, 'the HUD shows a reload');
+  h.frame(`$ALCD,4,100,0,${res},156,*`);                     // a second press on the still-locked gun
+  assert.equal(ammo().length, before + 1, 'once per lock, never twice');
+  h.frame(`$ALCD,${4 + give},100,0,${res - give},0,*`);      // the gun's echo of the write
+  h.adv(2100); h.eng.tick();
+  const o = h.eng.am.reloadOutcome;
+  assert.equal(o?.ok, true, 'booked as a reload that took'); assert.equal(o?.to, 4 + give);
+  assert.equal(h.eng.state().ammo, 4 + give, 'the HUD reads the refilled cell');
+});
+
+test('F226: with no echo from the gun, the phone\'s reload still ends after the weapon\'s reload time', () => {
+  const { h, res } = chargeHarness();
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  assert.equal(h.eng.state().reloading, true);
+  h.adv(2100); h.eng.tick();                                 // reload_s 2: no gun report needed, the phone wrote the counts
+  assert.equal(h.eng.state().reloading, false, 'the takeover ends on its own time, not the energy refill ceiling');
+  assert.equal(h.eng.am.reloadOutcome?.why, 'filled');
+});
+
+test('F226: never more than the reserve holds, and an empty reserve writes nothing', () => {
+  let r = chargeHarness({ reserve: 3 }); let n = r.ammo().length;
+  r.h.frame('$ALCD,4,100,0,3,156,*');
+  assert.deepEqual(r.ammo().slice(n), ['$AMMO,0,7,0,1,*'], 'a reserve of 3 tops up to 7, reserve 0');
+  r = chargeHarness({ reserve: 0 }); n = r.ammo().length;
+  r.h.frame('$ALCD,4,100,0,0,156,*');
+  assert.equal(r.ammo().length, n, 'nothing to reload from');
+  assert.equal(r.h.eng.state().reloading, false, 'and no reload shown');
+});
+
+test('F226: only a charge lock: a round fired, a full charge left, a cool frame or a tap weapon get no reload', () => {
+  let r = chargeHarness(); let n = r.ammo().length;
+  r.h.frame(`$ALCD,3,100,0,${r.res},156,*`);                 // a round left: the gun fired, this is not the lock
+  assert.equal(r.ammo().length, n, 'a shot is no lock');
+  r = chargeHarness(); n = r.ammo().length;
+  r.h.frame(`$ALCD,4,100,0,${r.res},60,*`);                  // same magazine, heat under the lock
+  assert.equal(r.ammo().length, n, 'a cool frame is no lock');
+  r = chargeHarness({ cost: 1 }); n = r.ammo().length;
+  r.h.frame(`$ALCD,4,100,0,${r.res},156,*`);
+  assert.equal(r.ammo().length, n, 'a weapon with no multi-round charge is never reloaded for the player');
+  r = chargeHarness({ cost: 4 }); n = r.ammo().length;       // 4 rounds is one full charge of 4
+  r.h.frame(`$ALCD,4,100,0,${r.res},156,*`);
+  assert.equal(r.ammo().length, n, 'a cell that holds a full charge is an ordinary overheat');
+});
+
+test('F226: a new lock after the last one ended gets its own reload', () => {
+  const { h, cap, res, ammo } = chargeHarness();
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  const give = Math.min(cap - 4, res), to = 4 + give, left = res - give;
+  h.frame(`$ALCD,${to},100,0,${left},0,*`); h.adv(2100); h.eng.tick();   // the echo, cool: the lock is over
+  const n = ammo().length;
+  for (let m = to - 1; m >= 4; m--) h.frame(`$ALCD,${m},100,0,${left},20,*`);   // fired back down to 4
+  h.frame(`$ALCD,4,100,0,${left},156,*`);
+  assert.equal(ammo().length, n + (left > 0 ? 1 : 0), 'the second lock is a new lock');
+});
+
 // ---------- F229 (merge 2026-09-17): the Energy Rifle really overheats, and it does NOT cool on its own ----------
 // t38 = 150 switches its overheat on: heat climbs about +3 a shot, locks at 99, and stays there until the
 // reload lever vents it (about 35 a pull). Two rules have to survive a weapon that stays hot: OVERHEAT must

@@ -212,7 +212,7 @@ export const WEAPONS: WeaponView[] = [
     "htk": 4,
     "ttk_ms": 855,
     "rounds_per_charge": 10,
-    "caution": "A full charge spends 10 rounds. With fewer than 10 left a charge fires nothing, and the reload may not take until your next life.",
+    "caution": "A full charge spends 10 rounds. With fewer than 10 left, a charge fires nothing and the phone reloads the cell for you.",
     "recoil": {
       "ceiling": 100,
       "floor": 100,
@@ -327,7 +327,7 @@ export const WEAPONS: WeaponView[] = [
     "htk": 13,
     "ttk_ms": 1800,
     "rounds_per_charge": 1,
-    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
+    "caution": "Overheats after about 75 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then work the lever to recharge the cell.",
     "recoil": {
       "ceiling": 100,
       "floor": 70,
