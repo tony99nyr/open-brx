@@ -181,7 +181,9 @@ function Count({ label, n, of, good, bad }: { label: string; n: number; of: numb
  *  push: the server stops reporting gun facts once a match has ended (`state.py sync_summary`), so a
  *  previous match cannot leave a tick behind. */
 function marksOf(r: SyncRow, pushed: boolean): { phone: Mark; push: Mark; ack: Mark; echo: Mark } {
-  const phone: Mark = r.phone_game ? 'ok' : 'fail';
+  // bench 2026-11-01: a gun that acked THIS config has a phone holding it (an MC from before that fix lost
+  // its LOAD record on a restart and said MISSED LOAD beside ACKED); told is never less than acked
+  const phone: Mark = r.phone_game || r.gun_acked ? 'ok' : 'fail';
   const push: Mark = r.gun_sent ? 'ok' : pushed ? 'fail' : 'wait';
   // `ack_state` is the server's own word for the ACKED cell. An older MC does not send it: then a pushed
   // gun with no ack is red, as it always was, and anything before the push waits.
@@ -267,7 +269,9 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
           : <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: tone }}>{verdict}</span>}
         <span style={{ flex: 1 }} />
         <span data-testid="pre-arm-counts" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
-          <Count label="PHONES TOLD" n={totals.phone_game} of={totals.rostered} good={totals.phone_game === totals.rostered} bad={col('phone')} />
+          {/* read off the same marks as the PHONE cells (told >= acked), so the count and the cells cannot disagree */}
+          <Count label="PHONES TOLD" n={marked.filter(x => x.m.phone === 'ok').length} of={totals.rostered}
+            good={marked.filter(x => x.m.phone === 'ok').length === totals.rostered} bad={col('phone')} />
           {/* QA-02 fold (2026-09-26): GUNS PUSHED used to sit here too, disagreeing with LOBBY's own
               rail count and GameEditPanel's -- three counts for what is really one question, "are the
               guns ready". LOBBY's GUNS READY line is now the one answer; this panel keeps ACKED/ECHO
