@@ -69,7 +69,7 @@ def test_ar_plus_pistol_plus_fast_hands_is_legal_everywhere():
     assert P.validate_loadout(op, lp, lo, W, PK) == (True, None)
     assert P.apply(op, lp, lo, W, PK) == lo
     s, net, clock, p = _mk()                                 # the fake compiler's catalog has no pistols: the SMG stands in
-    lo2 = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "fast_hands"}
+    lo2 = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}], "perk": "fast_hands"}
     assert s.patch_player(p["player_id"], loadout=lo2)["loadout"] == lo2
     # the phone builds it one slot at a time
     _req(net, "secondary", "weapon", "shotgun")
@@ -81,18 +81,18 @@ def test_ar_plus_pistol_plus_fast_hands_is_legal_everywhere():
 # `loadout.overrides.easy_reload`, a host-only accessibility flag -- not a perk pick. FOLLOWUPS S50.)
 def test_easy_reload_and_a_second_weapon_cannot_both_be_stored_by_the_host():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    ok, why = P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+    ok, why = P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}],
                                           "overrides": {"easy_reload": True}}, W, PK)
     assert not ok and why == "Easy Reload takes the ALT button, so it can't ride with a second weapon"
-    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
-                       "overrides": {"easy_reload": True}}) == {"weapon": "smg"}
-    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}],
+                       "overrides": {"easy_reload": True}}) == {"weapon": "suppressor"}
+    assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}],
                        "perk": "fast_hands"}) is None
     assert P.conflict({"weapons": [{"weapon_id": "assault_rifle"}],
                        "overrides": {"easy_reload": True}}) is None
     s, net, clock, p = _mk()
     try:
-        s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}],
+        s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}],
                                                  "overrides": {"easy_reload": True}})
         raise AssertionError("stored the ALT button beside a second weapon")
     except ValueError as e:
@@ -106,10 +106,10 @@ def test_phone_perk_picks_never_touch_overrides():
     any more (it left the catalog)."""
     s, net, clock, p = _mk()
     pid = p["player_id"]
-    _req(net, "secondary", "weapon", "smg")
+    _req(net, "secondary", "weapon", "suppressor")
     ack = _req(net, "perk", "perk", "body_armor")
     assert ack["ok"] is True and "dropped" not in ack
-    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}], "perk": "body_armor"}
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "suppressor"}], "perk": "body_armor"}
     assert ack["loadout"] == s.players[pid]["loadout"]
     # requesting the retired perk id is refused like any other unknown perk
     ack = _req(net, "perk", "perk", "easy_reload")

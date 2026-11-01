@@ -371,8 +371,9 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # SECONDARIES, visible in the catalogue like everything above, so the roster is now 15.
     # 2026-09-19 (S16): the Toxin Rifle is visible now that the node tick clock is built: 10 primaries.
     # F577 (Tony 2026-10-18): the Haze is hidden, so one support secondary is left: 15.
-    assert len(ids) == 15, (
-        f"the §3 roster is 10 primaries + 2 sidearms + 2 pickup-only heavies + 1 support "
+    # F638 (Tony 2026-11-01): the SMG is hidden until its headset-backlog fix lands: 9 primaries, 14.
+    assert len(ids) == 14, (
+        f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies + 1 support "
         f"secondary, got {len(ids)}")
     assert "smoke_gun" not in ids, "F577: the Haze is hidden"
     by = {w["weapon_id"]: w for w in cat.all()}
@@ -1033,7 +1034,7 @@ def test_captured_native_behaviour_survives_resolve():
     assert tok("rocket_launcher", 3) == "10" and tok("rail_gun", 3) == "6"
     # per-weapon reload chains, not one shared D04+D03+D02
     chains = {w["weapon_id"]: tuple(w["weap_frame"].split(",")[T[k] + 1] for k in ("rel1", "rel2", "rel3"))
-              for w in cat.all()}
+              for w in (cat._to_weapon(r) for r in cat._rows)}   # hidden rows too: the SMG is parked (F638), not gone
     assert chains["shotgun"] == ("D01", "D28", "D27")
     assert chains["smg"] == ("D26", "D25", "D24")
     assert len(set(chains.values())) >= 8, f"expected many distinct reload chains, got {len(set(chains.values()))}"

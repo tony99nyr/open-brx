@@ -70,8 +70,8 @@
     {
       "group": "fixture",
       "path": "$.readiness.board[*]",
-      "count": 13168,
-      "sha1": "93667ad1d2f2fb38"
+      "count": 12793,
+      "sha1": "f5cbe396d7c73e63"
     },
     {
       "group": "fixture",

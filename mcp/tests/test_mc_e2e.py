@@ -448,19 +448,19 @@ def test_phone_loadout_request_roundtrip_real_stack():
             na = await s.connect_node("GUN-A")
             nb = await s.connect_node("GUN-B")
             assert await until(lambda: na.player_id == a["player_id"] and nb.player_id == b["player_id"])
-            na.send_loadout_request("primary", "weapon", "smg", try_=True)
+            na.send_loadout_request("primary", "weapon", "suppressor", try_=True)
             assert await until(lambda: len(na.loadout_acks) >= 1), "loadout_ack never reached the node"
             ack = na.loadout_acks[-1]
-            assert ack["ok"] is True and ack["loadout"]["weapons"][0]["weapon_id"] == "smg"
-            assert await until(lambda: (na.context.get("player") or {}).get("loadout", {}).get("weapons", [{}])[0].get("weapon_id") == "smg"), "assign with the new loadout never arrived"
+            assert ack["ok"] is True and ack["loadout"]["weapons"][0]["weapon_id"] == "suppressor"
+            assert await until(lambda: (na.context.get("player") or {}).get("loadout", {}).get("weapons", [{}])[0].get("weapon_id") == "suppressor"), "assign with the new loadout never arrived"
             assert na.context.get("catalog") and na.context.get("policy") and "rail_gun" not in na.context["policy"]["primary"]["allowed_ids"]
-            assert await until(lambda: s.session.trying.get(a["player_id"]) == "smg")
+            assert await until(lambda: s.session.trying.get(a["player_id"]) == "suppressor")
             na.send_loadout_request("secondary", "weapon", "rail_gun")
             assert await until(lambda: len(na.loadout_acks) >= 2)
             assert na.loadout_acks[-1]["ok"] is False and na.loadout_acks[-1]["reason"] == "Heavies are off for this game"
             na.send_loadout_request("perk", "perk", "body_armor")          # A14: the perk has its own slot
             assert await until(lambda: len(na.loadout_acks) >= 3 and na.loadout_acks[-1]["ok"])
-            assert s.session.players[a["player_id"]]["loadout"] == {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"}
+            assert s.session.players[a["player_id"]]["loadout"] == {"weapons": [{"weapon_id": "suppressor"}], "perk": "body_armor"}
             na.send_ready(True)
             assert await until(lambda: a["player_id"] not in s.session.trying), "ready did not end the try-out"
             await asyncio.sleep(0.2)

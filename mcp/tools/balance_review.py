@@ -1775,7 +1775,7 @@ def pistol_finish_ms(gun: Gun, swap_ms: float, *, dry=False) -> float:
 def pistol_finisher_report(world: World, scale: float = 1.0) -> list[dict]:
     """Every visible pistol as the secondary of every shipped primary at the R10a finish pool."""
     pistols = [r["weapon_id"] for r in world.cat._rows if r.get("role") == "sidearm"
-               and not r.get("hidden") and r.get("lethal") is not False]
+               and not _off_the_board(r) and r.get("lethal") is not False]
     model = B.RecoilDuelModel.from_catalog(world.cat, health_preset="standard")
     reps = _reps("finish", scale)
     sampled = {}
@@ -2254,7 +2254,7 @@ def roster_ids(world: World) -> tuple[list[str], list[str]]:
     out, skipped = [], []
     for r in world.cat._rows:
         wid = r["weapon_id"]
-        if r.get("hidden") or r.get("lethal") is False or r.get("pickup_only"):
+        if _off_the_board(r) or r.get("lethal") is False or r.get("pickup_only"):
             continue
         if r.get("role") in ("sidearm", "melee", "support"):
             continue
@@ -2664,9 +2664,15 @@ def trigger_mechanics(cat: WeaponCatalog, wid: str) -> set:
     return out
 
 
+def _off_the_board(row: dict) -> bool:
+    """Hidden and out of the balance board. A row hidden with a `hidden_why` is parked for a fix (the SMG, F638,
+    2026-11-01): players cannot pick it, but the board keeps it, because the fix is judged against it."""
+    return bool(row.get("hidden")) and not row.get("hidden_why")
+
+
 def loadout_ids(cat: WeaponCatalog) -> list[str]:
     return [r["weapon_id"] for r in cat._rows
-            if not r.get("hidden") and r.get("lethal") is not False and not r.get("pickup_only")
+            if not _off_the_board(r) and r.get("lethal") is not False and not r.get("pickup_only")
             and r.get("role") != "melee"]
 
 
