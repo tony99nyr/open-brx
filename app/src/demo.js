@@ -115,6 +115,8 @@ export function startDemo({ engine, log }) {
     respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
     scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
   const bundle = { ...golden, player_id: 'p-demo' };
+  // F665 storyboard: `&melee_ms=<ms>` sets the melee line's time between swings ($WEAP slot 4, token 14) before the catalogue does
+  if (+q.get('melee_ms') > 0) bundle.head = bundle.head.map(f => f.startsWith('$WEAP,4,') ? f.split(',').map((x, i) => i === 15 ? String(+q.get('melee_ms')) : x).join(',') : f);
   // the host-locked Silenced Sniper is a no-armour game (its briefing says so): its config and its $PSET must agree
   if (locked) { config.health = { max_hp: 45, max_armor: 0 }; bundle.head = bundle.head.map(f => f.startsWith('$PSET,') ? f.replace(/^(\$PSET,\d+,\d+,)\d+,\d+,/, (_, head) => `${head}45,0,`) : f); }
   // A24 `result.rows`: EVERY player's ScoreRow, which is what makes a leaderboard possible on the phone.
@@ -463,6 +465,8 @@ export function startDemo({ engine, log }) {
       killConfirm: (victim = 'VIPER') => engine.onMcMessage({ kind: 'feedback', body: { player_id: 'p-demo', kind: 'kill', t: Date.now(), cue: golden.cues.kill, victim_team: foeKey, victim: 'p-' + String(victim).toLowerCase(), victim_display: victim } }),
       // the gun (what the tagger would report)
       fire: n => fire(n == null ? 1 : n), holdFire, reload, hit: d => hit(d == null ? 9 : d),
+      // F665: a melee swing as a real gun reports it (game 2026-11-01 logs): the gyro press, then the slot-4 row.
+      swing: () => { engine.feedFrame('$BUT,8,1,*'); engine.feedFrame('$ALCD,1,100,4,0,0,*'); engine.feedFrame('$BUT,8,0,*'); },
       spawnEcho: () => { gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
       die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       respawn: () => { if (engine.alive) return; engine._revive(false); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; reply(lcd, 250); },
@@ -600,6 +604,7 @@ export function startDemo({ engine, log }) {
     const kitted = [...kit, [300, 'briefDone']];
     const lobby = [...kitted, [500, 'config']];
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
+    const meleePos = () => { const f = typeof document !== 'undefined' && document.getElementById('frame'); if (f && q.get('meleepos') === 'b') f.dataset.meleepos = 'b'; };
     const STAGES = {
       'idle':              [[0, 'scan']],
       // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.
@@ -728,6 +733,11 @@ export function startDemo({ engine, log }) {
       'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
       'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
+      // F665: the melee-ready icon. `&melee_ms=` sets the cooldown, `&meleepos=b` is the gallery's placement B
+      'live-melee':         [[0, meleePos], ...live],
+      'live-melee-swing':   [[0, meleePos], ...live, [2300, () => ev.swing()]],
+      'live-melee-down':    [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die']],
+      'live-melee-respawn': [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
       'down-full':         [[0, 'addGhost'], ...live, ...fullLife],

@@ -26,7 +26,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · gunWasOn(slot) ·
 //                 equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
-//                 reloadOutcome · switching · altPtr · altEvidencePending · lastSwitchMs · dryPulls · lastShot (read them;
+//                 reloadOutcome · switching · altPtr · altEvidencePending · lastSwitchMs · dryPulls · lastShot · lastSwing (read them;
 //                 change them through the methods above)
 //
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
@@ -80,6 +80,9 @@ export const TRIGGER_NO_FIRE_MS = 1500;
 // horizon is a millisecond the HUD shows an account instead of the gun. Sitting just under
 // TRIGGER_NO_FIRE_MS would have been a coincidence, not a reason.
 export const ACC_ECHO_MS = 700;
+/** F665: a slot-4 `$ALCD` counts as a melee swing only this soon after a melee press. The game 2026-11-01 logs measured
+ *  3 to 18 ms; the margin covers a slow BLE notify without taking a spawn row's read-back for a swing. */
+export const MELEE_PRESS_MS = 300;
 // F570 review: a write still on the link holds its echo windows at most this long, so a promise that never settles cannot hold
 // one for ever (a head is about 30 frames, a few seconds); `restampEchoes` closes it ACC_ECHO_MS after the write lands.
 export const ECHO_HOLD_MAX_MS = 8000;
@@ -184,6 +187,9 @@ export class Ammo {
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms, life}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
     this.lastShot = null;
+    // F665: the last melee swing, {at, ms, life}, where `ms` is the melee slot's `$WEAP` token 14 (the gun refuses a
+    // second swing inside it). Display only: the HUD's melee-ready icon.
+    this.lastSwing = null;
     this.leverAt = null;            // E10: the last lever pull while live and alive, refused or not
     this.fireFirst = null;          // F542: {slot, at, life} of the last lever the gun spent on the LAST-FIRED slot (the HUD hint)
   }
@@ -202,7 +208,18 @@ export class Ammo {
   }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
-  forgetShown() { this.magBySlot = {}; this.lastShot = null; }
+  forgetShown() { this.magBySlot = {}; this.lastShot = null; this.lastSwing = null; }
+  /** F665: a melee swing is its own `$ALCD` on slot 4, 3 to 18 ms after the press of the button the head binds to melee
+   *  (game 2026-11-01 logs: `$BUT,8,1` then `$ALCD,1,100,4,0,0`, 13 of 13 presses). The magazine reads 1 before and after,
+   *  so the count proves nothing; the press does. Without a press in MELEE_PRESS_MS the frame is our own write read
+   *  back (a spawn row, a late echo of the head), never a swing. The time is THIS frame, the gun's report of the swing,
+   *  so the HUD's ready moment can only be late, never early. */
+  _meleeSwing(slot, lcd) {
+    if (slot !== 4 || lcd || this.host.phase !== 'live' || !this.host.alive) return;
+    const now = this.host.now(), press = this.host.meleePressAt;
+    if (press == null || now - press > MELEE_PRESS_MS) return;
+    this.lastSwing = { at: now, ms: this.host.fireIntervalMs(4), life: this.host.lifeSeq };
+  }
   /** What a slot holds now, after a write the node made (the reconcile re-arm, a powerup equip, a self-hit revive). A
    *  `res` left undefined keeps the slot's last reserve. */
   setPrev(slot, mag, res) { this.prevAmmo[slot] = mag; this.prevReserve[slot] = res; }   // the magazine alone is `setMag`
@@ -255,6 +272,7 @@ export class Ammo {
    *  or the `$SPAWN` answered with, never a round, so it books the counts on its own slot and moves nothing (bug 3a). */
   onAmmo(mag, reserve, slot = 0, heat = null, lcd = false) {
     slot = Number.isFinite(slot) ? slot : 0;
+    this._meleeSwing(slot, lcd);   // F665: before the stun return below, because a stunned player can still swing
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
     // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
@@ -318,7 +336,7 @@ export class Ammo {
     // F665 (game 2026-11-01 logs: every melee press is `$BUT,8,1` then `$ALCD,1,100,4,0,0`): melee is its own button, never
     // the trigger. A swing used to fall through to `setActiveSlot(4)` and `publish`, so after every swing the HUD named the
     // rifle PICKUP and showed the melee row's magazine (01), and a melee count drop was booked as a shot. It books its
-    // count and moves nothing.
+    // count and moves nothing; `_meleeSwing` above has already timed it for the melee-ready icon.
     if (slot === 4) { this.prevAmmo[4] = mag; if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[4] = reserve; return; }
     if (this.host.pu.repairUnpulled(slot, mag, prev)) return;   // a stale pickup count is not a round
     this.host.tryoutAmmo(slot, mag);   // F147: a try-out weapon write's confirming report (engine.js `_tryoutAmmo`)

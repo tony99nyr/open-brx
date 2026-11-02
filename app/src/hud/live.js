@@ -1,6 +1,15 @@
 // Live rendering for the phone HUD.
 import { mmss, poolWrong, gunDot, hpPct, hpLow, pct, armorPct, hasArmor, itemColor, num, esc, accShown, splitGun, isEnergyWeapon, chargeCost, AIM_REASON, WARN, magText } from './shared.js';
 import * as SV from './shieldmeter.js';
+import { fistGlyph } from './medalicons.js';
+
+/** F665: the melee-ready icon, the BEAT DOWN fist without its ring. Drawn only while the engine knows the melee cooldown
+ *  (`st.melee`). Its dim and its one shimmer are `data-melee` on the frame (`hud/ammo.js` `_meleeCue`), so a rebuild
+ *  keeps them. No number and no timer: dim means the gun still refuses a swing. */
+export function meleeIcon(st) {
+  if (!st.melee) return '';
+  return `<span class="melee" id="melee" role="img" aria-label="Melee"><svg viewBox="6 5 20 22" aria-hidden="true">${fistGlyph('currentColor', st.night ? '#000' : '#05080d')}</svg></span>`;
+}
 /** F500 (bench 2026-10-16): a 50 ms tap of the lever refills the Energy Rifle, Plasma Sniper and Rail Gun as a hold
  *  does (pl4's "taps refill nothing" did not repeat), so the prompt says RECHARGE, not HOLD TO RECHARGE. It is always
  *  steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The empty-cell digit
@@ -86,7 +95,7 @@ export function _live(st) {
         ${st.bolt && st.alive ? `<div class="bolt" role="status"><span class="bk">BOLT</span><span class="bt"><i style="animation-duration:${Math.max(1, st.reloadTotalMs || 0)}ms;animation-delay:-${Math.max(0, st.reloadMs || 0)}ms"></i></span></div>` : ''}<div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         ${st.powerup ? `<div class="puheld" id="puheld">${this._puHeld(st)}</div>` : ''}${empShown(st) ? `<div class="empchip" id="empchip">${this._empChip(st)}</div>` : ''}
-        <span class="wn"><span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
+        <span class="wn">${meleeIcon(st)}<span class="slot">${puActive || st.activeSlot >= 2 ? 'PICKUP' : st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab${st.powerup && this._puHint(st) ? ' pu' : ''}">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
   }
   /** A56 (docs/spec/powerups.md): the powerup station hint, centre-bottom between the vitals and the ammo. A 1 s ring

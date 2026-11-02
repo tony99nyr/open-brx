@@ -992,6 +992,26 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 #frame[data-env="night"][data-cool="ready"] .ammo .pips,#frame[data-env="night"][data-cool="ready"] .ammo .mag{filter:brightness(1.3)}
 @media (prefers-reduced-motion:reduce){.ammo .pips::after{display:none}#frame[data-cool="ready"] .ammo .pips{filter:brightness(1.5)}}
 
+/* ============ melee-ready icon (F665) ============
+   hud/ammo.js `_meleeCue`: the BEAT DOWN fist at the start of the weapon-name row. After a swing the frame carries
+   data-melee="cool" (the fist dims) for the melee slot's t14, then "ready" for 450 ms: one light sweep and a brief lift.
+   No number and no timer. Night and reduced motion get a brightness step instead of the moving sweep. */
+.ammo .wn .melee{position:relative;align-self:center;display:inline-flex;width:26px;height:28px;overflow:hidden;border-radius:6px;
+  color:var(--num);transition:opacity 120ms linear,filter 120ms linear}
+.ammo .wn .melee svg{width:100%;height:100%;display:block}
+#frame[data-melee="cool"] .ammo .wn .melee{opacity:.28;filter:saturate(.2)}
+.ammo .wn .melee::after{content:'';position:absolute;inset:-2px 0;width:60%;pointer-events:none;opacity:0;
+  background:linear-gradient(100deg,transparent,rgba(160,240,255,.95) 50%,transparent);transform:translateX(-120%)}
+#frame[data-melee="ready"] .ammo .wn .melee{animation:meleelift 450ms ease-out both}
+#frame[data-melee="ready"] .ammo .wn .melee::after{animation:meleeshine 450ms ease-out both}
+@keyframes meleeshine{0%{opacity:0;transform:translateX(-120%)}20%{opacity:1}80%{opacity:1}100%{opacity:0;transform:translateX(220%)}}
+@keyframes meleelift{0%{filter:brightness(1)}40%{filter:brightness(1.7) drop-shadow(0 0 6px var(--glow))}100%{filter:brightness(1)}}
+[data-env="night"] .ammo .wn .melee::after{display:none}
+#frame[data-env="night"][data-melee="ready"] .ammo .wn .melee{animation:none;filter:brightness(1.45)}
+/* gallery option B (demo only, &meleepos=b): the fist to the left of the whole ammo column, at its foot */
+#frame[data-meleepos="b"] .ammo .wn .melee{position:absolute;right:calc(100% + 14px);bottom:0;width:34px;height:36px}
+@media (prefers-reduced-motion:reduce){.ammo .wn .melee::after{display:none}#frame[data-melee="ready"] .ammo .wn .melee{animation:none;filter:brightness(1.5)}}
+
 /* ============ live scores overlay (bench 2026-09-17) ============
    hud.js `_board`: opened from the player name (PLAYERS) or the match clock (TEAMS). The panel sits between the
    HP digits and the ammo column; a tap outside it or on the ✕ closes it. The chip bar hides while it is open. */
