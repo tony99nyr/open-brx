@@ -211,7 +211,8 @@ def _expand_type_tokens(only_ids: object, kind: str = "secondary") -> object:
 
 def _migrate_type_tokens(kind: str, value: object) -> object:
     """Read-path only (`PieceStore._load`/`_clean_row`) -- never on a live `create`/`update`, where a
-    bad id in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten. The weapon
+    type word in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten (a known
+    but hidden id is a different case: `_drop_retired` drops it on every path, issue 12). The weapon
     slots only: a perks piece holds perk ids, never weapon type words (overnight review L3)."""
     if kind not in ("primary", "secondary") or not isinstance(value, dict) or "only_ids" not in value:
         return value
@@ -227,17 +228,23 @@ def _migrate_type_tokens(kind: str, value: object) -> object:
 def _known_ids() -> tuple[frozenset[str], frozenset[str]]:
     """Every catalogue id, hidden and pickup-only rows included: an id outside this set is a typo."""
     return (frozenset(w["weapon_id"] for w in WeaponCatalog()._rows),
-            frozenset(p["perk_id"] for p in default_perks().all()))
+            frozenset(p["perk_id"] for p in default_perks()._rows))
 
 
 def _siblings(kind: str, ids: list[str]) -> list[str]:
-    """The visible weapons that share a type with `ids` (a hidden SMG -> the other CLOSE weapons)."""
+    """The visible weapons that share each id's FIRST type (a hidden SMG -> the other CLOSE weapons; a hidden
+    glock -> the sidearms, not every CLOSE weapon too). A primary never gains a support weapon: the primary pool
+    drops those, so the remap would read valid and still leave the push an empty pool."""
     if kind == "perks":
         return []
     rows = {w["weapon_id"]: w for w in WeaponCatalog()._rows}
-    tokens = list(dict.fromkeys(t for i in ids for t in (rows.get(i, {}).get("types") or []) if t in _WEAPON_TYPE_IDS))
+    tokens = list(dict.fromkeys(t for i in ids for t in [next((t for t in (rows.get(i, {}).get("types") or [])
+                                                                 if t in _WEAPON_TYPE_IDS), None)] if t))
     out = _expand_type_tokens(tokens, kind)
-    return [i for i in out if isinstance(i, str)] if isinstance(out, list) else []
+    sib = [i for i in out if isinstance(i, str)] if isinstance(out, list) else []
+    if kind == "primary":
+        sib = [i for i in sib if "support" not in (rows.get(i, {}).get("types") or [])]
+    return sib
 
 
 def _drop_retired(kind: PieceKind, rule: Any, allowed: frozenset[str]) -> Any:
@@ -252,16 +259,19 @@ def _drop_retired(kind: PieceKind, rule: Any, allowed: frozenset[str]) -> Any:
         return rule
     out = dict(rule)
     only = [i for i in rule["only_ids"] if i not in retired]
-    if rule["only_ids"] and not only:
+    if rule["only_ids"] and not only and kind != "perks":   # a perks list may empty: every offered perk
         only = _siblings(kind, list(rule["only_ids"]))
         if not only:
             return rule                    # nothing to remap to: `_check_slot` refuses, the piece reads `invalid`
     out["only_ids"] = only
     if rule["fixed_id"] in retired:
         sib = _siblings(kind, [rule["fixed_id"]])
-        if not sib:
+        if sib:
+            out["fixed_id"] = sib[0]
+        elif kind == "perks":
+            out["choice"], out["fixed_id"] = "player", None   # a hidden fixed perk: the player picks any offered perk
+        else:
             return rule
-        out["fixed_id"] = sib[0]
     return out
 
 

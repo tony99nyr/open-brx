@@ -8,6 +8,7 @@ import pathlib
 import tempfile
 
 from brx_mcp.mc.compile import Compiler, WeaponCatalog
+from brx_mcp.mc.perks import default_perks
 from brx_mcp.mc.pieces import PieceError, PieceStore, check_value
 from _session import mk_loadout_session
 
@@ -89,3 +90,25 @@ def test_a_kit_with_an_unknown_weapon_is_still_refused():
         assert False, "an unknown weapon_id was accepted"
     except ValueError as e:
         assert "unknown weapon_id" in str(e)
+
+
+def test_a_fixed_hidden_perk_becomes_the_players_pick():
+    """Review Medium: a perks preset fixed on a perk hidden since (med_kit) must not block PLAY either."""
+    hidden = [p["perk_id"] for p in default_perks()._rows if p.get("hidden")]
+    assert hidden, "the fixture lost its hidden perks"
+    v = check_value("perks", {"choice": "fixed", "fixed_id": hidden[0]})
+    assert v["choice"] == "player" and v["fixed_id"] is None
+    assert check_value("perks", {"choice": "player", "only_ids": [hidden[0]]})["only_ids"] == []
+
+
+def test_the_remap_keeps_to_the_first_type_and_never_widens():
+    """Review Low: a hidden glock (sidearm, close) remaps to the sidearms only, so a pistols-only round does not
+    gain the shotgun; and a primary never remaps to a support weapon."""
+    out = check_value("primary", {"choice": "player", "only_ids": ["glock"]})["only_ids"]
+    assert out and all("sidearm" in _visible_types(w) for w in out), out
+    for wid in sorted(_hidden()):
+        try:
+            v = check_value("primary", {"choice": "fixed", "fixed_id": wid})
+        except PieceError:
+            continue
+        assert "support" not in _visible_types(v["fixed_id"]), (wid, v)
