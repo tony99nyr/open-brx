@@ -2548,3 +2548,28 @@ def test_the_verdict_states_the_compiled_pools_and_they_match_the_sim():
     next(r for r in rows if r["perk_id"] == "body_armor")["effects"]["max_armor_add"] = 40
     cand = R.World(w.cat, R.PerkCatalog(rows))
     assert R.compiled_pools(cand)["body_armor"]["standard"][1] == 110
+
+
+def test_the_kit_engine_resets_recoil_on_release_only_with_the_f663_flag():
+    def hit_chances(flag):
+        rows = copy.deepcopy(WeaponCatalog()._rows)
+        ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
+        ar["recoil"] = dict(ar["recoil"], reset_on_release=flag)
+        world = R.World(WeaponCatalog(rows), PerkCatalog(), {})
+        kit = R.make_kit(world, "plain", "assault_rifle")
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
+        target = R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)
+        fighter.targets = [target]
+        out, t = [], 0.0
+        with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (200.0, 200.0)):
+            while len(out) < 10:
+                shot = fighter._act(t)
+                if shot is not None:
+                    out.append(shot[1])
+                t = fighter.next_t
+        return out
+    on, off = hit_chances(True), hit_chances(False)
+    assert on[8] == off[8] < on[0]   # the 9th held round is degraded either way
+    assert on[9] == on[0]            # the release reset brings the next burst back to the ceiling
+    assert off[9] == off[8]          # without it, a 200 ms pause is too short to settle

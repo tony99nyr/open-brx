@@ -1054,6 +1054,11 @@ def toxin_preset_config(pool: Pool | None = None) -> SimConfig:
 # RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS and RECOIL_REF_DMG (the Assault Rifle/SMG/Energy Rifle's own dmg) come from
 # the contract (`mc/types.py`, engine tunables): the one copy engine.js and the stage read too.
 RECOIL_SETTLE_MIN_MS = 600.0     # types.py RECOIL_SETTLE_MIN_MS
+# F663 (brx4): with `recoil.reset_on_release`, the phone resets a degraded weapon to its ceiling on the trigger
+# release. Predicted end to end, from the last round to the gun at the ceiling: about 160 ms median (220 ms p90).
+# A rest at least this long between bursts comes back crisp; rounds fired sooner keep the old rung. A lost
+# release (about 0.7 % of presses) falls back to a round gap of 2 x t14 + 100 ms; the model leaves that out.
+RELEASE_RESET_MS = 160.0
 # The Charge Rifle's own build time is a bench "by feel" figure, not a wire number (weapons.json
 # charge_rifle notes, 2026-09-23): the wire's t14 reads 1250 ms, but a full charge takes about 3.5 s to
 # build. Rule 2 (an AR catching an uncharged CR) uses it as the duel's time cap: past that point the CR
@@ -1076,6 +1081,7 @@ class RecoilProfile:
     after_shots: int
     heavy_after: int
     settle_ms: float
+    reset_on_release: bool = False   # F663: off until Tony picks it per weapon (F662)
 
 
 def recoil_profile(row: dict) -> RecoilProfile | None:
@@ -1108,7 +1114,8 @@ def recoil_profile(row: dict) -> RecoilProfile | None:
     heavy_after = _js_round(r["after_heavy"] if r.get("after_heavy") is not None else derived_heavy_after) \
         if two else 0
     return RecoilProfile(crisp=crisp, degraded=(mid if two else bottom), heavy=(bottom if two else None),
-                         after_shots=after, heavy_after=heavy_after, settle_ms=settle)
+                         after_shots=after, heavy_after=heavy_after, settle_ms=settle,
+                         reset_on_release=bool(r.get("reset_on_release")))
 
 
 def _recoil_step(profile: RecoilProfile | None, state: str, burst: int) -> tuple[str, int]:
@@ -1125,6 +1132,25 @@ def _recoil_step(profile: RecoilProfile | None, state: str, burst: int) -> tuple
     else:
         state = "crisp"
     return state, burst
+
+
+def release_after_pause(profile: RecoilProfile | None, state: str, burst: int, pause_ms: float,
+                        fire_ms: float) -> tuple[str, int, int]:
+    """The recoil state after a burst ends and the trigger rests `pause_ms`: `(state, burst, leak)`. `leak` is
+    the number of next-burst rounds that still fire at the old state before an F663 reset lands; the caller
+    resets to crisp after them. Without the flag, the shipped rule: a crisp release resets the count, and a
+    degraded weapon recovers only after `settle_ms`."""
+    if profile is None:
+        return state, burst, 0
+    if state == "crisp":
+        return "crisp", 0, 0
+    if profile.reset_on_release:
+        if pause_ms >= RELEASE_RESET_MS:
+            return "crisp", 0, 0
+        return state, burst, max(1, math.ceil((RELEASE_RESET_MS - pause_ms) / fire_ms))
+    if pause_ms >= profile.settle_ms:
+        return "crisp", 0, 0
+    return state, burst, 0
 
 
 def _accuracy_pct(profile: RecoilProfile | None, state: str) -> float:
@@ -1147,6 +1173,8 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     all. A burst that DID degrade only recovers if the pause is at least `settle_ms` (600 ms floor) —
     a 150-300 ms pause between bursts is not, so a weapon that got hot in one burst stays hot into the
     next. A reload is a trigger release too, and it is always far longer than `settle_ms`.
+    With `recoil.reset_on_release` (F663), `release_after_pause` resets a degraded weapon after a rest of
+    `RELEASE_RESET_MS` or more; a shorter rest keeps the rounds fired before then at the old state.
 
     `crit_pct` (F308, polish round 1): the GUN rolls its own crit per round, independent of the hit
     roll -- a crit still has to land -- at `magnitude x CRIT_MULT` truncated (`int()`), same formula
@@ -1155,7 +1183,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     `crit_pct` is nonzero; every caller here already threads one through for its own reasons (the
     burst pause, or simply because the combatant wrapper always has one)."""
     ammo, res = mag, reserve
-    state, burst = "crisp", 0
+    state, burst, leak = "crisp", 0, 0
     t = first_time
     burst_mode = burst_min is not None
     while True:
@@ -1165,7 +1193,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             got = min(mag, res)
             t += reload_ms
             ammo, res = got, res - got
-            state, burst = "crisp", 0   # the reload is a release: the gun comes back crisp
+            state, burst, leak = "crisp", 0, 0   # the reload is a release: the gun comes back crisp
         blen = min(ammo, rng.randint(burst_min, burst_max)) if burst_mode else ammo
         for _ in range(blen):
             hit_p = (_accuracy_pct(profile, state) / 100.0) * aim_factor
@@ -1175,15 +1203,16 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             yield (t, hit_p, round_dmg)
             ammo -= 1
             state, burst = _recoil_step(profile, state, burst)
+            if leak:
+                leak -= 1
+                if not leak:
+                    state, burst = "crisp", 0   # F663: the late release reset lands
             t += fight_semi_interval(rng, fire_ms, overshoot_ms) if pull_ms > 0 else fire_ms
         if not burst_mode:
             continue   # full auto never releases; the mag running dry is the only interruption
-        if state == "crisp":
-            burst = 0
         pause = rng.uniform(pause_min_ms, pause_max_ms)
         t += pause
-        if state != "crisp" and profile is not None and pause >= profile.settle_ms:
-            state, burst = "crisp", 0
+        state, burst, leak = release_after_pause(profile, state, burst, pause, fire_ms)
 
 
 def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charge: int, tap_ms: float,
