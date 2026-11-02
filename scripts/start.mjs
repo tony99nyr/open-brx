@@ -10,12 +10,12 @@
 //
 // Every step checks before it acts, so the second run skips straight to step 5.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { existsSync, realpathSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { ensureCloudflared, minVersionFromText, realDeps } from './lib/cloudflared.mjs';
-import { installStamp, isWindows, npm, npmInstallState, phonesWarning, root, uiStale, venvPython, which, NODE_FLOOR } from './lib/launcher.mjs';
+import { installStamp, isWindows, macPreflight, npm, npmInstallState, phonesWarning, root, uiStale, venvPython, which, NODE_FLOOR } from './lib/launcher.mjs';
 
 const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Windows: start.cmd)
 
@@ -316,6 +316,15 @@ function start() {
     return;
   }
   console.log('  Mission Control opens in your browser. Keep this window open while you play. Press Ctrl+C to stop it.\n');
+  if (!opt('--demo')) {
+    let pythonPath = venvPython();
+    try { pythonPath = realpathSync(pythonPath); } catch { /* keep the venv path */ }
+    macPreflight(text => console.log(`  ${text}`), {
+      interfaces: networkInterfaces(),
+      run: (cmd, a) => spawnSync(cmd, a, { encoding: 'utf8', timeout: 5000 }),
+      pythonPath,
+    });
+  }
   const mcArgs = [...(opt('--demo') ? ['--demo', '--fake-net', '--ephemeral'] : []), ...passthrough];
   const child = spawn(process.execPath, [join(root, 'scripts', 'mc.mjs'), ...mcArgs], { cwd: root, stdio: 'inherit' });
   // Ctrl+C reaches Mission Control directly (same console). Stay alive until it has shut down.

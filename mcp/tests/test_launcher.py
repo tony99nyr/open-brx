@@ -420,3 +420,27 @@ def test_a_demo_skips_the_cloudflared_offer_when_it_is_missing():
     needs(NODE and os.name != "nt", "node on a POSIX shell")
     out = _cloudflared_run("2026.9.0", ("--demo",), installed=False).stdout
     assert "skipped in a demo" in out and "Install cloudflared?" not in out, out
+
+
+_FW_APPS = ("ALF: total number of apps = 2 \n\n1 :  /opt/py/bin/python3.12\n\t ( Allow incoming connections )\n\n"
+            "2 :  /Applications/Other.app\n\t ( Block incoming connections )\n")
+
+
+def _firewall(state: dict, python: str) -> str:
+    code = ("import {parseFirewall, firewallWarnings} from './scripts/lib/launcher.mjs';"
+            "const s = parseFirewall(JSON.parse(process.argv[1]));"
+            "console.log(JSON.stringify(firewallWarnings(s, process.argv[2])))")
+    return _node_eval(code, json.dumps(state), python)
+
+
+def test_the_mac_firewall_check_warns_only_when_phones_could_be_blocked():
+    needs(NODE, "node")
+    on = "Firewall is enabled. (State = 1)"
+    off = "Firewall is disabled. (State = 0)"
+    py = "/opt/py/bin/python3.12"
+    assert _firewall({"globalState": on, "stealth": "Stealth mode disabled", "apps": _FW_APPS}, py) == "[]"
+    assert "is not set to allow" in _firewall({"globalState": on, "stealth": "", "apps": _FW_APPS}, "/opt/py/bin/python3.13")
+    assert "is not set to allow" in _firewall({"globalState": on, "stealth": "", "apps": _FW_APPS.replace("Allow", "Block")}, py)
+    assert "Stealth mode is ON" in _firewall({"globalState": off, "stealth": "Stealth mode enabled", "apps": ""}, py)
+    assert _firewall({"globalState": off, "stealth": "Stealth mode disabled", "apps": ""}, py) == "[]"
+    assert _firewall({"globalState": "", "stealth": "", "apps": ""}, py) == "[]"   # unreadable output never warns
