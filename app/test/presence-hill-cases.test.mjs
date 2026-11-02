@@ -8,8 +8,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Presence, PLAYER_STATE, encodeUuid } from '../src/beacon.js';
-import { ControlPoint } from '../src/control.js';
-import { ADVERT_CONTROL_STATE } from '../src/transport/contract.gen.js';
+import { ControlPoint, HillFollower } from '../src/control.js';
+import { ADVERT_CONTROL_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hill-cases.json'), 'utf8'));
@@ -18,11 +18,21 @@ const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hi
 const stateByte = (names) => names.reduce((m, n) => { if (!(n in PLAYER_STATE)) throw new Error(`unknown player state ${n}`); return m | PLAYER_STATE[n]; }, 0);
 const hillByte = (names) => names.reduce((m, n) => { if (!(n in ADVERT_CONTROL_STATE)) throw new Error(`unknown hill state ${n}`); return m | ADVERT_CONTROL_STATE[n]; }, 0);
 
+/** A86: a player's advert scope. Default: the scope that names this hill (the control bit and its own id bit). */
+export function scopeOf(c, p) {
+  const station = c.setup.station_id ?? 1;
+  const kinds = p.scope_kinds ?? ['control'], ids = p.scope_stations ?? [station];
+  return {
+    scopeKinds: kinds.reduce((m, n) => { if (!(n in ADVERT_SCOPE_KIND)) throw new Error(`unknown scope kind ${n}`); return m | ADVERT_SCOPE_KIND[n]; }, 0),
+    scope: ids.reduce((m, id) => m | (1 << (id % ADVERT_SCOPE_ID_BITS)), 0),
+  };
+}
+
 /** The sightings of a case in time order: its explicit `sightings`, then each `series` expanded. */
 export function expandSightings(c) {
   const out = (c.sightings || []).map(s => ({ ...s }));
   for (const s of c.series || []) {
-    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length], ...(s.state ? { state: s.state } : {}) });
+    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length], ...(s.state ? { state: s.state } : {}), ...(s.game != null ? { game: s.game } : {}) });
   }
   return out.sort((a, b) => a.t - b.t);
 }
@@ -62,8 +72,11 @@ function stalled(c, t) { return (c.stalls || []).some(g => t > g.from_ms && t < 
 function runCase(c, collect = false) {
   const failed = [];
   const s = c.setup;
+  // F658: the hill hears every game (keyed by game), and the follower picks which players count
   const presence = new Presence({ defaultThreshold: s.threshold_dbm, dwellMs: s.dwell_ms, hysteresisDb: s.exit_band_db,
-    exitGraceMs: s.exit_grace_ms, fadeAfterMs: s.fade_after_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha });
+    exitGraceMs: s.exit_grace_ms, fadeAfterMs: s.fade_after_ms, expiryMs: s.expiry_ms, sightMs: s.sight_ms, alpha: s.alpha, keyByGame: true });
+  const follower = new HillFollower({ ...(s.ring_size != null ? { size: s.ring_size } : {}), ...(s.ring_stale_ms != null ? { staleMs: s.ring_stale_ms } : {}) });
+  const armed = s.armed_game || 0;
   const point = new ControlPoint({ captureS: s.capture_s, netCap: s.net_cap, decayS: s.decay_s, decayDelayMs: s.decay_delay_ms });
   const sightings = expandSightings(c);
   const expects = new Map((c.expect || []).map(e => [e.t, e]));
@@ -72,15 +85,16 @@ function runCase(c, collect = false) {
     while (next < sightings.length && sightings[next].t <= t) {
       const h = sightings[next++];
       const p = c.players[String(h.id)];
-      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state) })], h.rssi, h.t);
+      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state), game: h.game ?? p.game ?? 0, ...scopeOf(c, p) })], h.rssi, h.t);
     }
     if (stalled(c, t)) continue;
     presence.tick(t);
-    point.update(presence.players(), t);
+    const counted = follower.step(point, presence.players(), t, { expiryMs: s.expiry_ms, armedGame: armed, stationId: s.station_id ?? 1 }).players;
+    point.update(counted, t);
     const adv = point.advert();
     if (process.env.CASES_TRACE) {
       const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}${e.fading ? '~F' : ''}`).join(' ');
-      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value} hold=${JSON.stringify(point.holdMs)}`);
+      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value} game=${follower.game(armed)} follows=${follower.follows} hold=${JSON.stringify(point.holdMs)} own=${JSON.stringify(point.ownMs)} ring=${JSON.stringify(follower.summary(point, t))}`);
     }
     const ex = expects.get(t);
     if (!ex) continue;
@@ -98,7 +112,19 @@ function runCase(c, collect = false) {
         assert.equal(!!(e && e.fading), want, `${at} player ${id} fading`);
       }
       for (const [tid, want] of Object.entries(ex.hold_ms || {})) assert.equal(point.holdMs[tid] || 0, want, `${at} hold_ms of team ${tid}`);   // F554
+      for (const [tid, want] of Object.entries(ex.own_ms || {})) assert.equal(point.ownMs[tid] || 0, want, `${at} own_ms of team ${tid}`);   // the owned clock
       if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
+      // F658: the byte the hill advertises (the followed game, else MC's), follow mode, and the tally ring
+      if (ex.hill && ex.hill.game != null) assert.equal(follower.game(armed), ex.hill.game, `${at} hill game byte`);
+      if (ex.follows != null) assert.equal(follower.follows, ex.follows, `${at} follow mode`);
+      if (ex.ring) assert.deepEqual([...follower.games.keys()].sort((a, b) => a - b), ex.ring, `${at} the games in the ring`);
+      for (const [g, want] of Object.entries(ex.games || {})) {
+        const got = follower.summary(point, t)[g];
+        assert.ok(got, `${at} game ${g} is in the ring`);
+        if (want.owner != null) assert.equal(got.owner, want.owner, `${at} game ${g} owner`);
+        for (const [tid, ms] of Object.entries(want.hold_ms || {})) assert.equal(got.hold_ms[tid] || 0, ms, `${at} game ${g} hold_ms of team ${tid}`);
+        for (const [tid, ms] of Object.entries(want.own_ms || {})) assert.equal(got.own_ms[tid] || 0, ms, `${at} game ${g} own_ms of team ${tid}`);
+      }
     };
     if (!collect) check();
     else try { check(); } catch (e) { if (!(e instanceof assert.AssertionError)) throw e; failed.push(t); }

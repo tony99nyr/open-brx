@@ -26,6 +26,17 @@ def test_player_advert():
     assert "alive planting" in a.describe()
 
 
+def test_player_scope_a86():
+    """A86: a player's id is byte 7 alone; byte 8 is the kind mask and bytes 6 (high) and 15 (low) the id map."""
+    u = encode("player", 63, team=1, state=1, scope_kinds=5, scope=0x8002)
+    raw = u.replace("-", "")
+    assert raw[12:14] == "80" and raw[14:16] == "3f" and raw[16:18] == "05" and raw[30:32] == "02"
+    a = decode(u)
+    assert a is not None and a.id == 63 and a.scope_kinds == 5 and a.scope == 0x8002 and a.taker == 0
+    s = decode(encode("station", 300, "powerup", taker=7))
+    assert s is not None and s.id == 300 and s.taker == 7 and s.scope_kinds == 0 and s.scope == 0
+
+
 def test_case_and_dash_tolerance_and_rejections():
     u = encode("station", 1, "bomb", team=STATION_TEAM_ANY)
     assert decode(u.upper()) == decode(u) == decode(u.replace("-", ""))

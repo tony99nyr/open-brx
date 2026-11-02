@@ -32,6 +32,10 @@ class Advert:
     game: int = 0
     threshold: int = 0          # dBm, int8; 0 = scanner default
     taker: int = 0              # byte 15, A56: a powerup station's winner (player_num), 0 = none
+    # F658 (A86): a PLAYER's scope. Byte 8 is the kind mask (ADVERT_SCOPE_KIND), bytes 6 (high) and 15 (low) the
+    # 16-bit map of station ids in play, bit (id % 16); a player's id is byte 7 alone. 0 on a station advert.
+    scope_kinds: int = 0
+    scope: int = 0
 
     def describe(self) -> str:
         team = "any" if self.team == STATION_TEAM_ANY else str(self.team)
@@ -43,14 +47,19 @@ class Advert:
 
 
 def encode(role: str, id: int, kind: str | int | None = None, team: int = STATION_TEAM_ANY, state: int = 0,
-           value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
+           value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0,
+           scope_kinds: int = 0, scope: int = 0) -> str:
     r = ADVERT_ROLE[role]
     k = KIND.get(kind, 0) if isinstance(kind, str) else int(kind or 0)
     thr = 0
     if threshold:
         thr = (256 + max(-128, round(threshold))) if threshold < 0 else min(127, round(threshold))
-    b = bytes([*ADVERT_MAGIC, ADVERT_VERSION, r, (id >> 8) & 0xFF, id & 0xFF, k & 0xFF, team & 0xFF, state & 0xFF,
-               value & 0xFF, seq & 0xFF, game & 0xFF, thr & 0xFF, taker & 0xFF])
+    player = r == ADVERT_ROLE["player"]   # A86: a player's bytes 6, 8 and 15 carry its scope
+    b6 = (scope >> 8) & 0xFF if player else (id >> 8) & 0xFF
+    b8 = scope_kinds & 0xFF if player else k & 0xFF
+    b15 = scope & 0xFF if player else taker & 0xFF
+    b = bytes([*ADVERT_MAGIC, ADVERT_VERSION, r, b6, id & 0xFF, b8, team & 0xFF, state & 0xFF,
+               value & 0xFF, seq & 0xFF, game & 0xFF, thr & 0xFF, b15])
     h = b.hex()
     return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
@@ -67,7 +76,10 @@ def decode(uuid: str) -> Optional[Advert]:
     if role is None:
         return None
     thr = b[14] - 256 if b[14] > 127 else b[14]
-    return Advert(role=role, id=(b[6] << 8) | b[7], kind=KIND_NAME.get(b[8], f"kind{b[8]}") if role == "station" else None,
+    if role == "player":   # A86: the player id is byte 7 alone; bytes 6, 8 and 15 are its scope
+        return Advert(role=role, id=b[7], kind=None, team=b[9], state=b[10], value=b[11], seq=b[12], game=b[13],
+                      threshold=thr, taker=0, scope_kinds=b[8], scope=(b[6] << 8) | b[15])
+    return Advert(role=role, id=(b[6] << 8) | b[7], kind=KIND_NAME.get(b[8], f"kind{b[8]}"),
                   team=b[9], state=b[10], value=b[11], seq=b[12], game=b[13], threshold=thr, taker=b[15])
 
 

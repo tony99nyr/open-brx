@@ -158,7 +158,7 @@ static void player_admission_and_epoch() {
   CHECK(!c.begin_players(link, p, 499).due);
   CHECK(c.begin_players(link, p, 500).due);
   Advert old;
-  old.role = contract::ADVERT_ROLE_PLAYER;
+  old.role = contract::ADVERT_ROLE_PLAYER; old.scope_kinds = 7; old.scope = 0xFFFF;  // A86: in every station's scope
   old.id = 7;
   old.team = 1;
   old.game = 3;
@@ -215,7 +215,8 @@ static void player_saves_and_sightings() {
   SavedHillClock clock;
   CHECK(c.begin_players(link, p, 250).due);
   check(c.finish_players(link, p, hill, clock, "s1", 250), {});
-  CHECK(p.game == 3 && p.default_threshold == link.threshold_dbm());
+  // F658: a hill hears every game, keyed by game; its follower (not the presence filter) picks who counts
+  CHECK(p.game == 0 && p.key_by_game && p.default_threshold == link.threshold_dbm());
   link.hill().restore_held(1, nullptr);
   CHECK(c.begin_players(link, p, 500).due);
   check(c.finish_players(link, p, hill, clock, "s1", 500), {{K::SAVE_HILL}});
@@ -274,7 +275,7 @@ static void player_saves_and_sightings() {
   SavedHillClock sight_clock;
   CHECK(sight_tick.begin_players(sight_link, sight_presence, 250).due);
   Sighting sp;
-  sp.advert.role = contract::ADVERT_ROLE_PLAYER;
+  sp.advert.role = contract::ADVERT_ROLE_PLAYER; sp.advert.scope_kinds = 7; sp.advert.scope = 0xFFFF;  // A86: in every station's scope
   sp.advert.id = 7;
   sp.advert.team = 1;
   sp.advert.game = 3;
@@ -312,7 +313,7 @@ static void real_capture_and_neutral_drain() {
   SavedHill hill;
   SavedHillClock clock;
   Sighting sp;
-  sp.advert.role = contract::ADVERT_ROLE_PLAYER;
+  sp.advert.role = contract::ADVERT_ROLE_PLAYER; sp.advert.scope_kinds = 7; sp.advert.scope = 0xFFFF;  // A86: in every station's scope
   sp.advert.id = 7;
   sp.advert.team = 3;
   sp.advert.game = 3;
@@ -365,7 +366,7 @@ static void real_revive_feedback_when_enabled() {
   SavedHill hill;
   SavedHillClock clock;
   Sighting sp;
-  sp.advert.role = contract::ADVERT_ROLE_PLAYER;
+  sp.advert.role = contract::ADVERT_ROLE_PLAYER; sp.advert.scope_kinds = 7; sp.advert.scope = 0xFFFF;  // A86: in every station's scope
   sp.advert.id = 7;
   sp.advert.team = 1;
   sp.advert.game = 3;

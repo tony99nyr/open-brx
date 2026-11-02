@@ -18,7 +18,7 @@ enum class TickIntentKind : uint8_t {
   CLEAR_PENDING_CAPTURE, SEND_CAPTURE, SEND_BEACON, SEND_AUTO,
   PAINT, BRIGHTEN, CLEAR_DIRTY, DIM,
   CLEAR_SIGHTINGS, CLEAR_PRESENCE,
-  SAVE_HILL, SAVE_CLOCK, QUEUE_CAPTURE, WAKE_SCREEN, REVIVE_FLASH,
+  SAVE_HILL, SAVE_CLOCK, SAVE_RING, QUEUE_CAPTURE, WAKE_SCREEN, REVIVE_FLASH,
   SERIAL_PRINTF, SERIAL_PRINTLN,
 };
 
@@ -105,7 +105,9 @@ class TickController {
     if (now_ms - last_players_ms_ < static_cast<uint32_t>(contract::STATION_TICK_MS)) return {};
     last_players_ms_ = now_ms;
     presence.default_threshold = link.threshold_dbm();
-    presence.game = (uint8_t)link.assignment().game;
+    // F658: a hill hears every game (keyed by game) and its follower picks who counts; other kinds scope by MC's byte
+    presence.key_by_game = link.has_control_assignment();
+    presence.game = link.has_control_assignment() ? 0 : (uint8_t)link.assignment().game;
     const uint32_t epoch = link.assignment_epoch();
     if (!epoch_set_) { last_epoch_ = epoch; epoch_set_ = true; }
     if (epoch != last_epoch_) {
@@ -128,8 +130,16 @@ class TickController {
     const HillUpdate update = link.tick_players(presence, now_ms);
     TickIntents out;
     const StationAssignment& a = link.assignment();
-    if (link.has_control_assignment() && saved_hill.note_owner(a, session_id, link.hill(), now_ms))
+    // F658: a following hill saves its ring instead; its point is the followed game's, which SavedHill's tag (MC's game) is not
+    if (link.has_control_assignment() && !link.follower().follows && saved_hill.note_owner(a, session_id, link.hill(), now_ms))
       out.push_back({TickIntentKind::SAVE_HILL});
+    if (link.ring_save_due(now_ms)) out.push_back({TickIntentKind::SAVE_RING});
+    const HillFollowStep& fs = link.last_follow();
+    if (fs.switched) {
+      out.push_back({TickIntentKind::WAKE_SCREEN});
+      out.push_back({TickIntentKind::SERIAL_PRINTF, 0, "HILL FOLLOWS game=" + std::to_string(fs.to) + " from=" + std::to_string(fs.from) +
+                                                           (fs.fresh ? " (fresh point)" : fs.from < 0 ? " (kept its point)" : " (saved tally back)") + "\n"});
+    }
     if (saved_clock.note(a, session_id, link.hill_clock_remaining_ms(now_ms), now_ms))
       out.push_back({TickIntentKind::SAVE_CLOCK});
     TickIntents events = player_events(update, revives_before, link.revives().revives);

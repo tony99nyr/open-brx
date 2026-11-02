@@ -8,8 +8,8 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, DOMINATION_HILLS,
-    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
+from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
+    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX, ADVERT_SCOPE_ID_BITS, OWNERSHIP_SCORED_MODES, DOMINATION_HILLS,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -543,6 +543,11 @@ class StationRegistry:
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
+        # F658 (A86): a player advert names the stations in play by bit id % 16, so two stations must not share it
+        alias = next(((n, i) for n, st in self.stations.items() if n != nid and isinstance(i := (st.get("assigned") or {}).get("id"), int)
+                       and i % ADVERT_SCOPE_ID_BITS == sid % ADVERT_SCOPE_ID_BITS), None)
+        if alias:
+            raise ValueError(f"STATION ID {sid} CLASHES WITH {alias[0]} (ID {alias[1]}): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE")
         # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
         # station: a phone -70, a StickS3 -57, Tony 2026-09-24; a StickS3 powerup -45, F434). Any other value is the operator's override.
         thr = a.get("threshold", 0)
@@ -715,21 +720,26 @@ class StationRegistry:
         one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another
         station now holds that number. A new station takes the lowest id no station holds or was handed, so a
         phone and a Stick share one sequence: 1, 2, 3. A powerup station's id fits its claim advert's one byte
-        (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one."""
+        (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one.
+        F658 (A86): a player advert names the stations in play by bit `id % ADVERT_SCOPE_ID_BITS`, so no two assigned
+        stations may share that bit: an id whose bit another station holds is passed over too (at most 16 stations)."""
         top = POWERUP_STATION_ID_MAX if kind == "powerup" else STATION_ID_MAX
         used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
+        bits = {i % ADVERT_SCOPE_ID_BITS for i in used}
         own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
         for cand in (own, self._station_id_of.get(nid)):
-            if isinstance(cand, int) and 1 <= cand <= top and cand not in used:
+            if isinstance(cand, int) and 1 <= cand <= top and cand not in used and cand % ADVERT_SCOPE_ID_BITS not in bits:
                 return cand
         taken = used | {i for n, i in self._station_id_of.items() if n != nid}
         # Bench 2026-10-02: a departed station gets its old number back on RESTORE (or any new assignment) when no
         # station holds it and MC has not handed it to another node since; otherwise the rule below.
         gone = (self._station_departures.get(nid) or {}).get("id")
-        if isinstance(gone, int) and 1 <= gone <= top and gone not in taken:
+        if isinstance(gone, int) and 1 <= gone <= top and gone not in taken and gone % ADVERT_SCOPE_ID_BITS not in bits:
             return gone
+        if len(bits) >= ADVERT_SCOPE_ID_BITS:
+            raise ValueError(f"{ADVERT_SCOPE_ID_BITS} STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER")
         sid = 1
-        while sid in taken:
+        while sid in taken or sid % ADVERT_SCOPE_ID_BITS in bits:
             sid += 1
         if sid > top:
             raise ValueError(f"no free station id is left (1..{top})")
@@ -1221,6 +1231,18 @@ class StationRegistry:
         pending = [nid for nid, st in self.stations.items() if st.get("assigned") and st.get("arm_pending")]
         return {"armed": len(armed), "pending": pending}
 
+    def _old_app_phones(self) -> int:
+        """F658 review: bound player phones whose app is older than LIVE_BIT_MIN_APP (it sends no live bit and no A86 scope). An app
+        version MC cannot read is not counted, as `parse_app_ver` treats it everywhere."""
+        floor = parse_app_ver(LIVE_BIT_MIN_APP)
+        n = 0
+        for p in self.roster.players.values():
+            nid = p.get("node_id")
+            v = parse_app_ver((self.roster.nodes.get(nid) or {}).get("app_ver")) if nid else None
+            if v is not None and floor is not None and v < floor:
+                n += 1
+        return n
+
     def station_view(self, nid: str) -> StationView:
         st = self.stations[nid]
         now = self.now_ms()
@@ -1229,15 +1251,35 @@ class StationRegistry:
         armed = None if self.stood_down(a) else st.get("armed")   # F535: an older game's arming is not this game's
         rep = st.get("report") or {}
         attention: list[str] = []
+        # F658: a hill that follows the players' live game needs no arming for the game, so it gets a note, not a re-arm line
+        rep_control = rep.get("control")
+        follows = bool(a) and a["kind"] == "control" and isinstance(rep_control, dict) and rep_control.get("follows") is True
+        # F658 review: following replaces only the GAME an arming carries. A missed kind, id or team still needs a re-arm.
+        no_rearm = follows and a is not None and armed is not None and all(armed.get(k) == a[k] for k in ("kind", "id", "team"))
         if self.stood_down(a):
             attention.append(STATION_NO_HILL)               # F535: not armed on purpose, so no re-arm advice
         elif a and st.get("arm_pending"):
-            attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
+            attention.append(STATION_FOLLOWS if no_rearm else STATION_BRING_BACK)   # assignment changed with the phone out of range
         if a and armed and armed.get("game") != self.play._game_byte() and not self.stood_down(a):
-            attention.append(STATION_ARMED_OLDER)            # it missed the muster push
+            if not no_rearm:
+                attention.append(STATION_ARMED_OLDER)        # it missed the muster push
+            elif STATION_FOLLOWS not in attention:
+                attention.append(STATION_FOLLOWS)
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
         fresh = bool(armed) and seen is not None and seen > (armed.get("at") or 0)
+        # F658: the pace comes only from an arming, so a hill that played on without one can run the last game's. A hill that
+        # does not follow already has a re-arm line unless it took this game's arming, so it gets the pace line only then.
+        this_arming = fresh and armed is not None and armed.get("game") == self.play._game_byte() and not st.get("arm_pending")
+        if a and a["kind"] == "control" and not self.stood_down(a) and (follows or this_arming) and isinstance(rep_control, dict):
+            hill = self.roster.config.get("hill") or {}
+            for key, lo, hi in (("capture_s", HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), ("net_cap", HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)):
+                want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
+                if want is not None and have is not None and have != want:
+                    attention.append(station_pace_line(key, have, want))
+        if a and a["kind"] == "control" and not self.stood_down(a) and (old := self._old_app_phones()):
+            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it
+            attention.append(station_old_app_line(old))
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):
@@ -1288,6 +1330,10 @@ class StationRegistry:
             if isinstance(hold_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
                                                 for k, v in hold_ms.items()):
                 decoded_control["hold_ms"] = hold_ms
+            own_ms = control.get("own_ms")   # the owned clock (Domination), when well formed
+            if isinstance(own_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+                                               for k, v in own_ms.items()):
+                decoded_control["own_ms"] = own_ms
             # F558: the point's own inputs, carried through to the view only when well formed
             # (reviews: only values a station can send: a net up to the largest net_cap, tids 0 to 3, sane counts)
             net = control.get("net")
@@ -1304,6 +1350,24 @@ class StationRegistry:
             lead = control.get("lead", ...)
             if lead is None or (isinstance(lead, int) and not isinstance(lead, bool) and 0 <= lead <= 3):
                 decoded_control["lead"] = lead
+            if control.get("follows") is True:   # F658: the static hill, and its per-game tally ring when well formed
+                decoded_control["follows"] = True
+                games = control.get("games")
+                if isinstance(games, dict):
+                    ring: dict[str, StationRingGame] = {}
+                    for g, v in games.items():
+                        if not (isinstance(g, str) and g.isdigit() and int(g) <= 255 and isinstance(v, dict)):
+                            continue
+                        hm, owner, last = v.get("hold_ms"), v.get("owner"), v.get("last_ms")
+                        if (isinstance(hm, dict) and all(isinstance(k, str) and isinstance(x, int) and not isinstance(x, bool) for k, x in hm.items())
+                                and isinstance(owner, int) and not isinstance(owner, bool)
+                                and isinstance(last, int) and not isinstance(last, bool) and last >= 0):
+                            ring[g] = {"hold_ms": hm, "owner": owner, "last_ms": last}
+                            om = v.get("own_ms")
+                            if isinstance(om, dict) and all(isinstance(k, str) and isinstance(x, int) and not isinstance(x, bool) for k, x in om.items()):
+                                ring[g]["own_ms"] = om
+                    if ring:
+                        decoded_control["games"] = ring
             report["control"] = decoded_control
         # 2026-09-19 (field, twice in one day): a station's `online` used to ask `OFFLINE_AFTER_MS`
         # (10 min) -- the "has this record left the field entirely" line, not "can I reach it right

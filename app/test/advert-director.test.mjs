@@ -4,12 +4,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AdvertGate, ADVERT_FAIL_BACKOFF_MS, ADVERT_START_MIN_MS, encodeUuid } from '../src/beacon.js';
+import { AdvertGate, ADVERT_FAIL_BACKOFF_MS, ADVERT_START_MIN_MS, encodeUuid, decodeUuid } from '../src/beacon.js';
 import { directAdvert, settleAdvert, advertFailLog, advertSnapshotNeeded, newAdvertDirector } from '../src/advert-director.js';
 
 const CONFIG = { stations: [{ id: 4 }], game_byte: 9 };
 const live = (o = {}) => ({ phase: 'live', playerNum: 7, alive: true, powerupClaim: null, ...o });
-const uuid = (o = {}) => encodeUuid({ role: 'player', id: 7, team: 1, state: 1, value: 0, game: 9, ...o });
+// F658: a live player's advert carries the live bit (128) on top of the state the test names
+const uuid = (o = {}) => encodeUuid({ role: 'player', id: 7, team: 1, value: 0, game: 9, ...o, state: (o.state ?? 1) | 128 });
 
 /** What app.js does around the director: one tick, with `fail` making the plugin call throw. */
 function makeApp() {
@@ -138,7 +139,7 @@ test('(d) reason strings, word for word', () => {
   assert.equal(run(live({ playerNum: null }), { gate: onAir(uuid()) }).reason, 'stop: no player number');
   assert.equal(run(live(), { tid: null, gate: onAir(uuid()) }).reason, 'stop: no team');
   assert.equal(run(live({ alive: false }), { gate: onAir(uuid()) }).reason, 'state alive -> down');
-  assert.equal(run(live({ powerupClaim: { station: 4, ready: false } }), { gate: onAir(uuid()) }).reason, 'state bits 1 -> 17, value 0 -> 4');
+  assert.equal(run(live({ powerupClaim: { station: 4, ready: false } }), { gate: onAir(uuid()) }).reason, 'state bits 129 -> 145, value 0 -> 4');
   assert.equal(run(live(), { tid: 2, gate: onAir(uuid()) }).reason, 'team 1 -> 2');
   assert.equal(run(live(), { config: { stations: [{ id: 4 }], game_byte: 3 }, gate: onAir(uuid()) }).reason, 'game 9 -> 3');
   assert.equal(run(live({ playerNum: 8 }), { gate: onAir(uuid()) }).reason, 'id 7 -> 8');
@@ -174,16 +175,16 @@ test('no behaviour change: the scripted sequence makes the plugin calls and log 
   assert.deepEqual(perTick.filter(([, c]) => c.length), [[250, ['start']], [750, ['start']], [1250, ['start']], [2250, ['start']], [2750, ['start']], [5000, ['stop']]]);
   assert.equal(app.stats.reasserts, 1, 'one reopen, one re-assert, however many quiet ticks follow');
   assert.deepEqual(app.calls, [
-    ['start', '4f425258-0102-0007-0001-010000090000', 'balanced'],
-    ['start', '4f425258-0102-0007-0001-110400090000', 'lowLatency'],
-    ['start', '4f425258-0102-0007-0001-000000090000', 'balanced'],
-    ['start', '4f425258-0102-0007-0001-000000090000', 'balanced'],
-    ['start', '4f425258-0102-0007-0001-000000090000', 'balanced'],
+    ['start', '4f425258-0102-0007-0001-810000090000', 'balanced'],
+    ['start', '4f425258-0102-0007-0001-910400090000', 'lowLatency'],
+    ['start', '4f425258-0102-0007-0001-800000090000', 'balanced'],
+    ['start', '4f425258-0102-0007-0001-800000090000', 'balanced'],
+    ['start', '4f425258-0102-0007-0001-800000090000', 'balanced'],
     ['stop'],
   ]);
   assert.deepEqual(app.logs, [
     ['advertising as player 7 team 1 · balanced · first start', 'li'],
-    ['advertising as player 7 team 1 · claiming station 4 · lowLatency · state bits 1 -> 17, value 0 -> 4', 'li'],
+    ['advertising as player 7 team 1 · claiming station 4 · lowLatency · state bits 129 -> 145, value 0 -> 4', 'li'],
     ['player advert failed — the phone may still be broadcasting the previous one; retrying: boom', 'le'],
     ['advertising as player 7 team 1 (down) · balanced · first start', 'li'],
     ['advertising as player 7 team 1 (down) · balanced · re-assert after the scan reopened', 'li'],
@@ -211,4 +212,26 @@ test('AdvertGate.clone() copies every field and decides the same as the original
     assert.equal(c.due(want, now), g.due(want, now));
   c.refresh(); c.started(uuid({ team: 2 }), 1);
   assert.equal(g.last === uuid({ team: 2 }), false, 'the clone is independent');
+});
+
+test('F658: the live bit (128) is set while the match is live, and only then', () => {
+  const dir = newAdvertDirector();
+  const at = (phase, alive = true, ended = false) => {
+    const d = directAdvert({ st: live({ phase, alive, ended }), config: CONFIG, tid: 1, scanOpens: 0, dir, gate: new AdvertGate(), now: 1000 });
+    return decodeUuid(d.uuid).state;
+  };
+  assert.equal(at('live'), 1 | 128, 'live and alive');
+  assert.equal(at('live', false), 128, 'live and down: the hill still learns the game');
+  assert.equal(at('armed'), 1, 'the countdown is not live');
+  assert.equal(at('live', true, true), 1, 'after the whistle (still phase live, ended set) the bit drops');
+});
+
+test('A86: the advert carries the scope of the stations MC armed: control station 17 is kind bit 1 and id bit 1', () => {
+  const d = directAdvert({ st: live(), config: { stations: [{ id: 17, kind: 'control' }], game_byte: 9 }, tid: 1, scanOpens: 0,
+    dir: newAdvertDirector(), gate: new AdvertGate(), now: 1000 });
+  assert.equal(d.action, 'start');
+  const a = decodeUuid(d.uuid);
+  assert.equal(a.id, 7, 'byte 7 alone is the player id');
+  assert.equal(a.scopeKinds, 1);
+  assert.equal(a.scope, 1 << 1);
 });
