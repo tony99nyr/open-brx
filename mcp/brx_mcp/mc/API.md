@@ -235,7 +235,7 @@ State {
                                               // resume or adopt, and never retired. The match most phones report wins.
                                               // The MATCH tab shows it with RESUME MATCH (only when `can_resume`) and END
                                               // THEIR MATCH. Nothing happens until one is pressed
-  notices: { mc_verify?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
+  notices: { mc_verify?: string, new_phone?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
                                               // and the phones cannot disagree. `mc_verify` is present ONLY when this
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
                                               // survival mode) AND `config.coverage != "full"` AND at least one
@@ -245,7 +245,9 @@ State {
                                               // rostered phone is off-grid (a Wi-Fi-only match), the unnamed
                                               // `WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE
                                               // WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
-                                              // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
+                                              // ARMED. `new_phone` (F659) = `NEW PHONE JOINED: <device or node id>`, present for 10 min after a
+                                              // PLAYER phone this MC home never heard from said its first LAN hello (LAN trust is unchanged).
+                                              // `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
                                               // names. F309: a phone is off-grid unless it reports `transport: "cellular"`
                                               // AND joined through the tunnel or (F595) sits on the LAN with

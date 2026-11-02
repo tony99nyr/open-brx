@@ -174,6 +174,8 @@ def build(args):
             try:
                 from .mcid import TrustRegistry
                 net.trust = TrustRegistry(_home())
+                from .seen_nodes import SeenNodes
+                net.seen = SeenNodes(_home(), seed=net.trust.enrolled)   # F659
             except Exception as e:
                 _cannot_build(f"the install identity (mc-install-secret, mc-trust-enrolled.txt in {_home()})", e)
     fake_net = isinstance(net, FakeNet)

@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 from . import envelope as E
 from .mcid import TrustRegistry, valid_challenge
+from .seen_nodes import SeenNodes
 from .types import PROTOCOL_V, STALE_AFTER_MS, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.net")
@@ -208,6 +209,7 @@ class NetServer:
         self.session_id = session_id or uuid.uuid4().hex[:8]
         # A60: MC's install identity. In memory unless the caller hands in a persisted one (`__main__`).
         self.trust = trust if trust is not None else TrustRegistry(None)
+        self.seen = SeenNodes(None)         # F659: swapped for the persistent list by __main__
         self.stale_after_ms = stale_after_ms
         self.hello_timeout_s = hello_timeout_s
         self.ping_interval_s = ping_interval_s
@@ -838,6 +840,9 @@ class NetServer:
         if self._hydrate is not None:
             try:
                 clean_body = dict(body)
+                # F659: a PLAYER phone this MC home has never heard from, on the LAN. The session raises the host's line.
+                if rec.node_type != "utility" and self.seen.add(node_id) and rec.via == "lan":
+                    clean_body["new_phone"] = True
                 clean_body.pop("prior_utility", None)       # the takeover key never reaches session code
                 if type(clean_body.get("pending")) is not int or clean_body["pending"] < 0:
                     clean_body.pop("pending", None)         # F596: old or malformed hellos make no count claim
