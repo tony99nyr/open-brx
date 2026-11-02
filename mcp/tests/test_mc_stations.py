@@ -653,7 +653,8 @@ def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_i
     # A86: the release app (0.4.33) sends no scope, so no control station counts those phones, following or not
     assert st_lines(v) == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER, "2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM"], v["attention"]
     s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 2, "capture_s": 10, "net_cap": 3, "follows": True,
-                                                         "games": {"1": {"hold_ms": {"0": 9000}, "owner": 0, "last_ms": 60000},
+                                                         "own_ms": {"0": 1500, "1": True},
+                                                         "games": {"1": {"hold_ms": {"0": 9000}, "own_ms": {"0": 12000}, "owner": 0, "last_ms": 60000},
                                                                    "2": {"hold_ms": {}, "owner": 255, "last_ms": 0}, "x": {}}}}, s.now_ms())
     v = s._station_view("util-1")
     # review: the two fake phones report the release app (0.4.33), which sends no live bit, so this hill cannot count them
@@ -664,6 +665,11 @@ def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_i
     assert st_lines(s._station_view("util-1"))[-1] == "1 PHONE ON AN OLD APP: THIS HILL CANNOT COUNT IT"
     c = v["report"]["control"]
     assert c["follows"] is True and set(c["games"]) == {"1", "2"} and c["games"]["1"]["owner"] == 0, c
+    # the owned clock (Domination): carried through when well formed, dropped when not; absent from an older station
+    assert c["games"]["1"]["own_ms"] == {"0": 12000} and "own_ms" not in c["games"]["2"], c
+    assert "own_ms" not in c, "a malformed own_ms (a bool value) is dropped"
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 0, "game": 2, "follows": True, "own_ms": {"0": 1500}}}, s.now_ms())
+    assert s._station_view("util-1")["report"]["control"]["own_ms"] == {"0": 1500}
     assert not any(T.STATION_FOLLOWS in b for r in s.readiness()["board"] for b in r["blockers"]), "a note, never a START gate"
     # review: following replaces only the game. An id change that missed the hill still needs it brought back.
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 4})

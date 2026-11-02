@@ -1871,6 +1871,9 @@ export interface StationControl {
   progress?: number;
   contested?: boolean;
   hold_ms?: Record<string, number>;
+  /** The owned clock (Domination): ms per tid the team OWNED the point, contested or not, with or without a body on it;
+   *  it stops when the point drains to neutral. Keyed like hold_ms. Absent from an older station. */
+  own_ms?: Record<string, number>;
   /** F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not) */
   game?: number;
   /** Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
@@ -1890,6 +1893,8 @@ export interface StationControl {
 /** F658: one game's tally in a following hill's ring (`control.games`). */
 export interface StationRingGame {
   hold_ms: Record<string, number>;
+  /** the owned clock (see StationControl.own_ms); absent from an older station */
+  own_ms?: Record<string, number>;
   owner: number;
   /** ms since that game was last heard */
   last_ms: number;

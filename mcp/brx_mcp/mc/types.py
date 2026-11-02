@@ -1668,6 +1668,9 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
+    # The owned clock (Domination): ms per tid the team OWNED the point, contested or not, with or without a body on it;
+    # it stops when the point drains to neutral. Keyed like hold_ms. Absent from an older station.
+    own_ms: NotRequired[dict[str, int]]
     game: NotRequired[int]       # F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not)
     # Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
     # station's own), so ITEMS can show what each hill is really doing.
@@ -1686,6 +1689,7 @@ class StationControl(TypedDict):
 class StationRingGame(TypedDict):
     """F658: one game's tally in a following hill's ring (`control.games`)."""
     hold_ms: dict[str, int]
+    own_ms: NotRequired[dict[str, int]]   # the owned clock (see StationControl.own_ms); absent from an older station
     owner: int
     last_ms: int               # ms since that game was last heard
 

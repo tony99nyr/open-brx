@@ -1297,6 +1297,10 @@ class StationRegistry:
             if isinstance(hold_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
                                                 for k, v in hold_ms.items()):
                 decoded_control["hold_ms"] = hold_ms
+            own_ms = control.get("own_ms")   # the owned clock (Domination), when well formed
+            if isinstance(own_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+                                               for k, v in own_ms.items()):
+                decoded_control["own_ms"] = own_ms
             # F558: the point's own inputs, carried through to the view only when well formed
             # (reviews: only values a station can send: a net up to the largest net_cap, tids 0 to 3, sane counts)
             net = control.get("net")
@@ -1326,6 +1330,9 @@ class StationRegistry:
                                 and isinstance(owner, int) and not isinstance(owner, bool)
                                 and isinstance(last, int) and not isinstance(last, bool) and last >= 0):
                             ring[g] = {"hold_ms": hm, "owner": owner, "last_ms": last}
+                            om = v.get("own_ms")
+                            if isinstance(om, dict) and all(isinstance(k, str) and isinstance(x, int) and not isinstance(x, bool) for k, x in om.items()):
+                                ring[g]["own_ms"] = om
                     if ring:
                         decoded_control["games"] = ring
             report["control"] = decoded_control

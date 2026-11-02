@@ -3058,11 +3058,26 @@ static void test_f658_hill_follows_the_live_game() {
   link.apply_station_config(b, 5300);
   CHECK(link.hill().progress == progress && link.follower().follows);
   // a restart: the saved ring brings the follower and the point back
+  link.hill().own_ms[0] = 7000;   // the owned clock rides in the ring beside hold_ms
   const std::string saved = encode_hill_ring(9, link.follower(), link.hill(), 6000);
   HillFollower back;
   BleControlPoint point;
   CHECK(decode_hill_ring(saved, 9, back, point, 100));
   CHECK(back.follows && back.has_current && back.current == 41);
+  CHECK(point.own_ms[0] == 7000u);
+  {  // a ring saved before own_ms (11 fields an entry) still restores, with own_ms 0
+    std::string old = saved;
+    for (size_t semi = old.find(';'); semi != std::string::npos; semi = old.find(';', semi)) {
+      size_t cut = semi;
+      for (int k = 0; k < 4; k++) cut = old.rfind(',', cut - 1);
+      old.erase(cut, semi - cut);
+      semi = old.find(';', cut) + 1;
+      if (semi == 0 || semi >= old.size()) break;
+    }
+    HillFollower f_old;
+    BleControlPoint p_old;
+    CHECK(decode_hill_ring(old, 9, f_old, p_old, 100) && p_old.own_ms[0] == 0u && f_old.current == 41);
+  }
   CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));
   CHECK(!decode_hill_ring(saved, 8, back, point, 100));   // another station's ring is not ours
   // review of F658: after a power-on the saved "ms ago" is not the time off, so every game starts fresh when heard

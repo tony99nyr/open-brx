@@ -229,6 +229,11 @@ static void run_case(const Value& c) {
         const long got = tid >= 0 && tid < 4 ? (long)cp.hold_ms[tid] : -1;
         if (got != kv.second.as_int64()) fail(t, at + " hold_ms of team " + kv.first + " " + std::to_string(got) + ", expected " + std::to_string(kv.second.as_int64()));
       }
+      for (const auto& kv : ex.get("own_ms").obj) {  // the owned clock per tid
+        const int tid = std::stoi(kv.first);
+        const long got = tid >= 0 && tid < 4 ? (long)cp.own_ms[tid] : -1;
+        if (got != kv.second.as_int64()) fail(t, at + " own_ms of team " + kv.first + " " + std::to_string(got) + ", expected " + std::to_string(kv.second.as_int64()));
+      }
       // F658: the byte the hill advertises, follow mode and the tally ring
       if (ex.has("hill") && ex.get("hill").has("game") && follower.game(armed) != ex.get("hill").get("game").as_int())
         fail(t, at + " hill game byte " + std::to_string(follower.game(armed)) + ", expected " + std::to_string(ex.get("hill").get("game").as_int()));
@@ -249,6 +254,11 @@ static void run_case(const Value& c) {
           const int tid = std::stoi(h.first);
           const long got = tid >= 0 && tid < 4 ? (long)tally.hold_ms[tid] : -1;
           if (got != h.second.as_int64()) fail(t, at + " game " + kv.first + " hold_ms of team " + h.first + " " + std::to_string(got));
+        }
+        for (const auto& h : kv.second.get("own_ms").obj) {
+          const int tid = std::stoi(h.first);
+          const long got = tid >= 0 && tid < 4 ? (long)tally.own_ms[tid] : -1;
+          if (got != h.second.as_int64()) fail(t, at + " game " + kv.first + " own_ms of team " + h.first + " " + std::to_string(got));
         }
       }
       if (ex.has("hill")) {

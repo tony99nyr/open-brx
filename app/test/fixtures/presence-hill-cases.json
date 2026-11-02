@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader. F658 (the static hill): a player may name its `game` byte (default 0) and carry the `live` state bit; a series or sighting may override `game` too. The hill hears every game (presence keyed by game) and a follower picks who counts: it follows the newest live game once it has heard any live-bit player, and before that counts the players of `setup.armed_game` (0 = any). `setup.ring_size` and `setup.ring_stale_ms` size the per-game tally ring. A checkpoint may hold `hill.game` (the byte the hill advertises), `follows` (follow mode), `ring` (the game bytes in the ring, ascending) and `games` ({byte: {owner, hold_ms}} from the ring summary). The stage reads only the three hill bytes, so it ignores all of these. A86 (the enablement scope): `setup.station_id` (default 1) is the hill's own station id, and a player may name its advert scope with `scope_kinds` (names from ADVERT_SCOPE_KIND) and `scope_stations` (station ids, each sets bit id % 16). The default for both is the scope that names this hill (`[\"control\"]` and `[setup.station_id]`), so a case without them is in scope; an empty list is a zero scope (an older APK). A player outside the scope never counts.",
+  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader. F658 (the static hill): a player may name its `game` byte (default 0) and carry the `live` state bit; a series or sighting may override `game` too. The hill hears every game (presence keyed by game) and a follower picks who counts: it follows the newest live game once it has heard any live-bit player, and before that counts the players of `setup.armed_game` (0 = any). `setup.ring_size` and `setup.ring_stale_ms` size the per-game tally ring. A checkpoint may hold `hill.game` (the byte the hill advertises), `follows` (follow mode), `ring` (the game bytes in the ring, ascending) and `games` ({byte: {owner, hold_ms}} from the ring summary). The stage reads only the three hill bytes, so it ignores all of these. A86 (the enablement scope): `setup.station_id` (default 1) is the hill's own station id, and a player may name its advert scope with `scope_kinds` (names from ADVERT_SCOPE_KIND) and `scope_stations` (station ids, each sets bit id % 16). The default for both is the scope that names this hill (`[\"control\"]` and `[setup.station_id]`), so a case without them is in scope; an empty list is a zero scope (an older APK). A player outside the scope never counts. A checkpoint may hold `own_ms` ({tid: ms}, the owned clock: it banks while that team owns the point, contested or empty) beside `hold_ms`, and a `games` entry may hold `own_ms` too.",
   "cases": [
     {
       "name": "lone red player enters at the threshold at once, and is present after the dwell",
@@ -1026,9 +1026,9 @@
       "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 14000, "to_ms": 27000, "every_ms": 250, "rssi": [-60]}],
       "expect": [
         {"t": 16000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
-        {"t": 16250, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8], "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}}}},
+        {"t": 16250, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8], "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}, "own_ms": {"0": 6000}}}},
         {"t": 21250, "hill": {"team": 1, "state": ["rising"], "value": 50, "game": 8}},
-        {"t": 27000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}}, "8": {"owner": 1}}}
+        {"t": 27000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}}, "8": {"owner": 1, "own_ms": {"1": 750}}}}
       ]
     },
     {
@@ -1200,6 +1200,30 @@
       "expect": [
         {"t": 5000, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
         {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "own_ms: an owned point that is contested banks own_ms, not hold_ms",
+      "why": "The owned clock (Domination) banks while a team owns the point, contested or not. Red captures alone at 10 s; a blue arrives at 10.25 s, so the point is contested: hold_ms stops at once, own_ms runs on, and the 1v1 neither drains nor builds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10250, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 10000, "hold_ms": {"0": 0}, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 14000, "hold_ms": {"0": 0}, "own_ms": {"0": 4000}, "hill": {"team": 0, "state": ["held", "contested"], "value": 100}}
+      ]
+    },
+    {
+      "name": "own_ms: an owned point with nobody on it banks own_ms only",
+      "why": "Red captures at 10 s and walks off: its last advert is at 10 s, and it leaves the circle 4 s later. hold_ms stops when red is no longer counted; own_ms banks on with nobody there, because an owned point never decays.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 16000, "hold_ms": {"0": 4000}, "own_ms": {"0": 6000}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 20000, "hold_ms": {"0": 4000}, "own_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held"], "value": 100}}
       ]
     }
   ]

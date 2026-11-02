@@ -66,6 +66,8 @@ export function claimable(tid) { return HILL_CLAIMABLE_TIDS.includes(tid); }
  *   progress   0..100, always "how far along the team named by owner-or-capturing is"
  *   lastOwner  who held it before it went neutral — so a capture can name who was robbed
  *   holdMs     per-team milliseconds of possession, for the station's own recap (§5c)
+ *   ownMs      per-team milliseconds of OWNERSHIP (Domination's clock): banks while the team owns the point, contested
+ *              or not, with or without a body on it, and stops when the point drains to neutral
  */
 export class ControlPoint {
   constructor({ captureS = HILL_CAPTURE_S, netCap = HILL_NET_CAP, decayS = HILL_DECAY_S, decayDelayMs = HILL_DECAY_DELAY_MS } = {}) {
@@ -79,6 +81,8 @@ export class ControlPoint {
     this.progress = 0;
     this.lastOwner = null;
     this.holdMs = {};
+    this.ownMs = {};              // the owned clock (Domination): see update()
+    this.ownedBy = null;          // the owner when update() last ran, or null (a restored or fresh point)
     this.contested = false;
     this.dir = 0;                 // +1 rising, -1 falling, 0 static
     this.net = 0;                 // the leading team's lead, in players
@@ -106,6 +110,7 @@ export class ControlPoint {
     const last = s.lastOwner != null && Number.isFinite(+s.lastOwner) ? +s.lastOwner : null;
     this.lastOwner = last != null && claimable(last) ? last : null;
     this.holdMs = (s.holdMs && typeof s.holdMs === 'object') ? { ...s.holdMs } : {};
+    this.ownMs = (s.ownMs && typeof s.ownMs === 'object') ? { ...s.ownMs } : {};
     this.log = Array.isArray(s.log) ? s.log.slice(-64) : [];
     this.contested = !!s.contested;
     this.dir = [1, 0, -1].includes(s.dir) ? s.dir : 0;
@@ -115,6 +120,7 @@ export class ControlPoint {
     else if (this.capturing == null) this.progress = 0;
     this.at = null;               // the first tick back measures no elapsed time
     this.heldBy = null;           // F554: and no earlier sample saw anybody on the point
+    this.ownedBy = null;          // own_ms: nor any owner
     this.absentMs = 0;            // F464: a restored point restarts the decay delay (the conservative choice; not in the snapshot)
     return this;
   }
@@ -122,7 +128,7 @@ export class ControlPoint {
    *  advertiser's and is folded in by the caller, which owns it. */
   snapshot() {
     return { owner: this.owner, capturing: this.capturing, progress: Math.round(this.progress * 10) / 10,
-      lastOwner: this.lastOwner, holdMs: this.holdMs, log: this.log.slice(-64),
+      lastOwner: this.lastOwner, holdMs: this.holdMs, ownMs: this.ownMs, log: this.log.slice(-64),
       contested: this.contested, dir: this.dir, net: this.net };
   }
 
@@ -206,6 +212,11 @@ export class ControlPoint {
     const sole = this.contested ? null : this.lead;
     if (this.owner !== STATION_TEAM_ANY && sole === this.owner && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + (this.heldBy === this.owner ? elapsedMs : dtMs);
     this.heldBy = sole;
+    // ---- own_ms, the owned clock (Domination) ----
+    // Banks to the team that owns the point across this interval (the owner before this step's conversion), contested
+    // or not, with or without a body on it; a point drained to neutral banks nobody. The same gap clamp as hold_ms: a
+    // gap whose start did not see this owner (`ownedBy`, the owner the last update left) banks at most HILL_MAX_STEP_MS.
+    if (this.owner !== STATION_TEAM_ANY && elapsedMs) this.ownMs[this.owner] = (this.ownMs[this.owner] || 0) + (this.ownedBy === this.owner ? elapsedMs : dtMs);
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
@@ -269,6 +280,7 @@ export class ControlPoint {
       const h = this.owner !== STATION_TEAM_ANY ? this.owner : this.capturing;
       if (h != null) this.dir = this.lead === h ? (this.progress < 100 ? 1 : 0) : (this.progress > 0 ? -1 : 0);
     }
+    this.ownedBy = this.owner !== STATION_TEAM_ANY ? this.owner : null;
     return { changed: before !== `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`, events };
   }
 }
@@ -416,12 +428,12 @@ export class HillFollower {
     if (worst != null) this.games.delete(worst);
   }
 
-  /** The heartbeat's ring summary: byte -> { hold_ms, owner, last_ms } (last_ms = ms since that game was last heard). */
+  /** The heartbeat's ring summary: byte -> { hold_ms, own_ms, owner, last_ms } (last_ms = ms since that game was last heard). */
   summary(point, now) {
     const out = {};
     for (const [g, e] of this.games) {
       const s = g === this.current ? point : (e.snap || {});
-      out[String(g)] = { hold_ms: { ...(s.holdMs || {}) }, owner: Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY, last_ms: Math.max(0, now - e.heardAt) };
+      out[String(g)] = { hold_ms: { ...(s.holdMs || {}) }, own_ms: { ...(s.ownMs || {}) }, owner: Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY, last_ms: Math.max(0, now - e.heardAt) };
     }
     return out;
   }
@@ -447,6 +459,6 @@ export class HillFollower {
 
 /** Load a saved point state into `point` (null = a fresh, neutral point), with its clock restarted. */
 function loadPoint(point, snap) {
-  point.restore(snap || { owner: STATION_TEAM_ANY, capturing: null, progress: 0, holdMs: {}, log: [] });
+  point.restore(snap || { owner: STATION_TEAM_ANY, capturing: null, progress: 0, holdMs: {}, ownMs: {}, log: [] });
   point.counts = {}; point.lead = null; point.refusedSeen = false;
 }

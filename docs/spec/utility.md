@@ -673,7 +673,7 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    the current game's byte, so that game's phones read it.
 4. **The tally ring.** The hill keeps one point state per game byte and the last time each byte was heard, at most
    `HILL_RING_SIZE` (4). Each entry keeps the owner, the progress and the team building it, the last owner and the
-   possession tally per team. The phone also keeps its capture log; the Stick has no capture log. A byte heard again
+   possession and owned tallies per team (`hold_ms`, `own_ms`). The phone also keeps its capture log; the Stick has no capture log. A byte heard again
    after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts fresh, which covers MC's wrap of the game byte
    (255 goes to 1; MC never sends 0) and an MC restart that reuses a byte. A fifth byte evicts the least recently heard one, never the current one. A switch saves the
    point into the ring and loads the other game's state with its clock restarted, so no time banks across it. The
@@ -688,7 +688,7 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    MC-armed game (0 on either side is any game) inside MC's window. Since A86 (item 8) that is in-scope players
    only, so a 0.4.33 phone (no scope) counts on no hill at all.
 7. **The heartbeat.** `status.control` keeps its fields for the current game (`game` is the followed byte) and adds
-   `follows: true` and `games: {"<byte>": {hold_ms, owner, last_ms}}` once following. MC shows a note in place of
+   `follows: true` and `games: {"<byte>": {hold_ms, own_ms, owner, last_ms}}` once following. MC shows a note in place of
    ARMED FOR AN OLDER GAME and BRING IT BACK, and an amber line when the hill's `capture_s` or `net_cap` is not
    this game's. Neither gates START. Scoring is unchanged: the players report possession, and MC merges the
    station's tally only when it names MC's game (F555).
@@ -704,8 +704,13 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    stays inert**. MC keeps the ids of the stations on the field apart modulo 16 (at most 16 stations; an explicit
    clash is refused, the auto id passes it over). This pass enforces the scope on control points only (phone and
    Stick); respawn and powerup stations still ignore it.
+9. **The owned clock (`own_ms`, for Domination).** Beside `hold_ms`, a control point banks `own_ms` per team: while
+   that team OWNS the point, contested or not, with or without a body on it. It stops when the point drains to
+   neutral. It takes the same gap clamp as `hold_ms`: a stalled tick banks at most `HILL_MAX_STEP_MS` when the team
+   was not the owner at the start of the gap. It rides in `status.control` and in each `games` entry, and in the
+   point snapshot and the tally ring (phone and Stick). `hold_ms` and the capture rate do not change.
 
-The rules are pinned by the `F658:` and `A86:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
+The rules are pinned by the `F658:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
 runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built

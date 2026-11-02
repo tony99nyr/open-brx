@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ControlPoint, ControlAdvertiser, HillFollower } from '../src/control.js';
 import { encodeUuid, decodeUuid, PLAYER_STATE } from '../src/beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_REFUSED_TID } from '../src/transport/contract.gen.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_REFUSED_TID, HILL_MAX_STEP_MS } from '../src/transport/contract.gen.js';
 
 const RED = 0, BLUE = 1, GREEN = 3;     // the claimable tids: 2 is refused (F82), 4-7 are colours
 
@@ -861,4 +861,19 @@ test('F658 follower: counts() is MC\'s game before follow mode and the live bit 
 test('F658 review: a neutral point restored from its snapshot has nobody capturing (+null is 0, red)', () => {
   const p = new ControlPoint().restore(new ControlPoint().snapshot());
   assert.equal(p.capturing, null); assert.equal(p.lastOwner, null);
+});
+
+test('own_ms: the owned clock clamps a gap whose start did not see the owner, and survives a snapshot', () => {
+  const p = new ControlPoint();
+  p.update([], 0);
+  p.owner = 0; p.progress = 100;                 // the owner changed outside update() (no tick saw it)
+  p.update([], 60_000);
+  assert.equal(p.ownMs[0], HILL_MAX_STEP_MS, 'a gap whose start did not see red banks one step, not the stall');
+  p.update([], 120_000);
+  assert.equal(p.ownMs[0], HILL_MAX_STEP_MS + 60_000, 'owned at both ends: the whole gap banks, nobody on the point');
+  assert.deepEqual(p.holdMs, {}, 'hold_ms needs a body on the point');
+  const back = new ControlPoint().restore(JSON.parse(JSON.stringify(p.snapshot())));
+  assert.deepEqual(back.ownMs, p.ownMs);
+  back.update([], 200_000); back.update([], 200_250);
+  assert.equal(back.ownMs[0], p.ownMs[0] + 250, 'a restored point restarts its clock: only the tick after it banks');
 });

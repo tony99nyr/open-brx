@@ -94,7 +94,7 @@ function runCase(c, collect = false) {
     const adv = point.advert();
     if (process.env.CASES_TRACE) {
       const ins = presence.players().map(e => `${e.id}:${e.inCircle ? 'IN' : 'out'}${e.present ? '+P' : ''}${e.fading ? '~F' : ''}`).join(' ');
-      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value} game=${follower.game(armed)} follows=${follower.follows} hold=${JSON.stringify(point.holdMs)} ring=${JSON.stringify(follower.summary(point, t))}`);
+      console.log(`${c.name} t=${t} ${ins} hill team=${adv.team} state=${adv.state} value=${adv.value} game=${follower.game(armed)} follows=${follower.follows} hold=${JSON.stringify(point.holdMs)} own=${JSON.stringify(point.ownMs)} ring=${JSON.stringify(follower.summary(point, t))}`);
     }
     const ex = expects.get(t);
     if (!ex) continue;
@@ -112,6 +112,7 @@ function runCase(c, collect = false) {
         assert.equal(!!(e && e.fading), want, `${at} player ${id} fading`);
       }
       for (const [tid, want] of Object.entries(ex.hold_ms || {})) assert.equal(point.holdMs[tid] || 0, want, `${at} hold_ms of team ${tid}`);   // F554
+      for (const [tid, want] of Object.entries(ex.own_ms || {})) assert.equal(point.ownMs[tid] || 0, want, `${at} own_ms of team ${tid}`);   // the owned clock
       if (ex.hill) assert.deepEqual(adv, { team: ex.hill.team, state: hillByte(ex.hill.state), value: ex.hill.value }, `${at} hill advert`);
       // F658: the byte the hill advertises (the followed game, else MC's), follow mode, and the tally ring
       if (ex.hill && ex.hill.game != null) assert.equal(follower.game(armed), ex.hill.game, `${at} hill game byte`);
@@ -122,6 +123,7 @@ function runCase(c, collect = false) {
         assert.ok(got, `${at} game ${g} is in the ring`);
         if (want.owner != null) assert.equal(got.owner, want.owner, `${at} game ${g} owner`);
         for (const [tid, ms] of Object.entries(want.hold_ms || {})) assert.equal(got.hold_ms[tid] || 0, ms, `${at} game ${g} hold_ms of team ${tid}`);
+        for (const [tid, ms] of Object.entries(want.own_ms || {})) assert.equal(got.own_ms[tid] || 0, ms, `${at} game ${g} own_ms of team ${tid}`);
       }
     };
     if (!collect) check();

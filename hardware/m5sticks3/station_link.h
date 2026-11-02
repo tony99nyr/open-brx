@@ -255,10 +255,13 @@ struct StatusFields {
   int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
                            // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
+  // The owned clock (additive; left out unless set): `own_ms` per tid, control.js `ownMs` (Domination)
+  bool control_has_own = false;
+  uint32_t control_own_ms[4] = {0, 0, 0, 0};
   // F658 (additive; left out until the hill follows the players' live game): `follows` and the ring summary
-  // `games` {"<byte>": {hold_ms, owner, last_ms}}, so MC can tell this hill needs no re-arm
+  // `games` {"<byte>": {hold_ms, own_ms, owner, last_ms}}, so MC can tell this hill needs no re-arm
   bool control_follows = false;
-  struct RingGame { int game; int owner; uint32_t hold_ms[4]; uint32_t last_ms; };
+  struct RingGame { int game; int owner; uint32_t hold_ms[4]; uint32_t last_ms; uint32_t own_ms[4]; };
   std::vector<RingGame> control_games;
   // F591 (additive; 0 = left out): the hill pace this Stick applies, as utility.js's status reports it
   int control_capture_s = 0;
@@ -291,6 +294,19 @@ struct StatusFields {
   // with a count above 0 as unable to save, so a restart would lose its hill, config or typed URL.
   uint32_t nvs_fail = 0;
 };
+
+// {"0":1000,...}: a per-tid tally, a tid at 0 left out (control.js holdMs/ownMs never name a team that banked nothing)
+inline std::string tid_ms_json(const uint32_t ms[4]) {
+  std::string j = "{";
+  bool first = true;
+  for (int t = 0; t < 4; t++) {
+    if (!ms[t]) continue;
+    if (!first) j += ",";
+    first = false;
+    j += "\"" + std::to_string(t) + "\":" + std::to_string(ms[t]);
+  }
+  return j + "}";
+}
 
 inline std::string build_status_body(const StatusFields& f) {
   std::string j = "{";
@@ -334,6 +350,7 @@ inline std::string build_status_body(const StatusFields& f) {
       }
       j += "}";
     }
+    if (f.control_has_own) j += ",\"own_ms\":" + tid_ms_json(f.control_own_ms);
     if (f.control_capture_s) j += ",\"capture_s\":" + std::to_string(f.control_capture_s);
     if (f.control_net_cap) j += ",\"net_cap\":" + std::to_string(f.control_net_cap);
     if (f.control_follows) {
@@ -349,7 +366,7 @@ inline std::string build_status_body(const StatusFields& f) {
           first = false;
           j += "\"" + std::to_string(t) + "\":" + std::to_string(g.hold_ms[t]);
         }
-        j += "},\"owner\":" + std::to_string(g.owner) + ",\"last_ms\":" + std::to_string(g.last_ms) + "}";
+        j += "},\"own_ms\":" + tid_ms_json(g.own_ms) + ",\"owner\":" + std::to_string(g.owner) + ",\"last_ms\":" + std::to_string(g.last_ms) + "}";
       }
       j += "}";
     }
@@ -2058,7 +2075,8 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
       for (const HillGame& g : link.follower().games) {
         if (!g.used) continue;
         const HillSnap t = link.follower().tally(g, h);
-        StatusFields::RingGame r{g.game, t.owner, {t.hold_ms[0], t.hold_ms[1], t.hold_ms[2], t.hold_ms[3]}, now_ms - g.heard_at};
+        StatusFields::RingGame r{g.game, t.owner, {t.hold_ms[0], t.hold_ms[1], t.hold_ms[2], t.hold_ms[3]}, now_ms - g.heard_at,
+                                 {t.own_ms[0], t.own_ms[1], t.own_ms[2], t.own_ms[3]}};
         f.control_games.push_back(r);
       }
       std::sort(f.control_games.begin(), f.control_games.end(), [](const StatusFields::RingGame& x, const StatusFields::RingGame& y) { return x.game < y.game; });
@@ -2068,6 +2086,8 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_lead = h.lead;
     f.control_has_hold = true;
     for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
+    f.control_has_own = true;   // the owned clock (Domination)
+    for (int t = 0; t < 4; t++) f.control_own_ms[t] = h.own_ms[t];
     f.control_capture_s = h.capture_s;   // F591
     f.control_net_cap = h.net_cap;
   }

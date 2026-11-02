@@ -333,7 +333,7 @@ function utilityStatusBody() {
       ...(follower.follows ? { follows: true, games: follower.summary(point, stationNow()) } : {}),
       // F558: the point's own inputs (who it counted, which team leads, the clamped net), so a log can explain its rate
       net: point.net, counts: { ...point.counts }, lead: point.lead,
-      hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
+      hold_ms: point.holdMs, own_ms: point.ownMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
 }
 const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, setCurrent: t => { transport = t; },
   remember: (url, bound) => { settings.mc = url; settings.mc_auto = bound; save(); },
@@ -706,7 +706,7 @@ function controlTick(now) {
   // worth that.
   // F557 (Codex review of F555): the hold grows on every held tick without `changed` flipping, and MC now scores on it.
   // Save it at most every HOLD_SAVE_MS as it grows, so a reload loses seconds, not minutes.
-  const held = Object.values(point.holdMs).reduce((a, b) => a + b, 0);
+  const held = [...Object.values(point.holdMs), ...Object.values(point.ownMs)].reduce((a, b) => a + b, 0);   // own_ms grows with no body on the point
   if (changed || events.length || (held !== _holdSaved && now - _holdSavedAt >= HOLD_SAVE_MS)) { saveControl(); _holdSaved = held; _holdSavedAt = now; }
   // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
   // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
@@ -727,7 +727,7 @@ function controlTick(now) {
 /** Hand the point back to nobody: between games (a `station_config` naming a new game) or from the button. */
 function resetPoint(why) {
   point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
-  point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
+  point.holdMs = {}; point.ownMs = {}; point.ownedBy = null; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
   point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
   point.heldBy = null; point.at = null;   // F554 gap, F593: no earlier sample, and no old game's time in the first step (the Stick's reset() does the same)
   follower.clear();   // F658: a reset forgets every game's tally; the next live player starts follow mode again
@@ -1310,7 +1310,7 @@ function utilityDiag() {
     kind: settings.kind, id: settings.id, team: settings.team, game: settings.game, threshold: thr(), live: !!settings.live, advertising,
     ...(settings.kind === 'control' ? { follows: follower.follows, hillGame: hillGame(), ring: follower.summary(point, now) } : {}),   // F658
     point: settings.kind === 'control' ? { owner: point.owner, capturing: point.capturing, progress: Math.round(point.progress), contested: point.contested,
-      counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs } } : null,
+      counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs }, ownMs: { ...point.ownMs } } : null,
     players: presence.players().map(p => ({ id: p.id, team: p.team, alive: !!(p.state & PLAYER_STATE.alive), present: !!p.present,
       rssi: Math.round(p.rssi), median: Number.isFinite(p.median) ? Math.round(p.median) : null, ageMs: now - p.seenAt, game: p.game,
       // F440: how often this phone is heard: the recent gaps between its adverts, the worst, and the median

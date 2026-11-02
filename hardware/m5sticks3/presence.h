@@ -425,6 +425,7 @@ struct HillSnap {
   double progress = 0;
   int last_owner = -1;
   uint32_t hold_ms[4] = {0, 0, 0, 0};
+  uint32_t own_ms[4] = {0, 0, 0, 0};  // the owned clock (Domination), control.js `ownMs`
   bool contested = false;
   int dir = 0;
   uint32_t captures = 0;
@@ -442,6 +443,10 @@ class BleControlPoint {
   double progress = 0;        // 0..100 for the team named by owner-or-capturing
   int last_owner = -1;
   uint32_t hold_ms[4] = {0, 0, 0, 0};  // possession per tid, for the status report (MC's recap)
+  // The owned clock (Domination), control.js `ownMs`: per tid, banks while that tid OWNS the point, contested or not,
+  // with or without a body on it; stops when the point drains to neutral.
+  uint32_t own_ms[4] = {0, 0, 0, 0};
+  int owned_by = -1;          // control.js `ownedBy`: the owner the last update left, or -1
   bool contested = false;
   int held_by = -1;           // F554: the team counted ALONE on the point at the last update (control.js `heldBy`), or -1
   int dir = 0;                // +1 rising, -1 falling, 0 static
@@ -476,6 +481,7 @@ class BleControlPoint {
     s.progress = js_round(progress * 10) / 10.0;
     s.last_owner = last_owner;
     for (int t = 0; t < 4; t++) s.hold_ms[t] = hold_ms[t];
+    for (int t = 0; t < 4; t++) s.own_ms[t] = own_ms[t];
     s.contested = contested;
     s.dir = dir;
     s.captures = captures;
@@ -491,6 +497,7 @@ class BleControlPoint {
     progress = std::max(0.0, std::min(100.0, s->progress));
     last_owner = s->last_owner >= 0 && hill_claimable(s->last_owner) ? s->last_owner : -1;
     for (int t = 0; t < 4; t++) hold_ms[t] = s->hold_ms[t];
+    for (int t = 0; t < 4; t++) own_ms[t] = s->own_ms[t];
     contested = s->contested;
     dir = (s->dir == 1 || s->dir == -1) ? s->dir : 0;
     captures = s->captures;
@@ -599,6 +606,8 @@ class BleControlPoint {
     const int sole = contested ? -1 : lead;
     if (owner != contract::STATION_TEAM_ANY && owner < 4 && sole == owner && elapsed) hold_ms[owner] += held_by == owner ? elapsed : dt;
     held_by = sole;
+    // The owned clock (control.js `ownMs`): the owner across this interval banks it, contested or empty; the same gap clamp.
+    if (owner != contract::STATION_TEAM_ANY && owner < 4 && elapsed) own_ms[owner] += owned_by == owner ? elapsed : dt;
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").
@@ -654,6 +663,7 @@ class BleControlPoint {
       const int h = owner != contract::STATION_TEAM_ANY ? owner : capturing;
       if (h >= 0) dir = lead == h ? (progress < 100 ? 1 : 0) : (progress > 0 ? -1 : 0);
     }
+    owned_by = owner != contract::STATION_TEAM_ANY ? owner : -1;
     out.changed = !(before == key());
     return out;
   }
@@ -839,17 +849,19 @@ class HillFollower {
 // F658: the follower and its ring in one NVS string ("hill_ring"), so a restarted hill keeps following with every game's
 // tally (the phone saves the same in localStorage "brx.station.hillring"). Times are saved as ms AGO, since millis()
 // restarts at boot. "r1|<station id>|<follows>|<current or -1>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
-// <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>;..." with the current game's state taken from the point.
+// <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>,<own0>,<own1>,<own2>,<own3>;..." with the current game's
+// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0.
 inline std::string encode_hill_ring(int station_id, const HillFollower& f, const BleControlPoint& point, uint32_t now) {
   std::string s = "r1|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
                   (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|";
   for (const HillGame& g : f.games) {
     if (!g.used) continue;
     const HillSnap t = f.tally(g, point);
-    char b[160];
-    std::snprintf(b, sizeof b, "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu;", (unsigned)g.game, (unsigned long)(now - g.heard_at),
+    char b[224];
+    std::snprintf(b, sizeof b, "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu;", (unsigned)g.game, (unsigned long)(now - g.heard_at),
                   (unsigned long)(now - g.since), t.owner, t.capturing, BleControlPoint::js_round(t.progress * 10), t.last_owner,
-                  (unsigned long)t.hold_ms[0], (unsigned long)t.hold_ms[1], (unsigned long)t.hold_ms[2], (unsigned long)t.hold_ms[3]);
+                  (unsigned long)t.hold_ms[0], (unsigned long)t.hold_ms[1], (unsigned long)t.hold_ms[2], (unsigned long)t.hold_ms[3],
+                  (unsigned long)t.own_ms[0], (unsigned long)t.own_ms[1], (unsigned long)t.own_ms[2], (unsigned long)t.own_ms[3]);
     s += b;
   }
   return s;
@@ -876,12 +888,12 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
     const size_t end = s.find(';', pos);
     if (end == std::string::npos) return false;
     unsigned game = 0;
-    unsigned long heard = 0, since = 0, h[4] = {0, 0, 0, 0};
+    unsigned long heard = 0, since = 0, h[4] = {0, 0, 0, 0}, o[4] = {0, 0, 0, 0};
     int owner = 0, capturing = 0, last_owner = 0;
     long p10 = 0;
-    if (std::sscanf(s.substr(pos, end - pos).c_str(), "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu", &game, &heard, &since, &owner,
-                    &capturing, &p10, &last_owner, &h[0], &h[1], &h[2], &h[3]) != 11 || game > 255 || n >= contract::HILL_RING_SIZE)
-      return false;
+    const int got = std::sscanf(s.substr(pos, end - pos).c_str(), "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu", &game, &heard,
+                                &since, &owner, &capturing, &p10, &last_owner, &h[0], &h[1], &h[2], &h[3], &o[0], &o[1], &o[2], &o[3]);
+    if ((got != 11 && got != 15) || game > 255 || n >= contract::HILL_RING_SIZE) return false;
     HillGame& g = out.games[n++];
     g.used = true;
     g.game = (uint8_t)game;
@@ -893,6 +905,7 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
     t.progress = p10 / 10.0;
     t.last_owner = last_owner;
     for (int k = 0; k < 4; k++) t.hold_ms[k] = (uint32_t)h[k];
+    for (int k = 0; k < 4; k++) t.own_ms[k] = (uint32_t)o[k];
     if ((int)game == current) { have_current = true; current_snap = t; }
     else { g.snap = t; g.has_snap = true; }
     pos = end + 1;
