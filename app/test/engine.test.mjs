@@ -13,7 +13,7 @@ import * as W from '../src/transport/envelope.js';
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 import { mkStorage } from './_helpers.mjs';
 import * as E from '../src/engine.js';
-import { ADVERT_CONTROL_STATE } from '../src/transport/contract.gen.js';
+import { ADVERT_CONTROL_STATE, CONTROL_STALE_MS } from '../src/transport/contract.gen.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -549,20 +549,26 @@ test('control point: the FIRST advert adopts the owner silently, and a real hand
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
 });
 
-test('control point: remembered owner expires 30 s after the last advert', () => {
-  assert.equal(CONTROL_RECONNECT_MS, 30000);
-  const inside = koth();
-  control(inside, { team: 1, state: HELD, value: 100 });
-  inside.adv(12000); inside.eng.setStations([]); inside.eng.tick();
-  control(inside, { team: 0, state: HELD, value: 100 });
-  assert.equal(nWrites(inside, HILL_LOST_F), 1, 'a different owner inside the reconnect window announces');
+test('control point: the HUD never claims a change it did not hear: a point back from out of earshot is adopted silently', () => {
+  // The uncertainty rule (brx1 2026-11-02, from brx2's Domination storyboard; the same rule as pickups). The remembered owner
+  // used to bridge CONTROL_RECONNECT_MS (30 s), so walking back to a hill the enemy took while we were away said HILL LOST.
+  for (const mk of [koth, dom]) {
+    const away = mk();
+    control(away, { team: 1, state: HELD, value: 100 });
+    away.adv(12000); away.eng.setStations([]); away.eng.tick();          // out of earshot: the point expired
+    const before = away.writes.length;
+    control(away, { team: 0, state: HELD, value: 100 });                // back, and red owns it now
+    assert.deepEqual(away.writes.slice(before), [], `${mk.name}: nobody here heard it change hands, so nothing is said`);
+    assert.equal(away.eng.state().hill.owner, 0, `${mk.name}: the new owner is shown, silently`);
+    assert.equal(((away.eng._lanes && away.eng._lanes.obj) || {}).hill, undefined, `${mk.name}: and no OBJECTIVE card claims a loss`);
 
-  const outside = koth();
-  control(outside, { team: 1, state: HELD, value: 100 });
-  outside.adv(31000); outside.eng.setStations([]);
-  const before = outside.writes.length;
-  control(outside, { team: 0, state: HELD, value: 100 });
-  assert.deepEqual(outside.writes.slice(before), [], 'a different owner after the reconnect window is adopted silently');
+    const blip = mk();
+    control(blip, { team: 1, state: HELD, value: 100 });
+    blip.adv(CONTROL_STALE_MS - 1000); blip.eng.setStations([]);          // a gap inside the stale window: still heard
+    control(blip, { team: 0, state: HELD, value: 100 });
+    assert.equal(nWrites(blip, HILL_LOST_F), 1, `${mk.name}: CONTROL: a change across a gap we never lost the point in is heard`);
+  }
+  assert.equal(CONTROL_RECONNECT_MS, 30000, 'the 30 s window still scopes the capture-started episode (`begins`)');
 });
 
 test('control point: an unchanged owner first seen while armed is not announced at go-live', () => {
@@ -1002,12 +1008,12 @@ test('control point: a transition inside the floor waits, and a newer owner repl
   assert.equal(nWrites(replaced, HILL_LOST_F), 1, 'an enemy taking over from the last spoken neutral state adds no loss line');
 });
 
-test('control point: after expiry, a different owner is an edge but the same owner is not', () => {
+test('control point: after expiry, neither a different owner nor the same owner is announced', () => {
   const changed = koth();
   control(changed, { team: 1, state: HELD, value: 100 });
   changed.adv(5000); changed.eng.tick();
   control(changed, { team: 0, state: HELD, value: 100 });
-  assert.equal(nWrites(changed, HILL_LOST_F), 1, 'the returning different owner announces the loss');
+  assert.equal(nWrites(changed, HILL_LOST_F), 0, 'the change happened out of earshot: adopted silently (the uncertainty rule)');
 
   const same = koth();
   control(same, { team: 1, state: HELD, value: 100 });
@@ -8876,3 +8882,4 @@ test('F665: a melee swing never moves the trigger, never takes the ammo block an
   assert.equal(h.eng.shots, shots + 1, 'and it is one shot');
   assert.deepEqual(gunWas, [], 'the F650 desync line (gun was on slot) never fires: the HUD and the gun agree throughout');
 });
+
