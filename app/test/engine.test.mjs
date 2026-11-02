@@ -8783,3 +8783,26 @@ test('BOLT review: a bolt pull that the gun lands on a non-bolt slot shows that 
   assert.equal(s.activeSlot, 1); assert.equal(s.bolt, false, 'no BOLT under the SMG');
   assert.equal(s.presented.takeover && s.presented.takeover.kind, 'reload', 'the SMG reload shows RELOADING');
 });
+
+// F665 (game 2026-11-01 logs): a real melee swing is the gyro press `$BUT,8,1`, then `$ALCD,1,100,4,0,0,*` 3 to 18 ms later.
+// It used to move the trigger to slot 4: the HUD named the rifle PICKUP, showed the melee row (01) and booked shots.
+test('F665: a melee swing never moves the trigger, never takes the ammo block and is never a shot', () => {
+  const h = goLive(harness());
+  h.frame('$ALCD,36,100,0,216,0,*'); h.frame('$ALCD,35,100,0,216,0,*');
+  const shots = h.eng.shots;
+  const gunWas = [];
+  const log0 = h.eng.log.bind(h.eng);
+  h.eng.log = (line, cls) => { if (/gun was on slot/.test(line)) gunWas.push(line); return log0(line, cls); };
+  for (let i = 0; i < 3; i++) {
+    h.frame('$BUT,8,1,*'); h.adv(10); h.frame('$ALCD,1,100,4,0,0,*'); h.frame('$ALCD,0,100,4,0,0,*'); h.frame('$BUT,8,0,*');
+    const st = h.eng.state();
+    assert.equal(st.activeSlot, 0, `swing ${i + 1}: the trigger stays on the rifle`);
+    assert.equal(st.ammo, 35, `swing ${i + 1}: the ammo block keeps the rifle magazine, never the melee row`);
+    assert.equal(h.eng.shots, shots, `swing ${i + 1}: a swing, and the melee count dropping, are not shots`);
+    h.adv(1500);
+  }
+  h.frame('$BUT,0,1,*'); h.frame('$ALCD,34,100,0,216,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.state().activeSlot, 0, 'the next rifle round is on the rifle');
+  assert.equal(h.eng.shots, shots + 1, 'and it is one shot');
+  assert.deepEqual(gunWas, [], 'the F650 desync line (gun was on slot) never fires: the HUD and the gun agree throughout');
+});
