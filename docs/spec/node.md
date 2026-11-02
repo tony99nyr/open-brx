@@ -649,6 +649,15 @@ split into the join and never dialled. The stored address is the normalised one.
 `STATION_POLICY` remembers a trusted address at dial, and a discovered one only once it binds. A transport that binds
 after a redial replaced it is stale: it is never remembered and it resets no auto-join state.
 
+- **Two MCs on one LAN (F659).** The phone prefers the last-good MC (the address it last bound to, matched on host:port),
+  else the newest `started_at` from the mDNS TXT record (`pickMc`, `app/test/fixtures/mc-pick-cases.json`). The sweep cannot
+  read TXT: it takes the first hit and counts it as unknown (0), so a dated advert outranks it, and the welcome's `started_at`
+  and `server_name` fill the HUD line `JOINED <server_name> (2 FOUND)` (shown only when more than one MC was in view).
+  With a trust key the proof dial goes to the pick; without one the SEVERAL row offers the pick. The last-good MC is never
+  pulled off by another one.
+- **A new phone is shown to the host (F659).** LAN trust is unchanged (a LAN hello is never refused for lacking the join
+  secret). The first LAN hello of a player node id this MC home never heard from sets `State.notices.new_phone`, `NEW PHONE
+  JOINED: <device>` (the node id when the hello names no device), for 10 minutes. The ids persist in `mc-seen-nodes.txt`.
 - **No tap.** The remembered address (a QR, a typed address, a tapped JOIN, or an address that bound us)
   is redialled with the normal backoff for as long as the app runs. A missed first welcome clears
   nothing (F203 revised); a sweep starts beside the redial.

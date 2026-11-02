@@ -209,6 +209,9 @@ class NetServer:
         self.session_id = session_id or uuid.uuid4().hex[:8]
         # A60: MC's install identity. In memory unless the caller hands in a persisted one (`__main__`).
         self.trust = trust if trust is not None else TrustRegistry(None)
+        # F659: two MCs on one LAN. Phones prefer the one they last joined, else the newer `started_at`.
+        self.started_at = E.now_ms()
+        self.server_name = (socket.gethostname() or "MC")[:32]
         self.seen = SeenNodes(None)         # F659: swapped for the persistent list by __main__
         self.stale_after_ms = stale_after_ms
         self.hello_timeout_s = hello_timeout_s
@@ -453,7 +456,8 @@ class NetServer:
         info = ServiceInfo(
             "_openbrx._tcp.local.", f"mc-{self.session_id}._openbrx._tcp.local.",
             addresses=[socket.inet_aton(host)], port=self._port,
-            properties={"ver": str(PROTOCOL_V), "session_id": self.session_id, "ws_path": self._ws_path},
+            properties={"ver": str(PROTOCOL_V), "session_id": self.session_id, "ws_path": self._ws_path,
+                        "started_at": str(self.started_at), "server_name": self.server_name},
             server=f"openbrx-{self.session_id}.local.",
         )
         if self._mdns_abort.is_set():
@@ -856,6 +860,7 @@ class NetServer:
             if pid:
                 self._set_player(rec, pid)
         welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi,
+                   "started_at": self.started_at, "server_name": self.server_name,   # F659
                    "node_key": rec.node_key,
                    # A28.2: every welcome hands over both, so a phone that joined over the LAN before the
                    # tunnel existed — or typed the address — learns them without rescanning the QR.

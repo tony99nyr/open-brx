@@ -393,6 +393,7 @@ function connectMc(rawUrl, remember = true, join = {}) {
       // `settings.mcUrl` was either named by the user or proved itself, and the boot dial can present the
       // key and the join secret without having to ask which.
       mcLink.bound(candidate, candidate.url, {});
+      hud.mcFound = { n: autoJoin.lastFound, name: candidate.serverName || null };   // F659: "JOINED <name> (2 FOUND)"
       hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
     // ...and sweep again if we stay unbound: the boot sweep used to be a one-shot, so after the first
     // successful bind nothing could rescue us again — exactly the case where MC restarts on a new IP
@@ -869,7 +870,7 @@ window.addEventListener('pageshow', () => engine.resume());
 // ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
 function startDiscovery() {
   if (!plugins.zeroconf || !isNative()) return;
-  mcLink.watch(plugins.zeroconf, url => { noteJoinUrl(url); suggestMc(url, 'mdns'); },
+  mcLink.watch(plugins.zeroconf, (url, startedAt) => { noteJoinUrl(url); suggestMc(url, 'mdns', startedAt); },
     (e, phase) => log(`discovery${phase === 'discovery' ? '' : ' ' + phase}: ` + (e && e.message || e), 'li'));
 }
 
@@ -880,15 +881,17 @@ function startDiscovery() {
  *  brings the no-tap join back ONLY as a verify dial: no node_key, no secret, no utility proof, and
  *  nothing processed until the host proves it is the MC install this phone trusted. Everything else is
  *  the one-tap JOIN row, with a line that says why (`offerMc`). The policy is autojoin.js. */
-function suggestMc(url, source) {
-  if (!url) return;
+function suggestMc(foundUrl, source, startedAt) {
+  if (!foundUrl) return;
+  let url = foundUrl;
   const live = transport && !transport.closed ? transport : null;
-  const d = mcLink.found(url, source, { hasTrustKey: holdsTrustKey(), remembered: settings.mcUrl || null });
+  const d = mcLink.found(url, source, { hasTrustKey: holdsTrustKey(), remembered: settings.mcUrl || null }, startedAt);
   if (d.do === 'ignore') return;
+  if (d.url) url = d.url;   // F659: with several MCs in view, the pick (last-good, else newest) is the one to dial or offer
   // F346 (d): the discovery window is still open. Ask again when it closes; a second MC seen by then
   // turns this into the "several" row instead of a join.
   if (d.do === 'wait') {
-    if (!firstContactTimer) firstContactTimer = setTimeout(() => { firstContactTimer = null; suggestMc(url, source); }, d.ms || 0);
+    if (!firstContactTimer) firstContactTimer = setTimeout(() => { firstContactTimer = null; suggestMc(foundUrl, source, startedAt); }, d.ms || 0);
     return;
   }
   // F346 (d), Tony 2026-09-25: a never-joined phone (no trust key, no remembered address) that sees ONE MC
@@ -923,7 +926,6 @@ function offerMc(url, source, reason) {
   const cur = hud.discovered;
   // mDNS re-resolves constantly: an unchanged row stays, and "several" keeps the address it shows
   if (cur && cur.url === url && (cur.reason || null) === reason) return;
-  if (cur && reason === 'several' && cur.reason === 'several' && autoJoin.live().some(c => c.url === cur.url)) return;
   const text = offerText(reason, url);
   hud.discovered = { url, at: Date.now(), source, reason, text };
   log(text || `MISSION CONTROL FOUND AT ${hostOf(url)} — tap JOIN`, 'lk');

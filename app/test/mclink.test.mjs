@@ -111,3 +111,14 @@ test('the remember predicates keep the old truthiness for odd values', () => {
   assert.equal(HUD_POLICY.rememberAtDial({ remember: 1, user: true }), true);
   assert.equal(HUD_POLICY.rememberAtDial({ remember: 1 }), false, 'F659: only a user-named address is stored at dial');
 });
+
+test('F659: watch passes the TXT started_at along with the url', () => {
+  const link = rig(HUD_POLICY).link;
+  const got = [];
+  link.watch({ watch(options, callback) {
+    callback({ action: 'resolved', service: { ipv4Addresses: ['10.0.0.5'], port: 8766, txtRecord: { started_at: '1700000000123' } } });
+    callback({ action: 'resolved', service: { ipv4Addresses: ['10.0.0.6'], port: 8766, txtRecord: {} } });
+    return Promise.resolve(); } },
+  (url, startedAt) => got.push([url, startedAt]), () => assert.fail('watch error'));
+  assert.deepEqual(got, [['ws://10.0.0.5:8766/ws', 1700000000123], ['ws://10.0.0.6:8766/ws', undefined]]);
+});

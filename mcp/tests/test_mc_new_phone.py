@@ -73,3 +73,39 @@ def test_the_session_line_names_the_device_or_the_node_id_and_expires():
     assert "new_phone" not in s.snapshot()["notices"]
     s._hydrate({"node_id": "st1", "node_type": "utility", "new_phone": True})
     assert "new_phone" not in s.snapshot()["notices"]
+
+
+# ---- F659 part 2: two MCs on one LAN. Each says when it started, so a phone can pick the newer one.
+def test_the_welcome_and_the_mdns_record_say_when_this_mc_started():
+    if not HAVE_WS:
+        raise Skipped("websockets")
+    import sys
+    import types
+    from brx_mcp.mc.net import NetServer
+    seen = {}
+    fake = types.ModuleType("zeroconf")
+    fake.Zeroconf = type("Z", (), {"register_service": lambda self, info: None, "close": lambda self: None})
+    fake.ServiceInfo = lambda *a, **k: seen.update(k) or {"info": True}
+    saved = sys.modules.get("zeroconf")
+    sys.modules["zeroconf"] = fake
+    try:
+        net = NetServer()
+        net._host, net._port, net._advertised_host = "127.0.0.1", 8765, "127.0.0.1"
+        net.advertise_mdns()
+    finally:
+        if saved is None:
+            sys.modules.pop("zeroconf", None)
+        else:
+            sys.modules["zeroconf"] = saved
+    txt = seen["properties"]
+    assert txt["started_at"] == str(net.started_at) and net.started_at > 1_700_000_000_000, txt
+    assert txt["server_name"] == net.server_name and net.server_name
+
+    async def go():
+        async with _Harness() as h:
+            node = MockNode(h.url, node_id="phone-b", heartbeat_ms=100)
+            await node.start(); await node.wait_connected()
+            w = node.welcome_body
+            assert w["started_at"] == h.net.started_at and w["server_name"] == h.net.server_name, w
+            await node.close()
+    _run(go())

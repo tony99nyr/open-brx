@@ -28,8 +28,8 @@ export const VERIFY_COOLDOWN_MS = 10 * 60000;
 export const FIRST_CONTACT_SETTLE_MS = 3000;
 
 /** @typedef {'new'|'several'|'unproven'} OfferReason */
-/** @typedef {{url:string, source:string, at:number}} Candidate */
-/** @typedef {{do:'ignore'|'kick'|'verify'|'join'|'wait'|'offer', reason?:OfferReason|null, ms?:number}} Decision
+/** @typedef {{url:string, source:string, at:number, startedAt?:number}} Candidate */
+/** @typedef {{do:'ignore'|'kick'|'verify'|'join'|'wait'|'offer', reason?:OfferReason|null, ms?:number, url?:string}} Decision
  *  `join` = a first-contact dial (F346 d), `wait` = ask again in `ms` (the discovery window is still open). */
 
 /** @param {unknown} url @returns {string} */
@@ -67,6 +67,24 @@ export function namedDialPending(dial, current) {
     && typeof current.welcomeWindowOpen === 'function' && current.welcomeWindowOpen());
 }
 
+/**
+ * F659: two MCs on one LAN. Which one the phone prefers: first the last-good MC (the address it last bound to,
+ * matched on host:port), else the newest `startedAt` (mDNS TXT; a sweep hit cannot read TXT and counts as 0, so the
+ * first sweep hit never outranks a dated advert), else the first found. Shared cases: fixtures/mc-pick-cases.json.
+ * @param {{url:string, startedAt?:number}[]} found @param {string|null|undefined} lastGood
+ * @returns {{url:string, startedAt?:number}|null}
+ */
+export function pickMc(found, lastGood) {
+  if (!found.length) return null;
+  if (lastGood) {
+    const good = found.find(c => mcKey(c.url) === mcKey(lastGood));
+    if (good) return good;
+  }
+  let best = found[0];
+  for (const c of found) if ((c.startedAt || 0) > (best.startedAt || 0)) best = c;
+  return best;
+}
+
 export class McAutoJoin {
   /** @param {{now?: () => number}} [o] */
   constructor({ now = () => Date.now() } = {}) {
@@ -75,6 +93,8 @@ export class McAutoJoin {
     /** @type {Map<string, {until:number, why:'unproven'|'silent'}>} */ this.cooldown = new Map();
     /** F346 (d): when the first host of this discovery window was seen (null: no live candidate). */
     /** @type {number|null} */ this.firstSeenAt = null;
+    /** F659: how many MCs were in view when the last join landed (the HUD's "(2 FOUND)"). */
+    this.lastFound = 0;
   }
   /** @returns {Candidate[]} */
   live() {
@@ -89,25 +109,35 @@ export class McAutoJoin {
    *   `dialling` = the url of the live (not closed) transport, `verifying` = that transport is an automatic
    *   dial (a proof dial or a first-contact dial) still waiting for its welcome,
    *   `remembered` = settings.mcUrl, `userDialPending` = a dial the player named is inside its welcome window
+   * @param {number} [startedAt] the MC's own start time (mDNS TXT `started_at`), when the source could read it
+   *   With more than one MC in view, `url` on the decision is the pick (pickMc): the one to dial or offer.
    * @returns {Decision}
    */
-  onFound(url, source, { bound, dialling, verifying, hasTrustKey, remembered = null, userDialPending = false }) {
+  onFound(url, source, { bound, dialling, verifying, hasTrustKey, remembered = null, userDialPending = false }, startedAt) {
     const t = this.now();
     for (const [k, c] of this.cooldown) if (c.until <= t) this.cooldown.delete(k);   // expired entries never pile up
     if (!url || bound) return { do: 'ignore' };
     const key = urlKey(url);
     if (!this.live().length) this.firstSeenAt = t;              // the first sighting opens the discovery window
-    this.candidates.set(key, { url, source, at: t });
+    const prior = this.candidates.get(key);
+    this.candidates.set(key, { url, source, at: t, startedAt: startedAt ?? (prior && prior.startedAt) });
     if (userDialPending) return { do: 'ignore' };               // the player's own choice is never overridden
     const mine = [dialling, remembered].filter(Boolean).map(urlKey);
     if (mine.includes(key)) return { do: verifying && urlKey(dialling) === key ? 'ignore' : 'kick' };
     if (verifying) return { do: 'ignore' };                    // one automatic dial at a time
     const others = this.live().filter(c => !mine.includes(urlKey(c.url)));
     const distinct = new Set(others.map(c => mcKey(c.url))).size;
-    const cd = this.cooldown.get(key);
+    // F659: with several MCs in view the phone has ONE preferred: the last-good, else the newest.
+    const pick = this.foundCount() > 1 ? pickMc(this.live(), remembered) : null;
+    const pickIsMine = !!pick && mine.includes(urlKey(pick.url));
+    if (pickIsMine && hasTrustKey) return { do: 'ignore' };   // the last-good MC is the dial already running
+    const target = pick && !pickIsMine ? pick.url : url;
+    const tkey = urlKey(target);
+    const cd = this.cooldown.get(tkey);
     const cooling = !!cd && cd.until > t;
-    if (hasTrustKey && !cooling) return { do: 'verify' };      // the proof breaks ties between several hosts
-    if (distinct > 1) return { do: 'offer', reason: 'several' };
+    const at = pick && !pickIsMine ? { url: target } : {};
+    if (hasTrustKey && !cooling) return { do: 'verify', ...at };      // the proof breaks ties between several hosts
+    if (distinct > 1) return { do: 'offer', reason: 'several', ...at };
     if (!hasTrustKey && !remembered && !cooling) {             // F346 (d): first contact, one MC in view
       const wait = (this.firstSeenAt ?? t) + FIRST_CONTACT_SETTLE_MS - t;
       return wait > 0 ? { do: 'wait', ms: wait } : { do: 'join' };
@@ -115,6 +145,8 @@ export class McAutoJoin {
     if (!hasTrustKey) return { do: 'offer', reason: 'new' };
     return { do: 'offer', reason: cd && cd.why === 'unproven' ? 'unproven' : null };
   }
+  /** How many distinct MCs (host:port) discovery has in view now. @returns {number} */
+  foundCount() { return new Set(this.live().map(c => mcKey(c.url))).size; }
   /** A verify dial ended without a join. @param {string} url @param {boolean} unproven the host answered but did not prove itself
    *  @returns {OfferReason|null} the row to show now (null: it never answered, so show nothing yet) */
   onVerifyFailed(url, unproven) {
@@ -129,5 +161,5 @@ export class McAutoJoin {
     return new Set(this.live().map(c => mcKey(c.url))).size > 1 ? 'several' : 'new';
   }
   /** A join landed: forget the discovery state of this run. */
-  onBound() { this.candidates.clear(); this.cooldown.clear(); this.firstSeenAt = null; }
+  onBound() { this.lastFound = this.foundCount(); this.candidates.clear(); this.cooldown.clear(); this.firstSeenAt = null; }
 }

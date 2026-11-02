@@ -291,8 +291,8 @@ test('A60 autojoin: a key proof-dials (the proof breaks ties); no key asks; a fa
   assert.deepEqual(aj.onFound('ws://10.0.0.5:8766/ws', 'mdns', ctxOf()), { do: 'verify' });
   assert.deepEqual(aj.onFound('ws://10.0.0.5:8766/ws', 'mdns', ctxOf({ dialling: 'ws://10.0.0.5:8766/ws', verifying: true })), { do: 'ignore' }, 'the proof dial in flight is left alone');
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf({ dialling: 'ws://10.0.0.5:8766/ws', verifying: true })), { do: 'ignore' }, 'one proof dial at a time');
-  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf()), { do: 'verify' }, 'two hosts and a key: the proof decides');
-  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf({ hasTrustKey: false })), { do: 'offer', reason: 'several' }, 'two hosts, no key: ask');
+  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf()), { do: 'verify', url: 'ws://10.0.0.5:8766/ws' }, 'two hosts and a key: the proof decides, on the pick (the first seen when neither says when it started, F659)');
+  assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'mdns', ctxOf({ hasTrustKey: false })), { do: 'offer', reason: 'several', url: 'ws://10.0.0.5:8766/ws' }, 'two hosts, no key: ask, on the pick (F659)');
   now += 3 * 60000;   // both forgotten
   assert.deepEqual(aj.onFound('ws://10.0.0.6:8766/ws', 'sweep', ctxOf({ hasTrustKey: false, remembered: 'ws://10.0.0.1:8766/ws' })), { do: 'offer', reason: 'new' },
     'no key but a remembered address: not a first contact, so ask (F346 d)');
@@ -328,7 +328,7 @@ test('A60 polish #5: the remembered and the dialling url are not candidates; onl
   assert.deepEqual(aj.onFound(R, 'mdns', base), { do: 'kick' });
   assert.deepEqual(aj.onFound(X, 'mdns', base), { do: 'offer', reason: 'new' }, 'the remembered MC does not make it "several"');
   assert.deepEqual(aj.onFound(R, 'mdns', { ...base, dialling: null }), { do: 'kick' }, 'the remembered url with nothing dialling is redialled, not proof-dialled');
-  assert.deepEqual(aj.onFound(X, 'mdns', { ...base, hasTrustKey: true }), { do: 'verify' });
+  assert.deepEqual(aj.onFound(X, 'mdns', { ...base, hasTrustKey: true }), { do: 'ignore' }, 'F659: the last-good MC is in view, so another MC does not pull the phone off it');
 });
 
 test('A60 polish #3: a dial the player named is never overridden inside its welcome window', () => {
@@ -525,9 +525,9 @@ test('F346 (d): two MCs in the discovery window give the several row, never a jo
   const aj = new McAutoJoin({ now: () => now });
   assert.equal(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH).do, 'wait');
   now += 500;
-  assert.deepEqual(aj.onFound('ws://192.168.1.30:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several' });
+  assert.deepEqual(aj.onFound('ws://192.168.1.30:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several', url: 'ws://192.168.1.20:8766/ws' });
   now += FIRST_CONTACT_SETTLE_MS;
-  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several' }, 'the settle re-check sees both');
+  assert.deepEqual(aj.onFound('ws://192.168.1.20:8766/ws', 'mdns', FRESH), { do: 'offer', reason: 'several', url: 'ws://192.168.1.20:8766/ws' }, 'the settle re-check sees both');
   assert.equal(offerText('several', 'ws://192.168.1.20:8766/ws'), 'SEVERAL MISSION CONTROLS · TAP YOURS');
 });
 

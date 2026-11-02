@@ -303,7 +303,7 @@ test('security guard: an mDNS advert is offered, never dialled — same one-tap 
   assert.ok(i > 0, 'startDiscovery is gone — FIX this guard, do not delete it');
   const body = src.slice(i, src.indexOf('\n}\n', i));
   assert.doesNotMatch(body, /connectMc\(/, 'anything on the field Wi-Fi can advertise _openbrx._tcp');
-  assert.match(body, /suggestMc\(url, 'mdns'\)/);
+  assert.match(body, /suggestMc\(url, 'mdns', startedAt\)/);
   // A60: the only dial suggestMc makes is a VERIFY dial (keyless, nothing processed before the proof)
   const j = src.indexOf('function suggestMc(');
   const suggest = src.slice(j, src.indexOf('\n}\n', j));
