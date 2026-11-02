@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 116.** Desk 14 · bench 93 · decision 9.
+**MVP open: 117.** Desk 15 · bench 93 · decision 9.
 
-**MVP DESK (14),** a keyboard is enough:
+**MVP DESK (15),** a keyboard is enough:
 - 🔴 **F638** · **F644** · **F643** · **F648** · **F653** · **F657** · **F660**
-- 🟠 **F639** · **F642** · **F658** · **F659** · **F663**
+- 🟠 **F639** · **F642** · **F658** · **F659** · **F663** · **F665**
 - 🟡 **F640** · **F652**
 
 **MVP BENCH (93),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F665 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F666 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -63,6 +63,7 @@ A keyboard is enough. Highest value first.
 - **F659 🟠 THE PHONE FINDS MC BY ITSELF.** Game 2026-11-01, the phone half of F642. Last good MC, then NSD, then a /24 scan with a hello check; trust by admitting the phone on the console; one source of truth for the MC URL, which stops a :8765 console URL overwriting a fresh connect. Owner brx5. `desk`. **→ 2026-11-01 (brx5):** Tony chose LAN trust as it is (MC never refuses a LAN hello for lacking the join secret) plus a console line "NEW PHONE JOINED: <device>". Built: one `normaliseMcUrl` for every MC URL writer (8765 maps to 8766, `?s=` goes to the join, any LAN path to `/ws`); the sweep never probes 8765; a probe needs the socket to stay open; the console port refuses the WebSocket upgrade; MC refuses `--ws-port` 8765 or equal to `--port`; a two-MC pick (last good, then newest `started_at`) with "JOINED <name> (2 FOUND)". Case files `mc-url-cases.json`, `mc-pick-cases.json`. Bench (needs an APK): a phone with a stale `:8765` address joins by itself; a new phone shows NEW PHONE JOINED on the console. `bench`.
 - **F660 🔴 KEEP-AWAKE ON EVERY LAPTOP, NOT ONLY THE MAC.** Tony 2026-11-02: any laptop that clones the repo and runs `./start.sh` or `start.cmd` must get the stay-awake hold, with no step to remember. F595 held only a Mac (`caffeinate`). Owner brx2. `desk`. **→ 2026-11-02 desk fix:** `keepawake.py` now holds every platform. macOS keeps `caffeinate -dimsu -w <pid>` and warns on battery. Windows-native MC calls `SetThreadExecutionState` (system, display, and away mode when Windows accepts it) through ctypes, and clears it on exit. Under WSL, MC starts a `powershell.exe` holder with the script in `-EncodedCommand` and the holder waits on MC's stdin pipe, so it exits when MC exits or dies. Linux uses `systemd-inhibit --what=sleep:idle` on the same kind of pipe, or prints a skip line. Every branch prints one `keep-awake:` line and is never fatal. The display hold keeps Windows out of Modern Standby, which can turn the Wi-Fi off; the two Wi-Fi power settings MC does not change are in `docs/wsl-dev-runbook.md`. Gate `mcp/tests/test_mc_keepawake.py` (each branch with its OS calls mocked; red when the release path does not close the pipe). Desk check on the WSL PC: the holder reported `held+away`, and a SIGKILL of its parent ended `powershell.exe` within 3 s. Left: see the line on the MacBook and on a Windows-native start, and confirm on battery that the Mac warning shows.
 - **F663 🟠 RECOIL RESETS THE MOMENT THE TRIGGER COMES UP (A PER-WEAPON `reset_on_release` FLAG).** Tony 2026-11-02: "simply letting go of trigger immediately resets it", the Assault Rifle first. The numbers are F662 (brx3). The mechanism is ready on a branch, off by default: a weapon whose `recoil` block sets `reset_on_release` goes back to crisp on the trigger's `$BUT,0,0`, in one t4 write. A lost release edge falls back to a round gap of twice the fire interval plus `RECOIL_RELEASE_MARGIN_MS` (100). Evidence, the 2026-11-01 frame tails: 7 of 1068 presses lost their release; one round report in 408 was lost, which doubles a gap; the largest gap within a hold was 70 ms over its median. Smoke, a stun, a reload, a swap and a spawn hold still delay the write. Lands with F662's numbers after Tony picks. Bench: `bench-plan.md` SR13 (predicted about 160 ms from the last round to the gun at 100, against about 900 ms today). Owner brx4. `desk` `bench`.
+- **F665 🟠 A MELEE-READY ICON ON THE PHONE HUD.** Tony via brx1, 2026-11-02. Melee becomes one swing per 3 s (brx3 sets the melee `$WEAP` t14). The HUD shows a melee icon: dimmed for the cooldown after a swing, one shimmer when it is ready again. It never shows ready while the gun would block a swing, it takes the cooldown from the compiled melee line (never a literal), and it does not change while DOWN. No numbers and no text timer. A storyboard gallery goes to Tony before the land. Owner brx2. `desk`.
 
 
 ## MVP BENCH
