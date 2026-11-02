@@ -89,7 +89,7 @@ def test_the_derived_profile_is_the_engines_arithmetic():
 
     def want(crisp, degraded, heavy, after_shots, heavy_after):
         return {"crisp": crisp, "degraded": degraded, "heavy": heavy, "after_shots": after_shots,
-                "heavy_after": heavy_after, "settle_ms": 600}
+                "heavy_after": heavy_after, "settle_ms": 600, "reset_on_release": False}
 
     cases = [
         (row(8, ceiling=100, floor=70, per_shot=10, recover_ms=150), want(100, 85, 70, 6, 9)),
@@ -279,3 +279,36 @@ def test_no_accuracy_write_lands_while_the_end_or_panic_frames_go_out_mid_swap()
         await (st.end() if kind == "end" else st.panic()); await settle(st)
         assert _tmp(mgr, n) == [], f"{kind}: {_tmp(mgr, n)}"
     asyncio.run(go("end")); asyncio.run(go("panic"))
+
+
+def test_a_reset_on_release_weapon_goes_crisp_on_the_trigger_release_and_on_the_lost_release_fallback():
+    """F663 (engine.js `_recoilRelease`, `_recoilQuietMs`): with `reset_on_release` the trigger's `$BUT,0,0` restores a
+    degraded weapon at once, in one write. A lost release edge falls back to a round gap of twice the fire interval
+    plus RECOIL_RELEASE_MARGIN_MS. CONTROL: without the flag the same release writes nothing."""
+    from brx_mcp.stage.stage import RECOIL_RELEASE_MARGIN_MS
+
+    async def go(flag, release):
+        ar = copy.deepcopy(AR); ar["recoil"]["settle_ms"] = 999999
+        if flag:
+            ar["recoil"]["reset_on_release"] = True
+        st, mgr, clock = _mk(rows=(ar, FLAT_SHOTGUN))
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        await _tick(st, mgr, clock, 0.1)
+        assert st._recoil["state"] == "degraded"
+        n = mark(mgr)
+        if release:
+            st._inject_rx("$BUT,0,0,*"); await settle(st)
+            return _tmp(mgr, n), st._recoil["state"]
+        quiet = 2 * round(st._fire_interval_s(0) * 1000) + RECOIL_RELEASE_MARGIN_MS
+        await _tick(st, mgr, clock, (quiet - 150) / 1000)   # 100 ms passed above, so 50 ms short of the fallback
+        short = (_tmp(mgr, n), st._recoil["state"])
+        await _tick(st, mgr, clock, 0.06)
+        return short, (_tmp(mgr, n), st._recoil["state"])
+
+    assert asyncio.run(go(True, True)) == (["$TMP,,,,0,,,,,,,,*"], "crisp")
+    assert asyncio.run(go(False, True)) == ([], "degraded")
+    short, after = asyncio.run(go(True, False))
+    assert short == ([], "degraded"), short
+    assert after == (["$TMP,,,,0,,,,,,,,*"], "crisp"), after

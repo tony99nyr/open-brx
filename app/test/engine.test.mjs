@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
+import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
@@ -3962,6 +3962,90 @@ test('S54: full auto with no release edge still degrades exactly on the threshol
   assert.equal(weaps(h).length, 1);
 });
 
+// ---------- F663: a `reset_on_release` weapon goes back to crisp the moment the trigger comes up ----------
+// Tony 2026-11-02: "simply letting go of trigger immediately resets it". The flag is per weapon in the catalogue
+// `recoil` block. The release edge is the signal; a round gap of twice the fire interval plus
+// RECOIL_RELEASE_MARGIN_MS is the fallback for a lost edge (7 of 1068 presses in the 2026-11-01 frame tails).
+const RELEASE = { ...TWO_STEP, settle_ms: 999999, reset_on_release: true };   // a huge settle: only F663 may recover it
+const releaseQuiet = h => 2 * h.eng._fireIntervalMs(0) + RECOIL_RELEASE_MARGIN_MS;
+
+test('F663: the flag reads only an explicit true, and the arm carries it', () => {
+  const h = armRecoil(RELEASE);
+  assert.equal(h.eng._recoil.resetOnRelease, true);
+  assert.equal(h.eng._recoilProfile({ dmg: 8, recoil: { ...TWO_STEP, reset_on_release: 'yes' } }).resetOnRelease, false,
+    'a truthy string is not the flag');
+  assert.equal(h.eng._recoilProfile({ dmg: 8, recoil: TWO_STEP }).resetOnRelease, false, 'absent means off');
+});
+
+test('F663: a held trigger still walks down to heavy, two writes, with no release', () => {
+  const h = armRecoil(RELEASE);
+  h.writes.length = 0;
+  fire(h, TWO_STEP_HEAVY_AFTER);
+  assert.equal(h.eng._recoil.state, 'heavy');
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,-15,,,,,,,,*', '$TMP,,,,-30,,,,,,,,*']);
+});
+
+test('F663: a release restores crisp at once in one write, and the next pull starts at the ceiling', () => {
+  const h = armRecoil(RELEASE);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h);
+  h.writes.length = 0;
+  h.frame('$BUT,0,0,*');
+  assert.equal(h.eng._recoil.state, 'crisp', 'the release itself restores the weapon');
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*'], 'one write, sent in the same frame, not on a later tick');
+  ack(h); h.writes.length = 0;
+  h.adv(150); h.frame('$BUT,0,1,*');
+  fire(h, TWO_STEP_AFTER - 1);
+  assert.equal(h.eng._recoil.state, 'crisp', 'the new pull counts from round one');
+  assert.equal(accuracyTmps(h).length, 0, 'and costs nothing until it earns a rung');
+  fire(h, 1);
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,-15,,,,,,,,*'], 'it degrades on its own threshold round, not before');
+});
+
+test('F663: a round gap shorter than the lost-release fallback keeps the walk; a longer one restores crisp', () => {
+  const h = armRecoil(RELEASE);
+  const quiet = releaseQuiet(h);
+  assert.ok(quiet < 999999, `setup: the fallback must beat the settle clock (got ${quiet})`);
+  fire(h, TWO_STEP_AFTER - 1);
+  fire(h, 1, { gap: quiet - 1 }); h.eng.tick();   // one late round report, no release edge
+  assert.equal(h.eng._recoil.state, 'degraded', 'a gap under the fallback is still the same hold');
+  ack(h); h.writes.length = 0;
+  h.adv(quiet - 1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'degraded', 'one ms short of the fallback is still the same hold');
+  h.adv(1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'crisp', 'the release edge was lost: the round gap restores crisp');
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*']);
+});
+
+test('F663: a weapon without the flag keeps the settle clock, and a release while degraded writes nothing', () => {
+  const h = armRecoil({ ...TWO_STEP, settle_ms: 999999 });
+  fire(h, TWO_STEP_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$BUT,0,0,*');
+  h.adv(releaseQuiet(h) + 10); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'degraded');
+  assert.equal(accuracyTmps(h).length, 0);
+});
+
+test('F663 x S55: a release under smoke writes nothing; crisp returns once when the smoke ends', () => {
+  const h = armRecoil(RELEASE);
+  fire(h, TWO_STEP_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$HIR,0,7,19,2,6,0,0,*'); h.frame(`$ALCD,${h.mag},0,0,215,0,*`);
+  h.frame('$BUT,0,0,*');
+  assert.equal(accuracyTmps(h).length, 0, 'native fn-23 smoke keeps t4');
+  h.adv(SMOKE_MS + 10); h.eng.tick();
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*'], 'the crisp target returns exactly once after the smoke');
+});
+
+test('F663 x F15: a release during a stun writes nothing until the stun ends', () => {
+  const h = armRecoil(RELEASE);
+  h.eng.config.stun = { duration_s: 2 };
+  fire(h, TWO_STEP_AFTER); ack(h);
+  h.eng._stun(); h.writes.length = 0;
+  h.frame('$BUT,0,0,*');
+  h.adv(500); h.eng.tick();
+  assert.equal(accuracyTmps(h).length, 0, 'no accuracy write may land during a stun');
+  assert.equal(h.eng._recoil.state, 'crisp', 'the model still recorded the release');
+});
+
 // ---------- F259 step 2: crisp, degraded, heavily degraded, and still ONE recovery ----------
 // Tony, at the bench 2026-09-18, after the one-step writer ran on hardware: "maybe we can update it to do
 // 2 steps instead of 1? normal degraded and very degraded."
@@ -4149,7 +4233,7 @@ test('S54: the round counts are derived from the row\'s dmg -- rounds per trigge
   const h = armRecoil(RECOIL_PROFILE);
   const from = (dmg, recoil) => h.eng._recoilProfile({ dmg, recoil });
   const row = (crisp, degraded, heavy, afterShots, heavyAfter) =>
-    ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS });
+    ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
   assert.deepEqual(from(8, { ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }), row(100, 85, 70, 6, 9),
     'energy_rifle: reference calibre, its own (derived) depths');
   assert.deepEqual(from(8, { ceiling: 100, floor: 60, per_shot: 15, recover_ms: 150 }), row(100, 80, 60, 6, 9),
@@ -4196,20 +4280,20 @@ test('F259 step 2: the DECLARED fields win outright, because the catalogue owner
   // the declared numbers must reach the model untouched.
   const h = armRecoil(RECOIL_PROFILE);
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 78, heavy: 60, after_shots: 3, after_heavy: 6, settle_ms: 600 } }),
-    { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600 }, 'the SMG as the catalogue declares it');
+    { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600, resetOnRelease: false }, 'the SMG as the catalogue declares it');
   // A half-adopted row works too: a declared `heavy` IS the ladder's floor, and everything absent derives
   // from it (including the round counts, off `dmg`) rather than from the old one.
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 45, per_shot: 8, recover_ms: 120, heavy: 60 } }),
-    { crisp: 100, degraded: 80, heavy: 60, afterShots: 6, heavyAfter: 9, settleMs: RECOIL_SETTLE_MIN_MS });
+    { crisp: 100, degraded: 80, heavy: 60, afterShots: 6, heavyAfter: 9, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
 });
 
 test('F259: a ladder too short to split in two collapses back to ONE step, rather than writing the same number twice', () => {
   // A second write that sends the gun the value it is already holding spends a magazine reset for nothing.
   const h = armRecoil(RECOIL_PROFILE);
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 99, per_shot: 1, recover_ms: 150 } }),
-    { crisp: 100, degraded: 99, heavy: null, afterShots: 6, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS });
+    { crisp: 100, degraded: 99, heavy: null, afterShots: 6, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 70, heavy: 70, after_shots: 3 } }),
-    { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS },
+    { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false },
     'two rungs declared at the same accuracy are one rung');
   assert.equal(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null, 'and a flat weapon has no profile at all');
 });

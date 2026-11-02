@@ -546,6 +546,12 @@ export const RECOIL_HEAVY_EXTRA_ROUNDS = 3;
 /** The reference weapon the two counts above are tuned against (the Assault Rifle/SMG/Energy Rifle's 8).
  *  A weapon with double the damage kicks in after half the rounds; half the damage, twice as many. */
 export const RECOIL_REF_DMG = 8;
+/** F663 (Tony 2026-11-02, "simply letting go of trigger immediately resets it"): a weapon whose `recoil` block sets
+ *  `reset_on_release` goes back to crisp on the trigger's `$BUT,0,0`. The fallback for a LOST release edge (7 of
+ *  1068 presses in the 2026-11-01 frame tails) is a round gap of twice the weapon's fire interval plus this margin.
+ *  Twice, because a lost `$ALCD` doubles one gap (1 of 408 round steps that evening, 225 ms on a 100 ms weapon).
+ *  The margin covers the jitter: the largest gap that evening was 70 ms over its hold's median (n = 309). */
+export const RECOIL_RELEASE_MARGIN_MS = 100;
 /** S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
  *  then the gun restores it in one step (the V4_31 6000 ms timer). */
 export const SMOKE_MS = 6000;

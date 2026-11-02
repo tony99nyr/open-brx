@@ -933,8 +933,8 @@ export interface DotSpec {
  *  accepted as derivation inputs for `crisp`/`heavy`/`settle_ms`; `per_shot` no longer sizes anything.
  *  The six explicit fields are optional per-weapon overrides that win outright over the derivation
  *  (S54). `app/src/engine.js` also resets a still-CRISP burst on the gun's own trigger-release edge
- *  (`$BUT,0,0`), at no cost in writes; a DEGRADED or HEAVY weapon still recovers only on `settle_ms`
- *  quiet, in one write (bench-provisional). */
+ *  (`$BUT,0,0`), at no cost in writes. A DEGRADED or HEAVY weapon recovers on `settle_ms` quiet, in one
+ *  write, unless `reset_on_release` is true (F663): then the release edge itself restores CRISP. */
 export interface Recoil {
   ceiling: number;
   floor: number;
@@ -946,6 +946,8 @@ export interface Recoil {
   after_shots?: number;
   after_heavy?: number;
   settle_ms?: number;
+  /** F663: back to crisp the moment the trigger comes up (default off) */
+  reset_on_release?: boolean;
 }
 
 /** F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
