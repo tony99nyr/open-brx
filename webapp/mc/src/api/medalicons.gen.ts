@@ -28,6 +28,13 @@ const r2 = n => Math.round(n * 100) / 100;
 // `gap` the plate colour (for a cut line that must separate two shapes).
 const HEART = 'M16 25.4C9.4 20.7 7 17.2 7 13.4a4.5 4.5 0 0 1 9-1.8 4.5 4.5 0 0 1 9 1.8c0 3.8-2.4 7.3-9 12z';
 const BOLT = 'M18.2 6.5 10.8 17.4h4.9l-2.1 8.1 7.6-11.2h-4.9z';
+// The BEAT DOWN fist alone, in the 32-unit box: four knuckles, the thumb folded across, the wrist. F665: the live HUD's
+// melee-ready icon draws the same fist, without the ring and the impact burst.
+export function fistGlyph(c, gap) {
+  return `<rect x="8.6" y="12" width="14.8" height="9.4" rx="2.4" fill="${c}"/>`
+    + [8.4, 12.2, 16, 19.8].map(x => `<rect x="${x}" y="7" width="3.8" height="8.6" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.1" paint-order="stroke"/>`).join('')
+    + `<rect x="8" y="15.4" width="11.4" height="3.8" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/><path d="M11 21.4h10v4.2H11z" fill="${c}"/>`;
+}
 const G = {
   multi: (c, a, gap, n) => {
     let s = '';
@@ -49,9 +56,7 @@ const G = {
   // Tony's pick 2026-09-25 (gallery B6): a clenched fist from the front (four knuckles, the thumb folded across, the
   // wrist below), drawn smaller, with an amber impact burst at its knuckles
   melee_kill: (c, a, gap) => `<g data-glyph="fist-impact"><g transform="translate(-2.2 2.4) scale(.84) translate(3 3)">`
-    + `<rect x="8.6" y="12" width="14.8" height="9.4" rx="2.4" fill="${c}"/>`
-    + [8.4, 12.2, 16, 19.8].map(x => `<rect x="${x}" y="7" width="3.8" height="8.6" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.1" paint-order="stroke"/>`).join('')
-    + `<rect x="8" y="15.4" width="11.4" height="3.8" rx="1.9" fill="${c}" stroke="${gap}" stroke-width="1.5" paint-order="stroke"/><path d="M11 21.4h10v4.2H11z" fill="${c}"/></g>`
+    + fistGlyph(c, gap) + `</g>`
     + `<path d="M21.6 8.6l2.4-2.6M23.2 11.4l3.2-.8M19.6 7.2l.4-3.2" stroke="${a}" stroke-width="1.8" stroke-linecap="round"/></g>`,
   killjoy: (c, a, gap) => `<path d="${BOLT}" fill="${c}"/><line x1="8.4" y1="23.8" x2="23.6" y2="8.2" stroke="${gap}" stroke-width="4.4"/>`
     + `<line x1="8.4" y1="23.8" x2="23.6" y2="8.2" stroke="${a}" stroke-width="2.2" stroke-linecap="round"/>`,

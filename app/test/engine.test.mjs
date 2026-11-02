@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
+import { MELEE_PRESS_MS } from '../src/ammo.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
@@ -8782,4 +8783,68 @@ test('BOLT review: a bolt pull that the gun lands on a non-bolt slot shows that 
   const s = h.eng.state();
   assert.equal(s.activeSlot, 1); assert.equal(s.bolt, false, 'no BOLT under the SMG');
   assert.equal(s.presented.takeover && s.presented.takeover.kind, 'reload', 'the SMG reload shows RELOADING');
+});
+
+// ---------- F665: the melee-ready icon ----------
+// Game 2026-11-01 logs: every melee press is `$BUT,8,1` (the gyro, which the head binds to melee: `$BMAP,8,4`) and then,
+// 3 to 18 ms later, `$ALCD,1,100,4,0,0,*`. The magazine reads 1 before and after.
+const ROW4 = '$ALCD,1,100,4,0,0,*';
+const meleeMs = h => h.eng._fireIntervalMs(4);
+const swing = h => { h.frame('$BUT,8,1,*'); h.adv(10); h.frame(ROW4); h.frame('$BUT,8,0,*'); };
+
+test('F665: a swing starts the melee cooldown from the head t14, and moves neither the trigger nor the ammo block', () => {
+  const h = goLive(harness());
+  h.frame('$ALCD,36,100,0,216,0,*'); h.frame('$ALCD,35,100,0,216,0,*');
+  assert.ok(meleeMs(h) > 0, 'setup: the golden head carries a melee line with a time between swings');
+  assert.deepEqual(h.eng.state().melee, { at: null, ms: meleeMs(h), leftMs: 0 }, 'before any swing: the icon is drawn, ready');
+  const shots = h.eng.shots;
+  swing(h);
+  let st = h.eng.state();
+  assert.equal(st.melee.at, h.eng.now(), 'the swing is timed from its own frame');
+  assert.equal(st.melee.leftMs, meleeMs(h), 'the whole cooldown is still to run');
+  assert.equal(st.activeSlot, 0, 'melee is its own button: the trigger stays on the rifle');
+  assert.equal(st.ammo, 35, 'the ammo block keeps the rifle magazine, never the melee row (01)');
+  assert.equal(h.eng.shots, shots, 'a swing is not a shot');
+  h.adv(meleeMs(h) - 1);
+  assert.equal(h.eng.state().melee.leftMs, 1, 'one millisecond short of ready is still cooling');
+  h.adv(1);
+  assert.equal(h.eng.state().melee.leftMs, 0, 'ready exactly when the gun takes the next swing');
+});
+
+test('F665: a slot-4 row with no melee press, a press with no row, an $LCD and a swing while DOWN never start it', () => {
+  const h = goLive(harness());
+  h.frame(ROW4);
+  assert.equal(h.eng.am.lastSwing, null, 'a slot-4 row with no press is our own write read back (a spawn row, a late echo)');
+  h.frame('$BUT,8,1,*'); h.adv(400); h.frame(ROW4); h.frame('$BUT,8,0,*');
+  assert.equal(h.eng.am.lastSwing, null, `a row more than ${MELEE_PRESS_MS} ms after the press is not that press's swing`);
+  h.frame('$BUT,8,1,*'); h.adv(10); h.frame('$BUT,8,0,*');
+  assert.equal(h.eng.am.lastSwing, null, 'a press the gun refused (no row) is not a swing');
+  h.adv(1000);
+  h.frame('$BUT,1,1,*'); h.adv(10); h.frame(ROW4); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.lastSwing, null, 'ALT is not bound to melee');
+  h.adv(1000);
+  h.frame('$BUT,8,1,*'); h.adv(10); h.frame('$LCD,45,70,0,4,1,0,*');
+  assert.equal(h.eng.am.lastSwing, null, 'an $LCD is a report, not a swing');
+  h.adv(2000);
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'setup: down');
+  swing(h);
+  assert.equal(h.eng.am.lastSwing, null, 'a down player does not swing');
+});
+
+test('F665: the cooldown runs on through DOWN, and there is no icon without a known cooldown and a melee button', () => {
+  const h = goLive(harness());
+  swing(h);
+  const at = h.eng.state().melee.at;
+  h.adv(100);
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().melee.at, at, 'death keeps the swing: the gun timer does not stop');
+  h.adv(meleeMs(h));
+  assert.equal(h.eng.state().melee.leftMs, 0, 'and the cooldown ends on the wall clock, down or not');
+  const g = goLive(harness());
+  g.eng.frames.head = g.eng.frames.head.filter(f => !f.startsWith('$WEAP,4,'));
+  assert.equal(g.eng.state().melee, null, 'no melee line: no icon, so it can never claim ready on a guess');
+  const k = goLive(harness());
+  k.eng.frames.head = k.eng.frames.head.filter(f => !f.startsWith('$BMAP,8,'));
+  assert.equal(k.eng.state().melee, null, 'no button bound to melee: no icon');
 });

@@ -118,7 +118,7 @@
     },
     {
       "at": "melee_is_not_the_swap",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":4,"ammo":1,"reserve":0,"deaths":0,"switching":true,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":192,"deaths":0,"switching":true,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": []

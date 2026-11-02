@@ -1,6 +1,9 @@
 // Ammo rendering for the phone HUD.
 import { AMMO_PIP_MAX, usesCellGauge, pct, clipOf, heatPct } from './shared.js';
 
+/** F665: the melee icon's one shimmer, ms. Matches `meleeshine` in www/index.html. */
+export const MELEE_SHIMMER_MS = 450;
+
   /** Bench 2026-09-17: the ammo gauge's shot-ready cue. After a shot from a weapon with at least 400 ms between
    *  rounds the engine reports {at, ms, leftMs}; the gauge dims (`data-cool="on"` on the frame, which survives a
    *  structural rebuild) until `leftMs` has passed, then shines once (`ready`, 250 ms). The timer starts at this
@@ -18,6 +21,27 @@ export function _shotCue(st) {
       this._cueT = setTimeout(() => { this._cueT = null; delete this.frame.dataset.cool; }, 250);
     }, c.leftMs);
   }
+  /** F665: the melee-ready icon. After a swing the engine reports {at, ms, leftMs}; the fist dims (`data-melee="cool"` on
+   *  the frame) until `leftMs` has passed, then shimmers once (`ready`, MELEE_SHIMMER_MS). The timer starts at this
+   *  render, after the engine read `leftMs`, so ready can only be late, never early. DOWN freezes the icon (Tony
+   *  2026-10-02: a down player gets no HUD changes): the timer stops, and the first render after the respawn shows the
+   *  truth with no shimmer (still cooling: dim again; cooled while down: plain ready). */
+export function _meleeCue(st) {
+    const m = st.phase === 'live' ? st.melee : null;
+    if (!m) { this._meleeStop(); delete this.frame.dataset.melee; this._meleeAt = undefined; this._meleeDown = false; return; }
+    if (!st.alive) { this._meleeStop(); this._meleeDown = true; return; }
+    const back = this._meleeDown; this._meleeDown = false;
+    if (m.at === this._meleeAt && !back) return;
+    this._meleeAt = m.at;
+    this._meleeStop();
+    if (!(m.leftMs > 0)) { delete this.frame.dataset.melee; return; }   // ready: no swing yet, or it cooled before this render
+    this.frame.dataset.melee = 'cool';
+    this._meleeT = setTimeout(() => {
+      this.frame.dataset.melee = 'ready';
+      this._meleeT = setTimeout(() => { this._meleeT = null; delete this.frame.dataset.melee; }, MELEE_SHIMMER_MS);
+    }, m.leftMs);
+  }
+export function _meleeStop() { if (this._meleeT) { clearTimeout(this._meleeT); this._meleeT = null; } }
   /** Bench 2026-09-17 (Tony): "25% /80" made no sense -- a percentage beside a reserve in ROUNDS, on a
    *  weapon with no rounds. A bullet weapon (and, per F248, a low-cost energy weapon like the Rail Gun)
    *  keeps `/reserve`; a cell-gauge weapon gets one pill per FULL spare cell (floor(reserve / clip)) plus a
@@ -75,4 +99,4 @@ export function _pips(st) {
     return s;
   }
 
-export const methods = { _shotCue, _resText, _heatBar, _pips };
+export const methods = { _shotCue, _meleeCue, _meleeStop, _resText, _heatBar, _pips };

@@ -607,7 +607,7 @@ function ammoHost(e) {
   return {
     now: () => e.now(), fireIntervalMs: slot => e._fireIntervalMs(slot), recoilStep: n => e._recoilStep(n),
     get activeSlot() { return e.activeSlot; }, get frames() { return e.frames; }, get phase() { return e.phase; },
-    get alive() { return e.alive; }, get recoil() { return e._recoil; },
+    get alive() { return e.alive; }, get recoil() { return e._recoil; }, get meleePressAt() { return e._meleePressAt; },
     log: (line, cls) => e.log(line, cls), changed: () => e._changed(), reloadGlance: () => e._gunReadoutReloadGlance(),
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id), perkEffects: id => e.perkEffects(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
@@ -723,7 +723,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   _spawnAt: 'B5 settle window', _armPending: 'F209 arm in flight', _triggerPending: 'trigger hold in flight', _lifeBurst: 'F493 burst in flight',
   _heldZeroLife: 'F493 per life', _armedThisLife: 'B5 settle gate', _burstReached: 'F493 per life', _actSeq: 'pl4 activity counter',
   _lifeSeq: 'life counter; every reader keyed on it restarts with it',
-  _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight',
+  _pull: 'trigger press in flight', _pulledLife: 'trigger press in flight', _meleePressAt: 'a melee press in flight (F665): its swing row follows within MELEE_PRESS_MS',
   _downWarn: 'SUSPECT: the spawn-kill warning level; a restart drops it back to 1',
   _timedLifeAt: 'SUSPECT: the spawn-kill window; a death soon after a restart is not counted as a spawn kill',
   // the shield recharge (S29)
@@ -4665,6 +4665,25 @@ export class Engine {
     return { at: s.at, ms: s.ms, leftMs: Math.max(0, s.at + s.ms - now) };
   }
 
+  /** F665: the buttons the head binds to the melee slot (`$BMAP,<button>,4,…`; MC binds the gyro, button 8). PURE. */
+  _meleeButtons() {
+    return ((this.frames && this.frames.head) || []).filter(f => typeof f === 'string' && /^\$BMAP,\d+,4,/.test(f)).map(f => +f.split(',')[1]);
+  }
+  /** F665: the HUD's melee-ready icon. Null when the head has no melee line with a time between swings, or no button bound
+   *  to melee, so the icon is
+   *  never drawn without a known cooldown. Otherwise {at, ms, leftMs}: `at` is the last swing (null before one), and
+   *  `leftMs` is how long the gun still refuses the next one. The cooldown runs on through DOWN and a respawn: the gun's
+   *  own timer does not stop for either. PURE. */
+  meleeCooldown(now = this.now()) {
+    if (this.phase !== 'live') return null;
+    const ms = this._fireIntervalMs(4);
+    if (ms == null || !this._meleeButtons().length) return null;
+    const s = this.am.lastSwing;
+    if (!s) return { at: null, ms, leftMs: 0 };
+    const sms = s.ms != null ? s.ms : ms;
+    return { at: s.at, ms: sms, leftMs: Math.max(0, s.at + sms - now) };
+  }
+
   // ---------- S42/F259: node-driven recoil -- the accuracy ceiling/floor is OURS, not the gun's ----------
   // F230 (bench 2026-09-17): only one of three guns decayed live accuracy under sustained fire, so the
   // native t21->t22 walk is not a lever a game can be balanced on. Every weapon ships t21==t22==100
@@ -6528,6 +6547,7 @@ export class Engine {
     if (state === 1) {
       if (this.held[id] == null) this.held[id] = now;
       this.lastButton = { id, state: 1, at: now, heldMs: null };
+      if (this._meleeButtons().includes(id)) this._meleePressAt = now;   // F665: a swing's `$ALCD` must follow a melee press
       // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
       // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
@@ -7743,7 +7763,8 @@ export class Engine {
       // `{until, why}` while a spawn, revive, operator resync or stun write owns `$AMMO`; null once it lifts.
       // Nothing acts on it -- it exists so a bench or a log reader can see the writer standing down AND the cause.
       accHold: now < this._accHoldUntil ? { until: this._accHoldUntil, why: this._accHoldWhy } : null,
-      shotCooldown: this.shotCooldown(now),   // bench 2026-09-17: the ammo gauge's dim + ready shine
+      shotCooldown: this.shotCooldown(now),
+      melee: this.meleeCooldown(now),   // F665: the melee-ready icon (dim for the cooldown, one shimmer when ready)   // bench 2026-09-17: the ammo gauge's dim + ready shine
       scoreRows: this.score && Array.isArray(this.score.rows) ? this.score.rows : null,   // MC's mid-match leaderboard, for the HUD's results overlay
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
