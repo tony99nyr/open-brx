@@ -335,8 +335,8 @@ export class Ammo {
     }
     // F665 (game 2026-11-01 logs: every melee press is `$BUT,8,1` then `$ALCD,1,100,4,0,0`): melee is its own button, never
     // the trigger. A swing used to fall through to `setActiveSlot(4)` and `publish`, so after every swing the HUD named the
-    // rifle PICKUP and showed the melee row's magazine (01). It books its count and moves nothing; `_meleeSwing` above
-    // has already timed it for the melee-ready icon.
+    // rifle PICKUP and showed the melee row's magazine (01), and a melee count drop was booked as a shot. It books its
+    // count and moves nothing; `_meleeSwing` above has already timed it for the melee-ready icon.
     if (slot === 4) { this.prevAmmo[4] = mag; if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[4] = reserve; return; }
     if (this.host.pu.repairUnpulled(slot, mag, prev)) return;   // a stale pickup count is not a round
     this.host.tryoutAmmo(slot, mag);   // F147: a try-out weapon write's confirming report (engine.js `_tryoutAmmo`)

@@ -195,7 +195,7 @@ step('fresh', async ({ browser, base }) => {
       const b = box.getBoundingClientRect(), m = mark.getBoundingClientRect();
       return { fits: m.left >= b.left - 1 && m.right <= b.right + 1 && m.top >= b.top - 1 && m.bottom <= b.bottom + 1 };
     }));
-    expect(marks.length === 3 && marks.every(x => x?.fits), `${w}px: every mode option has a mark, fully inside its box (saw ${JSON.stringify(marks)})`);
+    expect(marks.length === 4 && marks.every(x => x?.fits), `${w}px: every mode option has a mark, fully inside its box (saw ${JSON.stringify(marks)})`);
     ok(`${w}px fresh install   ${await shot(pg, `fresh-${w}`)}`);
     await pg.context().close();
   }

@@ -3411,6 +3411,12 @@ class Compiler:
                 # sim, a hand-written fixture. Do not "fix" it by wiring the key: multi-point domination
                 # is not buildable on grenades at all, and the key would be a control for a mode we
                 # cannot ship (operator review 2026-09-10).
+                if ctx.mode == "domination" and src != "phone":
+                    # Domination (2026-11-02) is three named points, and only a Bluetooth control point names itself
+                    # (advert bytes 6-7). A grenade carries no point id (F88) and an IR station is unbenched.
+                    ctx.errors.append(
+                        f"F88: DOMINATION NEEDS BLUETOOTH HILLS (station_source \"phone\"), NOT {src!r}: a hill "
+                        "beacon carries no point id, so three grenade hills would read as one point")
                 points = ctx.config.get("control_points")
                 if src == "grenade" and isinstance(points, int) and not isinstance(points, bool) and points > 1:
                     ctx.errors.append(

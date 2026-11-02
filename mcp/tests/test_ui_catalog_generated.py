@@ -172,7 +172,7 @@ def _paren_span(text: str, open_idx: int) -> int:
 
 
 _RESPAWN_RE = re.compile(r"respawn:\s*\{\s*type:\s*'(\w+)',\s*delay_s:\s*([\d.]+)\s*\}")
-_SCORING_RE = re.compile(r"scoring:\s*\{\s*frag_limit:\s*(null|\d+),\s*win_by:\s*'(\w+)'\s*\}")
+_SCORING_RE = re.compile(r"scoring:\s*\{\s*frag_limit:\s*(null|\d+),\s*win_by:\s*'(\w+)'(?:,\s*hold_target_s:\s*(\d+))?\s*\}")
 
 
 def _mock_mode_defaults() -> dict[str, dict]:
@@ -206,6 +206,7 @@ def _mock_mode_defaults() -> dict[str, dict]:
             "frag_limit": ((None if scoring.group(1) == "null" else int(scoring.group(1)))
                            if scoring else base_defaults["frag_limit"]),
             "win_by": scoring.group(2) if scoring else base_defaults["win_by"],
+            "hold_target_s": int(scoring.group(3)) if scoring and scoring.group(3) else None,
         }
     return out
 
@@ -220,7 +221,7 @@ def test_mock_mode_defaults_match_the_server():
     for mode, row in server.items():
         got = mock.get(mode)
         assert got is not None, f"data.ts's MODES has no entry for {mode!r}"
-        want = {"frag_limit": row["frag_limit"], "win_by": row["win_by"],
+        want = {"frag_limit": row["frag_limit"], "win_by": row["win_by"], "hold_target_s": row.get("hold_target_s"),
                 "respawn": {"type": row["respawn"]["type"], "delay_s": float(row["respawn"]["delay_s"])}}
         if got != want:
             mismatches.append(f"{mode}: data.ts has {got}, state.py has {want}")

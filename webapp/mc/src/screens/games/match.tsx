@@ -8,10 +8,11 @@ import { VenueModeManualLink } from '../../ui/VenueModeReminder';
 import { MODE_ART } from '../../modeArt';
 import { ModeEmblem } from '../ModeEmblem';
 import { legalColours } from '../../teamColours';
+import { isHillMode, isOwnershipScored } from '../../rules/scoring';
 import { setRunway } from '../../runway';
 import { type MatchItemKey } from '../matchItems';
 import { TEAM_COUNT_MIN, TEAM_COUNT_MAX } from '../../api/contract.gen';
-import { TimeControl, KillsControl, CountdownControl, HoldControl, HillControl } from './controls';
+import { TimeControl, KillsControl, CountdownControl, HoldControl, PointsTargetControl, HillControl } from './controls';
 
 /** GAME MODE's own mark (Tony, 2026-09-26), beside its name in a FIXED box so the row never jumps.
  *  `object-fit: contain` -- the whole mark shows, never a crop. A mode with no `<mode>.jpg` yet, or
@@ -78,6 +79,15 @@ export function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, c
     case 'hold':
       // Review MEDIUM (brx1, e8811fea): NO TARGET said nothing about what it was NO TARGET *of* --
       // the same leading label TEAMS already carries.
+      if (isOwnershipScored(mode)) {
+        // Domination: the target is hill points, not a time.
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>TARGET</span>
+            {guarded(<PointsTargetControl points={pick.match.hold_target_s ?? null} onChange={p => pickMatch({ hold_target_s: p })} />)}
+          </span>
+        );
+      }
       return (
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>HOLD</span>
@@ -102,11 +112,11 @@ export function MatchItem({ itemKey, pick, locked, runwayVal, pickMatch, mode, c
 
 /** F413 (games-presets.md §7): 2 to 4 unique team colours, one chooser per rostered team, each shown
  *  in its own colour (`tokens.ts`'s TEAM swatch map — the same colours the roster/HUD use elsewhere).
- *  KOTH fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). This
+ *  A hill mode (KOTH, Domination) fixes the count at 2 and never offers yellow (a neutral hill broadcasts tid 2, F82). This
  *  component only ever proposes the next `TeamColour[]`, never sends anything itself. */
 
 function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: string; onChange: (teams: TeamColour[]) => void }) {
-  const isKoth = mode === 'koth';
+  const isHill = isHillMode(mode);
   const offered = legalColours(mode);
   const setCount = (n: number) => {
     if (n === teams.length) return;
@@ -123,8 +133,8 @@ function TeamsControl({ teams, mode, onChange }: { teams: TeamColour[]; mode: st
   return (
     <span data-testid="match-teams-item" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>TEAMS</span>
-      {/* KOTH: exactly 2, no count control (F413 §7) -- nothing to choose. */}
-      {!isKoth && (
+      {/* A hill mode (KOTH, Domination): exactly 2, no count control (F413 §7) -- nothing to choose. */}
+      {!isHill && (
         <Seg size={14} label="team count" value={String(teams.length)} pad={SEG_PAD_44}
           options={Array.from({ length: TEAM_COUNT_MAX - TEAM_COUNT_MIN + 1 }, (_, i) => TEAM_COUNT_MIN + i).map(n => ({ value: String(n), label: String(n) }))}
           onChange={v => setCount(Number(v))} />

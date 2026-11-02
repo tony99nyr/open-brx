@@ -11,7 +11,7 @@ import { OrphanMatch } from '../ui/OrphanMatch';
 import { recapSync } from '../api/recapSync';
 import { waitingLine, waitingNames } from './SyncStrip';
 import { OperatorMenu, operatorMenuId } from './OperatorMenu';
-import { floorSource, heldSeconds, hillOwner, sitesNote, stationSource } from './objective';
+import { fmtObjective, floorSource, heldSeconds, hillOwner, sitesNote, stationSource } from './objective';
 import { objectiveWord } from '../rules/scoring';
 import { PowerupStrip } from '../ui/Powerups';
 import { StationAlerts } from '../ui/StationAlerts';
@@ -154,7 +154,7 @@ export function Live() {
   order.current = rows.map(r => r.player_id);
   // H2: an objective match is won on possession, not kills, so that is the headline number
   const teamScore = (id: string, side: 'left' | 'right') => objective
-    ? <TeamScore key={id} id={id} side={side} value={fmtHeld(heldSeconds(lv, id))} sub={`KILLS ${lv.score[id] ?? 0}`} />
+    ? <TeamScore key={id} id={id} side={side} value={fmtHeld(heldSeconds(lv, id), state.config.mode)} sub={`KILLS ${lv.score[id] ?? 0}`} />
     : <TeamScore key={id} id={id} side={side} value={<Num value={lv.score[id] ?? 0} />} />;
   const offline = !connected;
   // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
@@ -362,7 +362,7 @@ export function Live() {
 
 /** H2: held time as the headline. `null` = no node has reported possession yet: a dash, never a 0:00
  *  that reads as "nobody held it". */
-export const fmtHeld = (secs: number | null): ReactNode => (secs == null ? '—' : <Num value={fmtDuration(secs)} />);
+export const fmtHeld = (secs: number | null, mode = 'koth'): ReactNode => (secs == null ? '—' : <Num value={fmtObjective(mode, secs)} />);
 
 function TeamScore({ id, value, side, sub }: { id: string; value: ReactNode; side: 'left' | 'right'; sub?: string }) {
   const c = teamColor(id);
@@ -411,7 +411,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
               <span style={{ flex: 1, height: 10, background: T.inset, border: `1px solid ${T.line}` }}>
                 <span style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
               </span>
-              <span style={{ font: F.osw(700, 17), minWidth: 64, textAlign: 'right' }}><Num value={fmtDuration(secs)} /></span>
+              <span style={{ font: F.osw(700, 17), minWidth: 64, textAlign: 'right' }}><Num value={fmtObjective(state.config.mode, secs)} /></span>
             </div>
           );
         }) : (
@@ -423,7 +423,7 @@ function HillPanel({ state, lv, teamIds }: { state: State; lv: LiveView; teamIds
           <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5 }}>
             {p.neutral_s > 0 ? `NEUTRAL ${fmtDuration(p.neutral_s)} · ` : ''}BEST COVERAGE {fmtDuration(p.observed_s)}{p.of_s ? ` OF ${fmtDuration(p.of_s)}` : ''} · {p.reports} PHONE{p.reports === 1 ? '' : 'S'} REPORTED. {[stationSource(p, word, name), floorSource(p, word)].filter(Boolean).join(' ')}
             {/* F556: with two hills, held time adds them up (objective.ts `sitesNote`) */}
-            {sitesNote(p, state.config.scoring.hold_target_s) ? ` ${sitesNote(p, state.config.scoring.hold_target_s)}` : ''}
+            {sitesNote(p, state.config.scoring.hold_target_s, state.config.mode) ? ` ${sitesNote(p, state.config.scoring.hold_target_s, state.config.mode)}` : ''}
           </div>
         )}
       </div>
