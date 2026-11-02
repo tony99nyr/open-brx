@@ -488,3 +488,25 @@ Candidate:
 - Approved pending the sim numbers. brx4 builds the chosen shape behind the recoil flag. No catalogue number changes
   until the numbers come back.
 - Command: recorded by hand; no `--record-from` run.
+
+## 2026-11-02: correction: the F661 verdict, re-run on the Energy Shotgun row as it ships
+
+- Verdict: **PASS** (scenario version 27, seed 7, git `7c6972b1b`, fingerprint `07922ca023a7f964`), judged as a
+  visible row. The F661 section above judged the option A2 candidate. The shipped row differs: t38 1 (not 150), a
+  t24 13 override, `captured: false` with `based_on` the Shotgun, and its own desc, rof 17 and ttk 1074. The sim reads
+  the `heat` block, not t38 or t24, so the verdict is the same.
+- The verdict holds only once bench-plan.md ES2 agrees with the heat block (+13 a blast, a lock on the 8th): on the
+  Energy Rifle, t24 6 read about 1.3 to 3 heat a shot, so the real lock may come later.
+- Command: recorded by hand from a `--candidate` run on a clean origin/main (the row minus `hidden`); the shipped
+  tree already holds the row, so `--record-from` cannot match its fingerprint.
+
+| test | result |
+|---|---|
+| value_addition | pass |
+| no_domination | pass |
+| viable | pass |
+| pickup_utility | n/a |
+| balance_kept | pass |
+| op_rule | pass |
+| marksman_rush_counter | n/a |
+| heat_sensitivity | pass |
