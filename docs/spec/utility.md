@@ -149,19 +149,20 @@ body, and is not directional. That is why the respawn gate below requires an act
 area effects (blast, extraction zone) the fuzziness is acceptable. A hard edge needs line of sight, which is
 the QR-on-screen method — a last resort, not built.
 
-**Security posture (be honest):** adverts are **unauthenticated** — any BLE device can broadcast one, and the station *dictates* its own team and "at me" threshold to every player. So the only real gates on a revive are: the gun must be **physically dead**, the player must **pull the trigger**, and the station id must be on the game's `config.stations` **allow-list** (small integers — weak). A determined player can carry a second phone in utility role advertising a team-matched station with `threshold:-100` and revive themselves anywhere. This is an **accepted casual-threat tradeoff** (friends on a LAN), not a proximity *guarantee*. The `game` byte scopes presence to one match (a station on a different non-zero game byte is ignored) but is **best-effort**: manual stations default to game 0 ("any"), so two nearby games with hand-armed stations must use **disjoint station ids**. MC-armed stations and players share MC's byte (§5c, A59). For a hard, un-spoofable edge, the QR-on-screen method is the only option.
+**Security posture (be honest):** adverts are **unauthenticated** — any BLE device can broadcast one, and the station *dictates* its own team and "at me" threshold to every player. So the only real gates on a revive are: the gun must be **physically dead**, the player must **pull the trigger**, and the station id must be on the game's `config.stations` **allow-list** with kind `respawn` (small integers — weak). A determined player can carry a second phone in utility role advertising a team-matched station with `threshold:-100` and revive themselves anywhere. This is an **accepted casual-threat tradeoff** (friends on a LAN), not a proximity *guarantee*. The `game` byte scopes presence to one match (a station on a different non-zero game byte is ignored, except a respawn station, which the allow-list alone enables since F658, §4.4) but is **best-effort**: manual stations default to game 0 ("any"), so two nearby games with hand-armed stations must use **disjoint station ids**. MC-armed stations and players share MC's byte (§5c, A59). For a hard, un-spoofable edge, the QR-on-screen method is the only option.
 
 ## 4. The scanner respawn (v1, built and unit-tested)
 
 `config.respawn = { type: "scanner", delay_s, gate?: "trigger" | "presence" }` · optional
-`config.stations = [ { id, kind }, … ]` = the allow-list of station ids valid in this game (a stray phone from
-another game cannot revive anyone). Team comes from the **advert**, so MC can re-arm a station mid-match when
+`config.stations = [ { id, kind }, … ]` = the stations in play in this game. A respawn station counts only when this
+list names its id with kind `respawn` (F658, §4.4), so a stray station from another game or an old setup cannot revive
+anyone, and a game with no list has no respawn station. Team comes from the **advert**, so MC can re-arm a station mid-match when
 it is in range and a capturable station is just one that rewrites its own advert.
 
 ### 4.1 Rule
 A dead player revives when **all** of: phase LIVE · `now - deadAt ≥ delay_s` · BLE link up · not resyncing ·
 not reconciling (a rejoin's disarmed window, §3.10) · their team's **respawn** station (neutral or same `$TID`
-team, state ≠ 0, on the allow-list) is **present** ·
+team, state ≠ 0, enabled by `config.stations`, whatever its game byte, §4.4) is **present** ·
 and the gate:
 - **`trigger`** (default): the player **pulls the trigger**. A dead gun still reports `$BUT,0,1` over BLE
   (bench 2026-09-04). Presence is the gate, the pull is the act — fifty feet away the gate is closed, and
@@ -193,6 +194,31 @@ STATION · ALMOST THERE (present, the respawn delay still running) → **PULL TH
 gate) or **RESPAWNING…** (presence gate) → REDEPLOY moment on revive. Timer phase shows the delay countdown as today.
 The trigger-vs-presence copy is selected by the engine's `respawnGate` getter, so the HUD never re-derives the
 gate from config (commit 0ac162b).
+
+### 4.4 The static respawn station (F658)
+
+Tony's rule for every utility station: set up once, it plays every later game with no walk-out, no Wi-Fi and no
+re-arm. The respawn station only advertises, and the player's phone does the respawn, so the whole rule lives on the
+phone and **the station needs no change**:
+
+1. **Enablement is the phone's call.** A player phone uses a respawn station only when its own `config.stations`
+   lists that station's id with kind `respawn` (`beacon.js` `stationEnabled`, `respawnStation`). An id listed with
+   another kind does not count, and with no list no respawn station is in play.
+2. **The game byte does not matter.** A player's presence tracker keeps a respawn advert of any game byte
+   (`ANY_GAME_STATION_KINDS`); every other kind is still scoped by it. So a station armed for an earlier game, or
+   one that never heard MC at all, keeps working in every later game.
+3. **Team scoping is unchanged.** A neutral station (255) admits every team; a team station admits only its own
+   `$TID`.
+4. **No respawn station, the timer.** A scanner game with no respawn station assigned would leave every downed
+   player down, so MC names every team in `respawn_auto_teams` (the timed fallback), as it already did for a team no
+   station covers. The setup warning NO RESPAWN STATION IS ASSIGNED stays.
+
+There is no station-side scope check, on purpose: a station that went inert while it heard no in-scope player
+could only add latency to a real respawn. The cost: a station from an old setup that reuses an id the current match
+lists as a respawn station does revive. MC keeps the ids it assigns unique, so stand old stations down. The station's
+own revive count (a phone's `revives`, a Stick's post-MVP feedback) still counts players of its armed game only.
+The rules are pinned by `app/test/fixtures/respawn-station-cases.json` (the phone, and the stage's twin in
+`stage.py`).
 
 ## 5. Other kinds (each kind's build status: §5g)
 
@@ -702,9 +728,10 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    counts a player toward the point, and toward the follower's choice of game, only when the advert has the control
    bit AND the station's own id bit. A zero scope (an APK from before A86) never counts, so **an unassigned station
    stays inert**. MC keeps the ids of the stations on the field apart modulo 16 (at most 16 stations; an explicit
-   clash is refused, the auto id passes it over). This pass enforces the scope on control points only (phone and
-   Stick); respawn and powerup stations still ignore it. An id scope cannot tell a stale hill that keeps a local id
-   from the real station with that id, so the operator stands old hills down.
+   clash is refused, the auto id passes it over). Control points and powerup stations (§5d.9) enforce the scope
+   (phone and Stick). A respawn station does not need it: the player's own `config.stations` enables it (§4.4). An
+   id scope cannot tell a stale hill that keeps a local id from the real station with that id, so the operator
+   stands old hills down.
 9. **The owned clock (`own_ms`, for Domination).** Beside `hold_ms`, a control point banks `own_ms` per team: while
    that team OWNS the point, contested or not, with or without a body on it. It stops when the point drains to
    neutral. It takes the same gap clamp as `hold_ms`: a stalled tick banks at most `HILL_MAX_STEP_MS` when the team
@@ -713,6 +740,46 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
 
 The rules are pinned by the `F658:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
 runners).
+
+### 5d.9 The static powerup: it follows the live game too (F658)
+
+A powerup station set up once plays every later game with no walk-out, no Wi-Fi and no re-arm, the way the hill does
+(§5d.8). The station stays the referee of its item: the spawn clock and the taker are its own (`powerup.js`
+`PowerupFollower`; `station_link.h` `PowerupFollower` on a Stick).
+
+1. **Who counts.** Only a player whose advert scope names this station: the powerup kind bit and its own id bit
+   (A86). A zero scope (an older APK) is inert, MC-armed or not. Following, only players with the live bit count.
+2. **Follow mode.** It starts at the first in-scope live player heard, at any signal strength, and lasts. Its
+   current game is the byte of those players. Another live game takes the station only with more such players
+   heard than the current game; a tie keeps it. A game-0 phone is followed only by a station MC armed for game 0.
+3. **The clock.** A new followed game starts the item's clock at that first sighting: the item is not there, the
+   first spawn is `first_at_s` later, then every `spawn_every_s` as before. The last game's item and taker go. No MC
+   START is needed. A byte heard again after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts its clock
+   again. Only the current game's state is kept (one item, one game at a time): there is no ring.
+4. **Claims.** Following, only a live player of the followed game claims. The re-spawn interval, the award, the
+   lock rules and the `taken` report (`station_action`) are unchanged, so MC still dedupes the station's report
+   against the player's `pickup` fact.
+5. **MC as the fallback.** Before follow mode the station keeps today's rules: MC's `station_update` anchors the
+   schedule and players of MC's game claim. The station remembers MC's last update for the game MC armed, applied
+   or not. Following into that game (the first follow, or a switch from another game) keeps or re-applies MC's
+   schedule instead of starting the clock at the sighting, and MC's later updates for that game still apply. Following another game, MC's update is ignored, and
+   MC's END does not freeze the item: the live bit replaces MC's window. A new game byte in `station_config` leaves a
+   following station's item alone; a new kind or id clears follow mode.
+6. **The advert** carries the followed game's byte, so that game's phones read the item.
+7. **Restart.** The follower and the item persist: `brx.station.pufollow` beside `brx.station.powerup` on a phone,
+   NVS `pu_follow` on a Stick. A Stick restored after a power-on marks the game stale, so its next sighting starts
+   the clock again; a software reset keeps it all.
+8. **Radio.** A Stick powerup now scans and ticks presence all the time, taken or not, so a new game reaches it while
+   its item is taken.
+9. **The heartbeat.** Once following, the status adds `powerup: {follows: true, game, games: {"<byte>": {available,
+   taker, next_ms?, since_ms, last_ms}}}` (one entry, the current game; `types.StationPowerup`). MC shows the
+   `STATION_FOLLOWS` note in place of ARMED FOR AN OLDER GAME and BRING IT BACK, as for a hill; a missed kind, id or
+   team still reads BRING IT BACK. No START gate.
+
+Known limit: the station's clock starts at its first sighting, not at MC's go-live, so with MC out of reach its
+spawns run later than MC's schedule by that delay. A player HUD that reads MC's schedule can say an item is due
+before the station spawns it; a claim waits for the station's advert. The rules are pinned by the `F658:` cases in
+`app/test/fixtures/powerup-station-cases.json` (phone and Stick runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 

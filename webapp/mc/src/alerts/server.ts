@@ -184,7 +184,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'ARMED FOR AN OLDER GAME', id: 'station-attention-armed-older-game' },
   { head: STATION_FOLLOWS, id: 'station-attention-follows' },   // F658
   { head: 'HILL SET FOR ', id: 'station-attention-hill-pace' },
-  { head: '', id: 'station-attention-old-app', re: /^\d+ PHONES? ON AN OLD APP: THIS HILL CANNOT COUNT/ },
+  { head: '', id: 'station-attention-old-app', re: /^\d+ PHONES? ON AN OLD APP: (THIS HILL CANNOT COUNT|(IT|THEY) CANNOT TAKE THIS PICKUP)/ },
   { head: 'NOT ARMED: THIS MODE HAS NO HILL', id: 'station-attention-phone-not-armed' },   // F535: amber, the same family
   { head: 'PHONE SAYS NOT ARMED', id: 'station-attention-phone-not-armed' },
   { head: 'PHONE ADVERTISES ID', id: 'station-attention-id-mismatch' },

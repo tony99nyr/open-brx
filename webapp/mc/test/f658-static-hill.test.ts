@@ -34,6 +34,27 @@ describe('F658 the static hill in the mock station view', () => {
   });
 });
 
+describe('F658 the static powerup in the mock station view, as stations.py', () => {
+  function powerupAt(b: MockBackend, powerup?: Record<string, unknown>, armedId = 4) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const m = b as any;
+    m.stations['util-pu'] = { assigned: { kind: 'powerup', team: 255, id: 4 }, armed: { game: m.gameNo - 1, at: 0, kind: 'powerup', team: 255, id: armedId }, arm_pending: true,
+      report: { kind: 'powerup', station_id: 4, armed: true, ...(powerup ? { powerup } : {}) }, seen: Date.now() };
+    return (m.stationViews() as Views).find(v => v.node_id === 'util-pu')!.attention;
+  }
+  it('a powerup that does not follow still says bring it back and armed for an older game', () => {
+    expect(powerupAt(new MockBackend()).slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
+  });
+  it('a following powerup gets the note once, and one that missed a new id still needs it brought back', () => {
+    const lines = powerupAt(new MockBackend(), { follows: true, game: 9 });
+    expect(lines[0]).toBe(STATION_FOLLOWS);
+    // the demo phones run 0.1.x (no A86 scope): as stations.py, the powerup says they cannot take its pickup
+    expect(lines.length).toBe(2);
+    expect(lines[1]).toMatch(/^\d+ PHONES? ON AN OLD APP: (IT|THEY) CANNOT TAKE THIS PICKUP$/);
+    expect(powerupAt(new MockBackend(), { follows: true, game: 9 }, 5).slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
+  });
+});
+
 describe('A86 station ids in the mock, as stations.py', () => {
   it('refuses an id that shares id % 16, skips one in the auto id, and caps a match at 16 stations', async () => {
     const b = new MockBackend();

@@ -43,9 +43,11 @@ test('CONTROL: without game_byte (an older MC) the phone uses 0 = any game, neve
   assert.equal(player.stations().filter(e => e.present).length, 1);
   const stationSide = new Presence({ game: MC_GAME });
   assert.notEqual(stationSide.observe([encodeUuid({ role: 'player', id: 4, team: 1, game: 0 })], -50, 1000), null);
-  // and the rule still scopes: a DIFFERENT non-zero byte is another match's station
+  // and the rule still scopes: a DIFFERENT non-zero byte is another match's station (F658: every kind but a respawn
+  // station, which the player's own config.stations enables in any game)
   const scoped = new Presence({ game: configGameByte({ game_byte: 2 }) });
-  assert.equal(scoped.observe([encodeUuid({ role: 'station', id: 7, kind: 'respawn', game: MC_GAME })], -50, 1000), null);
+  assert.equal(scoped.observe([encodeUuid({ role: 'station', id: 7, kind: 'powerup', game: MC_GAME })], -50, 1000), null);
+  assert.notEqual(scoped.observe([encodeUuid({ role: 'station', id: 8, kind: 'respawn', game: MC_GAME })], -50, 1000), null);
 });
 
 test('app.js takes presence.game and its own advert from the one helper', () => {
