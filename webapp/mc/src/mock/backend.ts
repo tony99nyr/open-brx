@@ -1852,10 +1852,10 @@ export class MockBackend implements Api {
         if (!['player', 'host', 'fixed', 'off'].includes(choice as string)) throw new Error('choice must be one of player, host, fixed, off');
         if (kind === 'primary' && choice === 'off') throw new Error('primary cannot be off — a player needs something to carry');
         const kinds = kind === 'perks' ? ['perk'] : (Array.isArray(v.kinds) && v.kinds.length ? v.kinds : ['weapon']);
-        const only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
-        const fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
-        // Review MEDIUM 4 / round 3 HIGH 1: a hidden/pickup-only/unknown id used to sail straight
-        // through -- refused with the SAME words `check_value`/`_check_slot` uses, which is also the
+        let only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
+        let fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
+        // Review MEDIUM 4 / round 3 HIGH 1: an id that is still not pickable after the F653 drop below (an
+        // unknown id, or a retired one with nothing to remap to) is refused with the SAME words `_check_slot` uses, which is also the
         // exact reason text a stored piece's own `invalid` field carries (games-presets.md's "invalid"
         // shape) when a rule tightens under it later. The mock's own catalogue carries no hidden ROW
         // today (only perks.hidden and weapons.pickup_only), so "pickable" here is exactly "not
@@ -1868,6 +1868,30 @@ export class MockBackend implements Api {
           const row = kind === 'perks' ? PERKS.find(k => k.perk_id === id) : WEAPONS.find(w => w.weapon_id === id);
           return (row?.name ?? id.replace(/_/g, ' ')).toUpperCase();
         };
+        // Issue 12 (game 2026-11-01), mirroring `pieces._drop_retired`: a catalogue id that is no longer pickable
+        // (here only the pickup-only heavies: the mock catalogue holds no hidden row) drops out silently. A list or
+        // a fixed pick it would empty remaps to the pickable weapons of the same type; with none, it is refused below.
+        const known = (id: string) => kind === 'perks' ? PERKS.some(k => k.perk_id === id) : WEAPONS.some(w => w.weapon_id === id);
+        const retired = (id: string) => known(id) && !pickable(id);
+        const siblings = (ids: string[]): string[] => {
+          if (kind === 'perks') return [];
+          // each id's FIRST type, in type order then catalogue order, as `pieces._siblings` does; a primary never gains a support weapon
+          const types = [...new Set(ids.map(id => (WEAPONS.find(w => w.weapon_id === id)?.types ?? [])[0]).filter((t): t is string => !!t))];
+          return [...new Set(types.flatMap(t => WEAPONS.filter(w => pickable(w.weapon_id) && (w.types ?? []).includes(t)
+            && !(kind === 'primary' && (w.types ?? []).includes('sidearm') && t !== 'sidearm')
+            && !(kind === 'primary' && (w.types ?? []).includes('support'))).map(w => w.weapon_id)))];
+        };
+        if (only_ids.some(retired)) {
+          const kept = only_ids.filter(id => !retired(id));
+          const remap = kept.length || kind === 'perks' ? kept : siblings(only_ids);
+          if (remap.length || kind === 'perks') only_ids = remap;
+        }
+        let pickChoice = choice;
+        if (fixed_id != null && retired(fixed_id)) {
+          const sib = siblings([fixed_id]);
+          if (sib.length) fixed_id = sib[0];
+          else if (kind === 'perks') { pickChoice = 'player'; fixed_id = null; }   // a hidden fixed perk: the player picks
+        }
         const named = [...(fixed_id != null ? [fixed_id] : []), ...only_ids];
         const bad = named.filter(id => !pickable(id));
         if (bad.length) {
@@ -1875,7 +1899,7 @@ export class MockBackend implements Api {
           const verb = bad.length === 1 ? 'IS' : 'ARE';
           throw Object.assign(new Error(`NAMES ${names}, WHICH ${verb} NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK`), { status: 400 });
         }
-        return { choice, kinds,
+        return { choice: pickChoice, kinds,
           exclude_tags: Array.isArray(v.exclude_tags) ? v.exclude_tags : [],
           exclude_ids: Array.isArray(v.exclude_ids) ? v.exclude_ids : [],
           only_ids, fixed_id };

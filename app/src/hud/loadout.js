@@ -1,6 +1,6 @@
 // Loadout rendering for the phone HUD.
 import { esc, roleName, INFO_SVG, perkGlyph, weaponArt, statBlock } from './shared.js';
-import { gameHealth, perkForHealth } from '../health.js';
+import { gameHealth, perkForHealth, isShieldsHealth } from '../health.js';
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
 const sidearmOnly = rule => !!(rule && rule.kinds && rule.kinds.includes('sidearm') && !rule.kinds.includes('weapon'));
 // S50 (2026-09-19): every perk carries a GAIN and a COST, computed ONCE on the server
@@ -113,6 +113,16 @@ export function _loRows(st, tab) {
     const kinds = (rule && rule.kinds) || ['weapon'];
     return (kinds.includes('weapon') || kinds.includes('sidearm')) ? (cat.weapons || []).filter(w => okW.has(w.weapon_id)).filter(perkBlocks('blocked_secondary')).map(w => ({ key: 'weapon:' + w.weapon_id, kind: 'weapon', id: w.weapon_id, row: w })) : [];   // a pistol is still requested as kind "weapon"
   }
+/** F652 (game 2026-11-01): on the Shields preset, say which perks it turns off (Tony 2026-10-25), from the catalogue's
+ *  own `blocked_presets`, so a player does not look for Body Armor and Armor Piercing in vain. Empty otherwise. */
+export function shieldsOffLine(st) {
+  if (!isShieldsHealth(gameHealth(st))) return '';
+  const off = ((st.catalog && st.catalog.perks) || []).filter(p => Array.isArray(p.blocked_presets) && p.blocked_presets.includes('shields')).map(p => p.name);
+  if (!off.length) return '';
+  const list = off.length === 1 ? off[0] : `${off.slice(0, -1).join(', ')} and ${off[off.length - 1]}`;
+  return `<div class="small lonote" data-testid="perk-off-note" style="padding:6px 4px">Shields: ${esc(list)} ${off.length === 1 ? 'is' : 'are'} off</div>`;
+}
+
 export function _loadout(st) {
     const tab = this.lo.tab === 'secondary' ? 'secondary' : this.lo.tab === 'perk' ? 'perk' : 'primary';
     const lo = st.loadout || {}; const equipped = lo[tab] || null;
@@ -143,7 +153,7 @@ export function _loadout(st) {
       // A14: slot 2 is weapons only (its chip reads WEAPONS or SIDEARMS); the perk tab has its own PERKS chip; both carry NONE
       const noneBtn = `<button class="fch none ${eqKey === 'none' && pend == null ? 'on' : ''} ${pend === 'none' ? 'pend' : ''}" data-act="onLoNone" data-arg="${tab}"><span class="unskew">NONE${eqKey === 'none' ? ' ✓' : ''}</span></button>`;
       const filt = tab === 'secondary' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="weapons"><span class="unskew">${sidearmOnly(rule) ? 'SIDEARMS' : 'WEAPONS'} · ${rows.length}</span></button>${noneBtn}</div>`
-        : tab === 'perk' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="perks"><span class="unskew">PERKS · ${rows.length}</span></button>${noneBtn}</div>` : '';
+        : tab === 'perk' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="perks"><span class="unskew">PERKS · ${rows.length}</span></button>${noneBtn}</div>${shieldsOffLine(st)}` : '';
       const head = tab === 'primary' ? `<div class="locount">${rows.length} WEAPON${rows.length === 1 ? '' : 'S'} · SCROLL FOR MORE</div>` : '';
       list = head + filt + (rows.length ? rows.map(r => {
         // F147: MC acked this row (`eqKey`) but engine.js's `tryoutArming` says the gun has not confirmed the

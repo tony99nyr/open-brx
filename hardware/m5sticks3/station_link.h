@@ -1377,6 +1377,11 @@ class StationLink {
     return true;
   }
   bool hill_ended() const { return has_control_assignment() && hill_.frozen && !duration_restore_wait_; }
+  // F642: the station is counting a live game: a live, unfrozen hill, or any kind under MC's A58 match lock.
+  // The glue pauses the /24 scan then, since its probes share the radio with the BLE presence scan.
+  bool in_live_play(uint32_t now_ms) const {
+    return (has_control_assignment() && hill_live_ && !hill_.frozen) || lock_.locked(now_ms);
+  }
   // F386 for a pickup: same rule as the hill's `hill_ended`, but for a powerup assignment -- set by
   // apply_station_config on an END/recap/RECALL (`ends_in_ms:0`) or by tick_powerup once a known match
   // deadline passes (deadline_known_/hill_deadline_ms_, the same fields the hill's own clock uses; a
