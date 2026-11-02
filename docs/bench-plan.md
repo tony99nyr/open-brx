@@ -62,8 +62,8 @@ right; lower means the sims overstate recoil. Send the table to brx3: it refits 
 
 ## NEXT: the Energy Shotgun frame (F661)
 
-The Energy Shotgun is not in the catalogue. Build each frame from `compile.resolve()`'s Shotgun frame and change only the
-tokens the step names. Never start from a capture. After every `$WEAP`, send `$AMMO` so the gun holds the cell the frame
+The Energy Shotgun row is in the catalogue but hidden (2026-11-02). Build each frame from `compile.resolve()`'s Shotgun frame and change only the
+tokens the step names; the full test frame is close to `resolve("energy_shotgun")`, which ships t38 = 1 until ES0 picks. Never start from a capture. After every `$WEAP`, send `$AMMO` so the gun holds the cell the frame
 names (F207). Heat streams in `$ALCD` token 5, one frame a round: a gun at rest sends nothing. `$VOL,65`. About 85
 minutes, one gun and its headset, the rig receiver, and a second gun for ES5.
 
@@ -87,6 +87,25 @@ those four, plus t14 = 450, t18 = 1400, t19 = 0, t24 = 13, t35 = `D11` and the t
 
 Send ES0-ES5 to brx3. If ES1 fails on every frame ES0 allows, or ES3 fails, there is no Energy Shotgun on this gun, and
 F661 goes back to Tony.
+
+## NEXT: the melee swing and the night range cut (F649, F580)
+
+Tony, 2026-11-02: melee hits for 60, one swing every 3 s day and night (`$WEAP` t14 3000 on slot 4), and at night every
+weapon's range tokens (t2, t13, t42) compile at 0.75 of the day value. Arm from `compile.resolve()`: the day frame with
+`night=False`, the night frame with `night=True`. Never start from a capture. `$VOL,65`. About 45 minutes, two guns
+and their headsets, outdoors in the dark for MN2 and MN3. Record each swing's `$HIR` on the victim.
+
+⚠ t2 is a carrier-frequency token, not a proven reach limit (the range-token note, F580). From about 31 upward the
+hit curve is flat, so 0.75 of a value at 55 or more (41 or more) should change nothing. The Shotgun's 30 drops to 23, inside
+the 13-26 transition band, where hits fall off steeply. Melee's outdoor 60 drops to 45, on the flat part.
+
+| step | minutes | what it proves | control and pass |
+|---|---|---|---|
+| MN1 | 10 | the gun blocks a second swing inside 3 s | Victim headset at 0.5 m. Control: one swing, then a second swing 4 s later: two `$HIR` at 60. B: a swing, then a second swing 1 s later, then 2 s, then 2.8 s (a fresh first swing before each): no `$HIR` from any second swing. A: the 4 s pair again: two hits. Then A/B/A on t14: 1000, 3000, 1000, with the 1 s pair: it hits at 1000 only. Pass: no second hit inside 3 s at t14 3000, and the 4 s control hits. Also record, for each refused second swing, whether the gun still sends `$ALCD,…,4,…` (F665: the answer decides whether the HUD's "melee ready" icon can stay dim longer than the gun blocks). The icon must not show ready during the blocked window. |
+| MN2 | 25 | the night cut shortens melee reach (the F580 check) | Control: a cloth over the victim headset at 1 m gives 0 hits. Day frame, five swings at 2, 4, 6 and 8 m (3 s apart). Night frame, the same. Day frame again, the same. Pass: the night run's longest distance that hits is shorter than both day runs, and the two day runs agree within one step. Equal reach day and night means the cut does nothing for melee: F649's night half goes back to Tony. |
+| MN3 | 10 | the night cut on the Shotgun gun word | The Shotgun at 10 and 20 m, ten pulls a cell, day, night, day. Read the gun word (19) and the headset word (20) apart. Pass: record the hits per cell. Predicted: the gun word falls at night (t2 23), and the headset word does not move (t13 75, on the flat part). |
+
+Send MN1-MN3 to brx3. If MN2 and MN3 show no change, the night cut has no effect on this gun, and Tony decides again.
 
 ## Sunday AM: the bench before the game on 2026-11-01
 
@@ -609,7 +628,7 @@ health, a full capture. Indoor range is bounce: no range claim indoors.
    the gun word, F579's Shotgun call reopens. (0426 P3.1)
 90. **F580** and **F567**, melee at t2 60 (20 min). Control: a cloth at 1 m gives 0. Five strikes at 1, 2, 3, 5 and 7
    m: the longest distance that hits. Then at that edge, A/B/A: t2 60, t2 40, t2 60. Closes F580's melee half, and
-   F567 (does a lower t2 cut reach on a real headset; the U002 proxy said no). (0426 P3.2, 1017 P3.1)
+   F567 (does a lower t2 cut reach on a real headset; the U002 proxy said no). (0426 P3.2, 1017 P3.1) **→ 2026-11-02:** run MN2 (the night range sheet) in its place: it measures the same reach, day against night.
 91. **F606**, hit odds against t2 and distance (20 min). Control: a cloth at 10 m, t2 100, gives 0. The AR at 10, 20
    and 30 m, t2 100, 60 and 30 (only `range_outdoor_pct` changed), t2 100 again last, ten pulls a cell. Read: hits per
    cell; brx2 models the curve from it. (0426 P3.3)

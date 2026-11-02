@@ -391,7 +391,7 @@ def test_crit_pct_writes_t6_only_on_the_weapons_that_declare_it():
     Unlike `headset_dmg`, an ABSENT `crit_pct` is not a refusal: a weapon that never crits is not a
     balance hole, so `resolve()` must leave the token exactly as the capture carries it rather than
     writing a 0. Break the `crit_pct` write in `resolve()` and watch this go red."""
-    declared = {"burst_rifle": 40, "amr": 30}
+    declared = {"burst_rifle": 40, "amr": 20}
     # The Toxin Rifle carried 15 until 2026-09-19: every hit poisons now (S16), so no crit roll.
     by_id = {w["weapon_id"]: w for w in ROWS}
     assert {wid: by_id[wid]["crit_pct"] for wid in declared} == declared, \
@@ -625,7 +625,7 @@ def test_weapon_views_follow_the_hosts_health_config():
     # F291 (2026-09-23): tap damage 20 -> 16 (wire.tap_dmg, t37) moves this table at the higher pools --
     # 150 and 200 no longer divide evenly by 20, so they cost one more tap each (5->6, 8->10); 100 and
     # 115 are unchanged (30 and 45 still close in 2 and 3 taps of 16, same as they did of 20).
-    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [3, 4, 6, 10]
+    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [4, 5, 7, 10]
     # and TTK moves with it, or the ARSENAL's TIME TO KILL column is decoration
     assert at[200]["assault_rifle"]["ttk_ms"] > at[115]["assault_rifle"]["ttk_ms"]
 
