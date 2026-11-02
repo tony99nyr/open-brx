@@ -112,3 +112,16 @@ def test_the_remap_keeps_to_the_first_type_and_never_widens():
         except PieceError:
             continue
         assert "support" not in _visible_types(v["fixed_id"]), (wid, v)
+
+
+def test_a_session_policy_naming_only_the_smg_still_pushes():
+    """brx1 (2026-11-02, F653 gap): a restored or saved config whose `loadout_policy` names only the hidden SMG
+    emptied the primary pool and blocked the push. The policy VIEW remaps it; the stored config keeps the id."""
+    s, net, clock, ps = mk_loadout_session(2, compiler=Compiler())
+    s.config["loadout_policy"]["primary"] = {**s.config["loadout_policy"]["primary"], "choice": "player", "only_ids": ["smg"]}
+    pool = s.loadout_pool()["primary"]
+    assert pool and not set(pool) & _hidden(), pool
+    assert s._primary_pool_refusal() is None
+    assert s.config["loadout_policy"]["primary"]["only_ids"] == ["smg"], "the stored config must keep the hidden id"
+    s.config["loadout_policy"]["primary"] = {**s.config["loadout_policy"]["primary"], "choice": "fixed", "fixed_id": "smg", "only_ids": []}
+    assert s.loadout_pool()["primary"] and s._primary_pool_refusal() is None

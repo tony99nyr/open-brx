@@ -23,7 +23,7 @@ from ..modes.registry import validate_mode_params as _validate_mode_params
 from .stations import StationRegistry
 from .powerup_ledger import PowerupLedger
 from .types import (MAX_PLAYERS, SESSION_STORE_V, FrameBundle, GameConfig,
-                    GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPool, PerkView, Phase,
+                    GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView, Phase,
                     Player, RestoredFromView, RestoreFailedView, Team, Weapon,
                     WeaponSel, parse_win_by)
 
@@ -92,6 +92,7 @@ class SnapshotHost(Protocol):
     def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]: ...
     def _keep_bad_snapshot(self) -> Path | None: ...
     def loadout_pool(self) -> LoadoutPool: ...
+    def policy(self) -> LoadoutPolicy: ...
     def in_play(self) -> bool: ...
     def is_adopted(self) -> bool: ...
     def current_match_id(self) -> str | None: ...
@@ -484,7 +485,7 @@ class SnapshotCodec:
             if not isinstance(self.host.config.get("presentation"), dict):
                 self.host.config["presentation"] = _pres.default_for(self.host.config["mode"])
             for pl in self.host.players.values():                      # a pre-A10 snapshot has no `perk` key; fine
-                pl["loadout"] = _policy.apply(self.host.config["loadout_policy"], self.host.loadout_pool(), pl.get("loadout") or {"weapons": []},
+                pl["loadout"] = _policy.apply(self.host.policy(), self.host.loadout_pool(), pl.get("loadout") or {"weapons": []},
                                               *self.host._catalog_rows())
             self.host._gun_index()
             if self.host.players:

@@ -28,6 +28,7 @@ from .snapshot_codec import SnapshotCodec, is_aborted_row
 from .perks import canonical_perk_id
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
+from . import pieces as _pieces
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
@@ -1227,7 +1228,8 @@ class Session:
         `default_policy` — so the repair belongs there and this is only the fallback view for a config
         that reached `self.config` past all of them (a fixture, a direct write). Round-2 review
         2026-09-12."""
-        return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
+        # F653: a weapon hidden since this policy was saved drops out (or remaps by type) in the view only.
+        return _pieces.drop_retired_policy(_policy.effective(self.config.get("loadout_policy"), self.config["mode"]))
 
     def _health_preset(self, health: object = None) -> str:
         """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:

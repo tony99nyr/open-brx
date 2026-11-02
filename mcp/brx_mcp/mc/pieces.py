@@ -275,6 +275,26 @@ def _drop_retired(kind: PieceKind, rule: Any, allowed: frozenset[str]) -> Any:
     return out
 
 
+def drop_retired_policy(pol: Any) -> Any:
+    """F653 for a whole `loadout_policy` (a restored session, a config saved before a weapon was hidden):
+    the same silent drop and remap as a preset, per slot. A VIEW: `Session.policy()` applies it, so the
+    stored config keeps the hidden id and gets it back the day the weapon is un-hidden."""
+    if not isinstance(pol, dict):
+        return pol
+    weapons, perks = _pickable_ids()
+    out: dict | None = None
+    slots: tuple[tuple[str, PieceKind], ...] = (("primary", "primary"), ("secondary", "secondary"), ("perk", "perks"))
+    for slot, kind in slots:
+        rule = pol.get(slot)
+        if not isinstance(rule, dict) or "only_ids" not in rule or "fixed_id" not in rule:
+            continue
+        new = _drop_retired(kind, rule, perks if kind == "perks" else weapons)
+        if new is not rule:
+            out = out if out is not None else dict(pol)
+            out[slot] = new
+    return out if out is not None else pol
+
+
 def _check_slot(kind: PieceKind, v: object) -> dict:
     try:
         rule = _policy._check_rule(_SLOT_OF_KIND[kind], v if isinstance(v, dict) else {})
