@@ -158,3 +158,20 @@ describe('KIT · a perk the push would refuse is not offered (F551)', () => {
     expect(q.loadout.perk).toBe('armor_piercing');
   });
 });
+
+// F652 (game 2026-11-01): on the Shields preset, the perk arsenal says which perks it turns off (Tony 2026-10-25), from
+// `PerkView.blocked_presets`; on any other preset the line is absent.
+describe('KIT · Shields off line (F652)', () => {
+  it('names Body Armor and Armor Piercing on Shields, and nothing on Standard', async () => {
+    for (const [health, want] of [[{ max_hp: 45, max_armor: 0, max_shield: 105 }, true], [{ max_hp: 45, max_armor: 70, max_shield: 0 }, false]] as const) {
+      const d = await demo();
+      const state = { ...d.state, config: { ...d.state.config, health: { ...d.state.config.health, ...health } } };
+      const m = await mountScreen(<Kit />, { ...d, state, view: 'kit', selPlayer: 'p1' });
+      await m.click('PERK');
+      const note = m.el.querySelector('[data-testid="perk-off-note"]')?.textContent ?? null;
+      if (want) expect(note).toBe('SHIELDS: BODY ARMOR AND ARMOR PIERCING ARE OFF');
+      else expect(note).toBeNull();
+      m.unmount();
+    }
+  });
+});
