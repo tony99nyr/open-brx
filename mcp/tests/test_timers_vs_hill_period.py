@@ -19,6 +19,10 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "SEND_TIMEOUT_S": "F644 (2026-11-01): how long one `/ui-ws` send to a console tab may wait before MC drops the socket.\n"
+                      "Measured per send on MC's loop; it watches a browser socket, never a node frame or a beacon",
+    "HEARTBEAT_S": "F644 (2026-11-01): MC sends a console heartbeat after this long with nothing else sent on `/ui-ws`.\n"
+                   "A console-socket timer on MC's loop; no beacon reaches it",
     "FIRE_FIRST_SHOW_S": "F542 (2026-11-01): how long the ammo block says PULL THE TRIGGER, THEN RELOAD after a lever reloaded\n"
                          "the last-fired slot. A display window on the phone's clock; no beacon reaches it",
     "GUN_WAS_LEVER_S": "F542 (2026-11-01): how long after a lever a rising `$ALCD` still counts as that lever's reload (the\n"
