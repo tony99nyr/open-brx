@@ -3018,7 +3018,54 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
   CHECK(link.assignment_epoch() != e);
 }
 
+
+// F658, the static hill: a Stick hill armed for game 40 with MC's go-live 10 minutes away follows a LIVE player of
+// game 41 at once (the live bit replaces MC's window), advertises and reports byte 41 with `follows` and the ring
+// summary, keeps its point across MC's next arming, and comes back from the saved ring after a restart.
+static void test_f658_hill_follows_the_live_game() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.team = 255; a.game = 40;
+  a.starts_known = true; a.starts_in_ms = 600000; a.ends_in_ms = 1200000;
+  link.apply_station_config(a, 0);
+  PlayerPresence p;
+  p.key_by_game = true;
+  auto hear = [&](uint8_t game, uint8_t state, uint32_t t) {
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.id = 3; d.team = 0; d.state = state; d.game = game;
+    p.observe(d, -50, t);
+  };
+  const uint8_t LIVE = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE;
+  // old phones first: no live bit, and the window is closed, so nothing counts
+  for (uint32_t t = 0; t <= 2000; t += 250) { hear(40, contract::ADVERT_PLAYER_STATE_ALIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.follower().follows && link.hill().progress == 0 && link.hill_game() == 40);
+  for (uint32_t t = 2250; t <= 5000; t += 250) { hear(41, LIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(link.follower().follows && link.hill_game() == 41);
+  CHECK(link.hill().progress > 20);   // MC's window says wait; the live bit says count
+  const std::string body = build_status_body(fill_status(link, 5000, true, 1, 0));
+  CHECK(body.find("\"game\":41") != std::string::npos);
+  CHECK(body.find("\"follows\":true,\"games\":{\"41\":{") != std::string::npos);
+  CHECK(link.ring_save_due(5000));   // follow mode started: write the ring
+  CHECK(!link.ring_save_due(5250));  // nothing new since
+  // MC arms game 42 (in range for a moment): the following hill keeps its point
+  const double progress = link.hill().progress;
+  StationAssignment b = a; b.game = 42; b.starts_in_ms = 5000;
+  link.apply_station_config(b, 5300);
+  CHECK(link.hill().progress == progress && link.follower().follows);
+  // a restart: the saved ring brings the follower and the point back
+  const std::string saved = encode_hill_ring(9, link.follower(), link.hill(), 6000);
+  HillFollower back;
+  BleControlPoint point;
+  CHECK(decode_hill_ring(saved, 9, back, point, 100));
+  CHECK(back.follows && back.has_current && back.current == 41);
+  CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));
+  CHECK(!decode_hill_ring(saved, 8, back, point, 100));   // another station's ring is not ours
+  CHECK(!decode_hill_ring("r1|9|0|-1|", 9, back, point, 100));   // not following: nothing to restore
+  // the operator's reset forgets every game
+  CHECK(link.reset_hill() && !link.follower().follows);
+}
+
 int main(int argc, char** argv) {
+  test_f658_hill_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();

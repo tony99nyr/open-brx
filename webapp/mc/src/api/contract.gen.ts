@@ -131,6 +131,10 @@ export const STATION_NOT_ARMED = 'PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON 
 export const STATION_BATTERY_LOW = 'BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE';
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export const STATION_NO_HILL = 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
+/** F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
+ *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line. */
+export const STATION_FOLLOWS = 'FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED';
+export const STATION_PACE_REARM = 'BRING IT INTO WI-FI TO UPDATE';
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 1500;
 export const STATION_PROTECT_S_DEFAULT = 2;
@@ -191,8 +195,9 @@ export const ADVERT_VERSION = 1;
 /** Advert byte 5: the role. A decoder rejects any other value. */
 export const ADVERT_ROLE = { station: 1, player: 2 } as const;
 /** A player advert's byte 10 (state), as independent bits. `revived` (64) is RESERVED, post-MVP (F344): only the Stick
- *  reads it, and the phone never sets it. */
-export const ADVERT_PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32, revived: 64 } as const;
+ *  reads it, and the phone never sets it. `live` (128, F658): the player's match is live (go-live to the whistle, the
+ *  engine's phase 'live'), so a hill can follow the newest live game with no MC arming. */
+export const ADVERT_PLAYER_STATE = { alive: 1, planting: 2, defusing: 4, extracting: 8, claiming: 16, claim_ready: 32, revived: 64, live: 128 } as const;
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export const ADVERT_CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 } as const;
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
@@ -239,6 +244,10 @@ export const HILL_NET_CAP = 3;
 export const HILL_MAX_STEP_MS = 1000;
 /** F82: a neutral grenade says this team */
 export const HILL_REFUSED_TID = 2;
+/** F658: a hill that follows the live game keeps one tally per game byte, this many */
+export const HILL_RING_SIZE = 4;
+/** F658: a game byte unheard for longer than this starts a fresh tally (wrap, MC restart) */
+export const HILL_RING_STALE_MS = 600000;
 /** Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
  *  and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
  *  broadcasts team HILL_REFUSED_TID (2).
@@ -1861,6 +1870,17 @@ export interface StationControl {
   net?: number;
   counts?: Record<string, number>;
   lead?: number | null;
+  /** F658: the hill follows the players' live game (no re-arm needed), and its per-game tally ring, keyed by game byte */
+  follows?: boolean;
+  games?: Record<string, StationRingGame>;
+}
+
+/** F658: one game's tally in a following hill's ring (`control.games`). */
+export interface StationRingGame {
+  hold_ms: Record<string, number>;
+  owner: number;
+  /** ms since that game was last heard */
+  last_ms: number;
 }
 
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,

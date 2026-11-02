@@ -8,7 +8,7 @@ import type {
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
-  STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
+  STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NOT_ARMED, STATION_PACE_REARM, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
   OBJECTIVE_MODES, STATION_NO_HILL, GUN_DID_NOT_TAKE_CONFIG,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
@@ -226,10 +226,27 @@ export class MockBackend implements Api {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
       const down = this.stoodDown(a);   // F535: stations.py stood_down
+      const rc = rep.control;   // F658: a hill that follows the players' live game gets a note, not a re-arm line
+      const follows = !!a && a.kind === 'control' && !!rc && rc.follows === true;
       if (down) attention.push(STATION_NO_HILL);
-      else if (a && st.arm_pending) attention.push(STATION_BRING_BACK);
-      if (a && st.armed && st.armed.game !== this.gameNo && !down) attention.push(STATION_ARMED_OLDER);
+      else if (a && st.arm_pending) attention.push(follows ? STATION_FOLLOWS : STATION_BRING_BACK);
+      if (a && st.armed && st.armed.game !== this.gameNo && !down) {
+        if (!follows) attention.push(STATION_ARMED_OLDER);
+        else if (!attention.includes(STATION_FOLLOWS)) attention.push(STATION_FOLLOWS);
+      }
       const fresh = !down && !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates (F535: none)
+      // F658: as stations.py, the pace line for a following hill, or one that took this game's arming
+      const thisArming = fresh && !!st.armed && st.armed.game === this.gameNo && !st.arm_pending;
+      if (a && a.kind === 'control' && !down && (follows || thisArming) && rc) {
+        const hill: Partial<Record<'capture_s' | 'net_cap', number>> = this.config.hill ?? {};
+        const span = { capture_s: [HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX], net_cap: [HILL_NET_CAP_MIN, HILL_NET_CAP_MAX] } as const;
+        for (const key of ['capture_s', 'net_cap'] as const) {
+          const ok = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= span[key][0] && (v as number) <= span[key][1];
+          const want = hill[key], have = rc[key];
+          if (ok(want) && ok(have) && have !== want) attention.push(key === 'capture_s'
+            ? `HILL SET FOR ${have} S CAPTURE, THIS GAME USES ${want} S: ${STATION_PACE_REARM}` : `HILL SET FOR NET CAP ${have}, THIS GAME USES ${want}: ${STATION_PACE_REARM}`);
+        }
+      }
       if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push(STATION_BATTERY_LOW);

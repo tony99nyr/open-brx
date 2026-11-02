@@ -72,6 +72,19 @@ mDNS discovery is asynchronous, so the hill never waits on it.
 advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows the IR beacon instead.
 **IR receive is post-MVP (F314):** it drives only the bench HILL/BRIDGE below.
 
+## The static hill: it follows the live game (F658)
+
+A Stick hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones on an app with F658
+set the `live` bit (advert byte 10, 128) from go-live to the whistle. Once the hill hears any live-bit player it
+follows the newest live game (`presence.h` `HillFollower`, the same rules as `control.js`): it counts only live-bit
+players of that game, advertises that game's byte, and ignores MC's timing (no WAITING, no MATCH OVER freeze). It
+keeps one tally per game byte, four at most; a byte unheard for 10 minutes starts fresh. Presence is keyed by game
+and player number while a hill is assigned. The ring is saved in NVS as `hill_ring` (`encode_hill_ring`) when follow
+mode starts, on a game switch, on a change of owner and at most every 30 s while the tally grows, and restored at boot
+after the saved config. While following, the older `hill_v1` save is not written. The status `control` block adds
+`follows: true` and `games`. Serial prints `HILL FOLLOWS game=<n> from=<m>` on a switch. The point RESET clears the
+ring. A hill that never hears the bit (0.4.33 phones) runs the A68 rules below. Spec: `docs/spec/utility.md` §5d.8.
+
 ## Timed HELD hills (A68)
 
 MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leaves Wi-Fi before START anchors go-live on the first alive player advert with its game byte, at any RSSI, from a player it has already heard down in this game (`anchor_hill_on_advert`). Lobby phones advertise down, so arm the Stick at MC with the phones in the lobby. A phone still alive from the last match cannot anchor. Until the anchor the hill shows WAITING and counts nothing; the 60 s offline go-live is only for a config without a duration. The hill then counts to its local deadline and freezes its owner and hold tally at MATCH OVER. START timing overrides the fallback if the Stick hears it. A new game byte clears the anchor. The time left is saved in NVS (`hclk_*`, `SavedHillClock`) at the anchor, at most every 30 s, and as 0 at the whistle, so an offline restart resumes the whistle late by at most 30 s plus the time off. Untimed matches and operator or objective ends cannot reach an offline Stick. HELD is the MVP field mode and the boot default when no mode is saved; a saved `LINK MUSTER` still wins. A same-game config without START (MC in LOBBY, or an abort) stops an anchored or resumed hill and erases the saved clock.

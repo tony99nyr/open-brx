@@ -6,7 +6,7 @@
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
 import { Presence, encodeUuid, KIND, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
-import { ControlPoint, ControlAdvertiser, claimable } from './control.js';   // kind 5: the control point (utility.md §5, K1)
+import { ControlPoint, ControlAdvertiser, HillFollower, claimable } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -153,8 +153,14 @@ const pu = new PowerupStation({ id: settings.id, item: settings.item || null })
 function savePowerup() { try { localStorage.setItem(POWERUP_KEY, JSON.stringify(pu.snapshot())); } catch (_) { /* ignore */ } }
 if (savedPoint && Number.isFinite(+savedPoint.seq)) advert.seq = (+savedPoint.seq) & 0xff;   // a scanner must not see seq go backwards across our restart
 /** §5d.6: written on every change, read at startup. */
+// F658: the static hill's follower and its per-game tally ring, saved beside the point on every save (§5d.6).
+const RING_KEY = 'brx.station.hillring';
+const follower = new HillFollower().restore((() => { try { return JSON.parse(localStorage.getItem(RING_KEY) || 'null'); } catch (_) { return null; } })());
+/** F658: the game byte a control point advertises and counts under: the followed game, else MC's. */
+const hillGame = () => follower.game(settings.game);
 function saveControl() {
   try { localStorage.setItem(CONTROL_KEY, JSON.stringify({ ...point.snapshot(), seq: advert.seq })); } catch (_) { /* ignore */ }
+  try { localStorage.setItem(RING_KEY, JSON.stringify(follower.snapshot())); } catch (_) { /* ignore */ }
 }
 const link = new BrxLink({ log });
 // `game` is the match scope (§3): a player advert from another match, or a spare phone on a table near the
@@ -181,7 +187,8 @@ function advertFields() {
 }
 function stationUuid() {
   const f = advertFields();
-  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: thr(), taker: f.taker || 0 });
+  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq,
+    game: settings.kind === 'control' ? hillGame() : settings.game, threshold: thr(), taker: f.taker || 0 });
 }
 /** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
  *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
@@ -246,7 +253,9 @@ async function applyStationConfig(body) {
   // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
-  if (settings.game !== wasGame) { resetPoint(`MC armed game ${settings.game}`); wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
+  // F658: a following hill keeps its tally ring; the live bit decides which game it counts, not this arming.
+  if (settings.game !== wasGame && !(cfg.kind === 'control' && follower.follows)) resetPoint(`MC armed game ${settings.game}`);
+  if (settings.game !== wasGame) { wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
@@ -284,9 +293,9 @@ function applyHillClock(cfg, now, sameStation = true) {
   if (cfg.starts_in_ms != null) {
     const counting = settings.hillStartsAt == null || now >= settings.hillStartsAt;
     const counted = point.owner !== STATION_TEAM_ANY || point.progress > 0 || Object.keys(point.holdMs).length > 0;
-    if (cfg.starts_in_ms > 0 && counting && counted) resetPoint('MC START: the lobby and the countdown score nothing');
+    if (cfg.starts_in_ms > 0 && counting && counted && !follower.follows) resetPoint('MC START: the lobby and the countdown score nothing');   // F658: following, the live bit is the window
     settings.hillStartsAt = now + cfg.starts_in_ms;
-    if (cfg.starts_in_ms > 0) { point.at = null; _hillWaited = true; }   // anchor at go-live even if no tick runs before it
+    if (cfg.starts_in_ms > 0 && !follower.follows) { point.at = null; _hillWaited = true; }   // anchor at go-live even if no tick runs before it (F658: not while following)
   } else if (cfg.ends_in_ms !== 0) settings.hillStartsAt = null;
   // A deadline is MC's word for this arming: ends_in_ms absent clears it (an untimed match, an abort), as the Stick's
   // `deadline_known_` does. An END (0) never moves a whistle that has already passed: the recap delay is not possession.
@@ -319,7 +328,9 @@ function utilityStatusBody() {
     // have watched any of it (F92).
     // F555: `game` is the byte this hill counts under, so MC never seeds a new game's tally from a beat sent before the
     // phone applied that game's config
-    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested, game: settings.game,
+    // F658: following, `game` is the followed byte; `follows` and the ring summary `games` tell MC the hill needs no re-arm
+    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested, game: hillGame(),
+      ...(follower.follows ? { follows: true, games: follower.summary(point, stationNow()) } : {}),
       // F558: the point's own inputs (who it counted, which team leads, the clamped net), so a log can explain its rate
       net: point.net, counts: { ...point.counts }, lead: point.lead,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) };
@@ -547,7 +558,9 @@ function tick() {
     }
   }
   presence.defaultThreshold = thr();
-  presence.game = settings.game;
+  // F658: a control point hears every game (keyed by game) and its follower picks who counts; other kinds scope by MC's byte
+  presence.keyByGame = settings.kind === 'control';
+  presence.game = settings.kind === 'control' ? 0 : settings.game;
   settleWhistle(now);   // F598 (1): a throttled tick that crossed the whistle steps to it on presence as of the whistle
   presence.tick(now);
   // Bench 2026-10-02: say when a player is HEARD on this station and when they leave (edges only), so a field log
@@ -630,7 +643,7 @@ function powerupTick(now) {
  *  across a restart: the restored point has no last step, so the stretch since the last save is not banked (F593). */
 function settleWhistle(now) {
   const last = point.at ?? (_hillWaited ? settings.hillStartsAt : null);
-  if (settings.kind !== 'control' || settings.hillEndsAt == null || last == null) return;
+  if (settings.kind !== 'control' || follower.follows || settings.hillEndsAt == null || last == null) return;   // F658: following, no MC whistle
   if (last >= settings.hillEndsAt || now < settings.hillEndsAt) return;
   presence.tick(settings.hillEndsAt);
   controlTick(now);
@@ -649,19 +662,28 @@ let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0;
 const HOLD_SAVE_MS = 2000;
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
+  // F658: the follower first: which game the hill counts, and the players of it that may count.
+  const fs = follower.step(point, presence.players(), now, { expiryMs: presence.expiryMs, armedGame: settings.game });
+  if (fs.switched) {
+    log(fs.fresh ? `F658: following game ${fs.to}${fs.from != null && fs.from !== fs.to ? ` (was ${fs.from})` : ''}: a fresh point` : `F658: following game ${fs.to} (was ${fs.from}): its saved tally is back`, 'lk');
+    saveControl();
+    if (settings.live) startAdvert();   // the game byte changed: republish at once
+  }
   // F386 phone twin: before go-live the point waits with no clock running (`at` cleared, so the first live step banks
   // nothing), and at the whistle it takes one last step to the deadline, then holds.
   // Only the step is skipped: the advert below still republishes (a START that reset the point must say so on air).
-  const waiting = settings.hillStartsAt != null && now < settings.hillStartsAt;
+  // F658: following, the live bit replaces MC's window (no wait, no whistle): a player off the live bit counts for nothing.
+  const follows = follower.follows;
+  const waiting = !follows && settings.hillStartsAt != null && now < settings.hillStartsAt;
   if (waiting) point.at = null;
-  else if (_hillWaited && settings.hillStartsAt != null) point.at = settings.hillStartsAt;   // the first live step counts from go-live, as on the Stick
+  else if (!follows && _hillWaited && settings.hillStartsAt != null) point.at = settings.hillStartsAt;   // the first live step counts from go-live, as on the Stick
   _hillWaited = waiting;
   let at = now, step = !waiting;
-  if (step && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
+  if (step && !follows && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
     if (point.at != null && point.at >= settings.hillEndsAt) step = false;
     else at = settings.hillEndsAt;
   }
-  const { changed, events } = step ? point.update(presence.players(), at) : { changed: false, events: [] };
+  const { changed, events } = step ? point.update(fs.players, at) : { changed: false, events: [] };
   for (const e of events) {
     if (e.type === 'captured') { log(`${TEAM_NAME_BY_TID[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAME_BY_TID[e.from]}` : ''}`, 'lk'); flash('CAPTURED', TEAM_KEY_BY_TID[e.team]); }   // the big word already names the team
     else if (e.type === 'neutralised') { log(`${TEAM_NAME_BY_TID[e.team]} LOST the point — ${TEAM_NAME_BY_TID[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
@@ -699,6 +721,7 @@ function resetPoint(why) {
   point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
   point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
   point.heldBy = null; point.at = null;   // F554 gap, F593: no earlier sample, and no old game's time in the first step (the Stick's reset() does the same)
+  follower.clear();   // F658: a reset forgets every game's tally; the next live player starts follow mode again
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');
 }
@@ -779,9 +802,10 @@ function render() {
   // and the operator must see that. Linked, not armed, not on the air yet: it is simply waiting. No MC at all: a hand-set
   // station on its own is valid, so nothing to say.
   const onAir = advertising || !!settings.live;
-  $('armed').textContent = armed ? `MC ✓ GAME ${armed.game || 0}`
+  // F658: a hill that follows the players' live game says which one, MC or not
+  $('armed').textContent = settings.kind === 'control' && follower.follows ? `FOLLOWS GAME ${hillGame()}` : armed ? `MC ✓ GAME ${armed.game || 0}`
     : mcState !== 'bound' ? (_wasLinked ? 'MC OFFLINE' : '') : onAir ? 'SET BY HAND · PLAYERS MAY IGNORE IT' : 'WAITING FOR MC TO ARM IT';
-  $('armed').className = 'armed ' + (armed ? 'on' : mcState === 'bound' && onAir ? 'warn' : '');
+  $('armed').className = 'armed ' + (armed || (settings.kind === 'control' && follower.follows) ? 'on' : mcState === 'bound' && onAir ? 'warn' : '');
   // A41 / field-safety fix (2026-09-13): the plain exit is for a phone NOBODY has claimed as a field
   // item yet. MC-arming is not the only way that happens -- the seven-tap gate's own drawer has a
   // START button (`btnStart`), and the station warnings promise exactly that: a station can be armed
@@ -815,7 +839,8 @@ function render() {
   }
   const mainInput = $('mcUrlMain'); if (mainInput && document.activeElement !== mainInput) mainInput.value = settings.mc || mcUrl() || '';
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
-  const rows = presence.players().map(p => {
+  // F658: a control point lists only the players it may count (its followed game, else MC's), as before the hill heard every game
+  const rows = presence.players().filter(p => !isControl || follower.counts(p, settings.game)).map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
     // On a control point the row IS the contribution readout (§5d.4): `claim` is a body actually converting
     // the point (present + alive + a team that may hold one), DOWN is struck through, and in range but off
@@ -1274,6 +1299,7 @@ function utilityDiag() {
   const now = stationNow();
   return {
     kind: settings.kind, id: settings.id, team: settings.team, game: settings.game, threshold: thr(), live: !!settings.live, advertising,
+    ...(settings.kind === 'control' ? { follows: follower.follows, hillGame: hillGame(), ring: follower.summary(point, now) } : {}),   // F658
     point: settings.kind === 'control' ? { owner: point.owner, capturing: point.capturing, progress: Math.round(point.progress), contested: point.contested,
       counts: { ...(point.counts || {}) }, holdMs: { ...point.holdMs } } : null,
     players: presence.players().map(p => ({ id: p.id, team: p.team, alive: !!(p.state & PLAYER_STATE.alive), present: !!p.present,

@@ -57,7 +57,8 @@ byte  0-3   4F 42 52 58   'OBRX'
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
                             player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
                             bit4 claiming, bit5 claim_ready (A56, powerups.md),
-                            bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344))
+                            bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344),
+                            bit7 live: the player's match is live, go-live to the whistle (F658, §5d.8))
       11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
@@ -645,6 +646,42 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 - ⚠ **Never queue a multi-second sequence off a beacon.** A beacon repeats every ~5 s, and this gun really does
   replay long events (F74): a 15 s clip fired on three consecutive beacons stacks three deep. `U100` is chosen
   because it is ~0.1 s and cannot overlap its own 3 s cadence; a capture callout is one-shot per transition.
+
+### 5d.8 The static hill: it follows the live game (F658)
+
+Field game 2026-11-01: a phone hill out of Wi-Fi range missed MC's arming for the next game. It kept its old game
+byte, ignored every player of the new game, and the hill was dead all match. Tony's rule: **a hill set up once plays
+every following game with no walk-out, no Wi-Fi and no re-arm.**
+
+1. **The live bit.** A player phone sets bit 7 (`live`, 128) of its advert's byte 10 while its match is live: from
+   go-live to the whistle (the engine's phase `live`; `armed` is the countdown).
+2. **Follow mode.** A control point hears every game byte (presence is keyed by game and player number). Once it has
+   heard any live-bit player it follows, and it stays in follow mode. Its current game is the byte of the live
+   players it hears. While a live player of the current game is heard within the presence expiry (4 s), the hill
+   keeps that game. Otherwise it moves to the newest live game (the one first heard most recently).
+3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
+   A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
+   The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
+   the current game's byte, so that game's phones read it.
+4. **The tally ring.** The hill keeps one point state per game byte (owner, progress, possession, capture log) and
+   the last time each byte was heard, at most `HILL_RING_SIZE` (4). A byte heard again after more than
+   `HILL_RING_STALE_MS` (10 minutes) unheard starts fresh, which covers the 255-to-0 wrap and an MC restart that
+   reuses a byte. A fifth byte evicts the least recently heard one, never the current one. A switch saves the
+   point into the ring and loads the other game's state with its clock restarted, so no time banks across it. The
+   ring persists beside the point: `brx.station.hillring` on a phone, NVS `hill_ring` on a Stick.
+5. **One-time setup.** Kind, id, team, threshold, `capture_s` and `net_cap` stay as the last arming (MC or by
+   hand) set them. `station_config` works as before; a hill out of range keeps what it has. A following hill
+   ignores a new game byte in `station_config` for its point and ring: the live bit decides. The operator's point
+   RESET clears the ring and leaves follow mode.
+6. **Fallback.** A hill that has never heard a live-bit player behaves as before: it counts players of its
+   MC-armed game (0 on either side is any game) inside MC's window.
+7. **The heartbeat.** `status.control` keeps its fields for the current game (`game` is the followed byte) and adds
+   `follows: true` and `games: {"<byte>": {hold_ms, owner, last_ms}}` once following. MC shows a note in place of
+   ARMED FOR AN OLDER GAME and BRING IT BACK, and an amber line when the hill's `capture_s` or `net_cap` is not
+   this game's. Neither gates START. Scoring is unchanged: the players report possession, and MC merges the
+   station's tally only when it names MC's game (F555).
+
+The rules are pinned by the `F658:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 

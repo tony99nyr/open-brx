@@ -35,13 +35,14 @@ static void shape(const std::string& what) {
   failures++;
 }
 
-struct Heard { long t; int id; int rssi; const Value* state; };  // state: the sighting's own (F554), else null
+struct Heard { long t; int id; int rssi; const Value* state; int game; };  // state: the sighting's own (F554), else null; game: its own (F658), else -1
 
 static uint8_t player_state(const Value& names) {
   uint8_t s = 0;
   for (const Value& n : names.arr) {
     const std::string name = n.as_string();
     if (name == "alive") s |= contract::ADVERT_PLAYER_STATE_ALIVE;
+    else if (name == "live") s |= contract::ADVERT_PLAYER_STATE_LIVE;  // F658
     else shape("unknown player state " + name);
   }
   return s;
@@ -63,13 +64,15 @@ static uint8_t hill_state(const Value& names) {
 static std::vector<Heard> expand(const Value& c) {
   std::vector<Heard> out;
   for (const Value& s : c.get("sightings").arr)
-    out.push_back({s.get("t").as_int64(), (int)s.get("id").as_int(), (int)s.get("rssi").as_int(), s.has("state") ? &s.get("state") : nullptr});
+    out.push_back({s.get("t").as_int64(), (int)s.get("id").as_int(), (int)s.get("rssi").as_int(), s.has("state") ? &s.get("state") : nullptr,
+                   s.has("game") ? (int)s.get("game").as_int() : -1});
   for (const Value& s : c.get("series").arr) {
     const std::vector<Value>& r = s.get("rssi").arr;
     long every = s.get("every_ms").as_int();
     long k = 0;
     for (long t = s.get("from_ms").as_int64(); t <= s.get("to_ms").as_int64(); k++, t = s.get("from_ms").as_int64() + k * every)
-      out.push_back({t, (int)s.get("id").as_int(), (int)r[k % r.size()].as_int(), s.has("state") ? &s.get("state") : nullptr});
+      out.push_back({t, (int)s.get("id").as_int(), (int)r[k % r.size()].as_int(), s.has("state") ? &s.get("state") : nullptr,
+                     s.has("game") ? (int)s.get("game").as_int() : -1});
   }
   std::stable_sort(out.begin(), out.end(), [](const Heard& a, const Heard& b) { return a.t < b.t; });
   return out;
@@ -137,6 +140,11 @@ static void run_case(const Value& c) {
   pr.expiry_ms = (uint32_t)s.get("expiry_ms").as_int();
   pr.sight_ms = (uint32_t)s.get("sight_ms").as_int();
   pr.alpha = s.get("alpha").num;
+  pr.key_by_game = true;  // F658: the hill hears every game; the follower picks who counts
+  HillFollower follower;
+  if (s.has("ring_size")) follower.size = (size_t)s.get("ring_size").as_int();
+  if (s.has("ring_stale_ms")) follower.stale_ms = (uint32_t)s.get("ring_stale_ms").as_int();
+  const uint8_t armed = (uint8_t)(s.has("armed_game") ? s.get("armed_game").as_int() : 0);
   BleControlPoint cp;
   cp.capture_s = (int)s.get("capture_s").as_int();
   cp.net_cap = (int)s.get("net_cap").as_int();
@@ -155,11 +163,13 @@ static void run_case(const Value& c) {
       a.id = (uint16_t)h.id;
       a.team = (uint8_t)p.get("team").as_int();
       a.state = player_state(h.state ? *h.state : p.get("state"));
+      a.game = (uint8_t)(h.game >= 0 ? h.game : (p.has("game") ? p.get("game").as_int() : 0));
       pr.observe(a, h.rssi, (uint32_t)h.t);
     }
     if (stalled(c, t)) continue;
     pr.tick((uint32_t)t);
-    cp.update(pr, (uint32_t)t);
+    const HillFollowStep fs = follower.step(cp, pr, (uint32_t)t, armed);
+    cp.update(pr, (uint32_t)t, &fs.filter);
     if (std::getenv("CASES_TRACE")) {  // the phone runner's CASES_TRACE line, so the two timelines diff
       std::string ins;
       for (size_t i = 0; i < pr.capacity(); i++) {
@@ -168,7 +178,8 @@ static void run_case(const Value& c) {
         ins += " " + std::to_string(e.id) + ":" + (e.in_circle ? "IN" : "out") + (e.present ? "+P" : "") + (e.fading ? "~F" : "");
       }
       const AdvertView v = cp.advert();
-      std::printf("%s t=%ld%s hill team=%d state=%d value=%d\n", c.get("name").as_string().c_str(), t, ins.c_str(), v.team, v.state, v.value);
+      std::printf("%s t=%ld%s hill team=%d state=%d value=%d game=%d follows=%d\n", c.get("name").as_string().c_str(), t, ins.c_str(), v.team, v.state, v.value,
+                  follower.game(armed), follower.follows ? 1 : 0);
     }
     for (const Value& ex : c.get("expect").arr) {
       if (ex.get("t").as_int64() != t) continue;
@@ -194,6 +205,28 @@ static void run_case(const Value& c) {
         const int tid = std::stoi(kv.first);
         const long got = tid >= 0 && tid < 4 ? (long)cp.hold_ms[tid] : -1;
         if (got != kv.second.as_int64()) fail(t, at + " hold_ms of team " + kv.first + " " + std::to_string(got) + ", expected " + std::to_string(kv.second.as_int64()));
+      }
+      // F658: the byte the hill advertises, follow mode and the tally ring
+      if (ex.has("hill") && ex.get("hill").has("game") && follower.game(armed) != ex.get("hill").get("game").as_int())
+        fail(t, at + " hill game byte " + std::to_string(follower.game(armed)) + ", expected " + std::to_string(ex.get("hill").get("game").as_int()));
+      if (ex.has("follows") && follower.follows != ex.get("follows").as_bool()) fail(t, at + " follow mode");
+      if (ex.has("ring")) {
+        std::vector<long> got, want;
+        for (const auto& g : follower.games) if (g.used) got.push_back(g.game);
+        std::sort(got.begin(), got.end());
+        for (const Value& g : ex.get("ring").arr) want.push_back(g.as_int());
+        if (got != want) fail(t, at + " the games in the ring");
+      }
+      for (const auto& kv : ex.get("games").obj) {
+        const HillGame* g = follower.get((uint8_t)std::stoi(kv.first));
+        if (!g) { fail(t, at + " game " + kv.first + " is in the ring"); continue; }
+        const HillSnap tally = follower.tally(*g, cp);
+        if (kv.second.has("owner") && tally.owner != kv.second.get("owner").as_int()) fail(t, at + " game " + kv.first + " owner " + std::to_string(tally.owner));
+        for (const auto& h : kv.second.get("hold_ms").obj) {
+          const int tid = std::stoi(h.first);
+          const long got = tid >= 0 && tid < 4 ? (long)tally.hold_ms[tid] : -1;
+          if (got != h.second.as_int64()) fail(t, at + " game " + kv.first + " hold_ms of team " + h.first + " " + std::to_string(got));
+        }
       }
       if (ex.has("hill")) {
         const Value& h = ex.get("hill");

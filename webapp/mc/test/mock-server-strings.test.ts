@@ -8,7 +8,7 @@ import * as gen from '../src/api/contract.gen';
 
 const OPERATOR_LINES = [
   'STALE_ACK_FAULT', 'ECHO_FAULT', 'POOL_FAULT', 'GUN_CONFIG_FAULT', 'GUN_FLAPPING_LINE', 'GUN_LINK_LOST',
-  'STATION_REARM', 'STATION_BRING_BACK', 'STATION_ARMED_OLDER', 'STATION_NOT_ARMED', 'STATION_BATTERY_LOW',
+  'STATION_REARM', 'STATION_BRING_BACK', 'STATION_ARMED_OLDER', 'STATION_NOT_ARMED', 'STATION_BATTERY_LOW', 'STATION_FOLLOWS', 'STATION_PACE_REARM',
 ] as const;
 
 describe('A14 · the mock backend holds no hand copy of a server operator line', () => {

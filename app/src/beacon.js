@@ -178,9 +178,10 @@ export class Presence {
   // opponent contests at once, before the dwell.
   // Seams D: the defaults are the contract's (the player app's own values); every caller sets them today, and a new one
   // that forgets gets the field-tuned dwell and threshold, not a stale 2000 ms / -62 dBm.
-  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS, fadeAfterMs = PRESENCE_FADE_AFTER_MS } = {}) {
-    this.entries = new Map();          // key role:id → entry
-    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs });
+  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS, fadeAfterMs = PRESENCE_FADE_AFTER_MS, keyByGame = false } = {}) {
+    this.entries = new Map();          // key role:id → entry (role:game:id for a player when keyByGame)
+    // F658: a following hill hears every game, so one player number in two games must be two entries, not one.
+    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs, keyByGame });
   }
   get game() { return this._game || 0; }
   /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
@@ -197,7 +198,7 @@ export class Presence {
     if (!d || typeof rssi !== 'number') return null;
     if (this.game && d.game && d.game !== this.game) return null;   // another match's station
     if (this._pausedAt != null) this.resume(now);   // F537 (review): an advert proves we are listening, so no clock lands in the future
-    const key = `${d.role}:${d.id}`;
+    const key = this.keyByGame && d.role === 'player' ? `player:${d.game}:${d.id}` : `${d.role}:${d.id}`;
     let e = this.entries.get(key);
     if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
     else {

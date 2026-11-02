@@ -74,6 +74,9 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
   // ---- station attention lines (state.py _station_view, _station_tamper_flags) ----
   ['NOT RE-ARMED, OUT OF WI-FI RANGE: BRING IT BACK TO RE-ARM', 'amber', 'station-attention-bring-back', 'amber'],
   ['ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-armed-older-game', 'amber'],
+  ['FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED', 'amber', 'station-attention-follows', 'neutral'],   // F658
+  ['HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE', 'amber', 'station-attention-hill-pace', 'amber'],
+  ['HILL SET FOR NET CAP 2, THIS GAME USES 3: BRING IT INTO WI-FI TO UPDATE', 'amber', 'station-attention-hill-pace', 'amber'],
   ['NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'station-attention-phone-not-armed', 'amber'],
   ['SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'frame-setup-conflict', 'amber'],
   ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-phone-not-armed', 'amber'],

@@ -409,7 +409,7 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   adv_.state = v.state;
   adv_.value = v.value;
   adv_.seq = seq;
-  adv_.game = assigned ? (uint8_t)a.game : settings.game;
+  adv_.game = assigned ? link.hill_game() : settings.game;   // F658: a following hill advertises the followed game
   adv_.threshold = assigned ? link.threshold_advertised_dbm() : 0;  // hill default keeps phone range at the prior value
   adv_.taker = v.taker;
   String uuid = advert_uuid(adv_).c_str();
@@ -472,7 +472,7 @@ static void pollAdvert(uint32_t now) {
     const StationAssignment& a = brx_glue::link.assignment();
     v.kind = a.present ? station_kind_byte(a.kind) : KIND_CONTROL;
     v.id = a.present ? (uint16_t)a.id : settings.id;
-    v.game = a.present ? (uint8_t)a.game : settings.game;
+    v.game = a.present ? brx_glue::link.hill_game() : settings.game;   // F658
     v.threshold = a.present ? brx_glue::link.threshold_advertised_dbm() : 0;
   }
   {  // A67: a new TX power restarts the advert at once (publishAdvert applies it before adv->start())

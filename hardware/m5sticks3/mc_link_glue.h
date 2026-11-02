@@ -264,6 +264,25 @@ static void mcWriteSavedHill() {
   if (ok) Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
 }
 
+// ---- F658: the static hill's follower and tally ring ("brxmc"/"hill_ring", presence.h encode_hill_ring) ----------
+// StationLink::ring_save_due decides WHEN (follow starts or ends, a game switch, an owner change, a growing tally at most
+// every HILL_CLOCK_SAVE_MS). Restored at boot after the saved config, so a restarted hill keeps following.
+static void mcWriteSavedRing(StationLink& link) {
+  mcPrefs.begin("brxmc", false);
+  const std::string body = encode_hill_ring(link.assignment().id, link.follower(), link.hill(), millis());
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "hill_ring", body.c_str()));
+  mcPrefs.end();
+}
+
+static void mcLoadSavedRing(StationLink& link) {
+  if (!link.has_control_assignment()) return;
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("hill_ring", "");
+  mcPrefs.end();
+  if (decode_hill_ring(body.c_str(), link.assignment().id, link.follower(), link.hill(), millis()))
+    Serial.printf("RESTORED hill follows game %d (owner %d)\n", link.follower().current, link.hill().owner);
+}
+
 // ---- F365 / A67: the on-station range edit in NVS ("brxmc"/"range") -----------------------------------
 // StationLink::range_storage_body(): the edited values (tagged with the station id) and the edit log with
 // its seq. Written only when that body changes (an edit, an MC config that drops an edit, a release):
@@ -363,6 +382,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
     Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == contract::STATION_TEAM_ANY ? -1 : link.hill().owner);
   }
   link.enforce_restored_hill_freeze();
+  mcLoadSavedRing(link);   // F658: a following hill comes back following, with every game's tally
   // A68 review: a duration hill resumes its whistle from the saved time left, before any advert.
   if (savedClock.note_config(a, savedConfig.session_id())) mcEraseSavedClock();
   const int32_t rem = savedClock.restore_remaining(a, savedConfig.session_id());
@@ -719,6 +739,7 @@ static void mcApplyTickIntents(const TickIntents& intents) {
     switch (intent.kind) {
       case TickIntentKind::SAVE_HILL: mcWriteSavedHill(); break;
       case TickIntentKind::SAVE_CLOCK: mcWriteSavedClock(); break;
+      case TickIntentKind::SAVE_RING: mcWriteSavedRing(link); break;   // F658
       case TickIntentKind::QUEUE_CAPTURE: pendingCaptureTeam = intent.value; break;
       case TickIntentKind::WAKE_SCREEN: mcScreenWake = true; break;
       case TickIntentKind::REVIVE_FLASH: reviveFlashUntilMs = millis() + REVIVE_FLASH_MS; break;

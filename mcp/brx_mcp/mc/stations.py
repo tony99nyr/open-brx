@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NO_HILL, OBJECTIVE_MODES,
+from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -1195,15 +1195,30 @@ class StationRegistry:
         armed = None if self.stood_down(a) else st.get("armed")   # F535: an older game's arming is not this game's
         rep = st.get("report") or {}
         attention: list[str] = []
+        # F658: a hill that follows the players' live game needs no arming for the game, so it gets a note, not a re-arm line
+        rep_control = rep.get("control")
+        follows = bool(a) and a["kind"] == "control" and isinstance(rep_control, dict) and rep_control.get("follows") is True
         if self.stood_down(a):
             attention.append(STATION_NO_HILL)               # F535: not armed on purpose, so no re-arm advice
         elif a and st.get("arm_pending"):
-            attention.append(STATION_BRING_BACK)            # assignment changed with the phone out of range
+            attention.append(STATION_FOLLOWS if follows else STATION_BRING_BACK)   # assignment changed with the phone out of range
         if a and armed and armed.get("game") != self.play._game_byte() and not self.stood_down(a):
-            attention.append(STATION_ARMED_OLDER)            # it missed the muster push
+            if not follows:
+                attention.append(STATION_ARMED_OLDER)        # it missed the muster push
+            elif STATION_FOLLOWS not in attention:
+                attention.append(STATION_FOLLOWS)
         # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
         # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
         fresh = bool(armed) and seen is not None and seen > (armed.get("at") or 0)
+        # F658: the pace comes only from an arming, so a hill that played on without one can run the last game's. A hill that
+        # does not follow already has a re-arm line unless it took this game's arming, so it gets the pace line only then.
+        this_arming = fresh and armed is not None and armed.get("game") == self.play._game_byte() and not st.get("arm_pending")
+        if a and a["kind"] == "control" and not self.stood_down(a) and (follows or this_arming) and isinstance(rep_control, dict):
+            hill = self.roster.config.get("hill") or {}
+            for key, lo, hi in (("capture_s", HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX), ("net_cap", HILL_NET_CAP_MIN, HILL_NET_CAP_MAX)):
+                want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
+                if want is not None and have is not None and have != want:
+                    attention.append(station_pace_line(key, have, want))
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):
@@ -1270,6 +1285,21 @@ class StationRegistry:
             lead = control.get("lead", ...)
             if lead is None or (isinstance(lead, int) and not isinstance(lead, bool) and 0 <= lead <= 3):
                 decoded_control["lead"] = lead
+            if control.get("follows") is True:   # F658: the static hill, and its per-game tally ring when well formed
+                decoded_control["follows"] = True
+                games = control.get("games")
+                if isinstance(games, dict):
+                    ring: dict[str, StationRingGame] = {}
+                    for g, v in games.items():
+                        if not (isinstance(g, str) and g.isdigit() and int(g) <= 255 and isinstance(v, dict)):
+                            continue
+                        hm, owner, last = v.get("hold_ms"), v.get("owner"), v.get("last_ms")
+                        if (isinstance(hm, dict) and all(isinstance(k, str) and isinstance(x, int) and not isinstance(x, bool) for k, x in hm.items())
+                                and isinstance(owner, int) and not isinstance(owner, bool)
+                                and isinstance(last, int) and not isinstance(last, bool) and last >= 0):
+                            ring[g] = {"hold_ms": hm, "owner": owner, "last_ms": last}
+                    if ring:
+                        decoded_control["games"] = ring
             report["control"] = decoded_control
         # 2026-09-19 (field, twice in one day): a station's `online` used to ask `OFFLINE_AFTER_MS`
         # (10 min) -- the "has this record left the field entirely" line, not "can I reach it right

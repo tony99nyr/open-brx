@@ -40,7 +40,7 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { PLAYER_STATE } from './beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS } from './transport/contract.gen.js';
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
 //  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
@@ -297,4 +297,136 @@ export class ControlAdvertiser {
     if (view) { this.last = { team: view.team, state: view.state, value: view.value }; this.lastAt = now; }
     return this.seq;
   }
+}
+
+/**
+ * F658, the static hill: a hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player
+ * phones set the `live` bit (byte 10, 128) from go-live to the whistle, and the hill follows the newest live game.
+ *
+ *  - FOLLOW MODE starts the first time the hill hears any live-bit player, and lasts. Before that (only old phones heard)
+ *    the hill keeps today's rules: it counts players of its MC-armed game (`armedGame`, 0 = any) inside MC's window.
+ *  - The CURRENT game is the byte of the live players it hears. While any live player of the current game is heard
+ *    within the presence expiry, it stays; otherwise the hill moves to the newest live game (the latest first heard).
+ *  - Only live-bit players of the current game count. A player without the bit (the countdown, after the whistle) never
+ *    counts in follow mode, so the live bit replaces MC's window.
+ *  - THE RING: one point state per game byte, at most HILL_RING_SIZE, with the last time the byte was heard. A byte back
+ *    after more than HILL_RING_STALE_MS unheard starts fresh (the 255-to-0 wrap, an MC restart that reuses a byte); a
+ *    new byte with the ring full evicts the least recently heard one (never the current).
+ *
+ * `point` is the ONE ControlPoint the station shows and advertises: a switch saves its state into the ring and loads the
+ * other game's (or a fresh one) with `restore`, which also restarts its clock, so no time banks across a switch. PURE.
+ */
+export class HillFollower {
+  constructor({ size = HILL_RING_SIZE, staleMs = HILL_RING_STALE_MS } = {}) {
+    this.size = size; this.staleMs = staleMs;
+    this.follows = false;
+    this.current = null;        // the followed game byte, once following
+    this.games = new Map();     // byte -> { heardAt, since, snap } (snap: the point's state while not current, null = fresh)
+  }
+  /** The game byte the hill advertises and counts under: the current one when following, else MC's. */
+  game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
+
+  /**
+   * One step, before the point's own update. `players` is `Presence.players()` (with `ageMs`, `game`, `state`).
+   * Returns `{ players, switched }`: the players the point may count, and `{ from, to, fresh }` when the current game
+   * changed this step (else null).
+   */
+  step(point, players, now, { expiryMs, armedGame = 0 }) {
+    const heard = new Map();    // byte -> the newest advert time of a live player
+    for (const p of players || []) {
+      if (!p || !(p.state & PLAYER_STATE.live)) continue;
+      const age = Number.isFinite(p.ageMs) ? p.ageMs : 0;
+      if (age > expiryMs) continue;
+      const g = p.game || 0, at = now - age;
+      if (!heard.has(g) || heard.get(g) < at) heard.set(g, at);
+    }
+    if (heard.size) this.follows = true;
+    if (!this.follows) {
+      // Fallback, today's rule: MC's game byte scopes the players (0 on either side = any game).
+      return { players: (players || []).filter(p => this.counts(p, armedGame)), switched: null };
+    }
+    let freshCurrent = false;
+    for (const [g, at] of heard) {
+      let e = this.games.get(g);
+      if (e && at - e.heardAt > this.staleMs) { e.snap = null; e.since = at; if (g === this.current) freshCurrent = true; }
+      if (!e) {
+        if (this.games.size >= this.size) this._evict();
+        e = { heardAt: at, since: at, snap: null };
+        this.games.set(g, e);
+      }
+      e.heardAt = Math.max(e.heardAt, at);
+    }
+    let next = this.current;
+    if (next == null || !heard.has(next)) {   // the current game has no live player left: the newest live game wins
+      let best = null;
+      for (const g of heard.keys()) {
+        const e = this.games.get(g), b = best == null ? null : this.games.get(best);
+        if (!e) continue;   // evicted in this same step (more live games than the ring holds)
+        if (!b || e.since > b.since || (e.since === b.since && g > best)) best = g;
+      }
+      if (best != null) next = best;
+    }
+    let switched = null;
+    if (next !== this.current) {
+      const from = this.current;
+      if (from != null && this.games.has(from)) this.games.get(from).snap = point.snapshot();
+      const e = this.games.get(next);
+      loadPoint(point, e.snap);
+      switched = { from, to: next, fresh: !e.snap };
+      e.snap = null;
+      this.current = next;
+    } else if (freshCurrent) {
+      loadPoint(point, null);
+      switched = { from: this.current, to: this.current, fresh: true };
+    }
+    return { players: (players || []).filter(p => this.counts(p, armedGame)), switched };
+  }
+  /** May the point count this player? Following: a live-bit player of the current game. Not following: a player of MC's
+   *  game (0 on either side = any game), today's rule. */
+  counts(p, armedGame = 0) {
+    if (!p) return false;
+    if (this.follows) return !!(p.state & PLAYER_STATE.live) && (p.game || 0) === this.current;
+    return !armedGame || !p.game || p.game === armedGame;
+  }
+  /** Forget every game: the operator's point reset. */
+  clear() { this.follows = false; this.current = null; this.games = new Map(); }
+  _evict() {
+    let worst = null;
+    for (const [g, e] of this.games) if (g !== this.current && (worst == null || e.heardAt < this.games.get(worst).heardAt)) worst = g;
+    if (worst != null) this.games.delete(worst);
+  }
+
+  /** The heartbeat's ring summary: byte -> { hold_ms, owner, last_ms } (last_ms = ms since that game was last heard). */
+  summary(point, now) {
+    const out = {};
+    for (const [g, e] of this.games) {
+      const s = g === this.current ? point : (e.snap || {});
+      out[String(g)] = { hold_ms: { ...(s.holdMs || {}) }, owner: Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY, last_ms: Math.max(0, now - e.heardAt) };
+    }
+    return out;
+  }
+  /** What a restart needs (§5d.6): the mode, the current byte and every other game's saved point. The current game's
+   *  point is saved by the caller, as before. */
+  snapshot() {
+    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]) };
+  }
+  restore(s) {
+    if (!s || typeof s !== 'object') return this;
+    this.follows = !!s.follows;
+    this.current = Number.isInteger(s.current) && s.current >= 0 && s.current <= 255 ? s.current : null;
+    this.games = new Map();
+    for (const [g, e] of Array.isArray(s.games) ? s.games.slice(0, this.size) : []) {
+      if (!Number.isInteger(g) || g < 0 || g > 255 || !e) continue;
+      this.games.set(g, { heardAt: +e.heardAt || 0, since: +e.since || 0, snap: e.snap && typeof e.snap === 'object' ? e.snap : null });
+    }
+    if (this.current != null && !this.games.has(this.current)) this.current = null;
+    if (this.current == null) this.follows = this.follows && this.games.size > 0;
+    return this;
+  }
+}
+
+/** Load a saved point state into `point` (null = a fresh, neutral point), with its clock restarted. */
+function loadPoint(point, snap) {
+  point.restore(snap || { owner: STATION_TEAM_ANY, capturing: null, progress: 0, holdMs: {}, log: [] });
+  point.counts = {}; point.lead = null; point.refusedSeen = false;
 }

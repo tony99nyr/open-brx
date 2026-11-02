@@ -31,6 +31,7 @@ static long bit_value(const std::string& name) {
   if (name == "claiming") return contract::ADVERT_PLAYER_STATE_CLAIMING;
   if (name == "claim_ready") return contract::ADVERT_PLAYER_STATE_CLAIM_READY;
   if (name == "revived") return contract::ADVERT_PLAYER_STATE_REVIVED;
+  if (name == "live") return contract::ADVERT_PLAYER_STATE_LIVE;  // F658
   return -1;
 }
 
@@ -80,7 +81,7 @@ int main(int argc, char** argv) {
       check(bit_value(c.get("bit").as_string()) == c.get("state").as_int(), "generated bit: " + name);
     }
   }
-  check(bits_seen == 7, "one vector per PLAYER_STATE bit");
+  check(bits_seen == 8, "one vector per PLAYER_STATE bit");
   for (const Value& v : doc.get("variants").arr) {
     bool stick = false;
     for (const Value& r : v.get("runners").arr) if (r.as_string() == "stick") stick = true;

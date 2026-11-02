@@ -19,7 +19,7 @@ from brx_mcp.mc import state as st
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
-from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
+from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS, STATION_FOLLOWS, station_pace_line
 from _session import ack_head, T0
 
 
@@ -63,6 +63,7 @@ def _named_lines() -> list[str]:
     return [st.WAITING_FOR_PHONE, st.GUN_LINK_LOST, st.CLOCK_NOT_SYNCED, st.WRONG_WIFI, st.IDENTITY_REVERTED,
             st.GUN_DID_NOT_ANSWER, st.GUN_DID_NOT_TAKE_CONFIG, st.BATTERY_UNREAD, st.PHONE_BATTERY_LOW, st.SCREEN_OFF, st.GUN_FLAPPING_LINE,
             st.STATION_BRING_BACK, st.STATION_ARMED_OLDER, st.STATION_NOT_ARMED, st.STATION_BATTERY_LOW,
+            STATION_FOLLOWS, station_pace_line("capture_s", 10, 15), station_pace_line("net_cap", 2, 3),   # F658
             st.not_reached_line("2M", False), st.not_reached_line("2M", True),
             Session._ONE_TEAM_REFUSAL, *tamper]
 

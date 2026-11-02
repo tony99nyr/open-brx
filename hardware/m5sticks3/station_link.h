@@ -255,6 +255,11 @@ struct StatusFields {
   int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
                            // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
+  // F658 (additive; left out until the hill follows the players' live game): `follows` and the ring summary
+  // `games` {"<byte>": {hold_ms, owner, last_ms}}, so MC can tell this hill needs no re-arm
+  bool control_follows = false;
+  struct RingGame { int game; int owner; uint32_t hold_ms[4]; uint32_t last_ms; };
+  std::vector<RingGame> control_games;
   // F591 (additive; 0 = left out): the hill pace this Stick applies, as utility.js's status reports it
   int control_capture_s = 0;
   int control_net_cap = 0;
@@ -331,6 +336,23 @@ inline std::string build_status_body(const StatusFields& f) {
     }
     if (f.control_capture_s) j += ",\"capture_s\":" + std::to_string(f.control_capture_s);
     if (f.control_net_cap) j += ",\"net_cap\":" + std::to_string(f.control_net_cap);
+    if (f.control_follows) {
+      j += ",\"follows\":true,\"games\":{";
+      for (size_t i = 0; i < f.control_games.size(); i++) {
+        const auto& g = f.control_games[i];
+        if (i) j += ",";
+        j += "\"" + std::to_string(g.game) + "\":{\"hold_ms\":{";
+        bool first = true;
+        for (int t = 0; t < 4; t++) {
+          if (!g.hold_ms[t]) continue;
+          if (!first) j += ",";
+          first = false;
+          j += "\"" + std::to_string(t) + "\":" + std::to_string(g.hold_ms[t]);
+        }
+        j += "},\"owner\":" + std::to_string(g.owner) + ",\"last_ms\":" + std::to_string(g.last_ms) + "}";
+      }
+      j += "}";
+    }
     j += "}";
   }
   if (f.has_revives) j += ",\"revives\":" + std::to_string(f.revives);
@@ -1280,6 +1302,29 @@ class StationLink {
   // (MC's mid-match lock carrier) keeps the match going.
   BleControlPoint& hill() { return hill_; }
   const BleControlPoint& hill() const { return hill_; }
+  // F658: the static hill's follower (presence.h HillFollower) and the game byte the hill advertises and counts under.
+  HillFollower& follower() { return follower_; }
+  const HillFollower& follower() const { return follower_; }
+  uint8_t hill_game() const { return follower_.game((uint8_t)assignment_.game); }
+  // F658: what the last tick's follower step did (a switch the glue logs, republishes and saves).
+  const HillFollowStep& last_follow() const { return last_follow_; }
+  // F658: whether the glue must write the ring now ("hill_ring", encode_hill_ring), after tick_players: when follow mode
+  // starts or ends, on a switch of game, when the current owner changes, and at most once per HILL_CLOCK_SAVE_MS while the
+  // tally grows (SavedHill's budget, F557).
+  bool ring_save_due(uint32_t now_ms) {
+    if (!has_control_assignment()) return false;
+    const bool f = follower_.follows;
+    if (!f && !ring_saved_follows_) return false;
+    uint32_t hold = 0;
+    for (uint32_t h : hill_.hold_ms) hold += h;
+    const bool edge = f != ring_saved_follows_ || last_follow_.switched || hill_.owner != ring_saved_owner_;
+    if (!edge && (hold == ring_saved_hold_ || (uint32_t)(now_ms - ring_saved_at_) < HILL_CLOCK_SAVE_MS)) return false;
+    ring_saved_follows_ = f;
+    ring_saved_owner_ = hill_.owner;
+    ring_saved_hold_ = hold;
+    ring_saved_at_ = now_ms;
+    return true;
+  }
   const ReviveCounter& revives() const { return revives_; }
 
   // The operator's point RESET (serial RESET, the bench A hold; utility.js btnPointReset): the Bluetooth
@@ -1289,6 +1334,7 @@ class StationLink {
     if (!has_control_assignment()) return false;
     if (hill_.frozen) return false;  // keep the finished match's recap tally
     hill_.reset();
+    follower_.clear();  // F658: a reset forgets every game's tally (utility.js resetPoint)
     return true;
   }
 
@@ -1301,9 +1347,16 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) {
+      // F658: the follower first. Following, the live bit replaces MC's window: no wait, no whistle, no freeze.
+      last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game);
+      if (follower_.follows) {
+        hill_.thaw();
+        return hill_.update(players, now_ms, &last_follow_.filter);
+      }
+      const HillFilter* filter = &last_follow_.filter;
       if (starts_known_ && !hill_live_ && (int32_t)(now_ms - hill_starts_ms_) >= 0 && !hill_.frozen) {
         hill_live_ = true;
-        hill_.update(players, hill_starts_ms_);
+        hill_.update(players, hill_starts_ms_, filter);
       } else if (!starts_known_ && !heard_start_ && !hill_live_ && assignment_.duration_ms <= 0 &&
                  state_ == LinkState::JOINING_WIFI) {
         // A duration hill waits for its anchor instead (anchor_hill_on_advert): going live here would count the lobby.
@@ -1314,11 +1367,11 @@ class StationLink {
       }
       if (deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0) {
         if (!hill_.frozen) {
-          if (hill_live_) u = hill_.update(players, hill_deadline_ms_);
+          if (hill_live_) u = hill_.update(players, hill_deadline_ms_, filter);
           hill_.freeze();
         }
       } else if (hill_live_) {
-        u = hill_.update(players, now_ms);
+        u = hill_.update(players, now_ms, filter);
       }
     }
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
@@ -1534,7 +1587,10 @@ class StationLink {
     if (kind_or_id_changed || game_changed) {
       powerup_ = PowerupSchedule();
       claims_ = ClaimGate();
-      hill_.reset();
+      // F658: a following hill keeps its point and ring across MC's new game (the live bit decides); a new kind or id
+      // is a different station and forgets both.
+      if (kind_or_id_changed || !follower_.follows) hill_.reset();
+      if (kind_or_id_changed) follower_.clear();
       revives_.reset();
       hill_live_ = false;
       starts_known_ = false;
@@ -1549,7 +1605,7 @@ class StationLink {
       epoch_++;
     }
     if (a.kind == "control" && a.starts_known) {
-      if (a.starts_in_ms > 0 && hill_live_) hill_.reset();
+      if (a.starts_in_ms > 0 && hill_live_ && !follower_.follows) hill_.reset();   // F658: following, the live bit is the window
       heard_start_ = true;
       mc_start_known_ = true;
       duration_anchor_known_ = false;
@@ -1842,6 +1898,7 @@ class StationLink {
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
     hill_.reset();
+    follower_.clear();  // F658: a released station follows nothing
     revives_.reset();
     hill_live_ = false;
     hill_offline_waiting_ = false;
@@ -1889,6 +1946,11 @@ class StationLink {
   PowerupSchedule powerup_;
   ClaimGate claims_;
   BleControlPoint hill_;
+  HillFollower follower_;        // F658
+  HillFollowStep last_follow_;   // F658
+  bool ring_saved_follows_ = false;   // F658: ring_save_due's last write
+  int ring_saved_owner_ = contract::STATION_TEAM_ANY;
+  uint32_t ring_saved_hold_ = 0, ring_saved_at_ = 0;
   ReviveCounter revives_;
   uint32_t epoch_ = 0;
   PendingActionQueue pending_actions_;
@@ -1984,8 +2046,18 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_owner = h.owner;
     f.control_progress = (int)BleControlPoint::js_round(h.progress);
     f.control_contested = h.contested;
-    f.control_game = a.game;
+    f.control_game = link.follower().game((uint8_t)a.game);   // F658: the followed byte once following
     f.control_has_inputs = true;   // F558
+    if (link.follower().follows) {
+      f.control_follows = true;
+      for (const HillGame& g : link.follower().games) {
+        if (!g.used) continue;
+        const HillSnap t = link.follower().tally(g, h);
+        StatusFields::RingGame r{g.game, t.owner, {t.hold_ms[0], t.hold_ms[1], t.hold_ms[2], t.hold_ms[3]}, now_ms - g.heard_at};
+        f.control_games.push_back(r);
+      }
+      std::sort(f.control_games.begin(), f.control_games.end(), [](const StatusFields::RingGame& x, const StatusFields::RingGame& y) { return x.game < y.game; });
+    }
     f.control_net = h.net;
     for (int t = 0; t < 4; t++) f.control_counts[t] = h.counts[t];
     f.control_lead = h.lead;

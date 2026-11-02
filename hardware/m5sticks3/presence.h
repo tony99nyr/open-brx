@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <climits>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 #include "contract.gen.h"
@@ -200,6 +201,8 @@ class PlayerPresence {
   double alpha = contract::PRESENCE_ALPHA;
   int default_threshold = contract::STATION_DEFAULT_THRESHOLD_DBM_PHONE_EXTRACTION;
   uint8_t game = 0;  // the station's game byte; 0 = any
+  // F658 (beacon.js `keyByGame`): a following hill hears every game, so one player number in two games is two entries.
+  bool key_by_game = false;
 
   // Feed every scan hit. Only player-role adverts are kept: a Stick station counts players, and
   // never reads another station (beacon.js keeps both roles in one map; the station half is the
@@ -209,7 +212,7 @@ class PlayerPresence {
     // beacon.js observe(): `if (this.game && d.game && d.game !== this.game) return null` -- a 0 on
     // either side is unscoped.
     if (game && d.game && d.game != game) return nullptr;
-    PlayerEntry* e = find(d.id);
+    PlayerEntry* e = find(d.id, d.game);
     if (!e) {
       e = free_slot();
       if (!e) { dropped_++; return nullptr; }
@@ -368,8 +371,8 @@ class PlayerPresence {
     e.game = d.game;
     e.threshold = d.threshold;
   }
-  PlayerEntry* find(uint16_t id) {
-    for (auto& e : entries_) if (e.used && e.id == id) return &e;
+  PlayerEntry* find(uint16_t id, uint8_t g) {
+    for (auto& e : entries_) if (e.used && e.id == id && (!key_by_game || e.game == g)) return &e;
     return nullptr;
   }
   PlayerEntry* free_slot() {
@@ -394,6 +397,30 @@ struct HillUpdate {
   bool contested_edge = false;   // became contested this step
   bool uncontested_edge = false;
   bool refused = false;          // F82: a tid-2 player arrived (the rising edge only)
+};
+
+// F658 (control.js HillFollower): which heard players the point may count. Following: only live-bit players of the
+// followed game. Not following (only old phones heard): the MC-armed game's players, 0 on either side = any game.
+struct HillFilter {
+  bool follows = false;
+  uint8_t game = 0;   // the followed game byte
+  uint8_t armed = 0;  // the MC-armed game byte (0 = any)
+  bool counts(const PlayerEntry& p) const {
+    if (follows) return (p.state & contract::ADVERT_PLAYER_STATE_LIVE) && p.game == game;
+    return !armed || !p.game || p.game == armed;
+  }
+};
+
+// F658: one game's point state while another game is current (control.js snapshot(): progress kept to 0.1).
+struct HillSnap {
+  int owner = contract::STATION_TEAM_ANY;
+  int capturing = -1;
+  double progress = 0;
+  int last_owner = -1;
+  uint32_t hold_ms[4] = {0, 0, 0, 0};
+  bool contested = false;
+  int dir = 0;
+  uint32_t captures = 0;
 };
 
 class BleControlPoint {
@@ -433,6 +460,36 @@ class BleControlPoint {
   }
 
   void freeze() { frozen = true; }
+
+  // F658: control.js snapshot() for the tally ring.
+  HillSnap snap() const {
+    HillSnap s;
+    s.owner = owner;
+    s.capturing = capturing;
+    s.progress = js_round(progress * 10) / 10.0;
+    s.last_owner = last_owner;
+    for (int t = 0; t < 4; t++) s.hold_ms[t] = hold_ms[t];
+    s.contested = contested;
+    s.dir = dir;
+    s.captures = captures;
+    return s;
+  }
+  // F658: control.js restore() through HillFollower's loadPoint: a saved game's state (null = a fresh, neutral point),
+  // keeping the tuning, with the clock restarted, nothing counted and no freeze.
+  void load(const HillSnap* s) {
+    reset();
+    if (!s) return;
+    owner = (s->owner == contract::STATION_TEAM_ANY || hill_claimable(s->owner)) ? s->owner : contract::STATION_TEAM_ANY;
+    capturing = s->capturing >= 0 && hill_claimable(s->capturing) ? s->capturing : -1;
+    progress = std::max(0.0, std::min(100.0, s->progress));
+    last_owner = s->last_owner >= 0 && hill_claimable(s->last_owner) ? s->last_owner : -1;
+    for (int t = 0; t < 4; t++) hold_ms[t] = s->hold_ms[t];
+    contested = s->contested;
+    dir = (s->dir == 1 || s->dir == -1) ? s->dir : 0;
+    captures = s->captures;
+    if (owner != contract::STATION_TEAM_ANY) capturing = -1;
+    else if (capturing < 0) progress = 0;
+  }
   // F593: lift a freeze and restart the clock, so the first step back banks none of the time the point stood frozen
   // (utility.js `applyHillClock`). A point that is not frozen keeps its clock.
   void thaw() {
@@ -471,7 +528,7 @@ class BleControlPoint {
   }
 
   // control.js update(), step for step.
-  HillUpdate update(const PlayerPresence& players, uint32_t now) {
+  HillUpdate update(const PlayerPresence& players, uint32_t now, const HillFilter* filter = nullptr) {
     HillUpdate out;
     if (frozen) return out;
     // F103: `elapsed` is real time and feeds possession; `dt` is clamped and feeds conversion only.
@@ -494,6 +551,7 @@ class BleControlPoint {
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (!p.used || !(p.present || p.in_circle)) continue;  // F440: outside the circle: not on the point
+      if (filter && !filter->counts(p)) continue;              // F658: another game, or not live while following
       if (!(p.state & contract::ADVERT_PLAYER_STATE_ALIVE)) continue;      // DOWN on the point contributes nothing
       if (p.team == contract::HILL_REFUSED_TID) { refused++; continue; }  // F82
       if (!hill_claimable(p.team)) continue;        // no team / a colour tid: no claim
@@ -612,6 +670,217 @@ class BleControlPoint {
   bool has_at_ = false;
   uint32_t at_ = 0;
 };
+
+// ---- HillFollower (control.js HillFollower, F658: the static hill) --------------------------------
+// A hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones set the live
+// bit from go-live to the whistle; once the hill hears any live-bit player it FOLLOWS: its current game is the byte of
+// the live players it hears, kept while one of them is heard within the presence expiry, else the newest live game
+// (the latest first heard). Only live-bit players of the current game count. One point state per game byte, at most
+// HILL_RING_SIZE, with the last time each was heard: a byte back after more than HILL_RING_STALE_MS starts fresh, and a
+// new byte with the ring full evicts the least recently heard (never the current). control.js says why, line for line.
+struct HillGame {
+  bool used = false;
+  uint8_t game = 0;
+  uint32_t heard_at = 0;  // the newest live advert of this game
+  uint32_t since = 0;     // when this game was first heard (or started fresh): "newest" compares it
+  bool has_snap = false;  // false = a fresh point when it becomes current (the current game's state is the point itself)
+  HillSnap snap;
+};
+
+struct HillFollowStep {
+  HillFilter filter;
+  bool switched = false;  // the current game changed (or restarted fresh) this step
+  int from = -1, to = -1;
+  bool fresh = false;
+};
+
+class HillFollower {
+ public:
+  size_t size = (size_t)contract::HILL_RING_SIZE;
+  uint32_t stale_ms = (uint32_t)contract::HILL_RING_STALE_MS;
+  bool follows = false;
+  bool has_current = false;
+  uint8_t current = 0;
+  HillGame games[contract::HILL_RING_SIZE];
+
+  // The byte the hill advertises and counts under: the followed game, else MC's.
+  uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
+
+  HillFollowStep step(BleControlPoint& point, const PlayerPresence& players, uint32_t now, uint8_t armed_game) {
+    HillFollowStep out;
+    struct H { uint8_t game; uint32_t at; };
+    H heard[PRESENCE_MAX_PLAYERS];
+    size_t nh = 0;
+    for (size_t i = 0; i < players.capacity(); i++) {
+      const PlayerEntry& p = players.slot(i);
+      if (!p.used || !(p.state & contract::ADVERT_PLAYER_STATE_LIVE) || p.age_ms > players.expiry_ms) continue;
+      const uint32_t at = now - p.age_ms;
+      size_t k = 0;
+      while (k < nh && heard[k].game != p.game) k++;
+      if (k == nh) heard[nh++] = {p.game, at};
+      else if ((int32_t)(at - heard[k].at) > 0) heard[k].at = at;
+    }
+    if (nh) follows = true;
+    if (!follows) {
+      out.filter.armed = armed_game;
+      return out;
+    }
+    bool fresh_current = false;
+    for (size_t k = 0; k < nh; k++) {
+      HillGame* e = find(heard[k].game);
+      if (e && (int32_t)(heard[k].at - e->heard_at) > (int32_t)stale_ms) {
+        e->has_snap = false;
+        e->since = heard[k].at;
+        if (has_current && e->game == current) fresh_current = true;
+      }
+      if (!e) {
+        if (used() >= std::min(size, (size_t)contract::HILL_RING_SIZE)) evict();
+        e = free_slot();
+        if (!e) continue;  // cannot happen: evict() frees one
+        *e = HillGame();
+        e->used = true;
+        e->game = heard[k].game;
+        e->heard_at = heard[k].at;
+        e->since = heard[k].at;
+      }
+      if ((int32_t)(heard[k].at - e->heard_at) > 0) e->heard_at = heard[k].at;
+    }
+    bool current_heard = false;
+    for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) current_heard = true;
+    int next = has_current ? current : -1;
+    if (!current_heard) {  // the current game has no live player left: the newest live game wins
+      const HillGame* best = nullptr;
+      for (size_t k = 0; k < nh; k++) {
+        const HillGame* e = find(heard[k].game);
+        if (!e) continue;
+        if (!best || (int32_t)(e->since - best->since) > 0 || (e->since == best->since && e->game > best->game)) best = e;
+      }
+      if (best) next = best->game;
+    }
+    if (next >= 0 && (!has_current || next != current)) {
+      if (has_current) {
+        HillGame* from = find(current);
+        if (from) { from->snap = point.snap(); from->has_snap = true; }
+      }
+      HillGame* to = find((uint8_t)next);
+      out.switched = true;
+      out.from = has_current ? current : -1;
+      out.to = next;
+      out.fresh = !(to && to->has_snap);
+      point.load(to && to->has_snap ? &to->snap : nullptr);
+      if (to) to->has_snap = false;
+      current = (uint8_t)next;
+      has_current = true;
+    } else if (fresh_current) {
+      point.load(nullptr);
+      out.switched = true;
+      out.from = out.to = current;
+      out.fresh = true;
+    }
+    out.filter.follows = true;
+    out.filter.game = current;
+    return out;
+  }
+
+  const HillGame* get(uint8_t g) const {
+    for (const auto& e : games) if (e.used && e.game == g) return &e;
+    return nullptr;
+  }
+  size_t used() const {
+    size_t n = 0;
+    for (const auto& e : games) if (e.used) n++;
+    return n;
+  }
+  // A game's tally for the heartbeat: the point itself for the current game, else its saved state (fresh = empty).
+  HillSnap tally(const HillGame& e, const BleControlPoint& point) const {
+    if (has_current && e.game == current) return point.snap();
+    return e.has_snap ? e.snap : HillSnap();
+  }
+  void clear() { *this = HillFollower(); }
+
+ private:
+  HillGame* find(uint8_t g) {
+    for (auto& e : games) if (e.used && e.game == g) return &e;
+    return nullptr;
+  }
+  HillGame* free_slot() {
+    for (auto& e : games) if (!e.used) return &e;
+    return nullptr;
+  }
+  void evict() {
+    HillGame* worst = nullptr;
+    for (auto& e : games)
+      if (e.used && !(has_current && e.game == current) && (!worst || (int32_t)(e.heard_at - worst->heard_at) < 0)) worst = &e;
+    if (worst) *worst = HillGame();
+  }
+};
+
+
+// F658: the follower and its ring in one NVS string ("hill_ring"), so a restarted hill keeps following with every game's
+// tally (the phone saves the same in localStorage "brx.station.hillring"). Times are saved as ms AGO, since millis()
+// restarts at boot. "r1|<station id>|<follows>|<current or -1>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
+// <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>;..." with the current game's state taken from the point.
+inline std::string encode_hill_ring(int station_id, const HillFollower& f, const BleControlPoint& point, uint32_t now) {
+  std::string s = "r1|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
+                  (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|";
+  for (const HillGame& g : f.games) {
+    if (!g.used) continue;
+    const HillSnap t = f.tally(g, point);
+    char b[160];
+    std::snprintf(b, sizeof b, "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu;", (unsigned)g.game, (unsigned long)(now - g.heard_at),
+                  (unsigned long)(now - g.since), t.owner, t.capturing, BleControlPoint::js_round(t.progress * 10), t.last_owner,
+                  (unsigned long)t.hold_ms[0], (unsigned long)t.hold_ms[1], (unsigned long)t.hold_ms[2], (unsigned long)t.hold_ms[3]);
+    s += b;
+  }
+  return s;
+}
+
+// Restore what encode_hill_ring saved, for this station id only. False (nothing changed) when it does not parse, is
+// another station's, or is not following. On success the point holds the current game's state, its clock restarted.
+inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower& f, BleControlPoint& point, uint32_t now) {
+  if (s.rfind("r1|", 0) != 0) return false;
+  int id = 0, follows = 0, current = -1, used = 0;
+  if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
+  if (id != station_id || follows != 1 || current < 0 || current > 255) return false;
+  HillFollower out;
+  out.size = f.size;
+  out.stale_ms = f.stale_ms;
+  bool have_current = false;
+  HillSnap current_snap;
+  size_t pos = (size_t)used, n = 0;
+  while (pos < s.size()) {
+    const size_t end = s.find(';', pos);
+    if (end == std::string::npos) return false;
+    unsigned game = 0;
+    unsigned long heard = 0, since = 0, h[4] = {0, 0, 0, 0};
+    int owner = 0, capturing = 0, last_owner = 0;
+    long p10 = 0;
+    if (std::sscanf(s.substr(pos, end - pos).c_str(), "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu", &game, &heard, &since, &owner,
+                    &capturing, &p10, &last_owner, &h[0], &h[1], &h[2], &h[3]) != 11 || game > 255 || n >= contract::HILL_RING_SIZE)
+      return false;
+    HillGame& g = out.games[n++];
+    g.used = true;
+    g.game = (uint8_t)game;
+    g.heard_at = now - (uint32_t)heard;
+    g.since = now - (uint32_t)since;
+    HillSnap t;
+    t.owner = owner;
+    t.capturing = capturing;
+    t.progress = p10 / 10.0;
+    t.last_owner = last_owner;
+    for (int k = 0; k < 4; k++) t.hold_ms[k] = (uint32_t)h[k];
+    if ((int)game == current) { have_current = true; current_snap = t; }
+    else { g.snap = t; g.has_snap = true; }
+    pos = end + 1;
+  }
+  if (!have_current) return false;
+  out.follows = true;
+  out.has_current = true;
+  out.current = (uint8_t)current;
+  f = out;
+  point.load(&current_snap);
+  return true;
+}
 
 // ---- ReviveCounter (utility.js tick(), the `wasAlive` loop) ---------------------------------------
 // A revive is a PRESENT player whose alive bit went 0 -> 1 since the last tick. utility.js remembers

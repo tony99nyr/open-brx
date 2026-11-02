@@ -20,6 +20,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.net import NetServer, NodeRecord
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import MC_KINDS, STATION_KINDS
+from brx_mcp.mc import types as T
 from _session import set_match
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -630,6 +631,38 @@ def test_a_station_armed_for_an_older_game_is_flagged_on_the_items_panel():
     v = s._station_view("util-1")
     assert v["armed"]["game"] == 1 and v["game"] == 2
     assert "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY" in v["attention"], v["attention"]
+
+
+
+def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_its_pace_is_old():
+    """F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so ITEMS says so
+    instead of ARMED FOR AN OLDER GAME / BRING IT BACK. Its pace still comes only from an arming, so a pace that is not
+    this game's is an amber line. Nothing here gates START."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.control("end")
+    s.finalise_recap()
+    s.set_config({"hill": {"capture_s": 15}})
+    s.net.push = lambda nid, kind, body: False           # out of Wi-Fi for the match-2 push
+    s.push_config(force=True)
+    common = {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility", "kind": "control",
+              "station_id": 3, "armed": True}
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 1, "capture_s": 10, "net_cap": 3}}, s.now_ms())
+    v = s._station_view("util-1")
+    assert st_lines(v) == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER], v["attention"]
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 2, "capture_s": 10, "net_cap": 3, "follows": True,
+                                                         "games": {"1": {"hold_ms": {"0": 9000}, "owner": 0, "last_ms": 60000},
+                                                                   "2": {"hold_ms": {}, "owner": 255, "last_ms": 0}, "x": {}}}}, s.now_ms())
+    v = s._station_view("util-1")
+    assert st_lines(v) == [T.STATION_FOLLOWS, "HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE"], v["attention"]
+    c = v["report"]["control"]
+    assert c["follows"] is True and set(c["games"]) == {"1", "2"} and c["games"]["1"]["owner"] == 0, c
+    assert not any(T.STATION_FOLLOWS in b for r in s.readiness()["board"] for b in r["blockers"]), "a note, never a START gate"
+
+
+def st_lines(v):
+    return [x for x in v["attention"] if not x.startswith("STATION #")]
 
 
 # --------------------------------------------------------------------------- the allow-list

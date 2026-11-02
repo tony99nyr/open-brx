@@ -215,7 +215,8 @@ static void player_saves_and_sightings() {
   SavedHillClock clock;
   CHECK(c.begin_players(link, p, 250).due);
   check(c.finish_players(link, p, hill, clock, "s1", 250), {});
-  CHECK(p.game == 3 && p.default_threshold == link.threshold_dbm());
+  // F658: a hill hears every game, keyed by game; its follower (not the presence filter) picks who counts
+  CHECK(p.game == 0 && p.key_by_game && p.default_threshold == link.threshold_dbm());
   link.hill().restore_held(1, nullptr);
   CHECK(c.begin_players(link, p, 500).due);
   check(c.finish_players(link, p, hill, clock, "s1", 500), {{K::SAVE_HILL}});
