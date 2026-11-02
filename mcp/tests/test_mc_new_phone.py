@@ -14,9 +14,10 @@ from _session import mc_session
 from _skip import Skipped
 
 try:
+    import websockets  # noqa: F401  # mock_node imports without it, so test the real dependency
     from brx_mcp.mc.mock_node import MockNode, UtilityNode
     HAVE_WS = True
-except ImportError:
+except ImportError:  # system python
     HAVE_WS = False
 
 from brx_mcp.mc.seen_nodes import SeenNodes
