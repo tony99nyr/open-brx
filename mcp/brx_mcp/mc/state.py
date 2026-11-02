@@ -1974,11 +1974,20 @@ class Session:
             raise ValueError("loadout.weapons holds at most a primary and a secondary")
         known = {w["weapon_id"] for w in self.compiler.weapon_catalog()}
         weapons: list[WeaponSel] = []
-        for w in lo["weapons"]:
+        for i, w in enumerate(lo["weapons"]):
             if not isinstance(w, dict) or not isinstance(w.get("weapon_id"), str) or not w["weapon_id"]:
                 raise ValueError("each loadout weapon needs a weapon_id")
             if known and w["weapon_id"] not in known:
-                raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
+                if self.compiler.catalog.row(w["weapon_id"]) is None:
+                    raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
+                # Issue 12 (game 2026-11-01): a weapon hidden since this kit was saved (the SMG) never blocks
+                # it. A secondary drops; a primary becomes the ruleset's first primary. No warning (2026-09-28).
+                if i:
+                    continue
+                others = {str(x.get("weapon_id")) for x in lo["weapons"][1:] if isinstance(x, dict)}
+                pool = [wid for wid in self.loadout_pool()["primary"] if wid not in others]
+                weapons.append({"weapon_id": pool[0] if pool else "assault_rifle"})
+                continue
             weapons.append({"weapon_id": w["weapon_id"]})
         out: Loadout = {"weapons": weapons}
         perk = lo.get("perk")

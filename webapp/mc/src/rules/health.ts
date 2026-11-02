@@ -20,3 +20,15 @@ export function healthPresetOf(h: { max_hp: number; max_armor: number; max_shiel
 export function isShieldsHealth(h?: { max_hp?: number; max_armor?: number; max_shield?: number } | null): boolean {
   return !!h && h.max_shield !== undefined && healthPresetOf({ max_hp: h.max_hp ?? 45, max_armor: h.max_armor ?? 0, max_shield: h.max_shield }) === 'shields';
 }
+
+/** F652 (game 2026-11-01): the perks this game's health preset turns off, as one plain line ("SHIELDS: BODY ARMOR AND
+ *  ARMOR PIERCING ARE OFF"), or null. Read from `PerkView.blocked_presets`, the same field the server refuses on, so
+ *  the line names whatever Tony's 2026-10-25 rule removes today. */
+export function shieldsOffNote(perks: readonly { name: string; blocked_presets?: readonly string[] | null }[],
+  h?: { max_hp?: number; max_armor?: number; max_shield?: number } | null): string | null {
+  if (!isShieldsHealth(h)) return null;
+  const off = perks.filter(k => (k.blocked_presets ?? []).includes('shields')).map(k => k.name.toUpperCase());
+  if (!off.length) return null;
+  const list = off.length === 1 ? off[0] : `${off.slice(0, -1).join(', ')} AND ${off[off.length - 1]}`;
+  return `SHIELDS: ${list} ${off.length === 1 ? 'IS' : 'ARE'} OFF`;
+}

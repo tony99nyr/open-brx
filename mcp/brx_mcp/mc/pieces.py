@@ -211,7 +211,8 @@ def _expand_type_tokens(only_ids: object, kind: str = "secondary") -> object:
 
 def _migrate_type_tokens(kind: str, value: object) -> object:
     """Read-path only (`PieceStore._load`/`_clean_row`) -- never on a live `create`/`update`, where a
-    bad id in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten. The weapon
+    type word in a freshly-sent `only_ids` must still be refused as a typo, not silently rewritten (a known
+    but hidden id is a different case: `_drop_retired` drops it on every path, issue 12). The weapon
     slots only: a perks piece holds perk ids, never weapon type words (overnight review L3)."""
     if kind not in ("primary", "secondary") or not isinstance(value, dict) or "only_ids" not in value:
         return value
@@ -221,6 +222,57 @@ def _migrate_type_tokens(kind: str, value: object) -> object:
     if isinstance(expanded, list) and not expanded and value["only_ids"]:
         return value
     return {**value, "only_ids": expanded}
+
+
+@functools.lru_cache(maxsize=1)
+def _known_ids() -> tuple[frozenset[str], frozenset[str]]:
+    """Every catalogue id, hidden and pickup-only rows included: an id outside this set is a typo."""
+    return (frozenset(w["weapon_id"] for w in WeaponCatalog()._rows),
+            frozenset(p["perk_id"] for p in default_perks()._rows))
+
+
+def _siblings(kind: str, ids: list[str]) -> list[str]:
+    """The visible weapons that share each id's FIRST type (a hidden SMG -> the other CLOSE weapons; a hidden
+    glock -> the sidearms, not every CLOSE weapon too). A primary never gains a support weapon: the primary pool
+    drops those, so the remap would read valid and still leave the push an empty pool."""
+    if kind == "perks":
+        return []
+    rows = {w["weapon_id"]: w for w in WeaponCatalog()._rows}
+    tokens = list(dict.fromkeys(t for i in ids for t in [next((t for t in (rows.get(i, {}).get("types") or [])
+                                                                 if t in _WEAPON_TYPE_IDS), None)] if t))
+    out = _expand_type_tokens(tokens, kind)
+    sib = [i for i in out if isinstance(i, str)] if isinstance(out, list) else []
+    if kind == "primary":
+        sib = [i for i in sib if "support" not in (rows.get(i, {}).get("types") or [])]
+    return sib
+
+
+def _drop_retired(kind: PieceKind, rule: Any, allowed: frozenset[str]) -> Any:
+    """Issue 12 (Tony, game 2026-11-01): a weapon or perk the catalogue has since hidden or made
+    pickup-only drops out of a preset silently, never blocking it (the 2026-09-28 rule: fix the pick, no
+    warning). A list or a fixed pick it would empty remaps to the visible weapons of the same type. An
+    id the catalogue has never held is left alone, so `_check_slot` still refuses a typo."""
+    known = _known_ids()[1 if kind == "perks" else 0]
+    retired = [i for i in ([rule["fixed_id"]] if rule["fixed_id"] else []) + list(rule["only_ids"])
+               if i in known and i not in allowed]
+    if not retired:
+        return rule
+    out = dict(rule)
+    only = [i for i in rule["only_ids"] if i not in retired]
+    if rule["only_ids"] and not only and kind != "perks":   # a perks list may empty: every offered perk
+        only = _siblings(kind, list(rule["only_ids"]))
+        if not only:
+            return rule                    # nothing to remap to: `_check_slot` refuses, the piece reads `invalid`
+    out["only_ids"] = only
+    if rule["fixed_id"] in retired:
+        sib = _siblings(kind, [rule["fixed_id"]])
+        if sib:
+            out["fixed_id"] = sib[0]
+        elif kind == "perks":
+            out["choice"], out["fixed_id"] = "player", None   # a hidden fixed perk: the player picks any offered perk
+        else:
+            return rule
+    return out
 
 
 def _check_slot(kind: PieceKind, v: object) -> dict:
@@ -233,6 +285,7 @@ def _check_slot(kind: PieceKind, v: object) -> dict:
         raise PieceError(400, "SLOT RULE NOT SUPPORTED: CHECK THE CHOICE, KINDS AND ID LISTS") from e
     weapons, perks = _pickable_ids()
     allowed = perks if kind == "perks" else weapons
+    rule = _drop_retired(kind, rule, allowed)
     fixed = rule["fixed_id"]
     named: list[str] = ([fixed] if fixed else []) + list(rule["only_ids"])
     bad = [i for i in named if i not in allowed]
