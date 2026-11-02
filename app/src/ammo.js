@@ -342,11 +342,20 @@ export class Ammo {
     const ls = this.lastShot;
     const lastFiredReload = !oldSlotReload && !ownEcho && !lcd && prev != null && mag > prev && slot < 2 && this.host.activeSlot < 2
       && slot !== this.host.activeSlot && !!ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot === slot;
-    if (lastFiredReload && this.reloading && this.reloading.slot !== slot) {
+    if (lastFiredReload && this.reloading && this.reloading.slot !== slot && !this.reloading.soft) {
       // The phone opened its takeover on the weapon in hand; the gun reloaded the last-fired slot. End it there, cleanly.
       const r = this.reloading;
       r.slot = slot; r.from = prev; r.mag = mag; r.cap = this.spawnAmmo()[slot]?.[0] ?? null; r.bolt = false;
       this.endReload('last_fired');
+    }
+    if (this.reloading && this.reloading.soft && prev != null && !ownEcho && !lcd && mag > prev && slot !== this.reloading.slot && slot < 2) {
+      // F650: the gun's own lever reloaded the slot its latch names (unknown after a spawn). The phone's reload of the weapon
+      // in hand goes on; the trigger and the ammo block stay put.
+      this.prevAmmo[slot] = mag;
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      this.host.log(`the gun's lever reloaded slot ${slot}; the phone reloads slot ${this.reloading.slot}`, 'li');
+      this.host.changed();
+      return;
     }
     if (this.reloading && prev != null && !ownEcho && !lastFiredReload) {
       if (mag > prev) {
@@ -385,8 +394,10 @@ export class Ammo {
     if (lastFiredReload) {
       this.prevAmmo[slot] = mag;
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
-      if (this.leverAt != null && this.host.now() - this.leverAt < GUN_WAS_LEVER_MS) this.fireFirst = { slot, at: this.host.now(), life: this.host.lifeSeq };
-      this.host.log(`reload landed on slot ${slot}, the slot fired last; the trigger stays on slot ${this.host.activeSlot} until it fires`, 'li');
+      const soft = !!(this.reloading && this.reloading.soft);   // F650: the phone is reloading the weapon in hand; no hint
+      if (!soft && this.leverAt != null && this.host.now() - this.leverAt < GUN_WAS_LEVER_MS) this.fireFirst = { slot, at: this.host.now(), life: this.host.lifeSeq };
+      this.host.log(soft ? `the gun's lever also reloaded slot ${slot}, the slot fired last; the phone reloads slot ${this.host.activeSlot}`
+        : `reload landed on slot ${slot}, the slot fired last; the trigger stays on slot ${this.host.activeSlot} until it fires`, 'li');
       this.host.changed();
       return;
     }
@@ -543,21 +554,6 @@ export class Ammo {
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
-    // F650 (game 2026-11-01): until the weapon in hand fires, the lever reloads the slot that fired LAST (F542). When that
-    // slot is full, or its reserve is dry, the gun does nothing at all. Say so now: a RELOADING card on the weapon in hand
-    // only ran to its timeout, three times in a row on one player, before the hint came up. This holds whether or not the
-    // gun took the ALT, because both ways the lever goes to the slot that fired last.
-    const ls = this.lastShot;
-    if (ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== this.host.activeSlot && this.host.activeSlot < 2
-      && !(this.switching && !this.switching.pu)) {
-      const lcap = this.ammoBySlot()[ls.slot], lmag = this.prevAmmo[ls.slot], lres = this.prevReserve[ls.slot];
-      if ((lcap && lmag != null && lmag >= lcap) || lres === 0) {
-        this.fireFirst = { slot: ls.slot, at: this.host.now(), life: this.host.lifeSeq };
-        this.host.log(`lever: the gun reloads slot ${ls.slot}, the slot fired last, and it is ${lres === 0 ? 'out of reserve' : 'full'}: nothing to do until slot ${this.host.activeSlot} fires`, 'li');
-        this.host.changed();
-        return;
-      }
-    }
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
     if (!(this.host.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
@@ -579,10 +575,22 @@ export class Ammo {
                        from: this.host.ammo, cap: row && row.reload_type === 'bolt' ? (this.host.ammo || 0) + 1 : cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
                        bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
-                       swapTo };   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
+                       swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
+                       soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq };   // F650: the phone reloads the weapon in hand itself
+    if (this.reloading.soft) this.host.softReloadStart(this.reloading);
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this.host.changed();
+  }
+  /** F650 (Tony, game 2026-11-01): until the weapon in hand fires, the gun's lever reloads the slot that fired LAST (F542),
+   *  so after a swap it refilled the other weapon or did nothing. The lever must always reload the weapon in hand, so the
+   *  phone does it with `$AMMO` (`softReloadWrite`) whenever the gun's last-fired slot is not that weapon or is unknown
+   *  off slot 0 (after a spawn the gun is on slot 0). Only with two loadout weapons, the trigger on one of them. PURE. */
+  softReloadNeeded() {
+    const active = this.host.activeSlot;
+    if (!(active === 0 || active === 1) || this.host.slotCount() < 2) return false;
+    const ls = this.lastShot, known = !!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2);
+    return known ? ls.slot !== active : active !== 0;
   }
   /** When a running takeover gives up waiting for the gun.
    *
@@ -631,6 +639,12 @@ export class Ammo {
   reloadTick(now) {
     // F226: the phone's own reload (`autoReload`) needs no gun evidence: the gun's echo of the phone's `$AMMO` is bookkeeping.
     if (this.reloading && this.reloading.auto && now >= this.reloading.at + this.reloading.ms) { this.endReload('filled'); return; }
+    // F650: the phone's own reload writes its `$AMMO` at the weapon's reload time. Its echo is bookkeeping (`acctWrote`).
+    if (this.reloading && this.reloading.soft && now >= this.reloading.at + this.reloading.ms) {
+      const r = this.reloading, to = this.host.softReloadWrite(r);
+      if (to == null) { this.endReload('dropped'); return; }
+      r.mag = to; this.endReload('filled'); return;
+    }
     if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');
   }
   /** F226 (bench 2026-11-01): a charge from a cell below one full charge locks the gun, and the lever does nothing
@@ -722,13 +736,11 @@ export class Ammo {
     const r = this.reloading;
     if (r && !r.auto && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
-    // Bench 2026-10-03 (F436, 0/6 vs 4/4): after `$SPAWN` the gun ignores a slot change until the first trigger pull of the
-    // life. That bench measured phone equips; ALT before the first pull is the field report's bench #2 row (brx1's call to
-    // ship it, 2026-10-17). Field 2026-10-17 (F542, F445): every assumed swap after a bare spawn preceded a failed reload.
-    // After an app restart neither counter is restored, so both read undefined and ALT is allowed: the phone cannot know
-    // whether this life has had a pull, and blocking ALT for a whole life is the worse error (brx5 stage twin review).
-    const pulled = this.host.pulledLife === this.host.lifeSeq || !!(this.lastShot && this.lastShot.life === this.host.lifeSeq);   // a round is a pull too (a lost `$BUT`)
-    if (!pulled) { this.host.log('ALT ignored by the gun: no trigger pull since the spawn', 'li'); return; }
+    // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)
+    // came from a bench of PHONE EQUIPS (F436, 0/6 vs 4/4), never of ALT; the field reports it rested on are explained by
+    // the last-fired lever (F542). In the game it silently ignored 12 presses, and on one of them the gun fired six rounds
+    // from the slot the press moved to while the HUD still showed the old one. If the gun does refuse such a press, the
+    // first round from the old slot corrects the HUD (`onAmmo`), as for any ALT it did not take.
     if (r) this.endReload('swapped');
     this.host.pu.onAltPressed();
     const from = this.altPtr, to = this.nextAltSlot();
