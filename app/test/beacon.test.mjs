@@ -496,3 +496,15 @@ test('F537 (review): an advert heard during a pause ends it, so no clock lands i
   assert.ok(e.seenAt <= t + 5000, `seenAt ${e.seenAt - t} ms must not pass the resume time`);
   assert.ok(e.recent.every(x => x.t <= t + 3000), 'no window sample moves past its arrival');
 });
+
+test('F658 gate: switching keyByGame re-keys the player entries, so one phone never shows as two', () => {
+  const pres = new Presence({ defaultThreshold: -75 });
+  const adv = encodeUuid({ role: 'player', id: 7, team: 1, state: PLAYER_STATE.alive, game: 0 });
+  pres.observe([adv], -50, 1000);
+  pres.keyByGame = true;   // the station became a control point: presence is keyed by game from here
+  pres.observe([adv], -50, 1250);
+  assert.equal(pres.players().length, 1, 'one phone, one entry');
+  pres.keyByGame = false;
+  pres.observe([adv], -50, 1500);
+  assert.equal(pres.players().length, 1, 'and back');
+});

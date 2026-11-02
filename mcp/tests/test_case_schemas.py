@@ -16,7 +16,8 @@ SCHEMAS = json.loads((FIXTURES / "case-schemas.json").read_text(encoding="utf-8"
 # the schema itself), so a new case file named any way at all needs a schema.
 NOT_CASE_FILES = {"case-schemas.json", "hud-dom-golden.json", "hud-html-golden.json", "hud-html-states.json", "mc-proof-vector.json"}
 PENDING: set[str] = set()   # a schema whose fixture has not landed yet; empty since A4 brought station-config-cases.json
-KEYWORDS = {"type", "required", "properties", "additionalProperties", "items", "enum", "oneOf", "minItems", "minProperties"}
+KEYWORDS = {"type", "required", "properties", "additionalProperties", "items", "enum", "oneOf", "minItems", "minProperties",
+            "minimum", "maximum"}
 
 
 def _is(value, name: str) -> bool:
@@ -49,6 +50,11 @@ def errors(value, schema: dict, path: str = "$") -> list[str]:
     # type-strict: Python's True == 1 must not let a boolean through an integer enum
     if "enum" in schema and not any(type(value) is type(e) and value == e for e in schema["enum"]):
         out.append(f"{path}: {value!r} is not one of {schema['enum']}")
+    # F658 (A86): a numeric range, for wire bytes such as the advert scope
+    if "minimum" in schema and _is(value, "number") and value < schema["minimum"]:
+        out.append(f"{path}: {value!r} is under the minimum {schema['minimum']}")
+    if "maximum" in schema and _is(value, "number") and value > schema["maximum"]:
+        out.append(f"{path}: {value!r} is over the maximum {schema['maximum']}")
     if "oneOf" in schema:
         hits = [s for s in schema["oneOf"] if not errors(value, s, path)]
         if len(hits) != 1:

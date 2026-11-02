@@ -221,6 +221,23 @@ export class Presence {
     // F658: a following hill hears every game, so one player number in two games must be two entries, not one.
     Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs, keyByGame });
   }
+  get keyByGame() { return !!this._keyByGame; }
+  /** F658 gate fix: a switch of key space (a station becoming a control point, or leaving it) RE-KEYS the player entries,
+   *  keeping their presence state. Left in the old key space they lingered beside the new ones until `expiryMs` ran
+   *  out, so one phone showed as two rows and counted twice. Of two entries that land on one key, the newer is kept. */
+  set keyByGame(v) {
+    const on = !!v;
+    if (on === !!this._keyByGame) return;
+    this._keyByGame = on;
+    if (!this.entries) return;
+    const next = new Map();
+    for (const [key, e] of this.entries) {
+      const k = e.role === 'player' ? (on ? `player:${e.game || 0}:${e.id}` : `player:${e.id}`) : key;
+      const had = next.get(k);
+      if (!had || e.seenAt > had.seenAt) next.set(k, e);
+    }
+    this.entries = next;
+  }
   get game() { return this._game || 0; }
   /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
    *  station from the old game stayed present until `expiryMs` ran out. An entry on byte 0 (any game) stays. */

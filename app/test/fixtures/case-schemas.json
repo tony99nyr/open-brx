@@ -1,5 +1,5 @@
 {
-  "_comment": "Key-set schemas for the language-neutral case files in this folder (a small JSON Schema subset: type, required, properties, additionalProperties, items, enum, oneOf). Checked by mcp/tests/test_case_schemas.py. A mistyped or unknown key in a case file fails there, because most runners would otherwise ignore it and the case would assert nothing. Adding a case file means adding its schema here. Keywords: type, required, properties, additionalProperties, items, enum (type-strict), oneOf, minItems, minProperties.",
+  "_comment": "Key-set schemas for the language-neutral case files in this folder (a small JSON Schema subset: type, required, properties, additionalProperties, items, enum, oneOf, minItems, minProperties, minimum, maximum). Checked by mcp/tests/test_case_schemas.py. A mistyped or unknown key in a case file fails there, because most runners would otherwise ignore it and the case would assert nothing. Adding a case file means adding its schema here. Keywords: type, required, properties, additionalProperties, items, enum (type-strict), oneOf, minItems, minProperties.",
   "schemas": {
     "advert-vectors.json": {
       "type": "object",
@@ -26,7 +26,9 @@
               "game",
               "threshold",
               "taker",
-              "kind_name"
+              "kind_name",
+              "scope_kinds",
+              "scope"
             ],
             "properties": {
               "name": {
@@ -77,6 +79,16 @@
               },
               "bit": {
                 "type": "string"
+              },
+              "scope_kinds": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 7
+              },
+              "scope": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535
               }
             },
             "additionalProperties": false
@@ -1680,6 +1692,11 @@
                   },
                   "ring_stale_ms": {
                     "type": "integer"
+                  },
+                  "station_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 65535
                   }
                 },
                 "additionalProperties": false
@@ -1704,6 +1721,24 @@
                     },
                     "game": {
                       "type": "integer"
+                    },
+                    "scope_kinds": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "control",
+                          "respawn",
+                          "powerup"
+                        ]
+                      }
+                    },
+                    "scope_stations": {
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
+                      }
                     }
                   },
                   "additionalProperties": false
@@ -1806,10 +1841,25 @@
                             "additionalProperties": {
                               "type": "integer"
                             }
+                          },
+                          "own_ms": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
                           }
                         },
                         "additionalProperties": false,
                         "minProperties": 1
+                      },
+                      "minProperties": 1
+                    },
+                    "own_ms": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer",
+                        "minimum": 0
                       },
                       "minProperties": 1
                     }
