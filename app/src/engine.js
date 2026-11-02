@@ -3311,6 +3311,11 @@ export class Engine {
   _preArmTable() {
     if (this._preArmed === this.matchId || !this._respawnProfile() || !this.frames) return;
     this._preArmed = this.matchId;
+    // F645 (game 2026-11-01): one gun kept a try-out's friendly-fire-off `$GSET` through the head, and in an FFA
+    // (every gun on team 1) it then dropped every hit with no `$HIR` for a whole match. Nothing after the head
+    // re-sent it. Send the head's own `$GSET` again here, before any trigger is mapped.
+    const gset = this._headGset();
+    if (gset) this._write([gset], 'friendly-fire setting again (F645)');
     if (this._sirLive) return;
     const take = this._pickTable('sir_pool');
     if (!take.length) return;
@@ -3326,6 +3331,11 @@ export class Engine {
       if (this.phase === 'live' && this.alive && !this._armPending) { this._armPending = this._repairArm(); this.log('pre-arm hit table write failed after go-live -- repairing', 'le'); }
       else this.log('pre-arm hit table write failed: the T-0 spawn carries it', 'le');
     });
+  }
+  /** F645: the head's `$GSET` frame (friendly fire is token 1), or null when the head has none. */
+  _headGset() {
+    const f = ((this.frames && this.frames.head) || []).find(x => typeof x === 'string' && x.startsWith('$GSET,'));
+    return f || null;
   }
   /** 2026-09-19: the bundle's respawn profile, or null on an older bundle (the legacy path). */
   _respawnProfile() {
@@ -5331,7 +5341,7 @@ export class Engine {
    *  `$BMAP,0,0`, then one `sir_pool` take through `_armLife` (retried on a failed write; on a 'tmp' bundle it also
    *  writes `spawn_protect_off`, so a resync always ends spawn protection). The rejoin reconcile
    *  is not reused: it disarms for RECONCILE_MS, re-arms with the SPAWN counts and writes no `$TID`/`$BMAP`.
-   *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
+   *  The head's own `$GSET` goes first (F645). Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
    *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
   _operatorResync() {
     // Two refusals of RESYNC GUN's own, kept out of `_operatorAct`'s subset because each names its own cure.
@@ -5398,7 +5408,10 @@ export class Engine {
     // RESYNC must not overwrite that with `$BMAP,0,0` (weapon systems live) mid-hold -- `_triggerLive` writes
     // the real one once the delay is over. `$TID`/`$AMMO` are independent of the hold and still go out.
     if (this._triggerPending) this.log('operator resync: weapon delay still holds the trigger -- $BMAP,0,0 held back', 'li');
-    this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
+    // F645: the head's `$GSET` too. A gun that lost it (friendly fire off in an FFA) took no hit all match, and
+    // a resync that re-sent only `$TID` and the table did not cure it.
+    const gset = this._headGset();
+    this._writeMust([...(gset ? [gset] : []), ...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
       () => this._lifeSeq === life && !this._standDown(GATE.operatorResync));
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
