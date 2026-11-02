@@ -1267,6 +1267,17 @@
                   },
                   "spawn_every_s": {
                     "type": "integer"
+                  },
+                  "first_at_s": {
+                    "type": "integer"
+                  },
+                  "follow": {
+                    "type": "boolean"
+                  },
+                  "armed_game": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 255
                   }
                 },
                 "additionalProperties": false
@@ -1461,7 +1472,15 @@
                       "type": "integer"
                     },
                     "do": {
-                      "type": "string"
+                      "type": "string",
+                      "enum": [
+                        "update",
+                        "tick",
+                        "advance",
+                        "observe",
+                        "settle",
+                        "restart"
+                      ]
                     },
                     "body": {
                       "type": "object",
@@ -1531,6 +1550,14 @@
                         },
                         "claim_key": {
                           "type": "integer"
+                        },
+                        "follows": {
+                          "type": "boolean"
+                        },
+                        "game": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 255
                         }
                       },
                       "additionalProperties": false,
@@ -1552,7 +1579,13 @@
                           "state": {
                             "type": "array",
                             "items": {
-                              "type": "string"
+                              "type": "string",
+                              "enum": [
+                                "alive",
+                                "claiming",
+                                "claim_ready",
+                                "live"
+                              ]
                             }
                           },
                           "value": {
@@ -1563,6 +1596,29 @@
                           },
                           "age_ms": {
                             "type": "integer"
+                          },
+                          "game": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                          },
+                          "scope_kinds": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "control",
+                                "respawn",
+                                "powerup"
+                              ]
+                            }
+                          },
+                          "scope_stations": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 1
+                            }
                           }
                         },
                         "additionalProperties": false

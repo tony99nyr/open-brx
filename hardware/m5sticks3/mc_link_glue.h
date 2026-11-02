@@ -294,6 +294,28 @@ static void mcLoadSavedRing(StationLink& link) {
     Serial.printf("RESTORED hill follows game %d (owner %d)\n", link.follower().current, link.hill().owner);
 }
 
+// ---- F658: the static powerup's follower and item ("brxmc"/"pu_follow", station_link.h encode_powerup_follow) -----
+// StationLink::pu_save_due decides WHEN (follow starts, a game switch, a spawn or a claim). Restored at boot after the
+// saved config, so a restarted powerup keeps following its game with its item and spawn clock.
+static void mcWriteSavedPuFollow(StationLink& link) {
+  mcPrefs.begin("brxmc", false);
+  const std::string body = encode_powerup_follow(link.assignment().id, link.pu_follower(), link.powerup(), millis());
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "pu_follow", body.c_str()));
+  mcPrefs.end();
+}
+
+static void mcLoadSavedPuFollow(StationLink& link) {
+  if (!link.has_powerup_assignment()) return;
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("pu_follow", "");
+  mcPrefs.end();
+  const bool power_on = esp_reset_reason() == ESP_RST_POWERON;   // as the hill ring: the time off is unknown
+  if (decode_powerup_follow(body.c_str(), link.assignment().id, link.pu_follower(), link.powerup(), millis(), power_on)) {
+    link.claims().set_follow(link.pu_follower().current, true);
+    Serial.printf("RESTORED powerup follows game %d\n", link.pu_follower().current);
+  }
+}
+
 // ---- F365 / A67: the on-station range edit in NVS ("brxmc"/"range") -----------------------------------
 // StationLink::range_storage_body(): the edited values (tagged with the station id) and the edit log with
 // its seq. Written only when that body changes (an edit, an MC config that drops an edit, a release):
@@ -394,6 +416,7 @@ static void mcRestoreSavedConfig(StationLink& link) {
   }
   link.enforce_restored_hill_freeze();
   mcLoadSavedRing(link);   // F658: a following hill comes back following, with every game's tally
+  mcLoadSavedPuFollow(link);   // F658: a following powerup comes back following, with its item
   // A68 review: a duration hill resumes its whistle from the saved time left, before any advert.
   if (savedClock.note_config(a, savedConfig.session_id())) mcEraseSavedClock();
   const int32_t rem = savedClock.restore_remaining(a, savedConfig.session_id());
@@ -664,14 +687,10 @@ class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (a.role != contract::ADVERT_ROLE_PLAYER) return;
     const int rssi = advertisedDevice.getRSSI();
     if (scanFeedsPresence) seenPush(a, rssi, millis());
-    bool claiming = (a.state & contract::ADVERT_PLAYER_STATE_CLAIMING) != 0;
-    bool ready = (a.state & contract::ADVERT_PLAYER_STATE_CLAIM_READY) != 0;
-    if (!claiming && !ready) return;
+    if (!(a.state & (contract::ADVERT_PLAYER_STATE_CLAIMING | contract::ADVERT_PLAYER_STATE_CLAIM_READY))) return;
     portENTER_CRITICAL(&claimMux);
-    if (scanFeedsClaims) {
-      link.claims().observe(/*player_num=*/a.id, /*target_station_id=*/a.value, a.game, claiming,
-                             ready, /*alive=*/(a.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0, rssi, millis());
-    }
+    // F658 (A86): the gate checks the scope (and the live bit while following) before the claim rule
+    if (scanFeedsClaims) link.claims().observe_advert(a, rssi, millis());
     portEXIT_CRITICAL(&claimMux);
   }
 };
@@ -733,7 +752,9 @@ static void mcPollPlayerScan(uint32_t now) {
   portENTER_CRITICAL(&claimMux);
   scanFeedsClaims = link.has_powerup_assignment();
   portEXIT_CRITICAL(&claimMux);
-  scanFeedsPresence = link.has_control_assignment() || (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment());
+  // F658: a powerup feeds presence too, so its follower hears the players' live game
+  scanFeedsPresence = link.has_control_assignment() || link.has_powerup_assignment() ||
+                      (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment());
   scan->start(SCAN_WINDOW_S, onPlayerScanComplete, false);
 }
 
@@ -752,6 +773,7 @@ static void mcApplyTickIntents(const TickIntents& intents) {
       case TickIntentKind::SAVE_HILL: mcWriteSavedHill(); break;
       case TickIntentKind::SAVE_CLOCK: mcWriteSavedClock(); break;
       case TickIntentKind::SAVE_RING: mcWriteSavedRing(link); break;   // F658
+      case TickIntentKind::SAVE_PU_FOLLOW: mcWriteSavedPuFollow(link); break;   // F658
       case TickIntentKind::QUEUE_CAPTURE: pendingCaptureTeam = intent.value; break;
       case TickIntentKind::WAKE_SCREEN: mcScreenWake = true; break;
       case TickIntentKind::REVIVE_FLASH: reviveFlashUntilMs = millis() + REVIVE_FLASH_MS; break;

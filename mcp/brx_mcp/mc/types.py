@@ -262,6 +262,7 @@ STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
 STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF"
 # F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
 # STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+# A powerup that reports `follows` (the static powerup) gets the same note.
 STATION_FOLLOWS = "FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED"
 STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE"
 # F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
@@ -1702,6 +1703,23 @@ class StationRingGame(TypedDict):
     last_ms: int               # ms since that game was last heard
 
 
+class StationPowerupGame(TypedDict):
+    """F658: the followed game's item in a following powerup's `powerup.games` (one entry, the current game)."""
+    available: bool
+    taker: int                 # the player_num the current item went to, 0 = none
+    next_ms: NotRequired[int]  # ms to the next spawn; absent = no spawn clock yet
+    since_ms: int              # ms since this game's clock started (its first live sighting)
+    last_ms: int               # ms since this game was last heard
+
+
+class StationPowerup(TypedDict):
+    """F658 (the static powerup): a powerup station that follows the players' live game, as a hill does (`control.follows`).
+    Absent until it follows."""
+    follows: bool
+    game: int                  # the followed game byte
+    games: NotRequired[dict[str, StationPowerupGame]]
+
+
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).
 _RangeEditValues = TypedDict("_RangeEditValues", {"from": int | TxPower, "to": int | TxPower})
 
@@ -1745,6 +1763,7 @@ class StationReport(TypedDict):
     armed: NotRequired[bool]
     battery: NotRequired[float]
     control: NotRequired[StationControl]
+    powerup: NotRequired[StationPowerup]             # F658: a powerup that follows the players' live game
     uptime_s: NotRequired[int]                       # A58: seconds since this station booted
     boot_count: NotRequired[int]                     # A58: boots since the station was flashed (persisted)
     nvs_fail: NotRequired[int]                       # O12: NVS writes that failed since boot (absent = none)

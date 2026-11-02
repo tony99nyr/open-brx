@@ -3116,8 +3116,49 @@ static void test_f658_hill_follows_the_live_game() {
   CHECK(link.reset_hill() && !link.follower().follows);
 }
 
+// F658, the static powerup: a Stick powerup armed for game 6 with no START follows a LIVE in-scope player of game 7,
+// starts the item's clock at first_at_s, advertises and reports byte 7 with `follows`, ignores MC's update for game 6,
+// keeps its item across MC's next arming and is not frozen by MC's END. A zero scope never starts it.
+static void test_f658_powerup_follows_the_live_game() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "powerup"; a.id = 4; a.team = 255; a.game = 6;
+  a.item.present = true; a.item.spawn_every_s = 60; a.item.first_at_s = 60;
+  link.apply_station_config(a, 0);
+  PlayerPresence p;
+  p.key_by_game = true;
+  uint8_t kinds = 0;
+  auto hear = [&](uint8_t game, uint32_t t) {
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = kinds; d.scope = 1u << 4; d.id = 3; d.team = 0;
+    d.state = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE; d.game = game;
+    p.observe(d, -70, t);
+  };
+  for (uint32_t t = 0; t <= 1000; t += 250) { hear(7, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.pu_follower().follows && link.advert_game() == 6);   // A86: a zero scope is inert
+  CHECK(!link.pu_save_due());
+  kinds = contract::ADVERT_SCOPE_KIND_POWERUP;
+  hear(7, 2000); p.tick(2000); link.tick_players(p, 2000);
+  CHECK(link.pu_follower().follows && link.advert_game() == 7 && link.last_pu_follow().switched);
+  CHECK(link.powerup_advert_view(2000).value == 60);   // the clock from first_at_s
+  CHECK(link.pu_save_due());
+  CHECK(!link.pu_save_due());
+  const std::string body = build_status_body(fill_status(link, 3000, true, 1, 0));
+  CHECK(body.find("\"powerup\":{\"follows\":true,\"game\":7,\"games\":{\"7\":{\"available\":false,\"taker\":0,\"next_ms\":59000,\"since_ms\":1000,\"last_ms\":1000}}}") != std::string::npos);
+  StationUpdateMsg u; u.present = true; u.id = 4; u.available = true; u.next_spawn_in_ms = 60000;
+  CHECK(!link.apply_station_update(u, 3000));   // MC armed game 6: not the game on the field
+  CHECK(!link.powerup().available());
+  StationAssignment b = a; b.game = 8; b.ends_in_ms = 0;   // MC's next arming, with an END: neither touches the item
+  link.apply_station_config(b, 4000);
+  CHECK(link.pu_follower().follows && link.advert_game() == 7 && !link.powerup_ended());
+  CHECK(link.powerup_advert_view(4000).value == 58);
+  StationAssignment c = a; c.id = 5;   // another station id is another station: it follows nothing yet
+  link.apply_station_config(c, 5000);
+  CHECK(!link.pu_follower().follows);
+}
+
 int main(int argc, char** argv) {
   test_f658_hill_follows_the_live_game();
+  test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();

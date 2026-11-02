@@ -131,6 +131,7 @@ constexpr const char* STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFO
 constexpr const char* STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF";
 // F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
 // STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+// A powerup that reports `follows` (the static powerup) gets the same note.
 constexpr const char* STATION_FOLLOWS = "FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED";
 constexpr const char* STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE";
 // F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on

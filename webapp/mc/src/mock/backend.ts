@@ -245,8 +245,8 @@ export class MockBackend implements Api {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
       const down = this.stoodDown(a);   // F535: stations.py stood_down
-      const rc = rep.control;   // F658: a hill that follows the players' live game gets a note, not a re-arm line
-      const follows = !!a && a.kind === 'control' && !!rc && rc.follows === true;
+      const rc = rep.control;   // F658: a hill or a powerup that follows the players' live game gets a note, not a re-arm line
+      const follows = !!a && ((a.kind === 'control' && !!rc && rc.follows === true) || (a.kind === 'powerup' && rep.powerup?.follows === true));
       // F658 review: following replaces only the game; a missed kind, id or team still needs a re-arm (stations.py no_rearm)
       const noRearm = follows && !!st.armed && st.armed.kind === a!.kind && st.armed.id === a!.id && st.armed.team === a!.team;
       if (down) attention.push(STATION_NO_HILL);

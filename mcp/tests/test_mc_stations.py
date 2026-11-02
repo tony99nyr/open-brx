@@ -677,6 +677,38 @@ def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_i
     assert v["arm_pending"] and st_lines(v)[:2] == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER], v["attention"]
 
 
+
+def test_f658_a_following_powerup_gets_a_note_not_a_re_arm_line():
+    """F658 (the static powerup): a powerup that reports `powerup.follows` plays the players' live game with no arming, as a
+    following hill does, so ITEMS says so instead of ARMED FOR AN OLDER GAME / BRING IT BACK. Its report is decoded."""
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "powerup", "team": "any", "id": 4})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.control("end")
+    s.finalise_recap()
+    s.net.push = lambda nid, kind, body: False           # out of Wi-Fi for the match-2 push
+    s.push_config(force=True)
+    common = {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility", "kind": "powerup",
+              "station_id": 4, "armed": True}
+    s.net.simulate_status("util-1", common, s.now_ms())
+    v = s._station_view("util-1")
+    assert T.STATION_ARMED_OLDER in v["attention"] and T.STATION_FOLLOWS not in v["attention"], v["attention"]
+    s.net.simulate_status("util-1", {**common, "powerup": {"follows": True, "game": 2, "games": {
+        "2": {"available": False, "taker": 7, "next_ms": 41000, "since_ms": 90000, "last_ms": 500},
+        "3": {"available": "yes", "taker": 0, "since_ms": 1, "last_ms": 1}, "x": {}}}}, s.now_ms())
+    v = s._station_view("util-1")
+    assert T.STATION_FOLLOWS in v["attention"], v["attention"]
+    assert T.STATION_ARMED_OLDER not in v["attention"] and T.STATION_BRING_BACK not in v["attention"], v["attention"]
+    assert v["report"]["powerup"] == {"follows": True, "game": 2, "games": {
+        "2": {"available": False, "taker": 7, "next_ms": 41000, "since_ms": 90000, "last_ms": 500}}}, v["report"]
+    assert not any(T.STATION_FOLLOWS in b for r in s.readiness()["board"] for b in r["blockers"]), "a note, never a START gate"
+    # following replaces only the game: an id change that missed the station still needs it brought back
+    s.set_station("util-1", {"kind": "powerup", "team": "any", "id": 5})
+    assert st_lines(s._station_view("util-1"))[:2] == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER]
+    # a powerup's report never makes a hill follow, nor a hill's a powerup
+    s.net.simulate_status("util-1", {**common, "powerup": {"follows": False, "game": 2}}, s.now_ms())
+    assert "powerup" not in s._station_view("util-1")["report"]
+
 def st_lines(v):
     return [x for x in v["attention"] if not x.startswith("STATION #")]
 
