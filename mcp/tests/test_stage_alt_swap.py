@@ -527,15 +527,11 @@ def test_f542_a_silent_lever_after_alt_keeps_the_new_weapon_and_names_the_slot_f
         await _tick(st, clock, st._switch_window_s() + 0.05)
         assert st.active_slot == 1
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading and st.reloading["slot"] == 1
-        for _ in range(40):
-            await _tick(st, clock, 0.25)
-            if st.reloading is None:
-                break
-        assert st.reload_outcome and st.reload_outcome["why"] == "timeout", st.reload_outcome
-        assert st.active_slot == 1, "no rollback"
-        assert st.reload_outcome.get("last_fired") == 0
+        # F650 (ammo.js `reloadPulled`): slot 0 fired last and is full, so the hint goes up at the press and no takeover opens
+        assert st.reloading is None, st.reloading
         assert st.state()["model"]["fire_first"] is True
+        await _tick(st, clock, 8)
+        assert st.active_slot == 1 and st.reloading is None, "no rollback, and no takeover later"
     asyncio.run(go())
 
 

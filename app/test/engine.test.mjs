@@ -5215,8 +5215,10 @@ test('F542 last-fired: after ALT, one shot on the new weapon, then the lever rel
 });
 test('F542 last-fired: a fired round on the other slot still snaps the trigger back with GUN WAS ON', () => {
   const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
   f542TonySequence(h);
   f542Shot(h, '$ALCD,1,100,1,288,0,*');
+  assert.ok(logs.includes('gun was on slot 1: the HUD showed slot 0'), 'F650: the disagreement is logged');
   const s = h.eng.state();
   assert.equal(s.activeSlot, 1, 'a shot proves the slot');
   assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
@@ -5234,14 +5236,54 @@ test('F542 last-fired: the 2026-11-01 morning case, a silent lever after ALT sta
   h.adv(300); f542Alt(h);
   assert.equal(h.eng.state().activeSlot, 1, 'setup: ALT to slot 1');
   f542Lever(h);
-  assert.equal(h.eng.state().reloading, true, 'setup: the phone opens the reload on slot 1');
+  // F650 (game 2026-11-01): slot 0 fired last and is full, so the gun does nothing. The phone says so at once, with no
+  // RELOADING card on slot 1 that only runs to its timeout.
+  let s = h.eng.state();
+  assert.equal(s.reloading, false, 'no takeover on slot 1');
+  assert.equal(s.fireFirst, true, 'PULL THE TRIGGER, THEN RELOAD, at the press');
+  assert.equal(s.activeSlot, 1, 'the HUD stays on slot 1');
+  assert.ok(logs.some(l => /slot fired last, and it is full/.test(l)));
   h.adv(8000); h.eng.tick();
-  const s = h.eng.state();
-  assert.equal(s.reloadOutcome.why, 'timeout');
-  assert.equal(s.activeSlot, 1, 'no rollback: the HUD stays on slot 1');
+  s = h.eng.state();
   assert.equal(s.reloadFailed, false, 'the silence is the full slot 0, not a failed reload');
-  assert.equal(s.fireFirst, true, 'PULL THE TRIGGER, THEN RELOAD');
-  assert.ok(!logs.some(l => /rolled back/.test(l)));
+  assert.equal(s.activeSlot, 1, 'no rollback: the HUD stays on slot 1');
+  assert.ok(!logs.some(l => /rolled back|did NOT take/.test(l)));
+});
+test('F650: the 2026-11-01 evening case, three levers after ALT onto a part-used weapon, the last-fired slot full: no false RELOADING', () => {
+  // Field: slot 1 fired last and the lever refilled it; ALT back to slot 0 (13 rounds); three levers. The gun answered nothing
+  // (it reloads the slot that fired last, which was full) and the next round left slot 0 one lower. The phone opened three
+  // RELOADING cards on slot 0 that each timed out as "reload did NOT take".
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  f542TonySequence(h);
+  f542Shot(h, '$ALCD,28,100,0,384,0,*');                           // slot 0 fires: it is now the slot fired last
+  f542Alt(h);
+  f542Shot(h, '$ALCD,1,100,1,288,0,*');                            // slot 1 fires last
+  const cap1 = h.eng.am.ammoBySlot()[1];
+  f542Lever(h); h.adv(1200); h.frame(`$ALCD,${cap1},100,1,${288 - cap1 + 1},0,*`);
+  assert.equal(h.eng.state().reloading, false, 'setup: slot 1 refilled');
+  h.adv(300); f542Alt(h);
+  assert.equal(h.eng.state().activeSlot, 0, 'setup: ALT back to slot 0');
+  for (let i = 0; i < 3; i++) {
+    f542Lever(h);
+    const s = h.eng.state();
+    assert.equal(s.reloading, false, `lever ${i + 1}: no RELOADING on slot 0`);
+    assert.equal(s.fireFirst, true, `lever ${i + 1}: PULL THE TRIGGER, THEN RELOAD`);
+    h.adv(2500); h.eng.tick();
+  }
+  assert.ok(!logs.some(l => /did NOT take/.test(l)), 'no failed-reload lines');
+  f542Shot(h, '$ALCD,27,100,0,384,0,*');
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 0); assert.equal(s.ammo, 27); assert.equal(s.fireFirst, false, 'the round on slot 0 retires the hint');
+  f542Lever(h);
+  assert.equal(h.eng.state().reloading, true, 'now the lever reloads slot 0 as normal');
+});
+test('F650: the lever after ALT still opens a reload when the last-fired slot has room (the gun reloads that slot)', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // slot 1 fired last at 2 rounds: room to reload
+  f542Lever(h);
+  assert.equal(h.eng.state().reloading, true, 'the F542 path: the takeover opens and the landing on slot 1 ends it');
+  assert.equal(h.eng.state().fireFirst, false);
 });
 // Fable review of ae5998c0b.
 test('F542 last-fired review: the hint is hidden while the player is down', () => {

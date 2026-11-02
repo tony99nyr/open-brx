@@ -543,6 +543,21 @@ export class Ammo {
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
+    // F650 (game 2026-11-01): until the weapon in hand fires, the lever reloads the slot that fired LAST (F542). When that
+    // slot is full, or its reserve is dry, the gun does nothing at all. Say so now: a RELOADING card on the weapon in hand
+    // only ran to its timeout, three times in a row on one player, before the hint came up. This holds whether or not the
+    // gun took the ALT, because both ways the lever goes to the slot that fired last.
+    const ls = this.lastShot;
+    if (ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== this.host.activeSlot && this.host.activeSlot < 2
+      && !(this.switching && !this.switching.pu)) {
+      const lcap = this.ammoBySlot()[ls.slot], lmag = this.prevAmmo[ls.slot], lres = this.prevReserve[ls.slot];
+      if ((lcap && lmag != null && lmag >= lcap) || lres === 0) {
+        this.fireFirst = { slot: ls.slot, at: this.host.now(), life: this.host.lifeSeq };
+        this.host.log(`lever: the gun reloads slot ${ls.slot}, the slot fired last, and it is ${lres === 0 ? 'out of reserve' : 'full'}: nothing to do until slot ${this.host.activeSlot} fires`, 'li');
+        this.host.changed();
+        return;
+      }
+    }
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
     if (!(this.host.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
@@ -652,7 +667,11 @@ export class Ammo {
   cancelSwap() { this.switching = null; }
   /** The gun's own slot report moved the trigger off the slot the phone believed (field 2026-10-17, report E10): the
    *  ACTIVE card says GUN WAS ON, so the weapon does not change on the HUD with no reason given. */
-  gunWasOn(slot) { this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot, gunWas: true } }); }
+  gunWasOn(slot) {
+    // F650: the one line that says the HUD and the gun disagreed. The game 2026-11-01 logs could not count these.
+    this.host.log(`gun was on slot ${slot}: the HUD showed slot ${this.host.activeSlot}`, 'li');
+    this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot, gunWas: true } });
+  }
   /** A phone equip put `slot` on the trigger (powerup-player.js): it ends a reload, closes a swap, moves the trigger
    *  and shows the new counts before the gun's first `$ALCD`. A pull before it cannot prove the new count was spent,
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */

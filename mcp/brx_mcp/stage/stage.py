@@ -6473,6 +6473,19 @@ class GunStage:
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")
             return
+        # F650 (ammo.js `reloadPulled`): until the weapon in hand fires, the lever reloads the slot that fired last (F542).
+        # When that slot is full or its reserve is dry the gun does nothing, so the hint goes up now and no takeover opens.
+        ls = self._last_shot_slot
+        if (ls is not None and ls < 2 and self._last_shot_life == self._life_queued and ls != self.active_slot
+                and self.active_slot < 2 and not (self.switching and not self.switching.get("pu"))):
+            lcap = self._ammo_by_slot().get(ls)
+            lmag = self._prev_ammo.get(ls)
+            lres = self._prev_reserve.get(ls)
+            if (lcap and lmag is not None and lmag >= lcap) or lres == 0:
+                self._fire_first = {"slot": ls, "at": self.now(), "life": self._life_queued}
+                self._log(f"lever: the gun reloads slot {ls}, the slot fired last, and it is "
+                          f"{'out of reserve' if lres == 0 else 'full'}: nothing to do until slot {self.active_slot} fires", "info")
+                return
         cap = self._ammo_by_slot().get(self.active_slot)
         if cap is None:
             cap = self.mag                      # ammo.js `reloadPulled`: `ammoBySlot()[slot] ?? this.host.mag`
