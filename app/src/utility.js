@@ -268,6 +268,9 @@ async function applyStationConfig(body) {
   settings.item = cfg.item;
   pu.id = settings.id; pu.item = settings.item;
   if (!sameStation) puFollower.clear();   // F658: another kind or id is another station, which follows nothing yet
+  // F658: any arming may be a new match on the same byte (an MC restart, the 255-to-1 wrap). MC's remembered update, and
+  // the mark that MC anchored the schedule, may be an old match's: forget both. MC's next update sets them again.
+  puFollower.onArm(); savePowerup();
   // F658: a following powerup keeps its item; the live bit decides which game it plays, not this arming
   if (settings.game !== wasGame && !(cfg.kind === 'powerup' && puFollower.follows)) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   if (cfg.kind === 'control') applyHillClock(cfg, stationNow(), sameStation);

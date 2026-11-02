@@ -3161,8 +3161,10 @@ static void test_f658_powerup_follows_the_live_game() {
   StationUpdateMsg u; u.present = true; u.id = 4; u.available = true; u.next_spawn_in_ms = 60000;
   CHECK(!link.apply_station_update(u, 3000));   // MC armed game 6: not the game on the field
   CHECK(!link.powerup().available());
+  CHECK(link.pu_follower().has_mc && link.pu_follower().mc_anchored);   // remembered for game 6
   StationAssignment b = a; b.game = 8; b.ends_in_ms = 0;   // MC's next arming, with an END: neither touches the item
   link.apply_station_config(b, 4000);
+  CHECK(!link.pu_follower().has_mc && !link.pu_follower().mc_anchored);   // any arming forgets MC's remembered update
   CHECK(link.pu_follower().follows && link.advert_game() == 7 && !link.powerup_ended());
   CHECK(link.powerup_advert_view(4000).value == 58);
   StationAssignment c = a; c.id = 5;   // another station id is another station: it follows nothing yet

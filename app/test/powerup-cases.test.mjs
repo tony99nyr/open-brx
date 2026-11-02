@@ -34,7 +34,7 @@ for (const c of FIXTURE.cases) {
     for (const step of c.steps) {
       let events = [];
       if (step.do === 'update') { if (follow) f.noteMc(armed, step.body, step.t); if (!follow || f.acceptsMc(armed)) s.update(step.body, step.t); }
-      else if (step.do === 'arm') armed = step.game;   // F658: MC's next station_config; a following station keeps its item
+      else if (step.do === 'arm') { armed = step.game; f.onArm(); }   // F658: MC's next station_config; a following station keeps its item
       else if (step.do === 'tick') {
         const players = (step.players || []).map(toPlayer(c));
         if (follow) f.step(s, players, step.t, { expiryMs: PRESENCE_EXPIRY_MS, armedGame: armed, stationId: c.setup.id });

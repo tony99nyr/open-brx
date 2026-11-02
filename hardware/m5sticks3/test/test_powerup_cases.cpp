@@ -161,6 +161,7 @@ static void run_case(const Value& c) {
       if (!r.follow || r.follower.accepts_mc((uint8_t)r.armed)) r.sched.apply_update(u, t);
     } else if (what == "arm") {   // MC's next station_config: a following station keeps its item
       r.armed = (int)step.get("game").as_int();
+      r.follower.on_arm();   // StationLink::apply_station_config
     } else if (what == "tick") {
       if (r.follow) r.follow_step(step.get("players"), t);
       if (r.sched.tick(t)) r.events.push_back("spawned");

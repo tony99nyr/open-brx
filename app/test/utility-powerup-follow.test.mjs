@@ -86,3 +86,13 @@ test('review round 1: following into MC\'s armed game from another game applies 
   assert.equal(api.statusBody().powerup.game, 54);
   assert.ok(air().value <= 20 && air().value >= 18, `MC's schedule, not first_at_s: ${air().value}`);
 });
+
+test('memo fix: a new arming on the same byte forgets MC\'s remembered update, so following into that byte starts at first_at_s', async () => {
+  await api.applyStationConfig({ ...station, game: 55 });
+  api.applyStationUpdate({ id: 6, available: false, next_spawn_in_ms: 20_000 });   // an old match's START for game 55
+  await api.applyStationConfig({ ...station, game: 55 });   // MC restarted and armed game 55 again; its new START is lost
+  assert.equal(JSON.parse(store.get('brx.station.pufollow')).mcAnchored, false, 'the saved mark is gone too');
+  stand(1000, [{ id: 5, game: 54, live: false }, { id: 7, game: 55, live: true }, { id: 8, game: 55, live: true }]);
+  assert.equal(api.statusBody().powerup.game, 55);
+  assert.ok(air().value >= 59, `a fresh clock, not the old match's schedule: ${air().value}`);
+});
