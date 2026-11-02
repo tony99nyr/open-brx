@@ -1233,10 +1233,24 @@ def test_hold_recovery_waits_its_timer_then_leaks_until_the_write_lands():
     assert B.release_after_pause(prof, "heavy", burst, 300.0, 100.0) == ("crisp", 0, 2, "heavy")
     assert B.release_after_pause(prof, "heavy", burst, 350.0, 100.0) == ("crisp", 0, 1, "heavy")
     assert B.release_after_pause(prof, "heavy", burst, 250.0 + B.RELEASE_RESET_MS, 100.0) == ("crisp", 0, 0, None)
-    # The settle clock no longer applies to a degraded R2 weapon: a long rest recovers through the timer.
-    assert B.release_after_pause(prof, "degraded", prof.after_shots, 700.0, 100.0) == ("crisp", 0, 0, None)
+    # The settle clock (600 ms) does not apply to an R2 weapon: 300 ms clears a 100 ms timer plus the write, and
+    # 700 ms does not clear an 800 ms timer.
+    assert prof.settle_ms == 600.0
+    assert B.release_after_pause(prof, "degraded", prof.after_shots, 300.0, 100.0) == ("crisp", 0, 0, None)
+    slow = B.recoil_profile(_ar_row_with_recovery({"per_round_ms": 100, "min_ms": 100, "max_ms": 900}))
+    assert B.recovery_ms(slow, slow.after_shots + 8) == 800.0
+    assert B.release_after_pause(slow, "heavy", slow.after_shots + 8, 700.0, 100.0) == ("heavy", slow.after_shots + 8, 0, None)
+    # A carried count keeps climbing: a degraded release that carries turns heavy on the next round.
+    state, burst, _, _ = B.release_after_pause(prof, "degraded", prof.after_shots, 50.0, 100.0)
+    assert B._recoil_step(prof, state, burst)[0] == ("heavy" if prof.after_shots + 1 >= prof.heavy_after else "degraded")
+    assert B._recoil_step(prof, state, burst)[1] == prof.after_shots + 1
     # A crisp release clears the count, as today.
     assert B.release_after_pause(prof, "crisp", 3, 10.0, 100.0) == ("crisp", 0, 0, None)
+
+
+def test_a_partial_recovery_block_is_off():
+    for block in ({}, {"per_round_ms": 25}, {"per_round_ms": None, "min_ms": 100, "max_ms": 500}, None, "on"):
+        assert B.recoil_profile(_ar_row_with_recovery(block)).recovery is None, block
 
 
 def test_hold_recovery_wins_over_the_flat_release_reset():

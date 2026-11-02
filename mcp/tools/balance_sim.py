@@ -1122,15 +1122,19 @@ def recoil_profile(row: dict) -> RecoilProfile | None:
 
 
 def _recovery(block) -> tuple[float, float, float] | None:
-    """`recoil.recovery` (F662 R2): `{per_round_ms, min_ms, max_ms}`, or None when the row has none."""
+    """`recoil.recovery` (F662 R2): `{per_round_ms, min_ms, max_ms}`, or None when the row has none or a partial one."""
     if not isinstance(block, dict):
         return None
-    return float(block["per_round_ms"]), float(block["min_ms"]), float(block["max_ms"])
+    vals = [block.get(k) for k in ("per_round_ms", "min_ms", "max_ms")]
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+        return None
+    return float(vals[0]), float(vals[1]), float(vals[2])
 
 
 def recovery_ms(profile: RecoilProfile, burst: int) -> float:
-    """F662 R2: the quiet a degraded weapon needs before the phone writes it back to crisp. It scales with the
-    rounds held past the clean count (`after_shots`), clamped to [min_ms, max_ms]. Mirrors brx4's engine rule."""
+    """F662 R2: the quiet a degraded weapon needs before the phone writes it back to crisp: `per_round_ms` for each
+    round held past `after_shots` (the first degraded round), clamped to [min_ms, max_ms]. Mirrors brx4's engine rule,
+    `max(0, burst - after_shots)`."""
     assert profile.recovery is not None
     per_round, lo, hi = profile.recovery
     return min(hi, max(lo, per_round * max(0, burst - profile.after_shots)))
@@ -1206,7 +1210,8 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     next. A reload is a trigger release too, and it is always far longer than `settle_ms`.
     With `recoil.reset_on_release` (F663), `release_after_pause` resets a degraded weapon after a rest of
     `RELEASE_RESET_MS` or more; after a shorter rest, the rounds fired before then still fire at the old state,
-    while the count restarts from 0 at the release.
+    while the count restarts from 0 at the release. With `recoil.recovery` (F662 R2) the rest must reach
+    `recovery_ms()` first, or the state and the count carry into the next burst.
 
     `crit_pct` (F308, polish round 1): the GUN rolls its own crit per round, independent of the hit
     roll -- a crit still has to land -- at `magnitude x CRIT_MULT` truncated (`int()`), same formula
