@@ -76,7 +76,7 @@ advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows th
 
 MC sends `duration_ms` for a timed game from LOAD onward. A HELD hill that leaves Wi-Fi before START anchors go-live on the first alive player advert with its game byte, at any RSSI, from a player it has already heard down in this game (`anchor_hill_on_advert`). Lobby phones advertise down, so arm the Stick at MC with the phones in the lobby. A phone still alive from the last match cannot anchor. Until the anchor the hill shows WAITING and counts nothing; the 60 s offline go-live is only for a config without a duration. The hill then counts to its local deadline and freezes its owner and hold tally at MATCH OVER. START timing overrides the fallback if the Stick hears it. A new game byte clears the anchor. The time left is saved in NVS (`hclk_*`, `SavedHillClock`) at the anchor, at most every 30 s, and as 0 at the whistle, so an offline restart resumes the whistle late by at most 30 s plus the time off. Untimed matches and operator or objective ends cannot reach an offline Stick. HELD is the MVP field mode and the boot default when no mode is saved; a saved `LINK MUSTER` still wins. A same-game config without START (MC in LOBBY, or an abort) stops an anchored or resumed hill and erases the saved clock.
 
-**Flash writes per match** (a 7200 s timed hill, the worst case): the hill clock 241 (the anchor, one per 30 s, 0 at the whistle); the A58 lock snapshot about 121 (LOAD, START, one per minute, the clear at END); the station config about 3 (LOAD, START, END); the typed MC URL 0 (only on `MC <url>`); range edits 0 (refused while the lock is on). The hill tally (F557) about 240 more (at most one per 30 s while it grows), plus one per owner change and one at the whistle. The total is about 600. Each clock save puts four keys, of which only `hclk_rem` changes; a tally save rewrites `hill_v1` and the hold keys, and NVS skips the keys whose value is unchanged.
+**Flash writes per match** (a 7200 s timed hill, the worst case): the hill clock 241 (the anchor, one per 30 s, 0 at the whistle); the A58 lock snapshot about 121 (LOAD, START, one per minute, the clear at END); the station config about 3 (LOAD, START, END); the typed MC URL 0 (only on `MC <url>`); the last good MC 0 (only when a welcome comes from a new LAN address); range edits 0 (refused while the lock is on). The hill tally (F557) about 240 more (at most one per 30 s while it grows), plus one per owner change and one at the whistle. The total is about 600. Each clock save puts four keys, of which only `hclk_rem` changes; a tally save rewrites `hill_v1` and the hold keys, and NVS skips the keys whose value is unchanged.
 
 **Flash write failures (O12) and the version (O13).** Every NVS write is checked. A failed write prints `ERR NVS <key> write failed (<n> of <m> bytes)` and raises `nvs_fail` on the status; MC shows a STICK CANNOT SAVE TO FLASH line (replace the Stick: an upload leaves the NVS partition as it was). The hill owner is saved as `hill_v1` AND the five older `hill_*` keys (dual-write, so a downgrade still reads it). Boot reads `hill_v1` first, and falls back to the legacy keys when it is missing or fails its range checks. A refused `MC <url>` prints `ERR MC url refused: <why> (saved url unchanged)`. The Stick reports `app_ver` as `<sketch version>+<short git sha>`: `stick.py compile` and `flash` pass `-DBRX_FW_SHA=<sha>` (with `_dirty` for an unclean sketch folder), and a build without it reports `+unknown`. MC flags a Stick below `STATION_MIN_FW` (`mcp/brx_mcp/mc/types.py`) with STICK FIRMWARE TOO OLD: REFLASH IT. Bump `stationAppVer` in `mc_link_glue.h` and that floor together.
 
@@ -246,9 +246,19 @@ pure link/parsing/scheduling logic is `station_link.h` + `json_lite.h`; the oper
 buttons are `station_ui.h`; the Arduino plumbing (Wi-Fi, mDNS, the WebSocket, BLE claim-scanning,
 Preferences) is `mc_link_glue.h`.
 
-**Discovery.** mDNS (`_openbrx._tcp`, an async query polled each loop so the station's play never waits;
-`MDNS.begin` once Wi-Fi is up, stopped when Wi-Fi drops) is the intended path; the
-mandatory floor is the serial console, since a Stick has no camera to scan MC's QR (§5g.3). A typed MC address is saved beside the Wi-Fi credentials in Preferences and is retried after reboot. It takes precedence for three failed dials, then the Stick browses mDNS for a moved MC. It retries the typed address after 60 s if discovery has not connected. A new `MC <ws-url>` command gives the typed address priority again. **Both paths are LAN-only**: mDNS never crosses a router, and a typed `MC <ws-url>`
+**Discovery (F642, `mc_discovery.h`, §5g.3).** A Stick has no camera to scan MC's QR, so it tries four doors
+in order while it looks for MC. First, the typed `MC <ws-url>`, saved beside the Wi-Fi credentials: three
+failed dials, then one a minute (a new `MC` command gives it priority again). Second, the last LAN MC that
+welcomed this Stick (NVS `mc_last`): two dials. Third, mDNS (`_openbrx._tcp`, an async query polled each loop)
+for 20 s. Fourth, a scan of the Stick's own /24 for TCP port 8766: non-blocking lwIP connects that send nothing,
+at most 4 open and 20 a second, 600 ms each. A host that accepts is dialled and adopted only on a welcome; a
+failed one resumes the scan. The scan is skipped (and restarts from the first address next cycle) while the station counts a live game (a live hill, or MC's A58 match
+lock), because its probes share the radio with the BLE presence scan. A cycle with no MC rests 30 s, then starts
+again. A refused TCP connect ends a dial at once, and the Stick then stops the library's own redial (each try can
+block `loop()` for 5 s); an 8 s deadline ends a dial to a host that accepts TCP but never welcomes. Why three
+Sticks never joined MC on 2026-11-01 is not confirmed: check it on the bench. The scan finds an MC that mDNS cannot reach, such as WSL behind a Windows
+`netsh portproxy`. The last good MC is saved only as a plain `ws://` private IPv4 URL, never a tunnel or a
+hostname, and never the typed URL. **Every door is LAN-only**: a typed `MC <ws-url>`
 means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at
 A28's public backhaul URL will not work: that tunnel enforces a join secret
 (`envelope.py`'s `via`/`secret`, contracts.md §5), and this firmware never sends one -- it only ever
@@ -260,7 +270,7 @@ dials the plain LAN socket a phone on the same Wi-Fi would use.
 |---|---|
 | `WIFI <ssid> <pass>` | join and persist the Wi-Fi credentials |
 | `MC <ws://lan-ip:port/path>` | save and dial the typed MC LAN address |
-| `WIFI CLEAR` | erase the saved Wi-Fi credentials and typed MC address |
+| `WIFI CLEAR` | erase the saved Wi-Fi credentials, the typed MC address and the last good MC |
 | `LINK HELD` \| `LINK MUSTER` | the association mode (§5g.4), persisted. `HELD` (the default when nothing is saved, `boot_assoc_mode`) stays linked and reconnects; `MUSTER` drops Wi-Fi for the match once armed |
 | `LINK OFF` | drop the socket and Wi-Fi association now |
 | `LINK RECONNECT` | clear the MUSTER drop's latch (below) and rejoin Wi-Fi -- the operator action that brings a Stick back to the table between matches |
@@ -353,7 +363,7 @@ refuse/accept rule mirrors `app/src/powerup.js` and is held to it by `app/test/f
 
 1. Flash (`stick.py flash`), then `stick.py cmd 5 WIFI <your-ssid> <your-pass>` and confirm it joins
    (`STATUS` shows `LINK state=LOOKING FOR MC` or better).
-2. Start MC with mDNS advertising on (the default), or `MC ws://<mc-ip>:<port>/ws` from the QR/console.
+2. Start MC on the same LAN. The Stick finds it with no typed address (mDNS, else the /24 scan); `MC ws://<mc-ip>:<port>/ws` from the QR/console is still the floor. The serial log prints `MC dial <typed|last-good|mdns|scan> <host>` for every dial.
 3. `STATUS` should show `LINK state=LINKED, NOT ARMED node_id=stick-...`.
 4. From MC's ITEMS panel, assign the Stick as RESPAWN or CONTROL (POWERUP/EXTRACTION/BOMB arm but
    have no player-side rule yet, §5g.5) and confirm `STATUS` shows `kind=... id=... game=...` and the

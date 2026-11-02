@@ -102,3 +102,56 @@ export function npmInstallState(dir) {
   const lock = existsSync(join(dir, 'package-lock.json')) ? readFileSync(join(dir, 'package-lock.json'), 'utf8') : '';
   return { declared: hash.digest('hex').slice(0, 16), land: `${packageJson}\0${lock}`, installed };
 }
+
+// ---- macOS reachability preflight (F643) -------------------------------------------------------
+/** Non-internal IPv4 addresses of this machine, from `os.networkInterfaces()` output. */
+export function lanAddresses(interfaces) {
+  const found = [];
+  for (const list of Object.values(interfaces || {})) {
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) found.push(a.address);
+  }
+  return found;
+}
+
+/** Parse `socketfilterfw` text. `apps` (from --listapps) becomes { path: allowed }. Empty text gives null. */
+export function parseFirewall({ globalState = '', stealth = '', apps = '' } = {}) {
+  const apps2 = {};
+  let path = null;
+  for (const line of String(apps).split('\n')) {
+    const entry = /^\s*\d+\s*:\s*(\/.+?)\s*$/.exec(line);
+    if (entry) { path = entry[1]; continue; }
+    if (path && /Allow incoming/i.test(line)) { apps2[path] = true; path = null; }
+    else if (path && /Block incoming/i.test(line)) { apps2[path] = false; path = null; }
+  }
+  const firewallOn = globalState.trim() ? !/is disabled|State = 0/i.test(globalState) : null;
+  const stealthOn = stealth.trim() ? /enabled/i.test(stealth) && !/disabled/i.test(stealth) : null;
+  return { firewallOn, stealthOn, apps: apps2 };
+}
+
+/** Warning lines for a parsed firewall state and the real python path. Empty when all is well. */
+export function firewallWarnings(state, pythonPath) {
+  const out = [];
+  if (state.stealthOn) out.push('Stealth mode is ON: this Mac ignores ping, so phones may seem unable to reach it.');
+  if (state.firewallOn && state.apps[pythonPath] !== true) {
+    out.push(`The firewall is ON and ${pythonPath} is not set to allow incoming connections. Phones may not reach Mission Control.`);
+  }
+  if (out.length) out.push('Fix: see docs/mac-dev-runbook.md, "Phones cannot reach MC on the Mac".');
+  return out;
+}
+
+/** macOS only, read-only, fail-soft: print the phone address(es) and any firewall warnings. */
+export function macPreflight(print, { interfaces, run, pythonPath }) {
+  if (process.platform !== 'darwin') return;
+  try {
+    const addrs = lanAddresses(interfaces);
+    print(addrs.length
+      ? `Phones join at: ${addrs.map(a => `http://${a}:8765`).join('  or  ')}`
+      : 'No LAN address found: connect the Mac to the same Wi-Fi as the phones.');
+    const fw = '/usr/libexec/ApplicationFirewall/socketfilterfw';
+    const ask = flag => { const r = run(fw, [flag]); return r.status === 0 ? String(r.stdout) : ''; };
+    const state = parseFirewall({ globalState: ask('--getglobalstate'), stealth: ask('--getstealthmode'), apps: ask('--listapps') });
+    for (const line of firewallWarnings(state, pythonPath)) print(`WARNING: ${line}`);
+  } catch (error) {
+    print(`(network check skipped: ${error.message})`);
+  }
+}

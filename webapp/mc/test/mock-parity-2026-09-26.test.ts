@@ -261,3 +261,21 @@ describe('GamePiece.invalid', () => {
     expect((await b.getPieces()).find(x => x.piece_id === p.piece_id)?.invalid).toBeUndefined();
   });
 });
+
+// Issue 12 / F653 (game 2026-11-01): a weapon no longer pickable drops out of a preset silently, mirroring
+// `pieces._drop_retired`; only an id the catalogue never held is refused.
+describe('retired weapons drop out of a preset (F653)', () => {
+  const base = { kinds: ['weapon'], exclude_tags: [], exclude_ids: [] };
+  it('a pickup-only heavy in a list drops, the rest stays', async () => {
+    const b = new MockBackend();
+    const p = await b.createPiece({ kind: 'primary', name: 'WITH A HEAVY',
+      value: { ...base, choice: 'player', only_ids: ['assault_rifle', 'rocket_launcher'], fixed_id: null } });
+    expect(p.value.only_ids).toEqual(['assault_rifle']);
+    expect(p.invalid).toBeUndefined();
+  });
+  it('a typo is still refused', async () => {
+    const b = new MockBackend();
+    await expect(b.createPiece({ kind: 'primary', name: 'TYPO',
+      value: { ...base, choice: 'fixed', only_ids: [], fixed_id: 'assault_riflee' } })).rejects.toMatchObject({ status: 400 });
+  });
+});
