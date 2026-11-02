@@ -52,7 +52,7 @@ assert.ok(api, 'utility.js did not publish window.brxUtility -- module load itse
 const RED = 0;
 const hill = { kind: 'control', team: 255, id: 9 };
 let game = 60;
-const redOnThePoint = () => { api.presence.players = () => [{ id: 4, team: RED, state: 1, present: true, inCircle: true, fading: false }]; };
+const redOnThePoint = () => { api.presence.players = () => [{ id: 4, team: RED, state: 1, present: true, inCircle: true, fading: false, scopeKinds: 1, scope: 1 << 9 }]; };
 
 async function armFresh(extra = {}) {
   await api.applyStationConfig({ ...hill, game: ++game });   // a new game: the point resets, no clock yet
@@ -151,7 +151,7 @@ async function throttledHill() {
   api.presence.game = game;
   const clock = { t: api.stationNow() };
   api.useStationClock(() => clock.t);
-  const red = api.encodeUuid({ role: 'player', id: 4, kind: 0, team: RED, state: 1, value: 0, seq: 0, game });
+  const red = api.encodeUuid({ role: 'player', id: 4, kind: 0, team: RED, state: 1, value: 0, seq: 0, game, scopeKinds: 1, scope: 1 << 9 });
   for (const end = clock.t + 2_000; clock.t <= end; clock.t += 250) { api.presence.observe([red], -40, clock.t); api.presence.tick(clock.t); api.controlTick(clock.t); }
   api.point.owner = RED; api.point.progress = 100;
   api.controlTick(clock.t);                                    // RED holds the point, heard at this step
@@ -209,7 +209,7 @@ test('F598 (1): a player first heard after the whistle does not contest the stre
     heardUntil(clock, red, W - 3_000);
     const held = api.point.holdMs[RED] || 0;
     for (; clock.t < W - 500; clock.t += 250) api.onSighting([red], -40, clock.t);
-    const blue = api.encodeUuid({ role: 'player', id: 5, kind: 0, team: 1, state: 1, value: 0, seq: 0, game });
+    const blue = api.encodeUuid({ role: 'player', id: 5, kind: 0, team: 1, state: 1, value: 0, seq: 0, game, scopeKinds: 1, scope: 1 << 9 });
     for (clock.t = W + 2_000; clock.t < W + 3_000; clock.t += 250) api.scanHit({ uuids: [blue], rssi: -40 });   // BLUE runs in after the whistle
     clock.t = W + 5_000;
     await api.applyStationConfig({ ...hill, game, ends_in_ms: 0 });

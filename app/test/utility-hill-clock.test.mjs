@@ -51,7 +51,7 @@ assert.ok(api, 'utility.js did not publish window.brxUtility -- module load itse
 const RED = 0;
 const hill = { kind: 'control', team: 255, id: 9 };
 let game = 40;
-const redOnThePoint = () => { api.presence.players = () => [{ id: 4, team: RED, state: 1, present: true, inCircle: true, fading: false }]; };
+const redOnThePoint = () => { api.presence.players = () => [{ id: 4, team: RED, state: 1, present: true, inCircle: true, fading: false, scopeKinds: 1, scope: 1 << 9 }]; };
 
 async function armFresh(extra = {}) {
   await api.applyStationConfig({ ...hill, game: ++game });   // a new game: the point resets, no clock yet
@@ -190,7 +190,7 @@ test('F559: MC sets the hill pace when the arming carries it, and an arming with
 
 test('F559: a pushed net cap limits a crowd on the point', async () => {
   await armFresh({ capture_s: 10, net_cap: 1 });
-  api.presence.players = () => [1, 2, 3].map(id => ({ id, team: RED, state: 1, present: true, inCircle: true, fading: false }));
+  api.presence.players = () => [1, 2, 3].map(id => ({ id, team: RED, state: 1, present: true, inCircle: true, fading: false, scopeKinds: 1, scope: 1 << 9 }));
   const now = api.stationNow();
   for (let t = 0; t <= 2_000; t += 250) api.controlTick(now + t);
   assert.equal(api.point.net, 1, 'three RED at net_cap 1 convert at net 1');

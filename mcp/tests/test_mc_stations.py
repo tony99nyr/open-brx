@@ -20,6 +20,7 @@ from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
 from brx_mcp.mc.net import NetServer, NodeRecord
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import MC_KINDS, STATION_KINDS
+from brx_mcp.mc import types as T
 from _session import set_match
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
@@ -630,6 +631,54 @@ def test_a_station_armed_for_an_older_game_is_flagged_on_the_items_panel():
     v = s._station_view("util-1")
     assert v["armed"]["game"] == 1 and v["game"] == 2
     assert "ARMED FOR AN OLDER GAME: RE-ARM IT FROM ITEMS ON ARMORY" in v["attention"], v["attention"]
+
+
+
+def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_its_pace_is_old():
+    """F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so ITEMS says so
+    instead of ARMED FOR AN OLDER GAME / BRING IT BACK. Its pace still comes only from an arming, so a pace that is not
+    this game's is an amber line. Nothing here gates START."""
+    s = _joined(_sess(mode="koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.control("end")
+    s.finalise_recap()
+    s.set_config({"hill": {"capture_s": 15}})
+    s.net.push = lambda nid, kind, body: False           # out of Wi-Fi for the match-2 push
+    s.push_config(force=True)
+    common = {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility", "kind": "control",
+              "station_id": 3, "armed": True}
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 1, "capture_s": 10, "net_cap": 3}}, s.now_ms())
+    v = s._station_view("util-1")
+    # A86: the release app (0.4.33) sends no scope, so no control station counts those phones, following or not
+    assert st_lines(v) == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER, "2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM"], v["attention"]
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 2, "capture_s": 10, "net_cap": 3, "follows": True,
+                                                         "own_ms": {"0": 1500, "1": True},
+                                                         "games": {"1": {"hold_ms": {"0": 9000}, "own_ms": {"0": 12000}, "owner": 0, "last_ms": 60000},
+                                                                   "2": {"hold_ms": {}, "owner": 255, "last_ms": 0}, "x": {}}}}, s.now_ms())
+    v = s._station_view("util-1")
+    # review: the two fake phones report the release app (0.4.33), which sends no live bit, so this hill cannot count them
+    assert st_lines(v) == [T.STATION_FOLLOWS, "HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE",
+                           "2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM"], v["attention"]
+    nid = next(p["node_id"] for p in s.players.values() if p.get("node_id"))
+    s.nodes[nid]["app_ver"] = T.LIVE_BIT_MIN_APP + "+abc"
+    assert st_lines(s._station_view("util-1"))[-1] == "1 PHONE ON AN OLD APP: THIS HILL CANNOT COUNT IT"
+    c = v["report"]["control"]
+    assert c["follows"] is True and set(c["games"]) == {"1", "2"} and c["games"]["1"]["owner"] == 0, c
+    # the owned clock (Domination): carried through when well formed, dropped when not; absent from an older station
+    assert c["games"]["1"]["own_ms"] == {"0": 12000} and "own_ms" not in c["games"]["2"], c
+    assert "own_ms" not in c, "a malformed own_ms (a bool value) is dropped"
+    s.net.simulate_status("util-1", {**common, "control": {"owner": 0, "game": 2, "follows": True, "own_ms": {"0": 1500}}}, s.now_ms())
+    assert s._station_view("util-1")["report"]["control"]["own_ms"] == {"0": 1500}
+    assert not any(T.STATION_FOLLOWS in b for r in s.readiness()["board"] for b in r["blockers"]), "a note, never a START gate"
+    # review: following replaces only the game. An id change that missed the hill still needs it brought back.
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 4})
+    v = s._station_view("util-1")
+    assert v["arm_pending"] and st_lines(v)[:2] == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER], v["attention"]
+
+
+def st_lines(v):
+    return [x for x in v["attention"] if not x.startswith("STATION #")]
 
 
 # --------------------------------------------------------------------------- the allow-list
@@ -1327,6 +1376,40 @@ def test_f364_an_mc_restart_keeps_every_station_id():
     assert s2.set_station("util-d", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 4
     assert s2.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, \
         "a cleared station's number survives the restart too"
+
+
+def test_a86_no_two_stations_share_a_scope_bit():
+    """F658 (A86): a player advert names the stations in play by bit id % 16, so MC keeps the ids of the stations on
+    the field apart modulo 16. An explicit clash is refused; the auto rule passes a clashing id over, a remembered one
+    included; a 17th station is refused."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-a")
+    s.net.simulate_utility_hello("stick-1")
+    assert s.set_station("util-a", {"kind": "control", "team": "any"})["assigned"]["id"] == 1
+    try:
+        s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 17})
+        raise AssertionError("an explicit id sharing bit 1 with station 1 was accepted")
+    except ValueError as e:
+        assert str(e) == "STATION ID 17 CLASHES WITH util-a (ID 1): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE", e
+    assert s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 18})["assigned"]["id"] == 18
+    s.net.simulate_utility_hello("util-b")
+    assert s.set_station("util-b", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, "2 shares bit 2 with 18"
+    # a station that remembers id 17 from earlier this session is not handed it back while station 1 holds bit 1
+    s.station_registry._station_id_of["util-c"] = 17
+    s.net.simulate_utility_hello("util-c")
+    got = s.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"]
+    assert got % 16 not in {1, 2, 3}, got
+    for k in range(12):
+        s.net.simulate_utility_hello(f"util-x{k}")
+        s.set_station(f"util-x{k}", {"kind": "respawn", "team": "any"})
+    bits = [st["assigned"]["id"] % 16 for st in s.stations.values() if st.get("assigned")]
+    assert len(bits) == 16 and len(set(bits)) == 16, bits
+    s.net.simulate_utility_hello("util-17th")
+    try:
+        s.set_station("util-17th", {"kind": "respawn", "team": "any"})
+        raise AssertionError("a 17th station was given an id")
+    except ValueError as e:
+        assert str(e) == "16 STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER", e
 
 
 def test_f364_an_explicit_id_from_an_older_console_is_still_validated_for_uniqueness():

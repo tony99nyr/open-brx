@@ -6,8 +6,10 @@
 //
 // The advert is one 128-bit service UUID, byte for byte app/src/beacon.js encodeUuid() and
 // hardware/m5sticks3/brx_advert.h advert_uuid():
-//   0-3 'OBRX' · 4 version 1 · 5 role 2 (player) · 6-7 id (player_num, big-endian) · 8 kind 0 ·
-//   9 team · 10 state · 11 value · 12 seq · 13 game · 14 threshold (0) · 15 taker (0)
+//   0-3 'OBRX' · 4 version 1 · 5 role 2 (player) · 6 scope map high · 7 id (player_num 1..63) ·
+//   8 scope kind mask · 9 team · 10 state · 11 value · 12 seq · 13 game · 14 threshold (0) · 15 scope map low
+// A86: the scope (kind bits 1 control, 2 respawn, 4 powerup; the map has bit id % 16 per station id in play) is 0
+// until SCOPE sets it, and a station never counts a zero scope (an older APK). Set it to bench a scoped station.
 // Player state bits: 1 alive, 16 claiming, 32 claim_ready, 64 revived. For a claim, value = station id.
 //
 // The advert is built exactly as the Stick's own publishAdvert() builds its station advert (flags 0x04,
@@ -21,6 +23,7 @@
 //   SCRIPT CLAIM <player_num> <team> <station_id> <game> [secs]   alive 1 s, claiming 1 s, then
 //                                                           claim_ready (value = station_id)
 //   POWER <LOW|NORMAL|HIGH>                                 TX power -12 / 0 / +9 dBm (NORMAL at boot)
+//   SCOPE <kinds 0-7> <station_id ...>                      A86: the scope every later advert carries (SCOPE 0 clears it)
 //
 // SAFETY: this is a bench tool. A Stick awards a claim at any signal strength, so a forgotten claim advert
 // would steal real pickups on a shared field. Any advert with claiming or claim_ready (state bits 4/5)
@@ -54,6 +57,10 @@ struct Player {
   uint8_t game = 0;
 };
 
+// A86: the advert scope, kept across ADV and SCRIPT commands until SCOPE changes it.
+uint8_t scopeKinds = 0;
+uint16_t scopeMap = 0;
+
 BLEAdvertising* adv = nullptr;
 Player cur;
 bool advertising = false;
@@ -73,8 +80,8 @@ uint32_t plainSince = 0;  // when the current plain advert was last set
 // Same layout and formatting as brx_advert.h advert_uuid(): bytes in order, lower-case, 8-4-4-4-12.
 String playerUuid(const Player& p) {
   const uint8_t b[16] = {0x4f, 0x42, 0x52, 0x58, 1, ROLE_PLAYER,
-                         (uint8_t)(p.id >> 8), (uint8_t)(p.id & 0xff), 0, p.team,
-                         p.state, p.value, p.seq, p.game, 0, 0};
+                         (uint8_t)(scopeMap >> 8), (uint8_t)(p.id & 0xff), scopeKinds, p.team,
+                         p.state, p.value, p.seq, p.game, 0, (uint8_t)(scopeMap & 0xff)};
   char s[37];
   snprintf(s, sizeof s,
            "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
@@ -186,8 +193,9 @@ void handle(String cmd) {
   }
 
   if (upper == "STATUS") {
-    Serial.printf("STATUS scanning=%d advertising=%d id=%u team=%u state=%u value=%u seq=%u game=%u script=%d uuid=%s\n",
-                  meter::running ? 1 : 0, advertising ? 1 : 0, cur.id, cur.team, cur.state, cur.value, cur.seq, cur.game, scriptStep,
+    Serial.printf("STATUS scanning=%d advertising=%d id=%u team=%u state=%u value=%u seq=%u game=%u scope=%u/%04x script=%d uuid=%s\n",
+                  meter::running ? 1 : 0, advertising ? 1 : 0, cur.id, cur.team, cur.state, cur.value, cur.seq, cur.game,
+                  scopeKinds, scopeMap, scriptStep,
                   currentUuid.length() ? currentUuid.c_str() : "-");
     return;
   }
@@ -195,10 +203,10 @@ void handle(String cmd) {
   if (upper.startsWith("ADV ")) {
     long v[7];
     int n = parseInts(cmd.substring(4), v, 7);
-    if (n < 5 || !inRange(v[0], 1, 65535) || !inRange(v[1], 0, 255) || !inRange(v[2], 0, 255) ||
+    if (n < 5 || !inRange(v[0], 1, 63) || !inRange(v[1], 0, 255) || !inRange(v[2], 0, 255) ||
         !inRange(v[3], 0, 255) || !inRange(v[4], 0, 255) || (n >= 6 && !inRange(v[5], 0, 255)) ||
         (n == 7 && !inRange(v[6], 1, CLAIM_MAX_S))) {
-      Serial.println("ERR usage: ADV <player_num 1-65535> <team 0-255> <state> <value> <game> [seq] [secs 1-60]");
+      Serial.println("ERR usage: ADV <player_num 1-63> <team 0-255> <state> <value> <game> [seq] [secs 1-60]");
       return;
     }
     claimLimitMs = (uint32_t)(n == 7 ? v[6] : CLAIM_DEFAULT_S) * 1000;
@@ -214,7 +222,7 @@ void handle(String cmd) {
   if (upper.startsWith("SCRIPT CLAIM ")) {
     long v[5];
     int n = parseInts(cmd.substring(13), v, 5);
-    if (n < 4 || !inRange(v[0], 1, 65535) || !inRange(v[1], 0, 255) || !inRange(v[2], 1, 255) ||
+    if (n < 4 || !inRange(v[0], 1, 63) || !inRange(v[1], 0, 255) || !inRange(v[2], 1, 255) ||
         !inRange(v[3], 0, 255) || (n == 5 && !inRange(v[4], 1, CLAIM_MAX_S))) {
       Serial.println("ERR usage: SCRIPT CLAIM <player_num> <team> <station_id 1-255> <game> [secs 1-60]");
       return;
@@ -223,6 +231,20 @@ void handle(String cmd) {
     cur.id = (uint16_t)v[0]; cur.team = (uint8_t)v[1]; cur.game = (uint8_t)v[3];
     scriptStation = (uint8_t)v[2];
     scriptEnter(1);
+    return;
+  }
+
+  if (upper.startsWith("SCOPE ")) {
+    long v[17];
+    int n = parseInts(cmd.substring(6), v, 17);
+    bool ok = n >= 1 && inRange(v[0], 0, 7);
+    for (int i = 1; ok && i < n; i++) ok = inRange(v[i], 1, 65535);
+    if (!ok) { Serial.println("ERR usage: SCOPE <kinds 0-7> <station_id 1-65535 ...>"); return; }
+    scopeKinds = (uint8_t)v[0];
+    scopeMap = 0;
+    for (int i = 1; i < n; i++) scopeMap |= (uint16_t)(1u << (v[i] % 16));
+    Serial.printf("SCOPE %u/%04x\n", scopeKinds, scopeMap);
+    if (advertising) startAdvert(cur);  // re-apply on a running advert; the auto-off clocks carry on
     return;
   }
 

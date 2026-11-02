@@ -511,6 +511,7 @@ static void test_fill_status_matches_the_glue_heartbeat() {
   want.control_progress = 50;  // utility.js rounds half up
   want.control_has_hold = true;
   want.control_hold_ms[1] = 4000;
+  want.control_has_own = true;      // the owned clock: nothing banked here, so "own_ms":{}
   want.control_game = 3;       // F555: the game byte the hill counts under
   want.control_has_inputs = true;   // F558: nobody is counted here, so net 0, no counts, no lead
   want.control_net = 0;

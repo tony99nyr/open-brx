@@ -154,6 +154,9 @@ JUDGED = {
                                 "and the Stick through the contract. It is the cadence, not a timer MC runs, and GRENADE_STALE_MS is its\n"
                                 "two-missed-beacons window, which a beacon refreshes rather than outruns",
     "HOLD_TARGET_MAX_S": "a config bound (mode_params.hold_target_s 1..this), not a timer",
+    "HILL_RING_STALE_MS": "F658 (2026-11-01): how long a following hill keeps a game's tally in its ring unheard; a byte heard\n"
+                          "again after this starts fresh. It ages a stored tally, not presence or an advert, so a hill beacon\n"
+                          "has nothing to keep from firing",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

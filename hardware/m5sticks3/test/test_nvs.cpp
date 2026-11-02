@@ -66,6 +66,18 @@ int main() {
   CHECK(!decode_saved_hill("v1|1|2|3|99999999999999999999999|0|0|0|s", owner, game, id, out, sid));
   CHECK(decode_saved_hill("v1|255|255|65535|4294967295|0|0|0|", owner, game, id, out, sid) && out[0] == 4294967295u);
   CHECK(!decode_saved_hill("v2|1|2|3|0|0|0|0|s", owner, game, id, out, sid));
+  {  // F658 review round 2: the saved hill carries own_ms; an older v1 record still decodes, with own_ms 0
+    const uint32_t own[4] = {0, 7000, 0, 3};
+    uint32_t own_out[4] = {9, 9, 9, 9};
+    CHECK(decode_saved_hill(encode_saved_hill(1, 7, 3, hold, "sess|id", own), owner, game, id, out, sid, own_out));
+    CHECK(own_out[1] == 7000 && own_out[3] == 3 && sid == "sess|id" && out[1] == 120000);
+    CHECK(decode_saved_hill("v1|1|2|3|5|0|0|0|s", owner, game, id, out, sid, own_out) && own_out[1] == 0 && out[0] == 5 && sid == "s");
+    FakePrefs o;
+    NvsFailures of;
+    CHECK(save_hill(o, of, 1, 7, 3, hold, "s", own));
+    HillLoad back = load_saved_hill(o, 3);
+    CHECK(std::string(back.source) == "v1" && back.own[1] == 7000 && back.hold[1] == 120000);
+  }
 
   // which source wins at boot: v1, else the legacy keys; save_hill dual-writes both
   {

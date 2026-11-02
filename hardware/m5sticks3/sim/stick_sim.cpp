@@ -249,6 +249,9 @@ struct SimStick {
       d.team = p.team;
       d.state = p.alive ? contract::ADVERT_PLAYER_STATE_ALIVE : 0;
       d.game = (uint8_t)a.game;
+      // A86: a simulated phone's match puts this station in play (every kind bit, the station's id bit)
+      d.scope_kinds = contract::ADVERT_SCOPE_KIND_CONTROL | contract::ADVERT_SCOPE_KIND_RESPAWN | contract::ADVERT_SCOPE_KIND_POWERUP;
+      d.scope = (uint16_t)(1u << (a.id % contract::ADVERT_SCOPE_ID_BITS));
       link.anchor_hill_on_advert(d, now);  // A68 fallback, as mcTickPlayers drains each sighting
       presence.observe(d, p.rssi, now);
     }
