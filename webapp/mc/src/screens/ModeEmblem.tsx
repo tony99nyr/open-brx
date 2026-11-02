@@ -1,7 +1,7 @@
 // M17 (visual QA 2026-09-23): a mode with no card art in `public/assets/modes/` used to show a bare
 // striped slot captioned "mode art", which reads as an unfinished page. This draws a plain line
-// emblem instead, in the console's own colours: a hill with a flag and a capture ring for KOTH, and
-// a sight reticle for any other mode that has no picture yet. It is a stand-in, not a claim that it
+// emblem instead, in the console's own colours: a hill with a flag and a capture ring for KOTH,
+// three lettered hill rings for Domination, and a sight reticle for any other mode that has no picture yet. It is a stand-in, not a claim that it
 // is the mode's real art: when `<mode>.jpg` lands (and `MODE_ART` lists it), the picture wins.
 import { useId } from 'react';
 import { T } from '../tokens';
@@ -32,6 +32,18 @@ export function ModeEmblem({ mode }: { mode: string }) {
           {/* the flag */}
           <line x1="140" y1="64" x2="140" y2="22" stroke={T.ink} strokeWidth="2" />
           <path d="M141 23 L166 30 L141 37 Z" fill={T.acc} />
+        </g>
+      ) : mode === 'domination' ? (
+        <g>
+          {/* three hills, A B C: a dashed capture ring and a small flag on each */}
+          {[{ x: 60, y: 62, l: 'A' }, { x: 140, y: 40, l: 'B' }, { x: 220, y: 62, l: 'C' }].map(h => (
+            <g key={h.l}>
+              <ellipse cx={h.x} cy={h.y + 8} rx="24" ry="7" fill="none" stroke={T.acc} strokeWidth="1.5" strokeDasharray="5 4" />
+              <line x1={h.x} y1={h.y + 6} x2={h.x} y2={h.y - 16} stroke={T.ink} strokeWidth="2" />
+              <path d={`M${h.x + 1} ${h.y - 15} L${h.x + 15} ${h.y - 10} L${h.x + 1} ${h.y - 5} Z`} fill={T.acc} />
+              <text x={h.x} y={h.y + 26} textAnchor="middle" fill={T.dim} fontSize="11" fontWeight="700" letterSpacing="1">{h.l}</text>
+            </g>
+          ))}
         </g>
       ) : (
         <g fill="none" stroke={T.acc} strokeWidth="1.5">

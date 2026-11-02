@@ -128,8 +128,8 @@ def _scoring(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None
         raise ValueError("scoring.frag_limit must be a positive integer or null")
     hold_target = merged.get("hold_target_s")
     if hold_target is not None:
-        if mode != "koth":
-            raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL")
+        if mode not in OBJECTIVE_MODES:
+            raise ValueError("A HOLD TARGET ONLY APPLIES TO KING OF THE HILL OR DOMINATION: CLEAR IT OR PICK A HILL MODE")
         if not _check.hold_target_ok(hold_target):
             raise ValueError("HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET")
     cfg["scoring"] = {"frag_limit": frag_limit,
@@ -183,15 +183,15 @@ def _teams(cfg: GameConfig, value: Any, mode: str, defaults: Defaults) -> None:
         raise ValueError(f"team tid(s) {sorted(set(bad))} outside 0-3 (F35): the IR word's "
                          f"team field is 2 bits -- a $TID of 4 or higher makes teammates "
                          f"damage each other and can let a gun read its own shots as friendly")
-    if mode == "koth" and len(set(_check.team_tids(value))) != 2:
-        raise ValueError("KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS")
+    if mode in OBJECTIVE_MODES and len(set(_check.team_tids(value))) != 2:
+        raise ValueError(f"{'KING OF THE HILL' if mode == 'koth' else 'DOMINATION'} IS EXACTLY 2 TEAMS: PICK TWO COLOURS")
     if mode in OBJECTIVE_MODES and len(set(_check.team_tids(value))) > 3:
         raise ValueError(
             f"F97: mode {mode!r} supports at most three teams (tids 0, 1 and 3): a neutral "
             f"hill broadcasts team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a "
             "fourth player has to share a team -- an FFA hill caps at three players")
     if mode in OBJECTIVE_MODES and _check.neutral_team_ids(value, _NEUTRAL_TEAM):
-        raise ValueError("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE")
+        raise ValueError(f"YELLOW IS {'KING OF THE HILL' if mode == 'koth' else 'DOMINATION'}'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE")
     cfg["teams"] = value
 
 

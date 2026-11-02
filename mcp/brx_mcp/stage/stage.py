@@ -35,7 +35,7 @@ from ..mc.state import default_config
 from ..mc.types import HILL_CLAIMABLE_TIDS, STATION_ID_MAX
 from ..mc.types import ADVERT_CONTROL_STATE, ADVERT_ROLE, STATION_TEAM_ANY
 from ..mc.types import PLAY_FILLER_IDS
-from ..mc.types import OBJECTIVE_MODES
+from ..mc.types import OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES
 from ..mc.types import BEACON_DEDUPE_MS, HILL_BEACON_PROTO, HILL_CAPTURE_MAG, HILL_MAG, HILL_REFUSED_TID, HILL_WAS_NEUTRAL_MAG
 from ..mc.types import DEATH_LATCH_MS, FrameBundle, GameConfig, Player, RespawnProfile, SPAWN_KILL_WINDOW_MS, STATION_SOURCES
 from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one copy shared with app/src
@@ -136,6 +136,7 @@ class HillState(TypedDict):
     rising: NotRequired[bool]
     falling: NotRequired[bool]
     on_point: NotRequired[bool]
+    letter: NotRequired[str | None]   # Domination: MC's name for the point (hill.js `letterOf`)
 
 
 class StunnedState(TypedDict):
@@ -333,7 +334,7 @@ READOUT_COALESCE_S = READOUT_COALESCE_MS / 1000       # types.py READOUT_COALESC
 # reads `self._now_ms()` and every one of these is a plain copy of the engine's number (divisor 1).
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
-MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102): the one selector mode with an objective source
+MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth", "domination"]   # koth (F102) and domination (2026-11-02): the selector modes with an objective source
 
 # ---- King of the Hill audio (a FAITHFUL port of engine.js's HILL_CUES block + `_onHillBeacon`… , commit 4348721)
 # The phone is the source of truth here and the stage exists to PREDICT it, so nothing below is redesigned:
@@ -4404,7 +4405,20 @@ class GunStage:
         """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
         cannot tell apart. `even_dead` mirrors engine.js `_hillAudioOn(true)`: transition lines queue as game alerts
         while the death scream plays, but the possession tick stays off until the player revives."""
-        return bool(self.spawned) and (bool(self.alive) or even_dead) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
+        excluded = self.config.get("mode") in HILL_AUDIO_EXCLUDED_MODES and self.config.get("station_source") != "phone"   # hill.js `audioOn`
+        return bool(self.spawned) and (bool(self.alive) or even_dead) and not excluded
+
+    def _hill_ownership_scored(self) -> bool:
+        """hill.js `ownershipScored`: Domination scores an owned point contested or not; KOTH pauses (F382)."""
+        return self.config.get("mode") in OWNERSHIP_SCORED_MODES
+
+    def _hill_letter_of(self, sid) -> str | None:
+        """hill.js `letterOf`: Domination's name for control point `sid` from `config.stations`, else None."""
+        for x in self.config.get("stations") or []:
+            letter = x.get("letter") if isinstance(x, dict) else None
+            if isinstance(x, dict) and x.get("id") == sid and x.get("kind") == "control" and isinstance(letter, str):
+                return letter
+        return None
 
     def _hill_source_allowed(self, source: str) -> bool:
         """B/F70 (engine.js `_hillSourceAllowed`): MC names ONE objective source per game
@@ -4589,9 +4603,9 @@ class GunStage:
                 self._hill_said_at = now
                 self._hill_say(pending["kind"], f"control point {pending['site']}: team {pending['from']} -> {pending['to']} (deferred by callout floor)")
                 self._control_spoken_owner = {"site": pending["site"], "owner": pending["to"]}
-        if h.get("contested"):
+        if h.get("contested") and not self._hill_ownership_scored():
             self._hill_tick_at = now
-            return                         # contested ownership earns no score tick
+            return                         # contested ownership earns no score tick (KOTH); Domination still scores it (hill.js `tick`)
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
@@ -4722,7 +4736,8 @@ class GunStage:
                      "progress": max(0, min(100, int(e["value"]))),
                      "holding": e["team"] if e["team"] <= 3 else None,
                      "contested": contested, "rising": rising, "falling": falling,
-                     "on_point": bool(e.get("present"))}
+                     "on_point": bool(e.get("present")),
+                     "letter": self._hill_letter_of(e["id"])}   # hill.js `letterOf`
         # C: a transition that lands while we are DOWN is owed, not swallowed: remember the owner as we last
         # heard it WITH audio on, and on the first advert after revive say the one line for the NET change.
         audio = self._hill_audio_on(even_dead=True)
@@ -5508,6 +5523,13 @@ class GunStage:
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
+            return
+        # F665 (ammo.js `onAmmo`): melee is its own button, never the trigger. A swing's slot-4 `$ALCD` books its count and
+        # moves nothing: not the trigger, not the ammo block, not a shot.
+        if slot == 4:
+            self._prev_ammo[4] = mag
+            if reserve is not None:
+                self._prev_reserve[4] = reserve
             return
         prev = seen
         # F209 (ammo.js `onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now

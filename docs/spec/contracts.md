@@ -164,7 +164,10 @@ GameConfig {
                  // ONLY: the node reads it (default trigger); MC has no `gate` field (types.Respawn) and drops it at PUT /api/config
                  protect_s?: 0|1|2, weapon_delay_ms?: 500|1000|1500|3000, station_protect_s?: 0|2|3 },  // [A49, A74] defaults 0 / 1500 / 2
   stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control",          // A13.1: the utility items valid in this game
-                   item?: StationItem } ],   // [A56] a powerup station's item and schedule, the same object as
+                   item?: StationItem,       // [A56] below
+                   letter?: string } ],      // Domination (2026-11-02, F666): a control point's name, "A", "B", "C" in id order;
+                                      //   sent only in Domination; the phone reads it as `hill.letter`
+                                      // [A56] `item`: a powerup station's item and schedule, the same object as
                                       //   `StationAssignment.item`: {kind: "weapon"|"overshield"|"ammo", weapon_id?, charges?, amount?,
                                       //   refill?, spawn_every_s, first_at_s, name, color} (A76: `refill: "spawn"` on ammo). Design and
                                       //   defaults: docs/spec/powerups.md.

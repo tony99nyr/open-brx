@@ -25,7 +25,7 @@ from .powerup_ledger import PowerupLedger
 from .types import (MAX_PLAYERS, SESSION_STORE_V, FrameBundle, GameConfig,
                     GamePick, LastMatch, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView, Phase,
                     Player, RestoredFromView, RestoreFailedView, Team, Weapon,
-                    WeaponSel, parse_win_by)
+                    WeaponSel, OBJECTIVE_MODES, parse_win_by)
 
 log = logging.getLogger("brx.mc")
 
@@ -472,7 +472,7 @@ class SnapshotCodec:
             # Cross-lane review #2: F415's KOTH hold target survives a restart outside a match (the rebuild above
             # used to drop it, and the next match ran to the clock).
             hts = old_scoring.get("hold_target_s")
-            if self.host.config["mode"] == "koth" and _check.hold_target_ok(hts):
+            if self.host.config["mode"] in OBJECTIVE_MODES and _check.hold_target_ok(hts):
                 self.host.config["scoring"]["hold_target_s"] = hts
             elif isinstance(self.host.game_pick, dict) and isinstance(self.host.game_pick.get("match"), dict):
                 self.host.game_pick["match"].pop("hold_target_s", None)   # a dropped target leaves the PLAY pick too

@@ -9,7 +9,7 @@ from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
 from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
-    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX, ADVERT_SCOPE_ID_BITS,
+    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX, ADVERT_SCOPE_ID_BITS, OWNERSHIP_SCORED_MODES, DOMINATION_HILLS,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -100,6 +100,23 @@ def _range_edit_ok(e: dict) -> bool:
     return e.get("field") == "tx_power" and e.get("from") in TX_POWERS and e.get("to") in TX_POWERS
 
 
+def ownership_clock(control: object) -> object:
+    """Domination (OWNERSHIP_SCORED_MODES): the station's `control` with its ownership clock `own_ms` in the `hold_ms`
+    slot, so the tally, the recap row and the scorer below read ownership with no branch of their own. The station
+    banks both clocks and knows no mode (utility.md §5d.6, agreed with brx5 2026-11-02). A station that sends no
+    `own_ms` (older firmware or APK) scores nothing here, never its presence clock: the phones' reports cover the
+    point instead. The same swap applies to each F658 ring entry in `games`."""
+    if not isinstance(control, dict):
+        return control
+    own = control.get("own_ms")
+    out = {**control, "hold_ms": dict(own) if isinstance(own, dict) else {}}
+    games = control.get("games")
+    if isinstance(games, dict):
+        out["games"] = {k: ({**g, "hold_ms": dict(g["own_ms"]) if isinstance(g.get("own_ms"), dict) else {}}
+                            if isinstance(g, dict) else g) for k, g in games.items()}
+    return out
+
+
 def _tally_ok(t: object) -> bool:
     if not isinstance(t, dict) or not isinstance(t.get("key"), list) or not isinstance(t.get("hold_ms"), dict):
         return False
@@ -141,8 +158,7 @@ class StationRegistry:
     """Own station records. Callbacks expose only the match operations stations need."""
 
     _KOTH_HILL_FAULT_NONE = "KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
-    _KOTH_HILL_FAULT_SOURCE = ("KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A "
-                                "PHONE OR STICK AS A HILL IN THE ARMORY")
+    _KOTH_HILL_FAULT_SOURCE = "KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
     _DEPARTURE_NAME = {"control": "HILL", "respawn": "RESPAWN", "powerup": "POWERUP", "extraction": "EXTRACT", "bomb": "BOMB"}
 
     def __init__(self, *, compiler: CompilerPort, net: StationNet,
@@ -205,6 +221,8 @@ class StationRegistry:
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                  "armed", "control", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
+        if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
+            st["report"]["control"] = ownership_clock(st["report"].get("control"))
         self._note_range(nid, st, body, t_recv)
         self._note_boot(st, body, t_recv)
         self._keep_tally(st, t_recv)
@@ -342,7 +360,14 @@ class StationRegistry:
                 if item := self._active_item(a):
                     row["item"] = item                  # A56: the phone knows the item and its schedule without MC
                 rows.append(row)
-        return sorted(rows, key=lambda x: x["id"])
+        rows.sort(key=lambda x: x["id"])
+        if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
+            # Domination: the hills are named A, B, C... in id order, so the HUD and the voice can say "Hill B"
+            # (domination-design.md §2.3 item 4). Ids are MC's (A66), so the letters stay stable across a match.
+            hills = [r for r in rows if r["kind"] == "control"]
+            for i, r in enumerate(hills):
+                r["letter"] = chr(ord("A") + i) if i < 26 else str(r["id"])
+        return rows
 
     def _active_item(self, a: dict | None) -> StationItem | None:
         """The item a station assignment carries INTO THIS RUN: only with the flag on, only on a powerup station.
@@ -381,7 +406,7 @@ class StationRegistry:
         # advisory, it is a hard LOAD/push refusal (`koth_hill_fault`), so the amber line below would
         # otherwise say the same fact twice in two colours. Left in place for any OTHER mode that ever
         # sets `station_source: "phone"` without F402's own gate.
-        if src == "phone" and "control" not in kinds and self.roster.config.get("mode") != "koth":
+        if src == "phone" and "control" not in kinds and self.roster.config.get("mode") not in OBJECTIVE_MODES:
             out.append("SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO "
                        "NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT")
         # Stick hills (2026-09-24): a CONTROL station advertises the same kind-5 point a phone does, and every
@@ -420,17 +445,20 @@ class StationRegistry:
         see and accept. Both a phone utility and a Stick advertise the same kind-5 `control` point
         (`station_source: "phone"` covers both, spec/utility.md §5b), so this asks ITEMS, never the
         device type. The grenade and IR-station sources are POST-MVP and never satisfy it."""
-        if self.roster.config.get("mode") != "koth":
+        mode = self.roster.config.get("mode")
+        if mode not in OBJECTIVE_MODES:
             return None
+        # Domination (2026-11-02) is a hill mode too, so the same refusal names it: only the mode's name differs
+        name = "KING OF THE HILL" if mode == "koth" else "DOMINATION"
         if self.roster.config.get("station_source") != "phone":
-            return self._KOTH_HILL_FAULT_SOURCE
+            return f"{name} NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY"
         kinds = {a["kind"] for st in self.stations.values() if (a := st.get("assigned"))}
         if "control" not in kinds:
             # Bench 2026-10-02: a hill that left (BACK TO HUD, RELEASE) is named, so the refusal says WHY.
             # overnight review L5: oldest first, the order ITEMS (`departures_view`) and the mock list them in
             gone = [self._departure_line(d) for d in sorted(self._station_departures.values(), key=lambda d: d["at_ms"])
                     if d["kind"] == "control"]
-            return "KING OF THE HILL NEEDS A HILL: " + "; ".join(gone) if gone else self._KOTH_HILL_FAULT_NONE
+            return f"{name} NEEDS A HILL: " + "; ".join(gone) if gone else self._KOTH_HILL_FAULT_NONE.replace("KING OF THE HILL", name, 1)
         return None
 
     def koth_hill_offline_warning(self) -> list[str]:
@@ -439,16 +467,22 @@ class StationRegistry:
         time, exactly like `station_view`'s own `online`, and never cached in `config_warnings`
         alongside `station_warnings()`. Advisory only: START is still allowed, unlike
         `koth_hill_fault` above, which `force` cannot open either."""
-        if self.roster.config.get("mode") != "koth" or self.roster.config.get("station_source") != "phone":
+        if self.roster.config.get("mode") not in OBJECTIVE_MODES or self.roster.config.get("station_source") != "phone":
             return []
         hills = [self.station_view(nid) for nid, st in self.stations.items()
                  if (a := st.get("assigned")) and a.get("kind") == "control"]
+        out: list[str] = []
+        if self.roster.config.get("mode") == "domination" and hills and len(hills) < DOMINATION_HILLS:
+            # Domination is designed for three hills (an odd count always gives a majority, domination-design.md §2.4).
+            # Advisory: fewer still plays, and it scores the same way.
+            out.append(f"SETUP: DOMINATION IS DESIGNED FOR {DOMINATION_HILLS} HILLS AND {len(hills)} "
+                       f"{'IS' if len(hills) == 1 else 'ARE'} ASSIGNED: ASSIGN MORE HILLS IN THE ARMORY, OR PLAY ON")
         if not hills or any(v["online"] for v in hills):
-            return []               # one hill online is enough (several control points are allowed)
+            return out              # one hill online is enough (several control points are allowed)
         # A muster or HELD Stick is out of Wi-Fi by design (A58/A68); the tamper flags speak for it.
         if any((v.get("report") or {}).get("assoc") in ("muster", "held") for v in hills):
-            return []
-        return ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
+            return out
+        return out + ["SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START"]
 
     def station_sync_warnings(self) -> list[str]:
         """F401: a HELD station (e.g. a StickS3) can end a timed match on its own clock while out of

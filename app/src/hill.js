@@ -1,5 +1,5 @@
 // The KOTH hill listener: one model for grenade beacons and phone control points.
-import { OBJECTIVE_MODES, HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
+import { OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, HILL_REFUSED_TID, HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG, GRENADE_STALE_MS,
   ADVERT_CONTROL_STATE, HILL_TICK_MS, CONTROL_STALE_MS, CONTROL_RECONNECT_MS,
   HILL_CALLOUT_MIN_MS, HILL_TICK_LOSING_MS } from './transport/contract.gen.js';
 import { clipMs } from './announcer.js';
@@ -36,7 +36,9 @@ export const HILL_CUES = {
 };
 // A hill beacon carries NO point identifier, so several points in play are indistinguishable on the wire:
 // in Domination two grenades held by different teams would read as one point changing hands every few
-// seconds and announce continuously. Excluded until K1 supplies a discriminator, rather than shipped noisy.
+// seconds and announce continuously. Excluded, rather than shipped noisy, UNLESS the source is Bluetooth
+// control points (`station_source: "phone"`), which name themselves in advert bytes 6-7 (Domination, 2026-11-02;
+// MC refuses any other source for it).
 const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 
 
@@ -98,8 +100,17 @@ export class HillListener {
    *  scream owns the announcer; a player who respawns learns the current owner on the 3 s tick cadence. */
   audioOn(evenDead = false) {
     return this.host.phase === 'live' && (this.host.alive || evenDead)
-      && !(this.host.config && HILL_AUDIO_EXCLUDED_MODES.has(this.host.config.mode));
+      && !(this.host.config && HILL_AUDIO_EXCLUDED_MODES.has(this.host.config.mode) && this.host.config.station_source !== 'phone');
   }
+  /** Domination (types.py OWNERSHIP_SCORED_MODES): an owned point scores for its owner contested or not, until it
+   *  drains to neutral. KOTH pauses while contested (F382). */
+  /** Domination: the letter MC gave control point `id` in the bundle (`config.stations`, A, B, C in id order), or null. */
+  letterOf(id) {
+    const list = this.host.config && Array.isArray(this.host.config.stations) ? this.host.config.stations : [];
+    const row = list.find(x => x && typeof x === 'object' && x.id === id && x.kind === 'control');
+    return row && typeof row.letter === 'string' ? row.letter : null;
+  }
+  ownershipScored() { const mode = this.host.config && this.host.config.mode; return !!mode && OWNERSHIP_SCORED_MODES.includes(mode); }
   /** B/F70: MC names ONE objective source per game (`config.station_source`), and the phone accepts BOTH
    *  wires. Without this gate a grenade left live on the field (F69) during a phone-point game alternates
    *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
@@ -323,6 +334,7 @@ export class HillListener {
       holding: e.team <= 3 ? e.team : null,
       contested, rising, falling,
       onPoint: !!e.present,
+      letter: this.letterOf(e.id),   // Domination: MC's name for the point (`config.stations[].letter`), else null
     };
     // C: a transition that lands while we are DOWN used to be swallowed, not deferred — so a player
     // respawned and "we lost it", "out of range" and "nothing is happening" were all the same silence, and
@@ -475,7 +487,8 @@ export class HillListener {
     this.host._holdSource = h.source === 'station' ? 'station' : 'beacon';
     this.host.observed[site] = (this.host.observed[site] || 0) + dt;
     // F382 (Tony, 2026-09-25): the hill scores continuous hold time and PAUSES while contested, as the Stick does.
-    if (h.owner != null && !h.contested) {
+    // Domination scores OWNERSHIP, so a contested point still pays its owner (the station's `own_ms`).
+    if (h.owner != null && (!h.contested || this.ownershipScored())) {
       const by = this.host.hold[site] || (this.host.hold[site] = {});
       by[h.owner] = (by[h.owner] || 0) + dt;   // tid 2 included: MC credits it to nobody as `neutral_s`
     }
@@ -575,7 +588,7 @@ export class HillListener {
         this._controlSpokenOwner = { site: pending.site, owner: pending.to };
       }
     }
-    if (h.contested) { this._hillTickAt = now; return; } // contested ownership earns no audible score tick
+    if (h.contested && !this.ownershipScored()) { this._hillTickAt = now; return; } // contested ownership earns no audible score tick (KOTH); in Domination it still scores, so it still ticks
     if (!this.audioOn() || !this.mine()) return;
     // docs/announcer.md: the tick never queues behind a clip on the gun, nor jumps a waiting line, nor sounds while the item on
     // air still has audio due (the gaps inside a kill item: the 120 ms flash-to-line gap, the gap between medal lines). It is

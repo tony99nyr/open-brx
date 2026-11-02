@@ -28,8 +28,8 @@ Free-for-all, one Team Deathmatch and two King of the Hill matches.
 | Infection | One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock. | Rules engine and Mission Control support are both in. No live run. |
 | Last Man Standing | Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins. | Rules engine and Mission Control support are both in. No live run. |
 | Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a tagger head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
+| Domination | Three hills, A, B and C. A hill your team owns scores a point a second, whether or not anyone stands on it, until the other team drains it to neutral. First to 1000 wins. | In Mission Control's list, on phone or Stick hills. Not yet played on hardware. |
 | Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
-| Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
 | Capture the Flag | Grab the enemy flag, carry it home. Tag the carrier to send it back. | Needs a station to report grab, capture and drop. Not in the Mission Control mode list. |
 
 Two rule variants sit in the same "written, not played" bucket. **Syphon** heals the killer on every
@@ -160,7 +160,7 @@ The money does not buy capability, then. It buys the interaction: you can shoot 
 
 ## What is not built yet
 
-- The remaining objective modes (Domination, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet. King of the Hill is the exception: it is in the mode list, and its hill now defaults to a phone control point rather than the Smart Grenade, which stays selectable as a post-MVP option.
+- Capture the Flag and Counter-Strike cannot be configured from Mission Control. Their settings do not cross the wire yet. King of the Hill and Domination are in the mode list. King of the Hill's hill now defaults to a phone control point rather than the Smart Grenade, which stays selectable as a post-MVP option. Domination runs only on phone or Stick control points.
 - Extraction's objective rules (the zone, the loot, the channel timer) run only on the laptop command line. The phone knows nothing about them.
 - Syphon and regenerating health are laptop-only for the same reason.
 - Mission Control arms utility phones from the muster items panel: a spare phone can be armed as a respawn station or a control point before the match. An M5StickS3 has run as a hill in a two-phone King of the Hill match on the bench. It has not yet run at a field. The Smart Grenade is set by its own button, not by Mission Control.
