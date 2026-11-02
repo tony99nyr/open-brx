@@ -95,6 +95,10 @@ async function j<T>(path: string, init?: RequestInit, timeoutMs = REQUEST_TIMEOU
 }
 const post = <T,>(path: string, body: unknown = {}) => j<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
+/** F644: how long a `/ui-ws` socket that has carried a heartbeat may stay silent before the console gives it up
+ *  (three of MC's 5 s heartbeats). */
+export const LINK_SILENT_MS = 15000;
+
 /** Real client: REST + `/ui-ws` snapshots with exponential-backoff reconnect. */
 /** Vite can serve this console against an older MC that lacks the standby route.
  *  A 404 is version skew only when the route itself is missing.
@@ -144,9 +148,24 @@ export function createHttpApi(): Api {
         const tok = getToken();
         const socket = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
         ws = socket;
+        // F644: MC sends a `heartbeat` whenever it has sent nothing else for 5 s. A socket that has carried one and then
+        // hears nothing for LINK_SILENT_MS is a dead path (a sleeping laptop, the Windows port proxy) that may never fire
+        // `onclose`: give it up, say MC is offline, and redial. An older MC sends no heartbeat, so it is never watched.
+        let heard = Date.now(), beats = false;
+        const watchdog = setInterval(() => {
+          if (closed || ws !== socket) { clearInterval(watchdog); return; }
+          if (!beats || Date.now() - heard < LINK_SILENT_MS) return;
+          clearInterval(watchdog);
+          ws = null;                       // its late `onclose` (minutes, on a dead path) must not touch the next socket
+          if (live) onLink?.(false);
+          try { socket.close(); } catch { /* already closing */ }
+          setTimeout(open, delay); delay = Math.min(delay * 2, 10000);
+        }, 1000);
         socket.onmessage = ev => {
+          heard = Date.now();
           try {
             const m = JSON.parse(ev.data);
+            if (m.kind === 'heartbeat') beats = true;
             // F540: a socket is up when MC SENDS on it. MC accepts a socket whose token it refuses and then closes it
             // (4401), so `onopen` alone reported the link up and reset the backoff: a refused tab reconnected twice a
             // second for ever and the console flickered.
@@ -161,6 +180,7 @@ export function createHttpApi(): Api {
         };
         socket.onopen = () => { opened = true; };
         socket.onclose = ev => {
+          clearInterval(watchdog);
           if (closed || ws !== socket) return;
           if (live && !closed) onLink?.(false);   // F586 review: a closed subscription's socket closing late (a redial for a new token) must not mark the new link down
           if (ev.code === 4401 || ev.code === 1008) notifyAuth(true);     // server refused the token
