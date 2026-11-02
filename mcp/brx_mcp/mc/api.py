@@ -5,6 +5,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import socket
+import struct
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -33,12 +36,72 @@ def _err(msg: str | Exception, status: int = 400) -> JSONResponse:
     return JSONResponse({"error": msg}, status_code=status)
 
 
+class _UiClient:
+    """One console socket and its own outbox (F644).
+
+    Field 2026-11-01: MC awaited each socket's send in turn, so ONE tab that stopped reading (a phone that locked
+    its screen, a laptop that slept, a dead path through the Windows port proxy) filled its TCP window and held
+    every other tab's snapshots behind it for good. A refresh opened a new socket, which got its first snapshot
+    directly, so the operator refreshed after every match. Now each socket has its own writer: a slow one gets
+    fewer snapshots (a newer one replaces any still queued), and one that cannot take a send for
+    `Broadcaster.SEND_TIMEOUT_S` is dropped and its connection aborted, so the browser sees the close and redials."""
+
+    COALESCED = ("snapshot", "heartbeat")    # only the newest of these is worth sending
+
+    def __init__(self, ws: WebSocket):
+        self.ws = ws
+        self.outbox: deque[tuple[str, str]] = deque()   # (kind, frame), in send order
+        self.wake = asyncio.Event()
+        self.task: asyncio.Task | None = None
+
+    def put(self, kind: str, data: str) -> None:
+        if kind in self.COALESCED:
+            for i, (k, _) in enumerate(self.outbox):
+                if k == kind:              # supersede the queued one, in its place
+                    self.outbox[i] = (kind, data)
+                    self.wake.set()
+                    return
+        self.outbox.append((kind, data))
+        self.wake.set()
+
+
+_SERVER_SEND = "brx.server_send"    # scope key: the ASGI server's own `send` for a WebSocket (`_AuthMiddleware`)
+
+
+def _abort_socket(ws: WebSocket) -> bool:
+    """Abort the TCP connection under `ws` at once. A close frame cannot reach a peer whose window is shut: uvicorn's
+    send waits for its buffer to drain, and so does `transport.close()`. Only an abort frees it. The transport is
+    reached through uvicorn's protocol, whose bound `send` `_AuthMiddleware` keeps in the scope (Starlette wraps the
+    one the handler holds); anything else (the test client) is left alone and only dropped from the broadcast."""
+    proto = getattr(ws.scope.get(_SERVER_SEND), "__self__", None)
+    transport = getattr(proto, "transport", None)
+    abort = getattr(transport, "abort", None)
+    if not callable(abort):
+        return False
+    # A plain close leaves the kernel's own send buffer queued in front of the FIN, which a shut window never takes.
+    # A zero linger makes the close a reset, so the peer hears of it now.
+    extra = getattr(transport, "get_extra_info", None)
+    with contextlib.suppress(Exception):
+        setsockopt = getattr(extra("socket") if callable(extra) else None, "setsockopt", None)
+        if callable(setsockopt):
+            setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    abort()
+    return True
+
+
 class Broadcaster:
-    """Coalesces session changes into ≤4 snapshots/s over /ui-ws; feed entries go immediately."""
+    """Coalesces session changes into ≤4 snapshots/s over /ui-ws; feed entries go immediately.
+
+    F644: delivery is per socket (`_UiClient`) and never awaited here, so no tab can hold up another. A `heartbeat`
+    frame goes out when nothing else has for `HEARTBEAT_S`, so a console can tell a quiet MC from a dead link."""
+
+    SEND_TIMEOUT_S = 10.0    # one send this long is a socket that stopped reading, not a slow one
+    OUTBOX_MAX = 512         # frames queued for one socket before it counts as stalled
+    HEARTBEAT_S = 5.0
 
     def __init__(self, session: Session):
         self.s = session
-        self.clients: set[WebSocket] = set()
+        self.clients: dict[WebSocket, _UiClient] = {}
         self._dirty = asyncio.Event()
         self._task: asyncio.Task | None = None
         session.on_change(self._mark)
@@ -53,26 +116,62 @@ class Broadcaster:
     def _feed(self, entry: dict, kind: str = "feed"):
         entry = dict(entry)     # F454: a later in-place edit of the shared row must not change what is serialised on the loop
         if self.loop:
-            self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._send_all({"kind": kind, "entry": entry})))
+            self.loop.call_soon_threadsafe(self.broadcast, {"kind": kind, "entry": entry})
 
-    async def _send_all(self, msg: dict):
+    def add(self, ws: WebSocket) -> _UiClient:
+        """Register an accepted socket; its first frame is a snapshot. Runs on the event loop."""
+        c = _UiClient(ws)
+        c.put("snapshot", json.dumps({"kind": "snapshot", "state": self.s.snapshot()}, default=str))
+        self.clients[ws] = c
+        c.task = asyncio.ensure_future(self._writer(c))
+        return c
+
+    def remove(self, ws: WebSocket) -> None:
+        c = self.clients.pop(ws, None)
+        if c and c.task and c.task is not asyncio.current_task():
+            c.task.cancel()
+
+    def broadcast(self, msg: dict) -> None:
+        """Queue `msg` for every socket. Never waits on any of them."""
         data = json.dumps(msg, default=str)
-        dead = []
-        for ws in list(self.clients):
-            try:
-                await ws.send_text(data)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.clients.discard(ws)
+        for c in list(self.clients.values()):
+            c.put(msg["kind"], data)
+            if len(c.outbox) > self.OUTBOX_MAX:
+                self._drop(c, f"{len(c.outbox)} frames queued")
+
+    def _drop(self, c: _UiClient, why: str) -> None:
+        if self.clients.get(c.ws) is not c:
+            return
+        self.remove(c.ws)
+        aborted = _abort_socket(c.ws)
+        log.warning("console socket dropped: it stopped reading (%s)%s", why, "" if aborted else "; could not abort it")
+
+    async def _writer(self, c: _UiClient) -> None:
+        while self.clients.get(c.ws) is c:
+            await c.wake.wait()
+            c.wake.clear()
+            while c.outbox and self.clients.get(c.ws) is c:
+                _, data = c.outbox.popleft()
+                try:
+                    await asyncio.wait_for(c.ws.send_text(data), self.SEND_TIMEOUT_S)
+                except asyncio.TimeoutError:
+                    self._drop(c, f"one send took over {self.SEND_TIMEOUT_S:g} s")
+                    return
+                except Exception:          # closed under us: the handler's `finally` removes it as well
+                    self.remove(c.ws)
+                    return
 
     async def run(self):
         self.loop = asyncio.get_running_loop()
         while True:
-            await self._dirty.wait()
+            try:
+                await asyncio.wait_for(self._dirty.wait(), self.HEARTBEAT_S)
+            except asyncio.TimeoutError:
+                self.broadcast({"kind": "heartbeat"})
+                continue
             self._dirty.clear()
             try:
-                await self._send_all({"kind": "snapshot", "state": self.s.snapshot()})
+                self.broadcast({"kind": "snapshot", "state": self.s.snapshot()})
             except Exception:
                 log.exception("snapshot broadcast failed — continuing")
             await asyncio.sleep(0.25)
@@ -114,6 +213,8 @@ class _AuthMiddleware:
         self.app, self.token = app, token
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            scope[_SERVER_SEND] = send     # F644: the server's own `send`, before Starlette wraps it (`_abort_socket`)
         if self.token and scope["type"] in ("http", "websocket"):
             path = scope.get("path", "")
             method = scope.get("method", "GET")
@@ -259,9 +360,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def ui_ws(ws: WebSocket):
         await ws.accept()
-        bc.clients.add(ws)
         try:
-            await ws.send_text(json.dumps({"kind": "snapshot", "state": s.snapshot()}, default=str))
+            bc.add(ws)     # F644: the first snapshot goes through the socket's own writer, like every later frame
             while True:
                 try:
                     await ws.receive_text()   # UI has nothing to say yet; keeps the socket open
@@ -272,7 +372,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except WebSocketDisconnect:
             pass
         finally:
-            bc.clients.discard(ws)
+            bc.remove(ws)
 
     async def index(_):
         return PlainTextResponse("Mission Control API is up. UI not built — run `npm run build` in webapp/mc "
