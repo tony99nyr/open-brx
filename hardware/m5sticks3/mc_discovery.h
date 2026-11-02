@@ -9,7 +9,7 @@
 //   5. a cooldown (mDNS only), then back to 1.
 // A dial counts only when MC's welcome says ok. A refused or failed TCP connect ends a dial through the library's
 // DISCONNECTED event; the deadline catches a host that accepts TCP but never sends an ok welcome. The /24 scan
-// waits while the station counts a live game (its probes share the radio with the BLE presence scan).
+// is skipped while the station counts a live game, and the sweep restarts next cycle (its probes share the radio with the BLE presence scan).
 #pragma once
 #include <cstdint>
 #include <cstdio>
