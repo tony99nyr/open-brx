@@ -40,15 +40,20 @@ WIN_POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
 
 # The WSL holder. It prints one status line, then blocks on stdin until MC closes the pipe (or dies).
 _PS_HOLDER = f"""
-Add-Type -Namespace BrxKeepAwake -Name K -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
-$s = 'held+away'
-if ([BrxKeepAwake.K]::SetThreadExecutionState([uint32]{HOLD | ES_AWAYMODE_REQUIRED}) -eq 0) {{
-  $s = 'held'
-  if ([BrxKeepAwake.K]::SetThreadExecutionState([uint32]{HOLD}) -eq 0) {{ $s = 'failed' }}
+$ErrorActionPreference = 'Stop'
+try {{
+  Add-Type -Namespace BrxKeepAwake -Name K -MemberDefinition '[DllImport("kernel32.dll")] public static extern uint SetThreadExecutionState(uint f);'
+  $s = 'held+away'
+  if ([BrxKeepAwake.K]::SetThreadExecutionState([uint32]{HOLD | ES_AWAYMODE_REQUIRED}) -eq 0) {{
+    $s = 'held'
+    if ([BrxKeepAwake.K]::SetThreadExecutionState([uint32]{HOLD}) -eq 0) {{ $s = 'failed: SetThreadExecutionState returned 0' }}
+  }}
+}} catch {{
+  $s = 'failed: ' + $_.Exception.Message
 }}
 [Console]::Out.WriteLine($s)
 [Console]::Out.Flush()
-if ($s -eq 'failed') {{ exit 1 }}
+if ($s -like 'failed*') {{ exit 1 }}
 $null = [Console]::In.ReadToEnd()
 """
 
@@ -199,10 +204,14 @@ def _wsl(which, popen, exists, watch) -> Hold | None:
 
     def check() -> None:
         line = (proc.stdout.readline() if proc.stdout else "").strip()
-        if line.startswith("held"):
-            log.info("keep-awake: Windows holder %s (pid %s)", line, getattr(proc, "pid", "?"))
-        elif not hold.released:
-            _say(f"WARNING the Windows holder did not hold ({line or 'it exited'}) -- Windows may sleep")
+        if not line.startswith("held"):
+            if not hold.released:
+                _say(f"WARNING the Windows holder did not hold ({line or 'it exited'}) -- Windows may sleep")
+            return
+        log.info("keep-awake: Windows holder %s (pid %s)", line, getattr(proc, "pid", "?"))
+        code = proc.wait()
+        if not hold.released:
+            _say(f"WARNING the Windows holder stopped ({code}) -- Windows may sleep for the rest of this run")
     watch(hold, check)
     return hold
 

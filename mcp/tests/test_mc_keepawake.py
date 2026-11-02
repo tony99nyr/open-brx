@@ -63,7 +63,7 @@ class FakeKernel32:
         return 1
 
 
-def _start(platform, *, exe="/bin/x", proc=None, fail=False, ephemeral=False, wsl=False, kernel32=None,
+def _start(platform, *, exe="/bin/x", cat=None, proc=None, fail=False, ephemeral=False, wsl=False, kernel32=None,
            batt="Now drawing from 'AC Power'", exists=False, check=True):
     calls, registered, out = [], [], io.StringIO()
 
@@ -76,7 +76,7 @@ def _start(platform, *, exe="/bin/x", proc=None, fail=False, ephemeral=False, ws
     def run(argv, **kw):
         return subprocess.CompletedProcess(argv, 0, stdout=batt, stderr="")
     with contextlib.redirect_stdout(out):
-        hold = ka.start(ephemeral=ephemeral, platform=platform, which=lambda _n: exe, popen=popen, pid=4242,
+        hold = ka.start(ephemeral=ephemeral, platform=platform, which=lambda n: (cat or exe) if n == "cat" else exe, popen=popen, pid=4242,
                         register=lambda *a: registered.append(a), run=run, kernel32=kernel32, wsl=wsl,
                         exists=lambda _p: exists, watch=lambda _h, fn: fn() if check else None)
     lines = [ln.strip() for ln in out.getvalue().splitlines()]
@@ -140,13 +140,15 @@ def test_windows_failed_call_and_battery():
 
 def test_wsl_starts_a_windows_holder_on_a_pipe_that_mc_holds():
     proc = FakeProc(out="held+away\n")
-    hold, calls, lines = _start("linux", wsl=True, exe="/mnt/c/WINDOWS/powershell.exe", proc=proc)
+    hold, calls, lines = _start("linux", wsl=True, exe="/mnt/c/WINDOWS/powershell.exe", proc=proc, check=False)
     argv, kw = calls[0]
     assert argv[:4] == ["/mnt/c/WINDOWS/powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand"], argv
     assert kw["stdin"] == subprocess.PIPE, "MC holds the write end, so the holder gets EOF when MC dies"
     assert "env" not in kw, "env vars do not cross from WSL to Windows: everything goes in argv"
     script = base64.b64decode(argv[4]).decode("utf-16-le")
     assert "SetThreadExecutionState" in script and "ReadToEnd" in script, script
+    assert script.index("$ErrorActionPreference = 'Stop'") < script.index("Add-Type"), "a failed Add-Type must not report held"
+    assert script.index("catch") < script.index("WriteLine($s)") and "'failed: '" in script
     assert str(ka.HOLD | ka.ES_AWAYMODE_REQUIRED) in script and str(ka.HOLD) in script
     assert len(lines) == 1 and "powershell.exe" in lines[0], lines
     ka.stop(hold)
@@ -155,15 +157,20 @@ def test_wsl_starts_a_windows_holder_on_a_pipe_that_mc_holds():
 
 def test_wsl_holder_that_hangs_is_terminated_and_one_that_fails_warns():
     proc = FakeProc(out="held\n", hang=True)
-    hold, _calls, _lines = _start("linux", wsl=True, proc=proc)
+    hold, _calls, _lines = _start("linux", wsl=True, proc=proc, check=False)
     ka.stop(hold)
     assert proc.stdin.closed and proc.terminated
     _hold, _calls, lines = _start("linux", wsl=True, proc=FakeProc(out="failed\n"))
     assert len(lines) == 2 and "WARNING" in lines[1] and "failed" in lines[1], lines
 
 
+def test_wsl_holder_that_dies_after_holding_warns():
+    _hold, _calls, lines = _start("linux", wsl=True, proc=FakeProc(out="held\n", code=1))
+    assert len(lines) == 2 and "WARNING" in lines[1] and "stopped" in lines[1], lines
+
+
 def test_wsl_finds_powershell_by_path_or_says_why_not():
-    _hold, calls, _lines = _start("linux", wsl=True, exe=None, exists=True, proc=FakeProc(out="held\n"))
+    _hold, calls, _lines = _start("linux", wsl=True, exe=None, exists=True, proc=FakeProc(out="held\n"), check=False)
     assert calls[0][0][0] == ka.WIN_POWERSHELL
     hold, calls, lines = _start("linux", wsl=True, exe=None, exists=False)
     assert hold is None and calls == [] and "not found" in lines[0]
@@ -182,9 +189,9 @@ def test_is_wsl_reads_the_kernel_release():
 
 def test_linux_systemd_inhibit_holds_sleep_and_idle_on_a_pipe():
     proc = FakeProc()
-    hold, calls, lines = _start("linux", exe="/usr/bin/systemd-inhibit", proc=proc, check=False)
+    hold, calls, lines = _start("linux", exe="/usr/bin/systemd-inhibit", cat="/usr/bin/cat", proc=proc, check=False)
     argv, kw = calls[0]
-    assert argv[0] == "/usr/bin/systemd-inhibit" and "--what=sleep:idle" in argv and argv[-1] == "/usr/bin/systemd-inhibit"
+    assert argv[0] == "/usr/bin/systemd-inhibit" and "--what=sleep:idle" in argv and argv[-1] == "/usr/bin/cat"
     assert kw["stdin"] == subprocess.PIPE
     assert len(lines) == 1 and "systemd-inhibit" in lines[0], lines
     ka.stop(hold)

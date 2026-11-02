@@ -67,11 +67,12 @@ Mirrored WSL networking (where the Windows host and WSL share one IP) makes the 
 no-op, but this box runs NAT mode, so treat the portproxy as required until that changes.
 
 **Windows must not sleep while MC runs** (F660). Linux in WSL does not sleep, but Windows does, and WSL sleeps with it.
-MC starts a Windows-side holder itself: `powershell.exe` calls `SetThreadExecutionState` (system, display and away mode)
+MC starts a Windows-side holder itself: `powershell.exe` calls `SetThreadExecutionState` (system and display, plus away
+mode when Windows accepts it)
 and then waits on a pipe from MC. When MC exits or dies, the pipe closes and the holder exits, so Windows can sleep
 again. The script goes in through `-EncodedCommand`, because env vars do not cross. MC prints
 `keep-awake: a Windows holder (powershell.exe) holds Windows awake while MC runs`, and a `keep-awake: WARNING` line if the
-holder did not hold. A Windows-native MC (`start.cmd`) makes the same call from its own process instead.
+holder did not hold or stops later. A Windows-native MC (`start.cmd`) makes the same call from its own process instead.
 
 **Keep the phones' Wi-Fi path awake on Windows.** The display hold stops Modern Standby, which can turn off the Wi-Fi
 when the screen goes dark. Two settings can still slow or drop the Wi-Fi on battery, and MC does not change them:
