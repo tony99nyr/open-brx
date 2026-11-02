@@ -252,9 +252,11 @@ failed dials, then one a minute (a new `MC` command gives it priority again). Se
 welcomed this Stick (NVS `mc_last`): two dials. Third, mDNS (`_openbrx._tcp`, an async query polled each loop)
 for 20 s. Fourth, a scan of the Stick's own /24 for TCP port 8766: non-blocking lwIP connects that send nothing,
 at most 4 open and 20 a second, 600 ms each. A host that accepts is dialled and adopted only on a welcome; a
-failed one resumes the scan. A cycle with no MC rests 30 s, then starts again. Every dial has an 8 s deadline:
-the WebSocket library reports no event for a refused TCP connect, which is how a stale typed URL once held three
-Sticks at CONNECTING all night. The scan finds an MC that mDNS cannot reach, such as WSL behind a Windows
+failed one resumes the scan. The scan waits while the station counts a live game (a live hill, or MC's A58 match
+lock), because its probes share the radio with the BLE presence scan. A cycle with no MC rests 30 s, then starts
+again. A refused TCP connect ends a dial at once, and the Stick then stops the library's own redial (each try can
+block `loop()` for 5 s); an 8 s deadline ends a dial to a host that accepts TCP but never welcomes. Why three
+Sticks never joined MC on 2026-11-01 is not confirmed: check it on the bench. The scan finds an MC that mDNS cannot reach, such as WSL behind a Windows
 `netsh portproxy`. The last good MC is saved only as a plain `ws://` private IPv4 URL, never a tunnel or a
 hostname, and never the typed URL. **Every door is LAN-only**: a typed `MC <ws-url>`
 means the MC's LAN address (`ws://<lan-ip>:<port>/ws`, from the console or the QR). Pointing it at

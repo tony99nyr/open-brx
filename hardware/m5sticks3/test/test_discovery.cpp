@@ -1,6 +1,7 @@
 // F642: the Stick's MC discovery policy (mc_discovery.h): typed, last good, mDNS, the /24 scan, cooldown.
 #include "check.h"
 #include "mc_discovery.h"
+#include "station_link.h"  // in_live_play
 
 #include <vector>
 
@@ -68,17 +69,114 @@ static void test_f642_last_good_only_private_ipv4_ws() {
   CHECK_EQ(mc_ws_url("192.168.1.5", 8766, "/ws"), std::string("ws://192.168.1.5:8766/ws"));
 }
 
-static void test_f642_last_good_follows_only_an_ok_welcome() {
+static void test_f642_ok_welcome_picks_the_last_good_to_save() {
   McDiscovery d;
-  CHECK(d.poll(0, false, OWN, MASK24) == McStep::BROWSE_MDNS);
+  const std::string typed = "ws://192.168.50.9:8766/ws";
+  CHECK(d.poll(0, true, OWN, MASK24) == McStep::DIAL_TYPED);
+  d.dial_started(McSource::TYPED, 0);
+  CHECK(d.welcomed(typed, typed).empty());  // the typed URL is never the last good
   d.dial_started(McSource::MDNS, 10);
   CHECK(d.dialling());
   d.dial_failed(20);  // closed before any welcome: nothing to adopt
   CHECK(!d.dialling());
   d.dial_started(McSource::MDNS, 30);
-  d.welcomed();
+  CHECK_EQ(d.welcomed("ws://192.168.50.7:8766/ws", typed), std::string("ws://192.168.50.7:8766/ws"));
   CHECK(!d.dialling());
   CHECK(d.phase() == McPhase::TYPED);  // the next drop starts a fresh cycle
+  d.set_last_good("ws://192.168.50.7:8766/ws");  // the glue, once the NVS write landed
+  d.dial_started(McSource::LAST_GOOD, 40);
+  CHECK(d.welcomed("ws://192.168.50.7:8766/ws", typed).empty());  // already saved: no flash write
+  d.dial_started(McSource::SCAN, 50);
+  CHECK(d.welcomed("wss://192.168.50.8:8766/ws", typed).empty());
+  CHECK(d.welcomed("ws://mc.example.org:8766/ws", typed).empty());
+}
+
+static void test_f642_typed_match_compares_the_address_not_the_text() {
+  CHECK(same_mc_address("ws://192.168.1.5:8766/ws", "ws://192.168.001.005:8766/ws"));
+  CHECK(same_mc_address("ws://192.168.1.5:8766/ws", "ws://192.168.1.5:08766/ws"));
+  CHECK(!same_mc_address("ws://192.168.1.5:8766/ws", "ws://192.168.1.5:8767/ws"));
+  CHECK(!same_mc_address("ws://192.168.1.5:8766/ws", "ws://192.168.1.5:8766/other"));
+  CHECK(!same_mc_address("ws://192.168.1.5:8766/ws", "ws://mc.local:8766/ws"));
+  CHECK(!should_save_last_good("ws://192.168.1.5:8766/ws", "ws://192.168.001.005:08766/ws", ""));
+  CHECK(!should_save_last_good("ws://192.168.1.5:8766/ws", "", "ws://192.168.1.005:8766/ws"));
+}
+
+static void test_f642_a_full_tried_list_never_skips_rolled_back_probes() {
+  McScan s;
+  CHECK(s.begin(OWN, MASK24));
+  uint32_t now = 0;
+  unsigned slot = 0;
+  uint32_t a = 0;
+  // Fill the tried list: .1 to .8 each answer and fail their hello.
+  for (unsigned host = 1; host <= MC_SCAN_TRIED_MAX; ++host, now += MC_SCAN_PROBE_GAP_MS) {
+    CHECK(s.next_probe(now, slot, a));
+    CHECK_EQ(a, ip(192, 168, 50, host));
+    s.probe_done(slot, true);
+    s.candidate_failed();
+  }
+  // .9 .10 .11 in flight; .11 answers first and fails: .9 and .10 must still be probed.
+  unsigned slots[3];
+  for (int i = 0; i < 3; ++i, now += MC_SCAN_PROBE_GAP_MS) CHECK(s.next_probe(now, slots[i], a));
+  CHECK_EQ(a, ip(192, 168, 50, 11));
+  s.probe_done(slots[2], true);
+  s.candidate_failed();
+  CHECK_EQ(s.cursor(), ip(192, 168, 50, 9));
+  std::vector<uint32_t> next;
+  for (int i = 0; i < 3; ++i, now += MC_SCAN_PROBE_GAP_MS) {
+    CHECK(s.next_probe(now, slot, a));
+    next.push_back(a);
+    s.probe_done(slot, false);
+  }
+  CHECK(next == std::vector<uint32_t>({ip(192, 168, 50, 9), ip(192, 168, 50, 10), ip(192, 168, 50, 12)}));
+}
+
+static void test_f642_scan_waits_while_the_station_is_in_play() {
+  McDiscovery d;
+  d.set_last_good("ws://192.168.50.7:8766/ws");
+  uint32_t t = 0;
+  for (unsigned i = 0; i < MC_LAST_GOOD_DIALS; ++i) t = fail_dial(d, McSource::LAST_GOOD, t);
+  CHECK(d.poll(t, false, OWN, MASK24, true) == McStep::BROWSE_MDNS);
+  t += MC_MDNS_WINDOW_MS;
+  CHECK(d.poll(t, false, OWN, MASK24, true) == McStep::BROWSE_MDNS);  // no scan in play
+  CHECK(d.phase() == McPhase::COOLDOWN);
+  CHECK(!d.scan().running());
+  t += MC_SCAN_COOLDOWN_MS;
+  CHECK(d.poll(t, false, OWN, MASK24, true) == McStep::DIAL_LAST_GOOD);  // the other doors go on
+  t = fail_dial(d, McSource::LAST_GOOD, t);
+  CHECK(d.poll(t, false, OWN, MASK24, true) == McStep::DIAL_LAST_GOOD);
+  t = fail_dial(d, McSource::LAST_GOOD, t);
+  CHECK(d.poll(t, false, OWN, MASK24, false) == McStep::BROWSE_MDNS);
+  t += MC_MDNS_WINDOW_MS;
+  CHECK(d.poll(t, false, OWN, MASK24, false) == McStep::SCAN);  // play over: the scan runs
+  unsigned slot = 0;
+  uint32_t a = 0;
+  CHECK(d.scan().next_probe(t, slot, a));
+  CHECK(d.poll(t + 10, false, OWN, MASK24, true) == McStep::BROWSE_MDNS);  // a game went live mid-scan
+  CHECK(!d.scan().running());
+  CHECK_EQ(d.scan().in_flight(), 0u);
+  // The link's flag: MC's A58 match lock marks a live match for any kind.
+  StationLink link;
+  CHECK(!link.in_live_play(0));
+  link.restore_lock(60, 0);
+  CHECK(link.in_live_play(1000));
+  CHECK(!link.in_live_play(61000));
+  // A hill counts from START until it freezes at the whistle.
+  StationLink hill;
+  StationAssignment cfg;
+  cfg.present = true;
+  cfg.kind = "control";
+  cfg.id = 1;
+  cfg.game = 3;
+  cfg.starts_known = true;
+  cfg.starts_in_ms = 0;
+  cfg.ends_in_ms = 10000;
+  hill.apply_station_config(cfg, 0);
+  PlayerPresence players;
+  hill.tick_players(players, 250);
+  CHECK(hill.in_live_play(250));
+  hill.tick_players(players, 10250);
+  CHECK(hill.hill_ended());
+  CHECK(!hill.in_live_play(10250));
 }
 
 static void test_f642_scan_range_and_skips() {
@@ -267,7 +365,10 @@ int main() {
   test_f642_order_typed_last_good_mdns_scan();
   test_f642_no_typed_and_no_last_good_goes_straight_to_mdns();
   test_f642_last_good_only_private_ipv4_ws();
-  test_f642_last_good_follows_only_an_ok_welcome();
+  test_f642_ok_welcome_picks_the_last_good_to_save();
+  test_f642_typed_match_compares_the_address_not_the_text();
+  test_f642_a_full_tried_list_never_skips_rolled_back_probes();
+  test_f642_scan_waits_while_the_station_is_in_play();
   test_f642_scan_range_and_skips();
   test_f642_scan_respects_pool_and_rate_cap();
   test_f642_failed_candidate_resumes_at_the_next_address();

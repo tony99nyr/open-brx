@@ -7,8 +7,9 @@
 //   3. mDNS for MC_MDNS_WINDOW_MS,
 //   4. a TCP-connect scan of the Stick's own /24 for port 8766 (sends nothing; a host that accepts is dialled),
 //   5. a cooldown (mDNS only), then back to 1.
-// A dial counts only when MC's welcome says ok. Every dial has a deadline: the WebSocket library fires no
-// event for a refused TCP connect, so a stale address otherwise held the link at CONNECTING for ever.
+// A dial counts only when MC's welcome says ok. A refused or failed TCP connect ends a dial through the library's
+// DISCONNECTED event; the deadline catches a host that accepts TCP but never sends an ok welcome. The /24 scan
+// waits while the station counts a live game (its probes share the radio with the BLE presence scan).
 #pragma once
 #include <cstdint>
 #include <cstdio>
@@ -79,9 +80,29 @@ inline bool last_good_mc_url_ok(const std::string& url) {
   return parse_ipv4(url.substr(5, colon - 5), ip) && private_ipv4(ip);
 }
 
+// A usable ws:// URL with a literal IPv4 host, split into its parts.
+inline bool parse_ws_ipv4_url(const std::string& url, uint32_t& ip, unsigned& port, std::string& path) {
+  if (!saved_mc_url_usable(url)) return false;
+  const size_t colon = url.find(':', 5);
+  const size_t slash = url.find('/', colon + 1);
+  if (!parse_ipv4(url.substr(5, colon - 5), ip)) return false;
+  port = (unsigned)std::stoul(url.substr(colon + 1, slash - colon - 1));
+  path = url.substr(slash);
+  return true;
+}
+
+// The same MC address: equal text, or the same IPv4, port and path however they are written.
+inline bool same_mc_address(const std::string& a, const std::string& b) {
+  if (a == b) return true;
+  uint32_t ia = 0, ib = 0;
+  unsigned pa = 0, pb = 0;
+  std::string qa, qb;
+  return parse_ws_ipv4_url(a, ia, pa, qa) && parse_ws_ipv4_url(b, ib, pb, qb) && ia == ib && pa == pb && qa == qb;
+}
+
 // Whether a welcomed address should be written as the last good MC: never the typed URL, never a rewrite.
 inline bool should_save_last_good(const std::string& url, const std::string& typed, const std::string& current) {
-  return last_good_mc_url_ok(url) && url != typed && url != current;
+  return last_good_mc_url_ok(url) && !same_mc_address(url, typed) && !same_mc_address(url, current);
 }
 
 // The addresses the scan probes: the /24 that holds `ip`, or the netmask's own range when it is narrower.
@@ -119,6 +140,7 @@ class McScan {
     running_ = false;
     has_candidate_ = false;
     tried_n_ = 0;
+    tried_next_ = 0;
     any_started_ = false;
     for (auto& s : slots_) s = Slot();
   }
@@ -180,9 +202,12 @@ class McScan {
   void candidate_failed() {
     if (!has_candidate_) return;
     has_candidate_ = false;
-    if (tried_n_ < MC_SCAN_TRIED_MAX) tried_[tried_n_++] = candidate_;
-    else if (cursor_ <= candidate_) cursor_ = candidate_ + 1;  // the list is full: never re-probe it
+    // A ring: the oldest entry goes. The cursor never moves here, so the probes rolled back by probe_done run.
+    tried_[tried_next_] = candidate_;
+    tried_next_ = (tried_next_ + 1) % MC_SCAN_TRIED_MAX;
+    if (tried_n_ < MC_SCAN_TRIED_MAX) ++tried_n_;
   }
+  uint32_t cursor() const { return cursor_; }
 
  private:
   bool tried(uint32_t ip) const {
@@ -198,6 +223,7 @@ class McScan {
   uint32_t candidate_ = 0;
   uint32_t tried_[MC_SCAN_TRIED_MAX] = {0};
   unsigned tried_n_ = 0;
+  unsigned tried_next_ = 0;
 };
 
 // ---- the cycle -----------------------------------------------------------------------------------
@@ -227,8 +253,9 @@ class McDiscovery {
   void set_last_good(const std::string& url) { last_good_ = last_good_mc_url_ok(url) ? url : std::string(); }
   const std::string& last_good() const { return last_good_; }
 
-  // Call while LOOKING_FOR_MC with dialling allowed. WAIT while a dial is in flight.
-  McStep poll(uint32_t now, bool typed_usable, uint32_t own_ip, uint32_t mask) {
+  // Call while LOOKING_FOR_MC with dialling allowed. WAIT while a dial is in flight. `in_play`: the station is
+  // counting a live game, so the scan is skipped this cycle (typed, last good and mDNS still run).
+  McStep poll(uint32_t now, bool typed_usable, uint32_t own_ip, uint32_t mask, bool in_play = false) {
     if (dialling_) return McStep::WAIT;
     for (int guard = 0; guard < 8; ++guard) {
       switch (phase_) {
@@ -246,7 +273,7 @@ class McDiscovery {
           if (!scan_.begin(own_ip, mask)) enter(McPhase::COOLDOWN, now);
           break;
         case McPhase::SCAN:
-          if (!scan_.finished()) return McStep::SCAN;
+          if (!in_play && !scan_.finished()) return McStep::SCAN;
           scan_.stop();
           enter(McPhase::COOLDOWN, now);
           break;
@@ -276,13 +303,16 @@ class McDiscovery {
     typed_.dial_failed(now);
     if (source_ == McSource::SCAN) scan_.candidate_failed();
   }
-  // MC's welcome said ok: the next drop starts a fresh cycle.
-  void welcomed() {
+  // MC's welcome said ok for the dial to `dialled`: the next drop starts a fresh cycle. Returns the URL to save
+  // as the last good MC, or "" (not a private IPv4 ws:// URL, the typed URL, or already saved). The glue calls
+  // set_last_good() once the NVS write has landed.
+  std::string welcomed(const std::string& dialled, const std::string& typed_url) {
     typed_.dial_succeeded();
     dialling_ = false;
     scan_.stop();
     phase_ = McPhase::TYPED;
     last_good_dials_ = 0;
+    return should_save_last_good(dialled, typed_url, last_good_) ? dialled : std::string();
   }
   // Dialling is not allowed (Wi-Fi down, LINK OFF, a MUSTER drop): forget the scan and start over later.
   void halt() {

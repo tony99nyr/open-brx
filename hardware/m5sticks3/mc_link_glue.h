@@ -781,9 +781,9 @@ static void mcPerformMusterDrop() {
 
 // F642: MC's welcome said ok. Remember a LAN address (private IPv4 ws:// only, never the typed URL) for next time.
 static void mcOnWelcomed() {
-  mcDisc.welcomed();
-  const std::string url = mc_ws_url(dialledMc.host.c_str(), dialledMc.port, dialledMc.path.c_str());
-  if (!should_save_last_good(url, savedMcUrl.c_str(), mcDisc.last_good())) return;
+  const std::string url = mcDisc.welcomed(mc_ws_url(dialledMc.host.c_str(), dialledMc.port, dialledMc.path.c_str()),
+                                          savedMcUrl.c_str());
+  if (url.empty()) return;
   mcPrefs.begin("brxmc", false);
   const bool saved = nvsOk(nvs_put_str(mcPrefs, nvsFails, "mc_last", url.c_str()));
   mcPrefs.end();
@@ -833,6 +833,10 @@ static void mcWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     case WStype_DISCONNECTED: {
       Serial.println("WS disconnected");
+      // F642: a dial that ended before a welcome stops here, so the library does not redial the dead host (each try
+      // can block loop() for its 5 s TCP timeout); the cycle picks the next address. A drop after a welcome keeps
+      // the library's own retry.
+      if (mcDisc.dialling()) wsWantOpen = false;
       mcDisc.dial_failed(millis());  // a no-op once the dial deadline already failed it
       link.ws_closed();
       // Polish round 1: drive the library's own retry cadence from station_link.h's Backoff
@@ -929,7 +933,12 @@ static void mcScanCloseAll() {
 static void mcScanStartProbe(unsigned slot, uint32_t ip) {
   int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (fd < 0) { mcDisc.scan().probe_done(slot, false); return; }
-  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+  const int flags = fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {  // a blocking connect would stall loop()
+    close(fd);
+    mcDisc.scan().probe_done(slot, false);
+    return;
+  }
   sockaddr_in sa = {};
   sa.sin_family = AF_INET;
   sa.sin_port = htons(MC_SCAN_PORT);
@@ -1054,8 +1063,8 @@ static void mcLoop(uint32_t now) {
     return;
   }
 
-  // F642: a dial with no ok welcome by its deadline has failed. The library fires no event for a refused TCP
-  // connect, so without this a stale address held the link at CONNECTING for ever (the 2026-11-01 field night).
+  // F642: a dial with no ok welcome by its deadline has failed. A refused TCP connect already ends a dial (the
+  // library's DISCONNECTED on the next ws.loop()); this catches a host that accepts TCP but never welcomes.
   if (mcDisc.dial_timed_out(now)) {
     Serial.printf("MC dial timed out (%s %s:%u)\n", mc_source_name(mcDisc.dial_source()), dialledMc.host.c_str(),
                   dialledMc.port);
@@ -1068,7 +1077,8 @@ static void mcLoop(uint32_t now) {
   // Address discovery (F642, mc_discovery.h): typed, last good, mDNS, then a scan of the Stick's own /24.
   if (link.state() == LinkState::LOOKING_FOR_MC && dialAllowed) {
     const bool typedUsable = haveTypedMc || saved_mc_url_usable(savedMcUrl.c_str());
-    const McStep step = mcDisc.poll(now, typedUsable, mcIpU32(WiFi.localIP()), mcIpU32(WiFi.subnetMask()));
+    const McStep step = mcDisc.poll(now, typedUsable, mcIpU32(WiFi.localIP()), mcIpU32(WiFi.subnetMask()),
+                                    link.in_live_play(now));
     if (step != McStep::BROWSE_MDNS) mcCancelMdns();
     if (step != McStep::SCAN) mcScanCloseAll();
     WsAddress target;
@@ -1086,6 +1096,9 @@ static void mcLoop(uint32_t now) {
       if (mcPollScan(now, target)) src = McSource::SCAN;
     }
     if (src != McSource::NONE && target.valid) {
+      // begin() drops the library's last WiFiClient without deleting it; disconnect() cleans it up first. Its
+      // DISCONNECTED event, if any, finds no dial in flight and the link already LOOKING_FOR_MC.
+      ws.disconnect();
       link.mc_address_known();
       mcDisc.dial_started(src, now);
       dialledMc = target;

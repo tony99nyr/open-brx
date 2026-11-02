@@ -764,12 +764,15 @@ that door is shut. The Stick finds MC through the doors below, in this order, wh
    adopted only when its welcome arrives; otherwise the scan resumes at the next address. This door finds an MC
    that mDNS cannot reach, for example one behind a Windows `netsh portproxy`.
 
-A full cycle with no MC rests for 30 s (mDNS still browses), then starts again at door 1. Every dial has an 8 s
-deadline. Every door honours LINK OFF and the MUSTER drop, and the scan stops when the link leaves
-LOOKING_FOR_MC for any reason but its own dial.
+A full cycle with no MC rests for 30 s (mDNS still browses), then starts again at door 1. A refused TCP connect
+ends a dial at once; an 8 s deadline ends a dial to a host that accepts TCP but never sends an ok welcome. Every
+door honours LINK OFF and the MUSTER drop. The scan stops when the link leaves LOOKING_FOR_MC for any reason but
+its own dial, and it waits while the station counts a live game (a live hill, or MC's A58 match lock), because its
+probes share the radio with the BLE presence scan. The other doors still run then.
 
-⚠ **Never cache a tunnel or hostname MC address** (contracts §5, and A28: the public hostname is random per
-tunnel start). The last good MC is a private LAN IPv4 only, and the hello checks it on every use.
+⚠ **Never cache a tunnel or hostname MC address** (contracts §5 and its A85 exception, and A28: the public
+hostname is random per tunnel start). The last good MC is a private LAN IPv4 only, and the hello checks it on
+every use.
 
 The SoftAP captive-config tier in `../../hardware/brx-station-spec.md` would remove the serial cable from this
 story entirely. It is designed and unbuilt; the serial path is what unblocks the first Stick.
