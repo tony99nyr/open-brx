@@ -31,6 +31,7 @@ import { markPristine, picksDirty, seedBaseline } from '../playBaseline';
 import { FavouriteChip } from './games/FavouriteChip';
 import { matchItems } from './matchItems';
 import { ModeMark, MatchItem } from './games/match';
+import { isHillMode } from '../rules/scoring';
 
 /** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
 const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
@@ -104,8 +105,8 @@ export function Games() {
        poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!, null, cfg.loadout_policy?.secondary?.choice === 'fixed'),
        poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
-  // games-redesign.md §8: KOTH needs a hill station assigned in ARMORY — never a dead end.
-  const kothNoHill = cfg.mode === 'koth' && !(state.stations ?? []).some(s => s.assigned?.kind === 'control');
+  // games-redesign.md §8: a hill mode (KOTH, Domination) needs a hill station assigned in ARMORY — never a dead end.
+  const kothNoHill = isHillMode(cfg.mode) && !(state.stations ?? []).some(s => s.assigned?.kind === 'control');
   // VQA QA-19: a real fault (locked, or an empty required slot) is red; KOTH-with-no-hill-yet is a
   // setup step, not a fault, so it gets its own amber block instead of sharing the red one.
   const realFault = locked || poolEmpty.any;
@@ -290,7 +291,7 @@ export function Games() {
       {!missingPick && !realFault && kothNoHill && (
         <div data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <ItemChip id="games-koth-no-hill" inline short="No hill assigned"
-            detail={<>King of the Hill needs one phone or Stick set as the hill, in ARMORY.
+            detail={<>{cfg.mode === 'domination' ? 'Domination' : 'King of the Hill'} needs one phone or Stick set as the hill, in ARMORY.
               {state.station_departures?.filter(d => d.kind === 'control').map(d =>
                 <span key={d.node_id} data-testid="games-hill-departed" style={{ display: 'block', marginTop: 4 }}>{d.line}</span>)}</>} />
           <span data-testid="assign-a-hill">
@@ -445,7 +446,7 @@ pickTeams={pickTeams} />
                     // combination this mode refuses -- it refuses the WHOLE pick, rolling back the other
                     // three fields too. KOTH is exactly 2, never yellow, so check that here rather than
                     // let the round-trip find out; the mode's own current teams stay put instead.
-                    const kothLegal = cfg.mode !== 'koth' || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
+                    const kothLegal = !isHillMode(cfg.mode) || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
                     if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
                     if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
                     // F559: a mode that offers the hill item gets the last match's hill EXPLICITLY, so a last match played at STATION

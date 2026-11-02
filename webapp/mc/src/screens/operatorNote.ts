@@ -20,6 +20,12 @@ export function operatorNote(cfg: NoteConfig, hills = 1): string[] {
     const s = cfg.scoring.hold_target_s % 60;
     lines.push(hills > 1 ? 'PLACE THE HILLS BEFORE START' : 'PLACE THE HILL BEFORE START');
     lines.push(`FIRST TO HOLD ${m}:${String(s).padStart(2, '0')}${hills > 1 ? ' SUMMED ACROSS HILLS' : ''} WINS`);
+  } else if (cfg.mode === 'domination' && cfg.scoring.hold_target_s) {
+    // Domination scores one point per owned-hill second, so the target is a points number, not a time.
+    lines.push('PLACE THE HILLS BEFORE START');
+    lines.push(`FIRST TO ${cfg.scoring.hold_target_s} HILL POINTS WINS`);
+  } else if (cfg.mode === 'domination') {
+    lines.push('PLACE THE HILLS BEFORE START · OWN THEM TO SCORE');
   } else if (cfg.mode === 'koth') {
     lines.push('PLACE THE HILL BEFORE START · HOLD IT TO SCORE');
   } else if (cfg.mode === 'tdm') {
