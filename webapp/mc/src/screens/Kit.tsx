@@ -20,6 +20,7 @@ import { InPlayBanner, matchInPlay } from './Lobby';
 import { PRESET_LABELS } from '../api/contract.gen';
 import { kitGate, ContinueToLobby } from './kit/gate';
 import { lockedSelect, poolOf, shortName, withoutKeys, type Slot } from './kit/helpers';
+import { shieldsOffNote } from '../rules/health';
 import { SlotCard, ArsenalHeader, WeaponHero, PerkHero, PlayerNum, PoolCard } from './kit/cards';
 import { Lock, WeaponArt, PerkGlyph, PerkTrade } from './kit/art';
 
@@ -481,7 +482,7 @@ export function Kit() {
 
             {/* arsenal for the focused slot */}
             <div>
-              <ArsenalHeader slot={slot} rule={ruleOf(slot)} pool={pool} weapons={weapons} preset={pol?.preset}
+              <ArsenalHeader slot={slot} rule={ruleOf(slot)} pool={pool} weapons={weapons} preset={pol?.preset} offNote={slot === 'perk' ? shieldsOffNote(perks, state.config.health) : undefined}
                 onClear={locked ? undefined : slot === 'secondary' && secondaryW && !slotLocked('secondary') ? clearSecondary : slot === 'perk' && perk && !slotLocked('perk') ? clearPerk : undefined} onBuild={() => setView('build')} />
               {ruleOf(slot)?.choice === 'off' ? null : showKind === 'weapon' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(152px,1fr))', gap: 8 }}>

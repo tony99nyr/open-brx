@@ -102,6 +102,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the Updated stamp, id, 
 - **[game-modes.md](game-modes.md)** — the mode catalog, the infrastructure tiers, and the hard ceilings per mode.
 - **[extraction-design.md](extraction-design.md)** — the flagship Extraction mode: the event ladder, the BRX
   mechanic mapping, the tier ladder and the genre research.
+- **[domination-design.md](domination-design.md)**: a proposal for Tony's decision (F651), nothing built: Domination
+  (an owned hill scores until taken), KOTH per-player scaling, the KOTH misread wording, and Juggernaut feasibility.
 - **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
   parity targets it sets. It is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)**: the Balance rules table, the damage model and the balance rationale

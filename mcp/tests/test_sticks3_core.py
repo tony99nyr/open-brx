@@ -34,7 +34,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CORE = ROOT / "hardware" / "m5sticks3"
 TEST_FILES = ("test_core.cpp", "test_link.cpp", "test_ui.cpp", "test_screen.cpp", "test_presence.cpp", "test_range.cpp",
               "test_powerup_cases.cpp", "test_presence_cases.cpp", "test_threshold_default.cpp", "test_team_contract.cpp", "test_nvs.cpp", "test_powerup_id.cpp", "test_station_config_cases.cpp",
-              "test_advert_vectors.cpp", "test_controller.cpp", "test_buttons.cpp", "test_tick.cpp", "test_tick_revive.cpp")
+              "test_advert_vectors.cpp", "test_controller.cpp", "test_buttons.cpp", "test_tick.cpp", "test_tick_revive.cpp", "test_discovery.cpp")
 # Revive feedback is post-MVP and off by default (presence.h REVIVE_FEEDBACK_ENABLED). These files test
 # both sides of that switch, so they are also built with it on: the post-MVP path cannot rot.
 REVIVE_ON_FILES = ("test_link.cpp", "test_screen.cpp", "test_presence.cpp")
@@ -241,7 +241,7 @@ def test_sticks3_headers_have_no_arduino_dependency():
     """The core must stay host-testable: nothing in these headers may pull in Arduino."""
     for name in ("brx_ir.h", "brx_advert.h", "control_point.h", "station_link.h", "json_lite.h",
                  "station_ui.h", "station_screen.h", "presence.h", "stick_state.h", "station_range.h",
-                 "station_controller.h"):
+                 "station_controller.h", "mc_discovery.h", "station_persistence.h"):
         text = (CORE / name).read_text(encoding="utf-8")
         assert "Arduino.h" not in text and "M5Unified" not in text, f"{name} includes Arduino"
 
