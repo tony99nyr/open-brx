@@ -1,4 +1,4 @@
-import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -9,8 +9,10 @@ import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY
 //   0-3  'O','B','R','X'   magic (0x4F 0x42 0x52 0x58)
 //   4    version           1
 //   5    role              1 = station (a utility item), 2 = player (a HUD phone)
-//   6-7  id                station id 1..65535, or the player's player_num
-//   8    kind              station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control  (player: 0)
+//   6-7  id                station id 1..65535. A PLAYER uses byte 7 alone for its player_num (1..63) and byte 6 for
+//                           the high byte of its scope map (F658, A86: see byte 15)
+//   8    kind              station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control
+//                           player (F658, A86): the scope's kind mask, ADVERT_SCOPE_KIND (1 control · 2 respawn · 4 powerup)
 //   9    team              0..3 = the gun's $TID team, 255 = neutral / any team
 //   10   state             kind-specific (respawn: 1 ready · 0 disabled; bomb: 0 idle 1 planted 2 defused 3 detonated;
 //                           player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting, bit4 claiming,
@@ -22,7 +24,10 @@ import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY
 //   14   threshold         the station's own "you are AT me" RSSI in dBm as int8 (0 = use the scanner's default).
 //                           Calibrated on the station's screen, so player phones need no per-station config.
 //   15   taker             A56: a powerup station's winner, the player_num it granted the item to (0 = none);
-//                           cleared at the next spawn. 0 on every other advert.
+//                           cleared at the next spawn. 0 on every other station advert.
+//                           player (F658, A86): the low byte of the scope map. Bytes 6 and 15 are a 16-bit map of the
+//                           station ids in the player's match, bit (id % 16). A station counts a player only with its own
+//                           kind bit and its own id bit set (`inScope`); a zero scope (an older APK) counts nowhere.
 
 export const KIND = { respawn: 1, powerup: 2, extraction: 3, bomb: 4, control: 5 };
 export const KIND_NAME = Object.fromEntries(Object.entries(KIND).map(([k, v]) => [v, k]));
@@ -39,12 +44,15 @@ export function medianOf(samples) {
 const hex2 = n => (n & 0xff).toString(16).padStart(2, '0');
 
 /** Build the UUID string for a station or a player advert. Unknown/absent fields default to 0. */
-export function encodeUuid({ role, id = 0, kind = 0, team = STATION_TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0, taker = 0 }) {
+export function encodeUuid({ role, id = 0, kind = 0, team = STATION_TEAM_ANY, state = 0, value = 0, seq = 0, game = 0, threshold = 0, taker = 0, scopeKinds = 0, scope = 0 }) {
   const r = typeof role === 'string' ? ADVERT_ROLE[role] : role;
   if (!r) throw new Error('role required (station|player)');
   const k = typeof kind === 'string' ? (KIND[kind] || 0) : kind;
   const thr = threshold ? (threshold < 0 ? 256 + Math.max(-128, Math.round(threshold)) : Math.min(127, Math.round(threshold))) : 0;
-  const b = [...ADVERT_MAGIC, ADVERT_VERSION, r, (id >> 8) & 0xff, id & 0xff, k, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, taker & 0xff];
+  // F658 (A86): a player's bytes 6, 8 and 15 carry its scope; its id is byte 7 alone
+  const player = r === ADVERT_ROLE.player;
+  const b6 = player ? (scope >> 8) & 0xff : (id >> 8) & 0xff, b8 = player ? scopeKinds & 0xff : k, b15 = player ? scope & 0xff : taker & 0xff;
+  const b = [...ADVERT_MAGIC, ADVERT_VERSION, r, b6, id & 0xff, b8, team & 0xff, state & 0xff, value & 0xff, seq & 0xff, game & 0xff, thr & 0xff, b15];
   const h = b.map(hex2).join('');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
@@ -59,8 +67,38 @@ export function decodeUuid(s) {
   const role = b[5] === ADVERT_ROLE.station ? 'station' : b[5] === ADVERT_ROLE.player ? 'player' : null;
   if (!role) return null;
   const thr = b[14] === 0 ? 0 : (b[14] > 127 ? b[14] - 256 : b[14]);
-  return { role, id: (b[6] << 8) | b[7], kind: role === 'station' ? (KIND_NAME[b[8]] || `kind${b[8]}`) : null,
-    team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr, taker: b[15] };
+  if (role === 'player') {   // F658 (A86): the player id is byte 7 alone; bytes 6, 8 and 15 are its scope
+    return { role, id: b[7], kind: null, team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr, taker: 0,
+      scopeKinds: b[8], scope: (b[6] << 8) | b[15] };
+  }
+  return { role, id: (b[6] << 8) | b[7], kind: KIND_NAME[b[8]] || `kind${b[8]}`,
+    team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr, taker: b[15], scopeKinds: 0, scope: 0 };
+}
+
+/**
+ * F658 (A86): the scope a player phone advertises, from the match config MC sent (`config.stations`, the utility items
+ * armed for this game, A13.1): the kind bits of the station kinds in play and a map of their ids, bit (id % 16). No
+ * stations (or an older MC) = zeros, which no station counts. PURE.
+ */
+export function playerScope(config) {
+  let scopeKinds = 0, scope = 0;
+  for (const s of (config && Array.isArray(config.stations)) ? config.stations : []) {
+    const id = (s && typeof s === 'object') ? s.id : s, kind = (s && typeof s === 'object') ? s.kind : null;
+    if (!Number.isInteger(id) || id < 1) continue;
+    const bit = ADVERT_SCOPE_KIND[kind] || 0;
+    if (!bit) continue;
+    scopeKinds |= bit;
+    scope |= 1 << (id % ADVERT_SCOPE_ID_BITS);
+  }
+  return { scopeKinds, scope };
+}
+
+/** F658 (A86): may the station of `kind` ('control' | 'respawn' | 'powerup') and id `stationId` count this player? Only
+ *  with its own kind bit and its own id bit set; a zero scope (an older APK) is never in scope. PURE. */
+export function inScope(p, kind, stationId) {
+  const bit = ADVERT_SCOPE_KIND[kind] || 0;
+  if (!p || !bit || !Number.isInteger(stationId) || stationId < 1) return false;
+  return !!((p.scopeKinds || 0) & bit) && !!((p.scope || 0) & (1 << (stationId % ADVERT_SCOPE_ID_BITS)));
 }
 
 /** The first Open BRX advert among a scan result's service UUIDs, decoded, or null. */
@@ -178,9 +216,27 @@ export class Presence {
   // opponent contests at once, before the dwell.
   // Seams D: the defaults are the contract's (the player app's own values); every caller sets them today, and a new one
   // that forgets gets the field-tuned dwell and threshold, not a stale 2000 ms / -62 dBm.
-  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS, fadeAfterMs = PRESENCE_FADE_AFTER_MS } = {}) {
-    this.entries = new Map();          // key role:id → entry
-    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs });
+  constructor({ dwellMs = PRESENCE_DWELL_MS, hysteresisDb = PRESENCE_EXIT_BAND_DB, expiryMs = PRESENCE_EXPIRY_MS, alpha = PRESENCE_ALPHA, defaultThreshold = PHONE_STATION_THRESHOLD_DBM, game = 0, exitGraceMs = PRESENCE_EXIT_GRACE_MS, sightMs = PRESENCE_SIGHT_MS, fadeAfterMs = PRESENCE_FADE_AFTER_MS, keyByGame = false } = {}) {
+    this.entries = new Map();          // key role:id → entry (role:game:id for a player when keyByGame)
+    // F658: a following hill hears every game, so one player number in two games must be two entries, not one.
+    Object.assign(this, { dwellMs, hysteresisDb, expiryMs, alpha, defaultThreshold, game, exitGraceMs, sightMs, fadeAfterMs, keyByGame });
+  }
+  get keyByGame() { return !!this._keyByGame; }
+  /** F658 gate fix: a switch of key space (a station becoming a control point, or leaving it) RE-KEYS the player entries,
+   *  keeping their presence state. Left in the old key space they lingered beside the new ones until `expiryMs` ran
+   *  out, so one phone showed as two rows and counted twice. Of two entries that land on one key, the newer is kept. */
+  set keyByGame(v) {
+    const on = !!v;
+    if (on === !!this._keyByGame) return;
+    this._keyByGame = on;
+    if (!this.entries) return;
+    const next = new Map();
+    for (const [key, e] of this.entries) {
+      const k = e.role === 'player' ? (on ? `player:${e.game || 0}:${e.id}` : `player:${e.id}`) : key;
+      const had = next.get(k);
+      if (!had || e.seenAt > had.seenAt) next.set(k, e);
+    }
+    this.entries = next;
   }
   get game() { return this._game || 0; }
   /** X10: a new game byte drops every entry learnt under a different non-zero byte at once. Without this, a
@@ -197,11 +253,11 @@ export class Presence {
     if (!d || typeof rssi !== 'number') return null;
     if (this.game && d.game && d.game !== this.game) return null;   // another match's station
     if (this._pausedAt != null) this.resume(now);   // F537 (review): an advert proves we are listening, so no clock lands in the future
-    const key = `${d.role}:${d.id}`;
+    const key = this.keyByGame && d.role === 'player' ? `player:${d.game}:${d.id}` : `${d.role}:${d.id}`;
     let e = this.entries.get(key);
     if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
     else {
-      const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker;
+      const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker || d.scope !== e.scope || d.scopeKinds !== e.scopeKinds;
       // F440: the last GAP_SAMPLES inter-arrival gaps, so a sparse or stalling advertiser shows as numbers (diag, logs).
       e.gaps = [...(e.gaps || []), now - e.seenAt].slice(-GAP_SAMPLES);
       // F452(c) (Tony 2026-10-04, option C): the entry EMA is TIME-based. A fixed alpha per advert settled a dense phone's EMA in far
@@ -420,6 +476,7 @@ export function advertChangeReason(prev, next, ctx = {}) {
   if (a.value !== b.value) parts.push(`value ${a.value} -> ${b.value}`);
   if (a.game !== b.game) parts.push(`game ${a.game} -> ${b.game}`);
   if (a.id !== b.id) parts.push(`id ${a.id} -> ${b.id}`);
+  if (a.scope !== b.scope || a.scopeKinds !== b.scopeKinds) parts.push(`scope ${a.scopeKinds}/${a.scope} -> ${b.scopeKinds}/${b.scope}`);
   return parts.join(', ') || 'restart (same advert)';
 }
 

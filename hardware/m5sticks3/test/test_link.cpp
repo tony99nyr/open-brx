@@ -1966,7 +1966,7 @@ static PlayerPresence blue_on_the_point(uint32_t t) {
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 5;
   a.team = 1;
   a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
@@ -2043,7 +2043,7 @@ static PlayerPresence red_on_the_point(uint32_t t) {
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 4;
   a.team = 0;
   a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
@@ -2111,7 +2111,7 @@ static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them(
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 2;
   a.team = 1;
   a.state = 0;  // down
@@ -2202,12 +2202,14 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(saved.note_applied(a, "s1"));
   CHECK(saved.stored().find("\"duration_ms\":120000") != std::string::npos);
   CHECK(link.hill_waiting(100));
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.game = 7; down.state = 0;  // A86: in every station's scope
   CHECK(!link.anchor_hill_on_advert(down, 1000));
   Advert wrong_game = down; wrong_game.state = contract::ADVERT_PLAYER_STATE_ALIVE; wrong_game.game = 8;
   CHECK(!link.anchor_hill_on_advert(wrong_game, 1000));
   Advert unscoped = down; unscoped.state = contract::ADVERT_PLAYER_STATE_ALIVE; unscoped.game = 0;
   CHECK(!link.anchor_hill_on_advert(unscoped, 1000));
+  Advert old_apk = down; old_apk.state = contract::ADVERT_PLAYER_STATE_ALIVE; old_apk.scope_kinds = 0; old_apk.scope = 0;
+  CHECK(!link.anchor_hill_on_advert(old_apk, 1000));   // A86 review: a player outside this hill's scope never anchors it
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(link.anchor_hill_on_advert(alive, 5000));
   PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
@@ -2268,7 +2270,7 @@ static void test_duration_anchor_needs_a_player_heard_down_in_this_game_first() 
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert stale; stale.role = contract::ADVERT_ROLE_PLAYER; stale.id = 3; stale.game = 7; stale.state = contract::ADVERT_PLAYER_STATE_ALIVE;
+  Advert stale; stale.role = contract::ADVERT_ROLE_PLAYER; stale.scope_kinds = 7; stale.scope = 0xFFFF; stale.id = 3; stale.game = 7; stale.state = contract::ADVERT_PLAYER_STATE_ALIVE;  // A86: in every station's scope
   CHECK(!link.anchor_hill_on_advert(stale, 1000));  // never heard down: a stale phone, not a spawn
   CHECK(link.hill_waiting(1000));
   Advert down = stale; down.id = 4; down.state = 0;
@@ -2357,7 +2359,7 @@ static void test_duration_clock_survives_an_offline_restart() {
   CHECK(saved.note_applied(a, "s1"));
   SavedHillClock clock;
   CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(500), 500));  // nothing running yet
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.id = 4; down.game = 7; down.state = 0;  // A86: in every station's scope
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
@@ -2462,7 +2464,7 @@ static void test_same_game_lobby_config_stops_an_advert_anchored_hill() {
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.id = 4; down.game = 7; down.state = 0;  // A86: in every station's scope
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
@@ -2798,6 +2800,25 @@ static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() 
   CHECK_EQ(cp.owner, (int)contract::STATION_TEAM_ANY);
 }
 
+// F658 review round 2: an owned, EMPTY hill grows own_ms only (hold_ms needs a body). The save must notice that growth
+// and carry own_ms, so a Stick that reboots in an armed match keeps its Domination time, as a phone hill does.
+static void test_saved_hill_keeps_own_ms() {
+  StationAssignment a = control_config(7);
+  SavedHill mem;
+  BleControlPoint h = held_by(1, 4000);
+  CHECK(mem.note_owner(a, "s1", h, 0));           // blue captured it: written
+  h.own_ms[1] = 4000 + HILL_CLOCK_SAVE_MS;         // nobody on the point since: own_ms grows, hold_ms does not
+  CHECK(mem.note_owner(a, "s1", h, (int64_t)HILL_CLOCK_SAVE_MS));   // the growth re-saves
+  CHECK_EQ(mem.own_ms()[1], 4000u + HILL_CLOCK_SAVE_MS);
+  SavedHill boot;                                  // "flash" -> a new boot
+  boot.loaded(mem.has(), mem.owner(), mem.game(), mem.id(), mem.session_id(), mem.hold_ms(), mem.own_ms());
+  StationLink link;
+  link.restore_station_config(a);
+  CHECK(boot.restore_into(a, "s1", link.hill()));
+  CHECK_EQ(link.hill().own_ms[1], 4000u + HILL_CLOCK_SAVE_MS);
+  CHECK_EQ(link.hill().hold_ms[0], 4000u);
+}
+
 static void test_saved_hill_writes_only_on_an_owner_change() {
   StationLink link;
   StationAssignment a = control_config(7);
@@ -3018,7 +3039,85 @@ static void test_assignment_epoch_moves_on_a_new_station_only() {
   CHECK(link.assignment_epoch() != e);
 }
 
+
+// F658, the static hill: a Stick hill armed for game 40 with MC's go-live 10 minutes away follows a LIVE player of
+// game 41 at once (the live bit replaces MC's window), advertises and reports byte 41 with `follows` and the ring
+// summary, keeps its point across MC's next arming, and comes back from the saved ring after a restart.
+static void test_f658_hill_follows_the_live_game() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "control"; a.id = 9; a.team = 255; a.game = 40;
+  a.starts_known = true; a.starts_in_ms = 600000; a.ends_in_ms = 1200000;
+  link.apply_station_config(a, 0);
+  PlayerPresence p;
+  p.key_by_game = true;
+  uint16_t scope = 0;  // A86: first another station's id bit (8), then station 9's
+  auto hear = [&](uint8_t game, uint8_t state, uint32_t t) {
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = contract::ADVERT_SCOPE_KIND_CONTROL; d.scope = scope; d.id = 3; d.team = 0; d.state = state; d.game = game;
+    p.observe(d, -50, t);
+  };
+  const uint8_t LIVE = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE;
+  // A86: a live player whose scope names station 8, not this station 9, does not exist for the hill
+  scope = 1u << 8;
+  for (uint32_t t = 0; t <= 1000; t += 250) { hear(41, LIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.follower().follows && link.hill().progress == 0);
+  scope = 1u << 9;
+  // old phones first: no live bit, and the window is closed, so nothing counts
+  for (uint32_t t = 0; t <= 2000; t += 250) { hear(40, contract::ADVERT_PLAYER_STATE_ALIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.follower().follows && link.hill().progress == 0 && link.hill_game() == 40);
+  for (uint32_t t = 2250; t <= 5000; t += 250) { hear(41, LIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(link.follower().follows && link.hill_game() == 41);
+  CHECK(link.hill().progress > 20);   // MC's window says wait; the live bit says count
+  const std::string body = build_status_body(fill_status(link, 5000, true, 1, 0));
+  CHECK(body.find("\"game\":41") != std::string::npos);
+  CHECK(body.find("\"follows\":true,\"games\":{\"41\":{") != std::string::npos);
+  CHECK(link.ring_save_due(5000));   // follow mode started: write the ring
+  CHECK(!link.ring_save_due(5250));  // nothing new since
+  // review: an owned, empty hill banks own_ms only, and that growth must re-save the ring too (a reboot kept no Domination time)
+  link.hill().own_ms[0] += 5000;
+  CHECK(link.ring_save_due(5250 + HILL_CLOCK_SAVE_MS));
+  // MC arms game 42 (in range for a moment): the following hill keeps its point
+  const double progress = link.hill().progress;
+  StationAssignment b = a; b.game = 42; b.starts_in_ms = 5000;
+  link.apply_station_config(b, 5300);
+  CHECK(link.hill().progress == progress && link.follower().follows);
+  // a restart: the saved ring brings the follower and the point back
+  link.hill().own_ms[0] = 7000;   // the owned clock rides in the ring beside hold_ms
+  const std::string saved = encode_hill_ring(9, link.follower(), link.hill(), 6000);
+  HillFollower back;
+  BleControlPoint point;
+  CHECK(decode_hill_ring(saved, 9, back, point, 100));
+  CHECK(back.follows && back.has_current && back.current == 41);
+  CHECK(point.own_ms[0] == 7000u);
+  {  // a ring saved before own_ms (11 fields an entry) still restores, with own_ms 0
+    std::string old = saved;
+    for (size_t semi = old.find(';'); semi != std::string::npos; semi = old.find(';', semi)) {
+      size_t cut = semi;
+      for (int k = 0; k < 4; k++) cut = old.rfind(',', cut - 1);
+      old.erase(cut, semi - cut);
+      semi = old.find(';', cut) + 1;
+      if (semi == 0 || semi >= old.size()) break;
+    }
+    HillFollower f_old;
+    BleControlPoint p_old;
+    CHECK(decode_hill_ring(old, 9, f_old, p_old, 100) && p_old.own_ms[0] == 0u && f_old.current == 41);
+  }
+  CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));
+  CHECK(!decode_hill_ring(saved, 8, back, point, 100));   // another station's ring is not ours
+  // review of F658: after a power-on the saved "ms ago" is not the time off, so every game starts fresh when heard
+  HillFollower cold;
+  BleControlPoint cold_point;
+  CHECK(decode_hill_ring(saved, 9, cold, cold_point, 100, /*power_on=*/true));
+  CHECK(cold.follows && cold.current == 41 && cold_point.progress == 0 && cold_point.owner == contract::STATION_TEAM_ANY);
+  for (const HillGame& g : cold.games) if (g.used) CHECK(!g.has_snap && (uint32_t)(100 - g.heard_at) > cold.stale_ms);
+  CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));   // a software reset kept it
+  CHECK(!decode_hill_ring("r1|9|0|-1|", 9, back, point, 100));   // not following: nothing to restore
+  // the operator's reset forgets every game
+  CHECK(link.reset_hill() && !link.follower().follows);
+}
+
 int main(int argc, char** argv) {
+  test_f658_hill_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();
@@ -3207,6 +3306,7 @@ int main(int argc, char** argv) {
   test_milestone_an_adopted_resend_keeps_the_hill_deadline();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
+  test_saved_hill_keeps_own_ms();
   test_saved_hill_flushes_final_tally_once_at_whistle();
   test_f557_a_long_hold_is_saved_as_it_grows();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();

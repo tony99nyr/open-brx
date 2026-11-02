@@ -31,6 +31,7 @@ static long bit_value(const std::string& name) {
   if (name == "claiming") return contract::ADVERT_PLAYER_STATE_CLAIMING;
   if (name == "claim_ready") return contract::ADVERT_PLAYER_STATE_CLAIM_READY;
   if (name == "revived") return contract::ADVERT_PLAYER_STATE_REVIVED;
+  if (name == "live") return contract::ADVERT_PLAYER_STATE_LIVE;  // F658
   return -1;
 }
 
@@ -46,12 +47,15 @@ static Advert from_case(const Value& c) {
   a.game = (uint8_t)c.get("game").as_int();
   a.threshold = (int)c.get("threshold").as_int();
   a.taker = (uint8_t)c.get("taker").as_int();
+  a.scope_kinds = (uint8_t)c.get("scope_kinds").as_int();  // A86: a player's scope (0 on a station)
+  a.scope = (uint16_t)c.get("scope").as_int();
   return a;
 }
 
 static bool same(const Advert& a, const Advert& b) {
   return a.role == b.role && a.id == b.id && a.kind == b.kind && a.team == b.team && a.state == b.state &&
-         a.value == b.value && a.seq == b.seq && a.game == b.game && a.threshold == b.threshold && a.taker == b.taker;
+         a.value == b.value && a.seq == b.seq && a.game == b.game && a.threshold == b.threshold && a.taker == b.taker &&
+         a.scope_kinds == b.scope_kinds && a.scope == b.scope;
 }
 
 int main(int argc, char** argv) {
@@ -80,7 +84,7 @@ int main(int argc, char** argv) {
       check(bit_value(c.get("bit").as_string()) == c.get("state").as_int(), "generated bit: " + name);
     }
   }
-  check(bits_seen == 7, "one vector per PLAYER_STATE bit");
+  check(bits_seen == 8, "one vector per PLAYER_STATE bit");
   for (const Value& v : doc.get("variants").arr) {
     bool stick = false;
     for (const Value& r : v.get("runners").arr) if (r.as_string() == "stick") stick = true;

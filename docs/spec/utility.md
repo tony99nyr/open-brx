@@ -51,18 +51,23 @@ local name (`BRX-RESPAWN-1`) is set where the platform allows it and is decorati
 byte  0-3   4F 42 52 58   'OBRX'
       4     version        1
       5     role           1 station · 2 player
-      6-7   id             station id 1..65535 · player_num (big-endian)
-      8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control   (player: 0)
+      6-7   id             station id 1..65535 (big-endian) · a player: byte 7 alone is its player_num (1..63),
+                            byte 6 is the high byte of its scope map (A86, §5d.8)
+      8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control
+                            player: the scope's kind mask, `ADVERT_SCOPE_KIND` (1 control · 2 respawn · 4 powerup) (A86)
       9     team           0..3 = the gun's $TID team · 255 = neutral / any
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
                             player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
                             bit4 claiming, bit5 claim_ready (A56, powerups.md),
-                            bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344))
+                            bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344),
+                            bit7 live: the player's match is live, go-live to the whistle (F658, §5d.8))
       11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
       15    taker          a powerup station: the player_num that took the item (A56) · 0 = none / other kinds
+                            player: the low byte of its scope map. Bytes 6 and 15 are a 16-bit map of the station ids
+                            in the player's match, bit (id % 16) (A86)
 ```
 
 Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
@@ -504,9 +509,9 @@ the flags use four. The spec was the stale side here, not the code.
 0-3, a player advert uses it for alive/planting/defusing/extracting bits). So `kind 5`'s flags cannot collide with
 another kind's use of the same offset: a reader that has not first checked byte 8 is reading the wrong record.
 
-**Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1);
-F93's note about byte 15 being the cheap spare for relaying grenade-hill ownership phone-to-phone concerns the
-**player** advert (`role` = 2). Same offset, different records, no contention.
+**Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1).
+On the **player** advert (`role` = 2) byte 15 is no longer spare: A86 made it the low byte of the scope map (§5d.8),
+so F93's grenade-hill relay needs another home.
 
 **What the 16 bytes cannot carry, and where those facts live instead:**
 
@@ -645,6 +650,69 @@ Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played b
 - ⚠ **Never queue a multi-second sequence off a beacon.** A beacon repeats every ~5 s, and this gun really does
   replay long events (F74): a 15 s clip fired on three consecutive beacons stacks three deep. `U100` is chosen
   because it is ~0.1 s and cannot overlap its own 3 s cadence; a capture callout is one-shot per transition.
+
+### 5d.8 The static hill: it follows the live game (F658)
+
+Field game 2026-11-01: a phone hill out of Wi-Fi range missed MC's arming for the next game. It kept its old game
+byte, ignored every player of the new game, and the hill was dead all match. Tony's rule: **a hill set up once plays
+every following game with no walk-out, no Wi-Fi and no re-arm.**
+
+1. **The live bit.** A player phone sets bit 7 (`live`, 128) of its advert's byte 10 while its match is live: from
+   go-live to the whistle (the engine's phase `live`; `armed` is the countdown).
+2. **Follow mode.** A control point hears every game byte (presence is keyed by game and player number). Once it has
+   heard any live-bit player it follows, and it stays in follow mode. Its current game is the byte of the live
+   players it hears. Another live game takes the hill only when it has MORE live players on the point (present or
+   in sight) than the current game; a tie keeps the current game. So one phone that missed END cannot pin the
+   hill, and a stranger alone on an empty hill holds it only until more real players arrive. The first follow takes
+   the game with the most players on the point, then the newest. When that first game is the hill's MC-armed game
+   (or the hill's game is 0), the point it already counted is kept. A live phone on game 0 (played by hand) is
+   followed only by a hill whose own game is 0.
+3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
+   A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
+   The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
+   the current game's byte, so that game's phones read it.
+4. **The tally ring.** The hill keeps one point state per game byte and the last time each byte was heard, at most
+   `HILL_RING_SIZE` (4). Each entry keeps the owner, the progress and the team building it, the last owner and the
+   possession and owned tallies per team (`hold_ms`, `own_ms`). The phone also keeps its capture log; the Stick has no capture log. A byte heard again
+   after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts fresh, which covers MC's wrap of the game byte
+   (255 goes to 1; MC never sends 0) and an MC restart that reuses a byte. A fifth byte evicts the least recently heard one, never the current one. A switch saves the
+   point into the ring and loads the other game's state with its clock restarted, so no time banks across it. The
+   ring persists beside the point: `brx.station.hillring` on a phone, NVS `hill_ring` on a Stick. A Stick restored
+   after a power-on cannot know how long it was off, so every restored game starts fresh; a software reset keeps
+   the ring. Each passing live stranger of another game takes a ring slot (and a Stick player slot) while heard.
+5. **One-time setup.** Kind, id, team, threshold, `capture_s` and `net_cap` stay as the last arming (MC or by
+   hand) set them. `station_config` works as before; a hill out of range keeps what it has. A following hill
+   ignores a new game byte in `station_config` for its point and ring: the live bit decides. The operator's point
+   RESET clears the ring and leaves follow mode.
+6. **Fallback.** A hill that has never heard a live-bit player behaves as before: it counts players of its
+   MC-armed game (0 on either side is any game) inside MC's window. Since A86 (item 8) that is in-scope players
+   only, so a 0.4.33 phone (no scope) counts on no hill at all.
+7. **The heartbeat.** `status.control` keeps its fields for the current game (`game` is the followed byte) and adds
+   `follows: true` and `games: {"<byte>": {hold_ms, own_ms, owner, last_ms}}` once following. MC shows a note in place of
+   ARMED FOR AN OLDER GAME and BRING IT BACK, and an amber line when the hill's `capture_s` or `net_cap` is not
+   this game's. Neither gates START. Scoring is unchanged: the players report possession, and MC merges the
+   station's tally only when it names MC's game (F555).
+
+8. **Enablement scope (A86).** Tony, 2026-11-02: "utility stations are dumb about the game, and the phone decides
+   whether a station is enabled". The station still referees the field (presence, the hill counter); the players'
+   phones tell it whether it is in play. A player advert carries a scope from the match config MC sent
+   (`config.stations`, the items armed for this game, A13.1): byte 8 is a kind mask (`ADVERT_SCOPE_KIND`: 1 control,
+   2 respawn, 4 powerup) and bytes 6 (high) and 15 (low) are a 16-bit map of the station ids in play, bit
+   (id % 16). The player id is byte 7 alone (1..63). No stations named, or an older MC, sends zeros. A control point
+   counts a player toward the point, and toward the follower's choice of game, only when the advert has the control
+   bit AND the station's own id bit. A zero scope (an APK from before A86) never counts, so **an unassigned station
+   stays inert**. MC keeps the ids of the stations on the field apart modulo 16 (at most 16 stations; an explicit
+   clash is refused, the auto id passes it over). This pass enforces the scope on control points only (phone and
+   Stick); respawn and powerup stations still ignore it. An id scope cannot tell a stale hill that keeps a local id
+   from the real station with that id, so the operator stands old hills down.
+9. **The owned clock (`own_ms`, for Domination).** Beside `hold_ms`, a control point banks `own_ms` per team: while
+   that team OWNS the point, contested or not, with or without a body on it. It stops when the point drains to
+   neutral. It takes the same gap clamp as `hold_ms`: a stalled tick banks at most `HILL_MAX_STEP_MS` when the team
+   was not the owner at the start of the gap. It rides in `status.control` and in each `games` entry, and in the
+   point snapshot and the tally ring (phone and Stick). `hold_ms` and the capture rate do not change.
+
+The rules are pinned by the `F658:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
+runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 

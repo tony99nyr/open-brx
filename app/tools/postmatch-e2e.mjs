@@ -513,7 +513,7 @@ try {
     };
     const red = (e) => (e?.holdMs || {})[TID.red] ?? (e?.holdMs || {})[String(TID.red)] ?? 0;
     await until(async () => { const h = await hsnap('start'); return h.startsAt != null && Date.now() >= h.startsAt; }, 20000, 'the hill counting');
-    await hill.evaluate(([num, tid]) => { const b = window.brx; window.__pres = setInterval(() => b.onSighting([b.encodeUuid({ role: 'player', id: num, kind: 0, team: tid, state: 1, value: 0, seq: 0, game: b.settings.game })], -45), 250); }, [P.REAPER.player_num, TID.red]);
+    await hill.evaluate(([num, tid]) => { const b = window.brx; window.__pres = setInterval(() => b.onSighting([b.encodeUuid({ role: 'player', id: num, kind: 0, team: tid, state: 1, value: 0, seq: 0, game: b.settings.game, scopeKinds: 1, scope: 1 << (b.settings.id % 16) })], -45), 250); }, [P.REAPER.player_num, TID.red]);
     await until(async () => red(await hsnap('holding')) >= 3000, 40000, 'red holding the hill for 3 s');
     await hill.evaluate(() => clearInterval(window.__pres));
     const tStop = Date.now();
