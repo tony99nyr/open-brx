@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot; `old_shape` strips the F454 fields first) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A pickup step may carry `next_in_s` (the fact's `next_spawn_in_s`, F473). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed), `took_lines` (the TOOK lines, newest first) and `edited_rows` (the feed_edit pushes of that step, as indexes into `took_lines`). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case.",
+  "about": "One station decision, two implementations: app/src/powerup.js (phone) and hardware/m5sticks3/station_link.h (Stick). Driven by app/test/powerup-cases.test.mjs and hardware/m5sticks3/test/test_powerup_cases.cpp. Times are ms on one local clock. A step is update (a station_update body), tick (one step with the player adverts heard), advance (read the advert only), observe and settle (Stick only). A step's expect holds the advert {state, value, taker} read at that instant and, when present, the events that step produced. A case's only lists the implementations that must pass it (default: both). `claim_key` (Stick only) is the spawn instant mark_taken returned for that step's claim, the key of the CLAIM report. A case's `mc` block (read only by mcp/tests/test_powerup_cases_mc.py) holds Mission Control's side: the item preset is the overshield with `item_spawn_every_s` (null = the preset's 60 s), the arm uses a 3 s runway, and each step's `t` is ms after go-live. Steps: tick (MC's clock tick), taken (a station_action; `player` is a roster index, `age_ms`, `station_id` optional), pickup (a player's pickup fact; `fact_t` its own t as ms after go-live), reset (a station reset action) hello (the station reconnects), end (the match ends), next_match, restart (MC stops and starts on its snapshot; `old_shape` strips the F454 fields first) and reset_api (the console's reset route; expect.refused is a substring of the refusal). A pickup step may carry `next_in_s` (the fact's `next_spawn_in_s`, F473). A taken step may carry `player_num` (a raw number) and a pickup step `match_id`. An expect may also hold `feed_has` and `feed_lacks` (substrings of the feed), `took_lines` (the TOOK lines, newest first) and `edited_rows` (the feed_edit pushes of that step, as indexes into `took_lines`). `item_preset` (default overshield) picks the item. An expect holds `available`, `taken_by` (roster index or null), `feed_took` (TOOK lines in the feed so far) and `updates` (the exact station_update bodies MC pushed in that step). `only: [\"mc\"]` makes the phone and Stick runners skip a case. F658 (the static powerup): a player may carry `game` (default 0), the `live` state, and its A86 scope as `scope_kinds` and `scope_stations` (default: the powerup kind and this station's id; [] and [] = a zero scope, an older APK). A `follow` setup runs the PowerupFollower before every tick, with `first_at_s` for the item and `armed_game` for MC's arming (default 0); its `update` applies only when the follower accepts MC, `arm` (with `game`) is MC's next station_config, `restart` saves and restores the station (the phone's localStorage, the Stick's NVS string), and an expect may hold `follows` and `game` (the byte the station advertises).",
   "cases": [
     {
       "name": "spawns on its own clock, then repeats every interval; a claim folds the next spawn forward",
@@ -717,6 +717,106 @@
         {"t": 120200, "do": "pickup", "player": 0, "fact_t": 69800, "expect": {"available": true, "updates": []}},
         {"t": 120300, "do": "taken", "player": 0, "age_ms": 50400, "expect": {"available": true, "updates": []}}
       ] }
+    },
+    {
+      "name": "F658: a live player whose scope does not name this powerup station leaves it inert",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7, "scope_stations": [5]}, {"id": 8, "state": ["alive", "live"], "value": 0, "game": 7, "scope_kinds": ["control"]}, {"id": 9, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7, "scope_stations": [5]}], "expect": {"advert": {"state": 0, "value": 0, "taker": 0}, "events": [], "follows": false, "game": 0}},
+        {"t": 61000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7, "scope_stations": [5]}], "expect": {"advert": {"state": 0, "value": 0, "taker": 0}, "events": [], "follows": false}}
+      ]
+    },
+    {
+      "name": "F658: a zero scope (an older APK) is inert, and cannot claim an item MC made available",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 0, "do": "update", "body": {"available": true, "next_spawn_in_ms": 60000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7, "scope_kinds": [], "scope_stations": []}, {"id": 8, "state": ["alive", "claim_ready"], "value": 4, "game": 0, "scope_kinds": [], "scope_stations": []}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": [], "follows": false}}
+      ]
+    },
+    {
+      "name": "F658: the first in-scope live sighting starts the item's clock at first_at_s; only live players of that game claim",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 5000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "events": [], "follows": true, "game": 7}},
+        {"t": 64999, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 1, "taker": 0}, "events": []}},
+        {"t": 65000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}},
+        {"t": 65100, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}, {"id": 9, "state": ["alive", "claim_ready"], "value": 4, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": []}},
+        {"t": 65200, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}, {"id": 12, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 6}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": []}},
+        {"t": 65300, "do": "tick", "players": [{"id": 7, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 7}, "events": [{"type": "taken", "player_num": 7}]}},
+        {"t": 125000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"], "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: a new live game with more players resets the item: taker gone, the clock from first_at_s; a tie keeps the current game",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 0, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "game": 7}},
+        {"t": 60000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 7}, "events": ["spawned", {"type": "taken", "player_num": 7}]}},
+        {"t": 61000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}, {"id": 8, "state": ["alive", "live"], "value": 0, "game": 8}], "expect": {"advert": {"state": 0, "value": 59, "taker": 7}, "events": [], "game": 7}},
+        {"t": 200000, "do": "tick", "players": [{"id": 8, "state": ["alive", "live"], "value": 0, "game": 8}, {"id": 9, "state": ["alive", "live"], "value": 0, "game": 8}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "events": [], "game": 8}},
+        {"t": 260000, "do": "tick", "players": [{"id": 8, "state": ["alive", "live"], "value": 0, "game": 8}, {"id": 7, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"], "game": 8}},
+        {"t": 260100, "do": "tick", "players": [{"id": 8, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 8}], "expect": {"advert": {"state": 0, "value": 60, "taker": 8}, "events": [{"type": "taken", "player_num": 8}]}}
+      ]
+    },
+    {
+      "name": "F658: MC armed with START known: the first follow into MC's game keeps MC's schedule, and MC's later updates still apply",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true, "armed_game": 7},
+      "steps": [
+        {"t": 0, "do": "update", "body": {"available": false, "next_spawn_in_ms": 30000}},
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 29, "taker": 0}, "events": [], "follows": true, "game": 7}},
+        {"t": 2000, "do": "update", "body": {"available": true, "next_spawn_in_ms": 60000}, "expect": {"advert": {"state": 1, "value": 0, "taker": 0}}}
+      ]
+    },
+    {
+      "name": "F658: following another game, MC's update for its armed game is ignored",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true, "armed_game": 6},
+      "steps": [
+        {"t": 1000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "follows": true, "game": 7}},
+        {"t": 2000, "do": "update", "body": {"available": true, "next_spawn_in_ms": 60000}, "expect": {"advert": {"state": 0, "value": 59, "taker": 0}}}
+      ]
+    },
+    {
+      "name": "F658: a game byte heard again after more than 10 minutes unheard starts its clock again",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 0, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "game": 7}},
+        {"t": 60000, "do": "tick", "players": [], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}},
+        {"t": 600000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": []}},
+        {"t": 1200001, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "events": [], "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: a restart keeps the followed game, the item and its taker; the same game heard again does not restart the clock",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true},
+      "steps": [
+        {"t": 0, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"game": 7}},
+        {"t": 60000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live", "claim_ready"], "value": 4, "game": 7}], "expect": {"advert": {"state": 0, "value": 60, "taker": 7}}},
+        {"t": 70000, "do": "restart", "expect": {"advert": {"state": 0, "value": 50, "taker": 7}, "follows": true, "game": 7}},
+        {"t": 71000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 0, "value": 49, "taker": 7}, "events": [], "game": 7}},
+        {"t": 120000, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 7}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}}
+      ]
+    },
+    {
+      "name": "F658 review: a station following another game keeps MC's START for its armed game and applies it on following into that game",
+      "only": ["phone", "stick"],
+      "setup": {"id": 4, "spawn_every_s": 60, "first_at_s": 60, "follow": true, "armed_game": 51},
+      "steps": [
+        {"t": 0, "do": "tick", "players": [{"id": 7, "state": ["alive", "live"], "value": 0, "game": 51}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "follows": true, "game": 51}},
+        {"t": 10000, "do": "arm", "game": 52},
+        {"t": 11000, "do": "update", "body": {"available": false, "next_spawn_in_ms": 30000}, "expect": {"advert": {"state": 0, "value": 49, "taker": 0}}},
+        {"t": 20000, "do": "tick", "players": [{"id": 8, "state": ["alive", "live"], "value": 0, "game": 52}, {"id": 9, "state": ["alive", "live"], "value": 0, "game": 52}], "expect": {"advert": {"state": 0, "value": 21, "taker": 0}, "events": [], "game": 52}},
+        {"t": 41000, "do": "tick", "players": [{"id": 8, "state": ["alive", "live"], "value": 0, "game": 52}], "expect": {"advert": {"state": 1, "value": 0, "taker": 0}, "events": ["spawned"]}},
+        {"t": 200000, "do": "tick", "players": [{"id": 10, "state": ["alive", "live"], "value": 0, "game": 53}, {"id": 11, "state": ["alive", "live"], "value": 0, "game": 53}, {"id": 12, "state": ["alive", "live"], "value": 0, "game": 53}], "expect": {"advert": {"state": 0, "value": 60, "taker": 0}, "game": 53}}
+      ]
     }
   ]
 }

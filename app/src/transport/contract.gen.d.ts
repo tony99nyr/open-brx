@@ -132,7 +132,8 @@ export declare const STATION_BATTERY_LOW: 'BATTERY LOW: CHARGE OR SWAP IT BEFORE
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export declare const STATION_NO_HILL: 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 /** F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
- *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line. */
+ *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+ *  A powerup that reports `follows` (the static powerup) gets the same note. */
 export declare const STATION_FOLLOWS: 'FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED';
 export declare const STATION_PACE_REARM: 'BRING IT INTO WI-FI TO UPDATE';
 /** F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
@@ -2068,6 +2069,28 @@ export interface StationRingGame {
   last_ms: number;
 }
 
+/** F658: the followed game's item in a following powerup's `powerup.games` (one entry, the current game). */
+export interface StationPowerupGame {
+  available: boolean;
+  /** the player_num the current item went to, 0 = none */
+  taker: number;
+  /** ms to the next spawn; absent = no spawn clock yet */
+  next_ms?: number;
+  /** ms since this game's clock started (its first live sighting) */
+  since_ms: number;
+  /** ms since this game was last heard */
+  last_ms: number;
+}
+
+/** F658 (the static powerup): a powerup station that follows the players' live game, as a hill does (`control.follows`).
+ *  Absent until it follows. */
+export interface StationPowerup {
+  follows: boolean;
+  /** the followed game byte */
+  game: number;
+  games?: Record<string, StationPowerupGame>;
+}
+
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
  *  oldest first) and as MC serves it in `StationView.range_edits`. `seq` rises per edit and survives a reboot;
  *  `locked` = the edit was made while the station held a tamper lock. `age_ms` is ms since the edit (on the wire,
@@ -2114,6 +2137,8 @@ export interface StationReport {
   armed?: boolean;
   battery?: number;
   control?: StationControl;
+  /** F658: a powerup that follows the players' live game */
+  powerup?: StationPowerup;
   /** A58: seconds since this station booted */
   uptime_s?: number;
   /** A58: boots since the station was flashed (persisted) */

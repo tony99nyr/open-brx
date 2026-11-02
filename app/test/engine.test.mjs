@@ -49,7 +49,9 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
   let clock = 1_000_000;
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: timeLimit,
     respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
-    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }],
+    // F658 (A86): MC lists the stations in play; a respawn station is enabled only by this list (beacon.js stationEnabled)
+    ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}) };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
@@ -1202,6 +1204,7 @@ test('control point: state() carries the whole reading a HUD needs, from one adv
 
 test('control point: a respawn station in the same list is not mistaken for a point, and vice versa', () => {
   const h = koth();
+  h.eng.config.stations = [{ id: 3, kind: 'respawn' }, { id: 11, kind: 'control' }];   // F658: the config enables each by kind
   h.eng.setStations([{ role: 'station', id: 3, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -74, rssi: -40, raw: -40, present: true }]);
   assert.equal(h.eng.state().hill, null, 'a respawn station is not a control point (the F84 trap, on the BLE wire)');
   assert.equal(h.eng.state().station.id, 3, 'it is still the respawn station');

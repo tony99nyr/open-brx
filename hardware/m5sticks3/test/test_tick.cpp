@@ -149,7 +149,9 @@ static void player_admission_and_epoch() {
   link = assigned("respawn");
   CHECK(kind_tick.begin_players(link, p, 500).due == REVIVE_FEEDBACK_ENABLED);
   link = assigned("powerup");
-  CHECK(!kind_tick.begin_players(link, p, 750).due);
+  CHECK(kind_tick.begin_players(link, p, 750).due);   // F658: a powerup follows the live game, so it ticks players too
+  CHECK(p.key_by_game && p.game == 0);                 // and hears every game
+  CHECK(TickController::player_tick_allowed(false, false, false, true));
   link = assigned("control");
   CHECK(!c.begin_players(link, p, 249).due);
   auto a = c.begin_players(link, p, 250);

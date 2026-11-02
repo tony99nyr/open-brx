@@ -2913,7 +2913,9 @@ class Session:
         cfg = self._compile_config()
         if (cfg.get("respawn") or {}).get("type") == "scanner":
             assigned = [a for _nid, a in self.station_registry.assignments() if a.get("kind") == "respawn"]
-            if assigned and not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
+            # F658 review: a player uses only a respawn station config.stations lists, so with none assigned every team
+            # falls back to the timer (the setup warning still says so); a neutral station covers every team
+            if not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
                 covered = {a.get("team") for a in assigned}
                 auto = [int(t["tid"]) for t in (cfg.get("teams") or []) if isinstance(t.get("tid"), int) and t["tid"] not in covered]
                 if auto:

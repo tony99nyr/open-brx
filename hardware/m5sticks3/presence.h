@@ -130,17 +130,20 @@ inline bool hill_claimable(int tid) {
   return false;
 }
 
-// Which assigned kinds run the shared player scan. `control` reads PlayerPresence all the time; `powerup` reads only its CLAIM gate, and only while the item is available, exactly as the
-// pickup scan always has (so a taken item keeps the radio as quiet as before). Every other kind
+// Which assigned kinds run the shared player scan. `control` and `powerup` read PlayerPresence all the time (a powerup
+// also feeds its CLAIM gate). Every other kind
 // (extraction, bomb) runs no player-side rule on a Stick yet.
 // `respawn` scans at a LIGHT duty (scan_window_units): at the hill's 50/100 the scan starved the Stick's
 // own advert (bench 2026-09-24, Block 9 S7: a phone 3 m away saw the station go "left" at -54 dBm every
 // few seconds). It scans only with REVIVE_FEEDBACK_ENABLED: the scan exists to count revives and flash
 // REDEPLOY, both post-MVP, so by default a respawn Stick only advertises.
+// F658: a powerup now scans all the time, taken or not: it follows the players' live game (a new game must reach it
+// while its item is taken), so it reads PlayerPresence as a hill does. `powerup_available` no longer gates it.
 inline bool station_needs_player_scan(const std::string& kind, bool powerup_available) {
+  (void)powerup_available;
   if (kind == "control") return true;
   if (kind == "respawn") return REVIVE_FEEDBACK_ENABLED;
-  if (kind == "powerup") return powerup_available;
+  if (kind == "powerup") return true;
   return false;
 }
 

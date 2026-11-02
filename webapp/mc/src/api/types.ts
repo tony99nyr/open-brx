@@ -19,7 +19,7 @@ export type {
   LiveRow, EndDeliveryRow, WeaponBars, Coverage,
   LanPublic, TunnelAuto, PresentationView, PresentationRow, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
-  MatchHistoryRow, ModeInfo, NodeView, StationControl, StationRingGame, StationReport, StationArmed, StationView,
+  MatchHistoryRow, ModeInfo, NodeView, StationControl, StationPowerup, StationPowerupGame, StationRingGame, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, GunConfigReadback, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   RecapSyncRow, RecapSyncView, ReleaseReason, SyncStage, SyncTransport,

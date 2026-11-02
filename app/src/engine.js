@@ -17,7 +17,7 @@ import { ANNOUNCE_GAP_MS, PLAY_GAP_MS, SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, RE
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
 export { SIR_NO_POOL_FNS, SIR_GRANT_FNS };
-import { stationView, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { stationView, configGameByte, respawnStation } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { Announcer, clipMs, clipId, CLIP_MS } from './announcer.js';
 import { PlayQueue, isQueueSlotPlay, playSlotFrames } from './play-queue.js';   // ARCH-3: the gun's audio model and its play queue
 export { isQueueSlotPlay, playSlotFrames };
@@ -6047,11 +6047,11 @@ export class Engine {
     return !allow || allow.has(e.id);
   }
   /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
-   *  A station admits me when it is neutral or on my gun's $TID team. */
+   *  A station admits me when it is neutral or on my gun's $TID team, and only when my config enables it. */
   _respawnStation() {
     const tid = this.team ? this.team.tid : null;
-    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === STATION_TEAM_ANY || e.team === tid) && this._stationAllowed(e));
-    return mine.find(e => e.present) || mine[0] || null;
+    // F658 (A86): only a station this match's config.stations lists as a respawn station (beacon.js respawnStation)
+    return respawnStation(this.stations, this.config, tid);
   }
   /** Every control point heard right now (F556: the possession clock counts each one, not only the one the HUD reads). */
   _controlStations() {
