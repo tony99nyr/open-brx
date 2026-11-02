@@ -3131,11 +3131,18 @@ class GunStage:
         if self._pre_armed or self._respawn_profile() is None or not self.connected:
             return
         self._pre_armed = True
+        gset = self._head_gset()   # F645: re-send the head's friendly-fire setting (engine.js `_preArmTable`)
+        if gset:
+            await self.write([gset], "friendly-fire setting again (F645)")
         if self._sir_live:
             return
         take = self._pick_table("sir_pool")
         if take:
             await self.write(take, f"pre-arm hit table (T-{self.PRE_ARM_TABLE_S:g})", gap_ms=60, take=True)
+
+    def _head_gset(self) -> str | None:
+        """engine.js `_headGset`: the head's `$GSET` frame, or None when the head has none (F645)."""
+        return next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith("$GSET,")), None)
 
     def _respawn_profile(self) -> RespawnProfile | None:
         """engine.js `_respawnProfile`: the bundle's respawn profile, or None on an older bundle (the legacy path)."""
@@ -3285,6 +3292,9 @@ class GunStage:
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
         rp = self._respawn_profile()
         late = self._pick_table("sir_pool") if rp and not self._sir_live else []
+        # F645 (engine.js `_spawn`): a start that missed T-3 never re-sent the head's `$GSET`, so it rides first here
+        gset_late = self._head_gset() if not self._pre_armed else None
+        gset_pre = [gset_late] if gset_late else []
         if rp and not late and not self._sir_live:
             self._log("T-0 spawn: no live hit table to write (no sir_pool)", "error")
         if rp:
@@ -3313,9 +3323,9 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
             self._headset_delayed(hs["start"], "headset start", life=self._life_queued)   # the life this spawn starts
-        await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+        await self._write_life(gset_pre + late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
-                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
+                          "spawn" + (" + $GSET (missed T-3)" if gset_pre else "") + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
@@ -3513,7 +3523,9 @@ class GunStage:
         # Re-sending the live map here would let the player shoot early.
         trigger = [] if self._trigger_pending is not None else [bmap]
         self._hold_accuracy_writes("operator resync")   # A47 (engine.js `_operatorResync`), stamped when the write is queued
-        await self._write_ammo(([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger, "operator resync")
+        gset = self._head_gset()   # F645 (engine.js `_operatorResyncWrite`)
+        await self._write_ammo(([gset] if gset else []) + ([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger,
+                               "operator resync")
         if self._protects_spawn():
             if self._arm_pending is None:
                 self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
