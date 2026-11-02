@@ -515,11 +515,12 @@ class BleControlPoint {
 
   // Restart survival (F332: the side button can still restart a locked Stick, and a restart must not
   // wipe an enemy's hold). Brings the point back HELD by `tid` at 100 with the possession tally saved at
-  // the last change of hands (`hold` may be null); no conversion is carried over. A tid that cannot hold
+  // the last change of hands (`hold` and `own` may be null); no conversion is carried over. A tid that cannot hold
   // a point leaves it neutral, with the tally still restored.
-  void restore_held(int tid, const uint32_t* hold = nullptr) {
+  void restore_held(int tid, const uint32_t* hold = nullptr, const uint32_t* own = nullptr) {
     reset();
     if (hold) for (int t = 0; t < 4; t++) hold_ms[t] = hold[t];
+    if (own) for (int t = 0; t < 4; t++) own_ms[t] = own[t];   // F658: the owned clock survives too
     if (!hill_claimable(tid)) return;
     owner = tid;
     progress = 100;

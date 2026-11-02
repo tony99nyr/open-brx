@@ -85,8 +85,8 @@ after the saved config. After a power-on (`esp_reset_reason()` is `ESP_RST_POWER
 the Stick cannot know how long it was off; a brownout, watchdog or panic reset keeps the ring. Another live game takes
 the hill only with more live players on the point than the current one. While following, the older `hill_v1` save is not written. The status `control` block adds
 `follows: true` and `games`. Every control status also carries `own_ms`, the owned clock for Domination (per tid, while
-that team owns the point, contested or empty), and each ring entry saves it beside the hold tally; the older `hill_v1`
-save does not, so a restart restored from `hill_v1` starts `own_ms` at 0. Serial prints `HILL FOLLOWS game=<n> from=<m>` on a switch. The point RESET clears the
+that team owns the point, contested or empty), and each ring entry saves it beside the hold tally. The `hill_v1` save
+carries it too (record `v2|...`); a `v1|` record from older firmware restores with `own_ms` 0. Serial prints `HILL FOLLOWS game=<n> from=<m>` on a switch. The point RESET clears the
 ring. A hill that never hears the bit runs the A68 rules below. A86: a player counts only when its advert scope
 names this hill (the control kind bit in byte 8 and the bit `id % 16` of the map in bytes 6 and 15), so a phone with
 no scope (0.4.33 and older) counts nowhere and an unassigned hill stays inert. Spec: `docs/spec/utility.md` §5d.8.

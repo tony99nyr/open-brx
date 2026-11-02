@@ -1241,7 +1241,7 @@
     },
     {
       "name": "own_ms gap: a capture on the tick that ends a stall banks none of the stall",
-      "why": "Red builds to 95 by 9.5 s; the station stalls from 9.5 s to 60 s. The tick at 60 s converts one HILL_MAX_STEP_MS step and red captures, but red did not own the point at the start of the gap, so own_ms banks nothing for it. From then on it banks real time.",
+      "why": "Red builds to 95 by 9.5 s; the station stalls from 9.5 s to 60 s, and red captures on the tick at 60 s. own_ms banks to the owner from BEFORE the step's conversion, so the stall, which red did not own, banks nothing; banking to the owner after the conversion would credit red with the whole stall. The HILL_MAX_STEP_MS gap clamp is not exercised here (control.test.mjs covers it).",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
       "players": {"1": {"team": 0, "state": ["alive"]}},
       "until_ms": 62000,

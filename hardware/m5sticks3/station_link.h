@@ -747,13 +747,15 @@ constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 class SavedHill {
  public:
   // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
-  void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold) {
+  void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold,
+              const uint32_t* own = nullptr) {
     has_ = has;
     owner_ = owner;
     tag_.game = game;
     tag_.id = id;
     tag_.session_id = session_id;
     for (int t = 0; t < 4; t++) hold_[t] = hold ? hold[t] : 0;
+    for (int t = 0; t < 4; t++) own_[t] = own ? own[t] : 0;
     final_saved_ = false;
     written_at_ = 0;
   }
@@ -763,6 +765,7 @@ class SavedHill {
   int id() const { return tag_.id; }
   const std::string& session_id() const { return tag_.session_id; }
   const uint32_t* hold_ms() const { return hold_; }
+  const uint32_t* own_ms() const { return own_; }   // F658: the owned clock, saved beside the hold tally
 
   // After every hill tick of a control assignment, with the session the assignment came in (the saved
   // config's, which a restored MUSTER Stick still knows with no WELCOME). Write on owner change or
@@ -777,7 +780,7 @@ class SavedHill {
     // Unchanged = same owner under the same tag (HillSaveTag::same_as, not matches).
     if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) {
       bool grown = false;
-      for (int t = 0; t < 4; t++) grown = grown || hill.hold_ms[t] != hold_[t];
+      for (int t = 0; t < 4; t++) grown = grown || hill.hold_ms[t] != hold_[t] || hill.own_ms[t] != own_[t];   // own_ms grows on an empty owned hill
       if (!grown || now_ms < 0 || (uint32_t)((uint32_t)now_ms - written_at_) < HILL_CLOCK_SAVE_MS) return false;
     }
     if (now_ms >= 0) written_at_ = (uint32_t)now_ms;
@@ -785,6 +788,7 @@ class SavedHill {
     owner_ = owner;
     tag_.set(a, session_id);
     for (int t = 0; t < 4; t++) hold_[t] = hill.hold_ms[t];
+    for (int t = 0; t < 4; t++) own_[t] = hill.own_ms[t];
     final_saved_ = hill.frozen;
     return true;
   }
@@ -810,6 +814,7 @@ class SavedHill {
     has_ = false;
     owner_ = contract::STATION_TEAM_ANY;
     for (auto& h : hold_) h = 0;
+    for (auto& o : own_) o = 0;
     final_saved_ = false;
     return true;
   }
@@ -818,7 +823,7 @@ class SavedHill {
   // left as it is) when the save is not this config's.
   bool restore_into(const StationAssignment& a, const std::string& session_id, BleControlPoint& hill) const {
     if (!has_ || !tag_.matches(a, session_id)) return false;
-    hill.restore_held(owner_, hold_);
+    hill.restore_held(owner_, hold_, own_);
     return true;
   }
 
@@ -827,6 +832,7 @@ class SavedHill {
   int owner_ = contract::STATION_TEAM_ANY;
   HillSaveTag tag_;
   uint32_t hold_[4] = {0, 0, 0, 0};
+  uint32_t own_[4] = {0, 0, 0, 0};   // F658: the owned clock
   bool final_saved_ = false;
   uint32_t written_at_ = 0;   // F557: the tick of the last write, for the growing-tally throttle
 };

@@ -2800,6 +2800,25 @@ static void test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold() 
   CHECK_EQ(cp.owner, (int)contract::STATION_TEAM_ANY);
 }
 
+// F658 review round 2: an owned, EMPTY hill grows own_ms only (hold_ms needs a body). The save must notice that growth
+// and carry own_ms, so a Stick that reboots in an armed match keeps its Domination time, as a phone hill does.
+static void test_saved_hill_keeps_own_ms() {
+  StationAssignment a = control_config(7);
+  SavedHill mem;
+  BleControlPoint h = held_by(1, 4000);
+  CHECK(mem.note_owner(a, "s1", h, 0));           // blue captured it: written
+  h.own_ms[1] = 4000 + HILL_CLOCK_SAVE_MS;         // nobody on the point since: own_ms grows, hold_ms does not
+  CHECK(mem.note_owner(a, "s1", h, (int64_t)HILL_CLOCK_SAVE_MS));   // the growth re-saves
+  CHECK_EQ(mem.own_ms()[1], 4000u + HILL_CLOCK_SAVE_MS);
+  SavedHill boot;                                  // "flash" -> a new boot
+  boot.loaded(mem.has(), mem.owner(), mem.game(), mem.id(), mem.session_id(), mem.hold_ms(), mem.own_ms());
+  StationLink link;
+  link.restore_station_config(a);
+  CHECK(boot.restore_into(a, "s1", link.hill()));
+  CHECK_EQ(link.hill().own_ms[1], 4000u + HILL_CLOCK_SAVE_MS);
+  CHECK_EQ(link.hill().hold_ms[0], 4000u);
+}
+
 static void test_saved_hill_writes_only_on_an_owner_change() {
   StationLink link;
   StationAssignment a = control_config(7);
@@ -3287,6 +3306,7 @@ int main(int argc, char** argv) {
   test_milestone_an_adopted_resend_keeps_the_hill_deadline();
   test_saved_hill_round_trips_owner_and_tally_and_restores_the_hold();
   test_saved_hill_writes_only_on_an_owner_change();
+  test_saved_hill_keeps_own_ms();
   test_saved_hill_flushes_final_tally_once_at_whistle();
   test_f557_a_long_hold_is_saved_as_it_grows();
   test_saved_hill_tag_mismatch_is_neutral_and_new_game_session_or_release_clears();

@@ -226,7 +226,7 @@ static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
   const HillLoad h = load_saved_hill(mcPrefs, contract::STATION_TEAM_ANY);  // hill_v1 first, the legacy keys when it is missing or invalid
   mcPrefs.end();
-  savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr);
+  savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr, h.own);   // own_ms: 0 from a v1 or legacy save
 }
 
 // ---- A68 review 2026-09-25: the duration hill's time left ("hclk_game"/"hclk_id"/"hclk_sid"/"hclk_rem") ----
@@ -267,7 +267,7 @@ static void mcEraseSavedClock() {
 static void mcWriteSavedHill() {
   mcPrefs.begin("brxmc", false);
   const bool ok = save_hill(mcPrefs, nvsFails, savedHill.owner(), savedHill.game(), savedHill.id(), savedHill.hold_ms(),
-                            savedHill.session_id());
+                            savedHill.session_id(), savedHill.own_ms());
   if (!ok) Serial.println(nvsFails.last_line);
   mcPrefs.end();
   if (ok) Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
