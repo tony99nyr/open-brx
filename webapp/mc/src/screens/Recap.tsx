@@ -7,7 +7,8 @@ import { SYNC_STUCK_S } from '../api/contract.gen';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
-import { objectiveWord } from '../rules/scoring';
+import { objectiveUnit, objectiveWord } from '../rules/scoring';
+import { fmtObjective } from './objective';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -256,12 +257,12 @@ export function Recap() {
         </div>
         {heldBy ? (
           <div data-testid="recap-headline" data-headline="held" style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
-            <span style={{ font: F.chk(600, 12), letterSpacing: '.16em', color: T.micro }}>{objectiveWord(mode)} TIME</span>
+            <span style={{ font: F.chk(600, 12), letterSpacing: '.16em', color: T.micro }}>{objectiveWord(mode)} {objectiveUnit(mode)}</span>
             {scores.map(([id]) => [id, heldBy[id] ?? 0] as const).sort((a, b) => b[1] - a[1]).map(([id, secs], i) => (
               <span key={id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 12 }}>
                 {i > 0 && <span style={{ font: F.osw(600, 20), color: T.micro }}>—</span>}
                 <span data-headline-team={id} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <span style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={fmtDuration(secs)} /></span>
+                  <span style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={fmtObjective(mode, secs)} /></span>
                   <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>KILLS {rc.score[id] ?? 0}</span>
                 </span>
               </span>
@@ -346,7 +347,7 @@ export function Recap() {
       {/* F596: the strip sits straight under the header so it is above the fold; while results are pending the
           things that would name a winner (hold time, honours, stations) stay off the page. */}
       {syncRows.length > 0 && <SyncStrip rows={syncRows} phase={phase} />}
-      {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} />}
+      {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} mode={mode} />}
       {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
@@ -490,7 +491,7 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
  *  a hill mode is won. `reports`/`observed` are shown because possession from a grenade is a LOWER
  *  BOUND — the beacon is IR and only a gun in range hears it (F92), so a match nobody watched reads 0
  *  and must not be dressed up as the result. */
-function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
+function Possession({ p, label, mode }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string; mode: string }) {
   const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
   const top = held[0]?.[1] ?? 0;
   return (
@@ -506,7 +507,7 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
                   it became digit cells (2026-09-12). A bar a test can name cannot be confused. */}
               <span data-poss-bar={id} style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
             </span>
-            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={fmtDuration(secs)} /></span>
+            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={fmtObjective(mode, secs)} /></span>
           </div>
         ))}
       </div>

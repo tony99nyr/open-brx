@@ -639,7 +639,7 @@
   "scoring_hold_wrong_mode": {
     "patch": {
       "exception": "ValueError",
-      "message": "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL"
+      "message": "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL OR DOMINATION: CLEAR IT OR PICK A HILL MODE"
     },
     "validate": {
       "value": {

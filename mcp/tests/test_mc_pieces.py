@@ -1276,8 +1276,8 @@ def test_f559_match_from_config_carries_the_hill_and_omits_an_absent_one():
     assert G.match_from_config(cfg)["hill"] == {"net_cap": 5}
 
 
-def test_f559_koth_offers_the_hill_item_and_no_other_mode_does():
-    assert [m["mode"] for m in MODES if "hill" in (m.get("match_items") or [])] == ["koth"]
+def test_f559_only_the_hill_modes_offer_the_hill_item():
+    assert [m["mode"] for m in MODES if "hill" in (m.get("match_items") or [])] == ["koth", "domination"]
 
 
 def test_f559_a_play_pick_with_hill_reaches_the_config_and_the_control_station_and_null_clears():

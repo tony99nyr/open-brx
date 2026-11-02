@@ -1686,7 +1686,7 @@
             }
           },
           "outcome": {
-            "refusal": "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL",
+            "refusal": "A HOLD TARGET ONLY APPLIES TO KING OF THE HILL OR DOMINATION: CLEAR IT OR PICK A HILL MODE",
             "thrown": true
           },
           "result": {

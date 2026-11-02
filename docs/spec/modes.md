@@ -103,6 +103,7 @@ limit. `time_limit_s == null` is legal **only** when `validate(roster, {coverage
 | **lms** | `lms.py` | `scoring.win_by:"survival"`, `mode_params.lives` (§2.1, A18), `respawn.type:"none"`, `time_limit_s` | `$PSET` HP; no `revive` after last life | lives counter (node-local), last-alive (MC) | time limit / last-alive |
 | **extraction** | `extraction.py` (+ adapter) | `mode_params.{channel_s, win_target, loot_per_kill, drop_policy, extract_removes_player}` (§2.1, A18), `time_limit_s` | base combat frames + `$LIFE`/`$WEAP` boost writes on bank (coverage-only, `apply`) | loot wallet, loud channel, drop-on-death, bank→boost — MC-side, so **coverage-zone gameplay**; the HUD owns its own extraction ladder events (A11.5) | time limit / `win_target` |
 | **koth** | `objectives.py` `DominationEngine` (one point) | `mode_params.{score_target, points_per_s}`, `station_source` (Tony, 2026-09-24: defaults to `phone`, a spare phone captured by presence; the same value also covers a Stick control point, though a StickS3 hill by presence is being ported and is not yet bench-proven; `grenade` stays selectable and is post-MVP), `time_limit_s`, **teams that do NOT include tid 2** | base combat frames + the protocol-15 `$SIR` row so the node reads the hill beacon | possession per team from the beacon the node hears; MC has no objective scorer, so an unreported match is `undecided` | time limit (possession decides the winner) |
+| **domination** | `objectives.py` `DominationEngine` (CLI); on MC the possession merge, like koth | `scoring.hold_target_s` (default 1000 points: one point = one owned-hill second, summed across hills), `station_source: "phone"` only (a grenade names no point, F88, so `validate` refuses it), `hill`, `time_limit_s`, **two teams, never tid 2** | the same as koth; the bundle's `config.stations[]` names each control point with a `letter` (A, B, C in id order) | OWNERSHIP scores (2026-11-02): a point a team owns scores for it contested or empty until it drains to neutral. The station's `own_ms` is the authority (`hold_ms` is KOTH's); the phone banks and ticks while it hears the point, contested or not | time limit / `hold_target_s` (MC → `end`) |
 
 Notes that shape the schema:
 
@@ -115,11 +116,11 @@ Notes that shape the schema:
   utility-phone station (BLE advert presence + the `gate`, utility.md §4; A13.1); `none` = LMS. No gun token
   exists — the node owns the delay.
 - **Objective modes, and the engines MC cannot reach.** `modes/registry.py` maps eleven mode names onto seven
-  engine classes; MC's catalog offers six mode names in `state.MODES`. The rest (`survival`, an alias of `infection`;
-  `cs` / `bomb`; `domination`; `ctf`) are **CLI-only engines**: `python -m brx_mcp play <mode>` and the sim
+  engine classes; MC's catalog offers seven mode names in `state.MODES`. The rest (`survival`, an alias of `infection`;
+  `cs` / `bomb`; `ctf`) are **CLI-only engines**: `python -m brx_mcp play <mode>` and the sim
   build them, `state.MODES` does not list them, so `PUT /api/config` refuses them and no operator can select one.
-  Lighting one up from a single registration is **E2**. `koth` is the one that made the crossing (F70, a grenade
-  hill), and `compile._STATION_GATED_MODES` (`domination`, `koth`, `ctf`, `cs`, `bomb`) refuses any of them
+  Lighting one up from a single registration is **E2**. `koth` made the crossing first (F70, a grenade
+  hill), and `domination` followed on Bluetooth hills (2026-11-02). `compile._STATION_GATED_MODES` (`domination`, `koth`, `ctf`, `cs`, `bomb`) refuses any of them
   without a `station_source`.
 - **Health variants.** *Regen* is still a `gameconfig.py` boolean on the laptop-BLE path only: a host-driven
   `$LIFE` write that reaches a node via **`apply{frames}`** (A6.4), so it works in a coverage zone and nowhere

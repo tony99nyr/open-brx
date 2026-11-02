@@ -1222,6 +1222,41 @@ test('control point: silent in Domination, like the grenade path, because one po
   assert.equal(h.eng.state().hill.owner, 1, 'and it is correct');
 });
 
+/** Domination on Bluetooth hills (`station_source: "phone"`, the only source MC allows for it, 2026-11-02). */
+function dom() { const h = harness({ mode: 'domination' }); h.config.station_source = 'phone'; h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
+
+test('Domination: a contested point we own still scores and still ticks; KOTH pauses both (F382)', () => {
+  const play = h => {
+    control(h, { team: 1, state: HELD, value: 100 });
+    const t0 = nWrites(h, HILL_TICK_F), hold0 = ((h.eng.hold['11'] || {})[1]) || 0;
+    runControl(h, 6000, { team: 1, state: HELD | CONTESTED, value: 100 });
+    return { ticks: nWrites(h, HILL_TICK_F) - t0, held: (((h.eng.hold['11'] || {})[1]) || 0) - hold0 };
+  };
+  const d = play(dom());
+  assert.ok(d.held >= 5_500 && d.held <= 6_250, `Domination banks the contested time for its owner (${d.held} ms)`);
+  assert.ok(d.ticks >= 1, `and the owner hears the possession tick (${d.ticks})`);
+  const k = play(koth());
+  assert.ok(k.held <= 250, `CONTROL: KOTH banks nothing while contested (${k.held} ms)`);
+  assert.equal(k.ticks, 0, 'CONTROL: and plays no tick');
+});
+
+test('Domination: the hill carries the letter MC named it in the bundle, and none without one', () => {
+  const h = harness({ mode: 'domination' }); h.config.station_source = 'phone';
+  h.config.stations = [{ id: 11, kind: 'control', letter: 'B' }, { id: 12, kind: 'control', letter: 'C' }];
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick();
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill.letter, 'B');
+  const k = koth(); control(k, { team: 1, state: HELD, value: 100 });
+  assert.equal(k.eng.state().hill.letter, null, 'CONTROL: a KOTH bundle names no letter');
+});
+
+test('Domination on Bluetooth hills announces a capture: each point names itself, so the F88 mute does not apply', () => {
+  const h = dom();
+  control(h, { team: 0, state: HELD, value: 100 });
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'our capture is announced');
+});
+
 test('hill: silent in Domination — several points are indistinguishable on the wire', () => {
   const h = harness({ mode: 'domination' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,15,0,1,8,0,0,*');

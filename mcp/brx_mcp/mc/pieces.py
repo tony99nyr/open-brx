@@ -41,6 +41,7 @@ _MODE_BUILTINS = (
     ("tdm", "TEAM DEATHMATCH", False),
     ("ffa", "FREE-FOR-ALL", False),
     ("koth", "KING OF THE HILL", False),
+    ("domination", "DOMINATION", False),
     ("infection", "INFECTION", True),
     ("lms", "LAST MAN STANDING", True),
     ("extraction", "EXTRACTION", True),
