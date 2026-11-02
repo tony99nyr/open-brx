@@ -34,13 +34,19 @@ log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rul
 
 ## NEXT: the hit effect of accuracy (F662)
 
-F662 rests on one 2026-09-09 reading: at accuracy 50, 4 of 16 words were misses (magnitude 0), so a cut of X points costs
-about X / 2 in hits. This sheet measures it properly. The gun shoots and the IR rig RECEIVES: the gun's firmware applies
-accuracy when it fires, so the rig cannot play the shooter. Arm one gun with the Assault Rifle from `compile.resolve()`.
-Set accuracy the way a game does, with the engine's `$TMP` t4 offset (all 12 commas): 0, -30, -55 and -80 give 100, 70, 45
-and 20. Before each cell, read `$ALCD` token 2 and record the value the gun reports. Capture with `native_capture.py` (one
-label per cell). Count, for each cell: rounds fired (`$ALCD` count), words received, words with magnitude 0, and words with
-damage. The hit fraction is words with damage over rounds fired. `$VOL,65`. About 75 minutes, plus the 25 m set-up.
+The balance sims assume that accuracy X lands X % of rounds. Only one direct reading exists: `$TMP` t4 at 50 gave 7 hits
+of 17 (2026-09-18, the `$ALCD` row of `protocol/brx-protocol.md`). The 2026-09-09 words do not measure it, because they
+came from the gun's own walk down to its floor. The game on 2026-11-01 felt as if a held AR beats a bursting one, which the
+sims do not predict. This sheet measures the map.
+
+The gun shoots and the IR rig RECEIVES: the gun's firmware applies accuracy when it fires, so the rig cannot play the
+shooter. Arm one gun with the Assault Rifle from `compile.resolve()`. No phone on the gun: a linked engine re-writes t4
+under recoil. Set accuracy the way a game does, with the `$TMP` t4 offset (all 12 commas), sent after any `$SPAWN`
+(`$SPAWN` clears it): 0, -30, -55 and -80 give 100, 70, 45 and 20. `$ALCD` streams only on a round, so read token 2 from the
+first round of each cell and record it. Capture with `native_capture.py`, one label per cell. Count, for each cell: rounds
+fired (the `$ALCD` count), words received, words at magnitude 0, words with damage, and stitched words whose candidates
+disagree on magnitude 0 (count those as unresolved, not as hits or misses). The hit fraction is words with damage over
+rounds fired. `$VOL,65`. About 85 minutes, plus the 25 m set-up.
 
 | step | minutes | what it proves | control and pass |
 |---|---|---|---|
@@ -48,27 +54,38 @@ damage. The hit fraction is words with damage over rounds fired. `$VOL,65`. Abou
 | HE2 | 10 | one cut, A/B/A | 50 single shots at 100, then 50 at 45 (`$TMP` t4 -55), then 50 at 100 again (t4 0). Pass: both 100 runs match HE1 within 2 words, so nothing carried over. Record the 45 hit fraction. |
 | HE3 | 25 | the grid at 10 m | Accuracy 70, 45 and 20, each 50 held and 50 single (300 rounds). Restore t4 0 and fire 10 at 100 between cells. Pass: each restore run has no magnitude-0 word. Record every cell. |
 | HE4 | 25 | the grid at 25 m (outdoors, shade) | HE1's control at 25 m first: its received count is the reception baseline at that range. Then HE3's six cells. Divide each hit fraction by the 25 m baseline, so lost words do not count as misses. |
-| HE5 | 5 | the proxy matches a real victim | A second gun as the victim, headset 10 m away. 20 single shots at 100, 20 at 45, 20 at 100. Count `$HIR` with damage on the victim. Pass: the 45 fraction agrees with HE2's within about 15 points. |
+| HE5 | 15 | the rig proxy matches a real victim | A second gun as the victim, headset 10 m away, pool large enough for 150 hits. 50 single shots at 100, 50 at 45, 50 at 100. Count `$HIR` with damage on the victim. Pass: the 45 fraction agrees with HE2's within 15 points. |
 
-Record the effect per cell: (1 - hit fraction at X / hit fraction at 100) / ((100 - X) / 100). 1.0 means the sims are right;
-0.5 is the 2026-09-09 reading. Send the table to brx3: it refits the sims' recoil rules and decides F662 (d) or (f).
+Record the effect per cell: (1 - hit fraction at X / hit fraction at 100) / ((100 - X) / 100). 1.0 means the sims are
+right; lower means the sims overstate recoil. Send the table to brx3: it refits the sims' recoil rules and decides F662.
 
 ## NEXT: the Energy Shotgun frame (F661)
 
 The Energy Shotgun is not in the catalogue. Build each frame from `compile.resolve()`'s Shotgun frame and change only the
-tokens the step names. Never start from a capture. The full test frame (ES3, ES4) is the resolved Shotgun with t14 = 450,
-t16 = 24, t17 = 48, t18 = 1400, t19 = 0, t24 = 13, t38 = 150 and t35 = `D11`. Heat streams in `$ALCD` token 5. `$VOL,65`.
-About 70 minutes, one gun and its headset, plus a second gun for ES4.
+tokens the step names. Never start from a capture. After every `$WEAP`, send `$AMMO` so the gun holds the cell the frame
+names (F207). Heat streams in `$ALCD` token 5, one frame a round: a gun at rest sends nothing. `$VOL,65`. About 85
+minutes, one gun and its headset, the rig receiver, and a second gun for ES5.
+
+⚠ **t38 has a second meaning on this frame.** The Shotgun is a two-word weapon (t1 = 2). On such a weapon the firmware
+also reads t38 as the headset word's repeat count, `max(1, t38)`, at 200 ms or more apart (the t37/t38 and t12/t13/t42
+rows of `protocol/brx-protocol.md`). That pairing is untested. t38 = 150 might send about 150 headset words a pull, which is
+F638 at its worst. ES0 settles it before any heat step.
+
+The cell tokens: the resolved Shotgun starts its clip at 6 (t39) and leaves 24 behind (t40). Every ES frame sets t16 = 24,
+t39 = 24, t17 = 48 and t40 = 24, so no reload lands before a lockout. The **full test frame** is the resolved Shotgun with
+those four, plus t14 = 450, t18 = 1400, t19 = 0, t24 = 13, t35 = `D11` and the t38 value ES0 picks.
 
 | step | minutes | what it proves | control and pass |
 |---|---|---|---|
-| ES1 | 15 | a single-shot frame can overheat | Control: the resolved Shotgun, 20 pulls about 450 ms apart: token 5 stays 0, no lockout. B: the same frame with t38 = 150 only (t24 is 0): token 5 still 0. C: add t24 = 13: token 5 climbs. A: the resolved Shotgun again: 0. Pass: C locks the gun out (the trigger stops firing, the `D11` cue plays). Record token 5 after every pull and the pull that locks. Predicted: pull 8 (13 a pull, lockout near 99). |
-| ES2 | 20 | how t24 maps to heat, and whether heat falls | ES1's C frame. Pulls 450 ms apart, then 1 s apart, then 2 s apart: record token 5 after each pull. Then stop for 10 s and read token 5 three times. Then t24 = 6 and t24 = 26 at 450 ms. Pass: a table of heat a pull against t24 and pull spacing. Equal heat a pull at every spacing means no cooling while firing, so build the lever row (F661 A2). Heat that falls between pulls or at rest means the self-cooling row (D) is possible. Compare with the Energy Rifle: t24 = 6 climbed about 3 a shot (F229). |
-| ES3 | 15 | the lever vents the lock and refills the cell | The full test frame. Fire to the lockout. Then one lever pull: record token 5 and whether the gun fires. Repeat pulls until it fires. Then a held lever. Pass: the lockout clears with the lever, the `$ALCD` count refills to 24 from the reserve, and the first round after the lever comes about 1.4 s (t18) later. Control: the lever on a part-used cell with no lockout refills it with no heat change. Note any reload sound at each press. |
-| ES4 | 15 | no headset word trails the release (F638) | Shooter: the full test frame; victim gun B, headset 3 m away. F638's step 101 method: 8 blasts as fast as the gun allows, release, then watch B's `$HIR` for 3 s. Pass: no `$HIR` more than 300 ms after the last gun word. Control A: the resolved Shotgun (400 ms) shows no tail either. Control B: the resolved SMG frame (100 ms) DOES show a tail, which proves the method can see a backlog. Order: Shotgun, test frame, Shotgun, then the SMG. |
+| ES0 | 15 | what t38 does to the headset word | The rig receiver 1 m from the shooter's headset, out of the barrel's line, counting words. Control: the resolved Shotgun with the four cell tokens: 3 pulls, 5 s apart: one headset word a pull. B: add t38 = 1: 3 pulls. C: t38 = 150 instead: ONE pull, then wait 40 s and count. Restore the control and fire 3 pulls. Pass for a t38 value: one headset word a pull. If t38 = 1 gives one word, use t38 = 1 from here. If every non-zero t38 repeats the word, rebuild the frame barrel-only (t1 = 0, t5 = 39) and repeat B on it. If that cannot overheat either, stop: F661 goes back to Tony. |
+| ES1 | 15 | a single-shot frame can overheat | Control: the resolved Shotgun with the cell tokens, 20 pulls about 450 ms apart: token 5 stays 0, no lockout. B: the same with ES0's t38 only (t24 is 0): token 5 still 0. C: add t24 = 13: token 5 climbs. A: the control again: 0. Pass: C locks the gun out (the trigger stops firing, the `D11` cue plays) with no reload before it. Record token 5 after every pull and the pull that locks. Predicted: pull 8 (13 a pull, lockout near 99). |
+| ES2 | 20 | how t24 maps to heat, and whether heat falls | ES1's C frame. Pulls 450 ms apart, then 1 s apart, then 2 s apart: record token 5 after each pull. Then rest 10 s and fire one pull: its token 5 minus one pull's heat is the heat left after the rest. Then t24 = 6 and t24 = 26 at 450 ms. Pass: a table of heat a pull against t24 and pull spacing. Equal heat a pull at every spacing, and none lost at rest, means no cooling: build the lever row (F661 A2). Heat lost between pulls or at rest means the self-cooling row (D) is possible. Compare with the Energy Rifle: t24 = 6 climbed about 3 a shot (F229). |
+| ES3 | 15 | the lever vents the lock and refills the cell | The full test frame. Fire to the lockout. Then one lever pull: record whether the gun fires, and token 5 on the next round. Repeat pulls until it fires. Then a held lever. Pass: the lockout clears with the lever, the `$ALCD` count refills to 24 from the reserve, and the first round after the lever comes about 1.4 s (t18) later. Control: the lever on a part-used cell with no lockout refills it with no heat change. Note any reload sound at each press. |
+| ES4 | 15 | no headset word trails the release (F638) | Shooter: the full test frame; victim gun B, headset 3 m away, with a pool large enough for 30 hits (so B stays alive through every run); also the rig receiver beside B's headset. F638's step 101 method: 8 blasts as fast as the gun allows, release, then watch B's `$HIR` and the rig for 3 s. Pass: no headset word more than 300 ms after the last gun word. Control A: the resolved Shotgun (400 ms) shows no tail either. Control B: the resolved SMG frame (100 ms) DOES show a tail, which proves the method can see a backlog. Order: Shotgun, test frame, Shotgun, then the SMG. |
 | ES5 | 5 | the sounds (ears) | Play each candidate on the full test frame: fire `H111`, `H103`, `SW36`, `E13`; overheat `D11`, `X19`; vent `X45`, `X44`, `H110`; cell ready `U14`. Tony picks one a slot. Silence control: the same frame with the fire sound slot empty, and ask again. |
 
-Send ES1-ES5 to brx3. ES1 or ES3 failing means no Energy Shotgun on this gun, and F661 goes back to Tony.
+Send ES0-ES5 to brx3. A repeating headset word in ES0 that t1 = 0 cannot avoid, or a failure in ES1 or ES3, means no
+Energy Shotgun on this gun, and F661 goes back to Tony.
 
 ## Sunday AM: the bench before the game on 2026-11-01
 

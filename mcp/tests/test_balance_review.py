@@ -2573,3 +2573,23 @@ def test_the_kit_engine_resets_recoil_on_release_only_with_the_f663_flag():
     assert on[8] == off[8] < on[0]   # the 9th held round is degraded either way
     assert on[9] == on[0]            # the release reset brings the next burst back to the ceiling
     assert off[9] == off[8]          # without it, a 200 ms pause is too short to settle
+
+
+def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():
+    rows = copy.deepcopy(WeaponCatalog()._rows)
+    ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
+    ar["recoil"] = dict(ar["recoil"], reset_on_release=True)
+    kit = R.make_kit(R.World(WeaponCatalog(rows), PerkCatalog(), {}), "plain", "assault_rifle")
+    rng = random.Random(7)
+    fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
+    fighter.targets = [R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)]
+    out, t = [], 0.0
+    with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (100.0, 100.0)):
+        while len(out) < 11:
+            shot = fighter._act(t)
+            if shot is not None:
+                out.append(shot[1])
+            t = fighter.next_t
+    assert out[8] < out[0]       # the 9th held round is heavy
+    assert out[9] == out[8]      # fired 100 ms after release: the reset has not landed on the gun
+    assert out[10] == out[0]     # the next round is back at the ceiling
