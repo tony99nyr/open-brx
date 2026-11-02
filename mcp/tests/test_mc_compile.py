@@ -419,7 +419,7 @@ def test_every_weapon_is_based_on_its_own_captured_frame():
     import json, pathlib
     rows = json.loads((pathlib.Path(__file__).resolve().parents[1]
                        / "brx_mcp/mc/weapons.json").read_text())["weapons"]
-    assert len(rows) == 25   # every row in the file, hidden and support rows included
+    assert len(rows) == 26   # every row in the file, hidden and support rows included
     for w in rows:
         cap = w.get("capture") or {}
         if w.get("based_on"):        # a sidearm rides another weapon's captured frame (weapons.json `_note`, based_on)
@@ -2218,3 +2218,35 @@ def test_f282_the_tryout_fires_the_silenced_weapon_too():
     loud = next(f for f in C.tutorial_frames(w, "indoor") if f.startswith("$WEAP")).split(",")
     quiet = next(f for f in C.tutorial_frames(w, "indoor", silent=True) if f.startswith("$WEAP")).split(",")
     assert loud[26:29] != [t25, t26, t27] and quiet[26:29] == [t25, t26, t27]
+
+
+# ---- night range cut (Tony, 2026-11-02; docs/balance-decisions.md "night range cut") ----
+def _weap_heads(config):
+    head = C.compile(config, _player(weapons=("shotgun", "assault_rifle")), TEAMS)["head"]
+    return {f.split(",")[1]: f.split(",") for f in head if f.startswith("$WEAP,")}
+
+
+def test_a_night_game_compiles_every_range_token_at_three_quarters():
+    """At night every compiled weapon (primary, secondary, melee) carries t2, t13 and t42 at 0.75 of the day value,
+    and no other token moves. Outdoor, so the Shotgun's 30 shows the rounding (22.5 -> 23) and its headset word."""
+    T = WeaponCatalog._T
+    day = _weap_heads(dict(_cfg(), environment="outdoor", night=False))
+    night = _weap_heads(dict(_cfg(), environment="outdoor", night=True))
+    assert set(day) == set(night) == {"0", "1", "4"}, "the primary, the secondary and melee"
+    keys = {T[k] + 1 for k in compile_mod.NIGHT_RANGE_KEYS}
+    for slot, d in day.items():
+        n = night[slot]
+        for i, (a, b) in enumerate(zip(d, n)):
+            if i in keys and a.strip() not in ("", "*"):   # a short frame's t42 index is its terminator
+                assert b == str(compile_mod.night_range(int(a))), (slot, i, a, b)
+            else:
+                assert a == b, (slot, i, a, b)
+    shotgun, melee = night["0"], night["4"]
+    assert (shotgun[T["range_outdoor"] + 1], shotgun[T["headset_range_outdoor"] + 1]) == ("23", "75")
+    assert melee[T["range_outdoor"] + 1] == "45", "melee's outdoor 60 at night"
+    assert day["0"][T["range_outdoor"] + 1] == "30", "the day frame keeps the catalogue value"
+
+
+def test_night_range_rounds_half_up_and_never_goes_under_the_floor():
+    assert compile_mod.NIGHT_RANGE_MULT == 0.75
+    assert [compile_mod.night_range(v) for v in (100, 90, 30, 17, 13)] == [75, 68, 23, 13, 13]

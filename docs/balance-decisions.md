@@ -471,7 +471,8 @@ Candidate:
   which has no headset word. The switch is `NIGHT_RANGE_KEYS` in `mcp/brx_mcp/mc/compile.py`.
 - Caveat: t2 and t13 are hit-probability (carrier-frequency) tokens, not a proven reach limit (the range-token note,
   F580). The hit curve is flat from about 31 upward, so 0.75 of a value at 55 or more should change nothing. The
-  Shotgun's and the Stripper's outdoor 30 compile to 22, inside the steep 13-26 band; melee's 60 compiles to 45. A
+  Shotgun's and the Stripper's outdoor 30 compile to 23 (rounded half up), inside the steep 13-26 band; the Rocket
+  Launcher's 40 compiles to 30, at the edge; melee's 60 compiles to 45. A
   value never compiles below the measured floor of 13.
 - Check: `bench-plan.md` MN2 (melee at 2, 4, 6 and 8 m, day against night, with a control) and MN3 (the Shotgun). If
   F580 shows no effect, Tony decides again.

@@ -39,7 +39,7 @@ export const DEMO_WEAPONS = [
       "per_shot": 0,
       "recover_ms": 0
     },
-    "crit_pct": 30,
+    "crit_pct": 20,
     "hir": [
       26
     ],
@@ -179,10 +179,10 @@ export const DEMO_WEAPONS = [
     "reserve": 160,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 61,
+    "dmg": 52,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 70,
+    "dmg_per_hit": 60,
     "dual_emitter": false,
     "reload_type": "magazine",
     "pool": 115,
@@ -196,8 +196,8 @@ export const DEMO_WEAPONS = [
       "rifle",
       "long"
     ],
-    "htk": 4,
-    "ttk_ms": 855,
+    "htk": 5,
+    "ttk_ms": 1140,
     "rounds_per_charge": 10,
     "caution": "A full charge spends 10 rounds. With fewer than 10 left, a charge fires nothing and the phone reloads the cell for you.",
     "recoil": {
@@ -208,7 +208,7 @@ export const DEMO_WEAPONS = [
     },
     "hir": [
       16,
-      70
+      60
     ],
     "cells": [
       {
@@ -219,7 +219,7 @@ export const DEMO_WEAPONS = [
       {
         "proto": 8,
         "subtype": 0,
-        "mag": 70
+        "mag": 60
       }
     ],
     "ammo_total": 200,
@@ -227,7 +227,7 @@ export const DEMO_WEAPONS = [
       "power": 80,
       "rof": 27,
       "ammo": 60,
-      "ttk": 100
+      "ttk": 93
     }
   },
   {
@@ -507,7 +507,7 @@ export const DEMO_WEAPONS = [
       "power": 70,
       "rof": 53,
       "ammo": 33,
-      "ttk": 93
+      "ttk": 100
     }
   },
   {

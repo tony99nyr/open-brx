@@ -141,7 +141,7 @@ def test_published_single_shot_cycle_matches_both_fight_sims():
     rows = [row for row in CAT._rows if CAT._frame_int(row["weapon_id"], "mode") == 7]
     assert {row["weapon_id"] for row in rows} == {
         "bolt_rifle", "shotgun", "sniper_rifle", "plasma_sniper", "amr",
-        "glock", "usp", "deagle", "rocket_launcher", "ion_sniper",
+        "glock", "usp", "deagle", "rocket_launcher", "ion_sniper", "energy_shotgun",
     }
     assert abs(B.FIGHT_OVERSHOOT_MS - ((196 - 190) + (440 - 350) + (714 - 700)) / 3) < 0.01
     assert R.FIGHT_OVERSHOOT_MS == B.FIGHT_OVERSHOOT_MS
@@ -247,7 +247,8 @@ def test_charge_heat_cools_between_rounds():
 
 
 def test_charge_heat_threshold_uses_catalogue_charge_and_tap_costs():
-    charge = B.weapon_model(CAT, "charge_rifle")
+    # The pre-F646 tap cost (14), so three taps after a charge sit just under the lock (56 + 3 x 14 = 98).
+    charge = B.weapon_model(_edited("charge_rifle", heat__per_tap=14), "charge_rifle")
     dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")
     pool = B.Pool(health=1000, armour=0, shield=0, respawn_ms=15_000)
     players = [B.Player(0, 0, charge, pool), B.Player(1, 1, dummy, pool)]
@@ -322,12 +323,16 @@ def test_energy_vent_uses_each_catalogue_pull():
 
 
 def test_shields_rule_reads_charge_heat_and_cooling_branch():
-    for branch, expected in (("throughout", True), ("none", False)):
-        model = B.RecoilDuelModel.from_catalog(CAT, health_preset="shields", heat_cooling=branch)
-        assert dict(model.cr_heat) == CAT._row("charge_rifle")["heat"]
+    # The pre-F646 Charge Rifle (70 a charge, 14 heat a tap) locks out under no cooling on Shields; the bench fit
+    # (2 a tap, shipped 2026-11-02) does not, so the shipped row passes on both branches.
+    old = _edited("charge_rifle", wire__dmg=70, heat__per_tap=14)
+    for cat, branch, expected in ((old, "throughout", True), (old, "none", False),
+                                  (CAT, "throughout", True), (CAT, "none", True)):
+        model = B.RecoilDuelModel.from_catalog(cat, health_preset="shields", heat_cooling=branch)
+        assert dict(model.cr_heat) == cat._row("charge_rifle")["heat"]
         result = B.recoil_duel_batch(B.run_recoil_duel_rule1, "cr", 200, SEED, "gate_rule1",
                                      model, float(B.CHARGE_TAP_CADENCE_MS))
-        assert (result.win_rate > 0.6) is expected
+        assert (result.win_rate > 0.6) is expected, (cat is CAT, branch, result.win_rate)
 
 
 def test_kill_count_summary_names_its_horizon():

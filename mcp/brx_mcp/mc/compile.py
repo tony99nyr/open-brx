@@ -139,6 +139,20 @@ def head_volume(config) -> int:
 # below the ~38 kHz band-pass that the receiver drops the word. The firmware clamps nothing.
 RANGE_OUTDOOR_FLOOR = 13
 
+# Night range cut (Tony, 2026-11-02; docs/balance-decisions.md, "night range cut"). A night game compiles every
+# weapon's range tokens at NIGHT_RANGE_MULT of the day value, melee included, because IR carries further in the dark.
+# NIGHT_RANGE_KEYS is the scope: option (a) scales t2 (the gun word) and t13/t42 (the headset word). Option (b), the
+# headset word only, is this tuple without "range_outdoor". These tokens set the hit odds (a carrier frequency), not a
+# proven reach (F580): from about 31 upward the curve is flat, so the cut bites only on low values such as the
+# Shotgun's 30. bench-plan.md MN2/MN3 check it. A cut never goes under RANGE_OUTDOOR_FLOOR.
+NIGHT_RANGE_MULT = 0.75
+NIGHT_RANGE_KEYS = ("range_outdoor", "headset_range_outdoor", "headset_range_indoor")
+
+
+def night_range(value: int) -> int:
+    """One range token at night: NIGHT_RANGE_MULT of the day value, rounded half up, never under the floor."""
+    return max(RANGE_OUTDOOR_FLOOR, int(value * NIGHT_RANGE_MULT + 0.5))
+
 
 def gun_range_outdoor_pct(base_captured: int, wire_value: int | None, environment: str | None) -> int:
     """$WEAP t2 (gunRangeOutdoor) for one weapon at one venue (F234).
@@ -1416,7 +1430,7 @@ class WeaponCatalog:
         return mag, reserve, reload_ms
 
     def resolve(self, weapon_id: str, slot: int, mods: dict | None = None,
-                environment: str | None = None) -> str:
+                environment: str | None = None, night: bool = False) -> str:
         """`$WEAP` frame for a slot, built from the weapon's OWN captured Callsign frame.
 
         Every weapon carries `capture.frame` — the real frame Battle Company sent for that gun, pulled
@@ -1448,6 +1462,9 @@ class WeaponCatalog:
         `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
         t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
         unchanged (indoor is untested, F231 open — never invent an indoor number).
+
+        `night` (2026-11-02): after every other write, including `overrides`, each NIGHT_RANGE_KEYS cell the frame
+        carries compiles at `night_range()` of its day value. An empty cell stays empty.
 
         A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
         findings that contradict a stock value (see `_override_index`). Each entry must name a
@@ -1646,6 +1663,10 @@ class WeaponCatalog:
             set_cell(26, t25); set_cell(27, t26)
             if not already_quiet:
                 set_cell(28, t27)
+        if night:
+            for key in NIGHT_RANGE_KEYS:
+                if cell(key).strip() != "":
+                    put(key, night_range(int(cell(key))))
         if terminated:
             p.append("*")
         return ",".join(p)
@@ -2781,16 +2802,16 @@ class Compiler:
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
                 build.gc._pset(build.pnum, build.player.get("voice"), build.voice_slots, team=build.tid),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls. F206: t2 = the $TID team
-                self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env), build.plan.cell_for(build.w0)),
+                self._rekey(self._rekey(self.catalog.resolve(build.w0, 0, build.mods, environment=env, night=build.night), build.plan.cell_for(build.w0)),
                             _AP_CELL if build.armor_piercing else None, zero_crit=build.armor_piercing)]
         if build.w1:
-            ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
-        ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env), build.plan.cell_for("melee")))
+            ctx.head.append(self._rekey(self.catalog.resolve(build.w1, 1, build.swap_mods, environment=env, night=build.night), build.plan.cell_for(build.w1)))   # slot 1 only when a secondary exists (A10)
+        ctx.head.append(self._rekey(self.catalog.resolve("melee", 4, build.swap_mods, environment=env, night=build.night), build.plan.cell_for("melee")))
         # A56: each pickup weapon in its spare slot with its normal `$WEAP` tokens. It is LOCKED by the empty
         # magazine below and by the ALT `$BMAP` cycle, which stays 0/1 only (`gc._bmap()` is not touched): the
         # player's own phone unlocks it at the station with a mid-life `$AMMO` + `$BMAP` (powerups.md).
         for pu in build.pickups:
-            ctx.head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], build.swap_mods, environment=env),
+            ctx.head.append(self._rekey(self.catalog.resolve(pu["weapon_id"], pu["slot"], build.swap_mods, environment=env, night=build.night),
                                     build.plan.cell_for(pu["weapon_id"])))
         bmap = list(build.gc._bmap())
         if not build.w1 and not build.gc.alt_reload:
@@ -3166,7 +3187,8 @@ class Compiler:
             pset,
             *sir,                                    # every stock row + this weapon's conditional row (Breacher/Toxin/Haze)
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
-            self.catalog.resolve(wid, 0, {"silent_weapons": True} if silent else None, environment=environment),   # the one weapon, slot 0 (F282: silenced as in the match)
+            self.catalog.resolve(wid, 0, {"silent_weapons": True} if silent else None, environment=environment,
+                                 night=bool((config or {}).get("night"))),   # the one weapon, slot 0 (F282: silenced as in the match); night range as in the match
             "$SPAWN,,*", "$PLAYX,0,*",              # live, then silence the spawn chirp
             f"$AMMO,0,{mag},{reserve},1,*",
             "$BMAP,0,0,,,,,*",
