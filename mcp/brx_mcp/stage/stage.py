@@ -5565,6 +5565,13 @@ class GunStage:
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
             return
+        # F665 (ammo.js `onAmmo`): melee is its own button, never the trigger. A swing's slot-4 `$ALCD` books its count and
+        # moves nothing: not the trigger, not the ammo block, not a shot.
+        if slot == 4:
+            self._prev_ammo[4] = mag
+            if reserve is not None:
+                self._prev_reserve[4] = reserve
+            return
         prev = seen
         # F209 (ammo.js `onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
         if prev is not None and mag < prev and self.spawned and slot in (0, 1):
