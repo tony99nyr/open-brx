@@ -5528,10 +5528,18 @@ class GunStage:
         last_fired_reload = (not old_slot_reload and not own_echo and not lcd and prev is not None and mag > prev and slot < 2
                              and self.active_slot < 2 and slot != self.active_slot
                              and self._last_shot_life == self._life_queued and self._last_shot_slot == slot)
-        if last_fired_reload and self.reloading and self.reloading["slot"] != slot:
+        if last_fired_reload and self.reloading and self.reloading["slot"] != slot and not self.reloading.get("soft"):
             r = self.reloading   # the takeover on the weapon in hand ends cleanly on the last-fired slot's reload
             r["slot"] = slot; r["from"] = prev; r["mag"] = mag; r["cap"] = (self._spawn_ammo().get(slot) or [None])[0]
             self._end_reload("last_fired")
+        if (self.reloading and self.reloading.get("soft") and prev is not None and not own_echo and not lcd and mag > prev
+                and slot != self.reloading["slot"] and slot < 2):
+            # F650 (ammo.js `onAmmo`): the gun's own lever reloaded its latch slot; the phone's reload of the weapon in hand goes on
+            self._prev_ammo[slot] = mag
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            self._log(f"the gun's lever reloaded slot {slot}; the phone reloads slot {self.reloading['slot']}", "info")
+            return
         if self.reloading and prev is not None and not own_echo and not last_fired_reload:
             if mag > prev:
                 if slot != self.reloading["slot"]:
@@ -5568,9 +5576,11 @@ class GunStage:
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
-            if self._lever_at is not None and self.now() - self._lever_at < self.GUN_WAS_LEVER_S:
+            soft = bool(self.reloading and self.reloading.get("soft"))   # F650: the phone reloads the weapon in hand; no hint
+            if not soft and self._lever_at is not None and self.now() - self._lever_at < self.GUN_WAS_LEVER_S:
                 self._fire_first = {"slot": slot, "at": self.now(), "life": self._life_queued}
-            self._log(f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
+            self._log(f"the gun's lever also reloaded slot {slot}, the slot fired last; the phone reloads slot {self.active_slot}" if soft
+                      else f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
             return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
         if moves and self.switching and slot != self.switching["from"] and slot < 2:
@@ -5681,14 +5691,12 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
-        if r and not r.get("auto") and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):   # F226: ammo.js `!r.auto`
+        if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
+                and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
-        # ammo.js `altPressed` (F445, bench 2026-10-03): after `$SPAWN` the gun ignores a slot change until the first trigger
-        # pull of the life; a round this life counts as a pull (a lost `$BUT`).
-        if self._pulled_life != self._life_queued and self._last_shot_life != self._life_queued:
-            self._log("ALT ignored by the gun: no trigger pull since the spawn", "info")
-            return
+        # ammo.js `altPressed` (F650): ALT before the first trigger pull of a life is a swap like any other (the F445 rule
+        # came from a bench of phone equips, never of ALT)
         if r:
             self._end_reload("swapped")
         source = self._alt_ptr
@@ -6504,11 +6512,91 @@ class GunStage:
         s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
         self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
-                          "energy": self._active_weapon_is_energy(), "swap_to": swap_to}
+                          "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
+                          # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
+                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued}
+        if self.reloading["soft"]:
+            self._soft_reload_start(self.reloading)
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()
         self._spawn_task(self._reload_watchdog(dict(self.reloading)))
+
+    def _soft_reload_needed(self) -> bool:
+        """ammo.js `softReloadNeeded` (F650): the gun's lever goes to the slot that fired last, so the phone reloads the
+        weapon in hand itself when that slot is another one, or unknown off slot 0. Two loadout weapons only."""
+        active = self.active_slot
+        if active not in (0, 1) or self._slot_count() < 2:
+            return False
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []   # review H2: a chain weapon keeps the gun's reload
+        w = (ws[active] if active < len(ws) else None) or {}
+        if (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain":
+            return False
+        ls = self._last_shot_slot
+        known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
+        return ls != active if known else active != 0
+
+    def _gun_reloads_other(self, r: dict | None = None) -> bool:
+        """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
+        last (room and reserve)? Only then does the gun ignore ALT."""
+        r = r if r is not None else self.reloading
+        if not r or not r.get("soft"):
+            return False
+        ls = self._last_shot_slot
+        if ls is None or ls >= 2 or self._last_shot_life != self._life_queued or ls == r["slot"]:
+            return False
+        cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
+        return not (cap and mag is not None and mag >= cap) and res != 0
+
+    def _reload_sounds(self, slot: int) -> list[str]:
+        """engine.js `_reloadSounds` (F650): the head's `$WEAP` reload parts for a slot (t31-t33), empty ids dropped."""
+        f = next((x for x in self.bundle.get("head") or [] if isinstance(x, str) and x.startswith(f"$WEAP,{slot},")), None)
+        if not f:
+            return []
+        t = f.split(",")
+        return [x.strip() for x in t[32:35] if re.fullmatch(r"[A-Z][A-Z0-9]*", x.strip() or "")]
+
+    def _soft_reload_start(self, r: dict) -> None:
+        """engine.js `_softReloadStart` (F650): the first reload part plays at the lever."""
+        self._log(f"lever: the phone reloads slot {r['slot']} itself in {int(r['s'] * 1000)} ms (the gun's lever goes to the "
+                  f"slot that fired last) (F650)", "info")
+        snd = self._reload_sounds(r["slot"])
+        if snd:
+            self._spawn_task(self.write([f"$PLAY,,4,6,{snd[0]},,,,*"], "F650: reload sound (start)", gap_ms=0))
+
+    def _soft_reload_write(self, r: dict) -> int | None:
+        """engine.js `_softReloadWrite` (F650): `$AMMO` for the weapon in hand from its own counts and reserve. Returns the
+        new magazine, or None when the write must not go out."""
+        slot = r["slot"]
+        if not (self.spawned and self.alive) or self.stunned or not self.connected:
+            self._log(f"F650: reload of slot {slot} dropped: the gun is not in play", "info")
+            return None
+        if self.active_slot != slot or (r.get("life") is not None and r["life"] != self._life_queued):
+            self._log(f"F650: reload of slot {slot} dropped: the weapon is no longer in hand", "info")
+            return None
+        cap = self._ammo_by_slot().get(slot)
+        mag = self._acct_live(slot)
+        if mag is None:
+            mag = self._prev_ammo.get(slot, r.get("mag"))
+        res = self._prev_reserve.get(slot)
+        if not cap or mag is None or not (res is not None and res > 0):
+            self._log(f"F650: reload of slot {slot} dropped: counts unknown (mag {mag}, reserve {res})", "info")
+            return None
+        give = max(0, min(cap - mag, res)); to = mag + give; left = res - give
+        if not give:
+            return mag
+        self._acct_wrote(slot, to, left)
+        end = self._reload_sounds(slot)[1:]
+        # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
+        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0))
+        if end:
+            self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
+        self._hold_accuracy_writes("F650 reload")
+        self._prev_ammo[slot] = to; self._prev_reserve[slot] = left
+        self._publish_ammo(slot, to, left)
+        self._dry_pulls = 0
+        self._log(f"F650: slot {slot} reloaded by the phone {mag} -> {to}, reserve {res} -> {left}", "info")
+        return to
 
     def _active_weapon_is_energy(self) -> bool:
         """ammo.js on the active slot's weapon: the catalogue row's `weapon_class` decides, the id regex is only the
@@ -6675,6 +6763,14 @@ class GunStage:
         if self.reloading and self.reloading.get("auto") and self.now() >= self.reloading["at"] + self.reloading["s"]:
             self._end_reload("filled")   # F226: the phone's own reload (ammo.js `reloadTick`)
             return
+        if self.reloading and self.reloading.get("soft") and self.now() >= self.reloading["at"] + self.reloading["s"]:
+            r = self.reloading; to = self._soft_reload_write(r)   # F650 (ammo.js `reloadTick`)
+            if to is None:
+                self._end_reload("dropped")
+                return
+            r["mag"] = to
+            self._end_reload("filled")
+            return
         if self.reloading and self.now() > self._reload_deadline():
             self._end_reload("timeout")
 
@@ -6685,7 +6781,10 @@ class GunStage:
             r = self.reloading
             if not r or r["at"] != started["at"]:
                 return                              # already ended, or a newer pull owns the takeover
-            left = self._reload_deadline() - self.now()
+            if r.get("soft") and self.now() >= r["at"] + r["s"]:
+                self._reload_tick()                 # F650: the phone's own reload lands at its time
+                return
+            left = (r["at"] + r["s"] - self.now()) if r.get("soft") else (self._reload_deadline() - self.now())
             if left <= 0:
                 self._end_reload("timeout")
                 return

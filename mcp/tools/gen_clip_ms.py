@@ -86,7 +86,9 @@ def rows() -> dict[str, int]:
     missing = sorted(set(EXTRAS) - set(length))
     if missing:
         raise SystemExit(f"EXTRAS names ids that are not on the gun: {missing}")
-    ids = (_golden_ids(set(length)) | set(EXTRAS)) - set(DEFERRED)
+    # F650: the phone plays a weapon's `$WEAP` reload parts (the D series) for its own reload, so the play queue times them.
+    reload_parts = {sid for sid in length if re.fullmatch(r"D\d+", sid)}
+    ids = (_golden_ids(set(length)) | set(EXTRAS) | reload_parts) - set(DEFERRED)
     return {sid: int(length[sid] * 1000 + 0.5) for sid in sorted(ids)}
 
 

@@ -621,6 +621,7 @@ function ammoHost(e) {
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
     roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
+    softReloadStart: r => e._softReloadStart(r), softReloadWrite: r => e._softReloadWrite(r),   // F650: the phone reloads the weapon in hand
   };
 }
 
@@ -4951,6 +4952,44 @@ export class Engine {
     // echo at the old heat refreshes) would put the full-screen OVERHEAT word up. The next real report sets the heat again.
     if (this.am.heatLock && this.am.heatLock.slot === slot) this.am.heatLock = null;
     this.am.autoReload(slot, mag, to, cap);
+  }
+  /** F650: the head's `$WEAP` reload sounds for a slot (t31-t33, `ReloadPart1..3`), empty ids dropped. */
+  _reloadSounds(slot) {
+    const f = ((this.frames && this.frames.head) || []).find(x => typeof x === 'string' && x.startsWith(`$WEAP,${slot},`));
+    if (!f) return [];
+    const t = f.split(',');
+    return [t[32], t[33], t[34]].map(x => (x || '').trim()).filter(x => /^[A-Z][A-Z0-9]*$/.test(x));
+  }
+  /** F650: the lever started the phone's reload of the weapon in hand. The gun plays nothing for it, so the phone plays the
+   *  weapon's first reload part now; the last part goes with the `$AMMO` (`_softReloadWrite`). */
+  _softReloadStart(r) {
+    this.log(`lever: the phone reloads slot ${r.slot} itself in ${r.ms} ms (the gun's lever goes to the slot that fired last) (F650)`, 'li');
+    const snd = this._reloadSounds(r.slot)[0];
+    if (snd) this._write([`$PLAY,,4,6,${snd},,,,*`], 'F650: reload sound (start)');
+  }
+  /** F650: the phone's reload lands. Writes `$AMMO` for the weapon in hand from that slot's own counts, the rounds taken
+   *  from its own reserve, and returns the new magazine, or null when the write must not go out. */
+  _softReloadWrite(r) {
+    const slot = r.slot;
+    if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) { this.log(`F650: reload of slot ${slot} dropped: the gun is not in play`, 'li'); return null; }
+    if (this.activeSlot !== slot || r.life != null && r.life !== this._lifeSeq) { this.log(`F650: reload of slot ${slot} dropped: the weapon is no longer in hand`, 'li'); return null; }
+    const cap = this.am.ammoBySlot()[slot];
+    const mag = this.am.acctLive(slot) ?? this.am.prevAmmo[slot] ?? r.mag, res = this.am.prevReserve[slot];
+    if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }
+    const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
+    if (!give) return mag;
+    this.am.acctWrote(slot, to, left);
+    // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
+    // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
+    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand');
+    const end = this._reloadSounds(slot).slice(1);
+    if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
+    this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it
+    this.am.setPrev(slot, to, left);
+    this.am.publish(slot, to, left);   // the ammo block shows the new magazine before the gun's echo
+    this.am.endDrySpell();             // the weapon in hand is loaded: the RELOAD nag counts from one again
+    this.log(`F650: slot ${slot} reloaded by the phone ${mag} → ${to}, reserve ${res} → ${left}`, 'li');
+    return to;
   }
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
