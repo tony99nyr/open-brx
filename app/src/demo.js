@@ -34,7 +34,8 @@ export function startDemo({ engine, log }) {
   if (q.has('night')) engine.night = true;
   const TEAMS = { blue: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, yellow: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 },
     red: { team_id: 'red', name: 'RED', color: 'red', tid: 0 }, purple: { team_id: 'purple', name: 'PURPLE', color: 'purple', tid: 3 } };   // tids as MC's TEAM_DEFS / engine TEAM_KEY (F423: purple, not green)
-  const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue', foeKey = teamKey === 'yellow' ? 'blue' : 'yellow';
+  const teamKey = TEAMS[q.get('team')] ? q.get('team') : 'blue';
+  const foeKey = TEAMS[q.get('foe')] && q.get('foe') !== teamKey ? q.get('foe') : teamKey === 'yellow' ? 'blue' : 'yellow';   // F666: &foe=red (Domination never plays yellow)
   const player = { player_id: 'p-demo', player_num: 7, display: 'REAPER', team_id: teamKey, node_id: null, gun_id: 'GUN-A',
     loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male', ready: false };
   // --- A10: the catalog + this player's slot rights ride along in `assign` (docs/spec/loadout.md §4.1) ---
@@ -526,6 +527,12 @@ export function startDemo({ engine, log }) {
         const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
         if (pr) pr.stations = () => list;
         engine.setStations(list); },
+      // F666: several control points at once (Domination). Each `[id, team, state, value, present, ageMs]`, the same advert as
+      // `point`; `ageMs` (default 0) is how long ago it was heard, so a point out of earshot can be shown.
+      points: rows => { const list = rows.map(([id, team, state, value, present, ageMs = 0]) => ({ role: 'station', kind: 'control', id, team, state, value, seq: 0, game: 0, rssi: -55, raw: -55, threshold: -74, present: !!present, seenAt: Date.now() - ageMs, ageMs }));
+        const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
+        if (pr) pr.stations = () => list;
+        engine.setStations(list); },
       addMate: () => { if (!roster.some(r => r.player_num === 23)) roster.push({ player_id: 'p-4', player_num: 23, display: 'MAVERICK', team_id: teamKey }); },   // QA-05: a teammate the roster can name
     });
     // ---- A56 powerups (docs/spec/powerups.md): a powerup game through the REAL engine. The config carries the stations'
@@ -735,6 +742,9 @@ export function startDemo({ engine, log }) {
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       // F665: the melee-ready icon. `&melee_ms=` sets the cooldown, `&meleepos=b` is the gallery's placement B
       'live-melee':         [[0, meleePos], ...live],
+      // F666: Domination with three phone control points, A B C (ids 11 12 13). The gallery drives `points` frame by frame.
+      'live-dom':           [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
+        const f = typeof document !== 'undefined' && document.getElementById('frame'); if (f && q.get('dompos') === 'b') f.dataset.dompos = 'b'; meleePos(); }], ...live],
       'live-melee-swing':   [[0, meleePos], ...live, [2300, () => ev.swing()]],
       'live-melee-down':    [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die']],
       'live-melee-respawn': [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],

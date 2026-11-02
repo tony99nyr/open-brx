@@ -230,6 +230,7 @@ export class Hud {
       // A56: the powerup hint/held slots exist only in a powerup game; the overshield bar and the shield number are structure
       !!st.powerup, !!(st.powerup && st.powerup.overshield), !!(st.powerup && st.powerup.held && st.powerup.held.active),
       !!(st.phase === 'live' && st.melee),   // F665: the melee icon exists or not; its dim and shimmer are frame data
+      Live.domSig(st),   // F666: the Domination row's tiles exist or not; their marks are patched (Live.patchDomRow)
       Live.empShown(st),   // the EMP perk's chip exists or not (hidden while down or stunned); its countdown is patched
       SV.meterShown(st), hasArmor(st),   // the shield meter exists or not; the armour number and bar exist or not
       // F258: `this.scan.length` used to sit here, so every scan hit that added a device rebuilt the
@@ -291,6 +292,7 @@ export class Hud {
     this._patchScan();   // F258: the picker's rows are written in place, never rebuilt
     this._shotCue(st);
     this._meleeCue(st);
+    Live.patchDomRow(this.hudEl, st);   // F666: owner, contest, bar, freshness and on-point, written in place
     this._skinSwitch(st);
     this._chips(st);
     this._moments(st);
