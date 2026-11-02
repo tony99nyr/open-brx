@@ -620,6 +620,7 @@ def pickup_credited(world: World) -> None:
 RESTART_VOLATILE: dict[str, str] = {
     r"t|readiness\.t": "the clock reading of the snapshot itself",
     r"session_id": "each MC process is a new session",
+    r"notices|notices\.new_phone": "F659: NEW PHONE JOINED is a 10-minute operator line that a restart clears by design; the bare `notices` leaf is the dict left empty by it (anchored, so every other notice stays checked)",
     r"restored_from\..*": "says this process was restored, which is the point",
     r"feed|feed\[.*":"the resume adds its own RESUMED line (checked separately: every old line stays, in order)",
     r"nodes|nodes\[.*": "live links: the nodes reconnect to the new MC on their own backoff",

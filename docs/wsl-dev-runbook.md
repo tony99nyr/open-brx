@@ -66,6 +66,24 @@ URL rather than a QR/mDNS discovery (for example, a bookmarked address); it take
 Mirrored WSL networking (where the Windows host and WSL share one IP) makes the portproxy step a
 no-op, but this box runs NAT mode, so treat the portproxy as required until that changes.
 
+**Windows must not sleep while MC runs** (F660). Linux in WSL does not sleep, but Windows does, and WSL sleeps with it.
+MC starts a Windows-side holder itself: `powershell.exe` calls `SetThreadExecutionState` (system and display, plus away
+mode when Windows accepts it)
+and then waits on a pipe from MC. When MC exits or dies, the pipe closes and the holder exits, so Windows can sleep
+again. The script goes in through `-EncodedCommand`, because env vars do not cross. MC prints
+`keep-awake: a Windows holder (powershell.exe) holds Windows awake while MC runs`, and a `keep-awake: WARNING` line if the
+holder did not hold or stops later. A Windows-native MC (`start.cmd`) makes the same call from its own process instead.
+
+**Keep the phones' Wi-Fi path awake on Windows.** The display hold stops Modern Standby, which can turn off the Wi-Fi
+when the screen goes dark. Two settings can still slow or drop the Wi-Fi on battery, and MC does not change them:
+
+1. Control Panel → Power Options → Change plan settings → Change advanced power settings → Wireless Adapter Settings →
+   Power Saving Mode: set **Maximum Performance** for **On battery** and **Plugged in**.
+2. Device Manager → Network adapters → the Wi-Fi adapter → Power Management: clear **Allow the computer to turn off this
+   device to save power**.
+
+Keep the laptop plugged in for a game: MC prints a `keep-awake: WARNING` line for a Windows-native MC on battery.
+
 The one-MC-per-home lock (`mcp/brx_mcp/mc/README.md` → *Start it*) does not cross the WSL/Windows boundary. Never point a WSL MC at the Windows home with
 `BRX_MCP_HOME=/mnt/c/Users/<you>/.brx-mcp` while a Windows MC runs on it: both would write the same
 `session.json`, `pieces.json` and `favourites.json`.

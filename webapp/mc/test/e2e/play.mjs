@@ -770,6 +770,12 @@ step('real-stale-token', async ({ browser }) => {
     await mc.stop();
     mc = await startRealMC({ token: 'tok-after', port: mc.port, wsPort: mc.wsPort });
     await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n > 0), 15000, 'the TOKEN pill');
+    // F644: before any write, the tab says LOUDLY that its board is frozen; the neutral pill alone let it pass for live
+    const frozen = pg.locator('[data-alert="frame-token-stale"]');
+    await until(() => frozen.isVisible(), 5000, 'the red BOARD FROZEN pill');
+    expect((await frozen.getAttribute('data-sev')) === 'red', 'BOARD FROZEN is RED');
+    expect(/^LAST KNOWN: /.test(await pg.getByTestId('phase-chip').innerText()), 'the phase chip reads LAST KNOWN');
+    ok(`a tab on the old token says its board is frozen   ${await shot(pg, 'real-stale-token-frozen')}`);
     let sockets = 0;
     pg.on('websocket', () => { sockets++; });
     await pg.waitForTimeout(4000);
@@ -788,6 +794,7 @@ step('real-stale-token', async ({ browser }) => {
     await pg.locator('#dbg-tok').fill('tok-after');
     await pg.getByRole('button', { name: 'APPLY' }).click();
     await until(() => pg.locator('[data-alert="frame-token-required-app"]').count().then(n => n === 0), 8000, 'the pill to clear');
+    await until(() => frozen.count().then(n => n === 0), 8000, 'BOARD FROZEN to clear on the new token');
     await pg.getByRole('button', { name: /PLAY/ }).first().click();
     await until(() => pg.locator('text=PICK GAME').count().then(n => n > 0), 8000, 'the PLAY screen');
     await pickMode(pg, 'FREE-FOR-ALL');

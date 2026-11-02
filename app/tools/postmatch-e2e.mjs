@@ -557,9 +557,10 @@ try {
     identical('5', f5, 'koth released result');
     const relRed = f5.REAPER?.body?.possession?.by_team?.red;
     check('5', relRed != null && Math.abs(relRed - red(hOff) / 1000) <= 1, 'the released red hold matches the hill tally before it went offline', { released_s: relRed, hill_ms: red(hOff) });
-    const heldTxt = (id) => c5b.REAPER.teams.find(t => t.name === TEAM_NAME[id])?.held;
+    // F657: on an objective result the team chip's big number is the held time, and the line under it is the kills
+    const heldTxt = (id) => c5b.REAPER.teams.find(t => t.name === TEAM_NAME[id])?.score;
     check('5', mmssToS(heldTxt('red')) != null && Math.abs(mmssToS(heldTxt('red')) - red(hOff) / 1000) <= 1 && heldTxt('blue') === '00:00', 'the HELD times show the hill tally', { red: heldTxt('red'), blue: heldTxt('blue') });
-    const kothTeams = ['red', 'blue'].map(id => ({ id, score: 0, held: id === 'red' ? heldTxt('red') : '00:00', members: KEEP.filter(n => team2[n] === id).map(n => [disp(n), 0, 0, 0]) }));
+    const kothTeams = ['red', 'blue'].map(id => ({ id, score: id === 'red' ? heldTxt('red') : '00:00', held: '0', members: KEEP.filter(n => team2[n] === id).map(n => [disp(n), 0, 0, 0]) }));
     for (const nm of KEEP) {
       check('5', results(nm, wh2).length === 1, `m2-released: ${nm} exactly one result frame`, results(nm, wh2).length);
       expectPhone('5', 'm2-released', nm, c5b[nm], finalPhone({ nm, mode: 'koth', winBy: 'OBJECTIVE', winner: 'red', myTeam: team2[nm], updated: false, own: L0[nm],

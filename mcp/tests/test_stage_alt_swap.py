@@ -351,15 +351,12 @@ def test_a_lever_inside_the_swap_gets_the_swap_window_on_its_deadline():
 
 
 # ---- 3d07b60f: F445 (no ALT before the first pull of a life) and F542 cause 2 (an old-slot round closes the swap) ----
-def test_alt_before_the_first_pull_of_a_life_is_ignored():
+def test_f650_alt_before_the_first_pull_of_a_life_is_a_swap():
     async def go():
         st, _gun, clock = await _live()
         st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        assert st.switching is None, "the gun ignores ALT after $SPAWN until the first trigger pull"
-        assert any("no trigger pull since the spawn" in t for t in _texts(st)), _texts(st)[-4:]
-        _pull(st)
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        assert st.switching is not None, "CONTROL: after a pull ALT swaps"
+        assert st.switching is not None, "F650 (ammo.js `altPressed`): no silent ignore before the first pull"
+        assert not any("no trigger pull since the spawn" in t for t in _texts(st)), _texts(st)[-4:]
     asyncio.run(go())
 
 
@@ -416,40 +413,6 @@ def test_an_old_slot_round_soon_after_alt_proves_nothing():
     asyncio.run(go())
 
 
-def test_a_pull_or_a_round_from_the_last_life_does_not_arm_alt_in_the_next():
-    """Opus review: the gate is per life, not a flag."""
-    async def go():
-        st, _gun, clock = await _live()
-        _pull(st)
-        st._on_rx("$ALCD,31,100,0,182,0,*"); st._on_rx("$ALCD,30,100,0,182,0,*")
-        life = st._life_queued
-        await st.spawn(); await settle(st)
-        for _ in range(3):
-            clock.t += 0.5; st.mgr.pump(); st.poll(); await settle(st)
-        assert st._life_queued == life + 1, "setup: a new life"
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        assert st.switching is None, "a pull or a round from the last life armed ALT"
-    asyncio.run(go())
-
-
-def test_a_pull_before_the_burst_reaches_the_gun_still_leaves_alt_unarmed():
-    """engine.js `_onButton`: the pull is before the life's `$SPAWN`, so the gun still waits for one after it."""
-    async def go():
-        st, _gun, clock = await _live()
-        task = asyncio.ensure_future(st.spawn())
-        await asyncio.sleep(0)                      # the spawn has queued its burst and waits on the write
-        assert st._life_burst_queued(), "setup: the burst is in flight"
-        _pull(st)
-        await task; await settle(st)
-        assert not st._life_burst_queued()
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        assert st.switching is None, "the pull before the burst armed ALT"
-        _pull(st)
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        assert st.switching is not None, "CONTROL: a pull after it does"
-    asyncio.run(go())
-
-
 def test_an_old_slot_round_at_exactly_250_ms_closes_the_swap():
     async def go():
         st, _gun, clock = await _live()
@@ -478,19 +441,71 @@ async def _tony_sequence():
     return st, gun, clock
 
 
-def test_f542_the_lever_after_alt_reloads_the_slot_fired_last_and_the_trigger_stays():
+def test_f650_the_lever_after_alt_is_reloaded_by_the_phone_and_the_gun_s_own_reload_books_on_its_slot():
+    """ammo.js F650: until the weapon in hand fires, the gun's lever goes to the slot that fired last, so the phone writes
+    `$AMMO` for the weapon in hand at its reload time; the gun's own reload of the last-fired slot books there."""
     async def go():
         st, _gun, clock = await _tony_sequence()
+        cap0 = st._ammo_by_slot()[0]; res0 = st._prev_reserve[0]; n = len(_tx(st))
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading and st.reloading["slot"] == 0, "the phone opens its takeover on the weapon in hand"
-        await _tick(st, clock, 1.2)
-        st._on_rx("$ALCD,6,100,1,117,0,*")
-        assert st.active_slot == 0 and st._alt_ptr == 0, (st.active_slot, st._alt_ptr)
-        assert st._prev_ammo[1] == 6
-        assert st.reloading is None and st.reload_outcome["why"] == "last_fired" and st.reload_outcome["slot"] == 1
-        assert st.state()["model"]["fire_first"] is True
-        _pull(st); st._on_rx("$ALCD,28,100,0,182,0,*")
-        assert st.active_slot == 0 and st.state()["model"]["fire_first"] is False, "a shot retires the hint"
+        assert st.reloading and st.reloading["slot"] == 0 and st.reloading["soft"], st.reloading
+        st._on_rx("$ALCD,6,100,1,117,0,*")                               # the gun's own lever refills slot 1
+        assert st.active_slot == 0 and st._prev_ammo[1] == 6 and st.reloading and st.reloading["soft"]
+        assert st.state()["model"]["fire_first"] is False
+        await _tick(st, clock, 3)
+        rows = [f for f in _tx(st)[n:] if f.startswith("$AMMO,0,")]
+        assert rows == [f"$AMMO,0,{cap0},{res0 - (cap0 - 29)},1,*"], rows
+        assert st.reloading is None and st.reload_outcome["why"] == "filled" and st.reload_outcome["slot"] == 0
+        assert st.active_slot == 0 and st.ammo == cap0
+    asyncio.run(go())
+
+
+def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
+    """ammo.js `softReloadNeeded` (Opus review H2): the stage's slot 1 is the Shotgun, a shell-by-shell chain. After ALT onto it
+    with slot 0 the slot that fired last, the lever opens the gun's own takeover, never the phone's one-shot `$AMMO`."""
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        assert st.active_slot == 1
+        n = len(_tx(st))
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        assert st.reloading and not st.reloading["soft"], st.reloading
+        await _tick(st, clock, 3)
+        assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
+    asyncio.run(go())
+
+
+def test_f650_a_death_during_the_phone_s_reload_writes_nothing():
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        n = len(_tx(st))
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        st._on_rx("$HP,0,0,0,*"); await settle(st)
+        assert not st.alive
+        await _tick(st, clock, 3)
+        assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,0,")]
+    asyncio.run(go())
+
+
+def test_f650_an_empty_weapon_in_hand_is_reloaded_and_the_dry_spell_ends():
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st); st._on_rx("$ALCD,0,100,0,182,0,*")
+        _alt(st); await _tick(st, clock, st._switch_window_s() + 0.05)
+        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        assert st.active_slot == 0
+        for _ in range(4):
+            _pull(st)
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        await _tick(st, clock, 3)
+        assert st.ammo == st._ammo_by_slot()[0] and st._dry_pulls == 0
     asyncio.run(go())
 
 
@@ -510,46 +525,6 @@ def test_f542_a_round_on_the_other_slot_still_moves_the_trigger():
         st, _gun, _clock = await _tony_sequence()
         _pull(st); st._on_rx("$ALCD,2,100,1,120,0,*")
         assert st.active_slot == 1, "a shot proves the slot"
-    asyncio.run(go())
-
-
-def test_f542_a_silent_lever_after_alt_keeps_the_new_weapon_and_names_the_slot_fired_last():
-    """The 2026-11-01 morning case: slot 0 fired last and is full, ALT to slot 1, the lever gets no `$ALCD`."""
-    async def go():
-        st, _gun, clock = await _live()
-        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        await _tick(st, clock, st._switch_window_s() + 0.05)
-        assert st.active_slot == 0
-        _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
-        st._on_rx("$ALCD,32,100,0,182,0,*")
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
-        await _tick(st, clock, st._switch_window_s() + 0.05)
-        assert st.active_slot == 1
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading and st.reloading["slot"] == 1
-        for _ in range(40):
-            await _tick(st, clock, 0.25)
-            if st.reloading is None:
-                break
-        assert st.reload_outcome and st.reload_outcome["why"] == "timeout", st.reload_outcome
-        assert st.active_slot == 1, "no rollback"
-        assert st.reload_outcome.get("last_fired") == 0
-        assert st.state()["model"]["fire_first"] is True
-    asyncio.run(go())
-
-
-# Fable review of ae5998c0b (ammo.js `fireFirstShown`, `dryPull`, `onAmmo`). The stage models no phone equip (`am.equipped`
-# is KNOWN_UNMIRRORED), so the equip half of the review lives in the engine tests only.
-def test_f542_review_the_hint_is_hidden_while_down():
-    async def go():
-        st, _gun, clock = await _tony_sequence()
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        await _tick(st, clock, 1.2)
-        st._on_rx("$ALCD,6,100,1,117,0,*")
-        assert st.state()["model"]["fire_first"] is True
-        st._on_rx("$HIR,4,0,19,2,106,0,3,*"); st._on_rx("$HP,0,0,0,*"); await settle(st)
-        assert not st.alive and st.state()["model"]["fire_first"] is False
     asyncio.run(go())
 
 
@@ -575,67 +550,3 @@ def test_f542_review_a_lever_inside_the_swap_back_to_the_last_fired_slot_shows_n
     asyncio.run(go())
 
 
-def test_f542_review_a_chain_s_later_shells_book_on_their_slot_after_the_takeover_ended():
-    async def go():
-        st, _gun, clock = await _tony_sequence()
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        await _tick(st, clock, 0.5)
-        st._on_rx("$ALCD,4,100,1,119,0,*")
-        assert st.reloading is None
-        for m in (5, 6):
-            await _tick(st, clock, 0.42)
-            st._on_rx(f"$ALCD,{m},100,1,{124 - m},0,*")
-        assert st.active_slot == 0 and st._prev_ammo[1] == 6 and st.reloading is None
-    asyncio.run(go())
-
-
-class _SilentTagger(FakeTagger):
-    """A gun that stops answering once `silent` is set: the injected frames are then the only magazine news."""
-    silent = False
-
-    def write(self, frame: str) -> None:
-        if self.silent:
-            return
-        super().write(frame)
-
-
-def test_f542_review_an_empty_weapon_in_hand_the_hint_wins_over_the_reload_nag():
-    async def go():
-        st, gun, clock = await _live(_SilentTagger)
-        gun.silent = True
-        _pull(st); st._on_rx("$ALCD,0,100,0,182,0,*")           # slot 0 empty
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*"); await _tick(st, clock, st._switch_window_s() + 0.05)
-        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*"); await _tick(st, clock, st._switch_window_s() + 0.05)
-        assert st.active_slot == 0
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        await _tick(st, clock, 1.2)
-        st._on_rx("$ALCD,6,100,1,118,0,*")
-        assert st.state()["model"]["fire_first"] is True
-        for _ in range(6):
-            _pull(st); clock.t += 0.25
-        assert not any("dry pull" in t for t in _texts(st)), "no RELOAD nag while the hint shows"
-        clock.t += 2.0
-        for _ in range(6):
-            _pull(st); clock.t += 0.25
-        assert any("dry pull 5 on an empty magazine" in t for t in _texts(st)), _texts(st)[-5:]
-    asyncio.run(go())
-
-
-def test_f542_review_another_slot_s_reload_does_not_end_the_dry_spell():
-    async def go():
-        st, gun, clock = await _live(_SilentTagger)
-        gun.silent = True
-        _pull(st); st._on_rx("$ALCD,0,100,0,182,0,*")
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*"); await _tick(st, clock, st._switch_window_s() + 0.05)
-        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
-        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*"); await _tick(st, clock, st._switch_window_s() + 0.05)
-        for _ in range(4):
-            _pull(st); clock.t += 0.25
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        await _tick(st, clock, 1.2)
-        st._on_rx("$ALCD,6,100,1,118,0,*")
-        clock.t += 3.1
-        _pull(st)
-        assert any("dry pull 5 on an empty magazine" in t for t in _texts(st)), _texts(st)[-5:]
-    asyncio.run(go())

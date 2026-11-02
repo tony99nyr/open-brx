@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay, reconnectCapMs, RECONNECT_GIVE_UP, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133, FRAME_RING } from '../src/brxlink.js';
+import { BrxLink, framesAfter, FRAME_RING_SYNC, flapDelay, reconnectCapMs, RECONNECT_GIVE_UP, directWriter, NUS, RX, PARSER_RESET, GATT133_GAP_MS, GATT133_QUICK_RETRIES, isGatt133, FRAME_RING } from '../src/brxlink.js';
 import { BeaconWatch } from '../src/scanwatch.js';
 import { Presence } from '../src/beacon.js';
 import { useClock } from './_helpers.mjs';
@@ -1172,8 +1172,21 @@ test('F541: recovery releases BeaconWatch before connecting, then Presence resum
 // F542 (bench 2026-11-01): 60 frames rolled past the fault before the share; the ring now keeps FRAME_RING.
 test('F542: the frame ring keeps the last FRAME_RING frames, oldest dropped first', () => {
   const link = new BrxLink({ ble: {}, log: () => {} });
-  assert.ok(FRAME_RING >= 2000);
+  assert.ok(FRAME_RING >= 12000, 'F650: about 40 minutes of play');
   for (let i = 0; i < FRAME_RING + 5; i++) link._note('rx', `$F,${i},*`);
   assert.equal(link.frames.length, FRAME_RING);
   assert.equal(link.frames[0].f, '$F,5,*'); assert.equal(link.frames[FRAME_RING - 1].f, `$F,${FRAME_RING + 4},*`);
+});
+
+// F650 (game 2026-11-01): the background sync sent only the newest 300 frames, about one minute of a ten-minute match.
+test('F650: framesAfter sends every frame since the last upload, the whole ring when that frame rolled out, capped', () => {
+  const ring = Array.from({ length: 10 }, (_, i) => ({ t: 1000 + i, dir: 'rx', f: `$F,${i},*` }));
+  assert.deepEqual(framesAfter(ring, null).map(f => f.f), ring.map(f => f.f), 'no upload yet: every frame');
+  assert.deepEqual(framesAfter(ring, ring[6]).map(f => f.f), ['$F,7,*', '$F,8,*', '$F,9,*'], 'only the frames after the last one sent');
+  assert.deepEqual(framesAfter(ring, ring[9]), [], 'nothing new');
+  assert.deepEqual(framesAfter(ring, { t: 1, dir: 'rx', f: '$OLD,*' }).length, 10, 'rolled out: the whole ring');
+  assert.deepEqual(framesAfter(ring, null, 4).map(f => f.f), ['$F,6,*', '$F,7,*', '$F,8,*', '$F,9,*'], 'capped to the newest');
+  const same = [{ t: 5, dir: 'rx', f: '$A,*' }, { t: 5, dir: 'rx', f: '$B,*' }];
+  assert.deepEqual(framesAfter(same, same[0]).map(f => f.f), ['$B,*'], 'two frames in one millisecond are told apart');
+  assert.ok(FRAME_RING_SYNC * 45 < 1_000_000, 'a full sync fits MC\'s 1 MB per-match log budget');
 });

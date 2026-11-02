@@ -1132,6 +1132,31 @@ def test_a_single_weapon_view_has_no_bars():
     assert "bars" not in weapon_view(Compiler().weapon_catalog()[0])
 
 
+def test_one_snapshot_reads_one_clock_so_the_recap_length_never_drifts():
+    """F664: `snapshot()` stamps `t` from one clock read, and the recap's `since_end_ms` used to come from a second one.
+    The console and the recap-next gate compute the match length as `round((t - since_end_ms - go_live_t) / 1000)`,
+    so a few ms of drift between the reads flipped a length that sat near a half second (0:07 against 0:08, the lander
+    flake). A clock that moves 7 ms on every read must still give `t - since_end_ms == end_t` exactly."""
+    s, net, clock, ps = mk_loadout_session(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    s.start(runway_s=5, force=True)
+    end_t = scorer_of(s).end_t
+    clock["t"] = end_t + 7500
+    s.tick()
+    assert s.phase == "recap"
+    real = s.now_ms
+
+    def drifting():
+        clock["t"] += 7
+        return real()
+    s.now_ms = drifting   # type: ignore[method-assign]
+    snap = s.snapshot()
+    assert snap["recap"] is not None
+    assert snap["t"] - snap["recap"]["since_end_ms"] == end_t, (snap["t"], snap["recap"]["since_end_ms"], end_t)
+
+
 def test_settling_is_advisory_and_never_wedges_the_recap():
     """A8 field 2026-08-30: the recap read FINAL, then the totals moved.
 

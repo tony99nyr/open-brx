@@ -956,6 +956,51 @@ step('recap-possession', async ({ browser, base }) => {
 
 // F596: possession from a grenade is a LOWER BOUND (F92), but the BEST COVERAGE sentence is gone from RECAP: no caveat
 // line under the bars, thin coverage or full.
+// F657 (field 2026-11-01): the recap's `score` is KILLS in every mode, and a KOTH match is won on hill time. The
+// field recap was 14 to 3 in kills beside a winner with fewer kills. The headline must be the hill time per team,
+// with each team's kills as the secondary line, on the live recap AND on an archived match picked from MATCH HISTORY.
+const headlineOf = pg => pg.getByTestId('recap-headline').evaluate(el => ({
+  kind: el.dataset.headline, text: el.textContent.replace(/\s+/g, ' ').trim(),
+  teams: Array.from(el.querySelectorAll('[data-headline-team]')).map(t => t.dataset.headlineTeam) }));
+const killLeaderLosesOk = (h, where) => {
+  expect(h.kind === 'held', `${where}: the headline is the held time, not kills (saw ${JSON.stringify(h)})`);
+  expect(/HILL TIME/.test(h.text), `${where}: the headline is labelled HILL TIME (saw ${JSON.stringify(h.text)})`);
+  expect(/3:34\s*KILLS 3\b.*2:11\s*KILLS 14\b/.test(h.text), `${where}: RED 3:34 with 3 kills leads BLUE 2:11 with 14 kills (saw ${JSON.stringify(h.text)})`);
+  expect(h.teams[0] === 'red', `${where}: the winner on hill time is listed first (saw ${JSON.stringify(h.teams)})`);
+};
+step('recap-kill-leader-loses', async ({ browser, base }) => {
+  await resetTdm(base);
+  const rc = recapFixture(['--coverage', 'full', '--kill-leader-loses']);
+  expect(rc.winner?.team_id === 'red' && rc.score?.red === 3 && rc.score?.blue === 14 && rc.win_by === 'objective',
+    `the fixture MC's own scorer produced: red wins on hill time with fewer kills (${JSON.stringify({ w: rc.winner, s: rc.score, by: rc.win_by })})`);
+  const pg = await newPage(browser, base);
+  await patchSnapshots(pg, st => { st.recap = rc; });
+  await go(pg, 'build');
+  await pickKoth(pg);
+  await go(pg, 'recap');
+  await until(() => pg.getByTestId('recap-headline').count().then(n => n > 0), 10000, 'the RECAP headline to render');
+  killLeaderLosesOk(await headlineOf(pg), 'live recap');
+  const main = await pg.locator('main').textContent();
+  expect(/RED(\s+TEAM)?\s+WINS/.test(main), `RED is named the winner (saw ${JSON.stringify(main.slice(0, 80))})`);
+  ok(`the live recap headlines hill time, kills second  ${await shot(pg, '19-kill-leader-loses')}`);
+  await closePage(pg);
+
+  // The same match as an ARCHIVED one: MATCH HISTORY ▸ its chip. Its recap carries its own `win_by`; the console's draft
+  // config is TDM here, so a screen that read the draft would fall back to the kill score.
+  const pg2 = await newPage(browser, base);
+  const ended = Date.now() - 600_000;
+  await pg2.route('**/api/matches', r => r.fulfill({ contentType: 'application/json',
+    body: JSON.stringify([{ match_id: 'm-archived-f657', mode: 'koth', go_live_t: ended - 600_000, ended_t: ended, recap: rc }]) }));
+  await go(pg2, 'recap');
+  const chip = pg2.getByRole('button', { name: /KOTH/ });
+  await until(() => chip.count().then(n => n > 0), 10000, 'the archived KOTH chip under MATCH HISTORY');
+  await chip.first().click();
+  await until(() => pg2.getByTestId('recap-archived').count().then(n => n > 0), 10000, 'the archived recap to open');
+  killLeaderLosesOk(await headlineOf(pg2), 'archived recap');
+  ok(`an archived KOTH match headlines hill time too  ${await shot(pg2, '20-kill-leader-loses-archived')}`);
+  await closePage(pg2);
+});
+
 step('recap-coverage-floor', async ({ browser, base }) => {
   await resetTdm(base);
   for (const coverage of ['thin', 'full']) {

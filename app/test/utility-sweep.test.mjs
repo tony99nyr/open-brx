@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startUtilitySweep, resolveTypedMc, UTILITY_SWEEP_FIRST_MS, UTILITY_SWEEP_EVERY_MS } from '../src/transport/utility-join.js';
-import { MC_WS_PORT } from '../src/transport/discover.js';
+import { MC_WS_PORT, PROBE_OPEN_GRACE_MS } from '../src/transport/discover.js';
 
 // The utility sweep probes DEFAULT_SUBNETS (discover.js), so the fake MC sits on one of them; the host is made up and inside SMALL.hosts.
 const MC = `ws://192.168.0.42:${MC_WS_PORT}/ws`;
@@ -69,6 +69,7 @@ test('no mDNS result: the utility path sweeps after ~4 s and joins the hit with 
   assert.equal(lan.dialled.length, 0, 'no sweep before the first delay: mDNS gets its chance');
   await timers.advance(1);
   assert.ok(lan.dialled.length > 0, 'the sweep ran');
+  await timers.advance(PROBE_OPEN_GRACE_MS);   // F659: a probe hit counts once the socket has stayed open this long
   assert.deepEqual(state.connects, [{ url: MC, opts: { trusted: false } }], 'joined the found url, untrusted, like an mDNS hit');
   assert.ok(state.logs.some(l => l.startsWith('sweeping for Mission Control on 192.168.0.x')), 'logs the plan the way app.js does');
   assert.ok(state.logs.some(l => l.includes(`CONNECTING ${MC}`)));
@@ -149,11 +150,11 @@ test('typed ws join code still parses into url + pub + secret', () => {
   assert.equal(link.secret, 'k');
   assert.equal(link.note, null);
   assert.equal(resolveTypedMc('   '), null);
-  assert.equal(resolveTypedMc('192.0.2.55').url, '192.0.2.55', 'a bare address passes through as before');
+  assert.equal(resolveTypedMc('192.0.2.55').url, `ws://192.0.2.55:${MC_WS_PORT}/ws`, 'F659: a bare address gets the node port and path');
 });
 
-test('a typed https address (the tunnel) passes through unchanged', () => {
+test('a typed https address (the tunnel) becomes its wss node socket', () => {
   const r = resolveTypedMc('https://mc.example.trycloudflare.com/');
-  assert.equal(r.url, 'https://mc.example.trycloudflare.com/');
+  assert.equal(r.url, 'wss://mc.example.trycloudflare.com/ws');
   assert.equal(r.note, null);
 });

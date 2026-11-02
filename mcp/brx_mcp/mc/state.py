@@ -28,6 +28,7 @@ from .snapshot_codec import SnapshotCodec, is_aborted_row
 from .perks import canonical_perk_id
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
+from . import pieces as _pieces
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
@@ -441,6 +442,9 @@ def _check_tag(raw: str) -> str:
 
 
 
+NEW_PHONE_NOTICE_MS = 10 * 60 * 1000   # F659: how long the host's NEW PHONE JOINED line stays up
+
+
 class Session:
     def _m(self) -> Match:
         """Read current match fields; an absent match has fresh empty fields."""
@@ -591,6 +595,7 @@ class Session:
                                             _migrate_green_team_rows, _migrate_green_player_row)
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
+        self._new_phone: tuple[int, str] | None = None   # F659: (wall ms, the host's line) of the latest first-LAN-hello phone
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
         # F411 (GAMES = PLAY picks, BUILD creates): `game_pick` always exists once `__init__` has run —
         # `pieces` is None until `__main__`/`api.py` attaches a real store, so the fresh pick uses the
@@ -1227,7 +1232,8 @@ class Session:
         `default_policy` — so the repair belongs there and this is only the fallback view for a config
         that reached `self.config` past all of them (a fixture, a direct write). Round-2 review
         2026-09-12."""
-        return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
+        # F653: a weapon hidden since this policy was saved drops out (or remaps by type) in the view only.
+        return _pieces.drop_retired_policy(_policy.effective(self.config.get("loadout_policy"), self.config["mode"]))
 
     def _health_preset(self, health: object = None) -> str:
         """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:
@@ -1447,6 +1453,12 @@ class Session:
                 shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
                 out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} "
                                     f"WITH NO ROUTE BACK ({shown}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE")
+        # F659: a player phone this MC home has never heard from joined over the LAN. Trust stays as it was (the LAN
+        # hello is never refused for lacking the join secret), so the host gets to SEE a stranger.
+        if self._new_phone is not None:
+            at, line = self._new_phone
+            if 0 <= self.now_ms() - at < NEW_PHONE_NOTICE_MS:
+                out["new_phone"] = line
         return out
 
     def game_brief(self) -> dict:
@@ -1974,11 +1986,20 @@ class Session:
             raise ValueError("loadout.weapons holds at most a primary and a secondary")
         known = {w["weapon_id"] for w in self.compiler.weapon_catalog()}
         weapons: list[WeaponSel] = []
-        for w in lo["weapons"]:
+        for i, w in enumerate(lo["weapons"]):
             if not isinstance(w, dict) or not isinstance(w.get("weapon_id"), str) or not w["weapon_id"]:
                 raise ValueError("each loadout weapon needs a weapon_id")
             if known and w["weapon_id"] not in known:
-                raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
+                if self.compiler.catalog.row(w["weapon_id"]) is None:
+                    raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
+                # Issue 12 (game 2026-11-01): a weapon hidden since this kit was saved (the SMG) never blocks
+                # it. A secondary drops; a primary becomes the ruleset's first primary. No warning (2026-09-28).
+                if i:
+                    continue
+                others = {str(x.get("weapon_id")) for x in lo["weapons"][1:] if isinstance(x, dict)}
+                pool = [wid for wid in self.loadout_pool()["primary"] if wid not in others]
+                weapons.append({"weapon_id": pool[0] if pool else "assault_rifle"})
+                continue
             weapons.append({"weapon_id": w["weapon_id"]})
         out: Loadout = {"weapons": weapons}
         perk = lo.get("perk")
@@ -3826,6 +3847,12 @@ class Session:
         # A29: `net.py _fire_node` forwards `app_ver` but not `platform`, and this callback is the one
         # place the WHOLE hello body reaches the session -- capture both here, before any early return,
         # so a utility phone and an unbound player node are covered too.
+        if hello.get("new_phone") is True and hello.get("node_id") and hello.get("node_type") != "utility":
+            dev = hello.get("device")
+            name = dev.strip()[:64] if isinstance(dev, str) and dev.strip() else str(hello["node_id"])
+            self._new_phone = (self.now_ms(), f"NEW PHONE JOINED: {name}")
+            logging.getLogger("brx.mc").info("%s (%s)", self._new_phone[1], hello["node_id"])
+            self._changed()
         if hello.get("node_id"):
             self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"), hello.get("device"))
             self._sync_hello(str(hello["node_id"]), hello.get("pending"))
@@ -5565,7 +5592,18 @@ class Session:
             return []
         totals = recap.get("score") or {}
         names = {t["team_id"]: str(t.get("name") or t["team_id"]) for t in self.teams}
-        return [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
+        # F657 (field 2026-11-01): `score` is kills in every mode, but an objective match is won on held time. Each team
+        # then also carries the number that decided it, `held_s`, so the result screen and the phone's history headline
+        # it: a 14-3 kill line beside a winner on 424 s of hill read as the wrong mode.
+        poss = recap.get("possession")
+        held = poss["by_team"] if poss is not None and self._recap_win_by(recap) == "objective" else None
+        return [{"team_id": tid, "name": names.get(tid, tid), "score": sc,
+                 **({"held_s": held.get(tid, 0)} if held is not None else {})} for tid, sc in totals.items()]
+
+    def _recap_win_by(self, recap: RecapView) -> str | None:
+        """The rule the scorer ran (`recap.win_by`); the draft config only for a recap that predates that field. An adopted
+        match has no config of its own, so the draft can name another rule (bench 2026-11-01)."""
+        return recap.get("win_by") or (self.config.get("scoring") or {}).get("win_by")
 
     def _result_body(self, recap: RecapView, p: Player, *, match_id: str | None = None,
                      roster: dict[str, Player] | None = None) -> dict:
@@ -5587,7 +5625,7 @@ class Session:
             "outcome": self._outcome_for(winner, p, roster),
             "winner": winner,
             "mode": self.config.get("mode"),
-            "win_by": (self.config.get("scoring") or {}).get("win_by"),
+            "win_by": self._recap_win_by(recap),
             "team_scores": self._result_team_scores(recap),
             "rows": rows,
             "my": next((r for r in rows if r["player_id"] == p["player_id"]), None),
@@ -7910,7 +7948,7 @@ class Session:
             self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
 
-    def recap(self) -> RecapView | None:
+    def recap(self, now: int | None = None) -> RecapView | None:
         sc = self._m().scorer
         if sc:
             self._mark_flushed_live()
@@ -7920,7 +7958,7 @@ class Session:
             r = self._scorer_recap(sc, stations)             # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
-            r.update(self.settling())     # advisory only — never gates, see settling()
+            r.update(self.settling(now))     # advisory only — never gates, see settling()
             if self.phase == "recap":
                 r["sync"] = self._recap_sync(r["winner"], r.get("stations") or [])
                 if r["sync"]["pending"]:
@@ -7974,7 +8012,7 @@ class Session:
             if fresh and nv.get("pending") == 0 and not self._sync_owes(p.get("node_id") or ""):
                 st.flushed = True
 
-    def settling(self) -> dict:
+    def settling(self, now: int | None = None) -> dict:
         """Which bound nodes have NOT been heard from since the whistle (A8, field 2026-08-30).
 
         Tony: *"it kinda was showing the final results as if it was final and then it finally popped up
@@ -7990,7 +8028,10 @@ class Session:
         sc = self._m().scorer
         if not sc or sc.end_t is None:
             return {"settling": False, "awaiting": [], "since_end_ms": None}
-        end_t, now = sc.end_t, self.now_ms()
+        # F664: a snapshot passes its own `now`, so `t - since_end_ms` is exactly `end_t`. A second clock read here
+        # drifted a few ms per snapshot, and a length near a half second rounded differently on each one.
+        end_t = sc.end_t
+        now = self.now_ms() if now is None else now
         if now < end_t:
             return {"settling": False, "awaiting": [], "since_end_ms": None}
         awaiting = [p["player_id"] for p in self.players.values()
@@ -8259,6 +8300,11 @@ class Session:
         """The served config is complete even though request-side GameConfig permits omissions."""
         if "loadout_policy" not in self.config:
             raise RuntimeError("served config is missing its normalized loadout policy")
+        # F653 review: the console reads its rules line and editor pool from this policy, so a hidden id in it
+        # is served as the remap the server enforces (only then: an unaffected config is served as stored).
+        pol = _pieces.drop_retired_policy(self.config["loadout_policy"])
+        if pol is not self.config["loadout_policy"]:
+            return cast(ConfigView, {**self.config, "loadout_policy": pol})
         return cast(ConfigView, self.config)
 
     def _snapshot_kit(self, kitted: int) -> KitView:
@@ -8363,7 +8409,7 @@ class Session:
                 # `config_id?: string` and "no announcement" is the absence, not an id.
                 "game": self._snapshot_game(),
                 "sync": self.sync_summary(),      # the pre-arm "is the field in sync" summary
-                "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
+                "start": start, "live": live, "recap": self.recap(now) if self.phase in ("live", "recap") else None,
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self._snapshot_feed()}
         if self.last_match is not None:

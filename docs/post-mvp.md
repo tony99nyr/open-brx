@@ -12,6 +12,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 
 ## 1. Modes, extensibility and spectating
 
+- **F655 🟡** Juggernaut mode (Tony's idea, game 2026-11-01). One player is the Juggernaut, and the role moves mid-match. MC is not live in play, so the phones must pass the role without MC. brx2 adds a feasibility note to the F651 proposal. `decision`.
+
 - **E2 🟠** one `register_mode(name, engine_cls, meta, preset, scorer)` replacing the four hardcoded touch points. *(2026-09-11 late: `modes/registry.py` exists and `driver.build_engine` dispatches through it — E1's seed; the other three touch points are still hardcoded.)*
   (`modes/driver.py build_engine`, `mc/state.py MODES`, `mc/presentation.py MODE_PRESET`, `mc/scoring.py`). `build`.
 
@@ -447,6 +449,8 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
 - **F431 🟢 `station_action`'S PROVISIONAL SHAPE.** Moved 2026-09-27 (doc-rot pass) out of `hardware/m5sticks3/README.md`'s old *Open questions* section. The `station_action` wire (RESET, CLAIM's "taken" report) is proposed to brx5, not a signed-off contract (`build_station_action_body` in `station_ui.h`, `mcBuildStationActionTaken` in `mc_link_glue.h`), though MC has accepted it since A56 (`f3fe3cf6`) with no trouble; A56 is still PROPOSED in `spec/contracts.md`. **→ 2026-10-03, moved from FOLLOWUPS.md:** part 1 (the operator screen's legibility) closed: `paintOperator()` no longer exists, and Tony walked every Stick screen (F333). This part does not block MVP. Fold it into an A56 sign-off. `build`.
 
 ## 3. Weapons, perks and balance
+
+- **F656 🟡** Mark perk (Tony's idea, game 2026-11-01). A hit makes the victim's headset flash for a while, so the shooter's team can see where the victim is. `decision`.
 
 - **F412 🟡 A MELEE PRESET: SWITCH MELEE OFF, OR CHANGE ITS DAMAGE.** Tony 2026-09-26: "We could have a toggle which disables melee or adjusts damage but thats postmvp. Could create preset and select it in play." For MVP, melee is always on in every game: a gyro swing only (slot 4, `$BMAP` button 8), never on the trigger, never a weapon pick (`compile.py` always resolves the hidden `melee` row into slot 4). Post-launch: a BUILD preset piece that turns melee off or sets its damage, picked in PLAY like any other preset. `build`.
 

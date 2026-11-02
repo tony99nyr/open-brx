@@ -62,3 +62,17 @@ def test_a_busy_node_port_exits_2_before_the_banner():
     assert r.returncode == 2, (r.returncode, r.stdout[-400:], r.stderr[-400:])
     assert f"could not bind 127.0.0.1:{port}" in r.stderr and "--ws-port" in r.stderr, r.stderr[-400:]
     assert "Mission Control  http" not in r.stdout, "no banner from an MC no phone can reach"
+
+
+def test_a_node_port_that_is_the_console_port_exits_2():
+    """F659: phones rewrite 8765 to 8766, so a node socket on 8765 (or on --port) is a port no phone dials."""
+    from brx_mcp.mc.__main__ import main
+    for argv in (["--ws-port", "8765"], ["--port", "9100", "--ws-port", "9100"]):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            try:
+                main(argv + ["--fake-net", "--ephemeral"])
+                raise AssertionError(f"started with {argv}")
+            except SystemExit as e:
+                assert e.code == 2, (argv, e.code)
+        assert "--ws-port" in err.getvalue(), err.getvalue()

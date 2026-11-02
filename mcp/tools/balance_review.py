@@ -133,6 +133,8 @@ PULL_MS = B.DEFAULT_PULL_MS   # mean trigger-pull gap (lognormal, PULL_SIGMA): A
 REACTION_MEAN_MS = 250.0      # 1v1: each side opens after a normal reaction delay
 REACTION_SD_MS = 80.0
 RETARGET_MS = 400.0           # after a kill, a trigger release before the next target
+# Keep RETARGET_MS under B.RECOIL_SETTLE_MIN_MS: the kill path treats the retarget as a release, so a longer
+# retarget would settle every degraded gun after a kill and move verdicts.
 BURST_LEN = (3, 5)            # a controlled burst on an automatic weapon: 3 to 5 rounds ...
 BURST_PAUSE_MS = (150.0, 300.0)   # ... then a 150 to 300 ms pause
 FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is a draw, never ranked by the pool left (F603)
@@ -253,6 +255,7 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
         "bolt": "a 1-round single-shot magazine: lever = one pull gap, then reload_ms, then one pull gap",
         "reaction_ms": [REACTION_MEAN_MS, REACTION_SD_MS], "retarget_ms": RETARGET_MS,
         "controlled_burst_rounds": list(BURST_LEN), "burst_pause_ms": list(BURST_PAUSE_MS),
+        "release_reset_ms": B.RELEASE_RESET_MS,
         "fight_cap_ms": FIGHT_CAP_MS, "band_fit": {k: list(v) for k, v in B.BAND_FIT.items()},
         "pickup_utility": {"stock_kill_floor": PICKUP_STOCK_KILL_FLOOR,
                             "median_ttk_bar_ms": PICKUP_TTK_BAR_MS, "stock_cap_ms": PICKUP_STOCK_CAP_MS,
@@ -536,13 +539,14 @@ def make_kit(world: World, name: str, primary: str, secondary: str | None = None
 # --------------------------------------------------------------------------- #
 
 class _GunState:
-    __slots__ = ("ammo", "reserve", "count", "state", "blen", "charged", "heat", "heat_t", "locked_until",
+    __slots__ = ("ammo", "reserve", "count", "state", "blen", "leak", "held", "charged", "heat", "heat_t",
+                 "locked_until",
                  "vent_until", "ready_at", "reload_amount", "venting", "bolt_until", "pending_pickup",
                  "cooling_started", "vent_heat_after")
 
     def __init__(self, g: Gun, charged=True):
         self.ammo, self.reserve = g.mag, g.reserve
-        self.count, self.state, self.blen = 0, "crisp", 0
+        self.count, self.state, self.blen, self.leak, self.held = 0, "crisp", 0, 0, None
         self.charged = charged
         self.heat, self.heat_t, self.locked_until, self.vent_until = 0.0, 0.0, 0.0, 0.0
         self.ready_at = 0.0
@@ -876,7 +880,8 @@ class Fighter:
 
     def _hit_chance(self, idx):
         g, s = self.kit.guns[idx], self.gs[idx]
-        acc = B._accuracy_pct(g.profile, s.state) / 100.0 if g.profile and g.mode == "auto" else 1.0
+        acc = B._accuracy_pct(g.profile, s.held if s.leak else s.state) / 100.0 \
+            if g.profile and g.mode == "auto" else 1.0
         return min(1.0, acc * self.aim * (B.BAND_FIT[g.band][self.dist] if self.fit else 1.0))
 
     def _finish_ms(self, idx, target, t):
@@ -1018,13 +1023,13 @@ class Fighter:
                 return None
             got = min(g.mag - s.ammo, s.reserve)
             s.reload_amount = got
-            s.count, s.state, s.blen = 0, "crisp", 0
+            s.count, s.state, s.blen, s.leak = 0, "crisp", 0, 0
             s.ready_at = t + (g.reload_ms * got if g.chain else g.reload_ms)
             self.next_t = t + g.reload_ms if g.chain and self.persistent_reload else s.ready_at
             return None
         acc = 1.0
         if g.profile is not None and g.mode == "auto":
-            acc = B._accuracy_pct(g.profile, s.state) / 100.0
+            acc = B._accuracy_pct(g.profile, s.held if s.leak else s.state) / 100.0
         fit = B.BAND_FIT[g.band][self.dist] if self.fit else 1.0
         hit_p = min(1.0, acc * self.aim * fit)
         if t < self.blind_until:
@@ -1061,18 +1066,18 @@ class Fighter:
             self.next_t = t + (g.burst_gap if s.count % 3 == 0 else g.fire_ms)
         else:  # auto
             s.state, s.count = B._recoil_step(g.profile, s.state, s.count)
+            if s.leak:
+                s.leak -= 1   # F663: once the leaked rounds are out, the reset write has landed on the gun
             self.next_t = t + g.fire_ms
             if self.kit.style == "burst" and g.profile is not None:
                 if s.blen == 0:
                     s.blen = self.rng.randint(*BURST_LEN)
                 s.blen -= 1
                 if s.blen == 0:
-                    if s.state == "crisp":
-                        s.count = 0
                     pause = self.rng.uniform(*BURST_PAUSE_MS)
                     self.next_t += pause
-                    if s.state != "crisp" and pause >= g.profile.settle_ms:
-                        s.state, s.count = "crisp", 0
+                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, pause,
+                                                                             g.fire_ms)
         self._add_heat(g, s, t, False)
         if self.kit.plan == "haze" and g.sir_fn == 23:
             self._swap(0, t)
@@ -1090,7 +1095,11 @@ class Fighter:
         """The plan step after a round. `alpha`: that round was the opener's big round."""
         if killed:
             s = self.gs[self.active]
-            if s.state == "crisp":
+            g = self.kit.guns[self.active]
+            if g.profile is not None and g.mode == "auto":
+                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, RETARGET_MS,
+                                                                         g.fire_ms)
+            elif s.state == "crisp":
                 s.count = 0
             s.blen = 0
             self.next_t = max(self.next_t, t + RETARGET_MS)

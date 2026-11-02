@@ -1161,3 +1161,73 @@ def test_race_at_the_cap_is_a_draw_whatever_health_is_left():
             yield (t, 0.0, dmg)
             t += 100.0
     assert B._race(random.Random(1), misses(10), misses(10), 200, 100, 1000.0) is None
+
+
+# --------------------------------------------------------------------------- #
+# F663 release reset (brx4's engine flag `recoil.reset_on_release`), modelled for F662
+# --------------------------------------------------------------------------- #
+
+def _ar_row_with_reset(flag):
+    row = copy.deepcopy(CAT._row("assault_rifle"))
+    row["recoil"] = dict(row["recoil"], reset_on_release=flag)
+    return row
+
+
+def test_recoil_profile_reads_the_release_reset_flag_and_ships_it_off():
+    assert B.recoil_profile(_ar_row_with_reset(True)).reset_on_release is True
+    assert B.recoil_profile(_ar_row_with_reset(False)).reset_on_release is False
+    for wid in ("assault_rifle", "suppressor", "energy_rifle", "toxin_rifle"):
+        assert B.recoil_profile(CAT._row(wid)).reset_on_release is False, wid
+
+
+def test_a_release_resets_at_160_ms_and_a_shorter_pause_leaks_rounds():
+    on = B.recoil_profile(_ar_row_with_reset(True))
+    off = B.recoil_profile(_ar_row_with_reset(False))
+    # (state, burst, leak, held): without the flag, a heavy gun needs the 600 ms settle; 200 ms keeps it heavy.
+    assert B.release_after_pause(off, "heavy", 9, 200.0, 100.0) == ("heavy", 9, 0, None)
+    assert B.release_after_pause(off, "heavy", 9, 600.0, 100.0) == ("crisp", 0, 0, None)
+    # A crisp release resets the count either way (the shipped rule).
+    assert B.release_after_pause(off, "crisp", 4, 150.0, 100.0) == ("crisp", 0, 0, None)
+    # With the flag, 160 ms or more is crisp at once.
+    assert B.release_after_pause(on, "heavy", 9, 160.0, 100.0) == ("crisp", 0, 0, None)
+    # A shorter pause: the phone zeroes the count at the release edge (engine.js `_recoilRelease`), but the
+    # rounds fired before the write lands still leave the gun at the old rung.
+    assert B.release_after_pause(on, "heavy", 9, 100.0, 100.0) == ("crisp", 0, 1, "heavy")
+    assert B.release_after_pause(on, "heavy", 9, 20.0, 100.0) == ("crisp", 0, 2, "heavy")
+    assert B.release_after_pause(None, "crisp", 0, 50.0, 100.0) == ("crisp", 0, 0, None)
+
+
+def test_ar_bursts_come_back_crisp_after_a_release_only_with_the_flag():
+    def first_round_of_burst_two(flag):
+        prof = B.recoil_profile(_ar_row_with_reset(flag))
+        rng = random.Random(1)
+        gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
+                          pause_min_ms=200.0, pause_max_ms=200.0, rng=rng)
+        shots = [next(gen) for _ in range(10)]
+        assert shots[8][1] == prof.heavy / 100.0   # the 9th held round is heavy
+        return shots[9][1]
+    assert first_round_of_burst_two(True) == 1.0
+    assert first_round_of_burst_two(False) == B.recoil_profile(_ar_row_with_reset(False)).heavy / 100.0
+
+
+def test_a_short_rest_leaks_the_old_rung_then_the_reset_lands():
+    prof = B.recoil_profile(_ar_row_with_reset(True))
+    rng = random.Random(1)
+    gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
+                      pause_min_ms=100.0, pause_max_ms=100.0, rng=rng)
+    shots = [next(gen) for _ in range(11)]
+    assert shots[9][1] == prof.heavy / 100.0   # fired 100 ms after release: the reset has not landed
+    assert shots[10][1] == 1.0                 # fired 200 ms after release: back at the ceiling
+
+
+def test_a_leaked_round_counts_as_round_one_of_the_new_pull():
+    """brx4, 2026-11-02: the round fired before the reset lands belongs to the NEW pull, so the next degrade
+    comes on the new pull's own round count, not one round late."""
+    prof = B.recoil_profile(_ar_row_with_reset(True))
+    rng = random.Random(1)
+    gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
+                      pause_min_ms=100.0, pause_max_ms=100.0, rng=rng)
+    second = [next(gen) for _ in range(18)][9:]
+    assert second[0][1] == prof.heavy / 100.0          # the leaked round fires at the old rung
+    assert all(x[1] == 1.0 for x in second[1:prof.after_shots])
+    assert second[prof.after_shots][1] == prof.degraded / 100.0   # degrades on the new pull's own count

@@ -23,9 +23,10 @@ Without the token, `/api/state` and `/api/armory` answer with every headset PIN 
 blanked to `""` and no armory `notes` (OP2), unless MC runs with `--no-auth`. The console sends its token on GETs too.
 
 ## Realtime feed — `GET /ui-ws` (WebSocket)
-Any other WebSocket path on the console port closes with **4404** and names the node URL (`api.py` `wrong_port_ws`): a phone dialled the wrong port.
+Any other WebSocket path on the console port is refused before accept (HTTP 403, close code 4404 in the test client; the node URL goes to the log; F659): a phone dialled the wrong port.
 Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every state change
 (coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events. A feed row carries an `id` (a monotonic counter that survives a snapshot restore; a row restored from an old snapshot has none). **F454:** `{ "kind": "feed_edit", "entry": <FeedEntry> }` replaces the row with the same `id` in place (the POWERUP TOOK line when a station's report corrects the taker, and, F475, a scorer kill row whose time a clock-step rescore moved; those rows carry a `fact` key, `node:seq:n`); a client ignores one whose id it does not hold, and a row without an id can never be edited. A console tab opened before this message existed ignores it; a reload fixes that (MC serves the console). A console also merges every snapshot's feed rows BY ID into its feed, so an edit it missed is healed.
+**F644:** `{ "kind": "heartbeat" }` goes out when MC has sent nothing else for 5 s. A console that has had one and then hears nothing for 15 s gives the socket up, shows MC OFFLINE and redials (`client.ts` `LINK_SILENT_MS`); an older MC sends none, so its consoles are never watched. Each socket has its own outbox (`api.py` `_UiClient`): a slow socket gets only the newest snapshot, and a socket that cannot take one send for 10 s is dropped and its connection reset, so one tab that stops reading never holds up another.
 ```jsonc
 State {
   game_pick: GamePick,                          // F411: what PLAY has picked — one piece id per kind + the MATCH SETTINGS strip
@@ -235,7 +236,7 @@ State {
                                               // resume or adopt, and never retired. The match most phones report wins.
                                               // The MATCH tab shows it with RESUME MATCH (only when `can_resume`) and END
                                               // THEIR MATCH. Nothing happens until one is pressed
-  notices: { mc_verify?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
+  notices: { mc_verify?: string, new_phone?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
                                               // and the phones cannot disagree. `mc_verify` is present ONLY when this
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
                                               // survival mode) AND `config.coverage != "full"` AND at least one
@@ -245,7 +246,9 @@ State {
                                               // rostered phone is off-grid (a Wi-Fi-only match), the unnamed
                                               // `WIN IS CONFIRMED AT MC: NO PHONE CAN REACH MC AWAY FROM THE
                                               // WI-FI, TELL PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
-                                              // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
+                                              // ARMED. `new_phone` (F659) = `NEW PHONE JOINED: <device or node id>`, present for 10 min after a
+                                              // PLAYER phone this MC home never heard from said its first LAN hello (LAN trust is unchanged).
+                                              // `{}` (no keys) = nothing to say. The PLAYER's half of the same
                                               // decision rides `assign.game.mc_verify` (contracts §3), one line, no
                                               // names. F309: a phone is off-grid unless it reports `transport: "cellular"`
                                               // AND joined through the tunnel or (F595) sits on the LAN with
@@ -627,7 +630,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   In one process, MC sends `victory` at release only when both clocks place it within 30 seconds of the whistle (A81).
   MC pushes `result` to every
   BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
-  RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),
+  RECIPIENT from `winner`, plus `mode`, `win_by` (the recap's own, the rule the scorer ran), `team_scores` (`[]` in FFA: `rows` is the leaderboard;
+  `{team_id, name, score}`, where `score` is kills, plus `held_s` on an objective match with possession, the number that decided it, F657),
   EVERY player's `rows`, the recipient's own `my`, `honors` (`{medal, key, player_id, display, stat}`, `key` the AWARDS row (A63) —
   `display` is the PLAYER's name, so the phone needs no roster), `possession?`, `after_end?` and
   `provisional`. After release, it is re-sent whenever the recap moves (de-duplicated on the body minus `t`) and the

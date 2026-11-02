@@ -226,17 +226,18 @@ def test_low_respawn_and_slot_rule_errors_are_hand_written_not_raw_uppercased():
 
 
 def test_high1_a_weapon_since_hidden_keeps_the_piece_read_only_with_a_reason():
-    """HIGH 1's own probe: a PRIMARY preset naming a weapon that is hidden today (force_rifle) is kept,
+    """HIGH 1's own probe: a PRIMARY preset naming a weapon that is hidden today with no visible weapon of its type (laser_cannon; issue 12
+    remaps any other hidden id) is kept,
     not dropped, with a reason naming the weapon by its catalogue name -- not the raw snake_case id."""
     _, path = _store()
     path.write_text(json.dumps({"v": 1, "pieces": [
         {"piece_id": "z1", "kind": "primary", "name": "Old Loadout",
-         "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}},
+         "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "laser_cannon"}},
     ]}))
     st2 = PieceStore(path)
     row = next(r for r in st2.list() if r["name"] == "Old Loadout")
-    assert row["invalid"] == "NAMES FORCE RIFLE, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK"
-    assert row["value"]["fixed_id"] == "force_rifle"   # kept verbatim, not repaired
+    assert row["invalid"] == "NAMES LASER CANNON, WHICH IS NO LONGER OFFERED: PICK A DIFFERENT WEAPON OR PERK"
+    assert row["value"]["fixed_id"] == "laser_cannon"   # kept verbatim, not repaired
 
 
 def test_old_shape_type_rule_expands_to_plain_ids_on_load():
@@ -281,7 +282,7 @@ def _pclient_with_pieces_file(rows):
 def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
-            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "laser_cannon"}}
     c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     # named directly by a request -> 400, treated like a vanished id, never silently accepted
     r = c.post("/api/play/pick", json={"pieces": {"primary": "ghost1"}})
@@ -296,19 +297,19 @@ def test_high1_invalid_piece_is_never_pickable_and_survives_a_save_untouched():
                                         "value": {"max_hp": 45, "max_armor": 0, "max_shield": 0}}).json()
     c.put(f"/api/pieces/{other['piece_id']}", json={"name": "Another Mk2"})
     kept = next(p for p in c.get("/api/pieces").json() if p["piece_id"] == "ghost1")
-    assert kept.get("invalid") and kept["value"]["fixed_id"] == "force_rifle"
+    assert kept.get("invalid") and kept["value"]["fixed_id"] == "laser_cannon"
     # Low (brx1 review): re-open the SAME file a second time -- proves the invalid row survives a real
     # load + save round trip (the first PieceStore's `_save()` already ran, above, from the PUT), not
     # just staying in the one process's memory that loaded it first.
     st2 = PieceStore(path)
     row2 = next(r for r in st2.list() if r["piece_id"] == "ghost1")
-    assert row2.get("invalid") and row2["value"]["fixed_id"] == "force_rifle"
+    assert row2.get("invalid") and row2["value"]["fixed_id"] == "laser_cannon"
 
 
 def test_high1_put_with_a_valid_value_clears_invalid():
     needs(HAVE, "starlette + httpx")
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
-            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "laser_cannon"}}
     c, s, net, clock, ps, path = _pclient_with_pieces_file([ghost])
     r = c.put("/api/pieces/ghost1", json={"value": {"choice": "player", "kinds": ["weapon"]}})
     assert r.status_code == 200
@@ -323,7 +324,7 @@ def test_medium_attach_pieces_falls_back_a_restored_pick_naming_an_invalid_piece
     `gamepick._usable`, the same check `resolve_pieces_with_fallback`/`resolve_pieces_mixed` already
     give a stale id elsewhere."""
     ghost = {"piece_id": "ghost1", "kind": "primary", "name": "Old Loadout",
-            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "force_rifle"}}
+            "value": {"choice": "fixed", "kinds": ["weapon"], "fixed_id": "laser_cannon"}}
     path = pathlib.Path(tempfile.mkdtemp()) / "pieces.json"
     path.write_text(json.dumps({"v": 1, "pieces": [ghost]}))
     s, net, clock, ps = mk_loadout_session(2)
@@ -1041,25 +1042,24 @@ def _hidden_ids():
 
 def test_no_preset_can_name_a_hidden_weapon_or_perk():
     """Tony 2026-09-26: no type toggle, picker or BUILD preset may ever select a hidden weapon (the cut
-    arsenal, the hidden heavies, melee). The console never receives them; the server refuses them too."""
+    arsenal, the hidden heavies, melee). Issue 12 (2026-11-01): the server no longer REFUSES a stale one; it
+    drops or remaps it silently (`test_hidden_weapon_drop.py`). Either way a hidden id never comes back out."""
     weapons, perks = _hidden_ids()
     assert "force_rifle" in weapons and "melee" in weapons, "the fixture lost its hidden rows"
-    for wid in weapons:
+    for wid in weapons + ["rail_gun", "rocket_launcher"]:   # + the pickup-only heavies: ARMORY arms them, never a loadout
         for value in ({"choice": "fixed", "fixed_id": wid}, {"choice": "player", "only_ids": ["assault_rifle", wid]}):
             try:
-                check_value("primary", value); assert False, f"{wid} was accepted in {value}"
+                out = check_value("primary", value)
             except PieceError as e:
-                # round 3 (MEDIUM 5): the message names the weapon by its catalogue NAME, not the raw
-                # snake_case id -- "force_rifle" -> "FORCE RIFLE"; F577: hidden rows by name too, smoke_gun -> "HAZE"
+                # nothing of its type to remap to (melee, the heavies): refused, and named by its catalogue NAME
+                # (round 3 MEDIUM 5; F577: smoke_gun -> "HAZE"), never the raw snake_case id
                 assert e.status == 400 and WeaponCatalog().row(wid)["name"].upper() in str(e), (wid, str(e))
+                continue
+            assert out["fixed_id"] != wid and wid not in out["only_ids"], (wid, out)
     for pid in perks:
         try:
-            check_value("perks", {"choice": "fixed", "fixed_id": pid}); assert False, pid
-        except PieceError as e:
-            assert e.status == 400
-    for wid in ("rail_gun", "rocket_launcher"):   # pickup-only heavies: ARMORY arms them, never a loadout
-        try:
-            check_value("primary", {"choice": "fixed", "fixed_id": wid}); assert False, wid
+            out = check_value("perks", {"choice": "fixed", "fixed_id": pid})
+            assert out["fixed_id"] != pid, pid
         except PieceError as e:
             assert e.status == 400
     assert check_value("primary", {"choice": "player", "only_ids": ["assault_rifle"]})["only_ids"] == ["assault_rifle"]

@@ -45,6 +45,7 @@ export class Hud {
     // F340: Location services, app.js-owned like `bluetoothOn`. False only on Android 11 and older with Location
     // off, where a BLE scan finds nothing (location.js). Android 12+, iOS and the web never set it false.
     this.locationOn = true;
+    this.mcFound = null;   // F659: {n, name} when more than one MC was in view at the join ("JOINED name (2 FOUND)")
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
     this._gunConfirm = null;  // {at} the LIVE two-tap guard on RELINK GUN (bench 2026-09-17, below)

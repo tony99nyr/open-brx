@@ -3,6 +3,7 @@
 import { McAutoJoin, namedDialPending } from './autojoin.js';
 import { sweepPlan, localIpFrom, sweepForMc, sweepLogger } from './discover.js';
 import { startUtilitySweep } from './utility-join.js';
+import { normaliseMcUrl } from '../mcurl.js';
 
 export const MC_MDNS_SERVICE = '_openbrx._tcp.';
 export const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
@@ -14,7 +15,9 @@ export const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
  *   autoJoin:string, sweep:string}} LinkPolicy */
 
 export const HUD_POLICY = Object.freeze({
-  rememberAtDial: (/** @type {DialOptions} */ { remember }) => !!remember,   // the old `if (remember)`, exactly
+  // F659: only an address the player named just now is stored at dial (a typed or scanned one must survive a reload
+  // before its first welcome). Boot, reconnect and `window.brx.connectMc` store nothing: the bind does.
+  rememberAtDial: (/** @type {DialOptions} */ { remember, user }) => !!remember && user === true,
   rememberAtBound: () => true,
   autoJoin: 'proof',
   sweep: 'suggest',
@@ -39,8 +42,15 @@ export function discoveredUrl(res) {
   const svc = res.service || {};
   const ip = svc.ipv4Addresses && svc.ipv4Addresses[0];
   if (!ip || !svc.port) return null;
-  const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
-  return `ws://${ip}:${svc.port}${path}`;
+  const n = normaliseMcUrl(`ws://${ip}:${svc.port}/ws`);   // F659: the record's path is not trusted, the node path is /ws
+  return n.refused === undefined ? n.url : null;
+}
+
+/** F659: the MC's own start time from its mDNS TXT record, or undefined (an older MC, or a sweep hit). @param {any} res */
+export function discoveredStartedAt(res) {
+  const raw = res && res.service && res.service.txtRecord && res.service.txtRecord.started_at;
+  const n = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 export class McLink {
@@ -82,28 +92,29 @@ export class McLink {
     // (candidates, the proof cooldown); now a stale bind does neither.
     if (this.current() !== transport) return;
     if (this.policy.rememberAtBound(options) && url) this.remember(url, true);
-    if (this.policy.autoJoin === 'proof') this.autoJoin.onBound();
+    if (this.policy.autoJoin === 'proof') this.autoJoin.onBound(url || undefined);
   }
 
   userDialPending() { return namedDialPending(this.userDial && { t: this.userDial }, this.current()); }
   /** @param {string} url @param {string} source
-   *  @param {{remembered:string|null, hasTrustKey:boolean}} context */
-  found(url, source, { remembered, hasTrustKey }) {
+   *  @param {{remembered:string|null, hasTrustKey:boolean}} context @param {number} [startedAt] */
+  found(url, source, { remembered, hasTrustKey }, startedAt) {
     const current = this.current();
     const live = current && !current.closed ? current : null;
     const firstContactLive = !!(live && this.firstContactDial === live && live.state !== 'bound');
     return this.autoJoin.onFound(url, source, { bound: !!(current && current.state === 'bound'),
       dialling: live && live.url, verifying: !!(live && (live.verify || firstContactLive)),
-      hasTrustKey, remembered, userDialPending: this.userDialPending() });
+      hasTrustKey, remembered, userDialPending: this.userDialPending(),
+      welcomeOpen: !!(live && live.state !== 'bound' && typeof live.welcomeWindowOpen === 'function' && live.welcomeWindowOpen()) }, startedAt);
   }
 
-  /** @param {any} zeroconf @param {(url:string)=>void} onFound
+  /** @param {any} zeroconf @param {(url:string, startedAt?:number)=>void} onFound
    *  @param {(error:unknown, phase:string)=>void} onError */
   watch(zeroconf, onFound, onError) {
     if (!zeroconf) return;
     try {
       zeroconf.watch({ type: MC_MDNS_SERVICE, domain: 'local.' }, (/** @type {any} */ res) => {
-        try { const url = discoveredUrl(res); if (url) onFound(url); }
+        try { const url = discoveredUrl(res); if (url) onFound(url, discoveredStartedAt(res)); }
         catch (e) { onError(e, 'discovery'); }
       }).catch((/** @type {unknown} */ e) => onError(e, 'watch'));
     } catch (e) { onError(e, 'init'); }

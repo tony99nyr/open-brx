@@ -78,6 +78,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     RECOIL_CLEAN_ROUNDS,
     RECOIL_HEAVY_EXTRA_ROUNDS,
     RECOIL_REF_DMG,
+    RECOIL_RELEASE_MARGIN_MS,
     RECOIL_SETTLE_MIN_MS,
     RELOAD_NAG_EVERY,
     RELOAD_NAG_FIRST,
@@ -3131,11 +3132,18 @@ class GunStage:
         if self._pre_armed or self._respawn_profile() is None or not self.connected:
             return
         self._pre_armed = True
+        gset = self._head_gset()   # F645: re-send the head's friendly-fire setting (engine.js `_preArmTable`)
+        if gset:
+            await self.write([gset], "friendly-fire setting again (F645)")
         if self._sir_live:
             return
         take = self._pick_table("sir_pool")
         if take:
             await self.write(take, f"pre-arm hit table (T-{self.PRE_ARM_TABLE_S:g})", gap_ms=60, take=True)
+
+    def _head_gset(self) -> str | None:
+        """engine.js `_headGset`: the head's `$GSET` frame, or None when the head has none (F645)."""
+        return next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith("$GSET,")), None)
 
     def _respawn_profile(self) -> RespawnProfile | None:
         """engine.js `_respawnProfile`: the bundle's respawn profile, or None on an older bundle (the legacy path)."""
@@ -3285,6 +3293,9 @@ class GunStage:
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
         rp = self._respawn_profile()
         late = self._pick_table("sir_pool") if rp and not self._sir_live else []
+        # F645 (engine.js `_spawn`): a start that missed T-3 never re-sent the head's `$GSET`, so it rides first here
+        gset_late = self._head_gset() if not self._pre_armed else None
+        gset_pre = [gset_late] if gset_late else []
         if rp and not late and not self._sir_live:
             self._log("T-0 spawn: no live hit table to write (no sir_pool)", "error")
         if rp:
@@ -3313,9 +3324,9 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
             self._headset_delayed(hs["start"], "headset start", life=self._life_queued)   # the life this spawn starts
-        await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+        await self._write_life(gset_pre + late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
-                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
+                          "spawn" + (" + $GSET (missed T-3)" if gset_pre else "") + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()
@@ -3513,7 +3524,9 @@ class GunStage:
         # Re-sending the live map here would let the player shoot early.
         trigger = [] if self._trigger_pending is not None else [bmap]
         self._hold_accuracy_writes("operator resync")   # A47 (engine.js `_operatorResync`), stamped when the write is queued
-        await self._write_ammo(([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger, "operator resync")
+        gset = self._head_gset()   # F645 (engine.js `_operatorResyncWrite`)
+        await self._write_ammo(([gset] if gset else []) + ([f"$TID,{tid},*"] if tid is not None else []) + ammo + trigger,
+                               "operator resync")
         if self._protects_spawn():
             if self._arm_pending is None:
                 self._sir_live = False   # engine.js: the resync always re-sends the table (a reboot empties it, F11)
@@ -5516,10 +5529,18 @@ class GunStage:
         last_fired_reload = (not old_slot_reload and not own_echo and not lcd and prev is not None and mag > prev and slot < 2
                              and self.active_slot < 2 and slot != self.active_slot
                              and self._last_shot_life == self._life_queued and self._last_shot_slot == slot)
-        if last_fired_reload and self.reloading and self.reloading["slot"] != slot:
+        if last_fired_reload and self.reloading and self.reloading["slot"] != slot and not self.reloading.get("soft"):
             r = self.reloading   # the takeover on the weapon in hand ends cleanly on the last-fired slot's reload
             r["slot"] = slot; r["from"] = prev; r["mag"] = mag; r["cap"] = (self._spawn_ammo().get(slot) or [None])[0]
             self._end_reload("last_fired")
+        if (self.reloading and self.reloading.get("soft") and prev is not None and not own_echo and not lcd and mag > prev
+                and slot != self.reloading["slot"] and slot < 2):
+            # F650 (ammo.js `onAmmo`): the gun's own lever reloaded its latch slot; the phone's reload of the weapon in hand goes on
+            self._prev_ammo[slot] = mag
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            self._log(f"the gun's lever reloaded slot {slot}; the phone reloads slot {self.reloading['slot']}", "info")
+            return
         if self.reloading and prev is not None and not own_echo and not last_fired_reload:
             if mag > prev:
                 if slot != self.reloading["slot"]:
@@ -5556,9 +5577,11 @@ class GunStage:
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
-            if self._lever_at is not None and self.now() - self._lever_at < self.GUN_WAS_LEVER_S:
+            soft = bool(self.reloading and self.reloading.get("soft"))   # F650: the phone reloads the weapon in hand; no hint
+            if not soft and self._lever_at is not None and self.now() - self._lever_at < self.GUN_WAS_LEVER_S:
                 self._fire_first = {"slot": slot, "at": self.now(), "life": self._life_queued}
-            self._log(f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
+            self._log(f"the gun's lever also reloaded slot {slot}, the slot fired last; the phone reloads slot {self.active_slot}" if soft
+                      else f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
             return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
         if moves and self.switching and slot != self.switching["from"] and slot < 2:
@@ -5622,11 +5645,8 @@ class GunStage:
                             "held_s": round(now - since, 2) if since is not None else None}
         if bid == 2 and self.reloading:
             self.reloading["released_at"] = now
-        # S54 (engine.js `_onButton`), BENCH-PROVISIONAL: a trigger release while the weapon is still CRISP clears
-        # the burst at once (no write: the state has not changed). A degraded weapon still waits for the settle clock.
-        r = self._recoil
-        if bid == 0 and r and r["state"] == "crisp" and r["burst"] > 0:
-            r["burst"] = 0
+        if bid == 0:
+            self._recoil_release()   # S54 + F663 (engine.js `_onButton` -> `_recoilRelease`)
 
     def _easy_reload(self) -> bool:
         """engine.js `_easyReload()`: `loadout.overrides.easy_reload` is the live shape; the `alt_reload`
@@ -5669,14 +5689,12 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
-        if r and not r.get("auto") and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):   # F226: ammo.js `!r.auto`
+        if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
+                and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
-        # ammo.js `altPressed` (F445, bench 2026-10-03): after `$SPAWN` the gun ignores a slot change until the first trigger
-        # pull of the life; a round this life counts as a pull (a lost `$BUT`).
-        if self._pulled_life != self._life_queued and self._last_shot_life != self._life_queued:
-            self._log("ALT ignored by the gun: no trigger pull since the spawn", "info")
-            return
+        # ammo.js `altPressed` (F650): ALT before the first trigger pull of a life is a swap like any other (the F445 rule
+        # came from a bench of phone equips, never of ALT)
         if r:
             self._end_reload("swapped")
         source = self._alt_ptr
@@ -6042,6 +6060,7 @@ class GunStage:
         extra = _js_round(RECOIL_HEAVY_EXTRA_ROUNDS * k)
         derived_heavy_after = max(after + 1, clean + extra + 1)
         return {"crisp": crisp, "degraded": mid if two else bottom, "after_shots": after, "settle_ms": settle,
+                "reset_on_release": r.get("reset_on_release") is True,   # F663: only an explicit true turns it on
                 "heavy": bottom if two else None,
                 "heavy_after": _js_round(_js_plus(r["after_heavy"] if r.get("after_heavy") is not None else derived_heavy_after)) if two else 0}
 
@@ -6069,6 +6088,7 @@ class GunStage:
         self._recoil = {
             "weapon_id": wid, "slot": self.active_slot, "crisp": target, "degraded": p["degraded"] if p else target,
             "after_shots": p["after_shots"] if p else 0, "settle_ms": p["settle_ms"] if p else RECOIL_SETTLE_MIN_MS,
+            "reset_on_release": bool(p and p["reset_on_release"]),
             "heavy": p["heavy"] if p else None, "heavy_after": p["heavy_after"] if p else 0, "model": bool(p), "base": base,
             "value": target, "state": "crisp", "burst": 0, "dirty": force or prior_offset != offset,
             "last_shot_at": 0, "last_write_at": 0, "last_write_value": None, "pending_write_at": 0,
@@ -6114,11 +6134,37 @@ class GunStage:
         r = self._recoil
         if not r or not self.alive:
             return
-        if r["model"] and not r["disabled"] and now - r["last_shot_at"] >= r["settle_ms"]:
+        if r["model"] and not r["disabled"] and now - r["last_shot_at"] >= self._recoil_quiet_ms(r):
             r["burst"] = 0
             if r["state"] != "crisp":
                 r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
         self._recoil_flush(now)
+
+    def _recoil_quiet_ms(self, r: dict) -> int | float:
+        """engine.js `_recoilQuietMs`: `settle_ms`, and for an F663 `reset_on_release` weapon the shorter of that and
+        the lost-release fallback, twice the slot's fire interval plus RECOIL_RELEASE_MARGIN_MS. PURE."""
+        if not r["reset_on_release"]:
+            return r["settle_ms"]
+        iv = self._fire_interval_s(r["slot"])
+        return r["settle_ms"] if iv is None else min(r["settle_ms"], 2 * round(iv * 1000) + RECOIL_RELEASE_MARGIN_MS)
+
+    def _recoil_release(self) -> None:
+        """engine.js `_recoilRelease`, the trigger's `$BUT,0,0`. S54: a burst still crisp is forgotten, no write.
+        F663: a `reset_on_release` weapon also goes back to crisp from degraded or heavy, flushed at once through
+        the normal writer, so smoke, a stun, a reload, a swap or a spawn hold still delays the write."""
+        r = self._recoil
+        if not r or not r["model"] or r["disabled"]:
+            return
+        if not r["reset_on_release"]:
+            if r["state"] == "crisp":
+                r["burst"] = 0
+            return
+        r["burst"] = 0
+        if r["state"] == "crisp":
+            return
+        r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
+        if self.alive:
+            self._recoil_flush(self._now_ms())
 
     def _recoil_flush(self, now: int) -> None:
         """engine.js `_recoilFlush`, the single writer: judge a write in flight once its grace has run, then write a
@@ -6492,11 +6538,91 @@ class GunStage:
         s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
         self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
-                          "energy": self._active_weapon_is_energy(), "swap_to": swap_to}
+                          "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
+                          # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
+                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued}
+        if self.reloading["soft"]:
+            self._soft_reload_start(self.reloading)
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()
         self._spawn_task(self._reload_watchdog(dict(self.reloading)))
+
+    def _soft_reload_needed(self) -> bool:
+        """ammo.js `softReloadNeeded` (F650): the gun's lever goes to the slot that fired last, so the phone reloads the
+        weapon in hand itself when that slot is another one, or unknown off slot 0. Two loadout weapons only."""
+        active = self.active_slot
+        if active not in (0, 1) or self._slot_count() < 2:
+            return False
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []   # review H2: a chain weapon keeps the gun's reload
+        w = (ws[active] if active < len(ws) else None) or {}
+        if (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain":
+            return False
+        ls = self._last_shot_slot
+        known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
+        return ls != active if known else active != 0
+
+    def _gun_reloads_other(self, r: dict | None = None) -> bool:
+        """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
+        last (room and reserve)? Only then does the gun ignore ALT."""
+        r = r if r is not None else self.reloading
+        if not r or not r.get("soft"):
+            return False
+        ls = self._last_shot_slot
+        if ls is None or ls >= 2 or self._last_shot_life != self._life_queued or ls == r["slot"]:
+            return False
+        cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
+        return not (cap and mag is not None and mag >= cap) and res != 0
+
+    def _reload_sounds(self, slot: int) -> list[str]:
+        """engine.js `_reloadSounds` (F650): the head's `$WEAP` reload parts for a slot (t31-t33), empty ids dropped."""
+        f = next((x for x in self.bundle.get("head") or [] if isinstance(x, str) and x.startswith(f"$WEAP,{slot},")), None)
+        if not f:
+            return []
+        t = f.split(",")
+        return [x.strip() for x in t[32:35] if re.fullmatch(r"[A-Z][A-Z0-9]*", x.strip() or "")]
+
+    def _soft_reload_start(self, r: dict) -> None:
+        """engine.js `_softReloadStart` (F650): the first reload part plays at the lever."""
+        self._log(f"lever: the phone reloads slot {r['slot']} itself in {int(r['s'] * 1000)} ms (the gun's lever goes to the "
+                  f"slot that fired last) (F650)", "info")
+        snd = self._reload_sounds(r["slot"])
+        if snd:
+            self._spawn_task(self.write([f"$PLAY,,4,6,{snd[0]},,,,*"], "F650: reload sound (start)", gap_ms=0))
+
+    def _soft_reload_write(self, r: dict) -> int | None:
+        """engine.js `_softReloadWrite` (F650): `$AMMO` for the weapon in hand from its own counts and reserve. Returns the
+        new magazine, or None when the write must not go out."""
+        slot = r["slot"]
+        if not (self.spawned and self.alive) or self.stunned or not self.connected:
+            self._log(f"F650: reload of slot {slot} dropped: the gun is not in play", "info")
+            return None
+        if self.active_slot != slot or (r.get("life") is not None and r["life"] != self._life_queued):
+            self._log(f"F650: reload of slot {slot} dropped: the weapon is no longer in hand", "info")
+            return None
+        cap = self._ammo_by_slot().get(slot)
+        mag = self._acct_live(slot)
+        if mag is None:
+            mag = self._prev_ammo.get(slot, r.get("mag"))
+        res = self._prev_reserve.get(slot)
+        if not cap or mag is None or not (res is not None and res > 0):
+            self._log(f"F650: reload of slot {slot} dropped: counts unknown (mag {mag}, reserve {res})", "info")
+            return None
+        give = max(0, min(cap - mag, res)); to = mag + give; left = res - give
+        if not give:
+            return mag
+        self._acct_wrote(slot, to, left)
+        end = self._reload_sounds(slot)[1:]
+        # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
+        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0))
+        if end:
+            self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
+        self._hold_accuracy_writes("F650 reload")
+        self._prev_ammo[slot] = to; self._prev_reserve[slot] = left
+        self._publish_ammo(slot, to, left)
+        self._dry_pulls = 0
+        self._log(f"F650: slot {slot} reloaded by the phone {mag} -> {to}, reserve {res} -> {left}", "info")
+        return to
 
     def _active_weapon_is_energy(self) -> bool:
         """ammo.js on the active slot's weapon: the catalogue row's `weapon_class` decides, the id regex is only the
@@ -6663,6 +6789,14 @@ class GunStage:
         if self.reloading and self.reloading.get("auto") and self.now() >= self.reloading["at"] + self.reloading["s"]:
             self._end_reload("filled")   # F226: the phone's own reload (ammo.js `reloadTick`)
             return
+        if self.reloading and self.reloading.get("soft") and self.now() >= self.reloading["at"] + self.reloading["s"]:
+            r = self.reloading; to = self._soft_reload_write(r)   # F650 (ammo.js `reloadTick`)
+            if to is None:
+                self._end_reload("dropped")
+                return
+            r["mag"] = to
+            self._end_reload("filled")
+            return
         if self.reloading and self.now() > self._reload_deadline():
             self._end_reload("timeout")
 
@@ -6673,7 +6807,10 @@ class GunStage:
             r = self.reloading
             if not r or r["at"] != started["at"]:
                 return                              # already ended, or a newer pull owns the takeover
-            left = self._reload_deadline() - self.now()
+            if r.get("soft") and self.now() >= r["at"] + r["s"]:
+                self._reload_tick()                 # F650: the phone's own reload lands at its time
+                return
+            left = (r["at"] + r["s"] - self.now()) if r.get("soft") else (self._reload_deadline() - self.now())
             if left <= 0:
                 self._end_reload("timeout")
                 return

@@ -21,12 +21,13 @@ Every firmware fact from the drive is a disassembly reading until a bench proves
 Windows venv runs a main checkout without 575e58f0a (`end_hittable`), so the run still ends on a bare `$CLEAR`.
 
 ## Lane: brx2, tooling, the test system, CI and the docs structure
-**State (2026-11-01):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
+**State (2026-11-02):** the balance review (`mcp/tools/balance_review.py`, skill `balance-review`) judges a change
 on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/balance-decisions.md`. The 2026-11-01
-bench (morning and afternoon) is recorded in [`bench-plan.md`](bench-plan.md) and the log. The local gate splits
-Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
-**Next:** NEXT in `bench-plan.md`; the balance review when brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised;
-flashing needs a decision first.
+bench and the evening game are recorded in [`bench-plan.md`](bench-plan.md) and the log; the game's issues are
+F642 to F656. F643, F644 and F657 have desk fixes; F651's proposal waits on Tony. MC holds every laptop awake (F660).
+The local gate splits Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
+**Next:** F660 on the MacBook and a Windows-native start; then NEXT in `bench-plan.md`, and the balance review when
+brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised; flashing needs a decision first.
 **Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
 **State (2026-10-27):** everything is landed or in the land queue:

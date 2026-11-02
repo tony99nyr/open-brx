@@ -38,10 +38,12 @@ below Cloudflare's minimum (2026.10.2). It asks GitHub for the newest release at
 skips that check. If brew did not install it, or brew has no newer build yet, the script prints what to do by hand.
 A failed update never blocks the start.
 
-**Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
-and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
-in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
-the lid open: closing it still sleeps the Mac unless an external display is connected. On
+**Keep the Mac awake while MC runs.** MC does this itself (F595, F660): on macOS it starts `caffeinate -dimsu -w <its pid>`
+and prints `keep-awake: caffeinate holds the Mac awake while MC runs (keep the lid open: a closed lid still sleeps it)`.
+If that line is missing, run `caffeinate -dimsu` in a second Terminal tab until the last match ends. Keep the Mac on its
+charger: `-s` holds off sleep only on AC power, and MC prints a `keep-awake: WARNING` line when the Mac is on battery.
+Keep the lid open: closing it still sleeps the Mac unless an external display is connected. `-d` also keeps the display
+on. MC changes no Mac network setting, and we know of none that drops the phones while the Mac is awake. On
 2026-10-17 the Mac slept during play: the clock stepped 8 times, the phone sockets were taken over 19 times and 31
 keepalives timed out (`docs/field-2026-10-17.md` §2 item 5).
 
@@ -84,6 +86,75 @@ cd ../..
 serial/PIN. Copy it from the Windows machine
 (`%USERPROFILE%\.brx-mcp\armory.json`). Without it the ARMORY board shows bare BLE tails instead of
 stickers and the KNOWN GUNS section is empty. It is re-read per request, so no restart is needed.
+
+## 1b. Phones cannot reach MC on the Mac
+
+Field game 2026-11-01 (F643): MC ran on the MacBook. Most phones could not reach it. One Android phone could not
+even ping the Mac. Another phone and the M5Stick stations could. The usual causes are the macOS firewall and the
+router. `./start.sh` now prints the phone address and warns about the firewall (macOS only, read-only checks).
+
+### 5-step check (run on the Mac before a game)
+
+1. Connect the Mac to the same Wi-Fi network and band as the phones. Do not use a guest network.
+2. Find the Mac address: `ipconfig getifaddr en0` (use `en1` if it prints nothing). Write it down as `<mac-ip>`.
+3. Check the firewall: run `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate`, then the same command with `--getstealthmode`. If
+   stealth mode is on, turn it off (check 1 below). If the firewall is on, allow python (check 1 below).
+4. Start MC with `./start.sh`. If a window asks "Do you want the application python to accept incoming network
+   connections?", click Allow.
+5. On one phone, open `http://<mac-ip>:8765` in the browser. The MC page must load. If it does not, work through
+   the numbered checks below.
+
+### Check 1: the macOS application firewall
+
+The firewall blocks incoming connections to a program that is not on its allow list. Stealth mode also makes the
+Mac drop ICMP ping, which explains "the phone could not ping the Mac".
+
+1. Run `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate`. Bad result: `Firewall is enabled`
+   together with a python that is not allowed (see step 3).
+2. Run `/usr/libexec/ApplicationFirewall/socketfilterfw --getstealthmode`. Bad result: `Stealth mode enabled`.
+   Fix: `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setstealthmode off`.
+3. Run `/usr/libexec/ApplicationFirewall/socketfilterfw --listapps`. Look for the python that MC runs. Bad result:
+   it is missing, or its line says `Block incoming connections`.
+4. Find the real python binary. The venv python is a symlink, and the firewall lists the real file.
+   Run `python3 -c "import os; print(os.path.realpath('.venv/bin/python'))"` in the repo root. Use that path as
+   `<real-python>` below. The launcher prints the same path in its warning.
+5. Allow it:
+   `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add <real-python>` then
+   `sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp <real-python>`.
+   Run `--listapps` again. The line must say `Allow incoming connections`.
+6. Restart MC. If python still shows as blocked, the real process may be the `Python.app` inside the framework
+   build. Add that path too (`ps -o comm= -p <MC pid>` shows the binary that runs).
+
+### Check 2: the "accept incoming network connections" prompt
+
+macOS shows the prompt once for each python binary. If you dismiss it or click Deny, macOS blocks that binary
+and shows no error. A new python version or a recreated `.venv` gives a new binary, so the prompt returns.
+
+- After `./start.sh --setup-only` or any python upgrade, start MC once and watch for the prompt. Click Allow.
+- If you already denied it, use check 1 step 5 to allow the binary.
+- Do not start MC from a script with no screen attached for the first time. Nobody can click the prompt.
+
+### Check 3: the router or access point
+
+Some routers stop one Wi-Fi client from talking to another. This is "client isolation" or "AP isolation". Guest
+networks always do it. Some routers also isolate the 2.4 GHz band from the 5 GHz band, or one mesh node from
+another. A phone can reach the internet and still not reach the Mac.
+
+1. Put the phone and the Mac on the same SSID and the same band. Check the band in the router app.
+2. Ping the Mac from a device that is not the Mac: `ping <mac-ip>` from a laptop, or a ping app on the phone.
+   Do this with the Mac firewall check done first, or the test proves nothing.
+3. If a second device on the same SSID can ping the Mac and the first phone cannot, that phone is on another band
+   or node. Move it to the same band.
+4. If no device can ping the Mac, look for "AP isolation", "client isolation" or "guest network" in the router
+   settings. Turn it off, or use a travel router that the game owns.
+
+### Check 4: macOS Local Network privacy
+
+System Settings, Privacy & Security, Local Network lists apps that make outbound connections to devices on the
+LAN. It does not control incoming connections, so it does not block phones from reaching MC. It can matter only if
+the terminal app that runs MC makes outbound LAN calls, for example mDNS advertising or a call to a station.
+Open the page and check that your terminal app (Terminal, iTerm or the editor terminal) has its switch on.
+Turn it on if it is off. It is not the likely cause of F643.
 
 ## 2. The change-to-screen loop — READ THIS ONE
 

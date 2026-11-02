@@ -56,7 +56,9 @@ start.cmd       # Windows: double-click it, or run it from a terminal
 ```
 
 The script installs what is missing, builds the Mission Control console, starts Mission Control and
-opens it in your browser. The second run starts straight away. [Install](docs/platform/install.md)
+opens it in your browser. The second run starts straight away. While Mission Control runs, it keeps the laptop
+awake on macOS, Windows, WSL and Linux, and prints a `keep-awake:` line that says how. Keep the laptop plugged in and
+the lid open. [Install](docs/platform/install.md)
 describes each step, and what to do without git.
 
 No taggers on hand? `./start.sh --demo` runs a full demo match with 8 simulated players, no hardware

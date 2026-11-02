@@ -33,9 +33,9 @@ import { perkForHealth } from './health.js';   // the one Shields rule: the cons
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
 import { MEDALS } from './transport/contract.gen.js';
-import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS, PRESENCE_SIGHT_WINDOW_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
+import { QUERY_FRAME, PROBE_LIFE, STUN_PLAY, PAIN_STALE_MS, DEATH_LATE_WRITE_MS, SHIELD_CHARGING_MIN_MS, PLAY_QUEUE_STALE_MS, MUST_HEAR_MAX_STOPS, DEATH_BODY_STOP_MARGIN_MS, DEATH_BODY_STOP_MIN_LEFT_MS, EVENT_MIN_GAP_MS, PAIN_GAP_MS, TEAM_REPAINT_MS, LOW_HEALTH_HP, HURT_DEBOUNCE_MS, HURT_MAX_WAIT_MS, SHIELD_REGEN_DELAY_MS, SHIELD_REGEN_GRANTS, SHIELD_REGEN_STEP_MS, SHIELD_REGEN_MAX_GRANTS_SLACK, SELF_HIT_ECHO_MS, SHIELD_LOOP_MS, CALLOUT_NAME_GAP_MS, MEDAL_GAP_MS, READOUT_COALESCE_MS, CONTROL_STALE_MS, RARE_GUARD_MS, STUN_DEFAULT_S, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_CEILING_IDX, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, SMOKE_PAIR_MS, PRESENCE_SIGHT_WINDOW_MS } from './transport/contract.gen.js';   // seams review 2026-10-10 #3: the engine tunables, one copy shared with the bench stage (mcp/brx_mcp/mc/types.py)
 // Re-exported so the existing `from './engine.js'` imports keep working.
-export { PROBE_LIFE, PLAY_QUEUE_STALE_MS, TEAM_REPAINT_MS, CONTROL_RECONNECT_MS, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';
+export { PROBE_LIFE, PLAY_QUEUE_STALE_MS, TEAM_REPAINT_MS, CONTROL_RECONNECT_MS, DOT_ECHO_MS, DOT_KILL_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, RECOIL_SETTLE_MIN_MS, RECOIL_CLEAN_ROUNDS, RECOIL_HEAVY_EXTRA_ROUNDS, RECOIL_REF_DMG, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, SMOKE_PAIR_MS } from './transport/contract.gen.js';
 const MEDAL_KIND = Object.fromEntries(MEDALS.map(m => [m.key, m.kind]));   // first | multi | streak (Tony's ladder)   // docs/announcer.md "The three lanes": when a spree's HERO ends   // the ONE announcer queue: every voice line and banner (docs/announcer.md)
 export const C = {
   STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
@@ -621,6 +621,7 @@ function ammoHost(e) {
     event: kind => e._event(kind), tryoutAmmo: (slot, mag) => e._tryoutAmmo(slot, mag),
     roundsLeft: (slot, prev, mag) => e._roundsLeft(slot, prev, mag), resyncAmmo: (prev, mag) => e._resyncAmmo(prev, mag),
     setAmmo: (ammo, mag) => { e.ammo = ammo; e.mag = mag; }, setReserve: reserve => { e.reserve = reserve; },
+    softReloadStart: r => e._softReloadStart(r), softReloadWrite: r => e._softReloadWrite(r),   // F650: the phone reloads the weapon in hand
   };
 }
 
@@ -3311,6 +3312,11 @@ export class Engine {
   _preArmTable() {
     if (this._preArmed === this.matchId || !this._respawnProfile() || !this.frames) return;
     this._preArmed = this.matchId;
+    // F645 (game 2026-11-01): one gun kept a try-out's friendly-fire-off `$GSET` through the head, and in an FFA
+    // (every gun on team 1) it then dropped every hit with no `$HIR` for a whole match. Nothing after the head
+    // re-sent it. Send the head's own `$GSET` again here, before any trigger is mapped.
+    const gset = this._headGset();
+    if (gset) this._write([gset], 'friendly-fire setting again (F645)');
     if (this._sirLive) return;
     const take = this._pickTable('sir_pool');
     if (!take.length) return;
@@ -3326,6 +3332,11 @@ export class Engine {
       if (this.phase === 'live' && this.alive && !this._armPending) { this._armPending = this._repairArm(); this.log('pre-arm hit table write failed after go-live -- repairing', 'le'); }
       else this.log('pre-arm hit table write failed: the T-0 spawn carries it', 'le');
     });
+  }
+  /** F645: the head's `$GSET` frame (friendly fire is token 1), or null when the head has none. */
+  _headGset() {
+    const f = ((this.frames && this.frames.head) || []).find(x => typeof x === 'string' && x.startsWith('$GSET,'));
+    return f || null;
   }
   /** 2026-09-19: the bundle's respawn profile, or null on an older bundle (the legacy path). */
   _respawnProfile() {
@@ -3511,6 +3522,10 @@ export class Engine {
     // already on the gun (`_preArmTable` at T-3). A late start that missed T-3 carries the table IN FRONT of `$SPAWN`.
     const rpSpawn = this._respawnProfile();
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
+    // F645 (review): a start that missed T-3 (a late spawn, a hot-join) never ran `_preArmTable`, so the head's `$GSET`
+    // rides in front of this burst instead.
+    const gsetLate = this._preArmed !== this.matchId ? this._headGset() : null;
+    const gsetPre = gsetLate ? [gsetLate] : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
@@ -3525,7 +3540,7 @@ export class Engine {
     if (kx) this.cuesFired.add('klaxon');
     const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
     const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
+    this._writeSpawnBurst([...gsetPre, ...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (gsetPre.length ? ' + $GSET (missed T-3)' : '') + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;
@@ -4627,7 +4642,8 @@ export class Engine {
     if (this.smoke) return { reason: 'smoke', acc: this.gunAcc != null ? this.gunAcc : 0, leftMs: Math.max(0, this.smoke.until - now), totalMs: SMOKE_MS };
     const r = this._recoil;
     if (!r || !r.model || r.disabled || r.state === 'crisp') return null;
-    return { reason: 'recoil', acc: r.value, leftMs: Math.max(0, r.settleMs - (now - r.lastShotAt)), totalMs: r.settleMs };
+    const quiet = this._recoilQuietMs(r);   // F663: a reset_on_release weapon's fallback clock is shorter
+    return { reason: 'recoil', acc: r.value, leftMs: Math.max(0, quiet - (now - r.lastShotAt)), totalMs: quiet };
   }
   /** Bench 2026-09-17: a slot's time between rounds, `$WEAP` token 14 (split index 15) from the head the gun
    *  was given. Null for a stub frame with no tokens, or no frame for that slot. PURE. */
@@ -4675,12 +4691,11 @@ export class Engine {
   // (today's live accuracy) to decide how hard to jolt. Neither touches the writer or the verify/retry
   // loop below.
   //
-  // S54 (2026-09-23), BENCH-PROVISIONAL: `_onButton` also reads the trigger's own `$BUT,0,0` release
-  // edge, but ONLY while the weapon is still CRISP -- a burst that never reached `afterShots` is cleared
-  // the moment the trigger comes up, rather than waiting out `settleMs` for a round count that was never
-  // going anywhere. This costs no write; the state has not changed. A DEGRADED or HEAVY weapon still
-  // recovers exactly as above: on the settle clock, one write, never on a button edge, because a release
-  // is evidence this pull is over, not that the player has stopped shooting for good.
+  // S54 (2026-09-23): `_onButton` also reads the trigger's own `$BUT,0,0` release edge. A burst that is still
+  // CRISP is cleared the moment the trigger comes up, at no cost in writes. A DEGRADED or HEAVY weapon recovers on
+  // the settle clock, in one write, UNLESS its catalogue `recoil` block sets `reset_on_release` (F663, Tony
+  // 2026-11-02): then the release itself restores crisp, in one write (`_recoilRelease`). Either way a burst costs
+  // at most three writes.
   get recoilEnabled() { return !this.config || this.config.recoil !== false; }   // S42: default ON -- only an explicit `false` turns it off
   /** {weapon_id} for the ACTIVE slot, straight off the loadout -- the same lookup ammo.js `reloadPulled` and
    *  `weaponName` already use. */
@@ -4938,6 +4953,44 @@ export class Engine {
     if (this.am.heatLock && this.am.heatLock.slot === slot) this.am.heatLock = null;
     this.am.autoReload(slot, mag, to, cap);
   }
+  /** F650: the head's `$WEAP` reload sounds for a slot (t31-t33, `ReloadPart1..3`), empty ids dropped. */
+  _reloadSounds(slot) {
+    const f = ((this.frames && this.frames.head) || []).find(x => typeof x === 'string' && x.startsWith(`$WEAP,${slot},`));
+    if (!f) return [];
+    const t = f.split(',');
+    return [t[32], t[33], t[34]].map(x => (x || '').trim()).filter(x => /^[A-Z][A-Z0-9]*$/.test(x));
+  }
+  /** F650: the lever started the phone's reload of the weapon in hand. The gun plays nothing for it, so the phone plays the
+   *  weapon's first reload part now; the last part goes with the `$AMMO` (`_softReloadWrite`). */
+  _softReloadStart(r) {
+    this.log(`lever: the phone reloads slot ${r.slot} itself in ${r.ms} ms (the gun's lever goes to the slot that fired last) (F650)`, 'li');
+    const snd = this._reloadSounds(r.slot)[0];
+    if (snd) this._write([`$PLAY,,4,6,${snd},,,,*`], 'F650: reload sound (start)');
+  }
+  /** F650: the phone's reload lands. Writes `$AMMO` for the weapon in hand from that slot's own counts, the rounds taken
+   *  from its own reserve, and returns the new magazine, or null when the write must not go out. */
+  _softReloadWrite(r) {
+    const slot = r.slot;
+    if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) { this.log(`F650: reload of slot ${slot} dropped: the gun is not in play`, 'li'); return null; }
+    if (this.activeSlot !== slot || r.life != null && r.life !== this._lifeSeq) { this.log(`F650: reload of slot ${slot} dropped: the weapon is no longer in hand`, 'li'); return null; }
+    const cap = this.am.ammoBySlot()[slot];
+    const mag = this.am.acctLive(slot) ?? this.am.prevAmmo[slot] ?? r.mag, res = this.am.prevReserve[slot];
+    if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }
+    const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
+    if (!give) return mag;
+    this.am.acctWrote(slot, to, left);
+    // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
+    // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
+    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand');
+    const end = this._reloadSounds(slot).slice(1);
+    if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
+    this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it
+    this.am.setPrev(slot, to, left);
+    this.am.publish(slot, to, left);   // the ammo block shows the new magazine before the gun's echo
+    this.am.endDrySpell();             // the weapon in hand is loaded: the RELOAD nag counts from one again
+    this.log(`F650: slot ${slot} reloaded by the phone ${mag} → ${to}, reserve ${res} → ${left}`, 'li');
+    return to;
+  }
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
     this._accHoldWhy = why;   // published as `state().accHold`: a reader should never have to guess which write took the gun
@@ -4997,6 +5050,7 @@ export class Engine {
     const extra = Math.round(RECOIL_HEAVY_EXTRA_ROUNDS * k);
     const derivedHeavyAfter = Math.max(after + 1, clean + extra + 1);
     return { crisp, degraded: two ? mid : bottom, afterShots: after, settleMs: settle,
+      resetOnRelease: r.reset_on_release === true,   // F663: only an explicit `true` turns it on
       heavy: two ? bottom : null,
       heavyAfter: two ? Math.round(+(r.after_heavy != null ? r.after_heavy : derivedHeavyAfter)) : 0 };
   }
@@ -5021,6 +5075,7 @@ export class Engine {
     if (!p && !force && priorOffset === offset) return;
     this._recoil = { weaponId: id, slot: this.activeSlot, crisp: target, degraded: p ? p.degraded : target,
       afterShots: p ? p.afterShots : 0, settleMs: p ? p.settleMs : RECOIL_SETTLE_MIN_MS,
+      resetOnRelease: !!(p && p.resetOnRelease),
       heavy: p ? p.heavy : null, heavyAfter: p ? p.heavyAfter : 0, model: !!p, base,
       value: target, state: 'crisp', burst: 0, dirty: force || priorOffset !== offset,
       lastShotAt: 0, lastWriteAt: 0, lastWriteValue: null, pendingWriteAt: 0,
@@ -5077,11 +5132,34 @@ export class Engine {
    *  back to crisp. The player releases the trigger once, so the gun is told once. */
   _recoilTick(now) {
     const r = this._recoil; if (!r || !this.alive) return;   // a dead gun has no accuracy worth spending a write on (a write would not revive it either, bench 2026-09-17 -- just wasted BLE traffic)
-    if (r.model && !r.disabled && now - r.lastShotAt >= r.settleMs) {
+    if (r.model && !r.disabled && now - r.lastShotAt >= this._recoilQuietMs(r)) {
       r.burst = 0;
       if (r.state !== 'crisp') { r.state = 'crisp'; r.value = r.crisp; r.dirty = true; }
     }
     this._recoilFlush(now);
+  }
+  /** How long the trigger must be quiet before the tick forgets the burst. `settleMs` for every weapon, and for an
+   *  F663 `reset_on_release` weapon the shorter of that and the LOST-RELEASE fallback: twice the slot's fire
+   *  interval plus RECOIL_RELEASE_MARGIN_MS (see that constant for the 2026-11-01 numbers behind it). The
+   *  release edge itself (`_recoilRelease`) normally gets there first. PURE. */
+  _recoilQuietMs(r) {
+    if (!r.resetOnRelease) return r.settleMs;
+    const ms = this._fireIntervalMs(r.slot);
+    return ms == null ? r.settleMs : Math.min(r.settleMs, 2 * ms + RECOIL_RELEASE_MARGIN_MS);
+  }
+  /** The trigger's `$BUT,0,0`. S54 (every weapon): a burst still CRISP is forgotten, at no cost in writes.
+   *  F663 (Tony 2026-11-02, "simply letting go of trigger immediately resets it"): a `reset_on_release` weapon
+   *  also goes back to crisp from DEGRADED or HEAVY, in one write flushed at once. The write takes the normal
+   *  path, so every `_recoilFlush` guard still holds it: smoke (fn 23) keeps t4 until its window ends, and a
+   *  stun, reload, swap or spawn hold delays it. The dirty value is written when the guard lifts. Bench
+   *  2026-09-24 (F308): the release always arrived after the burst's last `$ALCD`, 0 to 60 ms later. */
+  _recoilRelease() {
+    const r = this._recoil; if (!r || !r.model || r.disabled) return;
+    if (!r.resetOnRelease) { if (r.state === 'crisp') r.burst = 0; return; }
+    r.burst = 0;
+    if (r.state === 'crisp') return;
+    r.state = 'crisp'; r.value = r.crisp; r.dirty = true;
+    if (this.alive) this._recoilFlush(this.now());
   }
   /** The single writer. Verifies a write already in flight before considering a new one (so a value
    *  that changes again before the verify window closes is simply picked up here, never queued behind
@@ -5331,7 +5409,7 @@ export class Engine {
    *  `$BMAP,0,0`, then one `sir_pool` take through `_armLife` (retried on a failed write; on a 'tmp' bundle it also
    *  writes `spawn_protect_off`, so a resync always ends spawn protection). The rejoin reconcile
    *  is not reused: it disarms for RECONCILE_MS, re-arms with the SPAWN counts and writes no `$TID`/`$BMAP`.
-   *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
+   *  The head's own `$GSET` goes first (F645). Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
    *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
   _operatorResync() {
     // Two refusals of RESYNC GUN's own, kept out of `_operatorAct`'s subset because each names its own cure.
@@ -5398,7 +5476,10 @@ export class Engine {
     // RESYNC must not overwrite that with `$BMAP,0,0` (weapon systems live) mid-hold -- `_triggerLive` writes
     // the real one once the delay is over. `$TID`/`$AMMO` are independent of the hold and still go out.
     if (this._triggerPending) this.log('operator resync: weapon delay still holds the trigger -- $BMAP,0,0 held back', 'li');
-    this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
+    // F645: the head's `$GSET` too. A gun that lost it (friendly fire off in an FFA) took no hit all match, and
+    // a resync that re-sent only `$TID` and the table did not cure it.
+    const gset = this._headGset();
+    this._writeMust([...(gset ? [gset] : []), ...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, ...(this._triggerPending ? [] : [bmap])], 'operator resync',
       () => this._lifeSeq === life && !this._standDown(GATE.operatorResync));
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
@@ -6476,16 +6557,11 @@ export class Engine {
     // let go instantly and the reload still completes ~1.4 s later. Whether a reload actually happened is
     // decided by the gun's ammo (ammo.js `onAmmo` / `reloadDeadline`), never by a button edge or a timer.
     if (id === BTN_RELOAD) this.am.reloadReleased(now);
-    // S54 (2026-09-23), BENCH-PROVISIONAL: the gun streams `$BUT,0,0` on every trigger release in app
-    // mode (docs/manual/dev.md), so a released trigger is direct evidence the burst has stopped -- while
-    // the weapon is still CRISP this costs no write, so the release simply clears the round count rather
-    // than waiting out `settleMs` for a burst that never degraded anything. A weapon already DEGRADED or
-    // HEAVY does NOT restore on release: recovery still needs the quiet the settle timer measures, in one
-    // write, because a release is not proof the player has stopped for good -- only that this pull has.
-    // The settle timer still clears the counter on its own as a fallback, so a dropped release edge never
-    // strands a stale burst. Not yet bench-proven: confirm no `$BUT,0,0` is lost under full auto and that
-    // it arrives in order with the `$ALCD` stream it is meant to race (docs/FOLLOWUPS.md F308).
-    if (id === BTN_TRIGGER) { const r = this._recoil; if (r && r.state === 'crisp' && r.burst > 0) r.burst = 0; }
+    // S54/F663: the gun streams `$BUT,0,0` on every trigger release in app mode (docs/manual/dev.md), so a released
+    // trigger is direct evidence this pull is over. A weapon without `reset_on_release` still recovers from DEGRADED or
+    // HEAVY only on the settle clock; one with it recovers here. Bench 2026-09-24 (F308): no release was lost and each
+    // came after its burst's last `$ALCD`. The 2026-11-01 frame tails lost 7 of 1068: `_recoilQuietMs` is the fallback.
+    if (id === BTN_TRIGGER) this._recoilRelease();   // S54 + F663: see `_recoilRelease`
   }
   /** How long each still-down button has been held, in ms. PURE — read from `state()` on every render. */
   heldMs() {

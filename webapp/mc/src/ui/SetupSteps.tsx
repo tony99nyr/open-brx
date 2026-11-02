@@ -137,12 +137,13 @@ export function SetupSteps({ style }: { style?: React.CSSProperties }) {
   const steps = setupLines(state?.config_warnings).filter(w => !STATION_CONFLICT.test(w));
   const verifyRaw = state?.notices?.mc_verify;
   const verifyLine = verifyRaw ? friendlyMcVerifyLine(verifyRaw) : null;
+  const newPhone = state?.notices?.new_phone ?? null;   // F659: `NEW PHONE JOINED: <device>`, MC's own words
   // polish r1: the same two regions whatever the lines, so a 0 -> N change fills them and never remounts them
   return (
     <>
     <SetupConflicts style={style} />
     <div role="status" data-setup-region="reminders">
-    {(steps.length > 0 || verifyLine) && (
+    {(steps.length > 0 || verifyLine || newPhone) && (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6,
                                  background: T.panelSoft, border: `1px solid ${T.line}`, padding: '10px 14px', ...style }}>
       {/* F221: a standing, de-alarmed reminder panel (field feedback 2026-09-19) — NEUTRAL by design,
@@ -155,6 +156,11 @@ export function SetupSteps({ style }: { style?: React.CSSProperties }) {
               {friendlySetupLine(w)}
             </div>
           ))}
+        </div>
+      )}
+      {newPhone && (
+        <div data-testid="new-phone" style={{ font: F.chk(500, 12), letterSpacing: '.02em', lineHeight: 1.5, color: T.body }}>
+          {newPhone}
         </div>
       )}
       {verifyLine && (

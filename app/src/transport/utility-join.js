@@ -11,8 +11,8 @@
 //    first (app.js `onSetUrl`); the utility buttons passed it raw, so a pasted console address
 //    (`http://<host>:8765/`) was saved as settings.mc and redialled on every start.
 
-import { parseMcJoin } from '../mcurl.js';
-import { sweepPlan, sweepForMc, MC_WS_PORT, sweepLogger } from './discover.js';
+import { parseMcJoin, normaliseMcUrl } from '../mcurl.js';
+import { sweepPlan, sweepForMc, sweepLogger } from './discover.js';
 
 /** @typedef {import('./discover.js').DiscoverWebSocket} DiscoverWebSocket */
 /** @typedef {import('./discover.js').DiscoverTimers} DiscoverTimers */
@@ -29,25 +29,23 @@ export const UTILITY_SWEEP_FIRST_MS = 4000;
 export const UTILITY_SWEEP_EVERY_MS = 30000;
 
 /**
- * The typed text → what to dial, or null for empty text.
- * - A join code or a ws(s):// url: `parseMcJoin`'s url, pub and secret.
- * - An http:// console address: MC's node socket on the same host (`ws://<host>:8766/ws`), with a note to log.
- *   An https:// address (the tunnel) passes through: its node socket is not on the LAN port.
- * - Anything else: passed through as typed (the bare-address floor the HUD also keeps).
+ * The typed text → what to dial, or null for empty text. F659: `normaliseMcUrl` (mcurl.js) is the one rule.
+ * - A join code or a ws(s):// url: its url, pub and secret (`join` true, so they replace the held ones).
+ * - An http(s):// console address: MC's node socket (`ws://<host>:8766/ws`), with a note to log.
+ * - A bare host: the node port and path.
+ * - Anything that cannot be an address: `{refused}`.
  * @param {string|null|undefined} text
- * @returns {TypedMc|null}
+ * @returns {TypedMc|{refused:string}|null}
  */
 export function resolveTypedMc(text) {
   const t = String(text == null ? '' : text).trim();
   if (!t) return null;
-  const j = parseMcJoin(t);
-  if (j) return { url: j.url, join: true, pub: j.pub, secret: j.secret, note: null };
-  const m = /^http:\/\/(\[[^\]]+\]|[^/:?#]+)/i.exec(t);
-  if (m) {
-    const url = `ws://${m[1]}:${MC_WS_PORT}/ws`;
-    return { url, join: false, pub: null, secret: null, note: `that is the console address; connecting to the default node port ${url}` };
-  }
-  return { url: t, join: false, pub: null, secret: null, note: null };
+  const n = normaliseMcUrl(t);
+  if (n.refused !== undefined) return { refused: n.refused };
+  const isJoin = !!parseMcJoin(t);
+  const consoleLink = /^https?:\/\//i.test(t) && !isJoin && n.url.startsWith('ws://');
+  return { url: n.url, join: isJoin, pub: n.join.pub || null, secret: n.join.secret || null,
+    note: consoleLink ? `that is the console address; connecting to the default node port ${n.url}` : null };
 }
 
 /**

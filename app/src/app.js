@@ -6,13 +6,13 @@ import jsQR from 'jsqr';
 // One phone, one gun, one player. Composition of: Engine (state machine) + BrxLink (BLE) +
 // Transport (M-NET wire) + Hud (Phone HUD v2). Runs in a desktop browser with `?demo`.
 import { Engine, C } from './engine.js';
-import { BrxLink, FRAME_RING_SYNC } from './brxlink.js';
+import { BrxLink, framesAfter } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { syncUrgent } from './hud/synctrack.js';                   // F595: the transport is urgent from the end until the result, bounded
-import { parseMcJoin, MC_URL_KEY, kickHeld } from './mcurl.js';
+import { parseMcJoin, normaliseMcUrl, mcDialTarget, MC_URL_KEY, kickHeld } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
@@ -169,11 +169,18 @@ engine.onResult = (r) => { try {
 // ONE builder for both routes: the manual SHARE LOG tap and MC's background `pull_log`. The BLE frame
 // ring (brxlink keeps the last FRAME_RING in/out frames) is the only record of what the gun actually said, and
 // without it a field fault on the phone side is undebuggable — so it rides along with the log tail.
+let _framesSynced = null, _framesPending = null;   // F650: the newest frame MC holds, and the newest in the upload in flight
 function logSnapshot(from = 0) {
   const { tail, lost } = logRing.tail(from);             // lines the ring dropped before MC ever saw them
   let frames = [];
-  // The whole ring on a manual share or a first upload (`from` 0); a background tail carries only the newest frames.
-  try { frames = (link && link.frames || []).slice(from > 0 ? -FRAME_RING_SYNC : 0).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
+  // The whole ring on a manual share or a first upload (`from` 0); a background tail carries every frame since the last
+  // completed upload (F650), so a match is visible end to end. `_framesPending` becomes `_framesSynced` on `onUploaded`.
+  try {
+    const ring = (link && link.frames) || [];
+    const pick = from > 0 ? framesAfter(ring, _framesSynced) : ring.slice();
+    _framesPending = pick.length ? pick[pick.length - 1] : _framesSynced;
+    frames = pick.map(f => `${f.t} ${f.dir} ${f.f}`);
+  } catch (_) { /* ignore */ }
   const text = [
     lost ? `--- ${lost} earlier line(s) rolled out of the ring before upload ---` : null,
     tail.join('\n'),
@@ -193,7 +200,7 @@ const logsync = new LogSync({
   log,
   // F-4: the ring keeps the PREVIOUS match's lines until MC actually holds them. Only a completed
   // upload can say that, and this is the one place that knows an upload completed.
-  onUploaded: through => logRing.pulled(through),
+  onUploaded: through => { logRing.pulled(through); _framesSynced = _framesPending; },
 });
 
 // ---------- utility items: watch for stations during a match, and advertise ourselves as a player ----------
@@ -314,7 +321,8 @@ let lastMcUrl = null;
 let currentJoinUrl = null;
 /** A60: every address discovery turned up this run, and which of them already failed a proof. */
 const mcLink = new McLink({ policy: HUD_POLICY, current: () => transport, setCurrent: t => { transport = t; },
-  remember: url => { settings.mcUrl = url; hud.mcUrl = url; },
+  // F659: what is stored is always the normalised url (no query, no secret, node port, /ws)
+  remember: (url, bound) => { const n = normaliseMcUrl(url); if (n.refused !== undefined) return; settings.mcUrl = n.url; hud.mcUrl = n.url; },
   makeTransport: previous => {
     const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
     return new Transport({ node: { app_ver: APP_VER, connection_type: previous ? previous.connectionType : null },
@@ -324,7 +332,7 @@ const autoJoin = mcLink.autoJoin;
 /** F346 (d): ask the join policy again when its discovery window closes. */
 let firstContactTimer = /** @type {any} */ (null);
 // F346 (c): the window is the transport's armed deadline, which a 4003 reclaim wait extends past 10 s.
-function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
+function noteJoinUrl(url) { const n = url && normaliseMcUrl(url); if (n && n.refused === undefined && /^wss?:\/\//i.test(n.url)) currentJoinUrl = n.url; }
 /**
  * @param {string} url the LAN join url
  * @param {boolean} [remember] this address came FROM THE USER — a scanned QR, a typed address, or one
@@ -351,8 +359,14 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  *   the field lost it again immediately, or a cold boot out of Wi-Fi had no other path to MC (review
  *   fix). Transport's own persistence is the single store now — there is no app-level mirror to keep.
  */
-function connectMc(url, remember = true, join = {}) {
-  if (!url) return;
+function connectMc(rawUrl, remember = true, join = {}) {
+  if (!rawUrl) return;
+  // F659: the one normaliser. A `?s=` is split into the join (the hello carries it), the console port 8765 becomes
+  // the node port and any path becomes /ws, whoever called: typed, scanned, discovered, stored or `window.brx.connectMc`.
+  const target = mcDialTarget(rawUrl, join);
+  if (!target) { log(`MC address refused (not an address): ${String(rawUrl).slice(0, 60)}`, 'le'); return; }
+  const url = target.url;
+  join = target.join;
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
@@ -386,6 +400,7 @@ function connectMc(url, remember = true, join = {}) {
       // `settings.mcUrl` was either named by the user or proved itself, and the boot dial can present the
       // key and the join secret without having to ask which.
       mcLink.bound(candidate, candidate.url, {});
+      hud.mcFound = { n: autoJoin.lastFound, name: candidate.serverName || null };   // F659: "JOINED <name> (2 FOUND)"
       hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
     // ...and sweep again if we stay unbound: the boot sweep used to be a one-shot, so after the first
     // successful bind nothing could rescue us again — exactly the case where MC restarts on a new IP
@@ -658,10 +673,13 @@ Object.assign(hud.h, {
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
   onSetUrl: () => {
     const el = $('mcurl'); const v = el && el.value.trim(); if (!v) return;
+    const n = normaliseMcUrl(v);
+    if (n.refused !== undefined) { log(`MC address refused (${n.refused}): ${v.slice(0, 60)}`, 'le'); return; }
+    noteJoinUrl(n.url);
     const j = parseMcJoin(v);
-    noteJoinUrl(j ? j.url : v);
-    if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true });
-    else connectMc(v, true, { user: true });   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
+    // a join code replaces the held pub/secret (null clears); a bare address keeps them (the mandatory floor, §5)
+    if (j) connectMc(n.url, true, { pub: n.join.pub || null, secret: n.join.secret || null, user: true });
+    else connectMc(n.url, true, { ...n.join, user: true });
   },
   onToggleWebDebug: () => {
     webDebug.toggle().then(on => { log(on === 'unsupported' ? 'WebView debugging is unsupported on this phone' : `WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })
@@ -859,7 +877,7 @@ window.addEventListener('pageshow', () => engine.resume());
 // ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
 function startDiscovery() {
   if (!plugins.zeroconf || !isNative()) return;
-  mcLink.watch(plugins.zeroconf, url => { noteJoinUrl(url); suggestMc(url, 'mdns'); },
+  mcLink.watch(plugins.zeroconf, (url, startedAt) => { noteJoinUrl(url); suggestMc(url, 'mdns', startedAt); },
     (e, phase) => log(`discovery${phase === 'discovery' ? '' : ' ' + phase}: ` + (e && e.message || e), 'li'));
 }
 
@@ -870,15 +888,17 @@ function startDiscovery() {
  *  brings the no-tap join back ONLY as a verify dial: no node_key, no secret, no utility proof, and
  *  nothing processed until the host proves it is the MC install this phone trusted. Everything else is
  *  the one-tap JOIN row, with a line that says why (`offerMc`). The policy is autojoin.js. */
-function suggestMc(url, source) {
-  if (!url) return;
+function suggestMc(foundUrl, source, startedAt) {
+  if (!foundUrl) return;
+  let url = foundUrl;
   const live = transport && !transport.closed ? transport : null;
-  const d = mcLink.found(url, source, { hasTrustKey: holdsTrustKey(), remembered: settings.mcUrl || null });
+  const d = mcLink.found(url, source, { hasTrustKey: holdsTrustKey(), remembered: settings.mcUrl || null }, startedAt);
   if (d.do === 'ignore') return;
+  if (d.url) url = d.url;   // F659: with several MCs in view, the pick (last-good, else newest) is the one to dial or offer
   // F346 (d): the discovery window is still open. Ask again when it closes; a second MC seen by then
   // turns this into the "several" row instead of a join.
   if (d.do === 'wait') {
-    if (!firstContactTimer) firstContactTimer = setTimeout(() => { firstContactTimer = null; suggestMc(url, source); }, d.ms || 0);
+    if (!firstContactTimer) firstContactTimer = setTimeout(() => { firstContactTimer = null; suggestMc(foundUrl, source, startedAt); }, d.ms || 0);
     return;
   }
   // F346 (d), Tony 2026-09-25: a never-joined phone (no trust key, no remembered address) that sees ONE MC
@@ -913,7 +933,6 @@ function offerMc(url, source, reason) {
   const cur = hud.discovered;
   // mDNS re-resolves constantly: an unchanged row stays, and "several" keeps the address it shows
   if (cur && cur.url === url && (cur.reason || null) === reason) return;
-  if (cur && reason === 'several' && cur.reason === 'several' && autoJoin.live().some(c => c.url === cur.url)) return;
   const text = offerText(reason, url);
   hud.discovered = { url, at: Date.now(), source, reason, text };
   log(text || `MISSION CONTROL FOUND AT ${hostOf(url)} — tap JOIN`, 'lk');

@@ -13,7 +13,7 @@ import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/t
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
 import { APP_VER, setDeviceModel } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 import jsQR from 'jsqr';
-import { parseMcJoin, MC_URL_KEY } from './mcurl.js';
+import { parseMcJoin, mcDialTarget, MC_URL_KEY } from './mcurl.js';
 import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP,
   HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
@@ -343,8 +343,15 @@ const mcLink = new McLink({ policy: STATION_POLICY, current: () => transport, se
     return new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null,
       keyPrefix: KEY_PREFIX, ...(ws ? { wsFactory: ws } : {}) });
   } });
-function connectMc(url, { wsFactory, trusted = true, pub, secret } = {}) {
-  if (!url) return;
+function connectMc(rawUrl, { wsFactory, trusted = true, pub, secret } = {}) {
+  if (!rawUrl) return;
+  // F659: the one normaliser (stored `settings.mc`, `?mc=`, a scanned QR). The stage's own stage:// url is not an address.
+  let url = rawUrl;
+  if (!/^stage:/i.test(rawUrl)) {
+    const target = mcDialTarget(rawUrl, { pub, secret });
+    if (!target) { log(`MC address refused (not an address): ${String(rawUrl).slice(0, 60)}`, 'le'); return; }
+    url = target.url; pub = target.join.pub; secret = target.join.secret;
+  }
   // Block 9: the same Wi-Fi-bound socket the HUD dials with (F311, BrxNet on Android), so a no-internet game
   // Wi-Fi the sweep just found MC on is the network the connect uses too. The stage passes its own factory.
   const dial = mcLink.dial(url, { trusted, wsFactory, connect: { url, trusted, pub, secret } }, candidate => {
@@ -424,6 +431,7 @@ function connectTypedMc(text) {
   if (!mcLinkEditable()) return;
   const r = resolveTypedMc(text);
   if (!r) return;
+  if (r.refused !== undefined) { log(`MC address refused (${r.refused}): ${String(text).trim().slice(0, 60)}`, 'le'); return; }
   if (playLocked()) log(`MC link changed on the station in play: ${settings.mc || '(none)'} -> ${r.url}${a58Locked() ? ' (MC lock overridden)' : ''}`, 'lk');
   if (r.note) log(r.note, 'li');
   connectMc(r.url, r.join ? { trusted: true, pub: r.pub, secret: r.secret } : { trusted: true });   // a bare address keeps the held pub/secret, as before
