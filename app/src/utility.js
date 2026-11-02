@@ -772,7 +772,7 @@ function render() {
   $('txhint').textContent = support.txPowerControl ? (TX_HINT[settings.tx] || '') : 'no transmit-power control on this platform · radius = threshold only';
   $('thr').textContent = `${thr()} dBm${settings.threshold ? '' : ' · default'}`; $('thrRange').value = thr();
   $('dwell').textContent = `${(settings.dwell / 1000).toFixed(1)} s`;
-  { const bs = $('btnStart'); ((bs.querySelector && bs.querySelector('.unskew')) || bs).textContent = advertising ? 'STOP' : 'START'; }   // into the .unskew span: replacing it slanted the word with its button
+  { const bs = $('btnStart'); ((bs.querySelector && bs.querySelector('.unskew')) || bs).textContent = (advertising || settings.live) ? 'STOP' : 'START'; }   // F648: a live station whose radio is retrying still offers STOP   // into the .unskew span: replacing it slanted the word with its button
   const armed = settings.mcArmed;
   // Round 3 (Tony, 2026-09-24): quiet when all is well, loud only when it matters. Armed: a small "MC ✓ GAME n". Linked to an
   // MC but on the air WITHOUT its arming: player phones check the game byte MC's arming sets, so they may ignore this station,
@@ -1084,7 +1084,7 @@ function renderControl(isControl, v, heldBy) {
 }
 
 function wire() {
-  $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
+  $('btnStart').onclick = () => ((advertising || settings.live) ? stopAdvert() : startAdvert());
   $('btnMc').onclick = () => connectTypedMc($('mcUrl').value);
   if ($('btnMcMain')) $('btnMcMain').onclick = () => connectTypedMc($('mcUrlMain').value);
   if ($('btnQrMain')) $('btnQrMain').onclick = () => scanUtilityQr();

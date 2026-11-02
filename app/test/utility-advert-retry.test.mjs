@@ -90,3 +90,17 @@ test('STOP still takes the hill off the air for good', async () => {
   assert.equal(beacon.starts, before, 'an operator stop is not retried');
   assert.equal(api.settings.live, false);
 });
+
+test('a live hill whose radio is retrying still offers STOP, and STOP takes it off the air', async () => {
+  const beacon = fakeBeacon();
+  api.plugins.beacon = beacon;
+  api.settings.kind = 'control';
+  await api.startAdvert();
+  beacon.broken = 'throw';
+  await api.startAdvert(true);
+  api.render();
+  assert.equal(api.settings.live, true);
+  assert.equal(elFor('btnStart').textContent, 'STOP', 'the operator can still stop a hill that is retrying');
+  await elFor('btnStart').onclick();
+  assert.equal(api.settings.live, false, 'STOP clears the intent, so the tick stops retrying');
+});
