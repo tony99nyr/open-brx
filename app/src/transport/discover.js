@@ -156,7 +156,7 @@ export function probeWs(url, { wsFactory, timers = globalThis, timeoutMs = PROBE
     // having opened anything and report a live MC as dead.
     try { ws = wsFactory ? wsFactory(url) : null; } catch (_) { resolve('threw'); return; }
     if (!ws) { resolve('threw'); return; }
-    timer = timers.setTimeout(() => finish('timeout'), timeoutMs);
+    timer = timers.setTimeout(() => finish(grace != null ? 'open' : 'timeout'), timeoutMs);   // opened and not closed by the bound: a hit
     ws.onopen = () => {                      // upgraded — a server is there, if it stays. No hello, ever.
       if (!done && grace == null) grace = timers.setTimeout(() => finish('open'), Math.min(PROBE_OPEN_GRACE_MS, Math.floor(timeoutMs / 4)));
     };
