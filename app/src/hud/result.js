@@ -112,7 +112,8 @@ export function _result(st) {
     const awards = (R && Array.isArray(R.honors)) ? R.honors.filter(h => h && typeof h === 'object' && (h.key || h.medal) && h.player_id) : [];
     const tab = this.rtab === 'awards' && awards.length ? 'awards' : hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
     const hold = this._resultHold(R);
-    const my = (R && R.my && typeof R.my === 'object') ? R.my : null;
+    const objective = !!(R && R.win_by === 'objective');   // F657: the team's number is its held time
+    const my =(R && R.my && typeof R.my === 'object') ? R.my : null;
     const myId = (my && my.player_id) || (st.player && st.player.player_id) || null;
 
     // --- headline ---
@@ -148,9 +149,13 @@ export function _result(st) {
         const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
         const mine = !!(st.teamKey && k === st.teamKey);
         const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
-        const h = hold ? hold[t.team_id] != null ? hold[t.team_id] : hold[k] : null;
-        return `<div class="rteam ${mine ? 'mine' : ''}">${teamChip(t, { mine })}
-          ${h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
+        const h = num(t.held_s) != null ? t.held_s : hold ? hold[t.team_id] != null ? hold[t.team_id] : hold[k] : null;
+        // F657 (field 2026-11-01): an objective match is won on held time, so the chip's number is the held time and the
+        // kill score is the line under it. The chip read "RED 14 · BLUE 3" beside a blue win on 424 s of hill.
+        const held = objective && h != null;
+        return `<div class="rteam ${mine ? 'mine' : ''}">${teamChip(t, held ? { mine, value: mmssS(h) } : { mine })}
+          ${held ? `<div class="thold">KILLS <b class="tab">${num(t.score) == null ? '—' : t.score}</b></div>`
+            : h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
           <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab kda"><i>K</i><i>D</i><i>A</i></span></div>
           ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab kda"><i>${num(r.kills) == null ? '—' : r.kills}</i><i>${num(r.deaths) == null ? '—' : r.deaths}</i><i>${num(r.assists) == null ? '—' : r.assists}</i></span></div>`).join('')
             : '<div class="tp none">NO SCORED PLAYERS</div>'}</div></div>`;
@@ -270,8 +275,10 @@ export function _history(st) {
     const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
     const rows = hist.map(g => {
       const w = g.outcome ? (OUTCOME_WORD[g.outcome] || '—') : null;
+      // F657: an objective match lists the held time that decided it (`held_s`, MC sends it only then), not the kills
       const scores = Array.isArray(g.team_scores) && g.team_scores.length
-        ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
+        ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${g.win_by === 'objective' && num(t.held_s) != null ? mmssS(t.held_s)
+          : num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
       return `<div class="hr"><span class="c t tab">${clock12(g.t)}</span>
         <span class="c m">${esc(String(g.mode || '—').toUpperCase())}</span>
         <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}${w && g.result_updated === true ? ' · UPDATED' : ''}</span>

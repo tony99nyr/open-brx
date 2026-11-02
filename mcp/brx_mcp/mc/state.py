@@ -5565,7 +5565,18 @@ class Session:
             return []
         totals = recap.get("score") or {}
         names = {t["team_id"]: str(t.get("name") or t["team_id"]) for t in self.teams}
-        return [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
+        # F657 (field 2026-11-01): `score` is kills in every mode, but an objective match is won on held time. Each team
+        # then also carries the number that decided it, `held_s`, so the result screen and the phone's history headline
+        # it: a 14-3 kill line beside a winner on 424 s of hill read as the wrong mode.
+        poss = recap.get("possession")
+        held = poss["by_team"] if poss is not None and self._recap_win_by(recap) == "objective" else None
+        return [{"team_id": tid, "name": names.get(tid, tid), "score": sc,
+                 **({"held_s": held.get(tid, 0)} if held is not None else {})} for tid, sc in totals.items()]
+
+    def _recap_win_by(self, recap: RecapView) -> str | None:
+        """The rule the scorer ran (`recap.win_by`); the draft config only for a recap that predates that field. An adopted
+        match has no config of its own, so the draft can name another rule (bench 2026-11-01)."""
+        return recap.get("win_by") or (self.config.get("scoring") or {}).get("win_by")
 
     def _result_body(self, recap: RecapView, p: Player, *, match_id: str | None = None,
                      roster: dict[str, Player] | None = None) -> dict:
@@ -5587,7 +5598,7 @@ class Session:
             "outcome": self._outcome_for(winner, p, roster),
             "winner": winner,
             "mode": self.config.get("mode"),
-            "win_by": (self.config.get("scoring") or {}).get("win_by"),
+            "win_by": self._recap_win_by(recap),
             "team_scores": self._result_team_scores(recap),
             "rows": rows,
             "my": next((r for r in rows if r["player_id"] == p["player_id"]), None),

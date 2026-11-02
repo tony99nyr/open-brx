@@ -627,7 +627,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   In one process, MC sends `victory` at release only when both clocks place it within 30 seconds of the whistle (A81).
   MC pushes `result` to every
   BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
-  RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),
+  RECIPIENT from `winner`, plus `mode`, `win_by` (the recap's own, the rule the scorer ran), `team_scores` (`[]` in FFA: `rows` is the leaderboard;
+  `{team_id, name, score}`, where `score` is kills, plus `held_s` on an objective match with possession, the number that decided it, F657),
   EVERY player's `rows`, the recipient's own `my`, `honors` (`{medal, key, player_id, display, stat}`, `key` the AWARDS row (A63) —
   `display` is the PLAYER's name, so the phone needs no roster), `possession?`, `after_end?` and
   `provisional`. After release, it is re-sent whenever the recap moves (de-duplicated on the body minus `t`) and the

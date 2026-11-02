@@ -291,7 +291,7 @@ const notSheared = (r, sels) => {
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
   for (const st of ['idle', 'idle-noisy', 'idle-noisy-open', 'idle-assigned', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'live-reload-failed', 'live-bolt', 'down', 'redeploy', 'result', 'over',
-    'result-pending', 'result-unreached', 'result-win-team', 'result-updated', 'result-updated-acked', 'result-rescored', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-koth-kill-leader-loses', 'result-updated', 'result-updated-acked', 'result-rescored', 'result-players', 'result-nine-medals', 'result-nine-teams', 'result-many-holders', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
@@ -2052,6 +2052,35 @@ for (const view of VIEWS) {
     must(r.teams.every(t => t.players.length === 2), 'each team should list its two players: ' + JSON.stringify(r.teams.map(t => t.players)));
     must(r.teams.some(t => /REAPER/.test(t.players.join(' '))), 'this player is not in the team list');
     must(r.hold && /HELD/.test(r.hold), 'possession was pushed and is not shown: ' + r.hold);
+  });
+  // F657 (field 2026-11-01): KOTH is won on hill time. The TEAMS cards read "BLUE 3 · YELLOW 14" beside a blue WIN, and
+  // players read it as the wrong mode. Each card's big number is now the held time; the kills are the line under it.
+  await step(`${view.name} F657 result-koth-kill-leader-loses: each team card headlines its hill time, kills under it`, async () => {
+    const pg = await open(view, 'result-koth-kill-leader-loses');
+    const r = await pg.evaluate(() => ({
+      head: (document.querySelector('.result .rh1') || {}).textContent || '',
+      teams: Array.from(document.querySelectorAll('.result .rteam')).map(t => ({
+        chip: t.querySelector('.tm').textContent.replace(/\s+/g, ' ').trim(),
+        big: (t.querySelector('.tm b') || {}).textContent || '',
+        sub: (t.querySelector('.thold') || {}).textContent.replace(/\s+/g, ' ').trim(),
+        mine: t.classList.contains('mine') })) }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-result-koth-kill-leader-loses.png` });
+    await pg.close();
+    must(/WIN/.test(r.head), 'the headline is not WIN: ' + r.head);
+    const mine = r.teams.find(t => t.mine), foe = r.teams.find(t => !t.mine);
+    must(mine && foe, 'both team cards: ' + JSON.stringify(r.teams));
+    must(/^0?7:04$/.test(mine.big.trim()) && /^0?3:31$/.test(foe.big.trim()), 'the big number is not the hill time (7:04 beats 3:31): ' + JSON.stringify(r.teams));
+    must(/^KILLS 3$/.test(mine.sub) && /^KILLS 14$/.test(foe.sub), 'the kills are not the line under each card: ' + JSON.stringify(r.teams));
+    must(!r.teams.some(t => /\b14\b/.test(t.chip)), 'a team chip still headlines the kill score: ' + JSON.stringify(r.teams.map(t => t.chip)));
+  });
+  await step(`${view.name} F657 history: a KOTH row lists the hill time that decided it, not the kills`, async () => {
+    const pg = await open(view, 'history');
+    const rows = await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+    await pg.close();
+    const koth = rows.find(x => /\bKOTH\b/.test(x)), tdm = rows.find(x => /\bTDM\b/.test(x));
+    must(koth && /7:04/.test(koth) && /3:31/.test(koth), 'the KOTH row does not list held time: ' + koth);
+    must(koth && !/\b14\b/.test(koth), 'the KOTH row still lists the kill score: ' + koth);
+    must(tdm && /\b18\b/.test(tdm) && /\b25\b/.test(tdm), 'the control: a TDM row still lists its kill score: ' + tdm);
   });
   // Bench 2026-09-18 (Tony): on YOUR team's card the left edge carries the team colour, and the names sat
   // hard against it -- twice over, at 9px of padding and then at 15px. What a person reads is not the padding
