@@ -1135,22 +1135,23 @@ def _recoil_step(profile: RecoilProfile | None, state: str, burst: int) -> tuple
 
 
 def release_after_pause(profile: RecoilProfile | None, state: str, burst: int, pause_ms: float,
-                        fire_ms: float) -> tuple[str, int, int]:
-    """The recoil state after a burst ends and the trigger rests `pause_ms`: `(state, burst, leak)`. `leak` is
-    the number of next-burst rounds that still fire at the old state before an F663 reset lands; the caller
-    resets to crisp after them. Without the flag, the shipped rule: a crisp release resets the count, and a
+                        fire_ms: float) -> tuple[str, int, int, str | None]:
+    """The recoil state after a burst ends and the trigger rests `pause_ms`: `(state, burst, leak, held)`.
+    With the F663 flag the phone zeroes the count at the release edge (engine.js `_recoilRelease`), so the next
+    pull counts from 0 at once. Only the gun lags: the `leak` rounds fired before the reset write lands still
+    fire at the `held` (old) state. Without the flag, the shipped rule: a crisp release resets the count, and a
     degraded weapon recovers only after `settle_ms`."""
     if profile is None:
-        return state, burst, 0
+        return state, burst, 0, None
     if state == "crisp":
-        return "crisp", 0, 0
+        return "crisp", 0, 0, None
     if profile.reset_on_release:
         if pause_ms >= RELEASE_RESET_MS:
-            return "crisp", 0, 0
-        return state, burst, max(1, math.ceil((RELEASE_RESET_MS - pause_ms) / fire_ms))
+            return "crisp", 0, 0, None
+        return "crisp", 0, max(1, math.ceil((RELEASE_RESET_MS - pause_ms) / fire_ms)), state
     if pause_ms >= profile.settle_ms:
-        return "crisp", 0, 0
-    return state, burst, 0
+        return "crisp", 0, 0, None
+    return state, burst, 0, None
 
 
 def _accuracy_pct(profile: RecoilProfile | None, state: str) -> float:
@@ -1174,7 +1175,8 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     a 150-300 ms pause between bursts is not, so a weapon that got hot in one burst stays hot into the
     next. A reload is a trigger release too, and it is always far longer than `settle_ms`.
     With `recoil.reset_on_release` (F663), `release_after_pause` resets a degraded weapon after a rest of
-    `RELEASE_RESET_MS` or more; a shorter rest keeps the rounds fired before then at the old state.
+    `RELEASE_RESET_MS` or more; after a shorter rest, the rounds fired before then still fire at the old state,
+    while the count restarts from 0 at the release.
 
     `crit_pct` (F308, polish round 1): the GUN rolls its own crit per round, independent of the hit
     roll -- a crit still has to land -- at `magnitude x CRIT_MULT` truncated (`int()`), same formula
@@ -1183,7 +1185,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     `crit_pct` is nonzero; every caller here already threads one through for its own reasons (the
     burst pause, or simply because the combatant wrapper always has one)."""
     ammo, res = mag, reserve
-    state, burst, leak = "crisp", 0, 0
+    state, burst, leak, held = "crisp", 0, 0, None
     t = first_time
     burst_mode = burst_min is not None
     while True:
@@ -1196,7 +1198,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             state, burst, leak = "crisp", 0, 0   # the reload is a release: the gun comes back crisp
         blen = min(ammo, rng.randint(burst_min, burst_max)) if burst_mode else ammo
         for _ in range(blen):
-            hit_p = (_accuracy_pct(profile, state) / 100.0) * aim_factor
+            hit_p = (_accuracy_pct(profile, held if leak else state) / 100.0) * aim_factor
             round_dmg = dmg
             if crit_pct and rng.random() * 100.0 < crit_pct:
                 round_dmg = int(round_dmg * CRIT_MULT)
@@ -1204,15 +1206,13 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             ammo -= 1
             state, burst = _recoil_step(profile, state, burst)
             if leak:
-                leak -= 1
-                if not leak:
-                    state, burst = "crisp", 0   # F663: the late release reset lands
+                leak -= 1   # F663: once the leaked rounds are out, the reset write has landed on the gun
             t += fight_semi_interval(rng, fire_ms, overshoot_ms) if pull_ms > 0 else fire_ms
         if not burst_mode:
             continue   # full auto never releases; the mag running dry is the only interruption
         pause = rng.uniform(pause_min_ms, pause_max_ms)
         t += pause
-        state, burst, leak = release_after_pause(profile, state, burst, pause, fire_ms)
+        state, burst, leak, held = release_after_pause(profile, state, burst, pause, fire_ms)
 
 
 def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charge: int, tap_ms: float,
