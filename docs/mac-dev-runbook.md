@@ -95,7 +95,7 @@ router. `./start.sh` now prints the phone address and warns about the firewall (
 
 1. Connect the Mac to the same Wi-Fi network and band as the phones. Do not use a guest network.
 2. Find the Mac address: `ipconfig getifaddr en0` (use `en1` if it prints nothing). Write it down as `<mac-ip>`.
-3. Check the firewall: `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate --getstealthmode`. If
+3. Check the firewall: run `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate`, then the same command with `--getstealthmode`. If
    stealth mode is on, turn it off (check 1 below). If the firewall is on, allow python (check 1 below).
 4. Start MC with `./start.sh`. If a window asks "Do you want the application python to accept incoming network
    connections?", click Allow.
