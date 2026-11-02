@@ -29,10 +29,15 @@
 #include <WiFi.h>
 #include <esp_random.h>
 #include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
+#include <errno.h>
+#include <fcntl.h>
+#include <lwip/sockets.h>  // F642: the subnet scan's non-blocking TCP probes
+#include <unistd.h>
 
 #include "brx_advert.h"
 #include "contract.gen.h"
 #include "json_lite.h"
+#include "mc_discovery.h"
 #include "presence.h"
 #include "station_controller.h"
 #include "station_link.h"
@@ -67,7 +72,7 @@ constexpr uint16_t SCAN_WINDOW_UNITS = 50;
 Preferences mcPrefs;
 String wifiSsid, wifiPass;
 String savedMcUrl;
-TypedMcFallback typedMcFallback;
+McDiscovery mcDisc;  // F642: typed, last good, mDNS, the /24 scan (mc_discovery.h)
 // ARCH-4: the flash mirrors (config, hill, clock) and the lock snapshot's bookkeeping, owned by the
 // host-tested controller. The references below keep the boot restore and the hill tick reading as before.
 StationController station;
@@ -103,6 +108,7 @@ static void mcLoadPrefs(StationLink& link) {
   wifiSsid = mcPrefs.getString("ssid", "");
   wifiPass = mcPrefs.getString("pass", "");
   savedMcUrl = mcPrefs.getString("mc_url", "");
+  mcDisc.set_last_good(mcPrefs.getString("mc_last", "").c_str());  // F642
   String nodeId = mcPrefs.getString("node_id", "");
   String nodeKey = mcPrefs.getString("node_key", "");
   const bool assocSaved = mcPrefs.isKey("assoc");  // polish round 2: no saved mode boots HELD (boot_assoc_mode)
@@ -148,8 +154,10 @@ static void mcSaveWifi(const String& ssid, const String& pass) {
   // A new network means a new event: a station config saved at the last one must not come back.
   mcPrefs.remove("station_cfg");
   mcPrefs.remove("station_sid");
+  mcPrefs.remove("mc_last");  // F642: the last good MC belongs to the old network
   mcRemoveHillKeys();
   mcPrefs.end();
+  mcDisc.set_last_good("");
   wifiSsid = ssid;
   wifiPass = pass;
 }
@@ -165,7 +173,7 @@ static void mcSaveTypedMcUrl(const String& url) {
   mcPrefs.end();
   if (!saved) return;  // the old url is still the saved one
   savedMcUrl = clean.c_str();
-  typedMcFallback.new_url();
+  mcDisc.new_url();
 }
 
 
@@ -512,6 +520,7 @@ StationLink link;
 WebSocketsClient ws;
 WsAddress pendingTypedMc;    // set by `MC <url>` or restored from Preferences
 bool haveTypedMc = false;
+WsAddress dialledMc;         // F642: the address of the dial in flight, saved as the last good MC on an ok welcome
 uint32_t lastMdnsTryMs = 0;
 uint32_t lastHeartbeatMs = 0;
 uint32_t lastScanMs = 0;
@@ -770,6 +779,19 @@ static void mcPerformMusterDrop() {
   mcStopMdns();
 }
 
+// F642: MC's welcome said ok. Remember a LAN address (private IPv4 ws:// only, never the typed URL) for next time.
+static void mcOnWelcomed() {
+  mcDisc.welcomed();
+  const std::string url = mc_ws_url(dialledMc.host.c_str(), dialledMc.port, dialledMc.path.c_str());
+  if (!should_save_last_good(url, savedMcUrl.c_str(), mcDisc.last_good())) return;
+  mcPrefs.begin("brxmc", false);
+  const bool saved = nvsOk(nvs_put_str(mcPrefs, nvsFails, "mc_last", url.c_str()));
+  mcPrefs.end();
+  if (!saved) return;
+  mcDisc.set_last_good(url);
+  Serial.printf("MC last good saved: %s\n", url.c_str());
+}
+
 // ARCH-4: the controller's effects, applied to real Preferences, the claim scan, the socket and the screen.
 // Each saved-state call is one of the mc* functions above, unchanged; the controller decides which and when.
 class GlueEffects final : public StationEffects {
@@ -785,7 +807,7 @@ class GlueEffects final : public StationEffects {
   bool pause_claim_feed(bool discard) override { return mcPauseClaimFeed(discard); }
   void resume_claim_feed(bool was_feeding) override { mcResumeClaimFeed(was_feeding); }
   void muster_drop() override { mcPerformMusterDrop(); }
-  void dial_succeeded() override { typedMcFallback.dial_succeeded(); }
+  void dial_succeeded() override { mcOnWelcomed(); }
   void wake_screen() override { mcScreenWake = true; }
   void log(const std::string& text) override { Serial.print(text.c_str()); }
 };
@@ -811,7 +833,7 @@ static void mcWebSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     case WStype_DISCONNECTED: {
       Serial.println("WS disconnected");
-      typedMcFallback.dial_failed(millis());
+      mcDisc.dial_failed(millis());  // a no-op once the dial deadline already failed it
       link.ws_closed();
       // Polish round 1: drive the library's own retry cadence from station_link.h's Backoff
       // (base 500 ms, x2, cap 10 s, +-20% jitter, tested in test_link.cpp) instead of leaving it at
@@ -890,6 +912,78 @@ static bool mcPollMdns(uint32_t now, WsAddress& out) {
   return found;
 }
 
+// ---- F642: the subnet scan's sockets (the policy, order and pacing are mc_discovery.h's) ------------ //
+// A probe is a non-blocking TCP connect to port 8766 that sends nothing; loop() never waits on one.
+int scanFds[MC_SCAN_POOL] = {-1, -1, -1, -1};
+
+static uint32_t mcIpU32(const IPAddress& a) {
+  return (uint32_t)a[0] << 24 | (uint32_t)a[1] << 16 | (uint32_t)a[2] << 8 | (uint32_t)a[3];
+}
+
+static void mcScanCloseAll() {
+  for (int& fd : scanFds) {
+    if (fd >= 0) { close(fd); fd = -1; }
+  }
+}
+
+static void mcScanStartProbe(unsigned slot, uint32_t ip) {
+  int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (fd < 0) { mcDisc.scan().probe_done(slot, false); return; }
+  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+  sockaddr_in sa = {};
+  sa.sin_family = AF_INET;
+  sa.sin_port = htons(MC_SCAN_PORT);
+  sa.sin_addr.s_addr = htonl(ip);
+  const int r = connect(fd, (sockaddr*)&sa, sizeof sa);
+  if (r == 0 || errno != EINPROGRESS) {
+    close(fd);
+    mcDisc.scan().probe_done(slot, r == 0);
+    return;
+  }
+  scanFds[slot] = fd;
+}
+
+// 1: the host accepted; 0: refused or failed; -1: still connecting. A zero timeout: never waits.
+static int mcScanProbeResult(int fd) {
+  fd_set w, e;
+  FD_ZERO(&w);
+  FD_ZERO(&e);
+  FD_SET(fd, &w);
+  FD_SET(fd, &e);
+  timeval tv = {0, 0};
+  const int n = select(fd + 1, nullptr, &w, &e, &tv);
+  if (n == 0) return -1;
+  if (n < 0) return 0;
+  int err = 0;
+  socklen_t len = sizeof err;
+  if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) < 0) return 0;
+  return err == 0 ? 1 : 0;
+}
+
+// Call every loop() while the cycle says SCAN. True with `out` set once a host accepted the TCP connect.
+static bool mcPollScan(uint32_t now, WsAddress& out) {
+  McScan& s = mcDisc.scan();
+  uint32_t ip = 0;
+  for (unsigned i = 0; i < MC_SCAN_POOL && !s.candidate(ip); i++) {
+    if (scanFds[i] < 0) continue;
+    const int r = mcScanProbeResult(scanFds[i]);
+    if (r < 0 && !s.probe_timed_out(i, now)) continue;
+    close(scanFds[i]);
+    scanFds[i] = -1;
+    s.probe_done(i, r == 1);
+  }
+  unsigned slot = 0;
+  uint32_t next = 0;
+  while (!s.candidate(ip) && s.next_probe(now, slot, next)) mcScanStartProbe(slot, next);
+  if (!s.candidate(ip)) return false;
+  mcScanCloseAll();  // the policy dropped the other probes; they run again if this dial fails
+  out.host = ipv4_string(ip).c_str();
+  out.port = MC_SCAN_PORT;
+  out.path = "/ws";
+  out.valid = true;
+  return true;
+}
+
 // ---- the main poll, called every loop() with the current millis() ------------------------------
 static void mcLoop(uint32_t now) {
   // The station's own play runs FIRST, before any Wi-Fi or WebSocket handling, because MUSTER keeps Wi-Fi down for
@@ -937,6 +1031,13 @@ static void mcLoop(uint32_t now) {
   static LinkState lastLinkState = link.state();
   if (link.state() != lastLinkState) { lastLinkState = link.state(); mcScreenWake = true; }
   if (link.state() != LinkState::LOOKING_FOR_MC) mcCancelMdns();  // no stale answer for the next search
+  // F642: every source honours LINK OFF and the MUSTER drop. Leaving LOOKING_FOR_MC for any reason but a
+  // dial of our own (the scan pauses for its candidate) also ends the scan.
+  const bool dialAllowed = mc_dial_allowed(wifiUp, link.radio_down_for_match(), linkOff);
+  if (!dialAllowed || (link.state() != LinkState::LOOKING_FOR_MC && !mcDisc.dialling())) {
+    mcDisc.halt();
+    mcScanCloseAll();
+  }
   if (!wifiUp) {
     // Polish round 2 (CRITICAL): a deliberate MUSTER drop must STAY dropped. Without this guard the
     // very next tick's kick re-associated Wi-Fi immediately, undoing the drop `mcHandleFrame` just
@@ -953,26 +1054,48 @@ static void mcLoop(uint32_t now) {
     return;
   }
 
-  // Address discovery: a typed `MC <url>` wins immediately; otherwise browse mDNS periodically.
-  if (link.state() == LinkState::LOOKING_FOR_MC && mc_dial_allowed(wifiUp, link.radio_down_for_match(), linkOff)) {
-    if (!haveTypedMc && typedMcFallback.prefer_typed(now) && saved_mc_url_usable(savedMcUrl.c_str())) {
-      pendingTypedMc = mcParseWsUrl(savedMcUrl);
-      haveTypedMc = pendingTypedMc.valid;
-    }
-    if (haveTypedMc && typedMcFallback.prefer_typed(now)) {
-      link.mc_address_known();
-      typedMcFallback.dial_started(true);
-      ws.begin(pendingTypedMc.host.c_str(), pendingTypedMc.port, pendingTypedMc.path.c_str());
-      wsWantOpen = true;
+  // F642: a dial with no ok welcome by its deadline has failed. The library fires no event for a refused TCP
+  // connect, so without this a stale address held the link at CONNECTING for ever (the 2026-11-01 field night).
+  if (mcDisc.dial_timed_out(now)) {
+    Serial.printf("MC dial timed out (%s %s:%u)\n", mc_source_name(mcDisc.dial_source()), dialledMc.host.c_str(),
+                  dialledMc.port);
+    mcDisc.dial_failed(now);
+    ws.disconnect();
+    wsWantOpen = false;
+    link.ws_closed();
+  }
+
+  // Address discovery (F642, mc_discovery.h): typed, last good, mDNS, then a scan of the Stick's own /24.
+  if (link.state() == LinkState::LOOKING_FOR_MC && dialAllowed) {
+    const bool typedUsable = haveTypedMc || saved_mc_url_usable(savedMcUrl.c_str());
+    const McStep step = mcDisc.poll(now, typedUsable, mcIpU32(WiFi.localIP()), mcIpU32(WiFi.subnetMask()));
+    if (step != McStep::BROWSE_MDNS) mcCancelMdns();
+    if (step != McStep::SCAN) mcScanCloseAll();
+    WsAddress target;
+    McSource src = McSource::NONE;
+    if (step == McStep::DIAL_TYPED) {
+      target = haveTypedMc ? pendingTypedMc : mcParseWsUrl(savedMcUrl);
       haveTypedMc = false;
-    } else {
-      WsAddress found;
-      if (mcPollMdns(now, found)) {
-        link.mc_address_known();
-        typedMcFallback.dial_started(false);
-        ws.begin(found.host.c_str(), found.port, found.path.c_str());
-        wsWantOpen = true;
-      }
+      src = McSource::TYPED;
+    } else if (step == McStep::DIAL_LAST_GOOD) {
+      target = mcParseWsUrl(String(mcDisc.last_good().c_str()));
+      src = McSource::LAST_GOOD;
+    } else if (step == McStep::BROWSE_MDNS) {
+      if (mcPollMdns(now, target)) src = McSource::MDNS;
+    } else if (step == McStep::SCAN) {
+      if (mcPollScan(now, target)) src = McSource::SCAN;
+    }
+    if (src != McSource::NONE && target.valid) {
+      link.mc_address_known();
+      mcDisc.dial_started(src, now);
+      dialledMc = target;
+      Serial.printf("MC dial %s %s:%u%s\n", mc_source_name(src), target.host.c_str(), target.port, target.path.c_str());
+      ws.begin(target.host.c_str(), target.port, target.path.c_str());
+      wsWantOpen = true;
+    } else if (src != McSource::NONE) {
+      // An address that does not parse counts as a failed dial, so the cycle moves on.
+      mcDisc.dial_started(src, now);
+      mcDisc.dial_failed(now);
     }
   }
 
@@ -980,7 +1103,7 @@ static void mcLoop(uint32_t now) {
 
   // A `held` reconnect after a drop needs nothing extra here: `ws_closed()` already put the link
   // back at LOOKING_FOR_MC, and the discovery block above re-dials as soon as an address is found
-  // again. A saved typed URL takes precedence over mDNS.
+  // again, starting a fresh F642 cycle.
 
   // Heartbeat while connected (welcomed or armed).
   bool connected = (link.state() == LinkState::WELCOMED || link.state() == LinkState::ASSIGNED) &&
@@ -1021,8 +1144,9 @@ static bool mcHandleLine(const String& lineIn) {
   line.trim();
   if (line == "WIFI CLEAR") {
     mcPrefs.begin("brxmc", false);
-    mcPrefs.remove("ssid"); mcPrefs.remove("pass"); mcPrefs.remove("mc_url");
+    mcPrefs.remove("ssid"); mcPrefs.remove("pass"); mcPrefs.remove("mc_url"); mcPrefs.remove("mc_last");
     mcPrefs.end();
+    mcDisc.set_last_good("");
     wifiSsid = ""; wifiPass = ""; savedMcUrl = "";
     ws.disconnect(); WiFi.disconnect(true); wsWantOpen = false; haveTypedMc = false; linkOff = true;
     link.wifi_cleared();
