@@ -144,7 +144,8 @@ RANGE_OUTDOOR_FLOOR = 13
 # NIGHT_RANGE_KEYS is the scope: option (a) scales t2 (the gun word) and t13/t42 (the headset word). Option (b), the
 # headset word only, is this tuple without "range_outdoor". These tokens set the hit odds (a carrier frequency), not a
 # proven reach (F580): from about 31 upward the curve is flat, so the cut bites only on low values such as the
-# Shotgun's 30. bench-plan.md MN2/MN3 check it. A cut never goes under RANGE_OUTDOOR_FLOOR.
+# Shotgun's 30. bench-plan.md MN2/MN3 check it. A cut never goes under RANGE_OUTDOOR_FLOOR. t41 (the gun word's indoor
+# token) is left alone: indoor range is unmeasured (F231), and MVP plays outdoors only (F410).
 NIGHT_RANGE_MULT = 0.75
 NIGHT_RANGE_KEYS = ("range_outdoor", "headset_range_outdoor", "headset_range_indoor")
 

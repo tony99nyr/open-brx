@@ -241,7 +241,7 @@
   {
    "weapon_id": "energy_shotgun",
    "name": "Energy Shotgun",
-   "desc": "A shotgun that runs on a cell, not shells. Three blasts end a close fight, and the eighth in a row locks it until you pull the lever.",
+   "desc": "A shotgun that runs on a cell, not shells. Three blasts end a close fight, and a long string of blasts locks it until you pull the lever.",
    "cls": 5,
    "role": "cqb",
    "types": [
@@ -284,7 +284,7 @@
    "tags": [
     "cqb"
    ],
-   "notes": "F661 (Tony, 2026-11-02): replaces the SMG with a comparable close-range weapon and a different trigger feel. Built on the Shotgun's own capture (its two words: 19 from the gun, 20 from the shooter's headset) with a 450 ms pump, a 24-round cell and 48 behind, and the Energy Rifle's overheat: +13 heat a blast, a lockout on the 8th blast in a row (t24 13, t38 1 until ES0 picks, t35 D11), and a lever that vents and refills the cell in 1.4 s (t19 0, a cell reload). A pull fires slower than 250 ms, so its headset word cannot queue the way the SMG's did (F638). Unproven until bench-plan.md ES0-ES5 runs: t38 on a two-word weapon may also be the headset word's repeat count (ES0 decides t38), the heat a blast (ES1, ES2), the lever vent (ES3), and no trailing headset word (ES4). Balance: docs/balance-decisions.md, 2026-11-02 (option A2 passes every test).",
+   "notes": "F661 (Tony, 2026-11-02): replaces the SMG with a comparable close-range weapon and a different trigger feel. Built on the Shotgun's own capture (its two words: 19 from the gun, 20 from the shooter's headset) with a 450 ms pump, a 24-round cell and 48 behind, and the Energy Rifle's overheat, PREDICTED: +13 heat a blast and a lockout on the 8th blast in a row. That prediction reads t24 as heat a shot; on the Energy Rifle t24 6 read about 3 a shot (F229) and about 1.3 (2026-11-01), so the real lock may come much later or not inside one cell. ES2 measures it, and the F661 verdict holds only once ES2 agrees (t24 13, t38 1 until ES0 picks, t35 D11), and a lever that vents and refills the cell in 1.4 s (t19 0, a cell reload). A pull fires slower than 250 ms, so its headset word cannot queue the way the SMG's did (F638). Unproven until bench-plan.md ES0-ES5 runs: t38 on a two-word weapon may also be the headset word's repeat count (ES0 decides t38), the heat a blast (ES1, ES2), the lever vent (ES3), and no trailing headset word (ES4). Balance: docs/balance-decisions.md, 2026-11-02 (option A2 passes every test).",
    "heat": {
     "per_shot": 13,
     "lock_at": 99,
@@ -655,7 +655,7 @@
     "vent": "self"
    },
    "name": "Charge Rifle",
-   "desc": "Hold it, and it holds. A full charge and three taps ends a standard player (more health takes five taps), which is why it belongs to whoever saw the other person first.",
+   "desc": "Hold it, and it holds. A full charge and four taps ends a standard player (more health takes six taps), which is why it belongs to whoever saw the other person first.",
    "cls": 5,
    "role": "marksman",
    "types": ["rifle", "long"],

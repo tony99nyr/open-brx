@@ -160,7 +160,7 @@ the last pull's headset word adds 88 ms (F614): the Shotgun at 115.
 | Sniper Rifle | marksman | 75 | 1500 | 2 | **2.71** | 50.0 | 20.3 | 1 | 48 | 2200 | 0% | — | dmg 80→60, cycle 300→1500; **2026-10-17/18**: bolt action, 75, 2.2 s bolt (Balance rules row 17, F573) |
 | Shotgun | cqb | 19 | 400 | 3 | **0.97** | 47.5 | 40.7 | 6 | 48 | 400 | 0% | — | **2026-10-24** (F579): gun word 19 plus a 20 headset word (`wire.headset_dmg`, t12), 400 ms pump since 2026-10-17. `dmg`, `dps`, `sust` and one-mag % here are the GUN WORD ALONE |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.33** | 62.5 | 41.7 | 10 | 160 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400. Headset word 10 (t12), never captured on this weapon. `dmg`, `dps`, `sust` and one-mag % here are the gun word alone |
-| AMR | marksman | 26 | 450 | 5 | **1.97** | 57.8 | 47.3 | 14 | 112 | 1400 | 100% | — | **2026-10-25**: cycle 350→450 ms on both presets. 30% `crit_pct` (a crit is ×1.5, so 26→39) |
+| AMR | marksman | 26 | 450 | 5 | **1.97** | 57.8 | 47.3 | 14 | 112 | 1400 | 100% | — | **2026-10-25**: cycle 350→450 ms on both presets. 20% `crit_pct` since 2026-11-02, 30% before (a crit is ×1.5, so 26→39) |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 288 | 1700 | 100% | — | dmg 9→10 |
 | Burst Rifle | assault | 10 | 75 +540 | 12 | **2.53** | 43.5 | 36.1 | 36 | 384 | 1700 | 100% | — | **2026-09-24**: burst gap 540 ms (R6/R7, §7.5d); 40% `crit_pct` (a crit is ×1.5, so 10→15) |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 288 | 1700 | 99% | — | cycle 120→250, res 72→144 |
@@ -202,7 +202,7 @@ Melee, were retuned on 2026-10-17 (15 at 150 ms; outdoor melee range 60). Both a
 - **Stinger**: hidden. Full auto, eight hits.
 - **Sniper Rifle**: the only two-hit weapon outside the power tier. A bolt action with a 2.2 s bolt (F573).
 - **Plasma Sniper**: hidden. A marksman rifle that fires like a carbine and overheats (`t24 = 30`).
-- **AMR**: semi-automatic (`t20 = 7`), 26 a hit, 5 hits, a 14-round magazine and a 30% `crit_pct` (F62).
+- **AMR**: semi-automatic (`t20 = 7`), 26 a hit, 5 hits, a 14-round magazine and a 20% `crit_pct` (F62; 30% until 2026-11-02).
 - **Suppressor**: quiet, no muzzle flash, a 75-round magazine, the slowest kill. The deep magazine gives it the lead on kills per clip against the SMG (§2.3).
 - **Energy Rifle**: 150 ms cycle, overheat on (`t38 = 150` and `t35 = D11` as `overrides`). Full auto locks it out near heat 99; only a reload hold clears the lockout.
 - **Charge Rifle**: charge 60 (`t5`) and tap 16 (`t37`) are separate numbers (F646, 2026-11-02: the charge was 70). A full charge costs 10 rounds (`rounds_per_charge`) of a 40-round cell. The intended kill is one charge plus four taps (60 + 4 × 16 = 124 ≥ 115). `hits_to_kill()` counts that combo, and `ttk_ms` is release-to-kill because the charge is built behind cover (S43). `rounds_to_kill()` is the round count of the same combo; the one-magazine guard and kills per clip use it. The sustained-DPS and one-magazine axes (§2.3) model repeated full charges.
@@ -557,6 +557,10 @@ drops words"; and the SMG and Rocket Launcher (both 40, since 2026-09-25) sit ju
 unmeasured at that value. Keep the numbers until S49 measures the receiver's response curve; do not
 read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is unmeasured;
 bench Block 5.**
+
+**Night (2026-11-02):** a night game compiles every value in this table, and the headset words' `t13`/`t42`, at 0.75
+(`compile.NIGHT_RANGE_KEYS`, never under 13). Only the values at 30 land in the 13-26 band (23); the rest stay on the
+shelf. `bench-plan.md` MN2/MN3 check whether it changes anything.
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.

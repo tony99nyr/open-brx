@@ -246,7 +246,7 @@ def test_charge_heat_cools_between_rounds():
     assert shooter.heat_lock_until < 0
 
 
-def test_charge_heat_threshold_uses_catalogue_charge_and_tap_costs():
+def test_charge_heat_threshold_uses_the_rows_charge_and_tap_costs():
     # The pre-F646 tap cost (14), so three taps after a charge sit just under the lock (56 + 3 x 14 = 98).
     charge = B.weapon_model(_edited("charge_rifle", heat__per_tap=14), "charge_rifle")
     dummy = B.weapon_model(_edited("assault_rifle", dmg=0), "assault_rifle")

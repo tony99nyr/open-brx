@@ -2250,3 +2250,20 @@ def test_a_night_game_compiles_every_range_token_at_three_quarters():
 def test_night_range_rounds_half_up_and_never_goes_under_the_floor():
     assert compile_mod.NIGHT_RANGE_MULT == 0.75
     assert [compile_mod.night_range(v) for v in (100, 90, 30, 17, 13)] == [75, 68, 23, 13, 13]
+
+
+def test_night_reaches_the_pickup_slots_and_the_try_out():
+    """The two other places a weapon frame is compiled for play: an A56 pickup slot, and the pre-game try-out.
+    Drop `night=` from either call and this fails."""
+    T = WeaponCatalog._T
+    t2 = T["range_outdoor"] + 1
+    rows = [{"weapon_id": "rocket_launcher", "slot": 2}]
+    for night, want in ((False, "40"), (True, "30")):
+        cfg = dict(_cfg(), environment="outdoor", night=night, powerups=rows)
+        head = C.compile(cfg, _player(), TEAMS)["head"]
+        rocket = next(f.split(",") for f in head if f.startswith("$WEAP,2,"))
+        assert rocket[t2] == want, (night, rocket[t2])
+        shotgun = next(w for w in C.weapon_catalog() if w["weapon_id"] == "shotgun")
+        tryout = C.tutorial_frames(shotgun, "outdoor", config=cfg)
+        weap = next(f.split(",") for f in tryout if f.startswith("$WEAP,"))
+        assert weap[t2] == ("23" if night else "30"), (night, weap[t2])

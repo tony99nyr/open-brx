@@ -61,8 +61,8 @@ right; lower means the sims overstate recoil. Send the table to brx3: it refits 
 
 ## NEXT: the Energy Shotgun frame (F661)
 
-The Energy Shotgun is not in the catalogue. Build each frame from `compile.resolve()`'s Shotgun frame and change only the
-tokens the step names. Never start from a capture. After every `$WEAP`, send `$AMMO` so the gun holds the cell the frame
+The Energy Shotgun row is in the catalogue but hidden (2026-11-02). Build each frame from `compile.resolve()`'s Shotgun frame and change only the
+tokens the step names; the full test frame is close to `resolve("energy_shotgun")`, which ships t38 = 1 until ES0 picks. Never start from a capture. After every `$WEAP`, send `$AMMO` so the gun holds the cell the frame
 names (F207). Heat streams in `$ALCD` token 5, one frame a round: a gun at rest sends nothing. `$VOL,65`. About 85
 minutes, one gun and its headset, the rig receiver, and a second gun for ES5.
 
