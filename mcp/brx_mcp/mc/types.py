@@ -270,8 +270,11 @@ STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE"
 LIVE_BIT_MIN_APP = "0.4.34"
 
 
-def station_old_app_line(n: int) -> str:
-    """F658 review: the amber line for a following hill when `n` bound player phones run an app older than LIVE_BIT_MIN_APP."""
+def station_old_app_line(n: int, kind: str = "control") -> str:
+    """F658 review: the amber line for a hill or a powerup when `n` bound player phones run an app older than
+    LIVE_BIT_MIN_APP: it sends no A86 scope, so a hill cannot count it and a powerup will not hand it the pickup."""
+    if kind == "powerup":
+        return f"{n} PHONE{'' if n == 1 else 'S'} ON AN OLD APP: {'IT' if n == 1 else 'THEY'} CANNOT TAKE THIS PICKUP"
     return f"{n} PHONE{'' if n == 1 else 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT {'IT' if n == 1 else 'THEM'}"
 
 

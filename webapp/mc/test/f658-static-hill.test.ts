@@ -46,7 +46,11 @@ describe('F658 the static powerup in the mock station view, as stations.py', () 
     expect(powerupAt(new MockBackend()).slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
   });
   it('a following powerup gets the note once, and one that missed a new id still needs it brought back', () => {
-    expect(powerupAt(new MockBackend(), { follows: true, game: 9 })).toEqual([STATION_FOLLOWS]);
+    const lines = powerupAt(new MockBackend(), { follows: true, game: 9 });
+    expect(lines[0]).toBe(STATION_FOLLOWS);
+    // the demo phones run 0.1.x (no A86 scope): as stations.py, the powerup says they cannot take its pickup
+    expect(lines.length).toBe(2);
+    expect(lines[1]).toMatch(/^\d+ PHONES? ON AN OLD APP: (IT|THEY) CANNOT TAKE THIS PICKUP$/);
     expect(powerupAt(new MockBackend(), { follows: true, game: 9 }, 5).slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
   });
 });

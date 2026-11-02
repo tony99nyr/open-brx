@@ -1178,13 +1178,19 @@ class ClaimGate {
 // current game is the byte of those players, at any signal strength. Another live game takes it only with MORE such
 // players heard than the current one (a tie keeps it). A new game starts the item's clock at that first sighting
 // (PowerupSchedule::start_game, first spawn `first_at_s` later); a byte heard again after more than HILL_RING_STALE_MS
-// unheard starts again. The first follow into MC's own game keeps a schedule MC's START anchored, and MC's updates for
-// that game still apply (accepts_mc). powerup.js says why, line for line. One item, one game: no ring.
+// unheard starts again. MC's own game keeps MC's schedule: the follower remembers MC's last station_update for the game
+// MC armed (note_mc), applied or not, and following into that game (the first follow, or a switch from another game,
+// review round 1) keeps or re-applies it. MC's updates for the followed game still apply (accepts_mc). powerup.js says
+// why, line for line. One item, one game: no ring.
 struct PowerupFollowStep {
   bool switched = false;  // the current game changed (or restarted) this step
   int from = -1, to = -1;
   bool fresh = false;     // the item's clock started again
-  bool kept = false;      // the first follow kept MC's schedule
+  bool kept = false;      // MC's schedule was kept (or re-applied)
+  // Who may claim now (ClaimGate::set_follow). The step does not write the gate itself: the BLE callback reads it on
+  // core 0, so the glue applies this under claimMux (StationLink::apply_claim_follow, review round 1).
+  int claim_game = 0;
+  bool claim_live = false;
 };
 
 class PowerupFollower {
@@ -1195,11 +1201,21 @@ class PowerupFollower {
   uint8_t current = 0;
   uint32_t heard_at = 0;  // the newest live advert of the current game
   uint32_t since = 0;     // when the current game's clock started
+  bool has_mc = false;    // MC's last station_update, for the game MC armed (mc_game), received at mc_at
+  uint8_t mc_game = 0;
+  StationUpdateMsg mc;
+  uint32_t mc_at = 0;
 
+  void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
+    has_mc = u.present;
+    mc_game = armed_game;
+    mc = u;
+    mc_at = at;
+  }
   uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
   bool accepts_mc(uint8_t armed_game) const { return !follows || (has_current && current == armed_game); }
 
-  PowerupFollowStep step(PowerupSchedule& sched, ClaimGate& claims, const PlayerPresence& players, uint32_t now,
+  PowerupFollowStep step(PowerupSchedule& sched, const PlayerPresence& players, uint32_t now,
                          uint8_t armed_game, int station_id, int first_at_s) {
     PowerupFollowStep out;
     struct H { uint8_t game; uint32_t at; int n; };
@@ -1233,13 +1249,18 @@ class PowerupFollower {
         out.switched = true;
         out.from = has_current ? current : -1;
         out.to = best->game;
-        out.kept = first && !has_current && armed_game != 0 && best->game == armed_game && sched.has_anchor();
+        const bool was_following = has_current;
+        out.kept = has_mc && armed_game != 0 && best->game == armed_game && mc_game == armed_game;
         out.fresh = !out.kept;
         current = best->game;
         has_current = true;
         heard_at = best->at;
         since = now;
         if (!out.kept) sched.start_game(now, first_at_s);
+        else if (!first || was_following) {   // a switch from another game: MC's schedule for this one, re-applied
+          sched.start_game(now, first_at_s);
+          sched.apply_update(mc, mc_at);
+        }
       } else if (cur) {
         if ((int32_t)(cur->at - heard_at) > (int32_t)stale_ms) {
           since = now;
@@ -1251,7 +1272,8 @@ class PowerupFollower {
         if ((int32_t)(cur->at - heard_at) > 0) heard_at = cur->at;
       }
     }
-    claims.set_follow(follows && has_current ? current : armed_game, follows);
+    out.claim_game = follows && has_current ? current : armed_game;
+    out.claim_live = follows;
     return out;
   }
   void clear() { *this = PowerupFollower(); }
@@ -1512,6 +1534,13 @@ class StationLink {
     return has_powerup_assignment() ? pu_follower_.game((uint8_t)assignment_.game) : hill_game();
   }
   const PowerupFollowStep& last_pu_follow() const { return last_pu_follow_; }
+  // F658 review round 1: hand the last follower step's claim rule to the claim gate. The glue calls this under claimMux
+  // after the players tick, since the BLE callback (core 0) reads the gate; a host test calls it directly.
+  void apply_claim_follow() {
+    if (!claim_follow_due_ || !has_powerup_assignment()) return;
+    claim_follow_due_ = false;
+    claims_.set_follow(last_pu_follow_.claim_game, last_pu_follow_.claim_live);
+  }
   // F658: whether the glue must write "pu_follow" now (encode_powerup_follow): when follow mode starts, on a switch of
   // game, and when the item's state or taker changes (a spawn, a claim). Nothing to save while not following.
   bool pu_save_due() {
@@ -1594,9 +1623,10 @@ class StationLink {
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
     else if (has_powerup_assignment()) {
       // F658: the follower decides which live game the item plays, starts a new game's clock, and who may claim
-      last_pu_follow_ = pu_follower_.step(powerup_, claims_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id,
+      last_pu_follow_ = pu_follower_.step(powerup_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id,
                                           assignment_.item.present ? assignment_.item.first_at_s : 0);
       if (last_pu_follow_.switched) pu_switch_unsaved_ = true;
+      claim_follow_due_ = true;
     }
     return u;
   }
@@ -2061,7 +2091,9 @@ class StationLink {
   // parity gate uses for a bad IR frame).
   bool apply_station_update(const StationUpdateMsg& u, uint32_t received_at_ms) {
     if (!u.present || !has_powerup_assignment() || u.id != assignment_.id) return false;
-    // F658: following another live game, MC's update is about the game it armed, not the one on the field
+    // F658: following another live game, MC's update is about the game it armed, not the one on the field. It is kept
+    // for that game: following into it later applies it (review round 1).
+    pu_follower_.note_mc((uint8_t)assignment_.game, u, received_at_ms);
     if (!pu_follower_.accepts_mc((uint8_t)assignment_.game)) return false;
     last_update_ = u;
     last_update_at_ms_ = received_at_ms;
@@ -2191,7 +2223,8 @@ class StationLink {
   PowerupFollower pu_follower_;  // F658: the static powerup
   PowerupFollowStep last_pu_follow_;
   int pu_saved_key_ = -1;        // pu_save_due's last write
-  bool pu_switch_unsaved_ = false;  // a switch (or a restarted clock) pu_save_due has not written yet
+  bool pu_switch_unsaved_ = false;
+  bool claim_follow_due_ = false;   // apply_claim_follow has a step to hand over  // a switch (or a restarted clock) pu_save_due has not written yet
   HillFollowStep last_follow_;   // F658
   bool ring_saved_follows_ = false;   // F658: ring_save_due's last write
   int ring_saved_owner_ = contract::STATION_TEAM_ANY;

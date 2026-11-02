@@ -57,12 +57,13 @@ test('a live in-scope player of another game: the station follows it, starts the
   assert.equal(JSON.parse(store.get('brx.station.pufollow')).current, 51, 'saved for a restart');
 });
 
-test('MC\'s update for its armed game is ignored while the station follows another; its new arming leaves the item alone', async () => {
+test('MC\'s update for its armed game waits while the station follows another; its new arming leaves the item alone', async () => {
   api.applyStationUpdate({ id: 6, available: true, next_spawn_in_ms: 60_000 });
   assert.equal(api.pu.available, false, 'MC armed game 50, the field plays 51');
   await api.applyStationConfig({ ...station, game: 52 });
+  api.applyStationUpdate({ id: 6, available: true, next_spawn_in_ms: 60_000 });   // MC's START for game 52
   assert.equal(api.statusBody().powerup.game, 51, 'still the live game');
-  assert.equal(api.pu.available, false);
+  assert.equal(api.pu.available, false, 'kept for game 52, not applied to game 51');
 });
 
 test('the item spawns on the station\'s own clock and a live player of the game takes it; the next live game starts again', () => {
@@ -75,4 +76,13 @@ test('the item spawns on the station\'s own clock and a live player of the game 
   assert.equal(api.statusBody().powerup.game, 53, 'the new live game takes the station');
   assert.equal(api.pu.taker, 0, 'the last game\'s taker is gone');
   assert.equal(air().value, 60, 'the clock starts again at first_at_s');
+});
+
+test('review round 1: following into MC\'s armed game from another game applies MC\'s START for it, not a fresh clock', async () => {
+  await api.applyStationConfig({ ...station, game: 54 });
+  api.applyStationUpdate({ id: 6, available: false, next_spawn_in_ms: 20_000 });   // MC's START for game 54
+  assert.equal(api.statusBody().powerup.game, 53, 'still following game 53');
+  stand(1000, [{ id: 4, game: 53, live: false }, { id: 5, game: 54, live: true }, { id: 6, game: 54, live: true }]);
+  assert.equal(api.statusBody().powerup.game, 54);
+  assert.ok(air().value <= 20 && air().value >= 18, `MC's schedule, not first_at_s: ${air().value}`);
 });

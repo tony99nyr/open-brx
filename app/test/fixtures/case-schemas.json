@@ -1479,7 +1479,8 @@
                         "advance",
                         "observe",
                         "settle",
-                        "restart"
+                        "restart",
+                        "arm"
                       ]
                     },
                     "body": {
@@ -1623,6 +1624,11 @@
                         },
                         "additionalProperties": false
                       }
+                    },
+                    "game": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
                     }
                   },
                   "additionalProperties": false

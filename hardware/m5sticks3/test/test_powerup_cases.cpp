@@ -90,7 +90,8 @@ struct Rig {
   void follow_step(const Value& players, uint32_t t) {
     for (const Value& p : players.arr) presence.observe(advert_of(p), (int)p.get("rssi").as_int(-60), t - (uint32_t)p.get("age_ms").as_int(0));
     presence.tick(t);
-    follower.step(sched, gate, presence, t, (uint8_t)armed, id, first_at_s);
+    const PowerupFollowStep st = follower.step(sched, presence, t, (uint8_t)armed, id, first_at_s);
+    gate.set_follow(st.claim_game, st.claim_live);   // StationLink::apply_claim_follow
   }
   void resolve(uint32_t t) {
     ClaimWinner w = gate.resolve_batch();
@@ -156,7 +157,10 @@ static void run_case(const Value& c) {
       u.available = step.get("body").get("available").as_bool();
       u.next_spawn_in_ms = step.get("body").has("next_spawn_in_ms") ? step.get("body").get("next_spawn_in_ms").as_int() : -1;
       u.reset = step.get("body").get("reset").as_bool();
-      if (!r.follow || r.follower.accepts_mc((uint8_t)r.armed)) r.sched.apply_update(u, t);   // StationLink::apply_station_update
+      if (r.follow) r.follower.note_mc((uint8_t)r.armed, u, t);   // StationLink::apply_station_update
+      if (!r.follow || r.follower.accepts_mc((uint8_t)r.armed)) r.sched.apply_update(u, t);
+    } else if (what == "arm") {   // MC's next station_config: a following station keeps its item
+      r.armed = (int)step.get("game").as_int();
     } else if (what == "tick") {
       if (r.follow) r.follow_step(step.get("players"), t);
       if (r.sched.tick(t)) r.events.push_back("spawned");

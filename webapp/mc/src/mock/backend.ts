@@ -268,8 +268,9 @@ export class MockBackend implements Api {
             ? `HILL SET FOR ${have} S CAPTURE, THIS GAME USES ${want} S: ${STATION_PACE_REARM}` : `HILL SET FOR NET CAP ${have}, THIS GAME USES ${want}: ${STATION_PACE_REARM}`);
         }
       }
-      const old = a && a.kind === 'control' && !down ? this.oldAppPhones() : 0;   // F658 review, A86 (no scope): stations.py _old_app_phones
-      if (old) attention.push(`${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT ${old === 1 ? 'IT' : 'THEM'}`);
+      const old = a && (a.kind === 'control' || a.kind === 'powerup') && !down ? this.oldAppPhones() : 0;   // F658 review, A86 (no scope): stations.py _old_app_phones
+      if (old) attention.push(a!.kind === 'powerup' ? `${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: ${old === 1 ? 'IT' : 'THEY'} CANNOT TAKE THIS PICKUP`
+        : `${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT ${old === 1 ? 'IT' : 'THEM'}`);
       if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push(STATION_BATTERY_LOW);

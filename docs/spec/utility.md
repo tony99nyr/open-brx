@@ -209,6 +209,9 @@ phone and **the station needs no change**:
    one that never heard MC at all, keeps working in every later game.
 3. **Team scoping is unchanged.** A neutral station (255) admits every team; a team station admits only its own
    `$TID`.
+4. **No respawn station, the timer.** A scanner game with no respawn station assigned would leave every downed
+   player down, so MC names every team in `respawn_auto_teams` (the timed fallback), as it already did for a team no
+   station covers. The setup warning NO RESPAWN STATION IS ASSIGNED stays.
 
 There is no station-side scope check, on purpose: a station that went inert while it heard no in-scope player
 could only add latency to a real respawn. The cost: a station from an old setup that reuses an id the current match
@@ -757,8 +760,9 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
    lock rules and the `taken` report (`station_action`) are unchanged, so MC still dedupes the station's report
    against the player's `pickup` fact.
 5. **MC as the fallback.** Before follow mode the station keeps today's rules: MC's `station_update` anchors the
-   schedule and players of MC's game claim. The first follow into MC's own game keeps a schedule MC's START
-   anchored, and MC's later updates for that game still apply. Following another game, MC's update is ignored, and
+   schedule and players of MC's game claim. The station remembers MC's last update for the game MC armed, applied
+   or not. Following into that game (the first follow, or a switch from another game) keeps or re-applies MC's
+   schedule instead of starting the clock at the sighting, and MC's later updates for that game still apply. Following another game, MC's update is ignored, and
    MC's END does not freeze the item: the live bit replaces MC's window. A new game byte in `station_config` leaves a
    following station's item alone; a new kind or id clears follow mode.
 6. **The advert** carries the followed game's byte, so that game's phones read the item.

@@ -311,7 +311,7 @@ static void mcLoadSavedPuFollow(StationLink& link) {
   mcPrefs.end();
   const bool power_on = esp_reset_reason() == ESP_RST_POWERON;   // as the hill ring: the time off is unknown
   if (decode_powerup_follow(body.c_str(), link.assignment().id, link.pu_follower(), link.powerup(), millis(), power_on)) {
-    link.claims().set_follow(link.pu_follower().current, true);
+    link.claims().set_follow(link.pu_follower().current, true);   // at boot, before the player scan starts: no claimMux
     Serial.printf("RESTORED powerup follows game %d\n", link.pu_follower().current);
   }
 }
@@ -797,6 +797,10 @@ static void mcTickPlayers(uint32_t now) {
   while (seenPop(sp)) tickController.observe_player(link, presence, now, sp);
   mcApplyTickIntents(tickController.finish_players(link, presence, savedHill, savedClock,
                                                     savedConfig.session_id(), now));
+  // F658 review round 1: the powerup follower's claim rule reaches the gate under claimMux (the BLE callback reads it)
+  portENTER_CRITICAL(&claimMux);
+  link.apply_claim_follow();
+  portEXIT_CRITICAL(&claimMux);
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------

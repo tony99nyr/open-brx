@@ -617,7 +617,9 @@ function tick() {
 function applyStationUpdate(body) {
   if (!body || typeof body !== 'object') return;
   if (body.id != null && +body.id !== settings.id) return;
-  // F658: following another live game, MC's update is about the game it armed, not the one on the field
+  // F658: following another live game, MC's update is about the game it armed, not the one on the field. It is kept for
+  // that game: following into it later applies it (review round 1).
+  puFollower.noteMc(settings.game, body, stationNow());
   if (!puFollower.acceptsMc(settings.game)) { log(`MC update for game ${settings.game} ignored: this station follows game ${puGame()}`, 'li'); return; }
   pu.update(body, stationNow()); savePowerup();
   log(`MC: item ${body.available ? 'AVAILABLE' : 'TAKEN'}${Number.isFinite(+body.next_spawn_in_ms) ? ` · next spawn in ${Math.round(+body.next_spawn_in_ms / 1000)} s` : ''}`, 'li');

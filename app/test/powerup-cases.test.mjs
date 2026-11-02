@@ -29,10 +29,12 @@ for (const c of FIXTURE.cases) {
     let s = new PowerupStation({ id: c.setup.id, item });
     // F658: a `follow` case runs the station as utility.js does, its PowerupFollower first on every tick
     let f = new PowerupFollower();
-    const armed = c.setup.armed_game || 0, follow = !!c.setup.follow;
+    let armed = c.setup.armed_game || 0;
+    const follow = !!c.setup.follow;
     for (const step of c.steps) {
       let events = [];
-      if (step.do === 'update') { if (!follow || f.acceptsMc(armed)) s.update(step.body, step.t); }
+      if (step.do === 'update') { if (follow) f.noteMc(armed, step.body, step.t); if (!follow || f.acceptsMc(armed)) s.update(step.body, step.t); }
+      else if (step.do === 'arm') armed = step.game;   // F658: MC's next station_config; a following station keeps its item
       else if (step.do === 'tick') {
         const players = (step.players || []).map(toPlayer(c));
         if (follow) f.step(s, players, step.t, { expiryMs: PRESENCE_EXPIRY_MS, armedGame: armed, stationId: c.setup.id });

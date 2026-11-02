@@ -1289,9 +1289,10 @@ class StationRegistry:
                 want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
                 if want is not None and have is not None and have != want:
                     attention.append(station_pace_line(key, have, want))
-        if a and a["kind"] == "control" and not self.stood_down(a) and (old := self._old_app_phones()):
-            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it
-            attention.append(station_old_app_line(old))
+        if a and a["kind"] in ("control", "powerup") and not self.stood_down(a) and (old := self._old_app_phones()):
+            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it and no
+            # powerup hands it the pickup
+            attention.append(station_old_app_line(old, a["kind"]))
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):

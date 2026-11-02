@@ -138,8 +138,10 @@ export class PowerupStation {
  *  - A NEW game starts the item's clock at its first sighting: the first spawn `first_at_s` later, then every
  *    `spawn_every_s` (`PowerupStation.startGame`). No MC START is needed. A byte heard again after more than
  *    HILL_RING_STALE_MS unheard starts again too (MC wraps 255 to 1, or reuses a byte after a restart).
- *  - The first follow into MC's own game keeps a schedule MC already anchored: with MC armed and START known, today's
- *    behaviour is the fallback, and MC's later updates still apply (`acceptsMc`).
+ *  - MC's own game keeps MC's schedule: the follower remembers MC's last `station_update` for the game MC armed
+ *    (`noteMc`), applied or not. Following into that game (the first follow, or a switch from another game, review
+ *    round 1) keeps or re-applies it instead of starting the clock at the sighting. With MC armed and START known,
+ *    today's behaviour is the fallback, and MC's later updates for the followed game apply (`acceptsMc`).
  *  - Following, only live-bit players of the current game claim (`claimGame`, `requireLive`).
  *
  * Only the current game's spawn state is kept: one item, one game at a time. PURE.
@@ -151,7 +153,10 @@ export class PowerupFollower {
     this.current = null;    // the followed game byte
     this.heardAt = null;    // the newest live advert of the current game
     this.since = null;      // when the current game's clock started (its first sighting)
+    this.mc = null;         // MC's last station_update: { game: the byte MC armed, body, at }
   }
+  /** Remember MC's `station_update` for its armed game `armedGame`, whether the station applied it or not. */
+  noteMc(armedGame, body, now) { this.mc = body && typeof body === 'object' ? { game: armedGame || 0, body, at: now } : null; }
   /** The game byte the station advertises: the followed one when following, else MC's. */
   game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
   /** May MC's `station_update` re-anchor the schedule? Always before following; following, only for MC's own game. */
@@ -188,9 +193,12 @@ export class PowerupFollower {
       if (best != null && (this.current == null || n(best) > n(this.current))) {
         const from = this.current;
         this.current = best; this.heardAt = heard.get(best).at; this.since = now;
-        // the first follow into MC's own game keeps a schedule MC anchored (its START reached this station)
-        const kept = first && from == null && armedGame !== 0 && best === armedGame && station.nextAt != null;
+        // MC's own game keeps MC's schedule (its START reached this station): a first follow already holds it, a switch
+        // from another game re-applies it (review round 1)
+        const mc = this.mc && armedGame !== 0 && best === armedGame && this.mc.game === armedGame ? this.mc : null;
+        const kept = !!mc;
         if (!kept) station.startGame(now);
+        else if (!first || from != null) { station.startGame(now); station.update(mc.body, mc.at); }
         switched = { from, to: best, fresh: !kept, kept };
       } else if (cur) {
         if (this.heardAt != null && cur.at - this.heardAt > this.staleMs) { this.since = now; station.startGame(now); switched = { from: this.current, to: this.current, fresh: true, kept: false }; }
@@ -202,7 +210,7 @@ export class PowerupFollower {
     return { switched };
   }
   /** Forget the followed game: the operator's reset, a new kind or id. */
-  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; }
+  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; }
   /** The heartbeat's summary, the hill's shape (`games`, keyed by byte; one entry, the current game): the item's state,
    *  its taker, ms to the next spawn (null = unknown), ms since this game's clock started and since it was last heard. */
   summary(station, now) {

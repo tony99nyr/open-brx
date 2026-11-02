@@ -3142,6 +3142,20 @@ static void test_f658_powerup_follows_the_live_game() {
   CHECK(link.powerup_advert_view(2000).value == 60);   // the clock from first_at_s
   CHECK(link.pu_save_due());
   CHECK(!link.pu_save_due());
+  {  // review round 1: the claim rule reaches the gate only through apply_claim_follow (the glue holds claimMux)
+    Advert c; c.role = contract::ADVERT_ROLE_PLAYER; c.id = 9; c.value = 4; c.game = 0; c.scope_kinds = contract::ADVERT_SCOPE_KIND_POWERUP;
+    c.scope = 1u << 4; c.state = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_CLAIM_READY;   // no live bit
+    link.claims().observe_advert(c, -60, 2000);
+    CHECK(link.claims().ready_due(2100));   // not handed over yet: the gate still takes any player
+    link.discard_claim_batch();
+    link.apply_claim_follow();
+    link.claims().observe_advert(c, -60, 2200);
+    CHECK(!link.claims().ready_due(2300));  // following: a player without the live bit cannot claim
+    c.state |= contract::ADVERT_PLAYER_STATE_LIVE;
+    link.claims().observe_advert(c, -60, 2400);
+    CHECK(link.claims().ready_due(2500));
+    link.discard_claim_batch();
+  }
   const std::string body = build_status_body(fill_status(link, 3000, true, 1, 0));
   CHECK(body.find("\"powerup\":{\"follows\":true,\"game\":7,\"games\":{\"7\":{\"available\":false,\"taker\":0,\"next_ms\":59000,\"since_ms\":1000,\"last_ms\":1000}}}") != std::string::npos);
   StationUpdateMsg u; u.present = true; u.id = 4; u.available = true; u.next_spawn_in_ms = 60000;
