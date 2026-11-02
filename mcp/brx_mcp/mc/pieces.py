@@ -232,11 +232,16 @@ def _known_ids() -> tuple[frozenset[str], frozenset[str]]:
 
 
 def _siblings(kind: str, ids: list[str]) -> list[str]:
+    return list(_siblings_cached(kind, tuple(ids)))
+
+
+@functools.lru_cache(maxsize=64)
+def _siblings_cached(kind: str, ids: tuple[str, ...]) -> tuple[str, ...]:
     """The visible weapons that share each id's FIRST type (a hidden SMG -> the other CLOSE weapons; a hidden
     glock -> the sidearms, not every CLOSE weapon too). A primary never gains a support weapon: the primary pool
     drops those, so the remap would read valid and still leave the push an empty pool."""
     if kind == "perks":
-        return []
+        return ()
     rows = {w["weapon_id"]: w for w in WeaponCatalog()._rows}
     tokens = list(dict.fromkeys(t for i in ids for t in [next((t for t in (rows.get(i, {}).get("types") or [])
                                                                  if t in _WEAPON_TYPE_IDS), None)] if t))
@@ -244,7 +249,7 @@ def _siblings(kind: str, ids: list[str]) -> list[str]:
     sib = [i for i in out if isinstance(i, str)] if isinstance(out, list) else []
     if kind == "primary":
         sib = [i for i in sib if "support" not in (rows.get(i, {}).get("types") or [])]
-    return sib
+    return tuple(sib)
 
 
 def _drop_retired(kind: PieceKind, rule: Any, allowed: frozenset[str]) -> Any:

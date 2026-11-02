@@ -8270,6 +8270,11 @@ class Session:
         """The served config is complete even though request-side GameConfig permits omissions."""
         if "loadout_policy" not in self.config:
             raise RuntimeError("served config is missing its normalized loadout policy")
+        # F653 review: the console reads its rules line and editor pool from this policy, so a hidden id in it
+        # is served as the remap the server enforces (only then: an unaffected config is served as stored).
+        pol = _pieces.drop_retired_policy(self.config["loadout_policy"])
+        if pol is not self.config["loadout_policy"]:
+            return cast(ConfigView, {**self.config, "loadout_policy": pol})
         return cast(ConfigView, self.config)
 
     def _snapshot_kit(self, kitted: int) -> KitView:

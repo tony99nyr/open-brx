@@ -123,5 +123,8 @@ def test_a_session_policy_naming_only_the_smg_still_pushes():
     assert pool and not set(pool) & _hidden(), pool
     assert s._primary_pool_refusal() is None
     assert s.config["loadout_policy"]["primary"]["only_ids"] == ["smg"], "the stored config must keep the hidden id"
+    served = s._snapshot_config()["loadout_policy"]["primary"]["only_ids"]
+    assert served and not set(served) & _hidden(), "the console must see the remap the server enforces"
     s.config["loadout_policy"]["primary"] = {**s.config["loadout_policy"]["primary"], "choice": "fixed", "fixed_id": "smg", "only_ids": []}
     assert s.loadout_pool()["primary"] and s._primary_pool_refusal() is None
+    assert s._snapshot_config()["loadout_policy"]["primary"]["fixed_id"] not in _hidden()
