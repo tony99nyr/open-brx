@@ -414,7 +414,8 @@ export function startDemo({ engine, log }) {
         h.sessionId = 'demo-session'; const t0 = Date.now() - 3600e3;
         h.history = [
           { t: t0, session: 'demo-session', match_id: 'h1', mode: 'tdm', kills: 7, deaths: 9, assists: 2, accuracy: 22, shots: 190, outcome: 'lose', win_by: 'kills', best_streak: 3, medals: [], team_scores: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 25 }] },
-          { t: t0 + 1200e3, session: 'demo-session', match_id: 'h2', mode: 'koth', kills: 5, deaths: 4, assists: 6, accuracy: 31, shots: 120, outcome: 'win', win_by: 'hill_time', best_streak: 2, medals: ['killing_spree'], team_scores: [{ team_id: teamKey, name: team.name, score: 300 }, { team_id: foeKey, name: foe.name, score: 211 }] },
+          // F657: MC's own KOTH shape. `score` is kills (the foe led 14-3) and `held_s` is the hill time that won it.
+          { t: t0 + 1200e3, session: 'demo-session', match_id: 'h2', mode: 'koth', kills: 2, deaths: 4, assists: 6, accuracy: 31, shots: 120, outcome: 'win', win_by: 'objective', best_streak: 2, medals: ['killing_spree'], team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 424 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 211 }] },
           { t: t0 + 2400e3, session: 'demo-session', match_id: 'h3', mode: 'ffa', kills: 12, deaths: 5, assists: 1, accuracy: 44, shots: 160, outcome: null, win_by: null, best_streak: null, medals: null, team_scores: null },   // MC never confirmed this one — "—", never a guess
           ...(h.history || []).filter(g => g.session === 'demo-session' && !['h1', 'h2', 'h3'].includes(g.match_id))];
         h.sig = null; h.render(engine.state()); },
@@ -822,6 +823,10 @@ export function startDemo({ engine, log }) {
       // the two medals Tony added on 2026-09-24 (TODO: contract): BEAT DOWN (a melee kill) and KILLJOY (ending an enemy's spree)
       'live-kill-beat-down': [...live, [2300, () => ev.killMedals(['melee_kill'], 'VIPER')]],
       'live-kill-killjoy':   [...live, [2300, () => ev.killMedals(['double_kill', 'killjoy'], 'HAVOC')]],
+      // F657 (field 2026-11-01): KOTH won on hill time by the team with fewer kills. MC's own shape: `score` is kills, `held_s` decides.
+      'result-koth-kill-leader-loses': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win', { mode: 'koth', win_by: 'objective',
+        team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 424 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 211 }],
+        possession: { by_team: { [teamKey]: 424, [foeKey]: 211 }, neutral_s: 5, sites: 1, reports: 4, observed_s: 640, of_s: 600 } })]],
       'result-players':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => ev.rtab('player')]],
       'history':           [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, 'seedHistory'], [2800, () => ev.view('history')]],
       'down-at-cap-offline': [...live, [2300, 'capBoard'], [2400, 'mcLost'], [2500, 'die']],                                                  // A31: one off the cap with no MC link

@@ -10,7 +10,10 @@ So the payload is built by the real `Scorer` and the real `Session.settling()` i
 field server-side and this script's output changes (or its key-set assertion fails), and the browser
 step that asserts the rendered bar fails with it.
 
-    python recap_fixture.py --coverage thin|full [--settling]
+    python recap_fixture.py --coverage thin|full [--settling] [--kill-leader-loses]
+
+`--kill-leader-loses` (F657, field 2026-11-01): the team with more hill time has fewer kills, so a screen that
+headlines `score` (kills) beside the winner reads as the wrong mode.
 
 prints one JSON object: a RecapView with `possession` merged with the settling triple.
 """
@@ -31,7 +34,7 @@ TIME_LIMIT_S = 600
 OBSERVED_MS = {"thin": 441_000, "full": 560_000}
 
 
-def build(coverage: str, settling: bool) -> dict:
+def build(coverage: str, settling: bool, kill_leader_loses: bool = False) -> dict:
     s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
     s.set_config({"mode": "koth", "time_limit_s": TIME_LIMIT_S})
     for i in range(4):
@@ -58,8 +61,9 @@ def build(coverage: str, settling: bool) -> dict:
         got = sc.ingest(node, ev, end)
         if got != "scored":
             sys.exit(f"the scorer refused a possession fact ({got!r}) — the fact shape has moved")
-    sc.stats[players[0]["player_id"]].kills = 7
-    sc.stats[players[1]["player_id"]].kills = 4
+    # players[0] is the first team (red, 214 s of hill); players[1] the second (blue, 131 s)
+    sc.stats[players[0]["player_id"]].kills = 3 if kill_leader_loses else 7
+    sc.stats[players[1]["player_id"]].kills = 14 if kill_leader_loses else 4
     for st in sc.stats.values():
         st.flushed = True                            # provisional is a different banner; keep it off
 
@@ -80,5 +84,6 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--coverage", choices=sorted(OBSERVED_MS), default="thin")
     ap.add_argument("--settling", action="store_true")
+    ap.add_argument("--kill-leader-loses", action="store_true")
     a = ap.parse_args()
-    print(json.dumps(build(a.coverage, a.settling)))
+    print(json.dumps(build(a.coverage, a.settling, a.kill_leader_loses)))

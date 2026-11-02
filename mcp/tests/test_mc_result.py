@@ -76,6 +76,60 @@ def test_result_says_undecided_rather_than_inventing_a_winner():
     assert got["node0"]["winner"].get("undecided") == "objective" and got["node0"]["win_by"] == "objective"
 
 
+def _koth_kill_leader_loses():
+    """F657 (field 2026-11-01): red out-killed blue, blue held the hill longer and won. The field recap read 14-3."""
+    s, net, clock, ps, info = go_live_stored(4, "koth", {"scoring": {"win_by": "objective"}, "station_source": "phone"})
+    for seq in range(1, 4):
+        kill(s, net, clock, ps, 0, 1, info, seq=seq)           # ps[0] red kills ps[1] blue, three times
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    assert (red["team_id"], blue["team_id"]) == ("red", "blue")
+    clock["t"] += 1000
+    for i in range(4):
+        net.simulate_event(f"node{i}", {"type": "possession", "match_id": info["match_id"], "t": clock["t"], "site": "A",
+                                        "hold_ms": {str(red["tid"]): 211_000, str(blue["tid"]): 424_000}, "observed_ms": 640_000,
+                                        "node_id": f"node{i}", "player_id": ps[i]["player_id"]}, clock["t"], seq=10 + i)
+    return s, net
+
+
+def test_an_objective_result_carries_the_held_time_that_decided_it():
+    """F657: the recap's `score` stays kills (red ahead), but the winner is blue on hill time. Every result body names
+    the deciding number per team (`held_s`), so no phone headlines a kill line beside a winner with fewer kills."""
+    s, net = _koth_kill_leader_loses()
+    s.control("end")
+    s.finalise_recap()
+    rc = s.recap()
+    assert rc["winner"].get("team_id") == "blue" and rc["win_by"] == "objective", rc["winner"]
+    assert rc["score"]["red"] > rc["score"]["blue"], f"the control: red is the kill leader ({rc['score']})"
+    assert rc["possession"]["by_team"] == {"red": 211, "blue": 424}
+    b = results(net)["node0"]
+    assert b["win_by"] == "objective" and b["outcome"] == "lose" and results(net)["node1"]["outcome"] == "win"   # node0 is red
+    teams = {t["team_id"]: t for t in b["team_scores"]}
+    assert teams["blue"]["held_s"] == 424 and teams["red"]["held_s"] == 211, b["team_scores"]
+    assert teams["red"]["score"] == rc["score"]["red"], "`score` is still the kill score, secondary on the screen"
+
+
+def test_the_result_names_the_rule_the_scorer_ran_not_the_draft_config():
+    """Bench 2026-11-01's shape on the phone side: the draft config can name another rule than the match ran (an adopted
+    match has none of its own). `result.win_by` and `held_s` follow the recap's own `win_by`."""
+    s, net = _koth_kill_leader_loses()
+    s.control("end")
+    s.config["scoring"]["win_by"] = "kills"                     # the draft moved on; the match did not
+    s.finalise_recap()
+    b = results(net)["node0"]
+    assert b["win_by"] == "objective", b["win_by"]
+    assert all("held_s" in t for t in b["team_scores"]), b["team_scores"]
+
+
+def test_a_kill_scored_result_carries_no_held_time():
+    """The control: TDM is scored on kills, so its team scores have no `held_s`."""
+    s, net, clock, ps, info = go_live_stored(4, "tdm")
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.control("end")
+    s.finalise_recap()
+    b = results(net)["node0"]
+    assert b["win_by"] == "kills" and b["team_scores"] and all("held_s" not in t for t in b["team_scores"]), b
+
+
 def test_welcome_carries_the_result_while_the_session_is_in_recap():
     """A returning phone gets the result in welcome after MC releases it."""
     s, net, clock, ps, info = go_live_stored(2, "ffa", {"scoring": {"frag_limit": 1, "win_by": "kills"}})
