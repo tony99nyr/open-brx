@@ -96,3 +96,24 @@ test('memo fix: a new arming on the same byte forgets MC\'s remembered update, s
   assert.equal(api.statusBody().powerup.game, 55);
   assert.ok(air().value >= 59, `a fresh clock, not the old match's schedule: ${air().value}`);
 });
+
+test('review Low 2: a station that reloads after MC\'s START and before the first sighting keeps MC\'s schedule', async () => {
+  const st7 = { ...station, id: 7 };
+  await api.applyStationConfig({ ...st7, game: 60 });   // another id: a station that follows nothing yet
+  api.applyStationUpdate({ id: 7, available: false, next_spawn_in_ms: 20_000 });   // MC's START for game 60
+  // the reload: a fresh utility.js on the same storage
+  global.window.brxUtility = undefined;
+  await import('../src/utility.js?reload=1');
+  for (const t0 = Date.now(); !global.window?.brxUtility && Date.now() - t0 < 5000;) await new Promise(r => realSetTimeout(r, 5));
+  const api2 = global.window.brxUtility;
+  assert.ok(api2 && api2 !== api, 'the module loaded again');
+  api2.useStationClock(() => T);
+  for (let k = 0; k < 1000; k += 250) {
+    T += 250;
+    api2.onSighting([encodeUuid({ role: 'player', id: 9, team: 1, state: 1 | 128, value: 0, game: 60, scopeKinds: 4, scope: 1 << 7 })], -50, T);
+    api2.tick();
+  }
+  assert.equal(api2.statusBody().powerup.game, 60);
+  const v = decodeUuid(api2.stationUuid()).value;
+  assert.ok(v <= 19 && v >= 18, `MC's schedule, not first_at_s: ${v}`);
+});
