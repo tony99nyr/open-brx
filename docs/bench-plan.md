@@ -30,6 +30,7 @@ log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rul
 | SR12 | 3 | ALT during the phone's reload (F650 review) | SR5's setup with slot A full: lever on slot B, then ALT within half a second. Pass: the swap happens at once, no `$AMMO` lands on slot B, and the next shot comes from slot A with no desync line. Control: SR3, where the gun's own reload ignores ALT. |
 | SR9 | 5 | a `$GSET` re-send on a live gun (F645) | Two guns, MC, an FFA head. Mid-life, RESYNC GUN on gun A. Pass: gun A keeps its pools, both weapons and the trigger, and gun B's next hit on A lands (`$HIR` and `$HP`). Control: the same hit before the resync. |
 | SR10 | 10 | an FFA after try-outs (F645) | Four try-outs on gun A, READY, an FFA match. Pass: at T-3 the phone log shows `friendly-fire setting again (F645)`, and every gun takes hits from every other. Control: an FFA with no try-outs. |
+| SR13 | 8 | recoil resets on release (F663, F662) | Needs the Assault Rifle with `recoil.reset_on_release: true` (F662's numbers, or a bench catalogue). Hold to heavy (the `$ALCD` accuracy falls in two steps), then release. Pass: the phone log shows one `accuracy crisp` write at the release, and the gun's `$ALCD` reads 100 about 160 ms after the last round (predicted median; record each reading, 10 holds). Then bursts long enough to degrade (8 rounds) with a 300 ms pause: every burst starts at 100. Control: the same holds with the flag off, where 100 returns only after about 600 ms of quiet. |
 
 ## Sunday AM: the bench before the game on 2026-11-01
 

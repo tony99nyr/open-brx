@@ -872,8 +872,8 @@ class Recoil(TypedDict):
     accepted as derivation inputs for `crisp`/`heavy`/`settle_ms`; `per_shot` no longer sizes anything.
     The six explicit fields are optional per-weapon overrides that win outright over the derivation
     (S54). `app/src/engine.js` also resets a still-CRISP burst on the gun's own trigger-release edge
-    (`$BUT,0,0`), at no cost in writes; a DEGRADED or HEAVY weapon still recovers only on `settle_ms`
-    quiet, in one write (bench-provisional)."""
+    (`$BUT,0,0`), at no cost in writes. A DEGRADED or HEAVY weapon recovers on `settle_ms` quiet, in one
+    write, unless `reset_on_release` is true (F663): then the release edge itself restores CRISP."""
     ceiling: int
     floor: int
     per_shot: int
@@ -884,6 +884,7 @@ class Recoil(TypedDict):
     after_shots: NotRequired[int]
     after_heavy: NotRequired[int]
     settle_ms: NotRequired[int]
+    reset_on_release: NotRequired[bool]   # F663: back to crisp the moment the trigger comes up (default off)
 
 
 class HillSettings(TypedDict, total=False):
@@ -2692,6 +2693,13 @@ RECOIL_HEAVY_EXTRA_ROUNDS = 3  # and this many more before heavy
 # The reference weapon the two counts above are tuned against (the Assault Rifle/SMG/Energy Rifle's 8).
 # A weapon with double the damage kicks in after half the rounds; half the damage, twice as many.
 RECOIL_REF_DMG = 8
+
+# F663 (Tony 2026-11-02, "simply letting go of trigger immediately resets it"): a weapon whose `recoil` block sets
+# `reset_on_release` goes back to crisp on the trigger's `$BUT,0,0`. The fallback for a LOST release edge (7 of
+# 1068 presses in the 2026-11-01 frame tails) is a round gap of twice the weapon's fire interval plus this margin.
+# Twice, because a lost `$ALCD` doubles one gap (1 of 408 round steps that evening, 225 ms on a 100 ms weapon).
+# The margin covers the jitter: the largest gap that evening was 70 ms over its hold's median (n = 309).
+RECOIL_RELEASE_MARGIN_MS = 100
 
 # S53 (bench 2026-09-18, the controlled redo): a fn-23 smoke holds the victim's live accuracy at 0 for about 6 s,
 #  then the gun restores it in one step (the V4_31 6000 ms timer).

@@ -78,6 +78,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
     RECOIL_CLEAN_ROUNDS,
     RECOIL_HEAVY_EXTRA_ROUNDS,
     RECOIL_REF_DMG,
+    RECOIL_RELEASE_MARGIN_MS,
     RECOIL_SETTLE_MIN_MS,
     RELOAD_NAG_EVERY,
     RELOAD_NAG_FIRST,
@@ -5644,11 +5645,8 @@ class GunStage:
                             "held_s": round(now - since, 2) if since is not None else None}
         if bid == 2 and self.reloading:
             self.reloading["released_at"] = now
-        # S54 (engine.js `_onButton`), BENCH-PROVISIONAL: a trigger release while the weapon is still CRISP clears
-        # the burst at once (no write: the state has not changed). A degraded weapon still waits for the settle clock.
-        r = self._recoil
-        if bid == 0 and r and r["state"] == "crisp" and r["burst"] > 0:
-            r["burst"] = 0
+        if bid == 0:
+            self._recoil_release()   # S54 + F663 (engine.js `_onButton` -> `_recoilRelease`)
 
     def _easy_reload(self) -> bool:
         """engine.js `_easyReload()`: `loadout.overrides.easy_reload` is the live shape; the `alt_reload`
@@ -6062,6 +6060,7 @@ class GunStage:
         extra = _js_round(RECOIL_HEAVY_EXTRA_ROUNDS * k)
         derived_heavy_after = max(after + 1, clean + extra + 1)
         return {"crisp": crisp, "degraded": mid if two else bottom, "after_shots": after, "settle_ms": settle,
+                "reset_on_release": r.get("reset_on_release") is True,   # F663: only an explicit true turns it on
                 "heavy": bottom if two else None,
                 "heavy_after": _js_round(_js_plus(r["after_heavy"] if r.get("after_heavy") is not None else derived_heavy_after)) if two else 0}
 
@@ -6089,6 +6088,7 @@ class GunStage:
         self._recoil = {
             "weapon_id": wid, "slot": self.active_slot, "crisp": target, "degraded": p["degraded"] if p else target,
             "after_shots": p["after_shots"] if p else 0, "settle_ms": p["settle_ms"] if p else RECOIL_SETTLE_MIN_MS,
+            "reset_on_release": bool(p and p["reset_on_release"]),
             "heavy": p["heavy"] if p else None, "heavy_after": p["heavy_after"] if p else 0, "model": bool(p), "base": base,
             "value": target, "state": "crisp", "burst": 0, "dirty": force or prior_offset != offset,
             "last_shot_at": 0, "last_write_at": 0, "last_write_value": None, "pending_write_at": 0,
@@ -6134,11 +6134,37 @@ class GunStage:
         r = self._recoil
         if not r or not self.alive:
             return
-        if r["model"] and not r["disabled"] and now - r["last_shot_at"] >= r["settle_ms"]:
+        if r["model"] and not r["disabled"] and now - r["last_shot_at"] >= self._recoil_quiet_ms(r):
             r["burst"] = 0
             if r["state"] != "crisp":
                 r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
         self._recoil_flush(now)
+
+    def _recoil_quiet_ms(self, r: dict) -> int | float:
+        """engine.js `_recoilQuietMs`: `settle_ms`, and for an F663 `reset_on_release` weapon the shorter of that and
+        the lost-release fallback, twice the slot's fire interval plus RECOIL_RELEASE_MARGIN_MS. PURE."""
+        if not r["reset_on_release"]:
+            return r["settle_ms"]
+        iv = self._fire_interval_s(r["slot"])
+        return r["settle_ms"] if iv is None else min(r["settle_ms"], 2 * round(iv * 1000) + RECOIL_RELEASE_MARGIN_MS)
+
+    def _recoil_release(self) -> None:
+        """engine.js `_recoilRelease`, the trigger's `$BUT,0,0`. S54: a burst still crisp is forgotten, no write.
+        F663: a `reset_on_release` weapon also goes back to crisp from degraded or heavy, flushed at once through
+        the normal writer, so smoke, a stun, a reload, a swap or a spawn hold still delays the write."""
+        r = self._recoil
+        if not r or not r["model"] or r["disabled"]:
+            return
+        if not r["reset_on_release"]:
+            if r["state"] == "crisp":
+                r["burst"] = 0
+            return
+        r["burst"] = 0
+        if r["state"] == "crisp":
+            return
+        r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
+        if self.alive:
+            self._recoil_flush(self._now_ms())
 
     def _recoil_flush(self, now: int) -> None:
         """engine.js `_recoilFlush`, the single writer: judge a write in flight once its grace has run, then write a
