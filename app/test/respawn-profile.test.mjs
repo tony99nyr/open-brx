@@ -345,3 +345,25 @@ test('F289: a timed life with protection on reports its window', () => {
   h.adv(1000);
   assert.equal(h.eng.statusBody().protected, undefined, 'ended on the clock');
 });
+
+test('F645: T-3 re-sends the head\'s $GSET before the live table, once per match', () => {
+  // Game 2026-11-01: one gun kept a try-out's `$GSET,0` (friendly fire off) through the head. In an FFA every gun
+  // is team 1, so that gun dropped every hit with no `$HIR` for the whole match. The phone must send the head's
+  // own `$GSET` again before go-live, so a lost head frame cannot hold for the match.
+  const ffaGset = '$GSET,1,0,1,0,1,0,0,1,*';
+  const head = golden.head.map(f => (f.startsWith('$GSET,') ? ffaGset : f));
+  const h = harness({ bundle: { ...golden, head }, mode: 'ffa', leadMs: 10000 });
+  const n = h.mark();
+  const goLive = h.now() + 10000;
+  while (h.now() < goLive - 3000 - 250) h.adv(250);
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$GSET,')), [], 'nothing before T-3');
+  while (h.now() < goLive + 200) h.adv(250);   // through T-3 and go-live
+  const w = h.since(n);
+  assert.deepEqual(w.filter(f => f.startsWith('$GSET,')), [ffaGset], 'the head\'s own $GSET, exactly once');
+  const g = w.indexOf(ffaGset), firstRow = w.indexOf(golden.sir_pool[0][0]);
+  assert.ok(firstRow > g, 'before the live table rows');
+  assert.ok(w.indexOf(LIVE) > g, 'before the T-0 spawn maps the trigger');
+  assert.equal(h.eng.phase, 'live');
+  h.adv(5000);
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$GSET,')), [ffaGset], 'not repeated in play');
+});
