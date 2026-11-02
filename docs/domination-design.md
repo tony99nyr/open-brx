@@ -1,7 +1,7 @@
 # Domination, KOTH scaling and Juggernaut: a proposal
 
 Updated: 2026-11-01. **Status: a proposal for Tony's decision. Nothing here is built.** Each section ends with the
-choices Tony must make. The source is the field game of 2026-11-01 (F651): players misread KOTH.
+choices Tony must make. The source is the field game of 2026-11-01 (F651, F657): players misread KOTH.
 
 The mode catalogue is [`game-modes.md`](game-modes.md). How a mode is added end to end is
 [`adding-modes.md`](adding-modes.md). The control-point spec of record is [`spec/utility.md`](spec/utility.md) §5d.
@@ -42,17 +42,9 @@ The rule: **a word or a colour that suggests scoring appears only when the hill 
 | BRIEFING rule line | the mode brief | `STAND ON THE HILL TO SCORE` | `CAPTURE A HILL. IT SCORES FOR YOU UNTIL THEY TAKE IT.` |
 | Phone result, TEAMS tab chip | kills, large | hill time, large; `KILLS 14` small under it | points, large; `KILLS 14` small under it |
 
-For the result screen there are two ways to fix it:
-
-- **Option "label only".** The phone draws hill time in the chip for an objective mode, and kills on a labelled
-  line. No wire change.
-- **Option "score field": the score field carries what decides the winner.** In an objective mode, MC's `team_scores[].score`
-  becomes hill seconds (or Domination points), and a new `kills` field carries the kill count. Every surface
-  that prints `score` is then right by default. This is a contract amendment, and an older phone prints the hill
-  time where it used to print kills (which is the correct number).
-
-**Recommendation: "score field", with the "label only" layout.** The number a surface prints as "the score" must be the number that
-decides the match.
+**The result screen is fixed (F657, 2026-11-01).** The phone's TEAMS chips and its match history now headline the
+held time on an objective match, with `KILLS n` under it. MC's recap already did. `score` stays kills in every mode;
+each `team_scores` entry gains `held_s`. A Domination result would carry its points the same way.
 
 ## 2. Domination
 
@@ -301,8 +293,7 @@ IR word and HUD: 3 to 4; tests and a chaos scenario: 2), plus one bench sitting 
 
 ## 5. Decisions for Tony
 
-1. Recap fix: "label only" or **"score field"** (§1.1).
-2. Domination: build it now or post-MVP. Scoring option A, **B**, C or D (§2.5).
-3. Domination: an owned hill scores while contested, **yes** or no (§2.4).
-4. KOTH scaling: Flat, Linear, **Diminishing** or Double (§3.2).
-5. Juggernaut: post-MVP design accepted, J1 + J3 (§4.3), and the bench items in §4.5.
+1. Domination: build it now or post-MVP. Scoring option A, **B**, C or D (§2.5).
+2. Domination: an owned hill scores while contested, **yes** or no (§2.4).
+3. KOTH scaling: Flat, Linear, **Diminishing** or Double (§3.2).
+4. Juggernaut: post-MVP design accepted, J1 + J3 (§4.3), and the bench items in §4.5.
