@@ -1257,6 +1257,41 @@ test('Domination on Bluetooth hills announces a capture: each point names itself
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'our capture is announced');
 });
 
+test('F666: state().hills lists every bundle hill by id, heard ones live, unheard ones at their last state', () => {
+  const h = harness({ mode: 'domination' }); h.config.station_source = 'phone';
+  h.config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  let hills = h.eng.state().hills;
+  assert.deepEqual(hills.map(x => [x.site, x.letter, x.heard, x.owner, x.ageMs]), [[11, 'A', false, null, null], [12, 'B', false, null, null], [13, 'C', false, null, null]],
+    'every bundle hill is listed before any is heard');
+  h.eng.setStations([controlEntry({ id: 12, team: 1, state: HELD | CONTESTED | ADVERT_CONTROL_STATE.falling, value: 70 }),
+    controlEntry({ id: 11, team: 0, state: RISING, value: 40, present: false })]);
+  hills = h.eng.state().hills;
+  assert.deepEqual(hills[1], { site: 12, letter: 'B', heard: true, ageMs: 0, owner: 1, contested: true, progress: 70, holding: 1,
+    rising: false, falling: true, onPoint: true });
+  assert.deepEqual([hills[0].owner, hills[0].holding, hills[0].progress, hills[0].rising, hills[0].onPoint], [null, 0, 40, true, false],
+    'a point being built is owned by nobody, with the builder as `holding`');
+  // B goes silent: it keeps its last owner, unheard, with its age
+  for (let i = 0; i < 24; i++) { h.adv(250); h.eng.setStations([controlEntry({ id: 11, team: 0, state: HELD, value: 100, present: false })]); h.eng.tick(); }
+  hills = h.eng.state().hills;
+  assert.equal(hills[1].heard, false, 'B is out of earshot');
+  assert.equal(hills[1].owner, 1, 'and keeps its last owner');
+  assert.ok(hills[1].ageMs >= 5_900 && hills[1].ageMs <= 6_100, `with its age (${hills[1].ageMs})`);
+  assert.deepEqual([hills[0].owner, hills[0].heard], [0, true], 'A is red now, heard');
+  assert.equal(hills[2].heard, false, 'C was never heard');
+});
+
+test('F666: a change on a point we do not latch still re-renders the row', () => {
+  const h = dom();
+  let renders = 0; const orig = h.eng._changed.bind(h.eng); h.eng._changed = () => { renders++; orig(); };
+  const pair = t => [controlEntry({ id: 11, team: 1, state: HELD, value: 100 }), controlEntry({ id: 12, team: t, state: HELD, value: 100, present: false })];
+  h.eng.setStations(pair(0)); const r0 = renders;
+  h.eng.setStations(pair(0));
+  assert.equal(renders, r0, 'the same adverts render nothing');
+  h.eng.setStations(pair(1));
+  assert.ok(renders > r0, 'the other point changing hands renders');
+});
+
 test('hill: silent in Domination — several points are indistinguishable on the wire', () => {
   const h = harness({ mode: 'domination' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,15,0,1,8,0,0,*');

@@ -54,6 +54,7 @@ export const HILL_TRANSIENT = Object.freeze({
   _holdAt: 'accrual anchor: the next advert re-anchors', _siteHold: 'F556: the per-point accrual anchors, re-anchored by the next advert', _possessionSentAt: 'report cadence',
   _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
   _possessionSaved: 'DERIVED: the tally `_save` writes; `_load` rebuilds it from the restored hold/observed through the Engine accessor',
+  _hillsSeen: 'F666: the last heard state of each control point, rebuilt from the next adverts', _hillsSig: 'render cache',
 });
 
 export class HillListener {
@@ -71,6 +72,8 @@ export class HillListener {
     this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
     this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
     this._hillModeWarned = '';      // F535: a mode with no hill, logged once per game
+    this._hillsSeen = {};           // F666: each control point's last heard state, by id (`noteStations`)
+    this._hillsSig = '';            // F666: what the row of hills last rendered
     this._holdAt = 0;               // when the accrual last ran
     this._siteHold = {};            // F556: per control point (site), its own accrual anchor {_holdAt}
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
@@ -276,6 +279,7 @@ export class HillListener {
    *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). That is the HUD and the
    *  audio only: since F556 the possession clock accrues every point heard (`accrueStations`). */
   onAdvert(now) {
+    this.noteStations(now);
     const e = this.host._controlStation();
     if (!e) return;
     if (e.paused) return;   // F537 review r3: a frozen entry is not a fresh advert; it must not keep the point alive or scoring
@@ -542,6 +546,49 @@ export class HillListener {
     this._hillEp = null; this._hillBeginsAt = {};
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
+    this._hillsSeen = {}; this._hillsSig = '';
+  }
+  /** F666 (Domination's row of hills, domination-design.md §2.6): remember what each control point said when we last
+   *  heard it, so a point out of earshot keeps its last owner. Every allowed control point heard now, not only the latched
+   *  one, decoded the same way as `onAdvert`. A mode with no hill, or a game whose objective is a grenade, keeps nothing.
+   *  Re-renders when a point the row shows changes (owner, contest, progress to the whole percent, direction, on-point,
+   *  heard). */
+  noteStations(now) {
+    if (!this.modeHasHill()) return;
+    const src = this.host.config && this.host.config.station_source;
+    if (src && src !== 'phone') return;
+    for (const e of (this.host._controlStations && this.host._controlStations()) || []) {
+      if (!e || e.paused) continue;
+      const held = !!(e.state & ADVERT_CONTROL_STATE.held);
+      const bothWays = (e.state & ADVERT_CONTROL_STATE.rising) && (e.state & ADVERT_CONTROL_STATE.falling);
+      this._hillsSeen[e.id] = {
+        owner: (held && claimable(e.team)) ? e.team : null,
+        contested: !!(e.state & ADVERT_CONTROL_STATE.contested),
+        progress: Math.max(0, Math.min(100, e.value | 0)),
+        holding: e.team <= 3 ? e.team : null,
+        rising: !bothWays && !!(e.state & ADVERT_CONTROL_STATE.rising),
+        falling: !bothWays && !!(e.state & ADVERT_CONTROL_STATE.falling),
+        onPoint: !!e.present,
+        at: now - (Number.isFinite(e.ageMs) ? Math.max(0, e.ageMs) : 0),
+      };
+    }
+    const sig = JSON.stringify(this.hillsView(now).map(h => [h.site, h.owner, h.contested, h.progress, h.holding, h.rising, h.falling, h.onPoint, h.heard]));
+    if (sig !== this._hillsSig) { this._hillsSig = sig; this.host._changed(); }
+  }
+  /** F666: one entry per control point, the bundle's (`config.stations`, kind control) and any other allowed point heard,
+   *  sorted by id (so A, B, C). `heard` is an advert inside CONTROL_STALE_MS; an unheard point keeps its last heard state
+   *  with a growing `ageMs`, and a point never heard has `owner: null` and `ageMs: null`. PURE. */
+  hillsView(now) {
+    const list = this.host.config && Array.isArray(this.host.config.stations) ? this.host.config.stations : [];
+    const ids = new Set(list.filter(x => x && typeof x === 'object' && x.kind === 'control').map(x => x.id));
+    for (const k of Object.keys(this._hillsSeen)) ids.add(Number(k));
+    return [...ids].sort((a, b) => a - b).map(id => {
+      const s = this._hillsSeen[id];
+      const ageMs = s ? Math.max(0, now - s.at) : null;
+      return { site: id, letter: this.letterOf(id), heard: ageMs != null && ageMs <= CONTROL_STALE_MS, ageMs,
+        owner: s ? s.owner : null, contested: s ? s.contested : false, progress: s ? s.progress : 0,
+        holding: s ? s.holding : null, rising: s ? s.rising : false, falling: s ? s.falling : false, onPoint: s ? s.onPoint : false };
+    });
   }
   /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
    *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
