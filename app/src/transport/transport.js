@@ -243,6 +243,7 @@ export class Transport {
     /** @type {TransportState} */ this.state = 'offline';
     /** @type {string|null} */ this.url = null;
     this.closed = false; this.attempt = 0; this.reconnects = 0; this.rejected = null;
+    /** @type {string|null} */ this.serverName = null; /** @type {number|null} */ this.mcStartedAt = null;   // F659: from the welcome
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
     /** @type {TransportSocket|null} */ this._ws = null;
     /** @type {unknown} */ this._hbTimer = null; /** @type {unknown} */ this._rcTimer = null;
@@ -886,6 +887,8 @@ export class Transport {
     this.priorUtilityConsumed = this._priorUtilityOffered && body.prior_utility_consumed === true;
     if (this.priorUtilityConsumed) this.priorUtility = null;   // one-shot proof: never replay it on a later reconnect
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
+    this.serverName = typeof body.server_name === 'string' && body.server_name ? body.server_name.slice(0, 32) : null;   // F659
+    this.mcStartedAt = Number.isFinite(Number(body.started_at)) && Number(body.started_at) > 0 ? Number(body.started_at) : null;
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this._burstExtra = 0; this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     this.reach = this._viaCurrent === 'backhaul' ? 'backhaul' : 'lan';   // A28.3: the live socket's path

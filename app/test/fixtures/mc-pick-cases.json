@@ -1,0 +1,170 @@
+{
+  "_comment": "F659: which MC a phone prefers when discovery finds more than one. First the last-good MC (the address this phone last bound to, matched on host:port), else the newest started_at (the mDNS TXT value; a sweep hit has none and counts as 0), else the lowest host:port (so the pick never depends on the order found). Read by app/test/mc-pick.test.mjs (autojoin.js pickMc).",
+  "cases": [
+    {
+      "name": "one MC is the pick",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "the last-good MC wins over a newer one",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        }
+      ],
+      "last_good": "ws://192.0.2.10:8766/ws",
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "the last-good MC wins whatever the order",
+      "found": [
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        },
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        }
+      ],
+      "last_good": "ws://192.0.2.10:8766/ws",
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "last-good matches by host and port, not by path",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        }
+      ],
+      "last_good": "ws://192.0.2.10:8766/node",
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "no last-good: the newest started_at wins",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        },
+        {
+          "url": "ws://192.0.2.30:8766/ws",
+          "started_at": 500
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.20:8766/ws"
+    },
+    {
+      "name": "a last-good that was not found does not count",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 100
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        }
+      ],
+      "last_good": "ws://192.0.2.30:8766/ws",
+      "pick": "ws://192.0.2.20:8766/ws"
+    },
+    {
+      "name": "a sweep hit (no started_at) loses to one that has it",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws"
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 5
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.20:8766/ws"
+    },
+    {
+      "name": "all unknown: the lower host:port wins",
+      "found": [
+        {
+          "url": "ws://192.0.2.10:8766/ws"
+        },
+        {
+          "url": "ws://192.0.2.20:8766/ws"
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "equal started_at: the lower host:port wins, whatever the order found",
+      "found": [
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 7
+        },
+        {
+          "url": "ws://192.0.2.10:8766/ws",
+          "started_at": 7
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "a sweep hit is still the last-good one",
+      "found": [
+        {
+          "url": "ws://192.0.2.20:8766/ws",
+          "started_at": 900
+        },
+        {
+          "url": "ws://192.0.2.10:8766/ws"
+        }
+      ],
+      "last_good": "ws://192.0.2.10:8766/ws",
+      "pick": "ws://192.0.2.10:8766/ws"
+    },
+    {
+      "name": "nothing found",
+      "found": [],
+      "last_good": "ws://192.0.2.10:8766/ws",
+      "pick": null
+    },
+    {
+      "name": "all unknown, reversed order: the same pick",
+      "found": [
+        {
+          "url": "ws://192.0.2.20:8766/ws"
+        },
+        {
+          "url": "ws://192.0.2.10:8766/ws"
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.10:8766/ws"
+    }
+  ]
+}

@@ -294,7 +294,8 @@ export function _statusLine(st, mode) {
     // still in progress is amber, not the error red; a pre-join phone with no address yet is not "connecting".
     const ws = st.wsState;
     if (ws === 'rejected') return mode === 'connected' ? 'GUN <b>CONNECTED ✓</b> · <span class="bad">NOT JOINED</span>' : '<span class="bad">NOT JOINED</span>';
-    const mc = ws === 'bound' ? '<b>HOST ✓</b>' : mode === 'connected' && !this.mcUrl ? '<span class="prog">NOT JOINED YET</span>' : '<span class="prog">CONNECTING…</span>';
+    const f = this.mcFound;   // F659: more than one MC was in view when this phone joined
+    const mc = ws === 'bound' ? (f && f.n > 1 ? `<b>JOINED ${esc(f.name || 'HOST')}</b> (${f.n} FOUND)` : '<b>HOST ✓</b>') : mode === 'connected' && !this.mcUrl ? '<span class="prog">NOT JOINED YET</span>' : '<span class="prog">CONNECTING…</span>';
     const clock = st.synced ? '<b>IN SYNC ✓</b>' : '<span class="prog">SYNCING…</span>';
     if (mode === 'connected') return `GUN <b>CONNECTED ✓</b> · ${mc}`;
     // F550 (field 2026-10-17): no head echo is a headset fault only while the headset is not joined; with it joined, the

@@ -270,7 +270,7 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
   const connect = src.indexOf('function connectMc(');
   const head = src.slice(connect, src.indexOf('dial.promise', connect));
   assert.match(head, /mcLink\.dial\(url, \{ remember,/);
-  assert.match(link, /rememberAtDial: .*\{ remember \}\) => !!remember,/);
+  assert.match(link, /rememberAtDial: .*\{ remember, user \}\) => !!remember && user === true,/);
   assert.match(link, /if \(this\.policy\.rememberAtDial\(options\)\) this\.remember\(url, false\)/);
 
   // 2. ...and the suggestion path passes remember:false, so nothing is written until it binds
@@ -294,7 +294,7 @@ test('security guard: a SUGGESTED address persists only once it binds us; a USER
   const qr = src.slice(src.indexOf('QR scanned — connecting'), src.indexOf('QR scanned — connecting') + 240);
   assert.match(qr, /connectMc\(join\.url, true, \{ pub: join\.pub, secret: join\.secret, user: true \}\)/, 'a scanned QR is the user naming an address');
   const typed = src.slice(src.indexOf('onSetUrl:'), src.indexOf('\n  },', src.indexOf('onSetUrl:')));
-  assert.match(typed, /connectMc\(j\.url, true, \{ pub: j\.pub, secret: j\.secret, user: true \}\)/, 'so is a typed join code');
+  assert.match(typed, /connectMc\(n\.url, true, \{ pub: n\.join\.pub \|\| null, secret: n\.join\.secret \|\| null, user: true \}\)/, 'so is a typed join code');
 });
 
 test('security guard: an mDNS advert is offered, never dialled — same one-tap row as a sweep hit', () => {
@@ -303,7 +303,7 @@ test('security guard: an mDNS advert is offered, never dialled — same one-tap 
   assert.ok(i > 0, 'startDiscovery is gone — FIX this guard, do not delete it');
   const body = src.slice(i, src.indexOf('\n}\n', i));
   assert.doesNotMatch(body, /connectMc\(/, 'anything on the field Wi-Fi can advertise _openbrx._tcp');
-  assert.match(body, /suggestMc\(url, 'mdns'\)/);
+  assert.match(body, /suggestMc\(url, 'mdns', startedAt\)/);
   // A60: the only dial suggestMc makes is a VERIFY dial (keyless, nothing processed before the proof)
   const j = src.indexOf('function suggestMc(');
   const suggest = src.slice(j, src.indexOf('\n}\n', j));
@@ -329,7 +329,7 @@ test('security guard: no automatic dial is left anywhere — every connectMc cal
     return line;
   }).filter(l => !l.startsWith('*') && !l.startsWith('//'));
   for (const l of callers) {
-    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|priorMc|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
+    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|priorMc|\bv\)|\bv, true, \{ user: true \}\)|\burl,|\burl\)|\brawUrl,|\bn\.url,/.test(l), `unexpected connectMc caller: ${l}`);
   }
   assert.ok(callers.length >= 4, 'the real callers are still there');
   // A60: the callers no person started (a discovery hit) are a verify dial and (F346 d) an untrusted

@@ -236,6 +236,17 @@ describe('A31 · the verify-at-MC host line', () => {
     m.unmount();
   });
 
+  it('F659: LOBBY shows NEW PHONE JOINED when a never-seen phone joined', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'lobby', notices: { new_phone: 'NEW PHONE JOINED: Google Pixel 5' } };
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.find('[data-testid="new-phone"]')[0]?.textContent).toBe('NEW PHONE JOINED: Google Pixel 5');
+    m.unmount();
+    const none = await mountScreen(<Lobby />, { ...d, state: { ...d.state, phase: 'lobby', notices: undefined }, view: 'lobby' });
+    expect(none.find('[data-testid="new-phone"]').length).toBe(0);
+    none.unmount();
+  });
+
   it('ARMED shows it', async () => {
     const d = await demo();
     const base = await (async () => { const api = d.api; await api.pushLobby(true); await api.start(120); return api.getState(); })();

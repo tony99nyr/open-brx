@@ -355,7 +355,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def wrong_port_ws(ws: WebSocket):
         node = s.lan.get("ws_url") or "the node port (default 8766)"
-        await ws.accept()     # accept, then close: a close before accept reaches the client as a bare 403
+        # F659: close BEFORE accept, so the server answers the upgrade with an HTTP 403 and no client sees an open
+        # (a probe counted the accepted-then-closed socket as a live MC). The hint goes to the log instead.
+        log.info("a websocket reached the console port; nodes connect to %s", node)
         await ws.close(code=4404, reason=f"this is the console port; nodes connect to {node}"[:120])
 
     async def ui_ws(ws: WebSocket):
@@ -459,7 +461,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         WebSocketRoute("/ui-ws", ui_ws),
         # Bench 2026-09-24: a phone that dials the CONSOLE port with a websocket fell through to the
         # StaticFiles mount below, which asserts on a non-http scope (8 ASGI tracebacks per connect).
-        # Every other websocket path on this port closes with 4404 and names the node URL instead.
+        # Every other websocket path on this port is refused before accept (F659) and the log names the node URL instead.
         WebSocketRoute("/{path:path}", wrong_port_ws),
     ])
     if UI_DIST.exists():

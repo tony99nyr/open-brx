@@ -28,7 +28,7 @@ test('HUD and station keep their own remember rules in one controller', async ()
   station.link.bound(s.transport, url, { trusted: false });
   assert.deepEqual(hud.saved, [{ url, bound: true }]);
   assert.deepEqual(station.saved, [{ url, bound: true }]);
-  hud.link.dial(url, { remember: true, connect: { url } }, () => {});
+  hud.link.dial(url, { remember: true, user: true, connect: { url } }, () => {});
   station.link.dial(url, { trusted: true, connect: { url } }, () => {});
   assert.deepEqual(hud.saved.at(-1), { url, bound: false });
   assert.deepEqual(station.saved.at(-1), { url, bound: false });
@@ -57,7 +57,7 @@ test('both phone roles use one mDNS service and URL parser', async () => {
     ipv4Addresses: ['10.0.0.5'], port: 8766, txtRecord: { ws_path: '/node' } } }); return Promise.resolve(); } },
   url => { found = url; }, () => assert.fail('watch error'));
   assert.deepEqual(watched, { type: MC_MDNS_SERVICE, domain: 'local.' });
-  assert.equal(found, 'ws://10.0.0.5:8766/node');
+  assert.equal(found, 'ws://10.0.0.5:8766/ws', 'F659: the node path is /ws whatever the record says');
 });
 
 test('HUD sweep suggests its hit and stops when the remembered URL changes', async () => {
@@ -108,5 +108,17 @@ test('the remember predicates keep the old truthiness for odd values', () => {
   assert.equal(STATION_POLICY.rememberAtDial({ trusted: 1 }), true);
   assert.equal(STATION_POLICY.rememberAtBound({ trusted: null }), true);
   assert.equal(STATION_POLICY.rememberAtDial({ trusted: null }), false);
-  assert.equal(HUD_POLICY.rememberAtDial({ remember: 1 }), true);
+  assert.equal(HUD_POLICY.rememberAtDial({ remember: 1, user: true }), true);
+  assert.equal(HUD_POLICY.rememberAtDial({ remember: 1 }), false, 'F659: only a user-named address is stored at dial');
+});
+
+test('F659: watch passes the TXT started_at along with the url', () => {
+  const link = rig(HUD_POLICY).link;
+  const got = [];
+  link.watch({ watch(options, callback) {
+    callback({ action: 'resolved', service: { ipv4Addresses: ['10.0.0.5'], port: 8766, txtRecord: { started_at: '1700000000123' } } });
+    callback({ action: 'resolved', service: { ipv4Addresses: ['10.0.0.6'], port: 8766, txtRecord: {} } });
+    return Promise.resolve(); } },
+  (url, startedAt) => got.push([url, startedAt]), () => assert.fail('watch error'));
+  assert.deepEqual(got, [['ws://10.0.0.5:8766/ws', 1700000000123], ['ws://10.0.0.6:8766/ws', undefined]]);
 });

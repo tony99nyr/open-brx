@@ -29,6 +29,7 @@ from typing import Any, Callable
 
 from . import envelope as E
 from .mcid import TrustRegistry, valid_challenge
+from .seen_nodes import SeenNodes
 from .types import PROTOCOL_V, STALE_AFTER_MS, STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.net")
@@ -195,6 +196,14 @@ class NodeRecord:
         }
 
 
+def clean_server_name(name: object) -> str:
+    """F659: the name phones show (`JOINED <name>`): the host name without a trailing `.local`, at most 32 characters."""
+    n = "".join(c for c in str(name or "") if c.isprintable()).strip()
+    if n.lower().endswith(".local"):
+        n = n[:-6]
+    return n[:32] or "MC"
+
+
 class _Rejected(Exception):
     """Raised inside _on_hello when a takeover is refused (A8); the handler returns quietly."""
 
@@ -208,6 +217,10 @@ class NetServer:
         self.session_id = session_id or uuid.uuid4().hex[:8]
         # A60: MC's install identity. In memory unless the caller hands in a persisted one (`__main__`).
         self.trust = trust if trust is not None else TrustRegistry(None)
+        # F659: two MCs on one LAN. Phones prefer the one they last joined, else the newer `started_at`.
+        self.started_at = E.now_ms()
+        self.server_name = clean_server_name(socket.gethostname())
+        self.seen = SeenNodes(None)         # F659: swapped for the persistent list by __main__
         self.stale_after_ms = stale_after_ms
         self.hello_timeout_s = hello_timeout_s
         self.ping_interval_s = ping_interval_s
@@ -451,7 +464,8 @@ class NetServer:
         info = ServiceInfo(
             "_openbrx._tcp.local.", f"mc-{self.session_id}._openbrx._tcp.local.",
             addresses=[socket.inet_aton(host)], port=self._port,
-            properties={"ver": str(PROTOCOL_V), "session_id": self.session_id, "ws_path": self._ws_path},
+            properties={"ver": str(PROTOCOL_V), "session_id": self.session_id, "ws_path": self._ws_path,
+                        "started_at": str(self.started_at), "server_name": self.server_name},
             server=f"openbrx-{self.session_id}.local.",
         )
         if self._mdns_abort.is_set():
@@ -838,6 +852,10 @@ class NetServer:
         if self._hydrate is not None:
             try:
                 clean_body = dict(body)
+                # F659: a PLAYER phone this MC home has never heard from, on the LAN. The session raises the host's line.
+                # (checked in this order: a first hello over the backhaul must not use up the first LAN hello)
+                if rec.node_type != "utility" and rec.via == "lan" and self.seen.add(node_id):
+                    clean_body["new_phone"] = True
                 clean_body.pop("prior_utility", None)       # the takeover key never reaches session code
                 if type(clean_body.get("pending")) is not int or clean_body["pending"] < 0:
                     clean_body.pop("pending", None)         # F596: old or malformed hellos make no count claim
@@ -851,6 +869,7 @@ class NetServer:
             if pid:
                 self._set_player(rec, pid)
         welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi,
+                   "started_at": self.started_at, "server_name": self.server_name,   # F659
                    "node_key": rec.node_key,
                    # A28.2: every welcome hands over both, so a phone that joined over the LAN before the
                    # tunnel existed — or typed the address — learns them without rescanning the QR.
