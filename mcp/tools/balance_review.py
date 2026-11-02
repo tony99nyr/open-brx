@@ -539,13 +539,14 @@ def make_kit(world: World, name: str, primary: str, secondary: str | None = None
 # --------------------------------------------------------------------------- #
 
 class _GunState:
-    __slots__ = ("ammo", "reserve", "count", "state", "blen", "leak", "charged", "heat", "heat_t", "locked_until",
+    __slots__ = ("ammo", "reserve", "count", "state", "blen", "leak", "held", "charged", "heat", "heat_t",
+                 "locked_until",
                  "vent_until", "ready_at", "reload_amount", "venting", "bolt_until", "pending_pickup",
                  "cooling_started", "vent_heat_after")
 
     def __init__(self, g: Gun, charged=True):
         self.ammo, self.reserve = g.mag, g.reserve
-        self.count, self.state, self.blen, self.leak = 0, "crisp", 0, 0
+        self.count, self.state, self.blen, self.leak, self.held = 0, "crisp", 0, 0, None
         self.charged = charged
         self.heat, self.heat_t, self.locked_until, self.vent_until = 0.0, 0.0, 0.0, 0.0
         self.ready_at = 0.0
@@ -879,7 +880,8 @@ class Fighter:
 
     def _hit_chance(self, idx):
         g, s = self.kit.guns[idx], self.gs[idx]
-        acc = B._accuracy_pct(g.profile, s.state) / 100.0 if g.profile and g.mode == "auto" else 1.0
+        acc = B._accuracy_pct(g.profile, s.held if s.leak else s.state) / 100.0 \
+            if g.profile and g.mode == "auto" else 1.0
         return min(1.0, acc * self.aim * (B.BAND_FIT[g.band][self.dist] if self.fit else 1.0))
 
     def _finish_ms(self, idx, target, t):
@@ -1027,7 +1029,7 @@ class Fighter:
             return None
         acc = 1.0
         if g.profile is not None and g.mode == "auto":
-            acc = B._accuracy_pct(g.profile, s.state) / 100.0
+            acc = B._accuracy_pct(g.profile, s.held if s.leak else s.state) / 100.0
         fit = B.BAND_FIT[g.band][self.dist] if self.fit else 1.0
         hit_p = min(1.0, acc * self.aim * fit)
         if t < self.blind_until:
@@ -1065,9 +1067,7 @@ class Fighter:
         else:  # auto
             s.state, s.count = B._recoil_step(g.profile, s.state, s.count)
             if s.leak:
-                s.leak -= 1
-                if not s.leak:
-                    s.state, s.count = "crisp", 0   # F663: the late release reset lands
+                s.leak -= 1   # F663: once the leaked rounds are out, the reset write has landed on the gun
             self.next_t = t + g.fire_ms
             if self.kit.style == "burst" and g.profile is not None:
                 if s.blen == 0:
@@ -1076,7 +1076,8 @@ class Fighter:
                 if s.blen == 0:
                     pause = self.rng.uniform(*BURST_PAUSE_MS)
                     self.next_t += pause
-                    s.state, s.count, s.leak = B.release_after_pause(g.profile, s.state, s.count, pause, g.fire_ms)
+                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, pause,
+                                                                             g.fire_ms)
         self._add_heat(g, s, t, False)
         if self.kit.plan == "haze" and g.sir_fn == 23:
             self._swap(0, t)
@@ -1096,7 +1097,8 @@ class Fighter:
             s = self.gs[self.active]
             g = self.kit.guns[self.active]
             if g.profile is not None and g.mode == "auto":
-                s.state, s.count, s.leak = B.release_after_pause(g.profile, s.state, s.count, RETARGET_MS, g.fire_ms)
+                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, RETARGET_MS,
+                                                                         g.fire_ms)
             elif s.state == "crisp":
                 s.count = 0
             s.blen = 0

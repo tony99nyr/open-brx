@@ -117,8 +117,8 @@ Scenario version 12 uses these models:
   engagement.
 - A controlled burst on an automatic keeps the shipped release rule: a crisp release clears the round count, and a
   degraded weapon recovers only after `settle_ms`. A row whose `recoil` block sets `reset_on_release` (F663) comes back
-  crisp after a rest of `RELEASE_RESET_MS` (160 ms) or more; after a shorter rest, the rounds fired before 160 ms keep the
-  old rung. No shipped row sets it yet (F662 awaits Tony). The model leaves out a lost release.
+  crisp after a rest of `RELEASE_RESET_MS` (160 ms) or more; after a shorter rest, the rounds fired before 160 ms still fire
+  at the old rung, while the count restarts from 0 at the release (as engine.js does). No shipped row sets it yet (F662 awaits Tony). The model leaves out a lost release.
 - Semi-automatic fight shots use `FIGHT_OVERSHOOT_MS`, an additive lognormal overshoot after the row's `t14`.
   Its fitted median is 36.67 ms, from the USP, AMR and Desert Eagle field medians.
   The bolt lever and the press after it retain the ordinary pull model.
