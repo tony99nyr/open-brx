@@ -1174,7 +1174,7 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
     a 150-300 ms pause between bursts is not, so a weapon that got hot in one burst stays hot into the
     next. A reload is a trigger release too, and it is always far longer than `settle_ms`.
     With `recoil.reset_on_release` (F663), `release_after_pause` resets a degraded weapon after a rest of
-    `RELEASE_RESET_MS` or more; a shorter rest keeps the next round or two at the old state.
+    `RELEASE_RESET_MS` or more; a shorter rest keeps the rounds fired before then at the old state.
 
     `crit_pct` (F308, polish round 1): the GUN rolls its own crit per round, independent of the hit
     roll -- a crit still has to land -- at `magnitude x CRIT_MULT` truncated (`int()`), same formula

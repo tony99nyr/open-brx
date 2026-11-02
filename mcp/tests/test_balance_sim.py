@@ -1207,3 +1207,13 @@ def test_ar_bursts_come_back_crisp_after_a_release_only_with_the_flag():
         return shots[9][1]
     assert first_round_of_burst_two(True) == 1.0
     assert first_round_of_burst_two(False) == B.recoil_profile(_ar_row_with_reset(False)).heavy / 100.0
+
+
+def test_a_short_rest_leaks_the_old_rung_then_the_reset_lands():
+    prof = B.recoil_profile(_ar_row_with_reset(True))
+    rng = random.Random(1)
+    gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
+                      pause_min_ms=100.0, pause_max_ms=100.0, rng=rng)
+    shots = [next(gen) for _ in range(11)]
+    assert shots[9][1] == prof.heavy / 100.0   # fired 100 ms after release: the reset has not landed
+    assert shots[10][1] == 1.0                 # fired 200 ms after release: back at the ceiling

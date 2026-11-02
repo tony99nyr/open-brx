@@ -133,6 +133,8 @@ PULL_MS = B.DEFAULT_PULL_MS   # mean trigger-pull gap (lognormal, PULL_SIGMA): A
 REACTION_MEAN_MS = 250.0      # 1v1: each side opens after a normal reaction delay
 REACTION_SD_MS = 80.0
 RETARGET_MS = 400.0           # after a kill, a trigger release before the next target
+# Keep RETARGET_MS under B.RECOIL_SETTLE_MIN_MS: the kill path treats the retarget as a release, so a longer
+# retarget would settle every degraded gun after a kill and move verdicts.
 BURST_LEN = (3, 5)            # a controlled burst on an automatic weapon: 3 to 5 rounds ...
 BURST_PAUSE_MS = (150.0, 300.0)   # ... then a 150 to 300 ms pause
 FIGHT_CAP_MS = 10_000.0       # a 1v1 still open at 10 s is a draw, never ranked by the pool left (F603)
