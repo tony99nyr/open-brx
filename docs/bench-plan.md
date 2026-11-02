@@ -3,11 +3,31 @@
 Updated: 2026-11-01. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-The next bench is the Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)): gameplay first,
-for a game that afternoon. NEXT ([below](#next-the-bench-after-0430-2026-10-26)) is every MVP bench row, in rig order.
+The next bench is the swap and reload sheet ([below](#next-game-swap-and-reload-the-torture-sheet-f650-f645)), before the next game. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
+for the game on 2026-11-01. NEXT ([below](#next-the-bench-after-0430-2026-10-26)) is every MVP bench row, in rig order.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
+
+## NEXT GAME: swap and reload, the torture sheet (F650, F645)
+
+Tony, 2026-11-01: swap and reload are P0 core gameplay. Build: a bench APK from `fix/f650-alt-before-first-pull` (it holds
+`fix/f650-lever-last-fired`) on top of `fix/f645-gset-resend`, MC from current main. One gun with a two-weapon kit (a primary
+and a pistol secondary) for every step unless the step names others. Before you start and after every step, read the phone
+log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rule for the whole sheet is zero desync lines.
+
+| step | minutes | what it proves | control and pass |
+|---|---|---|---|
+| SR1 | 5 | ALT spam | Control: one ALT, then fire: the round comes from the other slot and the HUD showed it before the shot. Then 10 ALTs at about 2 a second, then fire. Pass: the slot that fires is the one the HUD shows (an even count is the start slot); no desync line. Repeat at about 4 a second. |
+| SR2 | 5 | ALT before the first pull of a life (F650) | Control: a timed respawn, one trigger pull, ALT, fire: the other slot. Then a respawn and ALT with no pull first, then fire. Pass: SWITCHING shows at the press, and the round comes from the slot the HUD shows. If the round comes from the old slot, the gun refuses that ALT: note it (the HUD corrects with GUN WAS ON) and tell brx4. |
+| SR3 | 5 | swap mid-reload | Fire 5 from the primary, pull the lever, ALT during the reload. Control: the same without the ALT, where the reload fills. Pass: the gun ignores the ALT mid-reload (bench 2026-10-02), the HUD stays on the primary, the reload fills, and the next ALT swaps. |
+| SR4 | 3 | reload on a full magazine | Control: fire one round, lever: the reload fills. Then a full magazine, lever. Pass: no RELOADING card, no sound, counts unchanged. |
+| SR5 | 10 | the lever after a swap, each pair (F650) | For primary to secondary and back: fire from slot A, ALT to slot B (part-used), lever. Pass: RELOADING on slot B, a reload sound at the press and at the end, slot B full after its reload time, slot B reserve lower by exactly the rounds added, and slot A's count right on the next ALT (the gun may refill slot A too). Repeat with slot A full, and with slot B empty. Control: fire one round from slot B first, then lever: the gun's own reload. |
+| SR6 | 5 | Easy Reload | A one-weapon kit with Easy Reload on. Pass: ALT reloads (fn 97), the card fills, and no swap shows. Control: the same kit with Easy Reload off, where ALT does nothing. |
+| SR7 | 8 | the Charge Rifle lock (F226) | Charge from 4 rounds. Pass: the phone reloads the cell at once, the next charge fires, no OVERHEAT word. Control: a full cell, where a charge fires normally. Then swap to the secondary and back, lever: as SR5. |
+| SR8 | 8 | the Energy Rifle heat lock (F229) | Fire to the heat lock (about 75 rounds). Pass: OVERHEAT shows, the lever during the lock does not show a dead RELOADING card, the gun fires again when the heat falls. Control: 20 rounds, no lock. |
+| SR9 | 5 | a `$GSET` re-send on a live gun (F645) | Two guns, MC, an FFA head. Mid-life, RESYNC GUN on gun A. Pass: gun A keeps its pools, both weapons and the trigger, and gun B's next hit on A lands (`$HIR` and `$HP`). Control: the same hit before the resync. |
+| SR10 | 10 | an FFA after try-outs (F645) | Four try-outs on gun A, READY, an FFA match. Pass: at T-3 the phone log shows `friendly-fire setting again (F645)`, and every gun takes hits from every other. Control: an FFA with no try-outs. |
 
 ## Sunday AM: the bench before the game on 2026-11-01
 
