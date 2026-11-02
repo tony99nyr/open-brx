@@ -3395,6 +3395,155 @@
         }
       },
       "additionalProperties": false
+    },
+    "respawn-station-cases.json": {
+      "type": "object",
+      "required": [
+        "version",
+        "about",
+        "cases"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "about": {
+          "type": "string"
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "config_stations",
+              "player",
+              "heard",
+              "expect"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "config_stations": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "player": {
+                "type": "object",
+                "required": [
+                  "tid",
+                  "games"
+                ],
+                "properties": {
+                  "tid": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3
+                  },
+                  "games": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "heard": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "kind",
+                    "team",
+                    "state",
+                    "game",
+                    "present",
+                    "rssi"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "respawn",
+                        "powerup",
+                        "extraction",
+                        "bomb",
+                        "control"
+                      ]
+                    },
+                    "team": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "state": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "game": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "present": {
+                      "type": "boolean"
+                    },
+                    "rssi": {
+                      "type": "integer"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "expect": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "expect_heard": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -421,6 +421,32 @@ def decode_advert_uuid(s: str) -> Advert | None:
     positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
     a = _beacon.decode(s)
     return Advert(**_dc.asdict(a)) if a else None
+# F658 (A86): beacon.js `ANY_GAME_STATION_KINDS`, `stationEnabled` and `respawnStation`, for the cases the phone shares with
+# the stage (app/test/fixtures/respawn-station-cases.json). The stage models no respawn station of its own (`station_advert`
+# takes control points only), so these are the rule as a pure twin, pinned against the phone by
+# mcp/tests/test_respawn_station_cases.py.
+ANY_GAME_STATION_KINDS = ("respawn",)
+
+
+def heard_by_player(advert: dict, game: int) -> bool:
+    """beacon.js `Presence.observe`'s game scope: a player on byte `game` hears a station of another non-zero byte only when
+    its kind serves any game (a respawn station, enabled by the player's own config instead)."""
+    g = int(advert.get("game") or 0)
+    return not (game and g and g != game) or (advert.get("role", "station") == "station" and advert.get("kind") in ANY_GAME_STATION_KINDS)
+
+
+def station_enabled(entry: dict, config: dict, kind: str) -> bool:
+    """beacon.js `stationEnabled`: the player's own `config.stations` lists this id WITH this kind. No list, no station."""
+    rows = config.get("stations") if isinstance(config, dict) else None
+    return any(isinstance(x, dict) and x.get("id") == entry.get("id") and x.get("kind") == kind for x in (rows if isinstance(rows, list) else []))
+
+
+def respawn_station(stations: list[dict], config: dict, tid: int | None) -> dict | None:
+    """beacon.js `respawnStation`: an enabled respawn station, not disabled, neutral or on team `tid`; a present one first,
+    else the first (the strongest: `stations` arrives strongest first)."""
+    mine = [e for e in stations if e.get("kind") == "respawn" and e.get("state") != 0
+            and (e.get("team") == STATION_TEAM_ANY or e.get("team") == tid) and station_enabled(e, config, "respawn")]
+    return next((e for e in mine if e.get("present")), mine[0] if mine else None)
 # The literal fallbacks, straight off engine.js `HILL_CUES` (ids confirmed by ear on hardware 2026-09-10, rung S).
 # A8: MC ships all five from `presentation.EVENTS`, the one source; these frames are only the fallback for a bundle
 # compiled before those rows existed. `s` is the clip's catalogue length (filled in below `clip_s`, as engine.js takes
