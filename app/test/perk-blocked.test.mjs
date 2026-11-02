@@ -91,3 +91,19 @@ test('the engine resolves a perk through the Shields variant for the ammo path t
   assert.equal(eng.perkEffects('extended_mags').ammo_mult, 2);
   assert.deepEqual(eng.perkEffects('nope'), {});
 });
+
+// F652 (game 2026-11-01): Shields offers no Body Armor or Armor Piercing (Tony 2026-10-25). The perk tab says so in one line,
+// read from the catalogue's `blocked_presets`; on any other preset the line is absent.
+test('F652: the perk tab names the perks the Shields preset turns off', () => {
+  const hud = Object.create(Hud.prototype);
+  hud.lo = { tab: 'perk' };
+  const cat = { weapons: [], perks: [
+    { perk_id: 'body_armor', name: 'Body Armor', blocked_presets: ['shields'] },
+    { perk_id: 'armor_piercing', name: 'Armor Piercing', blocked_presets: ['shields'] },
+    { perk_id: 'fast_hands', name: 'Fast Hands', blocked_presets: [] }] };
+  const base = { catalog: cat, canPickPerk: true, policy: { perk: { choice: 'player', allowed_perk_ids: ['fast_hands'] } }, loadout: {} };
+  const shields = hud._loadout({ ...base, game: { health: { max_hp: 45, max_armor: 0, max_shield: 105 } } });
+  assert.match(shields, /Shields: Body Armor and Armor Piercing are off/);
+  const standard = hud._loadout({ ...base, game: { health: { max_hp: 45, max_armor: 70, max_shield: 0 } } });
+  assert.doesNotMatch(standard, /are off/);
+});

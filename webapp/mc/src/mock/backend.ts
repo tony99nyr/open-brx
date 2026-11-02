@@ -1851,8 +1851,8 @@ export class MockBackend implements Api {
         if (!['player', 'host', 'fixed', 'off'].includes(choice as string)) throw new Error('choice must be one of player, host, fixed, off');
         if (kind === 'primary' && choice === 'off') throw new Error('primary cannot be off — a player needs something to carry');
         const kinds = kind === 'perks' ? ['perk'] : (Array.isArray(v.kinds) && v.kinds.length ? v.kinds : ['weapon']);
-        const only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
-        const fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
+        let only_ids: string[] = Array.isArray(v.only_ids) ? v.only_ids : [];
+        let fixed_id = choice === 'fixed' ? ((v.fixed_id as string | null) ?? null) : null;
         // Review MEDIUM 4 / round 3 HIGH 1: a hidden/pickup-only/unknown id used to sail straight
         // through -- refused with the SAME words `check_value`/`_check_slot` uses, which is also the
         // exact reason text a stored piece's own `invalid` field carries (games-presets.md's "invalid"
@@ -1867,6 +1867,23 @@ export class MockBackend implements Api {
           const row = kind === 'perks' ? PERKS.find(k => k.perk_id === id) : WEAPONS.find(w => w.weapon_id === id);
           return (row?.name ?? id.replace(/_/g, ' ')).toUpperCase();
         };
+        // Issue 12 (game 2026-11-01), mirroring `pieces._drop_retired`: a catalogue id that is no longer pickable
+        // (here only the pickup-only heavies: the mock catalogue holds no hidden row) drops out silently. A list or
+        // a fixed pick it would empty remaps to the pickable weapons of the same type; with none, it is refused below.
+        const known = (id: string) => kind === 'perks' ? PERKS.some(k => k.perk_id === id) : WEAPONS.some(w => w.weapon_id === id);
+        const retired = (id: string) => known(id) && !pickable(id);
+        const siblings = (ids: string[]): string[] => {
+          if (kind === 'perks') return [];
+          const types = new Set(ids.flatMap(id => WEAPONS.find(w => w.weapon_id === id)?.types ?? []));
+          return WEAPONS.filter(w => pickable(w.weapon_id) && (w.types ?? []).some(t => types.has(t))
+            && !(kind === 'primary' && (w.types ?? []).includes('sidearm') && !types.has('sidearm'))).map(w => w.weapon_id);
+        };
+        if (only_ids.some(retired)) {
+          const kept = only_ids.filter(id => !retired(id));
+          const remap = kept.length ? kept : siblings(only_ids);
+          if (remap.length) only_ids = remap;
+        }
+        if (fixed_id != null && retired(fixed_id)) { const sib = siblings([fixed_id]); if (sib.length) fixed_id = sib[0]; }
         const named = [...(fixed_id != null ? [fixed_id] : []), ...only_ids];
         const bad = named.filter(id => !pickable(id));
         if (bad.length) {

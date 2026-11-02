@@ -87,9 +87,9 @@ export function SlotCard({ label, slot, active, onClick, rule, item, kind, requi
   );
 }
 
-export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
+export function ArsenalHeader({ slot, rule, pool, weapons, preset, offNote, onClear, onBuild }:
   { slot: Slot; rule?: { choice: string; kinds?: string[] } | null; pool: { primary: string[]; secondary_weapons: string[]; perks: string[] }; weapons: WeaponView[];
-    preset?: string; onClear?: () => void; onBuild: () => void }) {
+    preset?: string; offNote?: string | null; onClear?: () => void; onBuild: () => void }) {
   const choice = rule?.choice ?? 'player';
   const nAllowed = slot === 'primary' ? pool.primary.length : pool.secondary_weapons.length;
   const presetTxt = preset && preset !== 'open' ? ` · ${PRESET_LABELS[preset as keyof typeof PRESET_LABELS] ?? preset.toUpperCase()}` : '';
@@ -105,6 +105,7 @@ export function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBu
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
       <SectionRule label={`ARSENAL // ${slot.toUpperCase()} · ${summary}`} hint={hint} style={{ marginBottom: 0 }} />
+      {offNote && <span data-testid="perk-off-note" style={{ font: F.mono(600, 12), letterSpacing: '.12em', color: T.dim }}>{offNote}</span>}
       {slot !== 'primary' && choice !== 'off' && (
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
           {onClear && <GhostButton size={11} pad="6px 12px" onClick={onClear} title={slot === 'perk' ? 'No perk this game' : 'Leave slot 2 empty: alt-fire does nothing'}>{slot === 'perk' ? 'NONE · NO PERK' : 'NONE · LEAVE EMPTY'}</GhostButton>}
