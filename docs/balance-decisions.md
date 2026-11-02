@@ -510,3 +510,28 @@ Candidate:
 | op_rule | pass |
 | marksman_rush_counter | n/a |
 | heat_sensitivity | pass |
+
+## 2026-11-02: F662 recoil recovery by hold length (R2), approved behind the recoil flag
+
+- Verdict: none from `balance_review.py`. The shapes were compared with a resetter-against-holder duel on the
+  `balance_sim.py` recoil model (brx3's scratch script `hold.py`; 1,500 duels a cell; both presets; aim 0.9 and 0.4;
+  hit effect 1.0 and 0.5). The resetter picks its best burst length (2-12) and pause (150-300, 300-500, 500-800 ms).
+- Tony's call (2026-11-02, relayed by brx1): "can we have the recovery on recoil change depending on how long the
+  hold?", then "lets go with that". brx1 confirmed the shape: "R2 at 25 ms per round over the clean count, clamped
+  100-500 ms ... Log it as approved, behind the recoil flag, off until Tony turns it on after HE1-HE5."
+- The rule (brx4's engine, `recoil.recovery = {per_round_ms: 25, min_ms: 100, max_ms: 500}`, off on every row): a
+  crisp release clears the count; a degraded or heavy release starts a timer of clamp(25 x rounds past
+  `after_shots`, 100, 500) ms; a pull before it cancels it and the rung carries; at the timer one write goes back to
+  crisp and lands about 160 ms later. It wins over `reset_on_release`. `balance_sim.release_after_pause` mirrors it.
+- AR, resetter against holder (best play, full / half hit effect; then a fast 8-round burst at full effect):
+  - today: 0.75-0.88 / 0.28-0.48; 0.19-0.31
+  - F663 flat 160 ms: 0.80-0.92 / 0.46-0.53; 0.73-0.90
+  - by rung (degraded 250 ms, heavy 600 ms): 0.76-0.88 / 0.29-0.50; 0.18-0.32
+  - R2, 25 ms a round, 100-500 ms: 0.75-0.89 / 0.43-0.49; 0.70-0.86
+  - today's shape with AR damage 8: 0.75-0.92 / 0.27-0.41
+  - R2 for the other automatics, full / half: Suppressor 0.57-0.64 / 0.41-0.48; Energy Rifle 0.56-0.62 / 0.40-0.47;
+    Toxin Rifle 0.55-0.66 / 0.40-0.43.
+- What the numbers say: the best bursts are 6 rounds or fewer and never degrade, so no recovery shape changes best
+  play. The shape changes how a sloppy burst feels. With the full hit effect every shape clears Tony's 60 %; with
+  half, none does, and a damage change does not help. The Balance rule duels burst 3-5 rounds, so no rule cell moves.
+- Command: recorded by hand; no `--record-from` run.

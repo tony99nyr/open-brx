@@ -118,7 +118,11 @@ Scenario version 12 uses these models:
 - A controlled burst on an automatic keeps the shipped release rule: a crisp release clears the round count, and a
   degraded weapon recovers only after `settle_ms`. A row whose `recoil` block sets `reset_on_release` (F663) comes back
   crisp after a rest of `RELEASE_RESET_MS` (160 ms) or more; after a shorter rest, the rounds fired before 160 ms still fire
-  at the old rung, while the count restarts from 0 at the release (as engine.js does). No shipped row sets it yet (F662 awaits Tony). The model leaves out a lost release.
+  at the old rung, while the count restarts from 0 at the release (as engine.js does). No shipped row sets it. The model leaves out a lost release.
+- A row whose `recoil` block sets `recovery` (F662 R2, approved 2026-11-02, off on every row) waits
+  clamp(`per_round_ms` x rounds past `after_shots`, `min_ms`, `max_ms`) after a degraded release; a pull before that
+  carries the rung and the count, and after it the rounds fired inside the next 160 ms fire at the old rung. It wins over
+  `reset_on_release`, and the settle clock does not apply. `release_after_pause` is the one copy.
 - Semi-automatic fight shots use `FIGHT_OVERSHOOT_MS`, an additive lognormal overshoot after the row's `t14`.
   Its fitted median is 36.67 ms, from the USP, AMR and Desert Eagle field medians.
   The bolt lever and the press after it retain the ordinary pull model.

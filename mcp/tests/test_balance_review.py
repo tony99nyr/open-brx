@@ -2579,6 +2579,33 @@ def test_the_kit_engine_resets_recoil_on_release_only_with_the_f663_flag():
     assert off[9] == off[8]          # without it, a 200 ms pause is too short to settle
 
 
+def test_the_kit_engine_recovers_by_hold_length_only_with_the_r2_flag():
+    def hit_chances(recovery, pause, n=10):
+        rows = copy.deepcopy(WeaponCatalog()._rows)
+        ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
+        if recovery:
+            ar["recoil"] = dict(ar["recoil"], recovery=recovery)
+        kit = R.make_kit(R.World(WeaponCatalog(rows), PerkCatalog(), {}), "plain", "assault_rifle")
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
+        fighter.targets = [R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)]
+        out, t = [], 0.0
+        with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (pause, pause)):
+            while len(out) < n:
+                shot = fighter._act(t)
+                if shot is not None:
+                    out.append(shot[1])
+                t = fighter.next_t
+        return out
+    r2 = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+    off, on = hit_chances(None, 300.0), hit_chances(r2, 300.0)   # 9 rounds: 100 ms timer + 160 ms write < 300
+    assert on[8] == off[8] < on[0]
+    assert on[9] == on[0]            # recovered by the timer
+    assert off[9] == off[8]          # today, 300 ms is too short to settle
+    short = hit_chances(r2, 50.0, 14)   # a pull before the 100 ms timer: the rung carries through the next burst
+    assert short[9] == short[13] == short[8] < short[0]
+
+
 def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():
     rows = copy.deepcopy(WeaponCatalog()._rows)
     ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
