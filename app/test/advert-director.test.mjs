@@ -225,3 +225,13 @@ test('F658: the live bit (128) is set while the match is live, and only then', (
   assert.equal(at('armed'), 1, 'the countdown is not live');
   assert.equal(at('live', true, true), 1, 'after the whistle (still phase live, ended set) the bit drops');
 });
+
+test('A86: the advert carries the scope of the stations MC armed: control station 17 is kind bit 1 and id bit 1', () => {
+  const d = directAdvert({ st: live(), config: { stations: [{ id: 17, kind: 'control' }], game_byte: 9 }, tid: 1, scanOpens: 0,
+    dir: newAdvertDirector(), gate: new AdvertGate(), now: 1000 });
+  assert.equal(d.action, 'start');
+  const a = decodeUuid(d.uuid);
+  assert.equal(a.id, 7, 'byte 7 alone is the player id');
+  assert.equal(a.scopeKinds, 1);
+  assert.equal(a.scope, 1 << 1);
+});

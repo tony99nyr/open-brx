@@ -1225,6 +1225,33 @@
         {"t": 16000, "hold_ms": {"0": 4000}, "own_ms": {"0": 6000}, "hill": {"team": 0, "state": ["held"], "value": 100}},
         {"t": 20000, "hold_ms": {"0": 4000}, "own_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held"], "value": 100}}
       ]
+    },
+    {
+      "name": "own_ms: a lone enemy drains the point to neutral, and own_ms stops there",
+      "why": "Red captures at 10 s and leaves (last advert at 10 s, out of the circle 4 s later). Blue arrives at 14.25 s and drains the bar at the one-player rate. Red banks own_ms until the point reaches neutral, then nothing more.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 30000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 14250, "to_ms": 30000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 20000, "own_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held", "falling"], "value": 40}},
+        {"t": 24000, "own_ms": {"0": 14000}, "hill": {"team": 1, "state": ["rising"], "value": 0}},
+        {"t": 30000, "own_ms": {"0": 14000, "1": 0}, "hill": {"team": 1, "state": ["rising"], "value": 60}}
+      ]
+    },
+    {
+      "name": "own_ms gap: a capture on the tick that ends a stall banks none of the stall",
+      "why": "Red builds to 95 by 9.5 s; the station stalls from 9.5 s to 60 s. The tick at 60 s converts one HILL_MAX_STEP_MS step and red captures, but red did not own the point at the start of the gap, so own_ms banks nothing for it. From then on it banks real time.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 62000,
+      "stalls": [{"from_ms": 9500, "to_ms": 60000}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 62000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 60000, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 62000, "own_ms": {"0": 2000}}
+      ]
     }
   ]
 }

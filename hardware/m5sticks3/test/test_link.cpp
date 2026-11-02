@@ -2208,6 +2208,8 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(!link.anchor_hill_on_advert(wrong_game, 1000));
   Advert unscoped = down; unscoped.state = contract::ADVERT_PLAYER_STATE_ALIVE; unscoped.game = 0;
   CHECK(!link.anchor_hill_on_advert(unscoped, 1000));
+  Advert old_apk = down; old_apk.state = contract::ADVERT_PLAYER_STATE_ALIVE; old_apk.scope_kinds = 0; old_apk.scope = 0;
+  CHECK(!link.anchor_hill_on_advert(old_apk, 1000));   // A86 review: a player outside this hill's scope never anchors it
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   CHECK(link.anchor_hill_on_advert(alive, 5000));
   PlayerPresence p = blue_on_the_point(0);  // F554: an owned point banks only with a living owner on it
@@ -3052,6 +3054,9 @@ static void test_f658_hill_follows_the_live_game() {
   CHECK(body.find("\"follows\":true,\"games\":{\"41\":{") != std::string::npos);
   CHECK(link.ring_save_due(5000));   // follow mode started: write the ring
   CHECK(!link.ring_save_due(5250));  // nothing new since
+  // review: an owned, empty hill banks own_ms only, and that growth must re-save the ring too (a reboot kept no Domination time)
+  link.hill().own_ms[0] += 5000;
+  CHECK(link.ring_save_due(5250 + HILL_CLOCK_SAVE_MS));
   // MC arms game 42 (in range for a moment): the following hill keeps its point
   const double progress = link.hill().progress;
   StationAssignment b = a; b.game = 42; b.starts_in_ms = 5000;

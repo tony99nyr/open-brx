@@ -703,7 +703,8 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    bit AND the station's own id bit. A zero scope (an APK from before A86) never counts, so **an unassigned station
    stays inert**. MC keeps the ids of the stations on the field apart modulo 16 (at most 16 stations; an explicit
    clash is refused, the auto id passes it over). This pass enforces the scope on control points only (phone and
-   Stick); respawn and powerup stations still ignore it.
+   Stick); respawn and powerup stations still ignore it. An id scope cannot tell a stale hill that keeps a local id
+   from the real station with that id, so the operator stands old hills down.
 9. **The owned clock (`own_ms`, for Domination).** Beside `hold_ms`, a control point banks `own_ms` per team: while
    that team OWNS the point, contested or not, with or without a body on it. It stops when the point drains to
    neutral. It takes the same gap clamp as `hold_ms`: a stalled tick banks at most `HILL_MAX_STEP_MS` when the team

@@ -510,11 +510,10 @@ class StationRegistry:
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
         # F658 (A86): a player advert names the stations in play by bit id % 16, so two stations must not share it
-        alias = next((n for n, st in self.stations.items() if n != nid and isinstance(i := (st.get("assigned") or {}).get("id"), int)
-                      and i % ADVERT_SCOPE_ID_BITS == sid % ADVERT_SCOPE_ID_BITS), None)
+        alias = next(((n, i) for n, st in self.stations.items() if n != nid and isinstance(i := (st.get("assigned") or {}).get("id"), int)
+                       and i % ADVERT_SCOPE_ID_BITS == sid % ADVERT_SCOPE_ID_BITS), None)
         if alias:
-            raise ValueError(f"station id {sid} shares its scope bit (id % {ADVERT_SCOPE_ID_BITS}) with {alias}'s id; "
-                             "clear the id so MC assigns one")
+            raise ValueError(f"STATION ID {sid} CLASHES WITH {alias[0]} (ID {alias[1]}): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE")
         # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
         # station: a phone -70, a StickS3 -57, Tony 2026-09-24; a StickS3 powerup -45, F434). Any other value is the operator's override.
         thr = a.get("threshold", 0)
@@ -704,7 +703,7 @@ class StationRegistry:
         if isinstance(gone, int) and 1 <= gone <= top and gone not in taken and gone % ADVERT_SCOPE_ID_BITS not in bits:
             return gone
         if len(bits) >= ADVERT_SCOPE_ID_BITS:
-            raise ValueError(f"no free station id is left: one match takes at most {ADVERT_SCOPE_ID_BITS} utility stations")
+            raise ValueError(f"{ADVERT_SCOPE_ID_BITS} STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER")
         sid = 1
         while sid in taken or sid % ADVERT_SCOPE_ID_BITS in bits:
             sid += 1

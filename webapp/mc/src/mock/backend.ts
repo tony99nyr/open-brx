@@ -7,7 +7,7 @@ import type {
 } from '../api/types';
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
-  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
+  ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, ADVERT_SCOPE_ID_BITS, STALE_ACK_FAULT, STATION_ARMED_OLDER,
   STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NOT_ARMED, STATION_PACE_REARM, LIVE_BIT_MIN_APP, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
   OBJECTIVE_MODES, STATION_NO_HILL, GUN_DID_NOT_TAKE_CONFIG,
 } from '../api/contract.gen';
@@ -362,12 +362,16 @@ export class MockBackend implements Api {
   private autoStationId(node_id: string, kind?: string): number {
     const top = kind === 'powerup' ? POWERUP_STATION_ID_MAX : 65535;   // cross-lane #7, as stations.py auto_station_id
     const used = new Set(Object.entries(this.stations).flatMap(([n, s]) => n !== node_id && s.assigned ? [s.assigned.id] : []));
-    for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && c <= top && !used.has(c)) return c;
+    // A86, as stations.py: no two stations share a scope bit (id % ADVERT_SCOPE_ID_BITS)
+    const bits = new Set([...used].map(i => i % ADVERT_SCOPE_ID_BITS));
+    const free = (c: number) => !used.has(c) && !bits.has(c % ADVERT_SCOPE_ID_BITS);
+    for (const c of [this.stations[node_id]?.assigned?.id, this.stationIdOf[node_id]]) if (c != null && c <= top && free(c)) return c;
     for (const [n, i] of Object.entries(this.stationIdOf)) if (n !== node_id) used.add(i);
     // bench 2026-10-02: a departed station gets its old number back when nobody holds it and it was not handed on
     const gone = this.departures[node_id]?.id;
-    if (gone != null && gone <= top && !used.has(gone)) return gone;
-    let id = 1; while (used.has(id)) id += 1;
+    if (gone != null && gone <= top && free(gone)) return gone;
+    if (bits.size >= ADVERT_SCOPE_ID_BITS) throw new Error(`${ADVERT_SCOPE_ID_BITS} STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER`);
+    let id = 1; while (!free(id)) id += 1;
     return id;
   }
   /** Bench 2026-10-02 (option B), as state.py `_station_departures`: an ASSIGNED station that left ITEMS (its own
@@ -515,6 +519,9 @@ export class MockBackend implements Api {
     if (a.kind === 'powerup' && id > POWERUP_STATION_ID_MAX) throw new Error(`A POWERUP STATION NEEDS AN ID FROM 1 TO ${POWERUP_STATION_ID_MAX} (ITS CLAIM ADVERT CARRIES ONE BYTE): GIVE IT A LOWER ID, OR CLEAR THE ID SO MC ASSIGNS ONE`);
     const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === id);
     if (clash) throw new Error(`station id ${id} is already assigned to ${clash[0]}; ids must be unique on the field`);
+    // A86, as stations.py set_station: a player advert names the stations in play by bit id % 16
+    const alias = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned && s.assigned.id % ADVERT_SCOPE_ID_BITS === id % ADVERT_SCOPE_ID_BITS);
+    if (alias) throw new Error(`STATION ID ${id} CLASHES WITH ${alias[0]} (ID ${alias[1].assigned!.id}): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE`);
     // F345, as state.py `set_station`: 0 (and absent) = the station's own platform default
     const threshold = a.threshold ?? 0;
     if (!Number.isInteger(threshold) || (threshold !== 0 && (threshold < STATION_THRESHOLD_MIN_DBM || threshold > STATION_THRESHOLD_MAX_DBM))) throw new Error("threshold must be 0 (the station's own default) or an integer dBm in -100..-30 (the presence bubble)");

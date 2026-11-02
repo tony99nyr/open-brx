@@ -1390,7 +1390,7 @@ def test_a86_no_two_stations_share_a_scope_bit():
         s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 17})
         raise AssertionError("an explicit id sharing bit 1 with station 1 was accepted")
     except ValueError as e:
-        assert "scope bit" in str(e) and "util-a" in str(e), e
+        assert str(e) == "STATION ID 17 CLASHES WITH util-a (ID 1): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE", e
     assert s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 18})["assigned"]["id"] == 18
     s.net.simulate_utility_hello("util-b")
     assert s.set_station("util-b", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, "2 shares bit 2 with 18"
@@ -1409,7 +1409,7 @@ def test_a86_no_two_stations_share_a_scope_bit():
         s.set_station("util-17th", {"kind": "respawn", "team": "any"})
         raise AssertionError("a 17th station was given an id")
     except ValueError as e:
-        assert "at most 16" in str(e), e
+        assert str(e) == "16 STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER", e
 
 
 def test_f364_an_explicit_id_from_an_older_console_is_still_validated_for_uniqueness():

@@ -1332,8 +1332,9 @@ class StationLink {
     if (!has_control_assignment()) return false;
     const bool f = follower_.follows;
     if (!f && !ring_saved_follows_) return false;
-    uint32_t hold = 0;
+    uint32_t hold = 0;   // both tallies: an owned, empty hill grows own_ms only, and a reboot must keep it
     for (uint32_t h : hill_.hold_ms) hold += h;
+    for (uint32_t o : hill_.own_ms) hold += o;
     const bool edge = f != ring_saved_follows_ || last_follow_.switched || hill_.owner != ring_saved_owner_;
     if (!edge && (hold == ring_saved_hold_ || (uint32_t)(now_ms - ring_saved_at_) < HILL_CLOCK_SAVE_MS)) return false;
     ring_saved_follows_ = f;
@@ -1402,6 +1403,8 @@ class StationLink {
   bool anchor_hill_on_advert(const Advert& d, uint32_t now_ms) {
     if (!has_control_assignment() || assignment_.duration_ms <= 0 || mc_start_known_ || duration_anchor_known_ ||
         d.role != contract::ADVERT_ROLE_PLAYER || d.game == 0 || d.game != assignment_.game) return false;
+    // A86: only a player whose scope names this hill may anchor it (a zero scope, an older APK, never does)
+    if (!in_scope(d.scope_kinds, d.scope, contract::ADVERT_SCOPE_KIND_CONTROL, assignment_.id)) return false;
     const bool heard_down = std::find(heard_down_.begin(), heard_down_.end(), d.id) != heard_down_.end();
     if (!(d.state & contract::ADVERT_PLAYER_STATE_ALIVE)) {
       if (!heard_down && heard_down_.size() < HEARD_DOWN_MAX) heard_down_.push_back(d.id);

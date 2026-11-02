@@ -33,3 +33,26 @@ describe('F658 the static hill in the mock station view', () => {
     expect(lines.slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
   });
 });
+
+describe('A86 station ids in the mock, as stations.py', () => {
+  it('refuses an id that shares id % 16, skips one in the auto id, and caps a match at 16 stations', async () => {
+    const b = new MockBackend();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const m = b as any;
+    for (const n of Object.keys(m.stations)) delete m.stations[n];
+    m.stationIdOf = {};
+    await b.putStation('util-a', { kind: 'control', team: 'any', id: 1 });
+    await expect(b.putStation('util-b', { kind: 'respawn', team: 'any', id: 17 }))
+      .rejects.toThrow('STATION ID 17 CLASHES WITH util-a (ID 1): PICK ANOTHER ID, OR CLEAR THE ID SO MC ASSIGNS ONE');
+    await b.putStation('util-b', { kind: 'respawn', team: 'any', id: 18 });
+    m.stationIdOf['util-c'] = 17;   // a remembered id that clashes is passed over
+    await b.putStation('util-c', { kind: 'respawn', team: 'any' });
+    expect(m.stations['util-c'].assigned.id % 16).not.toBe(1);
+    expect(m.stations['util-c'].assigned.id % 16).not.toBe(2);
+    for (let k = 0; k < 13; k++) await b.putStation(`util-x${k}`, { kind: 'respawn', team: 'any' });
+    const bits = Object.values(m.stations).map((s: any) => s.assigned.id % 16);   // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(new Set(bits).size).toBe(16);
+    await expect(b.putStation('util-17th', { kind: 'respawn', team: 'any' }))
+      .rejects.toThrow('16 STATIONS IS THE MOST ONE MATCH TAKES: CLEAR A STATION BEFORE YOU ADD ANOTHER');
+  });
+});
