@@ -109,3 +109,59 @@ def test_the_welcome_and_the_mdns_record_say_when_this_mc_started():
             assert w["started_at"] == h.net.started_at and w["server_name"] == h.net.server_name, w
             await node.close()
     _run(go())
+
+
+def test_a_first_hello_over_the_backhaul_does_not_use_up_the_first_lan_hello():
+    """F659 review: a phone that first reached MC through the tunnel is still new to the LAN line."""
+    if not HAVE_WS:
+        raise Skipped("websockets")
+
+    async def go():
+        async with _Harness() as h:
+            h.net.through_backhaul = lambda ws: True
+            far = MockNode(h.url, node_id="phone-far", heartbeat_ms=100)
+            await far.start(); await far.wait_connected()
+            assert _flags(h) == [None], "a backhaul hello is not announced"
+            key = far.node_key
+            await far.close()
+            h.net.through_backhaul = lambda ws: False
+            near = MockNode(h.url, node_id="phone-far", heartbeat_ms=100)
+            near.node_key = key
+            await near.start(); await near.wait_connected()
+            assert _flags(h) == [None, True], ("its first LAN hello is announced", _flags(h))
+            await near.close()
+    _run(go())
+
+
+def test_past_the_cap_new_ids_are_still_flagged_and_a_torn_file_does_not_join_ids():
+    import logging
+    with tempfile.TemporaryDirectory() as d:
+        home = Path(d)
+        import brx_mcp.mc.seen_nodes as sn
+        saved = sn.SEEN_CAP
+        sn.SEEN_CAP = 3
+        try:
+            s = SeenNodes(home)
+            assert [s.add(f"id{i}") for i in range(5)] == [True] * 5, "past the cap a new id is still flagged"
+            assert s.add("id4") is False, "and a repeat of an overflow id is not"
+            on_disk = (home / sn.SEEN_FILE).read_text().split()
+            assert on_disk == ["id0", "id1", "id2"], "nothing past the cap is written"
+        finally:
+            sn.SEEN_CAP = saved
+    with tempfile.TemporaryDirectory() as d:
+        home = Path(d)
+        (home / "mc-seen-nodes.txt").write_text("id1\nid2")        # a crash tore the last line off
+        s = SeenNodes(home)
+        s.add("id3")
+        assert (home / "mc-seen-nodes.txt").read_text().split() == ["id1", "id2", "id3"]
+        assert SeenNodes(home).add("id3") is False
+
+
+def test_the_server_name_drops_a_trailing_local_and_can_be_overridden():
+    from brx_mcp.mc.net import clean_server_name
+    assert clean_server_name("TONY-MBP.local") == "TONY-MBP"
+    assert clean_server_name("  Field MC  ") == "Field MC"
+    assert clean_server_name("") == "MC" and clean_server_name(None) == "MC"
+    assert len(clean_server_name("x" * 80)) == 32
+    from brx_mcp.mc.__main__ import parser
+    assert parser().parse_args(["--server-name", "Pitch 2"]).server_name == "Pitch 2"

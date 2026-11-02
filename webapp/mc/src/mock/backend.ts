@@ -1146,6 +1146,7 @@ export class MockBackend implements Api {
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
       // only condition under which a phone with no backhaul changes what the players should do.
+      // F659: the mock never raises `new_phone` (`NEW PHONE JOINED`): it has no LAN hello to be the first of.
       notices: notice ? { mc_verify: notice } : {},
       start: sessionStartView(this.start_ ? { ...clone(this.start_), per_node: Object.fromEntries(
         Object.entries(this.start_.per_node ?? {}).map(([pid, view]) => {

@@ -657,7 +657,8 @@ after a redial replaced it is stale: it is never remembered and it resets no aut
   pulled off by another one.
 - **A new phone is shown to the host (F659).** LAN trust is unchanged (a LAN hello is never refused for lacking the join
   secret). The first LAN hello of a player node id this MC home never heard from sets `State.notices.new_phone`, `NEW PHONE
-  JOINED: <device>` (the node id when the hello names no device), for 10 minutes. The ids persist in `mc-seen-nodes.txt`.
+  JOINED: <device>` (the node id when the hello names no device), for 10 minutes. The ids persist in `mc-seen-nodes.txt` (past 5000 ids new ones are still flagged, in memory). A hello over the backhaul is
+  not recorded, so the phone is still announced on its first LAN hello. `--server-name` sets the name phones show.
 - **No tap.** The remembered address (a QR, a typed address, a tapped JOIN, or an address that bound us)
   is redialled with the normal backoff for as long as the app runs. A missed first welcome clears
   nothing (F203 revised); a sweep starts beside the redial.

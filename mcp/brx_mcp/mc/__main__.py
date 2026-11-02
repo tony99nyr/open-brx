@@ -161,6 +161,9 @@ def build(args):
         try:
             from .net import NetServer as RealNet  # M-NET lane
             net = RealNet()
+            if getattr(args, "server_name", None):
+                from .net import clean_server_name
+                net.server_name = clean_server_name(args.server_name)   # F659
             log.info("net: real M-NET WebSocket server")
         except Exception as e:
             if not args.demo:
@@ -506,6 +509,8 @@ def parser() -> argparse.ArgumentParser:
                      "forward). provider: manual — MC hands it out but never starts or stops it")
     ap.add_argument("--evidence-dir", default=None,
                     help="write this launch's SQLite session store under the supplied evidence directory")
+    ap.add_argument("--server-name", default=None,
+                    help="F659: the name phones show after JOINED (default: this machine's host name without .local)")
     ap.add_argument("--advertise", default=None,
                     help="T3-A: put THIS address in the QR/mDNS instead of the one MC auto-detects, without "
                          "moving where it binds (WSL2's own NAT address is what MC auto-detects, and it is "

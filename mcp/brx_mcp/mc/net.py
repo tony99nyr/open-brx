@@ -196,6 +196,14 @@ class NodeRecord:
         }
 
 
+def clean_server_name(name: object) -> str:
+    """F659: the name phones show (`JOINED <name>`): the host name without a trailing `.local`, at most 32 characters."""
+    n = str(name or "").strip()
+    if n.lower().endswith(".local"):
+        n = n[:-6]
+    return n[:32] or "MC"
+
+
 class _Rejected(Exception):
     """Raised inside _on_hello when a takeover is refused (A8); the handler returns quietly."""
 
@@ -211,7 +219,7 @@ class NetServer:
         self.trust = trust if trust is not None else TrustRegistry(None)
         # F659: two MCs on one LAN. Phones prefer the one they last joined, else the newer `started_at`.
         self.started_at = E.now_ms()
-        self.server_name = (socket.gethostname() or "MC")[:32]
+        self.server_name = clean_server_name(socket.gethostname())
         self.seen = SeenNodes(None)         # F659: swapped for the persistent list by __main__
         self.stale_after_ms = stale_after_ms
         self.hello_timeout_s = hello_timeout_s
@@ -845,7 +853,8 @@ class NetServer:
             try:
                 clean_body = dict(body)
                 # F659: a PLAYER phone this MC home has never heard from, on the LAN. The session raises the host's line.
-                if rec.node_type != "utility" and self.seen.add(node_id) and rec.via == "lan":
+                # (checked in this order: a first hello over the backhaul must not use up the first LAN hello)
+                if rec.node_type != "utility" and rec.via == "lan" and self.seen.add(node_id):
                     clean_body["new_phone"] = True
                 clean_body.pop("prior_utility", None)       # the takeover key never reaches session code
                 if type(clean_body.get("pending")) is not int or clean_body["pending"] < 0:
