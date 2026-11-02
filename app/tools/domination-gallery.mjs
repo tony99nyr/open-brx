@@ -24,7 +24,7 @@ const US = 1, THEM = 0, N = 255;
 // Each moment: [id, label, adverts, waitMs]. The phone remembers every hill it heard, so the order matters: 'never' comes
 // first on a fresh page, and 'old' drops B from the air and waits past CONTROL_STALE_MS (4 s).
 const MOMENTS = [
-  ['never', 'C not heard yet this match', [[11, US, 1, 100, 0], [12, THEM, 1, 100, 0]]],
+  ['never', 'C not heard yet this match (A and B neutral)', [[11, N, 0, 0, 0], [12, N, 0, 0, 0]]],
   ['start', 'All three neutral and heard', [[11, N, 0, 0, 0], [12, N, 0, 0, 0], [13, N, 0, 0, 0]]],
   ['mixed', 'A ours, B theirs, C neutral', [[11, US, 1, 100, 0], [12, THEM, 1, 100, 0], [13, N, 0, 0, 0]]],
   ['capture', 'You are on C, and our bar is building (40 %)', [[11, US, 1, 100, 0], [12, THEM, 1, 100, 0], [13, US, 4, 40, 1]]],
@@ -100,12 +100,12 @@ You are BLUE against RED. One tile per hill, A B C. The fill is the owner's team
 <li><b>Placement: A or B?</b> A is centred under the clock. B is top left, under your name.</li>
 <li><b>Night ops:</b> night is red and amber only, so team colours cannot show. Ours is a solid tile, theirs an amber outline, contested a double edge. Readable enough?</li>
 <li><b>A hill out of earshot:</b> it dims and its edge goes dashed. domination-design.md §2.6 also asked for a "1:40 AGO" label, but the brief says no text timers. Dim only, or add the AGO text?</li>
-<li><b>The OBJECTIVE card:</b> KOTH's capture card (right side) still fires on the hill you stand on. Keep it in Domination, or let the row alone carry it?</li>
+<li><b>The OBJECTIVE card:</b> KOTH's card (right side: HILL CAPTURE STARTED, HILL LOST) still fires for the hill you stand on, and holds for 8 s. Keep it in Domination, or let the row alone carry it?</li>
 </ol>
 <h2>What the renders show</h2>
+<p class="lede">Corrected: an earlier version of this page said the OBJECTIVE card shows HILL LOST when a hill goes out of earshot. It does not. That card came from the page's own script, which flipped our hill to neutral (a real loss), and the card held for its 8 s. The script no longer does that.</p>
 <ul class="lede">
 <li><b>The kill card covers placement A.</b> At 667×375 the centre kill card (KILL, the name, FIRST BLOOD) sits over the whole row for its hold. Placement B stays clear (section 3).</li>
-<li><b>The OBJECTIVE card can mislead in Domination.</b> When B goes out of earshot, KOTH's card says HILL LOST, but nobody took it: the phone simply stopped hearing it ("B out of earshot" frames). This is question 4.</li>
 </ul>
 <h2>1. Every state (both placements)</h2>
 ${PLACES.map(place => `<h3>${esc(place.label)}</h3>` + moments.filter(m => m.place === place).map(m => `<h3>${esc(m.skin.label)} · ${m.view.label}</h3>${strip(m.cells, m.view)}`).join('')).join('')}
