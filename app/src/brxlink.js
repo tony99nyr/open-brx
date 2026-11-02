@@ -40,11 +40,19 @@ export const LATE_RESENDS = 2;
  *  hold a partial frame. This link writes `PARSER_RESET` before the next frame it sends after any chunk error. */
 export const PARSER_RESET = '$*';
 /** F542 (bench 2026-11-01): the frame ring kept 60 frames, so a share made a minute after a fault had already lost the
- *  frames that showed it. 2000 frames is about 90 KB of text and a few hundred KB of small objects on the phone. The
- *  background log sync sends only the newest `FRAME_RING_SYNC` of them (app.js `logSnapshot`), so the pulls stay well
- *  inside MC's 1 MB per-match log budget; a manual SHARE LOG sends the whole ring. */
-export const FRAME_RING = 2000;
-export const FRAME_RING_SYNC = 300;
+ *  frames that showed it. F650 (game 2026-11-01): the ring then kept 2000 frames and the background sync sent only the
+ *  newest 300, about one minute of play, so most of each match was invisible. A match runs at about 300 frames a minute;
+ *  12000 frames is about 40 minutes and 500 KB of text. The background sync now sends every frame since its last
+ *  completed upload (`framesAfter`), at most `FRAME_RING_SYNC` of them, inside MC's 1 MB per-match log budget. */
+export const FRAME_RING = 12000;
+export const FRAME_RING_SYNC = 8000;
+/** F650: the frames newer than `last` (a frame object from an earlier upload), newest `cap` at most. A `last` that has
+ *  rolled out of the ring, or none, means every frame. PURE. */
+export function framesAfter(frames, last, cap = FRAME_RING_SYNC) {
+  const i = last ? frames.lastIndexOf(last) : -1;
+  const out = i >= 0 ? frames.slice(i + 1) : frames.slice();
+  return out.length > cap ? out.slice(-cap) : out;
+}
 
 /** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
  *  Native builds take a hex string (what BleClient sends); the web build takes the DataView.

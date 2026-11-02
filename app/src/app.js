@@ -6,7 +6,7 @@ import jsQR from 'jsqr';
 // One phone, one gun, one player. Composition of: Engine (state machine) + BrxLink (BLE) +
 // Transport (M-NET wire) + Hud (Phone HUD v2). Runs in a desktop browser with `?demo`.
 import { Engine, C } from './engine.js';
-import { BrxLink, FRAME_RING_SYNC } from './brxlink.js';
+import { BrxLink, framesAfter } from './brxlink.js';
 import { GunPicker, ScanPacer, PAINT_MS, COALESCE_MS, PICKER_SCAN_MS, isHeadset } from './gunpicker.js';   // F258: the gun picker's ranked, stable, coalesced list
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandoff, holdsTrustKey, priorUtilityReconnectUrl, debounceBound } from './transport/transport.js';
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
@@ -169,11 +169,18 @@ engine.onResult = (r) => { try {
 // ONE builder for both routes: the manual SHARE LOG tap and MC's background `pull_log`. The BLE frame
 // ring (brxlink keeps the last FRAME_RING in/out frames) is the only record of what the gun actually said, and
 // without it a field fault on the phone side is undebuggable — so it rides along with the log tail.
+let _framesSynced = null, _framesPending = null;   // F650: the newest frame MC holds, and the newest in the upload in flight
 function logSnapshot(from = 0) {
   const { tail, lost } = logRing.tail(from);             // lines the ring dropped before MC ever saw them
   let frames = [];
-  // The whole ring on a manual share or a first upload (`from` 0); a background tail carries only the newest frames.
-  try { frames = (link && link.frames || []).slice(from > 0 ? -FRAME_RING_SYNC : 0).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
+  // The whole ring on a manual share or a first upload (`from` 0); a background tail carries every frame since the last
+  // completed upload (F650), so a match is visible end to end. `_framesPending` becomes `_framesSynced` on `onUploaded`.
+  try {
+    const ring = (link && link.frames) || [];
+    const pick = from > 0 ? framesAfter(ring, _framesSynced) : ring.slice();
+    _framesPending = pick.length ? pick[pick.length - 1] : _framesSynced;
+    frames = pick.map(f => `${f.t} ${f.dir} ${f.f}`);
+  } catch (_) { /* ignore */ }
   const text = [
     lost ? `--- ${lost} earlier line(s) rolled out of the ring before upload ---` : null,
     tail.join('\n'),
@@ -193,7 +200,7 @@ const logsync = new LogSync({
   log,
   // F-4: the ring keeps the PREVIOUS match's lines until MC actually holds them. Only a completed
   // upload can say that, and this is the one place that knows an upload completed.
-  onUploaded: through => logRing.pulled(through),
+  onUploaded: through => { logRing.pulled(through); _framesSynced = _framesPending; },
 });
 
 // ---------- utility items: watch for stations during a match, and advertise ourselves as a player ----------

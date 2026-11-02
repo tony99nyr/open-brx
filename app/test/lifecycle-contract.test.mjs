@@ -9,7 +9,7 @@ test('S35: app lifecycle keeps log sync on the shared transport and uploads from
   assert.match(app, /const logsync = new LogSync\(/);
   assert.match(app, /transport: \(\) => transport/);
   assert.match(app, /snapshot: from => logSnapshot\(from\)/);
-  assert.match(app, /onUploaded: through => logRing\.pulled\(through\)/);
+  assert.match(app, /onUploaded: through => \{ logRing\.pulled\(through\); _framesSynced = _framesPending; \}/);   // F650: and the frame watermark
   assert.match(app, /logsync\.onBound\(\)/);
   assert.match(app, /m\.kind === 'pull_log'/);
 });
