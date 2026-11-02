@@ -893,6 +893,16 @@ class DotSpec(TypedDict):
     duration_ms: int    # how long one hit keeps the stack alive; a second hit REFRESHES it, never stacks
 
 
+class RecoilRecovery(TypedDict):
+    """F662 R2 (brx3's spec, Tony 2026-11-02): hold-length recovery. A degraded or heavy weapon released by the trigger goes
+    back to crisp after `per_round_ms` for each round of the hold past `after_shots`, clamped to `min_ms`..`max_ms`, in
+    one write. A pull before then cancels it, and the rung and the count carry into the new pull. An alternative to
+    `reset_on_release`: when both are set, this one wins. Absent = today's settle clock."""
+    per_round_ms: int
+    min_ms: int
+    max_ms: int
+
+
 class Recoil(TypedDict):
     """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
     on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
@@ -922,6 +932,7 @@ class Recoil(TypedDict):
     after_heavy: NotRequired[int]
     settle_ms: NotRequired[int]
     reset_on_release: NotRequired[bool]   # F663: back to crisp the moment the trigger comes up (default off)
+    recovery: NotRequired[RecoilRecovery]  # F662 R2: back to crisp after a pause that grows with the hold (default off)
 
 
 class HillSettings(TypedDict, total=False):
