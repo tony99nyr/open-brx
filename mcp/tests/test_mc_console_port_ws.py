@@ -3,7 +3,7 @@
 Bench 2026-09-24: while a utility phone connected, MC logged 8 x "Exception in ASGI application ...
 starlette/staticfiles.py ... assert scope['type'] == 'http'". A node socket had dialled the console
 port, fell through to the `Mount("/", StaticFiles)` catch-all, and StaticFiles asserts on a websocket
-scope. MC now accepts and closes such a socket with 4404 and a reason that names the node URL.
+scope. MC now refuses such a socket before accept (F659: a client never sees an open) with 4404 and a reason that names the node URL.
 
 Run: python3 run_tests.py mc_console_port_ws
 """
@@ -43,11 +43,19 @@ def _client(with_dist: bool):
 
 
 def _closed_with(c, path):
+    """The (code, reason) of a refused upgrade. F659: the refusal must come BEFORE accept, so the client never sees an
+    open (a probe counts an open as a live MC). Entering the context is the handshake: it must raise."""
     try:
-        with c.websocket_connect(path) as ws:
-            ws.receive_text()
+        ws_cm = c.websocket_connect(path)
+        ws = ws_cm.__enter__()
     except WebSocketDisconnect as e:
         return e.code, e.reason
+    try:
+        ws.receive_text()
+    except WebSocketDisconnect as e:
+        raise AssertionError(f"{path}: accepted, then closed {e.code}: a client saw an open")
+    finally:
+        ws_cm.__exit__(None, None, None)
     raise AssertionError(f"{path}: the socket stayed open")
 
 

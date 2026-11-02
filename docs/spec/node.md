@@ -641,7 +641,11 @@ remain unbuilt until their mechanics are specified. The writer/native arbitratio
 A phone joins with no tap when it can tell the MC is the one the player already trusted. It asks for one
 tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`. The dial lifecycle
 around it is `app/src/transport/mclink.js` (`McLink`), shared by the HUD and the station phone. Each node passes a
-remember policy. `HUD_POLICY` remembers an address at dial when the dial asks for it (`remember`), and any address that binds.
+remember policy. `HUD_POLICY` remembers at dial only an address the player named (`remember` with `user`: a typed or scanned one), and any address that binds.
+`window.brx.connectMc`, boot and reconnect store nothing at dial. F659: every MC address goes through `normaliseMcUrl` (`app/src/mcurl.js`) first:
+the console port 8765 and an `http(s)` console address map to the node port 8766, any path becomes `/ws`, and a `?s=` or `&pub=` query is
+split into the join and never dialled. The stored address is the normalised one. The sweep never probes the console port. Cases:
+`app/test/fixtures/mc-url-cases.json`.
 `STATION_POLICY` remembers a trusted address at dial, and a discovered one only once it binds. A transport that binds
 after a redial replaced it is stale: it is never remembered and it resets no auto-join state.
 

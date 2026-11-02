@@ -254,7 +254,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def wrong_port_ws(ws: WebSocket):
         node = s.lan.get("ws_url") or "the node port (default 8766)"
-        await ws.accept()     # accept, then close: a close before accept reaches the client as a bare 403
+        # F659: close BEFORE accept, so the server answers the upgrade with an HTTP 403 and no client sees an open
+        # (a probe counted the accepted-then-closed socket as a live MC). The hint goes to the log instead.
+        log.info("a websocket reached the console port; nodes connect to %s", node)
         await ws.close(code=4404, reason=f"this is the console port; nodes connect to {node}"[:120])
 
     async def ui_ws(ws: WebSocket):

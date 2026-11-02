@@ -23,7 +23,7 @@ Without the token, `/api/state` and `/api/armory` answer with every headset PIN 
 blanked to `""` and no armory `notes` (OP2), unless MC runs with `--no-auth`. The console sends its token on GETs too.
 
 ## Realtime feed — `GET /ui-ws` (WebSocket)
-Any other WebSocket path on the console port closes with **4404** and names the node URL (`api.py` `wrong_port_ws`): a phone dialled the wrong port.
+Any other WebSocket path on the console port is refused before accept (HTTP 403, close code 4404 in the test client; the node URL goes to the log; F659): a phone dialled the wrong port.
 Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every state change
 (coalesced, ≤4/s), plus `{ "kind": "feed", "entry": <FeedEntry> }` for live events. A feed row carries an `id` (a monotonic counter that survives a snapshot restore; a row restored from an old snapshot has none). **F454:** `{ "kind": "feed_edit", "entry": <FeedEntry> }` replaces the row with the same `id` in place (the POWERUP TOOK line when a station's report corrects the taker, and, F475, a scorer kill row whose time a clock-step rescore moved; those rows carry a `fact` key, `node:seq:n`); a client ignores one whose id it does not hold, and a row without an id can never be edited. A console tab opened before this message existed ignores it; a reload fixes that (MC serves the console). A console also merges every snapshot's feed rows BY ID into its feed, so an edit it missed is healed.
 ```jsonc

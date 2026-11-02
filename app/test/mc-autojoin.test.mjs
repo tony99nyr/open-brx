@@ -341,7 +341,7 @@ test('A60 polish #3: a dial the player named is never overridden inside its welc
   assert.match(link, /this\.userDial = options\.user === true \? transport : null;/);
   assert.match(link, /namedDialPending\(this\.userDial && \{ t: this\.userDial \}, this\.current\(\)\)/, 'F346 (c): the window is the transport deadline');
   assert.match(link, /userDialPending: this\.userDialPending\(\)/);
-  for (const caller of ["connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true })", "connectMc(v, true, { user: true })",
+  for (const caller of ["connectMc(n.url, true, { pub: n.join.pub || null, secret: n.join.secret || null, user: true })", "connectMc(n.url, true, { ...n.join, user: true })",
                         "connectMc(join.url, true, { pub: join.pub, secret: join.secret, user: true })", "connectMc(d.url, false, { trusted: false, user: true })"]) {
     assert.ok(src.includes(caller), `the user-named caller is marked: ${caller}`);
   }

@@ -413,6 +413,7 @@ function connectTypedMc(text) {
   if (!mcLinkEditable()) return;
   const r = resolveTypedMc(text);
   if (!r) return;
+  if (r.refused !== undefined) { log(`MC address refused (${r.refused}): ${String(text).trim().slice(0, 60)}`, 'le'); return; }
   if (playLocked()) log(`MC link changed on the station in play: ${settings.mc || '(none)'} -> ${r.url}${a58Locked() ? ' (MC lock overridden)' : ''}`, 'lk');
   if (r.note) log(r.note, 'li');
   connectMc(r.url, r.join ? { trusted: true, pub: r.pub, secret: r.secret } : { trusted: true });   // a bare address keeps the held pub/secret, as before

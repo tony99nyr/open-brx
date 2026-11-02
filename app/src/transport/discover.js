@@ -25,6 +25,8 @@
 // the case that matters answers early. The sweep is a background fallback and its result is a
 // SUGGESTION the player taps, never an automatic join -- see app.js.
 
+import { MC_WS_PORT, MC_CONSOLE_PORT } from '../mcurl.js';
+
 /** @typedef {{onopen: ((event?: any) => void)|null, onmessage: ((event?: any) => void)|null, onerror: ((event?: any) => void)|null, onclose: ((event?: any) => void)|null, close(code?: number, reason?: string): void}} DiscoverWebSocket */
 /** @typedef {{setTimeout(callback: (...args:any[]) => void, ms: number): unknown, clearTimeout(id: unknown): void}} DiscoverTimers */
 /** @typedef {{host:string, port:number|null, path:string}} WsTarget */
@@ -45,8 +47,11 @@
 export const DEFAULT_SUBNETS = ['192.168.0', '192.168.1', '192.168.86', '10.0.0', '192.168.43', '172.20.10'];
 /** MC's node websocket port (`mc/__main__.py --ws-port`, default 8766). NOT 8765 — that is the operator
  *  HTTP API, which is what the old http sweep probed. */
-export const MC_WS_PORT = 8766;
+export { MC_WS_PORT };   // the one definition is mcurl.js
 export const PROBE_TIMEOUT_MS = 700;
+/** F659: a socket that closes within this long of opening is not a node server (MC's console port used to accept the
+ *  upgrade and close it with 4404), so an open counts as a hit only once it has stayed open this long. */
+export const PROBE_OPEN_GRACE_MS = 120;
 /** Review pass 1: 32 in flight is far too many. Closing a socket that is still CONNECTING does not free
  *  it in a WebView, so a wide pool leaves the phone holding hundreds of half-open sockets and the ones
  *  behind them never get to dial before their own timeout expires -- the sweep would then miss the one
@@ -107,7 +112,7 @@ export function sweepPlan({ localIp = null, joinUrl = null, extra = DEFAULT_SUBN
   if (target) push(subnetOf(target.host));
   for (const sn of extra || []) push(subnetOf(`${sn}.1`));
   const ports = [];
-  if (target && target.port) ports.push(target.port);
+  if (target && target.port && target.port !== MC_CONSOLE_PORT) ports.push(target.port);   // F659: 8765 is the HTTP console, never a node port
   if (!ports.includes(MC_WS_PORT)) ports.push(MC_WS_PORT);
   return { subnets, ports, path: (target && target.path) || '/ws' };
 }
@@ -135,8 +140,10 @@ export function probeWs(url, { wsFactory, timers = globalThis, timeoutMs = PROBE
     /** @type {DiscoverWebSocket|null} */ let ws = null;
     let done = false;
     /** @type {unknown} */ let timer = null;
+    /** @type {unknown} */ let grace = null;
     /** @param {'open'|'closed'|'timeout'} ok */ const finish = ok => {
       if (done) return; done = true;
+      if (grace != null) { try { timers.clearTimeout(grace); } catch (_) { /* ignore */ } grace = null; }
       if (timer != null) { try { timers.clearTimeout(timer); } catch (_) { /* ignore */ } timer = null; }
       if (ws) {
         try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; } catch (_) { /* ignore */ }
@@ -150,7 +157,9 @@ export function probeWs(url, { wsFactory, timers = globalThis, timeoutMs = PROBE
     try { ws = wsFactory ? wsFactory(url) : null; } catch (_) { resolve('threw'); return; }
     if (!ws) { resolve('threw'); return; }
     timer = timers.setTimeout(() => finish('timeout'), timeoutMs);
-    ws.onopen = () => finish('open');        // upgraded — a server is there. No hello, ever.
+    ws.onopen = () => {                      // upgraded — a server is there, if it stays. No hello, ever.
+      if (!done && grace == null) grace = timers.setTimeout(() => finish('open'), Math.min(PROBE_OPEN_GRACE_MS, Math.floor(timeoutMs / 4)));
+    };
     ws.onerror = () => { /* onclose follows, or the timeout has it */ };
     ws.onclose = () => finish('closed');
     ws.onmessage = () => { /* nothing was sent, so nothing meaningful can arrive */ };

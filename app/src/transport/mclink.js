@@ -3,6 +3,7 @@
 import { McAutoJoin, namedDialPending } from './autojoin.js';
 import { sweepPlan, localIpFrom, sweepForMc, sweepLogger } from './discover.js';
 import { startUtilitySweep } from './utility-join.js';
+import { normaliseMcUrl } from '../mcurl.js';
 
 export const MC_MDNS_SERVICE = '_openbrx._tcp.';
 export const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
@@ -14,7 +15,9 @@ export const AUTOJOIN_LOCK_MS = 10 * 60 * 1000;
  *   autoJoin:string, sweep:string}} LinkPolicy */
 
 export const HUD_POLICY = Object.freeze({
-  rememberAtDial: (/** @type {DialOptions} */ { remember }) => !!remember,   // the old `if (remember)`, exactly
+  // F659: only an address the player named just now is stored at dial (a typed or scanned one must survive a reload
+  // before its first welcome). Boot, reconnect and `window.brx.connectMc` store nothing: the bind does.
+  rememberAtDial: (/** @type {DialOptions} */ { remember, user }) => !!remember && user === true,
   rememberAtBound: () => true,
   autoJoin: 'proof',
   sweep: 'suggest',
@@ -39,8 +42,8 @@ export function discoveredUrl(res) {
   const svc = res.service || {};
   const ip = svc.ipv4Addresses && svc.ipv4Addresses[0];
   if (!ip || !svc.port) return null;
-  const path = svc.txtRecord && svc.txtRecord.ws_path || '/ws';
-  return `ws://${ip}:${svc.port}${path}`;
+  const n = normaliseMcUrl(`ws://${ip}:${svc.port}/ws`);   // F659: the record's path is not trusted, the node path is /ws
+  return n.refused === undefined ? n.url : null;
 }
 
 export class McLink {

@@ -12,7 +12,7 @@ import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, clearConsumedPriorUtilityHandof
 import { offerText, hostOf, urlKey } from './transport/autojoin.js';   // A60: join with no tap where it is safe
 import { Hud } from './hud/hud.js';
 import { syncUrgent } from './hud/synctrack.js';                   // F595: the transport is urgent from the end until the result, bounded
-import { parseMcJoin, MC_URL_KEY, kickHeld } from './mcurl.js';
+import { parseMcJoin, normaliseMcUrl, mcDialTarget, MC_URL_KEY, kickHeld } from './mcurl.js';
 import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
@@ -314,7 +314,8 @@ let lastMcUrl = null;
 let currentJoinUrl = null;
 /** A60: every address discovery turned up this run, and which of them already failed a proof. */
 const mcLink = new McLink({ policy: HUD_POLICY, current: () => transport, setCurrent: t => { transport = t; },
-  remember: url => { settings.mcUrl = url; hud.mcUrl = url; },
+  // F659: what is stored is always the normalised url (no query, no secret, node port, /ws)
+  remember: (url, bound) => { const n = normaliseMcUrl(url); if (n.refused !== undefined) return; settings.mcUrl = n.url; hud.mcUrl = n.url; },
   makeTransport: previous => {
     const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
     return new Transport({ node: { app_ver: APP_VER, connection_type: previous ? previous.connectionType : null },
@@ -324,7 +325,7 @@ const autoJoin = mcLink.autoJoin;
 /** F346 (d): ask the join policy again when its discovery window closes. */
 let firstContactTimer = /** @type {any} */ (null);
 // F346 (c): the window is the transport's armed deadline, which a 4003 reclaim wait extends past 10 s.
-function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
+function noteJoinUrl(url) { const n = url && normaliseMcUrl(url); if (n && n.refused === undefined && /^wss?:\/\//i.test(n.url)) currentJoinUrl = n.url; }
 /**
  * @param {string} url the LAN join url
  * @param {boolean} [remember] this address came FROM THE USER — a scanned QR, a typed address, or one
@@ -351,8 +352,14 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  *   the field lost it again immediately, or a cold boot out of Wi-Fi had no other path to MC (review
  *   fix). Transport's own persistence is the single store now — there is no app-level mirror to keep.
  */
-function connectMc(url, remember = true, join = {}) {
-  if (!url) return;
+function connectMc(rawUrl, remember = true, join = {}) {
+  if (!rawUrl) return;
+  // F659: the one normaliser. A `?s=` is split into the join (the hello carries it), the console port 8765 becomes
+  // the node port and any path becomes /ws, whoever called: typed, scanned, discovered, stored or `window.brx.connectMc`.
+  const target = mcDialTarget(rawUrl, join);
+  if (!target) { log(`MC address refused (not an address): ${String(rawUrl).slice(0, 60)}`, 'le'); return; }
+  const url = target.url;
+  join = target.join;
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
@@ -658,10 +665,13 @@ Object.assign(hud.h, {
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
   onSetUrl: () => {
     const el = $('mcurl'); const v = el && el.value.trim(); if (!v) return;
+    const n = normaliseMcUrl(v);
+    if (n.refused !== undefined) { log(`MC address refused (${n.refused}): ${v.slice(0, 60)}`, 'le'); return; }
+    noteJoinUrl(n.url);
     const j = parseMcJoin(v);
-    noteJoinUrl(j ? j.url : v);
-    if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret, user: true });
-    else connectMc(v, true, { user: true });   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
+    // a join code replaces the held pub/secret (null clears); a bare address keeps them (the mandatory floor, §5)
+    if (j) connectMc(n.url, true, { pub: n.join.pub || null, secret: n.join.secret || null, user: true });
+    else connectMc(n.url, true, { ...n.join, user: true });
   },
   onToggleWebDebug: () => {
     webDebug.toggle().then(on => { log(on === 'unsupported' ? 'WebView debugging is unsupported on this phone' : `WebView debugging ${on ? 'ON' : 'OFF'} (stored on this phone)`, 'lk'); scheduleRender(); })

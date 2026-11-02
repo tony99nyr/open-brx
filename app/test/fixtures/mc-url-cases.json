@@ -1,0 +1,273 @@
+{
+  "_comment": "F659: the one MC address normaliser (app/src/mcurl.js normaliseMcUrl). `in` is what a person typed, scanned, or what discovery or a stored value gave; `url` is the node websocket to dial and `join` the secret/pub split out of the query (never dialled); `refused` is true when no address can be made. Rule: the console port 8765 maps to the node port 8766, any path becomes /ws, and a wss tunnel host keeps its host and port. The M5Stick validator (hardware/m5sticks3/station_persistence.h saved_mc_url_refusal) only CHECKS a ws://host:port/path url and normalises nothing, so these cases are phone-only; MC builds join urls and parses none. Read by app/test/mcurl-normalise.test.mjs.",
+  "cases": [
+    {
+      "name": "the canonical node url is unchanged",
+      "in": "ws://192.0.2.55:8766/ws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "console port 8765 maps to the node port",
+      "in": "ws://192.0.2.55:8765/ws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "console port and a bare path",
+      "in": "ws://192.0.2.55:8765/",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "the field bug: ?s= is split into the join, never dialled",
+      "in": "ws://192.0.2.55:8766/ws?s=abc123",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc123"
+      }
+    },
+    {
+      "name": "console port plus a secret",
+      "in": "ws://192.0.2.55:8765/ws?s=abc123",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc123"
+      }
+    },
+    {
+      "name": "secret and backhaul pub",
+      "in": "ws://192.0.2.55:8766/ws?s=abc&pub=wss%3A%2F%2Fx.trycloudflare.com%2Fws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc",
+        "pub": "wss://x.trycloudflare.com/ws"
+      }
+    },
+    {
+      "name": "a malformed pub drops only the pub",
+      "in": "ws://192.0.2.55:8766/ws?pub=notaurl&s=abc",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc"
+      }
+    },
+    {
+      "name": "the scheme is case-insensitive",
+      "in": "WS://192.0.2.55:8766/ws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "surrounding space is trimmed",
+      "in": "  ws://192.0.2.55:8766/ws  ",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a missing path becomes /ws",
+      "in": "ws://192.0.2.55:8766",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a path other than /ws becomes /ws",
+      "in": "ws://192.0.2.55:8766/node",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a trailing slash on /ws is dropped",
+      "in": "ws://192.0.2.55:8766/ws/",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "another explicit port is kept",
+      "in": "ws://192.0.2.55:9000/ws",
+      "url": "ws://192.0.2.55:9000/ws",
+      "join": {}
+    },
+    {
+      "name": "a .local host is kept",
+      "in": "ws://mc.local:8766/ws",
+      "url": "ws://mc.local:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an IPv6 literal keeps its brackets and maps the port",
+      "in": "ws://[fe80::1]:8765/ws",
+      "url": "ws://[fe80::1]:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "the console address maps to the node socket",
+      "in": "http://192.0.2.55:8765",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "the console address with a slash",
+      "in": "http://192.0.2.55:8765/",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a console page url keeps only the host",
+      "in": "http://192.0.2.55:8765/some/page?x=1#top",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an http address with no port",
+      "in": "http://192.0.2.55",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a console url with a secret",
+      "in": "http://192.0.2.55:8765/?s=abc",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc"
+      }
+    },
+    {
+      "name": "an http IPv6 console",
+      "in": "HTTP://[fe80::1]:8765/",
+      "url": "ws://[fe80::1]:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https console on a LAN address maps to ws on the LAN",
+      "in": "https://192.0.2.55:8765/",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https console on a .local host maps to ws on the LAN",
+      "in": "https://mc.local/",
+      "url": "ws://mc.local:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https tunnel host maps to wss with no port",
+      "in": "https://x.trycloudflare.com/",
+      "url": "wss://x.trycloudflare.com/ws",
+      "join": {}
+    },
+    {
+      "name": "a wss tunnel url with no port is kept",
+      "in": "wss://x.trycloudflare.com/ws",
+      "url": "wss://x.trycloudflare.com/ws",
+      "join": {}
+    },
+    {
+      "name": "a wss tunnel url with no path gets /ws",
+      "in": "wss://x.trycloudflare.com",
+      "url": "wss://x.trycloudflare.com/ws",
+      "join": {}
+    },
+    {
+      "name": "a wss tunnel url with a secret",
+      "in": "wss://x.trycloudflare.com/ws?s=abc",
+      "url": "wss://x.trycloudflare.com/ws",
+      "join": {
+        "secret": "abc"
+      }
+    },
+    {
+      "name": "a wss url with a port other than 8765 is kept",
+      "in": "wss://x.trycloudflare.com:8443/ws",
+      "url": "wss://x.trycloudflare.com:8443/ws",
+      "join": {}
+    },
+    {
+      "name": "the console join link (?ws= wrapper)",
+      "in": "http://192.0.2.55:8765/?ws=ws%3A%2F%2F192.0.2.55%3A8766%2Fws%3Fs%3Dabc",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc"
+      }
+    },
+    {
+      "name": "the #ws= wrapper with a secret and pub",
+      "in": "http://192.0.2.55:8765/#ws=ws%3A%2F%2F192.0.2.55%3A8766%2Fws%3Fs%3Dabc%26pub%3Dwss%253A%252F%252Fx.trycloudflare.com%252Fws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {
+        "secret": "abc",
+        "pub": "wss://x.trycloudflare.com/ws"
+      }
+    },
+    {
+      "name": "a wrapped console port is mapped too",
+      "in": "http://x/?ws=ws%3A%2F%2F192.0.2.55%3A8765%2Fws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a bare address gets the node port and path",
+      "in": "192.0.2.55",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a bare address on the console port",
+      "in": "192.0.2.55:8765",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "a bare address with its own port",
+      "in": "192.0.2.55:9000",
+      "url": "ws://192.0.2.55:9000/ws",
+      "join": {}
+    },
+    {
+      "name": "a bare .local name",
+      "in": "mc.local",
+      "url": "ws://mc.local:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "empty text",
+      "in": "",
+      "refused": true
+    },
+    {
+      "name": "blank text",
+      "in": "   ",
+      "refused": true
+    },
+    {
+      "name": "a bare word is not an address",
+      "in": "hello",
+      "refused": true
+    },
+    {
+      "name": "an unknown scheme",
+      "in": "ftp://192.0.2.55/",
+      "refused": true
+    },
+    {
+      "name": "no host",
+      "in": "ws://",
+      "refused": true
+    },
+    {
+      "name": "port 0",
+      "in": "ws://192.0.2.55:0/ws",
+      "refused": true
+    },
+    {
+      "name": "port above 65535",
+      "in": "ws://192.0.2.55:70000/ws",
+      "refused": true
+    },
+    {
+      "name": "a ?ws= that is not a websocket url",
+      "in": "http://?ws=hello",
+      "refused": true
+    }
+  ]
+}
