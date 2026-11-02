@@ -93,7 +93,46 @@ def test_the_advert_is_decoded_through_the_phones_byte_layout_not_a_side_door():
     b = dict(st2.hill)
     a.pop("at"); b.pop("at")
     assert a == b == {"owner": 1, "from_neutral": False, "source": "station", "site": 7, "progress": 42, "holding": 1,
-                      "contested": False, "rising": True, "falling": False, "on_point": True}
+                      "contested": False, "rising": True, "falling": False, "on_point": True, "letter": None}
+
+
+def test_domination_ticks_on_a_contested_point_we_own_and_reads_the_hill_letter():
+    """hill.js (Domination, 2026-11-02): an owned point scores contested or not, so it still ticks; KOTH pauses (F382).
+    The letter comes from MC's `config.stations` (`letterOf`)."""
+    async def go():
+        for mode, want_ticks in (("domination", True), ("koth", False)):
+            st, mgr, clock = mk_point(tid=1, mode=mode)
+            await in_play(st)
+            st.config["stations"] = [{"id": 1, "kind": "control", "letter": "B"}]   # MC's bundle (`station_ids`)
+            await adv(st, id=1, team=None, value=0, present=True)
+            await adv(st, id=1, team=1, held=True, value=100, present=True)
+            await ticks(st, clock, 3.0)
+            assert st.hill["letter"] == "B", st.hill
+            n = mark(mgr)
+            await adv(st, id=1, team=1, held=True, contested=True, value=100, present=True)
+            await ticks(st, clock, 2.5)
+            assert (TICK in audio(mgr, n)) is want_ticks, (mode, audio(mgr, n))
+    asyncio.run(go())
+
+
+def test_f666_the_hills_list_mirrors_hill_js():
+    """hill.js `hillsView`: every bundle hill by id; a heard one live, an unheard one at its last state with its age."""
+    async def go():
+        st, mgr, clock = mk_point(tid=1, mode="domination")
+        await in_play(st)
+        st.config["stations"] = [{"id": 1, "kind": "control", "letter": "A"}, {"id": 2, "kind": "control", "letter": "B"}]
+        hills = st._hills_view(st.now())
+        assert [(h["site"], h["letter"], h["heard"], h["owner"], h["age_ms"]) for h in hills] == [(1, "A", False, None, None), (2, "B", False, None, None)], hills
+        await adv(st, id=2, team=1, held=True, contested=True, falling=True, value=70, present=True)
+        b = st._hills_view(st.now())[1]
+        assert b == {"site": 2, "letter": "B", "heard": True, "age_ms": 0, "owner": 1, "contested": True, "progress": 70,
+                     "holding": 1, "rising": False, "falling": True, "on_point": True}, b
+        await stop(st, id=2)                 # the point falls silent
+        await ticks(st, clock, 6.0)
+        b = st._hills_view(st.now())[1]
+        assert b["heard"] is False and b["owner"] == 1 and 5_900 <= b["age_ms"] <= 6_100, b
+        assert st.state()["model"]["hills"][1]["owner"] == 1, "the stage page reads it from state().model"
+    asyncio.run(go())
 
 
 def test_a_phone_point_capture_is_announced_and_ticks_on_our_clock_and_the_source_gate_mirrors_the_phone():
@@ -2135,6 +2174,8 @@ _HILL_PAIRS = {
     "hl.callout": "_hill_callout", "hl.say": "_hill_say",
     "hl.onBeacon": "_on_hill_beacon", "hl.onAdvert": "_on_control_advert",
     "hl.tick": "_hill_tick", "hl.reset": "_reset_hill",
+    "hl.letterOf": "_hill_letter_of", "hl.ownershipScored": "_hill_ownership_scored",   # Domination (2026-11-02)
+    "hl.noteStations": "_note_stations", "hl.hillsView": "_hills_view",                 # F666: the row of hills
 }
 
 # AMMO pickup (2026-10-18): the two powerup-player.js methods the stage mirrors, as a hand-driven grant (the rest of
@@ -2218,7 +2259,7 @@ def test_every_ammo_pair_is_real():
 def test_every_hill_pair_is_real():
     """Each `_HILL_PAIRS` entry names a HillListener method and its GunStage counterpart."""
     hill, stage = _hill_methods(), _stage_methods()
-    assert len(_HILL_PAIRS) == 10, _HILL_PAIRS
+    assert len(_HILL_PAIRS) == 14, _HILL_PAIRS
     for js, py in sorted(_HILL_PAIRS.items()):
         assert js in hill, f"_HILL_PAIRS names `{js}`, which hill.js `HillListener` does not declare"
         assert py in stage, f"_HILL_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"

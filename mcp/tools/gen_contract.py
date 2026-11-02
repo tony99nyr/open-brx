@@ -69,7 +69,7 @@ _TABLES = {
     # Seams batch A: the advert layout (docs/spec/utility.md section 2) every codec shares.
     "ADVERT_MAGIC", "ADVERT_ROLE", "ADVERT_PLAYER_STATE", "ADVERT_CONTROL_STATE", "HILL_CLAIMABLE_TIDS",
     # Seams batch B: the MC console's restated constants (see `_MC_CONSTANTS`).
-    "POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS",
+    "POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "OWNERSHIP_SCORED_MODES", "SOLO_MODES", "TEAM_COLOURS",
     "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS",
     # A8: the LED palette (poolgauge.LED_PALETTE) and its dark indices.
     "LED_PALETTE", "LED_DARK_INDICES",
@@ -81,9 +81,9 @@ _TABLES = {
 _FROZEN_INT_SETS = {"HILL_CLAIMABLE_TIDS"}
 # Arrays the console calls `.includes(x)` on with a wide `string`/`number`: a `as const` tuple makes that a strict-TS
 # error, so the TS output types them `readonly string[]` / `readonly number[]` (the JS stays frozen).
-_TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMABLE_TIDS"}
+_TS_WIDE_ARRAYS = {"OBJECTIVE_MODES", "OWNERSHIP_SCORED_MODES", "SOLO_MODES", "TEAM_COLOURS", "HILL_CLAIMABLE_TIDS"}
 # Seams batch B constants no firmware reads: left out of contract.gen.h.
-_NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
+_NO_CPP = {"POWERUP_PRESETS", "HEALTH_PRESETS", "OBJECTIVE_MODES", "OWNERSHIP_SCORED_MODES", "DOMINATION_HILLS", "SOLO_MODES", "TEAM_COLOURS", "TEAM_COUNT_MIN",
            "TEAM_COUNT_MAX", "ONE_TEAM_REFUSAL", "RE_PUSH_ON_LOBBY", "NAME_MAX", "RUNWAY_MIN_S", "RUNWAY_MAX_S",
            "STATION_THRESHOLD_MIN_DBM", "STATION_THRESHOLD_MAX_DBM", "ROSTER_PHASES",
            "STATION_KIND_LABEL", "STATION_KIND_SHORT", "PRESET_LABELS", "LED_PALETTE", "LED_DARK_INDICES", "PLAY_FILLER_IDS"}
@@ -128,6 +128,8 @@ def _mc_constants() -> list[tuple[str, Any, list[str]]]:
          ["The named starting-pool presets (compile.py HEALTH_PRESETS): one row per preset, in source order."]),
         ("OBJECTIVE_MODES", sorted(T.OBJECTIVE_MODES),
          ["Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted."]),
+        ("OWNERSHIP_SCORED_MODES", sorted(T.OWNERSHIP_SCORED_MODES),
+         ["Hill modes that score ownership, not presence (types.py OWNERSHIP_SCORED_MODES), sorted."]),
         ("SOLO_MODES", sorted(C.SOLO_MODES),
          ["Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on."]),
         ("TEAM_COLOURS", colours,

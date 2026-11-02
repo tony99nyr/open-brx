@@ -115,10 +115,13 @@ class Stack:
         # stands in for a Stick, faithfully, for the merge/reconnect/contested behaviour under test) --
         # this does the same for the ITEMS assignment `_koth_hill_fault` looks for, direct on the
         # Session the way `net.py _on_hello` would populate it for a real one.
-        if (self.session.config.get("mode") == "koth" and self.session.config.get("station_source") == "phone"
+        mode = self.session.config.get("mode")
+        if (mode in ("koth", "domination") and self.session.config.get("station_source") == "phone"
                 and not getattr(self, "real_stations", False)):
-            self.session.nodes.setdefault("chaos-hill", {"node_type": "utility"})
-            self.session.set_station("chaos-hill", {"kind": "control"})
+            # Domination plays on three hills (domination-design.md §2.4), KOTH on one
+            for nid in (("chaos-hill", "chaos-hill-b", "chaos-hill-c") if mode == "domination" else ("chaos-hill",)):
+                self.session.nodes.setdefault(nid, {"node_type": "utility"})
+                self.session.set_station(nid, {"kind": "control"})
         return self
 
     async def __aexit__(self, *a):

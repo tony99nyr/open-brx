@@ -8,7 +8,7 @@ import { ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LIN
 import { fmtAge, fmtServerAge } from '../tokens';
 import { GUN_POOLS_WRONG, alertWords } from '../alerts';
 import { ONE_TEAM_REFUSAL, RE_PUSH_ON_LOBBY } from '../api/contract.gen';
-import { isKillScored, isObjectiveScored, objectiveWord } from '../rules/scoring';
+import { isKillScored, isObjectiveScored, objectiveUnit, objectiveWord } from '../rules/scoring';
 
 export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) {
   const live = state.live!;
@@ -17,7 +17,7 @@ export function boardHeader(state: Pick<State, 'config' | 'live'>, now: number) 
   const cap = isKillScored(config) ? config.scoring.frag_limit : null;
   const teamIds = config.mode === 'ffa' ? [] : (config.teams ?? []).map(t => t.team_id);   // a projector may face an older MC
   const objective = isObjectiveScored(config) && teamIds.length >= 2;
-  const sub = `${config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${objectiveWord(config.mode)} TIME WINS` : ''}`;
+  const sub = `${config.mode.toUpperCase()}${cap ? ` · FIRST TO ${cap}` : ''}${objective ? ` · MOST ${objectiveWord(config.mode)} ${objectiveUnit(config.mode)} WINS` : ''}`;
   // the single-leader board (FFA, or a team mode with fewer than two sides) has always said FFA, whatever the mode
   const leaderSub = `FFA${cap ? ` · FIRST TO ${cap}` : ''}`;
   return { remaining, teamIds, objective, sub, leaderSub };

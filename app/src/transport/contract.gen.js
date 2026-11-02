@@ -145,6 +145,8 @@ export const STATION_REBOOT_SLACK_MS = 5000;
 export const TRIGGER_AFTER_PROTECT_MS = 500;
 /** a death this soon after a timed respawn raises the down-screen warning */
 export const SPAWN_KILL_WINDOW_MS = 10000;
+/** the hill count Domination is designed for (domination-design.md §2.4); fewer is an amber line, not a refusal */
+export const DOMINATION_HILLS = 3;
 /** A6 (architecture review #4, 2026-10-04): the ONE table of station presence defaults, per platform and kind. A station
  *  whose `station_config.threshold` is 0 measures (and advertises in byte 14) its platform's value here. Generated into
  *  contract.gen.ts/.js and hardware/m5sticks3/contract.gen.h, so the phone (beacon.js), the console (Items.tsx), the
@@ -576,6 +578,8 @@ export const POWERUP_PRESETS = Object.freeze([{"id": "rockets", "kind": "weapon"
 export const HEALTH_PRESETS = Object.freeze({ standard: Object.freeze({ max_hp: 45, max_armor: 70, max_shield: 0 }), shields: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 105 }), hardcore: Object.freeze({ max_hp: 45, max_armor: 0, max_shield: 0 }) });
 /** Modes whose objective is a control point on the field (types.py OBJECTIVE_MODES), sorted. */
 export const OBJECTIVE_MODES = Object.freeze(['domination', 'koth']);
+/** Hill modes that score ownership, not presence (types.py OWNERSHIP_SCORED_MODES), sorted. */
+export const OWNERSHIP_SCORED_MODES = Object.freeze(['domination']);
 /** Modes played solo or in squads (compile.py SOLO_MODES), sorted: one team keeps friendly fire on. */
 export const SOLO_MODES = Object.freeze(['extraction', 'ffa', 'lms']);
 /** The colours a game pick may use (gamepick.py TEAM_COLOURS), in TEAM_KEYS order. */

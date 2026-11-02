@@ -40,7 +40,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     validate_mode_params as _validate_mode_params, \
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
-from .types import ROSTER_PHASES
+from .types import ROSTER_PHASES, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES
 from .types import (StationUpdate, CLOCK_STEP_MS, CLOCK_TIE_MS, ECHO_FAULT, GUN_CONFIG_FAULT, GUN_DID_NOT_TAKE_CONFIG, GUN_FLAPPING_LINE, GUN_LINK_LOST, POOL_FAULT,
     STALE_ACK_FAULT, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_NOT_ARMED, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS, MAX_TAG_LEN,
                     OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS, RESPAWN_PROFILE_MIN_APP,
@@ -218,6 +218,7 @@ class ModeRow(TypedDict):
     # it straight onto `ModeInfo.match_items`. Absent on the post-MVP rows (never offered on PLAY, so no
     # schema has been decided for them yet); the console falls back to its own list for an absent row.
     match_items: NotRequired[list[MatchItemKey]]
+    hold_target_s: NotRequired[int]     # Domination: the default score target (`scoring.hold_target_s`) a fresh config carries
 
 
 MODES: list[ModeRow] = [
@@ -284,6 +285,18 @@ MODES: list[ModeRow] = [
      "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME", "respawn_text": "ON · TIMED",
      "teams": ["red", "blue"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "station_source": "phone", "proven": True, "mvp": True,
+     "match_items": ["time", "hold", "hill", "countdown", "daynight", "silenced", "teams"]},
+    # Domination (Tony 2026-11-02, docs/domination-design.md §5): three Bluetooth control points, A, B and C. The one rule
+    # that differs from KOTH: OWNERSHIP scores, not presence. A point a team owns scores 1 point a second for it, contested
+    # or empty, until another team drains it to neutral (option B: first to 1000, `hold_target_s`, summed across hills,
+    # F572). The station banks that clock as `own_ms` (utility.md §5d.6) and the phone accrues it while it hears the
+    # point, contested or not (hill.js). A grenade carries no point id (F88), so the row is station-only: `validate`
+    # refuses `station_source: "grenade"` for it. Red and blue, never yellow, for the same F82 reason as KOTH.
+    {"mode": "domination", "name": "DOMINATION", "abbr": "DOM", "desc": "Own the hills; every owned hill scores",
+     "brief": "Three hills, A, B and C: Bluetooth control points on the field. Stand on a hill to take it. An enemy hill drains to neutral before it builds up for you, and the side with more living players on it moves it. A hill your team owns scores a point a second for your team, whether or not anyone stands on it, until the other team drains it to neutral. The first team to the score target wins; if nobody reaches it, the side with more points at the whistle takes the match.",
+     "teams_text": "2 TEAMS", "win_text": "HILL POINTS", "respawn_text": "ON · TIMED",
+     "teams": ["red", "blue"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard", "station_source": "phone", "proven": False, "mvp": True, "hold_target_s": 1000,
      "match_items": ["time", "hold", "hill", "countdown", "daynight", "silenced", "teams"]},
 ]
 
@@ -424,6 +437,8 @@ def default_config(mode: str = "tdm") -> GameConfig:
     # sets `recoil: false` explicitly through `PUT /api/config` when they want it off.
     if src := m.get("station_source"):
         cfg["station_source"] = src
+    if target := m.get("hold_target_s"):
+        cfg["scoring"]["hold_target_s"] = target   # Domination: first to 1000 (KOTH has no default target)
     # A18: the same rule for the mode's own parameters -- present and COMPLETE (every default) only when the
     # engine declares some (koth, lms, extraction); tdm / ffa / infection declare none and stay byte-identical.
     mp = _default_params(mode)
@@ -1507,6 +1522,9 @@ class Session:
             # F572 (Tony 2026-10-18): with two or more hills assigned, the target counts the time summed across them
             hills = sum(1 for _nid, a in self.station_registry.assignments() if a.get("kind") == "control")
             win_text = f"FIRST TO HOLD {hold // 60}:{hold % 60:02d}{' SUMMED ACROSS HILLS' if hills > 1 else ''} WINS"
+            if cfg.get("mode") in OWNERSHIP_SCORED_MODES:
+                # Domination: one point is one owned-hill second (domination-design.md §2.5), so the target reads as points
+                win_text = f"FIRST TO {hold} HILL POINTS WINS"
         else:
             win_text = mode.get("win_text")
         return {
@@ -2782,8 +2800,10 @@ class Session:
             def _mmss(s: int) -> str:
                 return f"{s // 60}:{s % 60:02d}"
             limit = f"THE TIME LIMIT ({_mmss(tl)})" if hills == 1 else f"THE TIME LIMIT ({_mmss(tl)}) TIMES {hills} HILLS"
+            # Domination counts the target in hill points (one owned-hill second each), so it says points, not a time
+            target = f"SCORE TARGET ({hts} POINTS)" if self.config.get("mode") in OWNERSHIP_SCORED_MODES else f"HOLD TARGET ({_mmss(hts)})"
             self.config_warnings.append(
-                f"SETUP: THE HOLD TARGET ({_mmss(hts)}) IS AT OR PAST {limit}: THE MATCH WILL "
+                f"SETUP: THE {target} IS AT OR PAST {limit}: THE MATCH WILL "
                 "ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT")
         return res
 
@@ -4696,7 +4716,7 @@ class Session:
         # one never reaches the scorer
         sc = self.config.get("scoring")
         if isinstance(sc, dict) and "hold_target_s" in sc and not (
-                self.config.get("mode") == "koth" and _check.hold_target_ok(sc["hold_target_s"])):
+                self.config.get("mode") in OBJECTIVE_MODES and _check.hold_target_ok(sc["hold_target_s"])):
             sc.pop("hold_target_s", None)
         raw_players = m.get("players")
         players: dict = raw_players if isinstance(raw_players, dict) else {}

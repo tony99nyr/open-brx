@@ -26,7 +26,7 @@ import { computeHonors } from './honors';
 import { storedTag, tagError } from '../api/tag';
 import { carryTeams } from '../teamColours';
 import { defaultThreshold } from '../rules/stationBubble';   // the per-kind platform default the console shows (F383)
-import { isKillScored, isObjectiveScored } from '../rules/scoring';
+import { hillModeName, isHillMode, isKillScored, isObjectiveScored } from '../rules/scoring';
 import { sessionCoverage, sessionKitted, sessionNoticesMcVerify, sessionOffGrid, sessionReadinessRosterSize, sessionUpdating } from '../rules/readiness';
 import { scorerLiveRow, sessionLiveView, sessionWithPoolStale } from '../rules/live';
 import { sessionStartView } from '../rules/start';
@@ -100,6 +100,7 @@ const BUILTIN_PIECES = (): GamePiece[] => [
   builtinPiece('mode', 'tdm', 'TEAM DEATHMATCH', { mode: 'tdm' }),
   builtinPiece('mode', 'ffa', 'FREE-FOR-ALL', { mode: 'ffa' }),
   builtinPiece('mode', 'koth', 'KING OF THE HILL', { mode: 'koth' }),
+  builtinPiece('mode', 'domination', 'DOMINATION', { mode: 'domination' }),
   // F-scope A: post-MVP modes still ship a mode piece (so an old config naming one still resolves a
   // name/brief), but `post_mvp: true` keeps them off PLAY (§5's "a post_mvp piece is not pickable").
   builtinPiece('mode', 'infection', 'INFECTION', { mode: 'infection' }, true),
@@ -1054,7 +1055,8 @@ export class MockBackend implements Api {
     // state.nodes still shows its last receipt and path history.
     const kitted = sessionKitted(this.players);
     const notice = sessionNoticesMcVerify(this.config, sessionOffGrid(this.players, nodes), sessionReadinessRosterSize(this.players));
-    const holdWarning = holdTargetWarning(this.config, Object.values(this.stations).filter(st => st.assigned?.kind === 'control').length);
+    const controlCount = Object.values(this.stations).filter(st => st.assigned?.kind === 'control').length;
+    const holdWarning = holdTargetWarning(this.config, controlCount);
     const coverage = this.coverage(nodes);
     if (this.cachedCoverageLevel !== coverage.level) {
       this.cachedCoverageLevel = coverage.level;
@@ -1097,10 +1099,10 @@ export class MockBackend implements Api {
       config_warnings: [
         ...compiler.warnings,
         // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS.
-        // F402: retired for koth -- that case is now a hard LOAD/push refusal (`kothHillFault`), not
+        // F402: retired for the hill modes -- that case is now a hard LOAD/push refusal (`kothHillFault`), not
         // an amber advisory, or the console would say the same fact twice in two colours.
         ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
-          && this.config.mode !== 'koth'
+          && !isHillMode(this.config.mode)
           ? ['SETUP: NO CONTROL STATION IS ASSIGNED (THE OBJECTIVE IS A BLUETOOTH CONTROL POINT, SO NOTHING ON THE FIELD IS THE HILL): ASSIGN A STATION AS CONTROL IN ITEMS AND ARM IT'] : []),
         // F535: mirrors station_warnings(): a hill left assigned in a mode with no hill, and then (elif) the source conflict
         ...(Object.values(this.stations).some(s => s.assigned?.kind === 'control') && !OBJECTIVE_MODES.includes(this.config.mode)
@@ -1113,9 +1115,12 @@ export class MockBackend implements Api {
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED (RESPAWN IS SET TO STATION, SO A DOWNED PLAYER CAN ONLY COME BACK AT A STATION): ASSIGN A STATION AS RESPAWN IN ITEMS AND ARM IT'] : []),
         // F402 item 2: mirrors StationRegistry.koth_hill_offline_warning() -- computed fresh here too, never
         // cached, so a hill that goes quiet after LOAD with no other edit still shows it.
-        ...(this.config.mode === 'koth' && this.config.station_source === 'phone'
+        ...(isHillMode(this.config.mode) && this.config.station_source === 'phone'
           && Object.values(this.stations).some(s => s.assigned?.kind === 'control' && s.offline)
           ? ['SETUP: THE HILL IS OFFLINE: BRING IT INTO WI-FI OR RE-ARM IT BEFORE YOU START'] : []),
+        // Domination is designed for three hills: fewer assigned is allowed, with an amber note.
+        ...(this.config.mode === 'domination' && controlCount < 3
+          ? [`SETUP: DOMINATION IS DESIGNED FOR 3 HILLS AND ${controlCount} ${controlCount === 1 ? 'IS' : 'ARE'} ASSIGNED: ASSIGN MORE HILLS IN THE ARMORY, OR PLAY ON`] : []),
         // F401: mirrors StationRegistry.station_sync_warnings() -- any station of the LAST FINISHED match MC
         // has not heard from since that match's whistle. `util-d4e5f6` demos this by default (F106(i):
         // seeded 20 min stale), so `?mock` shows the LOAD warning with no operator action needed.
@@ -1911,7 +1916,7 @@ export class MockBackend implements Api {
     }
   }
   /** §3: compose the `GameConfig` partial the pick's pieces + strip describe. */
-  /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; KOTH is exactly 2
+  /** F413 (games-presets.md §7): 2 to 4 UNIQUE colours from red/blue/yellow/purple; a hill mode is exactly 2
    *  and never offers yellow (a neutral hill broadcasts tid 2, F82 -- the same fault a yellow ROSTER
    *  refuses elsewhere, refused here before it ever reaches one). */
   /** gamepick.merge_match checks team choice shape before composing a config patch. */
@@ -2279,17 +2284,18 @@ export class MockBackend implements Api {
     }
     // config_merge.py rejects these before Session.set_config changes config or the roster.
     // PICK turns the same precheck refusal into ok:false, while a direct PUT throws.
-    if (partial.teams && (partial.mode ?? base.mode) === 'koth') {
-      if (partial.teams.length !== 2) throw new ConfigMergeError('KING OF THE HILL IS EXACTLY 2 TEAMS: PICK TWO COLOURS');
+    if (partial.teams && isHillMode(partial.mode ?? base.mode)) {
+      const hillName = hillModeName(partial.mode ?? base.mode);
+      if (partial.teams.length !== 2) throw new ConfigMergeError(`${hillName} IS EXACTLY 2 TEAMS: PICK TWO COLOURS`);
       if (partial.teams.some(t => t.team_id === 'yellow')) {
-        throw new ConfigMergeError("YELLOW IS KING OF THE HILL'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE");
+        throw new ConfigMergeError(`YELLOW IS ${hillName}'S NEUTRAL TEAM: PICK RED, BLUE OR PURPLE`);
       }
     }
     const scoring = partial.scoring ? { ...base.scoring, ...partial.scoring } : base.scoring;
     const hold = scoring.hold_target_s;
     if (partial.scoring && 'hold_target_s' in partial.scoring && hold != null) {
-      if ((partial.mode ?? base.mode) !== 'koth') {
-        throw new ConfigMergeError('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL: CLEAR IT OR PICK KING OF THE HILL');
+      if (!isHillMode(partial.mode ?? base.mode)) {
+        throw new ConfigMergeError('A HOLD TARGET ONLY APPLIES TO KING OF THE HILL OR DOMINATION: CLEAR IT OR PICK A HILL MODE');
       }
       if (!Number.isInteger(hold) || hold <= 0 || hold > HOLD_TARGET_MAX_S) {
         throw new ConfigMergeError('HOLD TARGET MUST BE 1 S TO 2:00:00, OR NO TARGET');
@@ -2611,15 +2617,16 @@ export class MockBackend implements Api {
    *  it". A koth LOAD/push is refused with nothing on the field that IS the hill, `force` does not
    *  open it either, and this is checked fresh (never cached), the same as the server. */
   private kothHillFault(): string | null {
-    if (this.config.mode !== 'koth') return null;
+    if (!isHillMode(this.config.mode)) return null;
+    const name = hillModeName(this.config.mode);
     if (this.config.station_source !== 'phone') {
-      return 'KING OF THE HILL NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
+      return `${name} NEEDS A HILL: SET OBJECTIVE SOURCE TO PHONE, THEN ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY`;
     }
     if (Object.values(this.stations).some(s => s.assigned?.kind === 'control')) return null;
     // bench 2026-10-02: a hill that left is named, as state.py `_koth_hill_fault`
     const gone = this.departureViews().filter(d => d.kind === 'control').map(d => d.line);
-    if (gone.length) return `KING OF THE HILL NEEDS A HILL: ${gone.join('; ')}`;
-    return 'KING OF THE HILL NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY';
+    if (gone.length) return `${name} NEEDS A HILL: ${gone.join('; ')}`;
+    return `${name} NEEDS A HILL: ASSIGN A PHONE OR STICK AS A HILL IN THE ARMORY`;
   }
 
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */

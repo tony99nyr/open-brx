@@ -1,7 +1,7 @@
 # Domination, KOTH scaling and Juggernaut: a proposal
 
-Updated: 2026-11-01. **Status: a proposal for Tony's decision. Nothing here is built.** Each section ends with the
-choices Tony must make. The source is the field game of 2026-11-01 (F651, F657): players misread KOTH.
+Updated: 2026-11-02. **Status: Tony decided §5 on 2026-11-02 (the answers are in §5). Domination is being built
+(F666). Juggernaut is post-MVP.** The source is the field game of 2026-11-01 (F651, F657): players misread KOTH.
 
 The mode catalogue is [`game-modes.md`](game-modes.md). How a mode is added end to end is
 [`adding-modes.md`](adding-modes.md). The control-point spec of record is [`spec/utility.md`](spec/utility.md) §5d.
@@ -166,6 +166,13 @@ The phone sees only the hills it hears. The HUD must show that limit honestly:
 
 ## 3. KOTH per-player scaling
 
+**Decision (Tony, 2026-11-02): KOTH scoring stays flat.** One player who stays on the hill scores the full rate, and
+more teammates on it score no faster. Head count rewards offence through the CAPTURE instead: capture and contest
+speed scale with the bodies in the circle, in KOTH and in Domination. That scaling is already built and stays linear:
+`rate = net x 100 / capture_s`, so net 1, 2 and 3 move the bar at 1x, 2x and 3x (the cap, `net_cap`, default 3).
+Tony picked linear over a diminishing curve (1, 1.5, 1.75), which would have made a 2- or 3-player capture slower
+than today. Nothing in §3.2 to §3.3 below is built. They stay as the record of the options.
+
 ### 3.1 The rule
 
 More of your team on the hill scores faster. One player scores at the base rate. Each extra living teammate in
@@ -293,7 +300,17 @@ IR word and HUD: 3 to 4; tests and a chaos scenario: 2), plus one bench sitting 
 
 ## 5. Decisions for Tony
 
-1. Domination: build it now or post-MVP. Scoring option A, **B**, C or D (§2.5).
-2. Domination: an owned hill scores while contested, **yes** or no (§2.4).
-3. KOTH scaling: Flat, Linear, **Diminishing** or Double (§3.2).
-4. Juggernaut: post-MVP design accepted, J1 + J3 (§4.3), and the bench items in §4.5.
+Tony answered all four on 2026-11-02 (through brx1):
+
+1. Domination: **build it now (MVP), option B**: 3 hills, 1 point per owned hill per second, first to 1000, 10 s
+   capture (§2.5).
+2. Domination: an owned hill **keeps scoring while it is contested** (§2.4).
+3. KOTH scaling: **scoring stays flat** (§3.2). Capture and contest speed scale with the head count, in both modes,
+   and stay linear (1x, 2x, 3x by net bodies): the rule built today (§3).
+4. Juggernaut: **the design is accepted and post-MVP**. Do not build it yet (§4).
+
+**What the station banks (agreed by brx4 and brx5, 2026-11-02).** The station knows no mode. It banks two clocks per
+team: `hold_ms` (a living owner on the point and no rival, F554; KOTH scores it) and `own_ms` (the team owns the point,
+contested or empty, until it drains to neutral; Domination scores it). MC picks the clock by mode
+(`OWNERSHIP_SCORED_MODES` in `types.py`). A station that sends no `own_ms` scores nothing in Domination, and the phones'
+reports cover its point.

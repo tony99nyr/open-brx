@@ -1029,6 +1029,17 @@ const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = {
     "win_text": "POSSESSION TIME",
     "respawn_text": "ON · TIMED",
     "mvp": true
+  },
+  "domination": {
+    "mode": "domination",
+    "name": "DOMINATION",
+    "abbr": "DOM",
+    "desc": "Own the hills; every owned hill scores",
+    "brief": "Three hills, A, B and C: Bluetooth control points on the field. Stand on a hill to take it. An enemy hill drains to neutral before it builds up for you, and the side with more living players on it moves it. A hill your team owns scores a point a second for your team, whether or not anyone stands on it, until the other team drains it to neutral. The first team to the score target wins; if nobody reaches it, the side with more points at the whistle takes the match.",
+    "teams_text": "2 TEAMS",
+    "win_text": "HILL POINTS",
+    "respawn_text": "ON · TIMED",
+    "mvp": true
   }
 };
 // GENERATED-END modes
@@ -1055,6 +1066,10 @@ export const MODES: ModeInfo[] = [
   // specifically to dodge tid 2, which red+blue already does too.
   { ...MODE_TEXT.koth, params: modeParams('koth'), match_items: matchItems('koth'),
     defaults: base('koth', { teams: [TEAMS[2], TEAMS[0]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'phone',
+      mode_params: { score_target: 0, points_per_s: 1.0 } }) },
+  // Domination (2026-11-02): KOTH's hills, scored by ownership; first to 1000 (`hold_target_s`) by default.
+  { ...MODE_TEXT.domination, params: modeParams('domination'), match_items: matchItems('domination'),
+    defaults: base('domination', { teams: [TEAMS[2], TEAMS[0]], scoring: { frag_limit: null, win_by: 'objective', hold_target_s: 1000 }, station_source: 'phone',
       mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];
 

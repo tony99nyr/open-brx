@@ -615,6 +615,13 @@ class PerkEffectsResolved(TypedDict, total=False):
 # on the strength of that other gate alone.
 OBJECTIVE_MODES = {"domination", "koth"}
 
+# Domination (Tony 2026-11-02, docs/domination-design.md §2.1): the hill modes that score OWNERSHIP, not presence. A point
+# the team owns scores for it contested or empty, until it drains to neutral. The station banks that clock as
+# `control.own_ms` (utility.md §5d.6) beside the presence clock `hold_ms` that KOTH scores; MC reads `own_ms` for these
+# modes (`stations.ownership_clock`), and the phone accrues while it hears the point, contested or not (hill.js).
+OWNERSHIP_SCORED_MODES = {"domination"}
+DOMINATION_HILLS = 3   # the hill count Domination is designed for (domination-design.md §2.4); fewer is an amber line, not a refusal
+
 # What may be sitting on the field emitting the objective. This used to be a bare truthiness gate --
 # any non-empty string satisfied it, including a typo -- so an operator either got an unsatisfiable
 # error or "satisfied" it with a word that meant nothing. The value is what the node/host reads the
@@ -839,6 +846,7 @@ class StationRef(TypedDict):
     id: int
     kind: StationKind
     item: NotRequired[StationItem]
+    letter: NotRequired[str]       # Domination (2026-11-02): a control point's name, A, B, C... in id order (`station_ids`)
 
 
 class Stun(TypedDict):

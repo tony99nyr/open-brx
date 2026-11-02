@@ -1,4 +1,5 @@
 import type { ConfigView, ModeParamSpec, PerkView, Player, WeaponView } from '../api/types';
+import { isOwnershipScored } from './scoring';
 import {
   HIT_AUDIO_CLASS_PINNED, HIT_AUDIO_CLASS_POOLS, HIT_AUDIO_FALLBACK_CLASS,
   HIT_AUDIO_FREE_CELLS, HIT_AUDIO_MAX_SIR_ROWS, HIT_AUDIO_PIN_PREFIX,
@@ -303,6 +304,8 @@ export function compilerWarnings(config: ConfigView, players: Player[], weapons:
 // Port of state.py Session._validate(): a hold target at the time limit cannot end a match. F572: the target counts
 // the time summed across hills, so `hills` assigned CONTROL stations can bank `hills` times the limit.
 export function holdTargetWarning(config: ConfigView, hills = 1): string | null {
+  // Domination's target is hill points, not a time, so it cannot be compared with the clock.
+  if (isOwnershipScored(config.mode)) return null;
   const hold = config.scoring.hold_target_s;
   const limit = config.time_limit_s;
   const n = Math.max(1, hills);
