@@ -743,6 +743,7 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   knowing for gameplay: a miss is VISUALLY IDENTICAL to a hit** (same green flash), so no observer can tell them apart. **→ 2026-09-17: BUILT** (commit 76ad3764): `tick()` repaints the team colour
   every 5 s while the player is alive (`app/test/engine.test.mjs`, the F68 test). Left: `stage.py` does not mirror it
   (`test_stage_mirror.py` pins `_teamRepaintTick` as unmirrored), and one eyes check on a gun. `build` + `eyes`.
+  **→ 2026-11-02:** Tony asked whether a recoil miss (a magnitude-0 word) flashes the headset green. The colour is unverified; `bench-plan.md` NEXT GAME PREP P10 checks it, with a magnitude-100 control.
 
 - **F13 🟡** a respawn within ~2 s of death wedges the headset in the green out-blink (threshold 2.0–2.5 s; use ≥ 3 s).
   (1) ✅ floored everywhere 2026-09-11 (F34 closed: PUT refuses 1–2 s, the node floors at 3 s, the CLI already did); (2) headset-side frame pacing of

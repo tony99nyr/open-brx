@@ -9,6 +9,32 @@ for the game on 2026-11-01. NEXT ([below](#next-the-bench-after-0430-2026-10-26)
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
+## NEXT GAME PREP: one sitting, in this order (2026-11-02)
+
+The order Tony works in before the next game. Each step links the sheet or row that holds its procedure; this list
+does not repeat it. **Before a game** means a game cannot run well without it. **Can wait** means a later bench sitting.
+Build everything from current main: the F645 and F650 fixes are merged, so one APK from main serves the SR sheet too.
+About 3 h for the before-a-game part with the Mac and Domination steps (the SR sheet is 85 min of it); about
+3 h 50 min more for the rest.
+
+| # | when | minutes | step | procedure |
+|---|---|---|---|---|
+| P1 | before a game | 20 | Reflash all 3 Sticks over USB from main. The old firmware misreads advert byte 6, the scope map's high byte (F658), and has no F642 self-discovery. | [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *On this WSL/Windows box* (`stick.py flash`) |
+| P2 | before a game | 15 | F642 on one Stick: (1) a typed address that is absent, then the log shows typed, (2) mDNS, (3) the subnet scan, (4) a welcome and "last good saved"; (5) a reboot rejoins through the last good MC. A moved MC is found again (one Stick is enough). Then power the other two and see each one join MC. | FOLLOWUPS F642 |
+| P3 | before a game | 20 | Build the APK from main and install it on every phone, after P1. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
+| P4 | before a game | 10 | F659, the black phone first, then each other phone: (1) a phone with a stale `:8765` address joins MC by itself; (2) the console shows NEW PHONE JOINED with the device; (3) the next phone, the same two checks; (4) every phone on the PLAYERS page before READY. | FOLLOWUPS F659 |
+| P5 | before a game on the Mac | 10 | The Mac 5-step check, with the phone that could not ping on 2026-11-01 (F643). Skip it when MC runs on the PC. | [`mac-dev-runbook.md`](mac-dev-runbook.md) §1b, *5-step check* |
+| P6 | before a game | 5 | Hill off: an FFA with hills turned off, with a Stick hill powered in the field. Pass: the hill stays inert: no capture and no points on the phones or the console. Control: the same Stick in a KOTH game captures. | F658 scope ([`spec/utility.md`](spec/utility.md) §5d.8) |
+| P7 | before a Domination game | 20 | F666: three Stick hills, a Domination game, two players. Capture each hill once; an owned hill keeps scoring while contested; the score reaches the console and the phones. | FOLLOWUPS F666 (open item 5), [`domination-design.md`](domination-design.md) §2 |
+| P8 | before a game (P0) | 85 | Swap and reload, SR1-SR14. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
+| P9 | can wait | 10 | F648: arm a phone hill, toggle its Bluetooth off and on mid-match. Pass: it logs "the advert is down" and comes back with the point intact. Needs the APK from P3. | FOLLOWUPS F648 |
+| P10 | can wait | 5 | The near-miss flash colour (F68): Tony asked whether a recoil miss flashes the headset green. Fire one magnitude-0 word from the IR rig at a worn headset, then one magnitude-100 word as the control. Tony reports each colour; the gun should buzz and play `H06` on the miss, with no `$HIR`. | post-mvp F68 |
+| P11 | can wait | 45 | The melee swing and night range, MN1-MN3. MN1 decides whether the HUD's melee icon (F665) can trust t14. | [MN1-MN3](#next-the-melee-swing-and-the-night-range-cut-f649-f580) |
+| P12 | can wait | 85 | The hit effect of accuracy, HE1-HE5, plus the 25 m set-up. It decides F662's recoil numbers before the R2 flag goes on. | [HE1-HE5](#next-the-hit-effect-of-accuracy-f662) |
+| P13 | can wait | 85 | The Energy Shotgun frame, ES0-ES5. It ships F661 (the row is hidden until then). | [ES0-ES5](#next-the-energy-shotgun-frame-f661) |
+
+`$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
+
 ## NEXT GAME: swap and reload, the torture sheet (F650, F645)
 
 Tony, 2026-11-01: swap and reload are P0 core gameplay. Build: a bench APK from `fix/f650-alt-before-first-pull` (it holds
