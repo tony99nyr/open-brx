@@ -216,12 +216,12 @@ test('AdvertGate.clone() copies every field and decides the same as the original
 
 test('F658: the live bit (128) is set while the match is live, and only then', () => {
   const dir = newAdvertDirector();
-  const at = (phase, alive = true) => {
-    const d = directAdvert({ st: live({ phase, alive }), config: CONFIG, tid: 1, scanOpens: 0, dir, gate: new AdvertGate(), now: 1000 });
+  const at = (phase, alive = true, ended = false) => {
+    const d = directAdvert({ st: live({ phase, alive, ended }), config: CONFIG, tid: 1, scanOpens: 0, dir, gate: new AdvertGate(), now: 1000 });
     return decodeUuid(d.uuid).state;
   };
   assert.equal(at('live'), 1 | 128, 'live and alive');
   assert.equal(at('live', false), 128, 'live and down: the hill still learns the game');
   assert.equal(at('armed'), 1, 'the countdown is not live');
-  assert.equal(at('ended'), 1, 'after the whistle the bit drops');
+  assert.equal(at('live', true, true), 1, 'after the whistle (still phase live, ended set) the bit drops');
 });

@@ -81,7 +81,9 @@ players of that game, advertises that game's byte, and ignores MC's timing (no W
 keeps one tally per game byte, four at most; a byte unheard for 10 minutes starts fresh. Presence is keyed by game
 and player number while a hill is assigned. The ring is saved in NVS as `hill_ring` (`encode_hill_ring`) when follow
 mode starts, on a game switch, on a change of owner and at most every 30 s while the tally grows, and restored at boot
-after the saved config. While following, the older `hill_v1` save is not written. The status `control` block adds
+after the saved config. After a power-on (`esp_reset_reason()` is `ESP_RST_POWERON`) every restored game starts fresh, since
+the Stick cannot know how long it was off; a brownout, watchdog or panic reset keeps the ring. Another live game takes
+the hill only with more live players on the point than the current one. While following, the older `hill_v1` save is not written. The status `control` block adds
 `follows: true` and `games`. Serial prints `HILL FOLLOWS game=<n> from=<m>` on a switch. The point RESET clears the
 ring. A hill that never hears the bit (0.4.33 phones) runs the A68 rules below. Spec: `docs/spec/utility.md` §5d.8.
 

@@ -88,6 +88,8 @@ export const SERVER_ALERTS: Record<string, AlertDef> = {
   // Its pace still comes only from an arming, so a pace that is not this game's is amber. Neither gates START.
   'station-attention-follows': { sev: 'neutral', text: STATION_FOLLOWS },
   'station-attention-hill-pace': { sev: 'amber', text: `HILL SET FOR {PACE}, THIS GAME USES {PACE}: ${STATION_PACE_REARM}` },
+  // F658 review: a following hill counts only live-bit phones, so phones on an older app play for nothing there
+  'station-attention-old-app': { sev: 'amber', text: '{N} PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM' },
   'station-attention-phone-not-armed': { sev: 'amber', text: STATION_NOT_ARMED, also: ['frame-station-not-armed'] },
   'station-attention-id-mismatch': { sev: 'amber', text: 'PHONE ADVERTISES ID {REPORTED}, ASSIGNED {ID}: RE-ARM IT FROM ITEMS ON ARMORY', also: ['frame-station-advertises-id'] },
   'station-attention-battery-low': { sev: 'amber', text: STATION_BATTERY_LOW, also: ['frame-station-battery-low'] },
@@ -182,6 +184,7 @@ export const SERVER_LINES: { head: string; id: string; re?: RegExp }[] = [
   { head: 'ARMED FOR AN OLDER GAME', id: 'station-attention-armed-older-game' },
   { head: STATION_FOLLOWS, id: 'station-attention-follows' },   // F658
   { head: 'HILL SET FOR ', id: 'station-attention-hill-pace' },
+  { head: '', id: 'station-attention-old-app', re: /^\d+ PHONES? ON AN OLD APP: THIS HILL CANNOT COUNT/ },
   { head: 'NOT ARMED: THIS MODE HAS NO HILL', id: 'station-attention-phone-not-armed' },   // F535: amber, the same family
   { head: 'PHONE SAYS NOT ARMED', id: 'station-attention-phone-not-armed' },
   { head: 'PHONE ADVERTISES ID', id: 'station-attention-id-mismatch' },

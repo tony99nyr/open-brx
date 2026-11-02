@@ -8,7 +8,7 @@ from typing import Callable, Protocol, cast
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, OBJECTIVE_MODES,
+from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -1187,6 +1187,18 @@ class StationRegistry:
         pending = [nid for nid, st in self.stations.items() if st.get("assigned") and st.get("arm_pending")]
         return {"armed": len(armed), "pending": pending}
 
+    def _old_app_phones(self) -> int:
+        """F658 review: bound player phones whose app is older than LIVE_BIT_MIN_APP (it sends no live bit). An app
+        version MC cannot read is not counted, as `parse_app_ver` treats it everywhere."""
+        floor = parse_app_ver(LIVE_BIT_MIN_APP)
+        n = 0
+        for p in self.roster.players.values():
+            nid = p.get("node_id")
+            v = parse_app_ver((self.roster.nodes.get(nid) or {}).get("app_ver")) if nid else None
+            if v is not None and floor is not None and v < floor:
+                n += 1
+        return n
+
     def station_view(self, nid: str) -> StationView:
         st = self.stations[nid]
         now = self.now_ms()
@@ -1198,12 +1210,14 @@ class StationRegistry:
         # F658: a hill that follows the players' live game needs no arming for the game, so it gets a note, not a re-arm line
         rep_control = rep.get("control")
         follows = bool(a) and a["kind"] == "control" and isinstance(rep_control, dict) and rep_control.get("follows") is True
+        # F658 review: following replaces only the GAME an arming carries. A missed kind, id or team still needs a re-arm.
+        no_rearm = follows and a is not None and armed is not None and all(armed.get(k) == a[k] for k in ("kind", "id", "team"))
         if self.stood_down(a):
             attention.append(STATION_NO_HILL)               # F535: not armed on purpose, so no re-arm advice
         elif a and st.get("arm_pending"):
-            attention.append(STATION_FOLLOWS if follows else STATION_BRING_BACK)   # assignment changed with the phone out of range
+            attention.append(STATION_FOLLOWS if no_rearm else STATION_BRING_BACK)   # assignment changed with the phone out of range
         if a and armed and armed.get("game") != self.play._game_byte() and not self.stood_down(a):
-            if not follows:
+            if not no_rearm:
                 attention.append(STATION_ARMED_OLDER)        # it missed the muster push
             elif STATION_FOLLOWS not in attention:
                 attention.append(STATION_FOLLOWS)
@@ -1219,6 +1233,8 @@ class StationRegistry:
                 want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
                 if want is not None and have is not None and have != want:
                     attention.append(station_pace_line(key, have, want))
+        if follows and not self.stood_down(a) and (old := self._old_app_phones()):
+            attention.append(station_old_app_line(old))   # F658 review: a following hill cannot count those players
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):

@@ -674,8 +674,8 @@ class BleControlPoint {
 // ---- HillFollower (control.js HillFollower, F658: the static hill) --------------------------------
 // A hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones set the live
 // bit from go-live to the whistle; once the hill hears any live-bit player it FOLLOWS: its current game is the byte of
-// the live players it hears, kept while one of them is heard within the presence expiry, else the newest live game
-// (the latest first heard). Only live-bit players of the current game count. One point state per game byte, at most
+// the live players it hears. Another live game takes it only with MORE live players on the point than the current one
+// (a tie keeps it). Only live-bit players of the current game count. One point state per game byte, at most
 // HILL_RING_SIZE, with the last time each was heard: a byte back after more than HILL_RING_STALE_MS starts fresh, and a
 // new byte with the ring full evicts the least recently heard (never the current). control.js says why, line for line.
 struct HillGame {
@@ -708,18 +708,21 @@ class HillFollower {
 
   HillFollowStep step(BleControlPoint& point, const PlayerPresence& players, uint32_t now, uint8_t armed_game) {
     HillFollowStep out;
-    struct H { uint8_t game; uint32_t at; };
+    struct H { uint8_t game; uint32_t at; int n; };  // n: live players on the point (present or in sight)
     H heard[PRESENCE_MAX_PLAYERS];
     size_t nh = 0;
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (!p.used || !(p.state & contract::ADVERT_PLAYER_STATE_LIVE) || p.age_ms > players.expiry_ms) continue;
+      if (p.game == 0 && armed_game != 0) continue;  // a hand-played phone is followed only by a hill of game 0
       const uint32_t at = now - p.age_ms;
       size_t k = 0;
       while (k < nh && heard[k].game != p.game) k++;
-      if (k == nh) heard[nh++] = {p.game, at};
+      if (k == nh) heard[nh++] = {p.game, at, 0};
       else if ((int32_t)(at - heard[k].at) > 0) heard[k].at = at;
+      if (p.present || p.in_circle) heard[k].n++;
     }
+    const bool first = !follows && nh > 0;
     if (nh) follows = true;
     if (!follows) {
       out.filter.armed = armed_game;
@@ -745,19 +748,26 @@ class HillFollower {
       }
       if ((int32_t)(heard[k].at - e->heard_at) > 0) e->heard_at = heard[k].at;
     }
-    bool current_heard = false;
-    for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) current_heard = true;
-    int next = has_current ? current : -1;
-    if (!current_heard) {  // the current game has no live player left: the newest live game wins
-      const HillGame* best = nullptr;
-      for (size_t k = 0; k < nh; k++) {
-        const HillGame* e = find(heard[k].game);
-        if (!e) continue;
-        if (!best || (int32_t)(e->since - best->since) > 0 || (e->since == best->since && e->game > best->game)) best = e;
-      }
-      if (best) next = best->game;
+    // Review of F658 (control.js): another live game takes the hill only with MORE live players on the point than the
+    // current game (a tie keeps it). The first follow takes the game with the most players there, then the newest.
+    auto count = [&](int g) { for (size_t k = 0; k < nh; k++) if (heard[k].game == g) return heard[k].n; return 0; };
+    const HillGame* best = nullptr;
+    for (size_t k = 0; k < nh; k++) {
+      if (has_current && heard[k].game == current) continue;
+      const HillGame* e = find(heard[k].game);
+      if (!e) continue;  // evicted in this same step
+      const int ne = heard[k].n, nb = best ? count(best->game) : -1;
+      if (!best || ne > nb || (ne == nb && ((int32_t)(e->since - best->since) > 0 || (e->since == best->since && e->game > best->game)))) best = e;
     }
-    if (next >= 0 && (!has_current || next != current)) {
+    int next = has_current ? current : -1;
+    if (best && (!has_current || count(best->game) > count(current))) next = best->game;
+    if (next >= 0 && !has_current && first && (armed_game == 0 || armed_game == next)) {
+      // the first follow into MC's own game (or from a hill of any game) keeps the point it counted
+      current = (uint8_t)next;
+      has_current = true;
+      out.switched = true;
+      out.to = next;
+    } else if (next >= 0 && (!has_current || next != current)) {
       if (has_current) {
         HillGame* from = find(current);
         if (from) { from->snap = point.snap(); from->has_snap = true; }
@@ -837,7 +847,11 @@ inline std::string encode_hill_ring(int station_id, const HillFollower& f, const
 
 // Restore what encode_hill_ring saved, for this station id only. False (nothing changed) when it does not parse, is
 // another station's, or is not following. On success the point holds the current game's state, its clock restarted.
-inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower& f, BleControlPoint& point, uint32_t now) {
+// `power_on` (the glue: esp_reset_reason() == ESP_RST_POWERON): the "ms ago" times cannot count the hours the Stick was
+// off, so every restored game is marked stale (it starts fresh when heard) and the point starts neutral. A software
+// reset (brownout, watchdog, panic) keeps the ring as saved.
+inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower& f, BleControlPoint& point, uint32_t now,
+                             bool power_on = false) {
   if (s.rfind("r1|", 0) != 0) return false;
   int id = 0, follows = 0, current = -1, used = 0;
   if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
@@ -877,8 +891,15 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
   out.follows = true;
   out.has_current = true;
   out.current = (uint8_t)current;
+  if (power_on) {
+    for (HillGame& g : out.games) {
+      if (!g.used) continue;
+      g.heard_at = g.since = now - out.stale_ms - 1;
+      g.has_snap = false;
+    }
+  }
   f = out;
-  point.load(&current_snap);
+  point.load(power_on ? nullptr : &current_snap);
   return true;
 }
 

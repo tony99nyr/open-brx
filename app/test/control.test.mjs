@@ -853,3 +853,8 @@ test('F658 follower: counts() is MC\'s game before follow mode and the live bit 
   f.clear();
   assert.equal(f.follows, false, 'the operator reset leaves follow mode');
 });
+
+test('F658 review: a neutral point restored from its snapshot has nobody capturing (+null is 0, red)', () => {
+  const p = new ControlPoint().restore(new ControlPoint().snapshot());
+  assert.equal(p.capturing, null); assert.equal(p.lastOwner, null);
+});

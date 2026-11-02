@@ -655,10 +655,19 @@ def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_i
                                                          "games": {"1": {"hold_ms": {"0": 9000}, "owner": 0, "last_ms": 60000},
                                                                    "2": {"hold_ms": {}, "owner": 255, "last_ms": 0}, "x": {}}}}, s.now_ms())
     v = s._station_view("util-1")
-    assert st_lines(v) == [T.STATION_FOLLOWS, "HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE"], v["attention"]
+    # review: the two fake phones report the release app (0.4.33), which sends no live bit, so this hill cannot count them
+    assert st_lines(v) == [T.STATION_FOLLOWS, "HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE",
+                           "2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM"], v["attention"]
+    nid = next(p["node_id"] for p in s.players.values() if p.get("node_id"))
+    s.nodes[nid]["app_ver"] = T.LIVE_BIT_MIN_APP + "+abc"
+    assert st_lines(s._station_view("util-1"))[-1] == "1 PHONE ON AN OLD APP: THIS HILL CANNOT COUNT IT"
     c = v["report"]["control"]
     assert c["follows"] is True and set(c["games"]) == {"1", "2"} and c["games"]["1"]["owner"] == 0, c
     assert not any(T.STATION_FOLLOWS in b for r in s.readiness()["board"] for b in r["blockers"]), "a note, never a START gate"
+    # review: following replaces only the game. An id change that missed the hill still needs it brought back.
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 4})
+    v = s._station_view("util-1")
+    assert v["arm_pending"] and st_lines(v)[:2] == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER], v["attention"]
 
 
 def st_lines(v):

@@ -264,6 +264,14 @@ STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN 
 # STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
 STATION_FOLLOWS = "FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED"
 STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE"
+# F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
+# an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658.
+LIVE_BIT_MIN_APP = "0.4.34"
+
+
+def station_old_app_line(n: int) -> str:
+    """F658 review: the amber line for a following hill when `n` bound player phones run an app older than LIVE_BIT_MIN_APP."""
+    return f"{n} PHONE{'' if n == 1 else 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT {'IT' if n == 1 else 'THEM'}"
 
 
 def station_pace_line(field: str, have: int, want: int) -> str:

@@ -3059,6 +3059,13 @@ static void test_f658_hill_follows_the_live_game() {
   CHECK(back.follows && back.has_current && back.current == 41);
   CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));
   CHECK(!decode_hill_ring(saved, 8, back, point, 100));   // another station's ring is not ours
+  // review of F658: after a power-on the saved "ms ago" is not the time off, so every game starts fresh when heard
+  HillFollower cold;
+  BleControlPoint cold_point;
+  CHECK(decode_hill_ring(saved, 9, cold, cold_point, 100, /*power_on=*/true));
+  CHECK(cold.follows && cold.current == 41 && cold_point.progress == 0 && cold_point.owner == contract::STATION_TEAM_ANY);
+  for (const HillGame& g : cold.games) if (g.used) CHECK(!g.has_snap && (uint32_t)(100 - g.heard_at) > cold.stale_ms);
+  CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));   // a software reset kept it
   CHECK(!decode_hill_ring("r1|9|0|-1|", 9, back, point, 100));   // not following: nothing to restore
   // the operator's reset forgets every game
   CHECK(link.reset_hill() && !link.follower().follows);

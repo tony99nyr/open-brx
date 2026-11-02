@@ -28,6 +28,7 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_system.h>  // esp_reset_reason (F658: a power-on restarts the hill ring fresh)
 #include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
 
 #include "brx_advert.h"
@@ -279,7 +280,9 @@ static void mcLoadSavedRing(StationLink& link) {
   mcPrefs.begin("brxmc", true);
   String body = mcPrefs.getString("hill_ring", "");
   mcPrefs.end();
-  if (decode_hill_ring(body.c_str(), link.assignment().id, link.follower(), link.hill(), millis()))
+  // Review of F658: after a power-on the saved times say nothing about the hours the Stick was off: start every game fresh
+  const bool power_on = esp_reset_reason() == ESP_RST_POWERON;
+  if (decode_hill_ring(body.c_str(), link.assignment().id, link.follower(), link.hill(), millis(), power_on))
     Serial.printf("RESTORED hill follows game %d (owner %d)\n", link.follower().current, link.hill().owner);
 }
 

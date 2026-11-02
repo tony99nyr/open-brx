@@ -77,6 +77,8 @@ const CASES: [string, 'blocker' | 'amber' | 'neutral', string, 'red' | 'amber' |
   ['FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED', 'amber', 'station-attention-follows', 'neutral'],   // F658
   ['HILL SET FOR 10 S CAPTURE, THIS GAME USES 15 S: BRING IT INTO WI-FI TO UPDATE', 'amber', 'station-attention-hill-pace', 'amber'],
   ['HILL SET FOR NET CAP 2, THIS GAME USES 3: BRING IT INTO WI-FI TO UPDATE', 'amber', 'station-attention-hill-pace', 'amber'],
+  ['2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM', 'amber', 'station-attention-old-app', 'amber'],
+  ['1 PHONE ON AN OLD APP: THIS HILL CANNOT COUNT IT', 'amber', 'station-attention-old-app', 'amber'],
   ['NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'station-attention-phone-not-armed', 'amber'],
   ['SETUP: A CONTROL STATION IS ASSIGNED BUT THIS MODE HAS NO HILL (MC DOES NOT ARM IT): CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF', 'amber', 'frame-setup-conflict', 'amber'],
   ['PHONE SAYS NOT ARMED: RE-ARM IT FROM ITEMS ON ARMORY', 'amber', 'station-attention-phone-not-armed', 'amber'],

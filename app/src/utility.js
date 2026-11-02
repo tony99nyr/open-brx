@@ -665,7 +665,8 @@ function controlTick(now) {
   // F658: the follower first: which game the hill counts, and the players of it that may count.
   const fs = follower.step(point, presence.players(), now, { expiryMs: presence.expiryMs, armedGame: settings.game });
   if (fs.switched) {
-    log(fs.fresh ? `F658: following game ${fs.to}${fs.from != null && fs.from !== fs.to ? ` (was ${fs.from})` : ''}: a fresh point` : `F658: following game ${fs.to} (was ${fs.from}): its saved tally is back`, 'lk');
+    log(fs.kept ? `F658: following game ${fs.to}: the point it counted is kept`
+      : fs.fresh ? `F658: following game ${fs.to}${fs.from != null && fs.from !== fs.to ? ` (was ${fs.from})` : ''}: a fresh point` : `F658: following game ${fs.to} (was ${fs.from}): its saved tally is back`, 'lk');
     saveControl();
     if (settings.live) startAdvert();   // the game byte changed: republish at once
   }

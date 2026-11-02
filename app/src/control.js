@@ -100,10 +100,10 @@ export class ControlPoint {
     if (!s || typeof s !== 'object') return this;
     const own = Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY;
     this.owner = (own === STATION_TEAM_ANY || claimable(own)) ? own : STATION_TEAM_ANY;
-    const cap = Number.isFinite(+s.capturing) ? +s.capturing : null;
+    const cap = s.capturing != null && Number.isFinite(+s.capturing) ? +s.capturing : null;   // +null is 0 (red): a null stays null
     this.capturing = cap != null && claimable(cap) ? cap : null;
     this.progress = Math.max(0, Math.min(100, +s.progress || 0));
-    const last = Number.isFinite(+s.lastOwner) ? +s.lastOwner : null;
+    const last = s.lastOwner != null && Number.isFinite(+s.lastOwner) ? +s.lastOwner : null;
     this.lastOwner = last != null && claimable(last) ? last : null;
     this.holdMs = (s.holdMs && typeof s.holdMs === 'object') ? { ...s.holdMs } : {};
     this.log = Array.isArray(s.log) ? s.log.slice(-64) : [];
@@ -305,12 +305,13 @@ export class ControlAdvertiser {
  *
  *  - FOLLOW MODE starts the first time the hill hears any live-bit player, and lasts. Before that (only old phones heard)
  *    the hill keeps today's rules: it counts players of its MC-armed game (`armedGame`, 0 = any) inside MC's window.
- *  - The CURRENT game is the byte of the live players it hears. While any live player of the current game is heard
- *    within the presence expiry, it stays; otherwise the hill moves to the newest live game (the latest first heard).
+ *  - The CURRENT game is the byte of the live players it hears. Another live game takes the hill only with MORE live
+ *    players on the point (present or in sight) than the current game; a tie keeps it. A game-0 phone is skipped unless
+ *    the hill's own game is 0. The first follow into the hill's own game (or from a game-0 hill) keeps its point.
  *  - Only live-bit players of the current game count. A player without the bit (the countdown, after the whistle) never
  *    counts in follow mode, so the live bit replaces MC's window.
  *  - THE RING: one point state per game byte, at most HILL_RING_SIZE, with the last time the byte was heard. A byte back
- *    after more than HILL_RING_STALE_MS unheard starts fresh (the 255-to-0 wrap, an MC restart that reuses a byte); a
+ *    after more than HILL_RING_STALE_MS unheard starts fresh (MC wraps 255 to 1, an MC restart that reuses a byte); a
  *    new byte with the ring full evicts the least recently heard one (never the current).
  *
  * `point` is the ONE ControlPoint the station shows and advertises: a switch saves its state into the ring and loads the
@@ -332,21 +333,27 @@ export class HillFollower {
    * changed this step (else null).
    */
   step(point, players, now, { expiryMs, armedGame = 0 }) {
-    const heard = new Map();    // byte -> the newest advert time of a live player
+    // byte -> { at: the newest advert time of a live player, n: its live players on the point (present or in sight) }
+    const heard = new Map();
     for (const p of players || []) {
       if (!p || !(p.state & PLAYER_STATE.live)) continue;
       const age = Number.isFinite(p.ageMs) ? p.ageMs : 0;
       if (age > expiryMs) continue;
       const g = p.game || 0, at = now - age;
-      if (!heard.has(g) || heard.get(g) < at) heard.set(g, at);
+      if (g === 0 && armedGame !== 0) continue;   // a hand-played phone (game 0) is followed only by a hill of game 0
+      const h = heard.get(g) || { at, n: 0 };
+      h.at = Math.max(h.at, at);
+      if (p.present || p.inCircle) h.n++;
+      heard.set(g, h);
     }
+    const first = !this.follows && heard.size > 0;
     if (heard.size) this.follows = true;
     if (!this.follows) {
       // Fallback, today's rule: MC's game byte scopes the players (0 on either side = any game).
       return { players: (players || []).filter(p => this.counts(p, armedGame)), switched: null };
     }
     let freshCurrent = false;
-    for (const [g, at] of heard) {
+    for (const [g, { at }] of heard) {
       let e = this.games.get(g);
       if (e && at - e.heardAt > this.staleMs) { e.snap = null; e.since = at; if (g === this.current) freshCurrent = true; }
       if (!e) {
@@ -356,18 +363,25 @@ export class HillFollower {
       }
       e.heardAt = Math.max(e.heardAt, at);
     }
-    let next = this.current;
-    if (next == null || !heard.has(next)) {   // the current game has no live player left: the newest live game wins
-      let best = null;
-      for (const g of heard.keys()) {
-        const e = this.games.get(g), b = best == null ? null : this.games.get(best);
-        if (!e) continue;   // evicted in this same step (more live games than the ring holds)
-        if (!b || e.since > b.since || (e.since === b.since && g > best)) best = g;
-      }
-      if (best != null) next = best;
+    // Review of F658: another live game takes the hill only with MORE live players on the point than the current game
+    // (a tie keeps it), so one phone that missed END cannot pin the hill, and a stranger takes an empty hill only until
+    // more real players arrive. The first follow takes the game with the most players there (then the newest).
+    const n = g => (heard.get(g) || { n: 0 }).n;
+    let best = null;
+    for (const g of heard.keys()) {
+      if (g === this.current) continue;
+      const e = this.games.get(g), b = best == null ? null : this.games.get(best);
+      if (!e) continue;   // evicted in this same step (more live games than the ring holds)
+      if (!b || n(g) > n(best) || (n(g) === n(best) && (e.since > b.since || (e.since === b.since && g > best)))) best = g;
     }
+    let next = this.current;
+    if (best != null && (this.current == null || n(best) > n(this.current))) next = best;
     let switched = null;
-    if (next !== this.current) {
+    if (next !== this.current && first && (!armedGame || armedGame === next)) {
+      // Review of F658: the first follow into MC's own game (or from a hill of any game) keeps the point it counted
+      this.current = next;
+      switched = { from: null, to: next, fresh: false, kept: true };
+    } else if (next !== this.current) {
       const from = this.current;
       if (from != null && this.games.has(from)) this.games.get(from).snap = point.snapshot();
       const e = this.games.get(next);

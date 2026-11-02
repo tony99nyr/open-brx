@@ -657,18 +657,25 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    go-live to the whistle (the engine's phase `live`; `armed` is the countdown).
 2. **Follow mode.** A control point hears every game byte (presence is keyed by game and player number). Once it has
    heard any live-bit player it follows, and it stays in follow mode. Its current game is the byte of the live
-   players it hears. While a live player of the current game is heard within the presence expiry (4 s), the hill
-   keeps that game. Otherwise it moves to the newest live game (the one first heard most recently).
+   players it hears. Another live game takes the hill only when it has MORE live players on the point (present or
+   in sight) than the current game; a tie keeps the current game. So one phone that missed END cannot pin the
+   hill, and a stranger alone on an empty hill holds it only until more real players arrive. The first follow takes
+   the game with the most players on the point, then the newest. When that first game is the hill's MC-armed game
+   (or the hill's game is 0), the point it already counted is kept. A live phone on game 0 (played by hand) is
+   followed only by a hill whose own game is 0.
 3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
    A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
    The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
    the current game's byte, so that game's phones read it.
-4. **The tally ring.** The hill keeps one point state per game byte (owner, progress, possession, capture log) and
-   the last time each byte was heard, at most `HILL_RING_SIZE` (4). A byte heard again after more than
-   `HILL_RING_STALE_MS` (10 minutes) unheard starts fresh, which covers the 255-to-0 wrap and an MC restart that
-   reuses a byte. A fifth byte evicts the least recently heard one, never the current one. A switch saves the
+4. **The tally ring.** The hill keeps one point state per game byte and the last time each byte was heard, at most
+   `HILL_RING_SIZE` (4). Each entry keeps the owner, the progress and the team building it, the last owner and the
+   possession tally per team. The phone also keeps its capture log; the Stick has no capture log. A byte heard again
+   after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts fresh, which covers MC's wrap of the game byte
+   (255 goes to 1; MC never sends 0) and an MC restart that reuses a byte. A fifth byte evicts the least recently heard one, never the current one. A switch saves the
    point into the ring and loads the other game's state with its clock restarted, so no time banks across it. The
-   ring persists beside the point: `brx.station.hillring` on a phone, NVS `hill_ring` on a Stick.
+   ring persists beside the point: `brx.station.hillring` on a phone, NVS `hill_ring` on a Stick. A Stick restored
+   after a power-on cannot know how long it was off, so every restored game starts fresh; a software reset keeps
+   the ring. Each passing live stranger of another game takes a ring slot (and a Stick player slot) while heard.
 5. **One-time setup.** Kind, id, team, threshold, `capture_s` and `net_cap` stay as the last arming (MC or by
    hand) set them. `station_config` works as before; a hill out of range keeps what it has. A following hill
    ignores a new game byte in `station_config` for its point and ring: the live bit decides. The operator's point

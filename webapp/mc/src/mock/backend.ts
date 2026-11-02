@@ -8,7 +8,7 @@ import type {
 import { GAME_VOLUME_MAX, GAME_VOLUME_MIN, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS, STATION_PROTECT_S_DEFAULT, TIMED_PROTECT_S_DEFAULT, WEAPON_DELAY_MS_DEFAULT } from '../api/types';
 import {
   ECHO_FAULT, GUN_CONFIG_FAULT, GUN_LINK_LOST, HOLD_TARGET_MAX_S, OFFLINE_AFTER_MS, POOL_FAULT, POWERUP_STATION_ID_MAX, STALE_ACK_FAULT, STATION_ARMED_OLDER,
-  STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NOT_ARMED, STATION_PACE_REARM, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
+  STALE_LIVE_RETELL_MS, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NOT_ARMED, STATION_PACE_REARM, LIVE_BIT_MIN_APP, STATION_REARM, STATION_TEAM_ANY, TEAM_KEYS,
   OBJECTIVE_MODES, STATION_NO_HILL, GUN_DID_NOT_TAKE_CONFIG,
 } from '../api/contract.gen';
 import { chainConflict, withPolicy } from '../rules/loadoutPolicy';
@@ -221,6 +221,24 @@ export class MockBackend implements Api {
     if (m === 'old') throw Object.assign(new Error('Not Found'), { status: 404 });
     return { enabled: m === 'on', presets: clone(POWERUP_PRESETS) };
   }
+  /** F658 review, as stations.py `_old_app_phones`: bound player phones whose app is older than LIVE_BIT_MIN_APP (an
+   *  app version that does not parse as MAJOR.MINOR.PATCH is not counted, as types.py `parse_app_ver`). */
+  private oldAppPhones(): number {
+    const parse = (v: unknown): number[] | null => {
+      if (typeof v !== 'string') return null;
+      const parts = v.trim().split('+', 1)[0].split('-', 1)[0].split('.');
+      return parts.length === 3 && parts.every(x => /^\d+$/.test(x)) ? parts.map(Number) : null;
+    };
+    const older = (a: number[], b: number[]) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    const floor = parse(LIVE_BIT_MIN_APP)!;
+    return this.players.filter(p => {
+      const gun = GUNS.find(row => row[0] === p.gun_id);
+      const nid = gun ? `node_${gun[1]}` : '';
+      if (!nid || !this.nodeReports[nid] || this.evicted.has(nid)) return false;
+      const v = parse(this.appVer(p.gun_id as string).app_ver);
+      return v != null && older(v, floor) < 0;
+    }).length;
+  }
   private stationViews(): StationView[] {
     return Object.entries(this.stations).map(([node_id, st]) => {
       const attention: string[] = [];
@@ -228,10 +246,12 @@ export class MockBackend implements Api {
       const down = this.stoodDown(a);   // F535: stations.py stood_down
       const rc = rep.control;   // F658: a hill that follows the players' live game gets a note, not a re-arm line
       const follows = !!a && a.kind === 'control' && !!rc && rc.follows === true;
+      // F658 review: following replaces only the game; a missed kind, id or team still needs a re-arm (stations.py no_rearm)
+      const noRearm = follows && !!st.armed && st.armed.kind === a!.kind && st.armed.id === a!.id && st.armed.team === a!.team;
       if (down) attention.push(STATION_NO_HILL);
-      else if (a && st.arm_pending) attention.push(follows ? STATION_FOLLOWS : STATION_BRING_BACK);
+      else if (a && st.arm_pending) attention.push(noRearm ? STATION_FOLLOWS : STATION_BRING_BACK);
       if (a && st.armed && st.armed.game !== this.gameNo && !down) {
-        if (!follows) attention.push(STATION_ARMED_OLDER);
+        if (!noRearm) attention.push(STATION_ARMED_OLDER);
         else if (!attention.includes(STATION_FOLLOWS)) attention.push(STATION_FOLLOWS);
       }
       const fresh = !down && !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates (F535: none)
@@ -247,6 +267,8 @@ export class MockBackend implements Api {
             ? `HILL SET FOR ${have} S CAPTURE, THIS GAME USES ${want} S: ${STATION_PACE_REARM}` : `HILL SET FOR NET CAP ${have}, THIS GAME USES ${want}: ${STATION_PACE_REARM}`);
         }
       }
+      const old = follows && !down ? this.oldAppPhones() : 0;   // F658 review: stations.py _old_app_phones
+      if (old) attention.push(`${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT ${old === 1 ? 'IT' : 'THEM'}`);
       if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push(STATION_BATTERY_LOW);

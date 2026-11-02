@@ -135,6 +135,9 @@ export const STATION_NO_HILL = 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN IT
  *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line. */
 export const STATION_FOLLOWS = 'FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED';
 export const STATION_PACE_REARM = 'BRING IT INTO WI-FI TO UPDATE';
+/** F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
+ *  an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658. */
+export const LIVE_BIT_MIN_APP = '0.4.34';
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 1500;
 export const STATION_PROTECT_S_DEFAULT = 2;

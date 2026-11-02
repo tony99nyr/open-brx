@@ -1102,6 +1102,57 @@
         {"t": 8000, "follows": true, "hill": {"team": 0, "state": [], "value": 40, "game": 7}},
         {"t": 14000, "hill": {"team": 255, "state": [], "value": 0, "game": 7}}
       ]
+    },
+    {
+      "name": "F658: one live phone that missed END cannot pin the hill to its old game",
+      "why": "Red holds game 7, then walks off still live (it missed END) and stays heard at the edge. Two blue players of game 8 arrive on the point: game 8 has more live players there than game 7, so the hill moves to game 8 at once.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}},
+      "until_ms": 26000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 12250, "to_ms": 26000, "every_ms": 250, "rssi": [-80]}, {"id": 2, "from_ms": 14000, "to_ms": 26000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 14000, "to_ms": 26000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 13750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
+        {"t": 14000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8]},
+        {"t": 26000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}}
+      ]
+    },
+    {
+      "name": "F658: a stranger takes an empty hill, and loses it when more real players arrive; the real game gets its tally back",
+      "why": "Blue holds game 8 and leaves. A red stranger of game 9 alone on the empty hill takes it (1 live player against 0). Two blue players of game 8 come back: 2 beats 1, so the hill returns to game 8 with its saved owner.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"2": {"team": 1, "state": ["alive", "live"], "game": 8}, "4": {"team": 1, "state": ["alive", "live"], "game": 8}, "5": {"team": 0, "state": ["alive", "live"], "game": 9}},
+      "until_ms": 28000,
+      "series": [{"id": 2, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 20000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 25000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 25000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 19750, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}},
+        {"t": 20000, "hill": {"team": 255, "state": [], "value": 0, "game": 9}, "games": {"8": {"owner": 1}}},
+        {"t": 24000, "hill": {"team": 0, "state": ["rising"], "value": 40, "game": 9}},
+        {"t": 25000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"9": {"owner": 255}}}
+      ]
+    },
+    {
+      "name": "F658: the first follow into the hill's own game keeps the point it counted",
+      "why": "Armed for game 7, the hill counts an old-app red player (no live bit) by today's rules. When that phone goes live in game 7, the hill starts following game 7 and keeps the bar: it does not wipe the match it already counted.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 7, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive"], "game": 7}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 5250, "to_ms": 11000, "every_ms": 250, "rssi": [-60], "state": ["alive", "live"]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 5250, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 53, "game": 7}},
+        {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: a hill of game 7 never follows a hand-played phone (game 0)",
+      "why": "A live phone on game 0 plays by hand. A hill MC armed for game 7 does not follow it; by today's rules it still counts that phone (0 is any game).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 7, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 0}},
+      "until_ms": 6000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}}
+      ]
     }
   ]
 }
