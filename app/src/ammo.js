@@ -589,8 +589,22 @@ export class Ammo {
   softReloadNeeded() {
     const active = this.host.activeSlot;
     if (!(active === 0 || active === 1) || this.host.slotCount() < 2) return false;
+    // Review (Opus, H2): a chain weapon (the Shotgun) loads shell by shell at `reload_s` a shell, and one `$AMMO` at that
+    // time would load the whole tube in one shell's time. It keeps the gun's own reload.
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[active];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    if (row && row.reload_type === 'chain') return false;
     const ls = this.lastShot, known = !!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2);
     return known ? ls.slot !== active : active !== 0;
+  }
+  /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
+   *  fired last, with room and reserve)? Only then does the gun ignore ALT. PURE. */
+  gunReloadsOther(r = this.reloading) {
+    if (!r || !r.soft) return false;
+    const ls = this.lastShot;
+    if (!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== r.slot)) return false;
+    const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
+    return !(cap && mag != null && mag >= cap) && res !== 0;
   }
   /** When a running takeover gives up waiting for the gun.
    *
@@ -734,7 +748,8 @@ export class Ammo {
     // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
     // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
-    if (r && !r.auto && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
+    // F650 review (Opus, M1): a phone reload is not a gun reload; the gun ignores ALT only while it reloads the other slot.
+    if (r && !r.auto && (!r.soft || this.gunReloadsOther(r)) && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)
     // came from a bench of PHONE EQUIPS (F436, 0/6 vs 4/4), never of ALT; the field reports it rested on are explained by

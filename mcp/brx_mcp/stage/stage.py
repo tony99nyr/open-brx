@@ -5679,7 +5679,8 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
-        if r and not r.get("auto") and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"]):   # F226: ammo.js `!r.auto`
+        if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
+                and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
         # ammo.js `altPressed` (F650): ALT before the first trigger pull of a life is a swap like any other (the F445 rule
@@ -6515,9 +6516,25 @@ class GunStage:
         active = self.active_slot
         if active not in (0, 1) or self._slot_count() < 2:
             return False
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []   # review H2: a chain weapon keeps the gun's reload
+        w = (ws[active] if active < len(ws) else None) or {}
+        if (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain":
+            return False
         ls = self._last_shot_slot
         known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
         return ls != active if known else active != 0
+
+    def _gun_reloads_other(self, r: dict | None = None) -> bool:
+        """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
+        last (room and reserve)? Only then does the gun ignore ALT."""
+        r = r if r is not None else self.reloading
+        if not r or not r.get("soft"):
+            return False
+        ls = self._last_shot_slot
+        if ls is None or ls >= 2 or self._last_shot_life != self._life_queued or ls == r["slot"]:
+            return False
+        cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
+        return not (cap and mag is not None and mag >= cap) and res != 0
 
     def _reload_sounds(self, slot: int) -> list[str]:
         """engine.js `_reloadSounds` (F650): the head's `$WEAP` reload parts for a slot (t31-t33), empty ids dropped."""
@@ -6558,8 +6575,10 @@ class GunStage:
             return mag
         self._acct_wrote(slot, to, left)
         end = self._reload_sounds(slot)[1:]
-        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"] + ([f"$PLAY,,4,6,{end[-1]},,,,*"] if end else []),
-                                    "F650: the phone reloads the weapon in hand", gap_ms=0))
+        # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
+        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0))
+        if end:
+            self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
         self._hold_accuracy_writes("F650 reload")
         self._prev_ammo[slot] = to; self._prev_reserve[slot] = left
         self._publish_ammo(slot, to, left)

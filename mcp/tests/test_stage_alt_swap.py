@@ -460,26 +460,23 @@ def test_f650_the_lever_after_alt_is_reloaded_by_the_phone_and_the_gun_s_own_rel
     asyncio.run(go())
 
 
-def test_f650_a_silent_lever_after_alt_still_reloads_the_weapon_in_hand():
-    """The 2026-11-01 morning and evening cases: the slot that fired last is full, so the gun's lever does nothing."""
+def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
+    """ammo.js `softReloadNeeded` (Opus review H2): the stage's slot 1 is the Shotgun, a shell-by-shell chain. After ALT onto it
+    with slot 0 the slot that fired last, the lever opens the gun's own takeover, never the phone's one-shot `$AMMO`."""
     async def go():
         st, _gun, clock = await _live()
         _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
         st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
         await _tick(st, clock, st._switch_window_s() + 0.05)
         _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
-        st._on_rx("$ALCD,32,100,0,182,0,*")
         st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
         await _tick(st, clock, st._switch_window_s() + 0.05)
         assert st.active_slot == 1
-        cap1 = st._ammo_by_slot()[1]; res1 = st._prev_reserve[1]; mag1 = st._prev_ammo[1]; n = len(_tx(st))
+        n = len(_tx(st))
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading and st.reloading["soft"]
+        assert st.reloading and not st.reloading["soft"], st.reloading
         await _tick(st, clock, 3)
-        rows = [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
-        assert rows == [f"$AMMO,1,{cap1},{res1 - (cap1 - mag1)},1,*"], rows
-        assert st.active_slot == 1 and st.reload_outcome["why"] == "filled"
-        assert not any("did NOT take" in t for t in _texts(st))
+        assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
     asyncio.run(go())
 
 

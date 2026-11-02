@@ -5233,6 +5233,53 @@ test('F650: the 2026-11-01 morning and evening cases, the last-fired slot full, 
   f542Lever(h);
   assert.equal(h.eng.state().reloading, false, 'a full weapon in hand: the lever does nothing, as on the gun');
 });
+// Opus review of the software reload.
+function morningOnSlot1(h) {
+  f542Shot(h, '$ALCD,31,100,0,384,0,*');
+  f542Alt(h); f542Shot(h, '$ALCD,4,100,1,288,0,*');
+  f542Alt(h); f542Shot(h, '$ALCD,30,100,0,384,0,*');
+  f542Lever(h); h.adv(1200); h.frame('$ALCD,32,100,0,382,0,*');   // slot 0 fired last, and is full
+  h.adv(5000); h.eng.tick(); h.adv(300); f542Alt(h);
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: on slot 1, slot 0 fired last and full');
+}
+test('F650 review H1: the phone\'s $AMMO goes as a write of its own, never in a batch with a $PLAY', () => {
+  const h = liveSwapHarness();
+  const batches = []; const w = h.eng._write.bind(h.eng); h.eng._write = (fr, why, ...rest) => { batches.push([...fr]); return w(fr, why, ...rest); };
+  f542TonySequence(h);
+  f542Lever(h); h.adv(5000); h.eng.tick();
+  const b = batches.find(x => x.some(f => f.startsWith('$AMMO,0,')));
+  assert.ok(b, 'setup: the phone wrote the reload');
+  assert.deepEqual(b.filter(f => !f.startsWith('$AMMO,')), [], 'no $PLAY rides with the $AMMO');
+});
+test('F650 review H2: a chain weapon in hand keeps the gun\'s own reload', () => {
+  const h = liveSwapHarness();
+  const row = h.eng.weaponRow.bind(h.eng);
+  h.eng.weaponRow = id => (id === 'smg' ? { ...(row(id) || {}), reload_type: 'chain', reload_s: 0.4 } : row(id));
+  morningOnSlot1(h);
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading && h.eng.am.reloading.soft, false, 'no phone reload of a shell-by-shell tube');
+});
+test('F650 review M1: ALT during the phone\'s reload, the last-fired slot full, is a swap and the reload is dropped', () => {
+  const h = liveSwapHarness();
+  morningOnSlot1(h);
+  const n = h.writes.length;
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 1');
+  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  const s = h.eng.state();
+  assert.equal(s.switching, true, 'the gun takes the ALT: it is not reloading anything');
+  assert.equal(s.reloading, false); assert.equal(s.reloadOutcome.why, 'swapped');
+  h.adv(5000); h.eng.tick();
+  assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,')), [], 'no $AMMO to the weapon swapped away from');
+});
+test('F650 review M1: ALT during the phone\'s reload while the gun reloads the other slot is still ignored, as on the gun', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // slot 1 fired last at 2 rounds: the gun's lever reloads it
+  f542Lever(h);
+  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun ignores ALT mid-reload');
+  assert.equal(h.eng.state().reloading, true);
+});
 test('F650: the lever right after the weapon in hand fired is the gun\'s own reload, not the phone\'s', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);

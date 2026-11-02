@@ -4965,8 +4965,11 @@ export class Engine {
     const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
     if (!give) return mag;
     this.am.acctWrote(slot, to, left);
+    // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
+    // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
+    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand');
     const end = this._reloadSounds(slot).slice(1);
-    this._write([`$AMMO,${slot},${to},${left},1,*`, ...(end.length ? [`$PLAY,,4,6,${end[end.length - 1]},,,,*`] : [])], 'F650: the phone reloads the weapon in hand');
+    if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
     this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it
     this.am.setPrev(slot, to, left);
     this.am.publish(slot, to, left);   // the ammo block shows the new magazine before the gun's echo
