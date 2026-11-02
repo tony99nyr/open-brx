@@ -56,6 +56,7 @@ const E2E = [
   ['frame', 6, 1050], ['lobby-updating', 3, 1050], ['recap-next', 20, 1050], ['feed-reload', 9, 1050],
   ['mc-restart', 13, 1050], ['live-board', 18, 1050],
   ['vqa2', 26, 1050], ['play', 45, 1100], ['build', 16, 1050], ['lobby-outcome', 6, 1050], ['observability', 25, 1050],
+  ['stalled-tab', 50, 1050],
 ];
 // Measured 2026-10-05 (budget.mjs TASK_ALLOWANCES's comment); every other e2e script fits the default UI allowance.
 const E2E_TASKS = { play: 300 };
