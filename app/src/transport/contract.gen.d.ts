@@ -1093,6 +1093,16 @@ export interface DotSpec {
   duration_ms: number;
 }
 
+/** F662 R2 (brx3's spec, Tony 2026-11-02): hold-length recovery. A degraded or heavy weapon released by the trigger goes
+ *  back to crisp after `per_round_ms` for each round of the hold past `after_shots`, clamped to `min_ms`..`max_ms`, in
+ *  one write. A pull before then cancels it, and the rung and the count carry into the new pull. An alternative to
+ *  `reset_on_release`: when both are set, this one wins. Absent = today's settle clock. */
+export interface RecoilRecovery {
+  per_round_ms: number;
+  min_ms: number;
+  max_ms: number;
+}
+
 /** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
  *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
  *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
@@ -1123,6 +1133,8 @@ export interface Recoil {
   settle_ms?: number;
   /** F663: back to crisp the moment the trigger comes up (default off) */
   reset_on_release?: boolean;
+  /** F662 R2: back to crisp after a pause that grows with the hold (default off) */
+  recovery?: RecoilRecovery;
 }
 
 /** F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
