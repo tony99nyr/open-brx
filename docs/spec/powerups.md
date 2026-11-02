@@ -188,6 +188,8 @@ Items spawn at fixed times on the match clock: at `first_at_s`, then every `spaw
 from its spawn time until a player takes it; then the station is empty until the next spawn time. An item nobody
 took simply stays; a spawn time never stacks a second one (Tony: only ever ONE item waiting at a station; the next spawn replaces it). Every phone and station can compute the schedule from
 the match clock. The station itself decides who took an item (below) and advertises it, so every phone in range can read it taken from the advert (the HUD does not show it, F425).
+A station that MC could not arm for this game follows the players' live game instead (F658, utility.md §5d.9): its
+clock starts at its first sighting of a live in-scope player, so its spawns can run later than MC's schedule.
 
 ## One item per station, locked for the match (Tony, 2026-09-24)
 
