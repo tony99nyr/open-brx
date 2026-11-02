@@ -3292,6 +3292,9 @@ class GunStage:
         # table IN FRONT of `$SPAWN`. Nothing is pending, so nothing ends at go-live.
         rp = self._respawn_profile()
         late = self._pick_table("sir_pool") if rp and not self._sir_live else []
+        # F645 (engine.js `_spawn`): a start that missed T-3 never re-sent the head's `$GSET`, so it rides first here
+        gset_late = self._head_gset() if not self._pre_armed else None
+        gset_pre = [gset_late] if gset_late else []
         if rp and not late and not self._sir_live:
             self._log("T-0 spawn: no live hit table to write (no sir_pool)", "error")
         if rp:
@@ -3320,9 +3323,9 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):   # engine.js `_spawn`: scheduled +1.0 s from the call that QUEUES the burst (led-language.md §3.1/§5)
             self._headset_delayed(hs["start"], "headset start", life=self._life_queued)   # the life this spawn starts
-        await self._write_life(late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
+        await self._write_life(gset_pre + late + ([ps] if ps else []) + list(rp["spawn"] if rp else self.bundle["spawn"]) + [SFLASH]
                           + sounds + fill,
-                          "spawn" + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
+                          "spawn" + (" + $GSET (missed T-3)" if gset_pre else "") + (f" + hit table {len(late)}r (late)" if late else "") + self._line_tag(fr, tag)
                           + ((" + klaxon (one two-slot frame)" if both else " + klaxon") if kx else "") + ps_why + (f" + shield pool {self.max_shield}" if fill else ""),
                           take=bool(late))
         self._after_spawn()

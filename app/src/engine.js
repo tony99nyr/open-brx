@@ -3521,6 +3521,10 @@ export class Engine {
     // already on the gun (`_preArmTable` at T-3). A late start that missed T-3 carries the table IN FRONT of `$SPAWN`.
     const rpSpawn = this._respawnProfile();
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
+    // F645 (review): a start that missed T-3 (a late spawn, a hot-join) never ran `_preArmTable`, so the head's `$GSET`
+    // rides in front of this burst instead.
+    const gsetLate = this._preArmed !== this.matchId ? this._headGset() : null;
+    const gsetPre = gsetLate ? [gsetLate] : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
     // X3: the fill goes last. Bench 2026-10-02 (0.4.16, Tony): the klaxon is on the INTERRUPT slot (token 1), and sent
@@ -3535,7 +3539,7 @@ export class Engine {
     if (kx) this.cuesFired.add('klaxon');
     const both = kx && sp.frame ? twoSlotPlay(kx, sp.frame) : null;
     const sounds = both ? [both] : [...(kx ? [kx] : []), ...(sp.frame ? [sp.frame] : [])];
-    this._writeSpawnBurst([...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
+    this._writeSpawnBurst([...gsetPre, ...late, ...(ps.frame ? [ps.frame] : []), ...(rpSpawn ? rpSpawn.spawn : this.frames.spawn), SFLASH, ...sounds], fill, 'spawn' + (gsetPre.length ? ' + $GSET (missed T-3)' : '') + (late.length ? ` + hit table ${late.length}r (late)` : '') + (kx ? (both ? ' + klaxon (one two-slot frame)' : ' + klaxon') : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : ''), life, [], null, late.length > 0);   // quirk (a): the take is claimed when the burst reaches the gun
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._hurtSent = false;
     this._pendingHurtWrite = false;

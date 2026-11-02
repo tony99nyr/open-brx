@@ -496,3 +496,32 @@ def test_f497_weapon_arming_counts_the_planned_wait_of_a_queued_burst():
         nums = [v for v in seen if v is not None]
         assert all(b <= a + 1e-9 for a, b in zip(nums, nums[1:])), f"weapon_arming_s never rises: {seen}"
     asyncio.run(run())
+
+
+def test_f645_the_heads_gset_goes_again_at_t_minus_3_or_in_front_of_a_late_spawn():
+    """engine.js `_preArmTable` / `_spawn` (F645): the head's own `$GSET` is written again before go-live, once, so a
+    gun that kept a try-out's friendly-fire-off value gets the match's value back."""
+    async def run():
+        st, mgr, clock = _mk()
+        gset = next(f for f in st.bundle["head"] if f.startswith("$GSET,"))
+        await st.connect(GUN); await st.arm()
+        n = len(tx(mgr))
+        await st.spawn(); await settle(st)
+        new = tx(mgr)[n:]
+        assert [f for f in new if f.startswith("$GSET,")] == [gset], new
+        assert new.index(gset) < new.index(_sir(new)[0]) < new.index("$SPAWN,,*")
+        why = [e["why"] for e in st.log if e["kind"] == "tx" and e["text"] == gset]
+        assert why[-1].startswith("friendly-fire setting again (F645)"), why
+
+        late, lmgr, _ = _mk()
+        await late.connect(GUN); await late.arm()
+
+        async def missed():   # a late start: the T-3 tick never ran
+            return None
+        late._pre_arm_table = missed
+        n = len(tx(lmgr))
+        await late.spawn(); await settle(late)
+        new = tx(lmgr)[n:]
+        assert [f for f in new if f.startswith("$GSET,")] == [gset], new
+        assert new.index(gset) < new.index(_sir(new)[0]) < new.index("$SPAWN,,*"), "first in the late burst"
+    asyncio.run(run())
