@@ -746,16 +746,33 @@ threshold, live, armed, ...}`) so `_station_view()`'s `report` block and its att
 ### 5g.3 Credentials and discovery: the Stick cannot scan the QR
 
 The field default for a phone is **scan MC's QR** (contracts §5). A Stick has a camera-less 1.14" screen, so
-that door is shut and the other two must both work:
+that door is shut. The Stick finds MC through the doors below, in this order, while its link is LOOKING_FOR_MC
+(F642, `hardware/m5sticks3/mc_discovery.h`):
 
-1. **mDNS** — MC advertises `_openbrx._tcp` with TXT `{ver, session_id, ws_path, server_name}` (`net.py
-   advertise_mdns`); the Stick browses it. This is the intended path.
-2. **The typed address, as the mandatory floor** — contracts is explicit that mDNS fails on hostile Wi-Fi and
-   locked-down routers, so a floor is required. On a Stick that floor is the **serial console**, which already
-   exists and already persists settings (`ID`, `GAME`, `TXPIN`): add `WIFI <ssid> <pass>` and `MC <ws url>`.
+1. **The typed address, as the mandatory floor.** Contracts is explicit that mDNS fails on hostile Wi-Fi and
+   locked-down routers, so a floor is required. On a Stick that floor is the **serial console**: `WIFI <ssid>
+   <pass>` and `MC <ws url>`. The typed URL is saved (F397). It gets three failed dials, then one dial a minute.
+2. **The last good MC.** After a welcome that grants a session, the Stick saves the address it dialled as a
+   hint, and dials it twice per cycle. It saves only a plain `ws://` URL whose host is a literal private IPv4
+   (10/8, 172.16/12, 192.168/16), and never the typed URL. The hello verifies the hint: an address that does not
+   welcome the Stick is only a failed dial.
+3. **mDNS.** MC advertises `_openbrx._tcp` with TXT `{ver, session_id, ws_path, server_name}` (`net.py
+   advertise_mdns`); the Stick browses it for 20 s per cycle.
+4. **A scan of the Stick's own /24** (the netmask's range when it is narrower) for TCP port 8766, like the
+   phone's F139 sweep. A probe is a TCP connect only and sends nothing. The scan never blocks the loop, keeps at
+   most 4 probes open, starts at most 20 a second and gives each 600 ms. A host that accepts is dialled, and is
+   adopted only when its welcome arrives; otherwise the scan resumes at the next address. This door finds an MC
+   that mDNS cannot reach, for example one behind a Windows `netsh portproxy`.
 
-⚠ **Do NOT cache an MC IP across sessions** (contracts §5, and A28: the public hostname is random per tunnel
-start). The Stick caches the SSID, never the address.
+A full cycle with no MC rests for 30 s (mDNS still browses), then starts again at door 1. A refused TCP connect
+ends a dial at once; an 8 s deadline ends a dial to a host that accepts TCP but never sends an ok welcome. Every
+door honours LINK OFF and the MUSTER drop. The scan stops when the link leaves LOOKING_FOR_MC for any reason but
+its own dial, and it is skipped (restarting next cycle) while the station counts a live game (a live hill, or MC's A58 match lock), because its
+probes share the radio with the BLE presence scan. The other doors still run then.
+
+⚠ **Never cache a tunnel or hostname MC address** (contracts §5 and its A85 exception, and A28: the public
+hostname is random per tunnel start). The last good MC is a private LAN IPv4 only, and the hello checks it on
+every use.
 
 The SoftAP captive-config tier in `../../hardware/brx-station-spec.md` would remove the serial cable from this
 story entirely. It is designed and unbuilt; the serial path is what unblocks the first Stick.
