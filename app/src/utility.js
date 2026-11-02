@@ -201,9 +201,13 @@ async function startAdvert(quiet = false) {
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
     advertising = !!(r && r.advertising);
-    settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
+    // `live` is the operator's intent: a reload mid-game comes back advertising (the settings stay behind the ⓘ gate).
+    // F648 (game 2026-11-01 issue 7): a failed start never clears it, or the ticks' retry (gated on `live`) never runs and one
+    // failed re-key leaves a hill dark for the rest of the match. A station that was never on air stays off.
+    if (advertising) settings.live = true;
+    save();
     if (!quiet) log(`advertising ${name} as ${TEAM_NAME_BY_TID[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
-  } catch (e) { advertising = false; settings.live = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
+  } catch (e) { advertising = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
   finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
 }
@@ -1252,7 +1256,8 @@ function wireExit() {
     get rangeEditing() { return _editOpen; }, setRangeIdleMs: ms => { _rangeIdleMs = ms; },
     get support() { return support; }, setSupport: s => { support = { ...support, ...s }; render(); },
     applyNativeInset, controlTick, clampPace,
-    tick, onSighting, scanHit, stationNow, useStationClock };   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    tick, onSighting, scanHit, stationNow, useStationClock,   // F590 (3) test seams: one station tick, and the station's own clock   // F420 test seam: screens.mjs fakes window.Capacitor.isNativePlatform, then re-runs this
+    plugins };   // F648 test seam: a fake beacon plugin (app/test/utility-advert-retry)
   window.brxUtil = window.brx = window.brxUtility;
 })();
 
