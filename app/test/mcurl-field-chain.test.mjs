@@ -65,3 +65,15 @@ test('a failed dial leaves the stored address alone; only a user-named one is st
   assert.equal(HUD_POLICY.rememberAtDial({ remember: false, user: true }), false);
   assert.equal(HUD_POLICY.rememberAtBound({}), true);
 });
+
+test('a probe that opens at 650 ms of a 700 ms bound still counts as open', async () => {
+  let now = 0, seq = 0; const q = [];
+  const timers = { setTimeout(fn, ms) { const id = ++seq; q.push({ id, at: now + ms, fn }); return id; },
+    clearTimeout(id) { const i = q.findIndex(t => t.id === id); if (i >= 0) q.splice(i, 1); } };
+  const advance = to => { for (;;) { q.sort((a, b) => a.at - b.at); if (!q.length || q[0].at > to) break; const t = q.shift(); now = t.at; t.fn(); } now = to; };
+  const ws = { onopen: null, onclose: null, onerror: null, onmessage: null, close() {} };
+  const p = probeWs('ws://192.0.2.55:8766/ws', { wsFactory: () => ws, timers, timeoutMs: 700 });
+  advance(650); ws.onopen();
+  advance(700);                       // the bound fires while the open is still inside its grace
+  assert.equal(await p, 'open');
+});

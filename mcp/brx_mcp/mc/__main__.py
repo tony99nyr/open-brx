@@ -806,6 +806,11 @@ LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.ws_port == 8765 or (args.ws_port and args.ws_port == args.port):
+        # F659: phones read 8765 as the console and dial 8766 instead, and one port cannot serve both sockets
+        print(f"Mission Control cannot put the node socket on {args.ws_port}: that is the console port. "
+              "Start MC with --ws-port <another> (default 8766).", file=sys.stderr, flush=True)
+        raise SystemExit(2)
     if args.powerups:   # L1 (2026-10-10): a no-op since F372; say so, so a host drops it rather than keep a shim forever
         print("  note: --powerups does nothing (powerups are on by default); drop it from your command", flush=True)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)

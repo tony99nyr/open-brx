@@ -64,7 +64,8 @@ const refuse = reason => ({ refused: reason });
  * - `http(s)://host[:port][/...]` is the console: it maps to `ws://host:8766/ws`. An https host that is a name (a
  *   tunnel) maps to `wss://host/ws` and keeps its port, if any.
  * - `ws(s)://host:8765/...` is the console port, so it maps to 8766. Any other port is kept (a wss tunnel has none).
- * - Any path becomes `/ws`: MC's node server answers 404 to every other path.
+ * - Any path becomes `/ws`: MC's node server answers 404 to every other path. Except a `wss://` tunnel with no port,
+ *   which keeps its path (a reverse proxy may mount the node socket elsewhere).
  * - `?s=` and `&pub=` (also inside a `?ws=`/`#ws=` wrapper) go to `join` and are never dialled: the secret belongs
  *   in the hello body.
  * - A bare `host[:port]` is read as a node address.
@@ -93,10 +94,10 @@ export function normaliseMcUrl(text) {
     }
   }
   const hostRe = '(\\[[^\\]]+\\]|[^/:?#\\s]+)(?::(\\d{1,6}))?';
-  let scheme = 'ws', host, port, bare = false;
+  let scheme = 'ws', host, port, bare = false, rest = '';
   const m = new RegExp(`^([a-z][a-z0-9+.-]*)://${hostRe}([/?#].*)?$`, 'i').exec(target);
   if (m) {
-    scheme = m[1].toLowerCase(); host = m[2]; port = m[3];
+    scheme = m[1].toLowerCase(); host = m[2]; port = m[3]; rest = m[4] || '';
     if (!['ws', 'wss', 'http', 'https'].includes(scheme)) return refuse('unknown scheme');
   } else {
     const b = new RegExp(`^${hostRe}$`).exec(target);
@@ -107,11 +108,14 @@ export function normaliseMcUrl(text) {
   let n = port === undefined ? null : Number(port);
   if (n !== null && (n < 1 || n > 65535)) return refuse('bad port');
   const lan = /^(\[.*\]|\d+\.\d+\.\d+\.\d+|localhost|[^.]+|.*\.local)$/i.test(host);
-  if (scheme === 'http' || (scheme === 'https' && lan)) { scheme = 'ws'; n = MC_WS_PORT; }
+  // a wss tunnel with no port may sit behind a reverse proxy at any path: keep it. An https console on 8765 is the LAN console.
+  const keepPath = scheme === 'wss' && n === null;
+  if (scheme === 'http' || (scheme === 'https' && (lan || n === MC_CONSOLE_PORT))) { scheme = 'ws'; n = MC_WS_PORT; }
   else if (scheme === 'https') scheme = 'wss';
   else if (bare && n === null) n = MC_WS_PORT;
   if (n === MC_CONSOLE_PORT) n = MC_WS_PORT;
-  return { url: `${scheme}://${host}${n === null ? '' : ':' + n}/ws`, join };
+  const path = keepPath ? (rest.split(/[?#]/)[0].replace(/\/+$/, '') || '/ws') : '/ws';
+  return { url: `${scheme}://${host}${n === null ? '' : ':' + n}${path}`, join };
 }
 
 /**

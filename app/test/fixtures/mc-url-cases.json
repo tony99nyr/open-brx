@@ -1,5 +1,5 @@
 {
-  "_comment": "F659: the one MC address normaliser (app/src/mcurl.js normaliseMcUrl). `in` is what a person typed, scanned, or what discovery or a stored value gave; `url` is the node websocket to dial and `join` the secret/pub split out of the query (never dialled); `refused` is true when no address can be made. Rule: the console port 8765 maps to the node port 8766, any path becomes /ws, and a wss tunnel host keeps its host and port. The M5Stick validator (hardware/m5sticks3/station_persistence.h saved_mc_url_refusal) only CHECKS a ws://host:port/path url and normalises nothing, so these cases are phone-only; MC builds join urls and parses none. Read by app/test/mcurl-normalise.test.mjs.",
+  "_comment": "F659: the one MC address normaliser (app/src/mcurl.js normaliseMcUrl). `in` is what a person typed, scanned, or what discovery or a stored value gave; `url` is the node websocket to dial and `join` the secret/pub split out of the query (never dialled); `refused` is true when no address can be made. Rule: the console port 8765 maps to the node port 8766, any path becomes /ws, and a wss tunnel host keeps its host and port. The M5Stick validator (hardware/m5sticks3/station_persistence.h saved_mc_url_refusal) only CHECKS a ws://host:port/path url and normalises nothing, so these cases are phone-only; MC builds join urls and parses none. Read by app/test/mcurl-normalise.test.mjs. Stick differs on purpose: station_persistence.h saved_mc_url_refusal accepts :8765 and any path, and refuses a query (the Stick is not changed).",
   "cases": [
     {
       "name": "the canonical node url is unchanged",
@@ -268,6 +268,50 @@
       "name": "a ?ws= that is not a websocket url",
       "in": "http://?ws=hello",
       "refused": true
+    },
+    {
+      "name": "a wss tunnel with no port keeps a proxy path",
+      "in": "wss://host.example/brx/ws",
+      "url": "wss://host.example/brx/ws",
+      "join": {}
+    },
+    {
+      "name": "a kept proxy path drops the trailing slash and the query",
+      "in": "wss://host.example/brx/ws/?s=abc",
+      "url": "wss://host.example/brx/ws",
+      "join": {
+        "secret": "abc"
+      }
+    },
+    {
+      "name": "a wss url with an explicit port gets /ws",
+      "in": "wss://host.example:8443/brx/ws",
+      "url": "wss://host.example:8443/ws",
+      "join": {}
+    },
+    {
+      "name": "a ws url never keeps another path",
+      "in": "ws://192.0.2.55:8766/brx/ws",
+      "url": "ws://192.0.2.55:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https url on 8765 is the LAN console whatever the name",
+      "in": "https://mc.lan:8765/",
+      "url": "ws://mc.lan:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https console on a home.arpa name",
+      "in": "https://mc.home.arpa:8765",
+      "url": "ws://mc.home.arpa:8766/ws",
+      "join": {}
+    },
+    {
+      "name": "an https tunnel host maps to /ws",
+      "in": "https://host.example/brx/",
+      "url": "wss://host.example/ws",
+      "join": {}
     }
   ]
 }

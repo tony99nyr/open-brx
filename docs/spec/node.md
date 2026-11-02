@@ -642,7 +642,7 @@ A phone joins with no tap when it can tell the MC is the one the player already 
 tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`. The dial lifecycle
 around it is `app/src/transport/mclink.js` (`McLink`), shared by the HUD and the station phone. Each node passes a
 remember policy. `HUD_POLICY` remembers at dial only an address the player named (`remember` with `user`: a typed or scanned one), and any address that binds.
-`window.brx.connectMc`, boot and reconnect store nothing at dial. F659: every MC address goes through `normaliseMcUrl` (`app/src/mcurl.js`) first:
+`window.brx.connectMc`, boot and reconnect store nothing at dial (so an address set over CDP is kept only once MC welcomes it). F659: every MC address goes through `normaliseMcUrl` (`app/src/mcurl.js`) first:
 the console port 8765 and an `http(s)` console address map to the node port 8766, any path becomes `/ws`, and a `?s=` or `&pub=` query is
 split into the join and never dialled. The stored address is the normalised one. The sweep never probes the console port. Cases:
 `app/test/fixtures/mc-url-cases.json`.

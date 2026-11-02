@@ -361,7 +361,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         WebSocketRoute("/ui-ws", ui_ws),
         # Bench 2026-09-24: a phone that dials the CONSOLE port with a websocket fell through to the
         # StaticFiles mount below, which asserts on a non-http scope (8 ASGI tracebacks per connect).
-        # Every other websocket path on this port closes with 4404 and names the node URL instead.
+        # Every other websocket path on this port is refused before accept (F659) and the log names the node URL instead.
         WebSocketRoute("/{path:path}", wrong_port_ws),
     ])
     if UI_DIST.exists():
