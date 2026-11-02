@@ -12,11 +12,11 @@ This file holds the open MVP work and nothing else, in three groups. A row moves
 The lander regenerates this block when it lands a batch. Do not edit it by hand. Run `node scripts/followups-index.mjs --check` to see the diff without writing.
 
 <!-- index:start -->
-**MVP open: 110.** Desk 13 · bench 91 · decision 6.
+**MVP open: 112.** Desk 15 · bench 91 · decision 6.
 
-**MVP DESK (13),** a keyboard is enough:
+**MVP DESK (15),** a keyboard is enough:
 - 🔴 **F638** · **F644** · **F643** · **F645** · **F648** · **F650** · **F653** · **F657**
-- 🟠 **F639** · **F642** · **F647**
+- 🟠 **F639** · **F642** · **F647** · **F658** · **F659**
 - 🟡 **F640** · **F652**
 
 **MVP BENCH (91),** needs a gun, a Stick, phones or a field (the order is the bench plan):
@@ -33,7 +33,7 @@ The lander regenerates this block when it lands a batch. Do not edit it by hand.
 **Ids.** One capital letter + number, unique across this file, `post-mvp.md` and the archive. **Claim an id by
 writing its row first, before doing the work:** a stub row and the bumped "next free" below, committed, then the
 investigation. Ids collided four times on 2026-09-18, each time because two sessions read
-"next free" at the same moment. **Next free: B32 · D6 · E8 · F658 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
+"next free" at the same moment. **Next free: B32 · D6 · E8 · F660 · G11 · H10 · K9 · P20 · Q26 · R6 · S61.** The id
 history (every collision, renumber and range agreement) is in
 [`archive/followups-closed.md`](archive/followups-closed.md) → *Id history*. Old aliases still in use: F15/F16 are
 **F26/F27**, the 2026-09-01 field findings G1–G7 are **F28–F32**, and main's F254 is **F275**. The old bench-sheet
@@ -62,6 +62,8 @@ A keyboard is enough. Highest value first.
 - **F642 🟠 THE STICKS DID NOT FIND MC ON THE PC.** Game 2026-11-01 (Sunday evening, four players, phones on 0.4.33, MC under WSL on the PC), issue 1. The Sticks still pointed at the Mac. A typed MC address wins 3 dials, then mDNS, and mDNS fails with MC under WSL. Want: self-discovery (the last good MC, then mDNS, then a subnet scan of :8766) with no USB step. Owner brx5. `desk`.
 - **F647 🟠 A PLAYER HEARD THE ENEMY'S WEAPON SOUND FROM THEIR OWN GUN.** Game 2026-11-01 (Sunday evening, four players, phones on 0.4.33, MC under WSL on the PC), issue 6, the last match (KOTH `8880829c18`). When shot, the victim's gun played the shooter's weapon sound. Desk: find which frame plays a weapon sound on a hit, and whether the victim's gun takes the shooter's weapon id. Owner brx4. `desk`.
 - **F652 🟡 BODY ARMOR AND AP WERE NOT OFFERED IN THE SHIELDS PRESET, AND NOBODY SAW WHY.** Game 2026-11-01 (Sunday evening, four players, phones on 0.4.33, MC under WSL on the PC), issue 11. The last match used the Shields preset, which leaves them out by Tony's 2026-10-25 design. Make the omission visible on MC and the phone. Tony may revisit whether Shields offers them. Owner brx3. `desk` + `decision`.
+- **F658 🟠 A STATIC HILL: SET UP ONCE, IT PLAYS EVERY LATER GAME WITH NO WI-FI AND NO RE-ARM.** Game 2026-11-01, issue 7; follows F648. Players gain a LIVE bit (128) in the advert state byte. The hill follows the newest game byte, with a 4-game tally ring; a tally unheard for 10 min starts fresh. MC warns (amber) on a pace mismatch. Owner brx5. `desk`.
+- **F659 🟠 THE PHONE FINDS MC BY ITSELF.** Game 2026-11-01, the phone half of F642. Last good MC, then NSD, then a /24 scan with a hello check; trust by admitting the phone on the console; one source of truth for the MC URL, which stops a :8765 console URL overwriting a fresh connect. Owner brx5. `desk`.
 
 
 ## MVP BENCH
