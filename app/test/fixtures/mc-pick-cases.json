@@ -1,5 +1,5 @@
 {
-  "_comment": "F659: which MC a phone prefers when discovery finds more than one. First the last-good MC (the address this phone last bound to, matched on host:port), else the newest started_at (the mDNS TXT value; a sweep hit has none and counts as 0), else the first found. Read by app/test/mc-pick.test.mjs (autojoin.js pickMc).",
+  "_comment": "F659: which MC a phone prefers when discovery finds more than one. First the last-good MC (the address this phone last bound to, matched on host:port), else the newest started_at (the mDNS TXT value; a sweep hit has none and counts as 0), else the lowest host:port (so the pick never depends on the order found). Read by app/test/mc-pick.test.mjs (autojoin.js pickMc).",
   "cases": [
     {
       "name": "one MC is the pick",
@@ -106,7 +106,7 @@
       "pick": "ws://192.0.2.20:8766/ws"
     },
     {
-      "name": "all unknown: the first found wins",
+      "name": "all unknown: the lower host:port wins",
       "found": [
         {
           "url": "ws://192.0.2.10:8766/ws"
@@ -119,7 +119,7 @@
       "pick": "ws://192.0.2.10:8766/ws"
     },
     {
-      "name": "equal started_at: the first found wins",
+      "name": "equal started_at: the lower host:port wins, whatever the order found",
       "found": [
         {
           "url": "ws://192.0.2.20:8766/ws",
@@ -131,7 +131,7 @@
         }
       ],
       "last_good": null,
-      "pick": "ws://192.0.2.20:8766/ws"
+      "pick": "ws://192.0.2.10:8766/ws"
     },
     {
       "name": "a sweep hit is still the last-good one",
@@ -152,6 +152,19 @@
       "found": [],
       "last_good": "ws://192.0.2.10:8766/ws",
       "pick": null
+    },
+    {
+      "name": "all unknown, reversed order: the same pick",
+      "found": [
+        {
+          "url": "ws://192.0.2.20:8766/ws"
+        },
+        {
+          "url": "ws://192.0.2.10:8766/ws"
+        }
+      ],
+      "last_good": null,
+      "pick": "ws://192.0.2.10:8766/ws"
     }
   ]
 }

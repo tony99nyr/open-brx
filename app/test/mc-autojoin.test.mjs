@@ -328,7 +328,10 @@ test('A60 polish #5: the remembered and the dialling url are not candidates; onl
   assert.deepEqual(aj.onFound(R, 'mdns', base), { do: 'kick' });
   assert.deepEqual(aj.onFound(X, 'mdns', base), { do: 'offer', reason: 'new' }, 'the remembered MC does not make it "several"');
   assert.deepEqual(aj.onFound(R, 'mdns', { ...base, dialling: null }), { do: 'kick' }, 'the remembered url with nothing dialling is redialled, not proof-dialled');
-  assert.deepEqual(aj.onFound(X, 'mdns', { ...base, hasTrustKey: true }), { do: 'ignore' }, 'F659: the last-good MC is in view, so another MC does not pull the phone off it');
+  assert.deepEqual(aj.onFound(X, 'mdns', { ...base, hasTrustKey: true, welcomeOpen: true }), { do: 'ignore' },
+    'F659: the last-good MC is being dialled inside its welcome window, so another MC does not pull the phone off it');
+  assert.deepEqual(aj.onFound(X, 'mdns', { ...base, hasTrustKey: true, welcomeOpen: false }), { do: 'verify', url: X },
+    'F659 review: a dead remembered MC whose advert lingers does not stop the live one being proof-dialled');
 });
 
 test('A60 polish #3: a dial the player named is never overridden inside its welcome window', () => {

@@ -92,7 +92,7 @@ export class McLink {
     // (candidates, the proof cooldown); now a stale bind does neither.
     if (this.current() !== transport) return;
     if (this.policy.rememberAtBound(options) && url) this.remember(url, true);
-    if (this.policy.autoJoin === 'proof') this.autoJoin.onBound();
+    if (this.policy.autoJoin === 'proof') this.autoJoin.onBound(url || undefined);
   }
 
   userDialPending() { return namedDialPending(this.userDial && { t: this.userDial }, this.current()); }
@@ -104,7 +104,8 @@ export class McLink {
     const firstContactLive = !!(live && this.firstContactDial === live && live.state !== 'bound');
     return this.autoJoin.onFound(url, source, { bound: !!(current && current.state === 'bound'),
       dialling: live && live.url, verifying: !!(live && (live.verify || firstContactLive)),
-      hasTrustKey, remembered, userDialPending: this.userDialPending() }, startedAt);
+      hasTrustKey, remembered, userDialPending: this.userDialPending(),
+      welcomeOpen: !!(live && live.state !== 'bound' && typeof live.welcomeWindowOpen === 'function' && live.welcomeWindowOpen()) }, startedAt);
   }
 
   /** @param {any} zeroconf @param {(url:string, startedAt?:number)=>void} onFound
