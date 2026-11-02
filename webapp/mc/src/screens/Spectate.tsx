@@ -44,8 +44,8 @@ import { useStore } from '../store';
 import { F, T, fmtClock, fmtDuration, teamColor } from '../tokens';
 import { ClockSub, Num, ScrollX, useTick } from '../ui';
 import { bestStreak } from './Live';
-import { heldSeconds, hillOwner, sitesNote } from './objective';
-import { objectiveWord } from '../rules/scoring';
+import { fmtObjective, heldSeconds, hillOwner, sitesNote } from './objective';
+import { objectiveUnit, objectiveWord } from '../rules/scoring';
 import { colourOf } from '../alerts';
 import { FaultPill, ItemChip } from '../ui/Compact';
 
@@ -134,8 +134,8 @@ export function Spectate() {
     const held = heldSeconds(lv, id);
     return (
       <TeamBlock key={id} name={teamName(id)} color={teamColor(id)} side={side} SZ={SZ}
-        value={objective ? (held == null ? '—' : <Num value={fmtDuration(held)} />) : <Num value={lv.score[id] ?? 0} />}
-        label={objective ? `${word} TIME` : undefined} />
+        value={objective ? (held == null ? '—' : <Num value={fmtObjective(state.config.mode, held)} />) : <Num value={lv.score[id] ?? 0} />}
+        label={objective ? `${word} ${objectiveUnit(state.config.mode)}` : undefined} />
     );
   };
   const owner = objective ? hillOwner(state) : null;
@@ -171,7 +171,7 @@ export function Spectate() {
             : <span data-alert="spectate-hill-owner-none" data-sev="neutral">OWNER NOT REPORTED LIVE</span>}
           {' · '}{lv.possession ? `BEST COVERAGE ${fmtDuration(lv.possession.observed_s)}`
             : <span data-alert="spectate-no-possession-yet" data-sev="neutral">NO POSSESSION REPORTED YET</span>}
-          {sitesNote(lv.possession, state.config.scoring.hold_target_s) && <span data-spectate-sites="1">{' · '}{sitesNote(lv.possession, state.config.scoring.hold_target_s)}</span>}
+          {sitesNote(lv.possession, state.config.scoring.hold_target_s, state.config.mode) && <span data-spectate-sites="1">{' · '}{sitesNote(lv.possession, state.config.scoring.hold_target_s, state.config.mode)}</span>}
         </div>
       )}
       <div style={{ display: 'flex', gap: 22, alignItems: 'stretch', flexWrap: 'wrap',

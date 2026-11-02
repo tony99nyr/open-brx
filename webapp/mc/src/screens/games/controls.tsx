@@ -48,6 +48,26 @@ export function HoldControl({ seconds, onChange }: { seconds: number | null; onC
   );
 }
 
+/** Domination's target: hill POINTS (one point is one owned-hill second), not a time. NO TARGET (null) or 500/1000/1500
+ *  quick-picks with +-100 steppers. Stepping down from 100 or less lands on NO TARGET; stepping up from NO TARGET
+ *  starts at 100. The same server ceiling as HoldControl applies. */
+const POINTS_STEP = 100;
+const POINTS_VALUE_W = 136;
+export function PointsTargetControl({ points, onChange }: { points: number | null; onChange: (p: number | null) => void }) {
+  const step = (dir: 1 | -1) => { const next = (points ?? 0) + dir * POINTS_STEP; onChange(next <= 0 ? null : Math.min(next, HOLD_MAX_S)); };
+  return (
+    <QuickPick testid="match-points-value" valueLabel={points ? `${points} PTS` : 'NO TARGET'} minValueWidth={POINTS_VALUE_W}
+      quick={[0, 500, 1000, 1500]} quickLabel={v => (v === 0 ? 'NO TARGET' : `${v} PTS`)}
+      onQuick={v => onChange(v === 0 ? null : v)}
+      step={(
+        <span style={{ display: 'inline-flex', gap: 4 }}>
+          <StepBtn label="points target minus" onClick={() => step(-1)}>−</StepBtn>
+          <StepBtn label="points target plus" disabled={(points ?? 0) >= HOLD_MAX_S} onClick={() => step(1)}>+</StepBtn>
+        </span>
+      )} />
+  );
+}
+
 /** F559: KOTH's hill pace. Each of CAPTURE TIME and NET CAP is either SET ON THE HILL (the key is absent, so MC sends
  *  nothing) or a number MC sends to every control station. Milestone review 2026-10-18 (brx5): absent does NOT reset a hill
  *  to the factory pace. The hill keeps whatever it last had, MC's last value included, until someone changes it on the hill,

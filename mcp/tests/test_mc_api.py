@@ -36,7 +36,8 @@ def test_state_and_modes_and_weapons():
     # F-scope A (2026-09-25): MVP is TDM/FFA/KotH only. `mvp` is a served flag, not a console guess, so
     # the console can hide extraction/infection/lms from the STOCK MODES picker with no name list of its own.
     assert {m["mode"]: m["mvp"] for m in modes} == {
-        "tdm": True, "ffa": True, "infection": False, "lms": False, "extraction": False, "koth": True}, modes
+        "tdm": True, "ffa": True, "infection": False, "lms": False, "extraction": False, "koth": True,
+        "domination": True}, modes
 
 
 def test_hidden_mode_config_still_loads():
