@@ -7791,6 +7791,8 @@ export class Engine {
       // `source: 'station'`, `site`, `progress` 0-100, `holding`, `contested`, `rising`/`falling` and
       // `onPoint` (K1, utility.md §5). A reader that only knows `owner` behaves identically on both.
       hill: this.hill || null,
+      // F666 (Domination's row of hills): every control point, heard or remembered, sorted by id (hill.js `hillsView`)
+      hills: this.hl.hillsView(this.now()),
       // The possession CLOCK (`mc/API.md`'s `possession` fact): per point, per team, cumulative ms owned as
       // THIS node observed it, plus how long it could hear the point at all. Worth having in `state()` even
       // before the wire carries it — a person can read the number off a phone at the end of a match.

@@ -1077,6 +1077,7 @@ class GunStage:
         self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
         self._hill_source_warned = ""              # B: the refused objective source, logged once per game
         self._hill_mode_warned = ""                # F535: a mode with no hill, logged once per game
+        self._hills_seen: dict[int, dict] = {}     # F666: each control point's last heard state (hill.js `_hillsSeen`)
         # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
         # rarer HUD moment (engine.js's one moment slot) -- so the stage keeps the moment kinds that matter to it.
         self._moment: tuple[str, float] | None = None
@@ -4640,6 +4641,48 @@ class GunStage:
         self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = -1e9; self._hill_contest_owed = False; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""; self._hill_mode_warned = ""
+        self._hills_seen = {}
+
+    def _note_stations(self, now: float) -> None:
+        """hill.js `noteStations` (F666): remember each allowed control point's last heard state, decoded as
+        `_on_control_advert` does, so a point out of earshot keeps its last owner. A mode with no hill, or a grenade
+        objective, keeps nothing."""
+        mode = self.config.get("mode")
+        if mode and mode not in OBJECTIVE_MODES:
+            return
+        src = self.config.get("station_source")
+        if src and src != "phone":
+            return
+        for e in self._control_stations():
+            state = int(e["state"])
+            held = bool(state & ADVERT_CONTROL_STATE["held"])
+            both_ways = bool(state & ADVERT_CONTROL_STATE["rising"]) and bool(state & ADVERT_CONTROL_STATE["falling"])
+            self._hills_seen[e["id"]] = {
+                "owner": e["team"] if (held and claimable(e["team"])) else None,
+                "contested": bool(state & ADVERT_CONTROL_STATE["contested"]),
+                "progress": max(0, min(100, int(e["value"]))),
+                "holding": e["team"] if e["team"] <= 3 else None,
+                "rising": not both_ways and bool(state & ADVERT_CONTROL_STATE["rising"]),
+                "falling": not both_ways and bool(state & ADVERT_CONTROL_STATE["falling"]),
+                "on_point": bool(e.get("present")),
+                "at": e["seen_at"],
+            }
+
+    def _hills_view(self, now: float) -> list[dict]:
+        """hill.js `hillsView` (F666): one entry per control point, the bundle's and any other heard, sorted by id. `heard`
+        is an advert inside CONTROL_STALE_S; an unheard point keeps its last state with a growing `age_ms`."""
+        ids = {x.get("id") for x in (self.config.get("stations") or []) if isinstance(x, dict) and x.get("kind") == "control"}
+        ids |= set(self._hills_seen)
+        out = []
+        for sid in sorted(i for i in ids if isinstance(i, int)):
+            s = self._hills_seen.get(sid)
+            age_ms = max(0, round((now - s["at"]) * 1000)) if s else None
+            out.append({"site": sid, "letter": self._hill_letter_of(sid), "heard": age_ms is not None and age_ms <= CONTROL_STALE_S * 1000,
+                        "age_ms": age_ms, "owner": s["owner"] if s else None, "contested": s["contested"] if s else False,
+                        "progress": s["progress"] if s else 0, "holding": s["holding"] if s else None,
+                        "rising": s["rising"] if s else False, "falling": s["falling"] if s else False,
+                        "on_point": s["on_point"] if s else False})
+        return out
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
     def _station_allowed(self, e: StationEntry) -> bool:
@@ -4685,6 +4728,7 @@ class GunStage:
         through `_hill_callout` / `_hill_say`. Two things differ from the IR path, both because the station
         MEASURES what a grenade cannot: ownership changes only through neutral (drain to 0, build to 100), and
         "Hill Contested" IS wired here -- the station counts living bodies of each team in its bubble."""
+        self._note_stations(now)
         e = self._control_station()
         if not e:
             return
@@ -7465,6 +7509,7 @@ class GunStage:
                       "fire_first": self._fire_first_shown(),
                       "cure": dict(self.cure) if self.cure else None,   # F264 (engine.js `state().cure`): null, or {verdict, at}
                       "hill": dict(self.hill) if self.hill else None,
+                      "hills": self._hills_view(self.now()),   # F666: hill.js `hillsView`
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.
                       # Read ONCE through `_reloading_view()`, which is null past the deadline exactly like
                       # engine.js `reloadingMs()` -- so `elapsed_s` and `overrun` can never be published beside
