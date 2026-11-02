@@ -1155,7 +1155,7 @@ export class MockBackend implements Api {
         })) } : undefined),
       live: sessionLiveView(this.live_ ? this.liveView() : this.start_ ? this.armedLiveView() : undefined),
       // `since_end_ms`, as `state.py settling()` adds it: RECAP reads the real match length from it (M23)
-      recap: this.recapView(),
+      recap: this.recapView(t),   // F664: the snapshot's own clock, so `t - since_end_ms` is exactly the end
       ...(end_delivery ? { end_delivery } : {}),
       orphan_match: this.orphanView(),
       // O7/O8: absent = healthy, as the server omits them
@@ -1279,8 +1279,8 @@ export class MockBackend implements Api {
     if (archived?.recap) archived.recap.winner = winner;
     this.emit();
   }
-  private recapView(): RecapView | null {
-    const r = this.recapViewBase();
+  private recapView(at: number = now()): RecapView | null {
+    const r = this.recapViewBase(at);
     if (r && this.phase === 'recap') {
       const sync = this.syncView(r);
       if (sync) {
@@ -1290,9 +1290,9 @@ export class MockBackend implements Api {
     }
     return r;
   }
-  private recapViewBase(): RecapView | null {
+  private recapViewBase(at: number = now()): RecapView | null {
     if (this.phase !== 'live' && this.phase !== 'recap') return null;
-    const settling = sessionSettling(this.players, this.nodeReports, this.endedAt, now());
+    const settling = sessionSettling(this.players, this.nodeReports, this.endedAt, at);
     if (this.recap_) {
       const missing = this.matchMissing();
       return sessionScorerRecap({ ...clone(this.recap_), missing,

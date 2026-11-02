@@ -7948,7 +7948,7 @@ class Session:
             self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
 
-    def recap(self) -> RecapView | None:
+    def recap(self, now: int | None = None) -> RecapView | None:
         sc = self._m().scorer
         if sc:
             self._mark_flushed_live()
@@ -7958,7 +7958,7 @@ class Session:
             r = self._scorer_recap(sc, stations)             # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
-            r.update(self.settling())     # advisory only — never gates, see settling()
+            r.update(self.settling(now))     # advisory only — never gates, see settling()
             if self.phase == "recap":
                 r["sync"] = self._recap_sync(r["winner"], r.get("stations") or [])
                 if r["sync"]["pending"]:
@@ -8012,7 +8012,7 @@ class Session:
             if fresh and nv.get("pending") == 0 and not self._sync_owes(p.get("node_id") or ""):
                 st.flushed = True
 
-    def settling(self) -> dict:
+    def settling(self, now: int | None = None) -> dict:
         """Which bound nodes have NOT been heard from since the whistle (A8, field 2026-08-30).
 
         Tony: *"it kinda was showing the final results as if it was final and then it finally popped up
@@ -8028,7 +8028,10 @@ class Session:
         sc = self._m().scorer
         if not sc or sc.end_t is None:
             return {"settling": False, "awaiting": [], "since_end_ms": None}
-        end_t, now = sc.end_t, self.now_ms()
+        # F664: a snapshot passes its own `now`, so `t - since_end_ms` is exactly `end_t`. A second clock read here
+        # drifted a few ms per snapshot, and a length near a half second rounded differently on each one.
+        end_t = sc.end_t
+        now = self.now_ms() if now is None else now
         if now < end_t:
             return {"settling": False, "awaiting": [], "since_end_ms": None}
         awaiting = [p["player_id"] for p in self.players.values()
@@ -8406,7 +8409,7 @@ class Session:
                 # `config_id?: string` and "no announcement" is the absence, not an id.
                 "game": self._snapshot_game(),
                 "sync": self.sync_summary(),      # the pre-arm "is the field in sync" summary
-                "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
+                "start": start, "live": live, "recap": self.recap(now) if self.phase in ("live", "recap") else None,
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self._snapshot_feed()}
         if self.last_match is not None:
