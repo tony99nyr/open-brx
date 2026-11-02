@@ -1202,6 +1202,64 @@ def test_a_release_resets_at_160_ms_and_a_shorter_pause_leaks_rounds():
     assert B.release_after_pause(None, "crisp", 0, 50.0, 100.0) == ("crisp", 0, 0, None)
 
 
+R2 = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+
+
+def _ar_row_with_recovery(recovery=R2, reset=False):
+    row = copy.deepcopy(CAT._row("assault_rifle"))
+    row["recoil"] = dict(row["recoil"], recovery=recovery, reset_on_release=reset)
+    return row
+
+
+def test_hold_recovery_scales_with_the_rounds_held_and_ships_off():
+    """F662 R2 (Tony 2026-11-02; brx4's engine rule): recovery = clamp(per_round_ms x rounds over the clean count,
+    min_ms, max_ms), burst taken at the release. Shipped rows carry no `recovery`."""
+    assert all(B.recoil_profile(r) is None or B.recoil_profile(r).recovery is None for r in CAT._rows)
+    prof = B.recoil_profile(_ar_row_with_recovery())
+    assert prof.recovery == (25.0, 100.0, 500.0)
+    clean = prof.after_shots
+    assert B.recovery_ms(prof, clean + 1) == 100.0          # the floor
+    assert B.recovery_ms(prof, clean + 6) == 150.0          # 25 x 6
+    assert B.recovery_ms(prof, clean + 40) == 500.0         # the ceiling
+
+
+def test_hold_recovery_waits_its_timer_then_leaks_until_the_write_lands():
+    prof = B.recoil_profile(_ar_row_with_recovery())
+    burst = prof.after_shots + 10                            # 250 ms to recover
+    # A pull before the timer: nothing recovers, and the rung and the count carry (the count keeps climbing).
+    assert B.release_after_pause(prof, "heavy", burst, 249.0, 100.0) == ("heavy", burst, 0, None)
+    # At the timer the phone writes crisp and zeroes the count; rounds before the write lands fire at the old rung.
+    assert B.release_after_pause(prof, "heavy", burst, 250.0, 100.0) == ("crisp", 0, 2, "heavy")
+    assert B.release_after_pause(prof, "heavy", burst, 300.0, 100.0) == ("crisp", 0, 2, "heavy")
+    assert B.release_after_pause(prof, "heavy", burst, 350.0, 100.0) == ("crisp", 0, 1, "heavy")
+    assert B.release_after_pause(prof, "heavy", burst, 250.0 + B.RELEASE_RESET_MS, 100.0) == ("crisp", 0, 0, None)
+    # The settle clock (600 ms) does not apply to an R2 weapon: 300 ms clears a 100 ms timer plus the write, and
+    # 700 ms does not clear an 800 ms timer.
+    assert prof.settle_ms == 600.0
+    assert B.release_after_pause(prof, "degraded", prof.after_shots, 300.0, 100.0) == ("crisp", 0, 0, None)
+    slow = B.recoil_profile(_ar_row_with_recovery({"per_round_ms": 100, "min_ms": 100, "max_ms": 900}))
+    assert B.recovery_ms(slow, slow.after_shots + 8) == 800.0
+    assert B.release_after_pause(slow, "heavy", slow.after_shots + 8, 700.0, 100.0) == ("heavy", slow.after_shots + 8, 0, None)
+    # A carried count keeps climbing: a degraded release that carries turns heavy on the next round.
+    state, burst, _, _ = B.release_after_pause(prof, "degraded", prof.after_shots, 50.0, 100.0)
+    assert B._recoil_step(prof, state, burst)[0] == ("heavy" if prof.after_shots + 1 >= prof.heavy_after else "degraded")
+    assert B._recoil_step(prof, state, burst)[1] == prof.after_shots + 1
+    # A crisp release clears the count, as today.
+    assert B.release_after_pause(prof, "crisp", 3, 10.0, 100.0) == ("crisp", 0, 0, None)
+
+
+def test_a_partial_recovery_block_is_off():
+    for block in ({}, {"per_round_ms": 25}, {"per_round_ms": None, "min_ms": 100, "max_ms": 500}, None, "on"):
+        assert B.recoil_profile(_ar_row_with_recovery(block)).recovery is None, block
+
+
+def test_hold_recovery_wins_over_the_flat_release_reset():
+    both = B.recoil_profile(_ar_row_with_recovery(reset=True))
+    burst = both.after_shots + 10
+    # With F663 alone, 200 ms would be crisp; R2 needs 250 ms, so the rung carries.
+    assert B.release_after_pause(both, "heavy", burst, 200.0, 100.0) == ("heavy", burst, 0, None)
+
+
 def test_ar_bursts_come_back_crisp_after_a_release_only_with_the_flag():
     def first_round_of_burst_two(flag):
         prof = B.recoil_profile(_ar_row_with_reset(flag))
