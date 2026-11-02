@@ -2240,6 +2240,7 @@ class VersionsView(TypedDict):
 
 class NoticesView(TypedDict):
     mc_verify: NotRequired[str]
+    new_phone: NotRequired[str]      # F659: `NEW PHONE JOINED: <device or node id>`, for NEW_PHONE_NOTICE_MS after a first LAN hello
 
 
 class OrphanMatchView(TypedDict):

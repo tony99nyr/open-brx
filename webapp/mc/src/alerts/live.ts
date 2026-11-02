@@ -44,6 +44,10 @@ export const LIVE_ALERTS: Record<string, AlertDef> = {
   'frame-token-refused': {
     sev: 'red', text: "MC REFUSED THE CHANGE: THIS TAB'S OPERATOR TOKEN IS OLD OR WRONG (DID MC RESTART?). OPEN THE `#tok=` LINK THAT MC PRINTED, OR TAP HERE TO PASTE THE NEW TOKEN",
   },
+  // F644: MC refuses the token this tab HOLDS, so no snapshot arrives. Red, like MC OFFLINE: the board is frozen.
+  'frame-token-stale': {
+    sev: 'red', text: "BOARD FROZEN: MC REFUSED THIS TAB'S TOKEN (DID MC RESTART?). OPEN THE `#tok=` LINK THAT MC PRINTED, OR PASTE THE NEW TOKEN",
+  },
   'frame-tunnel-down': { sev: 'red', text: 'INTERNET TUNNEL DOWN: {reason}' },
 
   'live-controls-offline': { sev: 'red', text: 'MC IS OFFLINE: END AND RECALL RETURN WHEN IT RECONNECTS' },

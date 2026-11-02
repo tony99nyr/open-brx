@@ -28,6 +28,7 @@ from .snapshot_codec import SnapshotCodec, is_aborted_row
 from .perks import canonical_perk_id
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import gamepick as _gamepick    # F411: GamePick defaults/derive/compose — no import back to state.py
+from . import pieces as _pieces
 from . import policy as _policy
 from .interfaces import Compiler as CompilerPort
 from .clockwatch import ClockWatch
@@ -441,6 +442,9 @@ def _check_tag(raw: str) -> str:
 
 
 
+NEW_PHONE_NOTICE_MS = 10 * 60 * 1000   # F659: how long the host's NEW PHONE JOINED line stays up
+
+
 class Session:
     def _m(self) -> Match:
         """Read current match fields; an absent match has fresh empty fields."""
@@ -591,6 +595,7 @@ class Session:
                                             _migrate_green_team_rows, _migrate_green_player_row)
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
+        self._new_phone: tuple[int, str] | None = None   # F659: (wall ms, the host's line) of the latest first-LAN-hello phone
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
         # F411 (GAMES = PLAY picks, BUILD creates): `game_pick` always exists once `__init__` has run —
         # `pieces` is None until `__main__`/`api.py` attaches a real store, so the fresh pick uses the
@@ -1227,7 +1232,8 @@ class Session:
         `default_policy` — so the repair belongs there and this is only the fallback view for a config
         that reached `self.config` past all of them (a fixture, a direct write). Round-2 review
         2026-09-12."""
-        return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
+        # F653: a weapon hidden since this policy was saved drops out (or remaps by type) in the view only.
+        return _pieces.drop_retired_policy(_policy.effective(self.config.get("loadout_policy"), self.config["mode"]))
 
     def _health_preset(self, health: object = None) -> str:
         """The health preset these numbers ARE (`compile.resolve_health_preset`), never the stored `preset` string:
@@ -1447,6 +1453,12 @@ class Session:
                 shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
                 out["mc_verify"] = (f"WIN IS CONFIRMED AT MC, {len(off)} PHONE{'S' if len(off) != 1 else ''} "
                                     f"WITH NO ROUTE BACK ({shown}): TELL THOSE PLAYERS TO RETURN AFTER THE WHISTLE")
+        # F659: a player phone this MC home has never heard from joined over the LAN. Trust stays as it was (the LAN
+        # hello is never refused for lacking the join secret), so the host gets to SEE a stranger.
+        if self._new_phone is not None:
+            at, line = self._new_phone
+            if 0 <= self.now_ms() - at < NEW_PHONE_NOTICE_MS:
+                out["new_phone"] = line
         return out
 
     def game_brief(self) -> dict:
@@ -3835,6 +3847,12 @@ class Session:
         # A29: `net.py _fire_node` forwards `app_ver` but not `platform`, and this callback is the one
         # place the WHOLE hello body reaches the session -- capture both here, before any early return,
         # so a utility phone and an unbound player node are covered too.
+        if hello.get("new_phone") is True and hello.get("node_id") and hello.get("node_type") != "utility":
+            dev = hello.get("device")
+            name = dev.strip()[:64] if isinstance(dev, str) and dev.strip() else str(hello["node_id"])
+            self._new_phone = (self.now_ms(), f"NEW PHONE JOINED: {name}")
+            logging.getLogger("brx.mc").info("%s (%s)", self._new_phone[1], hello["node_id"])
+            self._changed()
         if hello.get("node_id"):
             self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"), hello.get("device"))
             self._sync_hello(str(hello["node_id"]), hello.get("pending"))
@@ -8268,6 +8286,11 @@ class Session:
         """The served config is complete even though request-side GameConfig permits omissions."""
         if "loadout_policy" not in self.config:
             raise RuntimeError("served config is missing its normalized loadout policy")
+        # F653 review: the console reads its rules line and editor pool from this policy, so a hidden id in it
+        # is served as the remap the server enforces (only then: an unaffected config is served as stored).
+        pol = _pieces.drop_retired_policy(self.config["loadout_policy"])
+        if pol is not self.config["loadout_policy"]:
+            return cast(ConfigView, {**self.config, "loadout_policy": pol})
         return cast(ConfigView, self.config)
 
     def _snapshot_kit(self, kitted: int) -> KitView:

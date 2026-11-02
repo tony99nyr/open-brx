@@ -40,12 +40,17 @@ export function viewLabel(v: View): string {
 export function CommandBar() {
   const notice = useNotice();   // survives the screen that raised it (see notice.ts)
   const [menu, setMenu] = useState(false);
-  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, catalogueDown } = useStore();
+  const { state, view, setView, run, api, error, clearError, mock, connected, authRequired, catalogueDown, hasToken } = useStore();
   const [panic, setPanic] = useState(false);
   const [panicked, setPanicked] = useState<ReturnType<typeof panicReceipt> | null>(null);
   const [report, setReport] = useState(false);
   const menuBtnRef = useRef<HTMLButtonElement | null>(null);
   const offline = (!mock && !connected && !authRequired) || galleryHas('offline');   // the token prompt owns the copy while auth is pending
+  // F644: MC refuses the token this tab HOLDS (an MC restart mints a new one). No snapshot arrives, so the board is as
+  // frozen as when MC is offline; the neutral TOKEN prompt alone let a stale board pass for a live one. With NO token
+  // held it stays the neutral prompt (F221).
+  const tokenStale = !mock && authRequired && hasToken;
+  const frozen = offline || tokenStale;
   const cur = viewIdx(view);
   const [lanDetails, setLanDetails] = useState(false);
 
@@ -78,11 +83,16 @@ export function CommandBar() {
 
   return (
     <header style={{ background: T.inset, borderBottom: `1px solid ${T.line2}` }}>
-      {(offline || state?.lan.public?.status === 'error') && (
+      {(frozen || state?.lan.public?.status === 'error') && (
         <div data-testid="frame-faults" style={{ padding: '8px 20px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 8 }}>
           {offline && (
           <FaultPill id="frame-mc-offline" short="MC offline, board frozen" icon="stop" role="status"
             why={state ? 'The board is frozen at the last snapshot.' : 'No snapshot yet. Is the server running?'} fix="Check that MC is running." />
+          )}
+          {tokenStale && (
+          <FaultPill id="frame-token-stale" short="Board frozen: MC refused this tab's token" icon="stop" onTap={() => setView('debug')} tapHint="Paste token ▸"
+            why="Nothing new reaches this tab, so the board shows the last state it received. Did MC restart? MC makes a new token each time it starts."
+            fix="Open the #tok= link that MC printed, or paste the new token." />
           )}
           {state?.lan.public?.status === 'error' && (
             <FaultPill id="frame-tunnel-down" short="Internet tunnel down" icon="stop"
@@ -180,11 +190,11 @@ export function CommandBar() {
               plain phase readout. A phase is NOT-ALERT (data, never T.warn/T.bad): ◆ is its own glyph,
               shared with no alert, in T.ink. */}
           {state?.lan.public?.status !== 'error' && autoOf(state?.lan.public) && <BackhaulStatus compact auto={autoOf(state?.lan.public)!.on} onCellular={autoOf(state?.lan.public)!.cellular} error={autoOf(state?.lan.public)!.error} />}
-          <span data-testid="phase-chip" title={offline ? 'MC is offline: this is the phase in the last snapshot' : undefined}
+          <span data-testid="phase-chip" title={frozen ? 'MC is not updating this tab: this is the phase in the last snapshot' : undefined}
                 style={{ font: F.chk(700, 12), letterSpacing: '.16em', whiteSpace: 'nowrap',
-                         color: offline ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.ink : state?.phase === 'recap' ? T.ok : T.dim }}>
-            {offline && state ? 'LAST KNOWN: ' : ''}
-            {state?.phase === 'live' ? (offline ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '◆ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
+                         color: frozen ? T.dim : state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.ink : state?.phase === 'recap' ? T.ok : T.dim }}>
+            {frozen && state ? 'LAST KNOWN: ' : ''}
+            {state?.phase === 'live' ? (frozen ? '○ LIVE' : '● LIVE') : state?.phase === 'armed' ? '◆ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
           {/* The bench volume label stays visible while the override is active. */}
           {state?.bench_volume != null && (

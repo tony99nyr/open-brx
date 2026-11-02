@@ -363,6 +363,7 @@ class MockNode:
 
     def _apply_welcome(self, body: dict) -> None:
         self.session_id = body.get("session_id")
+        self.welcome_body = body          # F659: the last welcome, for tests
         if body.get("node_key"):
             self.node_key = body["node_key"]
         seq_hi = int(body.get("seq_hi", 0))

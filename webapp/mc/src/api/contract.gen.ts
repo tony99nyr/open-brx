@@ -2470,6 +2470,8 @@ export interface VersionsView {
 
 export interface NoticesView {
   mc_verify?: string;
+  /** F659: `NEW PHONE JOINED: <device or node id>`, for NEW_PHONE_NOTICE_MS after a first LAN hello */
+  new_phone?: string;
 }
 
 /** Bench 2026-09-17: phones report ARMED/LIVE in a match this MC did not start. A phone need not be

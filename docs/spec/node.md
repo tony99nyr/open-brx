@@ -641,10 +641,25 @@ remain unbuilt until their mechanics are specified. The writer/native arbitratio
 A phone joins with no tap when it can tell the MC is the one the player already trusted. It asks for one
 tap when it cannot, and the JOIN row says why. The policy is `app/src/transport/autojoin.js`. The dial lifecycle
 around it is `app/src/transport/mclink.js` (`McLink`), shared by the HUD and the station phone. Each node passes a
-remember policy. `HUD_POLICY` remembers an address at dial when the dial asks for it (`remember`), and any address that binds.
+remember policy. `HUD_POLICY` remembers at dial only an address the player named (`remember` with `user`: a typed or scanned one), and any address that binds.
+`window.brx.connectMc`, boot and reconnect store nothing at dial (so an address set over CDP is kept only once MC welcomes it). F659: every MC address goes through `normaliseMcUrl` (`app/src/mcurl.js`) first:
+the console port 8765 and an `http(s)` console address map to the node port 8766, any path becomes `/ws`, and a `?s=` or `&pub=` query is
+split into the join and never dialled. The stored address is the normalised one. The sweep never probes the console port. Cases:
+`app/test/fixtures/mc-url-cases.json`.
 `STATION_POLICY` remembers a trusted address at dial, and a discovered one only once it binds. A transport that binds
 after a redial replaced it is stale: it is never remembered and it resets no auto-join state.
 
+- **Two MCs on one LAN (F659).** The phone prefers the last-good MC (the address it last bound to, matched on host:port),
+  else the newest `started_at` from the mDNS TXT record (`pickMc`, `app/test/fixtures/mc-pick-cases.json`). The sweep cannot
+  read TXT: it takes the first hit and counts it as unknown (0), so a dated advert outranks it, and the welcome's `started_at`
+  and `server_name` fill the HUD line `JOINED <server_name> (2 FOUND)` (shown only when more than one MC was in view).
+  With a trust key the proof dial goes to the pick; without one the SEVERAL row offers the pick. The last-good MC is never
+  pulled off by another one while its own dial is inside its welcome window; a short blip of the remembered MC can proof-dial
+  another MC in view, once per 10 min, by design (the A60 rule).
+- **A new phone is shown to the host (F659).** LAN trust is unchanged (a LAN hello is never refused for lacking the join
+  secret). The first LAN hello of a player node id this MC home never heard from sets `State.notices.new_phone`, `NEW PHONE
+  JOINED: <device>` (the node id when the hello names no device), for 10 minutes. The ids persist in `mc-seen-nodes.txt` (past 5000 ids new ones are still flagged, in memory). A hello over the backhaul is
+  not recorded, so the phone is still announced on its first LAN hello. `--server-name` sets the name phones show.
 - **No tap.** The remembered address (a QR, a typed address, a tapped JOIN, or an address that bound us)
   is redialled with the normal backoff for as long as the app runs. A missed first welcome clears
   nothing (F203 revised); a sweep starts beside the redial.
