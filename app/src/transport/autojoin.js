@@ -22,6 +22,8 @@
 export const CANDIDATE_TTL_MS = 120000;          // an address not seen again for 2 min is forgotten
 // A host whose proof dial failed, however it failed, is not proof-dialled again for 10 min. A proof dial
 // pauses the remembered dial, so a short cool-down on a silent host would keep pausing it (polish r1 #8).
+/** F659: the most distinct MCs the "(N FOUND)" map remembers. */
+export const SEEN_MCS_MAX = 64;
 export const VERIFY_COOLDOWN_MS = 10 * 60000;
 // F346 (d): the discovery window. A first contact joins only when one distinct MC is in view this long after
 // the first sighting, so a second MC whose advert lands a moment later gives "several", not a race.
@@ -121,7 +123,11 @@ export class McAutoJoin {
   onFound(url, source, { bound, dialling, verifying, hasTrustKey, remembered = null, userDialPending = false, welcomeOpen = false }, startedAt) {
     const t = this.now();
     for (const [k, c] of this.cooldown) if (c.until <= t) this.cooldown.delete(k);   // expired entries never pile up
-    if (url) this.seen.set(mcKey(url), t);                      // F659: every sighting counts toward "(N FOUND)", bound or not
+    if (url) {
+      for (const [k, at] of this.seen) if (t - at > CANDIDATE_TTL_MS) this.seen.delete(k);
+      this.seen.set(mcKey(url), t);
+      while (this.seen.size > SEEN_MCS_MAX) this.seen.delete(/** @type {string} */ (this.seen.keys().next().value));
+    }                      // F659: every sighting counts toward "(N FOUND)", bound or not
     if (!url || bound) return { do: 'ignore' };
     const key = urlKey(url);
     if (!this.live().length) this.firstSeenAt = t;              // the first sighting opens the discovery window

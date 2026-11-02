@@ -60,6 +60,16 @@ test('the join count is the MCs seen in the last TTL, bound or not, so it does n
   assert.equal(aj.lastFound, 1, 'old sightings expire; the MC joined by QR counts itself');
 });
 
+test('F659 review: the sightings map is pruned on every sighting and capped', () => {
+  let now = 1000;
+  const aj = new McAutoJoin({ now: () => now });
+  for (let i = 0; i < 400; i++) aj.onFound(`ws://10.9.${i >> 8}.${i & 255}:8766/ws`, 'sweep', ctx());
+  assert.ok(aj.seen.size <= 64, `capped, got ${aj.seen.size}`);
+  now += CANDIDATE_TTL_MS + 1;
+  aj.onFound(A, 'mdns', ctx());
+  assert.equal(aj.seen.size, 1, 'expired sightings are gone once a new one arrives');
+});
+
 test('F659 review: a pick that failed its proof is skipped, so the trusted MC on a new IP is still dialled', () => {
   let now = 1000;
   const aj = new McAutoJoin({ now: () => now });

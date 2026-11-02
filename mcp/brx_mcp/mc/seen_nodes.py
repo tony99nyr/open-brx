@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from itertools import islice
 from pathlib import Path
 
 log = logging.getLogger("brx.mc.seen")
@@ -36,7 +37,7 @@ class SeenNodes:
             self._lead_newline = bool(text) and not text.endswith("\n")
             self.ids = {ln.strip() for ln in text.splitlines() if _ok(ln.strip())}
         except FileNotFoundError:
-            for nid in seed:
+            for nid in islice(seed, SEEN_CAP):
                 self._append(nid)
         except Exception as e:
             log.warning("could not read %s (%s): new-phone lines may repeat", path, e)

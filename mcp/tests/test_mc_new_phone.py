@@ -157,6 +157,20 @@ def test_past_the_cap_new_ids_are_still_flagged_and_a_torn_file_does_not_join_id
         assert SeenNodes(home).add("id3") is False
 
 
+def test_the_server_name_keeps_printable_characters_only_and_the_seed_is_capped():
+    from brx_mcp.mc.net import clean_server_name
+    assert clean_server_name("Pitch\n2\u202e\x00 MC") == "Pitch2 MC"
+    import brx_mcp.mc.seen_nodes as sn
+    saved = sn.SEEN_CAP
+    sn.SEEN_CAP = 3
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            s = SeenNodes(Path(d), seed=[f"k{i}" for i in range(10)])
+            assert len((Path(d) / sn.SEEN_FILE).read_text().split()) == 3
+    finally:
+        sn.SEEN_CAP = saved
+
+
 def test_the_server_name_drops_a_trailing_local_and_can_be_overridden():
     from brx_mcp.mc.net import clean_server_name
     assert clean_server_name("TONY-MBP.local") == "TONY-MBP"

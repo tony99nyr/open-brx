@@ -198,7 +198,7 @@ class NodeRecord:
 
 def clean_server_name(name: object) -> str:
     """F659: the name phones show (`JOINED <name>`): the host name without a trailing `.local`, at most 32 characters."""
-    n = str(name or "").strip()
+    n = "".join(c for c in str(name or "") if c.isprintable()).strip()
     if n.lower().endswith(".local"):
         n = n[:-6]
     return n[:32] or "MC"

@@ -654,7 +654,8 @@ after a redial replaced it is stale: it is never remembered and it resets no aut
   read TXT: it takes the first hit and counts it as unknown (0), so a dated advert outranks it, and the welcome's `started_at`
   and `server_name` fill the HUD line `JOINED <server_name> (2 FOUND)` (shown only when more than one MC was in view).
   With a trust key the proof dial goes to the pick; without one the SEVERAL row offers the pick. The last-good MC is never
-  pulled off by another one.
+  pulled off by another one while its own dial is inside its welcome window; a short blip of the remembered MC can proof-dial
+  another MC in view, once per 10 min, by design (the A60 rule).
 - **A new phone is shown to the host (F659).** LAN trust is unchanged (a LAN hello is never refused for lacking the join
   secret). The first LAN hello of a player node id this MC home never heard from sets `State.notices.new_phone`, `NEW PHONE
   JOINED: <device>` (the node id when the hello names no device), for 10 minutes. The ids persist in `mc-seen-nodes.txt` (past 5000 ids new ones are still flagged, in memory). A hello over the backhaul is
