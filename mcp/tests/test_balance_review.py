@@ -193,7 +193,7 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
         w, specs = _shipped_specs()
         runs.append(R.dominance_matrix(w, specs, MATRIX_REPS_SCALE, 1, anchor_world=w))
     a, b = runs
-    assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
+    assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Energy Shotgun", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+FH"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
     assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact",
@@ -2212,6 +2212,7 @@ def test_shared_finish_estimator_counts_charge_heat_lockout_in_both_engines():
     row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
     row["heat"]["per_charge"] = 55
     row["heat"]["per_tap"] = 14
+    row["wire"]["dmg"] = 70          # the pre-F646 charge, so the kill is a charge plus five taps on 150
     world = R.World(WeaponCatalog([row]), PerkCatalog())
     kit = R.make_kit(world, "charge", "charge_rifle")
     field = R.field_kit(world, "charge", "charge_rifle")
@@ -2302,13 +2303,16 @@ def test_heat_candidate_reports_all_cooling_assumptions():
     assert "## Heated Balance rule cells" in R.report_markdown(v)
     assert "shields|R1" not in v.get("failed_heat_branches", {}).get("none", [])
     assert "shields|R1" in v["heat_rules"]
-    assert not v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
+    # F646 (2026-11-02): the bench heat fit (2 a tap) no longer locks the shipped Charge Rifle out on Shields
+    assert v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
 
 
 def test_heated_pickup_utility_checks_every_cooling_branch():
     row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
     row.update(pickup_only=True, hidden=True)
     row["wire"]["tap_dmg"] = 45
+    row["wire"]["dmg"] = 70          # the pre-F646 charge and tap heat, which this test's numbers were measured on
+    row["heat"]["per_tap"] = 14
     v = R.review({"row": row}, reps_scale=0.001)
     utility = v["heat_pickup_utility"]
     assert set(utility) == set(B.HEAT_COOLING_BRANCHES)

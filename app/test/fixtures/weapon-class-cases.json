@@ -67,6 +67,11 @@
    "energy": true
   },
   {
+   "weapon_id": "energy_shotgun",
+   "weapon_class": "energy",
+   "energy": true
+  },
+  {
    "weapon_id": "glock",
    "weapon_class": "ballistic",
    "energy": false
