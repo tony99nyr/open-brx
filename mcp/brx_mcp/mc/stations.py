@@ -9,7 +9,7 @@ from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
 from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
-    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX,
+    STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX, ADVERT_SCOPE_ID_BITS,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
     STATION_LOCK_LOBBY_S, STATION_LOCK_MARGIN_S, STATION_LOCK_MAX_S,
@@ -509,6 +509,12 @@ class StationRegistry:
         clash = next((n for n, st in self.stations.items() if n != nid and (st.get("assigned") or {}).get("id") == sid), None)
         if clash:
             raise ValueError(f"station id {sid} is already assigned to {clash}; ids must be unique on the field")
+        # F658 (A86): a player advert names the stations in play by bit id % 16, so two stations must not share it
+        alias = next((n for n, st in self.stations.items() if n != nid and isinstance(i := (st.get("assigned") or {}).get("id"), int)
+                      and i % ADVERT_SCOPE_ID_BITS == sid % ADVERT_SCOPE_ID_BITS), None)
+        if alias:
+            raise ValueError(f"station id {sid} shares its scope bit (id % {ADVERT_SCOPE_ID_BITS}) with {alias}'s id; "
+                             "clear the id so MC assigns one")
         # F345: 0 (and absent) = the station's own PLATFORM default, which it advertises in byte 14 (a respawn
         # station: a phone -70, a StickS3 -57, Tony 2026-09-24; a StickS3 powerup -45, F434). Any other value is the operator's override.
         thr = a.get("threshold", 0)
@@ -681,21 +687,26 @@ class StationRegistry:
         one it was handed earlier this session (a clear, a restart or a relink never renumbers it), unless another
         station now holds that number. A new station takes the lowest id no station holds or was handed, so a
         phone and a Stick share one sequence: 1, 2, 3. A powerup station's id fits its claim advert's one byte
-        (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one."""
+        (cross-lane #7): a held or remembered id above POWERUP_STATION_ID_MAX is passed over for a free one.
+        F658 (A86): a player advert names the stations in play by bit `id % ADVERT_SCOPE_ID_BITS`, so no two assigned
+        stations may share that bit: an id whose bit another station holds is passed over too (at most 16 stations)."""
         top = POWERUP_STATION_ID_MAX if kind == "powerup" else STATION_ID_MAX
         used = {a["id"] for n, st in self.stations.items() if n != nid and (a := st.get("assigned"))}
+        bits = {i % ADVERT_SCOPE_ID_BITS for i in used}
         own = ((self.stations.get(nid) or {}).get("assigned") or {}).get("id")
         for cand in (own, self._station_id_of.get(nid)):
-            if isinstance(cand, int) and 1 <= cand <= top and cand not in used:
+            if isinstance(cand, int) and 1 <= cand <= top and cand not in used and cand % ADVERT_SCOPE_ID_BITS not in bits:
                 return cand
         taken = used | {i for n, i in self._station_id_of.items() if n != nid}
         # Bench 2026-10-02: a departed station gets its old number back on RESTORE (or any new assignment) when no
         # station holds it and MC has not handed it to another node since; otherwise the rule below.
         gone = (self._station_departures.get(nid) or {}).get("id")
-        if isinstance(gone, int) and 1 <= gone <= top and gone not in taken:
+        if isinstance(gone, int) and 1 <= gone <= top and gone not in taken and gone % ADVERT_SCOPE_ID_BITS not in bits:
             return gone
+        if len(bits) >= ADVERT_SCOPE_ID_BITS:
+            raise ValueError(f"no free station id is left: one match takes at most {ADVERT_SCOPE_ID_BITS} utility stations")
         sid = 1
-        while sid in taken:
+        while sid in taken or sid % ADVERT_SCOPE_ID_BITS in bits:
             sid += 1
         if sid > top:
             raise ValueError(f"no free station id is left (1..{top})")
@@ -1188,7 +1199,7 @@ class StationRegistry:
         return {"armed": len(armed), "pending": pending}
 
     def _old_app_phones(self) -> int:
-        """F658 review: bound player phones whose app is older than LIVE_BIT_MIN_APP (it sends no live bit). An app
+        """F658 review: bound player phones whose app is older than LIVE_BIT_MIN_APP (it sends no live bit and no A86 scope). An app
         version MC cannot read is not counted, as `parse_app_ver` treats it everywhere."""
         floor = parse_app_ver(LIVE_BIT_MIN_APP)
         n = 0
@@ -1233,8 +1244,9 @@ class StationRegistry:
                 want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
                 if want is not None and have is not None and have != want:
                     attention.append(station_pace_line(key, have, want))
-        if follows and not self.stood_down(a) and (old := self._old_app_phones()):
-            attention.append(station_old_app_line(old))   # F658 review: a following hill cannot count those players
+        if a and a["kind"] == "control" and not self.stood_down(a) and (old := self._old_app_phones()):
+            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it
+            attention.append(station_old_app_line(old))
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):

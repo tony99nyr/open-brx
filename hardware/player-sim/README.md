@@ -19,11 +19,12 @@ a scan response.
 
 | Command | Effect |
 |---|---|
-| `ADV <player_num> <team> <state> <value> <game> [seq] [secs]` | Set the advert and (re)start it. Without `seq`, the seq bumps on every change, as a phone does. With claiming or claim_ready set (state bits 4/5), it stops after `secs` (default 10, 1 to 60). A plain advert stops after 5 minutes. |
+| `ADV <player_num 1-63> <team> <state> <value> <game> [seq] [secs]` | Set the advert and (re)start it. Without `seq`, the seq bumps on every change, as a phone does. With claiming or claim_ready set (state bits 4/5), it stops after `secs` (default 10, 1 to 60). A plain advert stops after 5 minutes. |
 | `OFF` | Stop advertising. Also ends a running script and cancels a running scan. |
 | `STATUS` | Print the current fields and UUID. |
 | `SCRIPT CLAIM <player_num> <team> <station_id> <game> [secs]` | State 1 (alive) for 1 s, then 17 (claiming) for 1 s, then 49 (claim_ready). `value` is the station id from the claiming step on. The advert stops `secs` after the claiming step starts (default 10, 1 to 60). |
 | `POWER <LOW\|NORMAL\|HIGH>` | TX power -12, 0 or +9 dBm. The board boots at NORMAL (0 dBm). The controller's own default on this core is +9 dBm, so the sketch sets 0 dBm explicitly. |
+| `SCOPE <kinds> <station_id ...>` | A86: the scope every later advert carries. `kinds` is a mask (1 control, 2 respawn, 4 powerup); each station id sets bit `id % 16` of the map. The scope starts at 0, and a station never counts a zero scope, so set it before you bench a control point. `SCOPE 0` clears it. |
 | `SCAN <aa:bb:cc:dd:ee:ff> <secs>` | Measure one advertiser's packet gaps (F353). Stops advertising, then scans passively and continuously for `secs` (1 to 3600). `ADV` is refused until the scan ends. `ADV` afterwards resumes advertising. |
 
 An auto-off prints `ADV auto-off after <N>s`, then `OFF`. Every change prints `ADV <uuid> t=<millis>`, and each script step prints `SCRIPT step=<n> <name> t=<millis>`.

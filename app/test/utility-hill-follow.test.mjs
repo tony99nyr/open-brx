@@ -27,12 +27,21 @@ assert.ok(api, 'utility.js did not publish window.brxUtility');
 const RED = 0, BLUE = 1, hill = { kind: 'control', team: 255, id: 9 };
 let T = api.stationNow() + 1_000_000;
 api.useStationClock(() => T);
-const advert = (p) => [encodeUuid({ role: 'player', id: p.id, team: p.team, state: 1 | (p.live ? 128 : 0), game: p.game })];
+const advert = (p) => [encodeUuid({ role: 'player', id: p.id, team: p.team, state: 1 | (p.live ? 128 : 0), game: p.game, scopeKinds: p.kinds ?? 1, scope: p.scope ?? 1 << 9 })];
 /** `ms` of 250 ms ticks with every player in `players` heard strongly on each one. */
 function stand(ms, players) {
   for (let k = 0; k < ms; k += 250) { T += 250; for (const p of players) api.onSighting(advert(p), -50, T); api.tick(); }
 }
 const airGame = () => decodeUuid(api.stationUuid()).game;
+
+test('A86: players whose scope does not name this control station never count and never start follow mode', async () => {
+  await api.applyStationConfig({ ...hill, game: 50 });
+  stand(3000, [{ id: 1, team: RED, game: 50, live: true, scope: 1 << 8 }, { id: 2, team: BLUE, game: 50, live: true, kinds: 2 },
+    { id: 5, team: RED, game: 50, live: true, kinds: 0, scope: 0 }]);
+  assert.equal(api.statusBody().control.follows, undefined, 'another station\'s id bit, the respawn bit alone and a zero scope: inert');
+  assert.equal(api.point.progress, 0);
+  assert.equal(api.point.contested, false);
+});
 
 test('fallback: with no live-bit player heard the hill counts its MC-armed game only, as before', async () => {
   await api.applyStationConfig({ ...hill, game: 50 });

@@ -69,7 +69,8 @@ def test_the_advert_is_decoded_through_the_phones_byte_layout_not_a_side_door():
     BRX advert, or not a control point, is refused rather than guessed at."""
     u = encode_advert_uuid("station", 7, "control", 1, ADVERT_CONTROL_STATE["held"] | ADVERT_CONTROL_STATE["rising"], 42)
     d = decode_advert_uuid(u)
-    assert d == {"role": "station", "id": 7, "kind": "control", "team": 1, "state": 5, "value": 42, "seq": 0, "game": 0, "threshold": 0, "taker": 0}
+    assert d == {"role": "station", "id": 7, "kind": "control", "team": 1, "state": 5, "value": 42, "seq": 0, "game": 0, "threshold": 0, "taker": 0,
+                 "scope_kinds": 0, "scope": 0}
     raw = u.replace("-", "")
     assert raw[18:20] == "01" and raw[20:22] == "05" and raw[22:24] == "2a", "team / flags / value at bytes 9 / 10 / 11"
     # CONTROL: a flipped magic byte is not ours; a respawn-kind advert is not a control point

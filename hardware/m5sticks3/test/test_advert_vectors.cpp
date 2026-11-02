@@ -47,12 +47,15 @@ static Advert from_case(const Value& c) {
   a.game = (uint8_t)c.get("game").as_int();
   a.threshold = (int)c.get("threshold").as_int();
   a.taker = (uint8_t)c.get("taker").as_int();
+  a.scope_kinds = (uint8_t)c.get("scope_kinds").as_int();  // A86: a player's scope (0 on a station)
+  a.scope = (uint16_t)c.get("scope").as_int();
   return a;
 }
 
 static bool same(const Advert& a, const Advert& b) {
   return a.role == b.role && a.id == b.id && a.kind == b.kind && a.team == b.team && a.state == b.state &&
-         a.value == b.value && a.seq == b.seq && a.game == b.game && a.threshold == b.threshold && a.taker == b.taker;
+         a.value == b.value && a.seq == b.seq && a.game == b.game && a.threshold == b.threshold && a.taker == b.taker &&
+         a.scope_kinds == b.scope_kinds && a.scope == b.scope;
 }
 
 int main(int argc, char** argv) {

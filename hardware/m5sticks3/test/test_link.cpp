@@ -1966,7 +1966,7 @@ static PlayerPresence blue_on_the_point(uint32_t t) {
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 5;
   a.team = 1;
   a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
@@ -2043,7 +2043,7 @@ static PlayerPresence red_on_the_point(uint32_t t) {
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 4;
   a.team = 0;
   a.state = contract::ADVERT_PLAYER_STATE_ALIVE;
@@ -2111,7 +2111,7 @@ static void test_a_respawn_assignment_counts_revives_and_a_new_game_zeroes_them(
   PlayerPresence pr;
   pr.dwell_ms = 0;
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = 2;
   a.team = 1;
   a.state = 0;  // down
@@ -2202,7 +2202,7 @@ static void test_timed_hill_anchors_on_first_alive_same_game_advert_without_rssi
   CHECK(saved.note_applied(a, "s1"));
   CHECK(saved.stored().find("\"duration_ms\":120000") != std::string::npos);
   CHECK(link.hill_waiting(100));
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.game = 7; down.state = 0;  // A86: in every station's scope
   CHECK(!link.anchor_hill_on_advert(down, 1000));
   Advert wrong_game = down; wrong_game.state = contract::ADVERT_PLAYER_STATE_ALIVE; wrong_game.game = 8;
   CHECK(!link.anchor_hill_on_advert(wrong_game, 1000));
@@ -2268,7 +2268,7 @@ static void test_duration_anchor_needs_a_player_heard_down_in_this_game_first() 
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert stale; stale.role = contract::ADVERT_ROLE_PLAYER; stale.id = 3; stale.game = 7; stale.state = contract::ADVERT_PLAYER_STATE_ALIVE;
+  Advert stale; stale.role = contract::ADVERT_ROLE_PLAYER; stale.scope_kinds = 7; stale.scope = 0xFFFF; stale.id = 3; stale.game = 7; stale.state = contract::ADVERT_PLAYER_STATE_ALIVE;  // A86: in every station's scope
   CHECK(!link.anchor_hill_on_advert(stale, 1000));  // never heard down: a stale phone, not a spawn
   CHECK(link.hill_waiting(1000));
   Advert down = stale; down.id = 4; down.state = 0;
@@ -2357,7 +2357,7 @@ static void test_duration_clock_survives_an_offline_restart() {
   CHECK(saved.note_applied(a, "s1"));
   SavedHillClock clock;
   CHECK(!clock.note(link.assignment(), "s1", link.hill_clock_remaining_ms(500), 500));  // nothing running yet
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.id = 4; down.game = 7; down.state = 0;  // A86: in every station's scope
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
@@ -2462,7 +2462,7 @@ static void test_same_game_lobby_config_stops_an_advert_anchored_hill() {
   StationAssignment a = control_config(7);
   a.duration_ms = 120000;
   link.apply_station_config(a, 0);
-  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.id = 4; down.game = 7; down.state = 0;
+  Advert down; down.role = contract::ADVERT_ROLE_PLAYER; down.scope_kinds = 7; down.scope = 0xFFFF; down.id = 4; down.game = 7; down.state = 0;  // A86: in every station's scope
   Advert alive = down; alive.state = contract::ADVERT_PLAYER_STATE_ALIVE;
   link.anchor_hill_on_advert(down, 900);
   CHECK(link.anchor_hill_on_advert(alive, 1000));
@@ -3030,11 +3030,17 @@ static void test_f658_hill_follows_the_live_game() {
   link.apply_station_config(a, 0);
   PlayerPresence p;
   p.key_by_game = true;
+  uint16_t scope = 0;  // A86: first another station's id bit (8), then station 9's
   auto hear = [&](uint8_t game, uint8_t state, uint32_t t) {
-    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.id = 3; d.team = 0; d.state = state; d.game = game;
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = contract::ADVERT_SCOPE_KIND_CONTROL; d.scope = scope; d.id = 3; d.team = 0; d.state = state; d.game = game;
     p.observe(d, -50, t);
   };
   const uint8_t LIVE = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE;
+  // A86: a live player whose scope names station 8, not this station 9, does not exist for the hill
+  scope = 1u << 8;
+  for (uint32_t t = 0; t <= 1000; t += 250) { hear(41, LIVE, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.follower().follows && link.hill().progress == 0);
+  scope = 1u << 9;
   // old phones first: no live bit, and the window is closed, so nothing counts
   for (uint32_t t = 0; t <= 2000; t += 250) { hear(40, contract::ADVERT_PLAYER_STATE_ALIVE, t); p.tick(t); link.tick_players(p, t); }
   CHECK(!link.follower().follows && link.hill().progress == 0 && link.hill_game() == 40);

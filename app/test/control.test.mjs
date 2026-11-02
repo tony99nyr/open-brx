@@ -816,14 +816,16 @@ test('C.7 (Codex re-check): FADING starts exactly 1 s below the band, and a reco
 });
 
 // ---- F658: the static hill's follower (the shared cases in presence-hill-cases.json hold the timing rules) ----
-const lp = (id, team, game, o = {}) => ({ id, team, game, state: PLAYER_STATE.alive | PLAYER_STATE.live, present: true, inCircle: true, ageMs: 0, ...o });
+// A86: in scope of control station 1 (the control kind bit and id bit 1)
+const IN1 = { scopeKinds: 1, scope: 1 << 1 };
+const lp = (id, team, game, o = {}) => ({ id, team, game, state: PLAYER_STATE.alive | PLAYER_STATE.live, present: true, inCircle: true, ageMs: 0, ...IN1, ...o });
 
 test('F658 follower: a snapshot restores the mode, the current game and every other game\'s tally', () => {
   const f = new HillFollower(), point = new ControlPoint();
-  f.step(point, [lp(1, 0, 7)], 0, { expiryMs: 4000 });
+  f.step(point, [lp(1, 0, 7)], 0, { expiryMs: 4000, stationId: 1 });
   for (let t = 0; t <= 10_000; t += 250) point.update([lp(1, 0, 7)], t);
   assert.equal(point.owner, 0, 'setup: red holds game 7');
-  f.step(point, [lp(2, 1, 8)], 20_000, { expiryMs: 4000 });   // game 7 unheard: the hill moves to 8
+  f.step(point, [lp(2, 1, 8)], 20_000, { expiryMs: 4000, stationId: 1 });   // game 7 unheard: the hill moves to 8
   assert.equal(f.current, 8);
   const back = new HillFollower().restore(JSON.parse(JSON.stringify(f.snapshot())));
   assert.equal(back.follows, true); assert.equal(back.current, 8);
@@ -833,23 +835,25 @@ test('F658 follower: a snapshot restores the mode, the current game and every ot
 
 test('F658 follower: a full ring never evicts the game it follows', () => {
   const f = new HillFollower({ size: 2 }), point = new ControlPoint();
-  f.step(point, [lp(1, 0, 1)], 0, { expiryMs: 4000 });
+  f.step(point, [lp(1, 0, 1)], 0, { expiryMs: 4000, stationId: 1 });
   // games 2 and 3 go live together while game 1 (current, heard longest ago) is still in the ring: game 2 is evicted, not
   // game 1, and the hill moves to game 3 without tripping over the game it just evicted
-  f.step(point, [lp(2, 0, 2), lp(3, 0, 3)], 1000, { expiryMs: 4000 });
+  f.step(point, [lp(2, 0, 2), lp(3, 0, 3)], 1000, { expiryMs: 4000, stationId: 1 });
   assert.deepEqual([...f.games.keys()].sort(), [1, 3]);
   assert.equal(f.current, 3);
 });
 
 test('F658 follower: counts() is MC\'s game before follow mode and the live bit of the current game after it', () => {
   const f = new HillFollower();
-  assert.equal(f.counts({ state: 1, game: 7 }, 7), true);
-  assert.equal(f.counts({ state: 1, game: 9 }, 7), false, 'another match');
-  assert.equal(f.counts({ state: 1, game: 0 }, 7), true, 'game 0 is any game');
-  f.step(new ControlPoint(), [lp(1, 0, 9)], 0, { expiryMs: 4000 });
-  assert.equal(f.counts({ state: 1, game: 9 }, 7), false, 'following: no live bit, no count');
-  assert.equal(f.counts({ state: 129, game: 9 }, 7), true);
-  assert.equal(f.counts({ state: 129, game: 7 }, 7), false, 'following: MC\'s byte no longer decides');
+  assert.equal(f.counts({ state: 1, game: 7, ...IN1 }, 7, 1), true);
+  assert.equal(f.counts({ state: 1, game: 9, ...IN1 }, 7, 1), false, 'another match');
+  assert.equal(f.counts({ state: 1, game: 0, ...IN1 }, 7, 1), true, 'game 0 is any game');
+  f.step(new ControlPoint(), [lp(1, 0, 9)], 0, { expiryMs: 4000, stationId: 1 });
+  assert.equal(f.counts({ state: 1, game: 9, ...IN1 }, 7, 1), false, 'following: no live bit, no count');
+  assert.equal(f.counts({ state: 129, game: 9, ...IN1 }, 7, 1), true);
+  assert.equal(f.counts({ state: 129, game: 7, ...IN1 }, 7, 1), false, 'following: MC\'s byte no longer decides');
+  assert.equal(f.counts({ state: 129, game: 9 }, 7, 1), false, 'A86: a zero scope never counts');
+  assert.equal(f.counts({ state: 129, game: 9, ...IN1 }, 7, 2), false, 'A86: another station\'s id bit');
   f.clear();
   assert.equal(f.follows, false, 'the operator reset leaves follow mode');
 });

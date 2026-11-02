@@ -17,7 +17,9 @@ function hillAt(b: MockBackend, control: Record<string, unknown>, armedId = 3) {
 describe('F658 the static hill in the mock station view', () => {
   it('an old hill still says bring it back and armed for an older game', () => {
     const lines = hillAt(new MockBackend(), { owner: 255, capture_s: 10 });
-    expect(lines).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
+    // A86: the demo phones (0.1.x) send no scope, so the old-app line shows on any hill, following or not
+    expect(lines.slice(0, 2)).toEqual([STATION_BRING_BACK, STATION_ARMED_OLDER]);
+    expect(lines.length).toBe(3);
   });
   it('a following hill gets the note once, the pace line, and the old-app count', () => {
     const lines = hillAt(new MockBackend(), { owner: 255, capture_s: 10, net_cap: 3, follows: true });

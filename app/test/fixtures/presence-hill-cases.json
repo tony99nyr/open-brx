@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader. F658 (the static hill): a player may name its `game` byte (default 0) and carry the `live` state bit; a series or sighting may override `game` too. The hill hears every game (presence keyed by game) and a follower picks who counts: it follows the newest live game once it has heard any live-bit player, and before that counts the players of `setup.armed_game` (0 = any). `setup.ring_size` and `setup.ring_stale_ms` size the per-game tally ring. A checkpoint may hold `hill.game` (the byte the hill advertises), `follows` (follow mode), `ring` (the game bytes in the ring, ascending) and `games` ({byte: {owner, hold_ms}} from the ring summary). The stage reads only the three hill bytes, so it ignores all of these.",
+  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader. F658 (the static hill): a player may name its `game` byte (default 0) and carry the `live` state bit; a series or sighting may override `game` too. The hill hears every game (presence keyed by game) and a follower picks who counts: it follows the newest live game once it has heard any live-bit player, and before that counts the players of `setup.armed_game` (0 = any). `setup.ring_size` and `setup.ring_stale_ms` size the per-game tally ring. A checkpoint may hold `hill.game` (the byte the hill advertises), `follows` (follow mode), `ring` (the game bytes in the ring, ascending) and `games` ({byte: {owner, hold_ms}} from the ring summary). The stage reads only the three hill bytes, so it ignores all of these. A86 (the enablement scope): `setup.station_id` (default 1) is the hill's own station id, and a player may name its advert scope with `scope_kinds` (names from ADVERT_SCOPE_KIND) and `scope_stations` (station ids, each sets bit id % 16). The default for both is the scope that names this hill (`[\"control\"]` and `[setup.station_id]`), so a case without them is in scope; an empty list is a zero scope (an older APK). A player outside the scope never counts.",
   "cases": [
     {
       "name": "lone red player enters at the threshold at once, and is present after the dwell",
@@ -1152,6 +1152,54 @@
       "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}],
       "expect": [
         {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}}
+      ]
+    },
+    {
+      "name": "A86: a station whose id bit is clear in the scope stays inert, and an out-of-scope red does not contest",
+      "why": "Station 1 hears two live phones of game 7 on the point: a red one whose scope names station 2 only (id bit 2) and a blue one in scope. Only blue exists for the hill, so red neither contests nor builds and blue captures alone in ten seconds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["control"], "scope_stations": [2]}, "2": {"team": 1, "state": ["alive", "live"], "game": 7}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": true, "hill": {"team": 1, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "A86: a scope without the control kind bit stays inert",
+      "why": "The phone's match has station 1 in play, but as a respawn or powerup station, not a control point: the hill counts nobody, never follows, and stays neutral.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["respawn", "powerup"], "scope_stations": [1]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}},
+        {"t": 12000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "A86: a zero scope (an older APK) stays inert, even with the live bit and on the armed game",
+      "why": "An APK from before A86 sends zeros in bytes 6, 8 and 15. A station never counts it: no follow mode, no capture, even on the game MC armed the hill for.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1, "armed_game": 7},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": [], "scope_stations": []}, "2": {"team": 1, "state": ["alive"], "game": 7, "scope_kinds": [], "scope_stations": []}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}},
+        {"t": 12000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "A86: in scope counts as before: station 17 is bit 1 of the map",
+      "why": "A phone whose match has control station 17 and respawn station 3 in play (kind bits control and respawn, id bits 1 and 3) counts at station 17 exactly as before: a lone red captures in ten seconds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 17},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["control", "respawn"], "scope_stations": [3, 17]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
       ]
     }
   ]

@@ -37,6 +37,26 @@ static void shape(const std::string& what) {
 
 struct Heard { long t; int id; int rssi; const Value* state; int game; };  // state: the sighting's own (F554), else null; game: its own (F658), else -1
 
+// A86: a player's advert scope. Default: the scope that names this hill (the control bit and its own id bit).
+static uint8_t scope_kinds(const Value& p) {
+  if (!p.has("scope_kinds")) return contract::ADVERT_SCOPE_KIND_CONTROL;
+  uint8_t k = 0;
+  for (const Value& n : p.get("scope_kinds").arr) {
+    const std::string name = n.as_string();
+    if (name == "control") k |= contract::ADVERT_SCOPE_KIND_CONTROL;
+    else if (name == "respawn") k |= contract::ADVERT_SCOPE_KIND_RESPAWN;
+    else if (name == "powerup") k |= contract::ADVERT_SCOPE_KIND_POWERUP;
+    else shape("unknown scope kind " + name);
+  }
+  return k;
+}
+static uint16_t scope_map(const Value& p, int station_id) {
+  if (!p.has("scope_stations")) return (uint16_t)(1u << (station_id % contract::ADVERT_SCOPE_ID_BITS));
+  uint16_t m = 0;
+  for (const Value& id : p.get("scope_stations").arr) m |= (uint16_t)(1u << (id.as_int() % contract::ADVERT_SCOPE_ID_BITS));
+  return m;
+}
+
 static uint8_t player_state(const Value& names) {
   uint8_t s = 0;
   for (const Value& n : names.arr) {
@@ -145,6 +165,7 @@ static void run_case(const Value& c) {
   if (s.has("ring_size")) follower.size = (size_t)s.get("ring_size").as_int();
   if (s.has("ring_stale_ms")) follower.stale_ms = (uint32_t)s.get("ring_stale_ms").as_int();
   const uint8_t armed = (uint8_t)(s.has("armed_game") ? s.get("armed_game").as_int() : 0);
+  const int station_id = s.has("station_id") ? (int)s.get("station_id").as_int() : 1;  // A86
   BleControlPoint cp;
   cp.capture_s = (int)s.get("capture_s").as_int();
   cp.net_cap = (int)s.get("net_cap").as_int();
@@ -164,11 +185,13 @@ static void run_case(const Value& c) {
       a.team = (uint8_t)p.get("team").as_int();
       a.state = player_state(h.state ? *h.state : p.get("state"));
       a.game = (uint8_t)(h.game >= 0 ? h.game : (p.has("game") ? p.get("game").as_int() : 0));
+      a.scope_kinds = scope_kinds(p);
+      a.scope = scope_map(p, station_id);
       pr.observe(a, h.rssi, (uint32_t)h.t);
     }
     if (stalled(c, t)) continue;
     pr.tick((uint32_t)t);
-    const HillFollowStep fs = follower.step(cp, pr, (uint32_t)t, armed);
+    const HillFollowStep fs = follower.step(cp, pr, (uint32_t)t, armed, station_id);
     cp.update(pr, (uint32_t)t, &fs.filter);
     if (std::getenv("CASES_TRACE")) {  // the phone runner's CASES_TRACE line, so the two timelines diff
       std::string ins;

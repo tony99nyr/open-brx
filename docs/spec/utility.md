@@ -51,8 +51,10 @@ local name (`BRX-RESPAWN-1`) is set where the platform allows it and is decorati
 byte  0-3   4F 42 52 58   'OBRX'
       4     version        1
       5     role           1 station · 2 player
-      6-7   id             station id 1..65535 · player_num (big-endian)
-      8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control   (player: 0)
+      6-7   id             station id 1..65535 (big-endian) · a player: byte 7 alone is its player_num (1..63),
+                            byte 6 is the high byte of its scope map (A86, §5d.8)
+      8     kind           station: 1 respawn · 2 powerup · 3 extraction · 4 bomb · 5 control
+                            player: the scope's kind mask, `ADVERT_SCOPE_KIND` (1 control · 2 respawn · 4 powerup) (A86)
       9     team           0..3 = the gun's $TID team · 255 = neutral / any
       10    state          kind-specific (respawn 1 ready/0 disabled · bomb 0 idle 1 planted 2 defused 3 detonated ·
                             player: bit0 alive, bit1 planting, bit2 defusing, bit3 extracting,
@@ -64,6 +66,8 @@ byte  0-3   4F 42 52 58   'OBRX'
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
       15    taker          a powerup station: the player_num that took the item (A56) · 0 = none / other kinds
+                            player: the low byte of its scope map. Bytes 6 and 15 are a 16-bit map of the station ids
+                            in the player's match, bit (id % 16) (A86)
 ```
 
 Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
@@ -505,9 +509,9 @@ the flags use four. The spec was the stale side here, not the code.
 0-3, a player advert uses it for alive/planting/defusing/extracting bits). So `kind 5`'s flags cannot collide with
 another kind's use of the same offset: a reader that has not first checked byte 8 is reading the wrong record.
 
-**Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1);
-F93's note about byte 15 being the cheap spare for relaying grenade-hill ownership phone-to-phone concerns the
-**player** advert (`role` = 2). Same offset, different records, no contention.
+**Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1).
+On the **player** advert (`role` = 2) byte 15 is no longer spare: A86 made it the low byte of the scope map (§5d.8),
+so F93's grenade-hill relay needs another home.
 
 **What the 16 bytes cannot carry, and where those facts live instead:**
 
@@ -681,14 +685,28 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    ignores a new game byte in `station_config` for its point and ring: the live bit decides. The operator's point
    RESET clears the ring and leaves follow mode.
 6. **Fallback.** A hill that has never heard a live-bit player behaves as before: it counts players of its
-   MC-armed game (0 on either side is any game) inside MC's window.
+   MC-armed game (0 on either side is any game) inside MC's window. Since A86 (item 8) that is in-scope players
+   only, so a 0.4.33 phone (no scope) counts on no hill at all.
 7. **The heartbeat.** `status.control` keeps its fields for the current game (`game` is the followed byte) and adds
    `follows: true` and `games: {"<byte>": {hold_ms, owner, last_ms}}` once following. MC shows a note in place of
    ARMED FOR AN OLDER GAME and BRING IT BACK, and an amber line when the hill's `capture_s` or `net_cap` is not
    this game's. Neither gates START. Scoring is unchanged: the players report possession, and MC merges the
    station's tally only when it names MC's game (F555).
 
-The rules are pinned by the `F658:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick runners).
+8. **Enablement scope (A86).** Tony, 2026-11-02: "utility stations are dumb about the game, and the phone decides
+   whether a station is enabled". The station still referees the field (presence, the hill counter); the players'
+   phones tell it whether it is in play. A player advert carries a scope from the match config MC sent
+   (`config.stations`, the items armed for this game, A13.1): byte 8 is a kind mask (`ADVERT_SCOPE_KIND`: 1 control,
+   2 respawn, 4 powerup) and bytes 6 (high) and 15 (low) are a 16-bit map of the station ids in play, bit
+   (id % 16). The player id is byte 7 alone (1..63). No stations named, or an older MC, sends zeros. A control point
+   counts a player toward the point, and toward the follower's choice of game, only when the advert has the control
+   bit AND the station's own id bit. A zero scope (an APK from before A86) never counts, so **an unassigned station
+   stays inert**. MC keeps the ids of the stations on the field apart modulo 16 (at most 16 stations; an explicit
+   clash is refused, the auto id passes it over). This pass enforces the scope on control points only (phone and
+   Stick); respawn and powerup stations still ignore it.
+
+The rules are pinned by the `F658:` and `A86:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
+runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 

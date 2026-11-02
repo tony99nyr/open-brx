@@ -22,7 +22,7 @@ using namespace brx;
 
 static Advert player(uint16_t id, uint8_t team, bool alive = true, uint8_t game = 0) {
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = id;
   a.team = team;
   a.state = alive ? contract::ADVERT_PLAYER_STATE_ALIVE : 0;

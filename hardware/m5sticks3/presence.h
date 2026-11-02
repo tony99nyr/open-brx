@@ -159,12 +159,14 @@ inline uint16_t scan_window_units(const std::string& kind) {
 // ---- PlayerPresence (beacon.js Presence, players only) -------------------------------------------
 struct PlayerEntry {
   bool used = false;
-  uint16_t id = 0;  // the player's player_num (advert bytes 6-7)
+  uint16_t id = 0;  // the player's player_num (advert byte 7; A86)
   uint8_t team = contract::STATION_TEAM_ANY;
   uint8_t state = 0;  // bit0 alive, bit4 claiming, bit5 claim_ready
   uint8_t value = 0;
   uint8_t seq = 0;
   uint8_t game = 0;
+  uint8_t scope_kinds = 0;  // A86: the advert's scope kind mask (byte 8)
+  uint16_t scope = 0;       // A86: the advert's station-id map (bytes 6 and 15), bit (id % 16)
   int threshold = 0;  // a player advert's byte 14; 0 = use the station's default
   double rssi = 0;    // the EMA
   int raw = 0;        // the last raw sample
@@ -369,6 +371,8 @@ class PlayerPresence {
     e.value = d.value;
     e.seq = d.seq;
     e.game = d.game;
+    e.scope_kinds = d.scope_kinds;
+    e.scope = d.scope;
     e.threshold = d.threshold;
   }
   PlayerEntry* find(uint16_t id, uint8_t g) {
@@ -401,11 +405,14 @@ struct HillUpdate {
 
 // F658 (control.js HillFollower): which heard players the point may count. Following: only live-bit players of the
 // followed game. Not following (only old phones heard): the MC-armed game's players, 0 on either side = any game.
+// A86: never a player outside its scope (the control kind bit and this station's id bit); a zero scope never counts.
 struct HillFilter {
   bool follows = false;
   uint8_t game = 0;   // the followed game byte
   uint8_t armed = 0;  // the MC-armed game byte (0 = any)
+  int station_id = 0; // A86: this control station's id (0 = unassigned: counts nobody)
   bool counts(const PlayerEntry& p) const {
+    if (!in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id)) return false;
     if (follows) return (p.state & contract::ADVERT_PLAYER_STATE_LIVE) && p.game == game;
     return !armed || !p.game || p.game == armed;
   }
@@ -706,14 +713,17 @@ class HillFollower {
   // The byte the hill advertises and counts under: the followed game, else MC's.
   uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
 
-  HillFollowStep step(BleControlPoint& point, const PlayerPresence& players, uint32_t now, uint8_t armed_game) {
+  HillFollowStep step(BleControlPoint& point, const PlayerPresence& players, uint32_t now, uint8_t armed_game, int station_id) {
     HillFollowStep out;
+    out.filter.station_id = station_id;
     struct H { uint8_t game; uint32_t at; int n; };  // n: live players on the point (present or in sight)
     H heard[PRESENCE_MAX_PLAYERS];
     size_t nh = 0;
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (!p.used || !(p.state & contract::ADVERT_PLAYER_STATE_LIVE) || p.age_ms > players.expiry_ms) continue;
+      // A86: a player whose scope does not name this control station does not exist for the hill
+      if (!in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id)) continue;
       if (p.game == 0 && armed_game != 0) continue;  // a hand-played phone is followed only by a hill of game 0
       const uint32_t at = now - p.age_ms;
       size_t k = 0;

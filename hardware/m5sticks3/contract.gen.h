@@ -221,6 +221,15 @@ constexpr int32_t ADVERT_PLAYER_STATE_CLAIMING = 16;
 constexpr int32_t ADVERT_PLAYER_STATE_CLAIM_READY = 32;
 constexpr int32_t ADVERT_PLAYER_STATE_REVIVED = 64;
 constexpr int32_t ADVERT_PLAYER_STATE_LIVE = 128;
+// F658 (A86, enablement scope): a PLAYER advert's byte 8, the kinds of utility station in play in the player's match,
+// as independent bits. Bytes 6 (high) and 15 (low) carry a 16-bit map of the station ids in play, bit (id % 16), and
+// byte 7 alone is the player id (1..63). A station counts a player only with its own kind bit AND its own id bit set,
+// so a scope of 0 (an older APK, or a match with no stations) never counts anywhere. MC keeps the ids of one match
+// apart modulo ADVERT_SCOPE_ID_BITS.
+constexpr int32_t ADVERT_SCOPE_KIND_CONTROL = 1;
+constexpr int32_t ADVERT_SCOPE_KIND_RESPAWN = 2;
+constexpr int32_t ADVERT_SCOPE_KIND_POWERUP = 4;
+constexpr int32_t ADVERT_SCOPE_ID_BITS = 16;
 // A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown.
 constexpr int32_t ADVERT_CONTROL_STATE_HELD = 1;
 constexpr int32_t ADVERT_CONTROL_STATE_CONTESTED = 2;

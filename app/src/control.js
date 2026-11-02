@@ -39,7 +39,7 @@
 // is at `value`% of taking it and NOBODY owns it yet. Ownership changes only at 100 (build) and 0 (drain),
 // never in between, which is condition 2 expressed on the wire.
 
-import { PLAYER_STATE } from './beacon.js';
+import { PLAYER_STATE, inScope } from './beacon.js';
 import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS } from './transport/contract.gen.js';
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
@@ -310,6 +310,9 @@ export class ControlAdvertiser {
  *    the hill's own game is 0. The first follow into the hill's own game (or from a game-0 hill) keeps its point.
  *  - Only live-bit players of the current game count. A player without the bit (the countdown, after the whistle) never
  *    counts in follow mode, so the live bit replaces MC's window.
+ *  - SCOPE (A86, Tony 2026-11-02: "the phone decides whether a station is enabled"): a player counts toward the point
+ *    and toward the follower's choice of game only when its advert names this station: the control kind bit and this
+ *    station's id bit (`inScope`). A zero scope (an older APK) never counts, so a station no match put in play stays inert.
  *  - THE RING: one point state per game byte, at most HILL_RING_SIZE, with the last time the byte was heard. A byte back
  *    after more than HILL_RING_STALE_MS unheard starts fresh (MC wraps 255 to 1, an MC restart that reuses a byte); a
  *    new byte with the ring full evicts the least recently heard one (never the current).
@@ -332,10 +335,12 @@ export class HillFollower {
    * Returns `{ players, switched }`: the players the point may count, and `{ from, to, fresh }` when the current game
    * changed this step (else null).
    */
-  step(point, players, now, { expiryMs, armedGame = 0 }) {
+  step(point, players, now, { expiryMs, armedGame = 0, stationId }) {
+    // A86: only players whose scope names this control station exist for the hill at all
+    players = (players || []).filter(p => inScope(p, 'control', stationId));
     // byte -> { at: the newest advert time of a live player, n: its live players on the point (present or in sight) }
     const heard = new Map();
-    for (const p of players || []) {
+    for (const p of players) {
       if (!p || !(p.state & PLAYER_STATE.live)) continue;
       const age = Number.isFinite(p.ageMs) ? p.ageMs : 0;
       if (age > expiryMs) continue;
@@ -350,7 +355,7 @@ export class HillFollower {
     if (heard.size) this.follows = true;
     if (!this.follows) {
       // Fallback, today's rule: MC's game byte scopes the players (0 on either side = any game).
-      return { players: (players || []).filter(p => this.counts(p, armedGame)), switched: null };
+      return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched: null };
     }
     let freshCurrent = false;
     for (const [g, { at }] of heard) {
@@ -393,12 +398,13 @@ export class HillFollower {
       loadPoint(point, null);
       switched = { from: this.current, to: this.current, fresh: true };
     }
-    return { players: (players || []).filter(p => this.counts(p, armedGame)), switched };
+    return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched };
   }
-  /** May the point count this player? Following: a live-bit player of the current game. Not following: a player of MC's
-   *  game (0 on either side = any game), today's rule. */
-  counts(p, armedGame = 0) {
-    if (!p) return false;
+  /** May the point count this player? Never outside its scope (A86: the control bit and station `stationId`'s id bit).
+   *  Following: a live-bit player of the current game. Not following: a player of MC's game (0 on either side = any
+   *  game), today's rule. */
+  counts(p, armedGame = 0, stationId) {
+    if (!p || !inScope(p, 'control', stationId)) return false;
     if (this.follows) return !!(p.state & PLAYER_STATE.live) && (p.game || 0) === this.current;
     return !armedGame || !p.game || p.game === armedGame;
   }

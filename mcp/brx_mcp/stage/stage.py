@@ -113,6 +113,8 @@ class Advert(TypedDict):
     game: int
     threshold: int
     taker: int
+    scope_kinds: int   # A86: a player's scope (beacon.js `scopeKinds`/`scope`); 0 on a station
+    scope: int
 
 
 class StationEntry(Advert):
@@ -402,13 +404,14 @@ def claimable(tid) -> bool:
 
 
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
-                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
+                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0,
+                       scope_kinds: int = 0, scope: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
     r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
     if r not in _beacon.ROLE_NAME:
         raise ValueError("role required (station|player)")
     return _beacon.encode(_beacon.ROLE_NAME[r], int(id), kind, int(team), int(state), int(value), int(seq), int(game),
-                          threshold, int(taker))
+                          threshold, int(taker), int(scope_kinds), int(scope))
 
 
 def decode_advert_uuid(s: str) -> Advert | None:

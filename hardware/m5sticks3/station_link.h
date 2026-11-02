@@ -1348,7 +1348,7 @@ class StationLink {
     HillUpdate u;
     if (has_control_assignment()) {
       // F658: the follower first. Following, the live bit replaces MC's window: no wait, no whistle, no freeze.
-      last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game);
+      last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id);
       if (follower_.follows) {
         hill_.thaw();
         return hill_.update(players, now_ms, &last_follow_.filter);

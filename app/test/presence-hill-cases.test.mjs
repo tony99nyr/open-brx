@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Presence, PLAYER_STATE, encodeUuid } from '../src/beacon.js';
 import { ControlPoint, HillFollower } from '../src/control.js';
-import { ADVERT_CONTROL_STATE } from '../src/transport/contract.gen.js';
+import { ADVERT_CONTROL_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS } from '../src/transport/contract.gen.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hill-cases.json'), 'utf8'));
@@ -17,6 +17,16 @@ const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'presence-hi
 // A fixture shape error is a plain Error, never an AssertionError, so a known_fail case can never swallow it.
 const stateByte = (names) => names.reduce((m, n) => { if (!(n in PLAYER_STATE)) throw new Error(`unknown player state ${n}`); return m | PLAYER_STATE[n]; }, 0);
 const hillByte = (names) => names.reduce((m, n) => { if (!(n in ADVERT_CONTROL_STATE)) throw new Error(`unknown hill state ${n}`); return m | ADVERT_CONTROL_STATE[n]; }, 0);
+
+/** A86: a player's advert scope. Default: the scope that names this hill (the control bit and its own id bit). */
+export function scopeOf(c, p) {
+  const station = c.setup.station_id ?? 1;
+  const kinds = p.scope_kinds ?? ['control'], ids = p.scope_stations ?? [station];
+  return {
+    scopeKinds: kinds.reduce((m, n) => { if (!(n in ADVERT_SCOPE_KIND)) throw new Error(`unknown scope kind ${n}`); return m | ADVERT_SCOPE_KIND[n]; }, 0),
+    scope: ids.reduce((m, id) => m | (1 << (id % ADVERT_SCOPE_ID_BITS)), 0),
+  };
+}
 
 /** The sightings of a case in time order: its explicit `sightings`, then each `series` expanded. */
 export function expandSightings(c) {
@@ -75,11 +85,11 @@ function runCase(c, collect = false) {
     while (next < sightings.length && sightings[next].t <= t) {
       const h = sightings[next++];
       const p = c.players[String(h.id)];
-      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state), game: h.game ?? p.game ?? 0 })], h.rssi, h.t);
+      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state), game: h.game ?? p.game ?? 0, ...scopeOf(c, p) })], h.rssi, h.t);
     }
     if (stalled(c, t)) continue;
     presence.tick(t);
-    const counted = follower.step(point, presence.players(), t, { expiryMs: s.expiry_ms, armedGame: armed }).players;
+    const counted = follower.step(point, presence.players(), t, { expiryMs: s.expiry_ms, armedGame: armed, stationId: s.station_id ?? 1 }).players;
     point.update(counted, t);
     const adv = point.advert();
     if (process.env.CASES_TRACE) {

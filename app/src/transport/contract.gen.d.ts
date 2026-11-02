@@ -201,6 +201,13 @@ export declare const ADVERT_ROLE: { readonly station: 1; readonly player: 2 };
  *  reads it, and the phone never sets it. `live` (128, F658): the player's match is live (go-live to the whistle, the
  *  engine's phase 'live'), so a hill can follow the newest live game with no MC arming. */
 export declare const ADVERT_PLAYER_STATE: { readonly alive: 1; readonly planting: 2; readonly defusing: 4; readonly extracting: 8; readonly claiming: 16; readonly claim_ready: 32; readonly revived: 64; readonly live: 128 };
+/** F658 (A86, enablement scope): a PLAYER advert's byte 8, the kinds of utility station in play in the player's match,
+ *  as independent bits. Bytes 6 (high) and 15 (low) carry a 16-bit map of the station ids in play, bit (id % 16), and
+ *  byte 7 alone is the player id (1..63). A station counts a player only with its own kind bit AND its own id bit set,
+ *  so a scope of 0 (an older APK, or a match with no stations) never counts anywhere. MC keeps the ids of one match
+ *  apart modulo ADVERT_SCOPE_ID_BITS. */
+export declare const ADVERT_SCOPE_KIND: { readonly control: 1; readonly respawn: 2; readonly powerup: 4 };
+export declare const ADVERT_SCOPE_ID_BITS: 16;
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export declare const ADVERT_CONTROL_STATE: { readonly held: 1; readonly contested: 2; readonly rising: 4; readonly falling: 8 };
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */

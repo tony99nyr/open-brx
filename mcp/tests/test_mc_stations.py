@@ -650,7 +650,8 @@ def test_f658_a_following_hill_gets_a_note_not_a_re_arm_line_and_an_amber_when_i
               "station_id": 3, "armed": True}
     s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 1, "capture_s": 10, "net_cap": 3}}, s.now_ms())
     v = s._station_view("util-1")
-    assert st_lines(v) == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER], v["attention"]
+    # A86: the release app (0.4.33) sends no scope, so no control station counts those phones, following or not
+    assert st_lines(v) == [T.STATION_BRING_BACK, T.STATION_ARMED_OLDER, "2 PHONES ON AN OLD APP: THIS HILL CANNOT COUNT THEM"], v["attention"]
     s.net.simulate_status("util-1", {**common, "control": {"owner": 255, "game": 2, "capture_s": 10, "net_cap": 3, "follows": True,
                                                          "games": {"1": {"hold_ms": {"0": 9000}, "owner": 0, "last_ms": 60000},
                                                                    "2": {"hold_ms": {}, "owner": 255, "last_ms": 0}, "x": {}}}}, s.now_ms())
@@ -1369,6 +1370,40 @@ def test_f364_an_mc_restart_keeps_every_station_id():
     assert s2.set_station("util-d", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 4
     assert s2.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, \
         "a cleared station's number survives the restart too"
+
+
+def test_a86_no_two_stations_share_a_scope_bit():
+    """F658 (A86): a player advert names the stations in play by bit id % 16, so MC keeps the ids of the stations on
+    the field apart modulo 16. An explicit clash is refused; the auto rule passes a clashing id over, a remembered one
+    included; a 17th station is refused."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-a")
+    s.net.simulate_utility_hello("stick-1")
+    assert s.set_station("util-a", {"kind": "control", "team": "any"})["assigned"]["id"] == 1
+    try:
+        s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 17})
+        raise AssertionError("an explicit id sharing bit 1 with station 1 was accepted")
+    except ValueError as e:
+        assert "scope bit" in str(e) and "util-a" in str(e), e
+    assert s.set_station("stick-1", {"kind": "respawn", "team": "any", "id": 18})["assigned"]["id"] == 18
+    s.net.simulate_utility_hello("util-b")
+    assert s.set_station("util-b", {"kind": "respawn", "team": "any"})["assigned"]["id"] == 3, "2 shares bit 2 with 18"
+    # a station that remembers id 17 from earlier this session is not handed it back while station 1 holds bit 1
+    s.station_registry._station_id_of["util-c"] = 17
+    s.net.simulate_utility_hello("util-c")
+    got = s.set_station("util-c", {"kind": "respawn", "team": "any"})["assigned"]["id"]
+    assert got % 16 not in {1, 2, 3}, got
+    for k in range(12):
+        s.net.simulate_utility_hello(f"util-x{k}")
+        s.set_station(f"util-x{k}", {"kind": "respawn", "team": "any"})
+    bits = [st["assigned"]["id"] % 16 for st in s.stations.values() if st.get("assigned")]
+    assert len(bits) == 16 and len(set(bits)) == 16, bits
+    s.net.simulate_utility_hello("util-17th")
+    try:
+        s.set_station("util-17th", {"kind": "respawn", "team": "any"})
+        raise AssertionError("a 17th station was given an id")
+    except ValueError as e:
+        assert "at most 16" in str(e), e
 
 
 def test_f364_an_explicit_id_from_an_older_console_is_still_validated_for_uniqueness():

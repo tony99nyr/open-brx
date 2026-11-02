@@ -671,7 +671,7 @@ const HOLD_SAVE_MS = 2000;
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   // F658: the follower first: which game the hill counts, and the players of it that may count.
-  const fs = follower.step(point, presence.players(), now, { expiryMs: presence.expiryMs, armedGame: settings.game });
+  const fs = follower.step(point, presence.players(), now, { expiryMs: presence.expiryMs, armedGame: settings.game, stationId: settings.id });
   if (fs.switched) {
     log(fs.kept ? `F658: following game ${fs.to}: the point it counted is kept`
       : fs.fresh ? `F658: following game ${fs.to}${fs.from != null && fs.from !== fs.to ? ` (was ${fs.from})` : ''}: a fresh point` : `F658: following game ${fs.to} (was ${fs.from}): its saved tally is back`, 'lk');
@@ -849,7 +849,7 @@ function render() {
   const mainInput = $('mcUrlMain'); if (mainInput && document.activeElement !== mainInput) mainInput.value = settings.mc || mcUrl() || '';
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   // F658: a control point lists only the players it may count (its followed game, else MC's), as before the hill heard every game
-  const rows = presence.players().filter(p => !isControl || follower.counts(p, settings.game)).map(p => {
+  const rows = presence.players().filter(p => !isControl || follower.counts(p, settings.game, settings.id)).map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
     // On a control point the row IS the contribution readout (§5d.4): `claim` is a body actually converting
     // the point (present + alive + a team that may hold one), DOWN is struck through, and in range but off
@@ -1331,8 +1331,9 @@ function seedDemo() {
                 { id: 31, team: 0, alive: true, rssi: () => -70 + 14 * Math.sin((Date.now() - t0) / 11000) }];
   setInterval(() => {
     const now = stationNow();
+    // A86: every fake phone's match puts this station in play (every kind bit, its id bit).
     // A56: `bits`/`value` let a stage step make a fake phone CLAIM a powerup station (`claiming`/`claim_ready`, station id)
-    for (const f of fake) onSighting([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);
+    for (const f of fake) onSighting([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: (f.alive ? PLAYER_STATE.alive : 0) | (f.bits || 0), value: f.value || 0, seq: 0, game: settings.game, scopeKinds: 7, scope: 1 << (settings.id % 16) })], f.rssi() + (Math.random() - .5) * 2, now);
   }, 250);
   window.brxUtilityFake = fake;
 }
