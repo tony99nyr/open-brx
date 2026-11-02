@@ -38,10 +38,12 @@ below Cloudflare's minimum (2026.10.2). It asks GitHub for the newest release at
 skips that check. If brew did not install it, or brew has no newer build yet, the script prints what to do by hand.
 A failed update never blocks the start.
 
-**Keep the Mac awake while MC runs.** MC does this itself now (F595): on macOS it starts `caffeinate -dimsu -w <its pid>`
-and prints `keep-awake: caffeinate holds the Mac awake while MC runs`. If that line is missing, run `caffeinate -dimsu`
-in a second Terminal tab until the last match ends. Keep the Mac on its charger, because `-s` holds off sleep only on AC power. Keep
-the lid open: closing it still sleeps the Mac unless an external display is connected. On
+**Keep the Mac awake while MC runs.** MC does this itself (F595, F660): on macOS it starts `caffeinate -dimsu -w <its pid>`
+and prints `keep-awake: caffeinate holds the Mac awake while MC runs (keep the lid open: a closed lid still sleeps it)`.
+If that line is missing, run `caffeinate -dimsu` in a second Terminal tab until the last match ends. Keep the Mac on its
+charger: `-s` holds off sleep only on AC power, and MC prints a `keep-awake: WARNING` line when the Mac is on battery.
+Keep the lid open: closing it still sleeps the Mac unless an external display is connected. `-d` also keeps the display
+on. MC changes no Mac network setting, and we know of none that drops the phones while the Mac is awake. On
 2026-10-17 the Mac slept during play: the clock stepped 8 times, the phone sockets were taken over 19 times and 31
 keepalives timed out (`docs/field-2026-10-17.md` §2 item 5).
 
