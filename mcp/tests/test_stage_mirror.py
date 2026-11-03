@@ -2413,6 +2413,9 @@ KNOWN_UNMIRRORED = {
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
     "_fireIntervalMs", "shotCooldown",
+    # F665: the melee-ready icon (the swing timed from its $ALCD after a melee press, t14 from the head); HUD display only,
+    # no game rule. The swing's rule that IS game state (a slot-4 $ALCD moves nothing) is mirrored in `GunStage` itself.
+    "_meleeButtons", "am._meleeSwing", "meleeCooldown",
     "feedback", "alert", "control", "_cue",
     # Engine split (a), 2026-10-04: every `rc.` name is app/src/reconcile.js (`Reconcile`), the relink reconcile (it was
     # `_beginReconcile`/`_endReconcile` here): its window, begin, end and clock, the F416 spawn-check hold, and the

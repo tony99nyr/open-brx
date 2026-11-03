@@ -7038,6 +7038,80 @@ for (const view of VIEWS) for (const stage of ['live', 'live-pool-wrong']) await
   must(r.n === 0, `night: ${r.n} green pixels, e.g. ${r.first.join(' ; ')}`);
 });
 
+// ---------- F665: the melee-ready icon (Tony's picks 2026-11-02: placement A, the shimmer, a dim grey cooling look) ----------
+// The fist sits at the start of the weapon-name row. A swing dims it for the slot-4 t14 in the bundle head (the golden
+// bundle: 3000 ms); it shimmers once when the gun takes the next swing. While DOWN it does not change. The stamps come
+// from a MutationObserver on #frame data-melee, so the timing is what the screen did, not what the engine says.
+const MELEE_STAMP = () => {
+  window.__ml = [];
+  new MutationObserver(() => { const f = document.getElementById('frame'); if (!f) return;
+    const s = f.dataset.melee || 'idle', l = window.__ml[window.__ml.length - 1];
+    if (!l || l.s !== s) window.__ml.push({ s, at: performance.now(), down: !(window.brx && window.brx.engine && window.brx.engine.alive) }); })
+    .observe(document, { subtree: true, attributes: true, attributeFilter: ['data-melee'], childList: true });
+};
+const meleeRead = pg => pg.evaluate(() => { const m = document.getElementById('melee'), wn = document.querySelector('.ammo .wn'), f = document.getElementById('frame');
+  const r = m && m.getBoundingClientRect(), t = wn && [...wn.childNodes].find(n => n !== m && (n.textContent || '').trim());
+  const tr = t && (t.nodeType === 1 ? t.getBoundingClientRect() : (() => { const g = document.createRange(); g.selectNodeContents(t); return g.getBoundingClientRect(); })());
+  return { has: !!m, inRow: !!(m && wn && wn.contains(m)), first: !!(m && wn && wn.firstElementChild === m), w: r ? r.width : 0, h: r ? r.height : 0,
+    op: m ? +getComputedStyle(m).opacity : -1, filt: m ? getComputedStyle(m).filter : '', melee: f.dataset.melee || 'idle', wn: wn ? wn.innerText.replace(/\s+/g, ' ').trim() : '',
+    mag: (document.getElementById('mag') || {}).innerText || '', overlap: !!(r && tr && r.right > tr.left + 0.5 && r.left < tr.right && r.bottom > tr.top && r.top < tr.bottom) }; });
+for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F665 melee icon: the fist leads the weapon-name row, full strength, clear of the name`, async () => {
+  const pg = await open(view, 'live-melee', N);
+  const r = await meleeRead(pg);
+  // The gate of 2026-11-02: inside the row's box the fist widened the ammo column 36 px into the centre, under the kill
+  // cards and the tells. The column must keep the width it has with no fist.
+  const box = () => pg.evaluate(() => { const a = document.querySelector('.ammo').getBoundingClientRect(); return [a.left, a.width]; });
+  const withFist = await box(); await pg.addStyleTag({ content: '#melee{display:none!important}' }); const noFist = await box(); await pg.close();
+  must(Math.abs(withFist[0] - noFist[0]) < 1 && Math.abs(withFist[1] - noFist[1]) < 1, `the fist widens the ammo column: ${withFist} vs ${noFist} without it`);
+  must(r.has && r.inRow && r.first, `the fist is not the first thing in the weapon-name row: ${JSON.stringify(r)}`);
+  must(r.w >= 12 && r.h >= 12, `the fist is too small to read: ${r.w}x${r.h}`);
+  must(r.melee === 'idle' && r.op > 0.95, `ready before any swing must be full strength: ${JSON.stringify(r)}`);
+  must(!r.overlap && r.wn.length > 0, `the fist overlaps the weapon name: ${JSON.stringify(r)}`);
+});
+for (const view of VIEWS) await step(`${view.name} F665 melee swing: dim and grey for the bundle's 3 s, one shimmer, then ready; the weapon row keeps the rifle`, async () => {
+  const pg = await open(view, 'live-melee', '', 0, MELEE_STAMP);
+  await until(pg, () => window.brxDemo && window.brxDemo.settled, null, 10000);
+  const before = await meleeRead(pg);
+  await pg.evaluate(() => window.brxDemo.swing());
+  must(await until(pg, () => (window.__ml.find(x => x.s === 'cool')), null, 3000), 'the swing never dimmed the fist');
+  await pg.waitForTimeout(400); const cool = await meleeRead(pg);
+  const t0 = await pg.evaluate(() => window.__ml.find(x => x.s === 'cool').at);
+  must(await until(pg, () => window.__ml.some(x => x.s === 'idle' && x.at > window.__ml.find(y => y.s === 'cool').at), null, 6000), 'the fist never came back ready');
+  const ml = await pg.evaluate(() => window.__ml); await pg.close();
+  const after = ml.filter(x => x.at >= t0), ready = after.find(x => x.s === 'ready');
+  must(cool.melee === 'cool' && cool.op < 0.5 && /grayscale|saturate/.test(cool.filt), `cooling must be dim and grey: ${JSON.stringify(cool)}`);
+  must(ready, `no shimmer between cooling and ready: ${JSON.stringify(after)}`);
+  const ms = ready.at - t0;
+  must(ms >= 2900 && ms <= 3600, `the shimmer came ${Math.round(ms)} ms after the dim, not the bundle's 3000 ms (early = the gun still refuses)`);
+  must(after.filter(x => x.s === 'ready').length === 1, `more than one shimmer: ${JSON.stringify(after)}`);
+  must(cool.wn === before.wn && cool.mag === before.mag && !/PICKUP/.test(cool.wn), `the swing changed the weapon row: ${before.wn} ${before.mag} -> ${cool.wn} ${cool.mag}`);
+});
+for (const view of VIEWS) await step(`${view.name} F665 melee DOWN: the icon does not change while DOWN, and a cooldown that ends there comes back plain ready`, async () => {
+  const pg = await open(view, 'live-melee-down', '', 0, MELEE_STAMP);
+  must(await until(pg, () => window.__ml.some(x => x.s === 'cool'), null, 10000), 'the swing never dimmed the fist');
+  const t0 = await pg.evaluate(() => window.__ml.find(x => x.s === 'cool').at);
+  must(await until(pg, () => window.brx.engine.alive === false, null, 5000), 'the stage never went DOWN');
+  const downAt = await pg.evaluate(() => performance.now()), held = await meleeRead(pg);
+  const wait = t0 + 3000 + 450 + 600 - downAt; if (wait > 0) await pg.waitForTimeout(wait);   // past the cooldown and the shimmer
+  const ml = await pg.evaluate(() => window.__ml), now = await meleeRead(pg), alive = await pg.evaluate(() => window.brx.engine.alive); await pg.close();
+  must(!alive, 'the stage left DOWN before the check');
+  const changed = ml.filter(x => x.at > downAt);
+  must(held.melee === 'cool' && now.melee === 'cool' && changed.length === 0, `the icon changed while DOWN (the cooldown ended there): ${JSON.stringify({ held: held.melee, now: now.melee, changed })}`);
+});
+for (const view of VIEWS) await step(`${view.name} F665 melee respawn: still cooling after the respawn, so dim, then one shimmer at the 3 s mark`, async () => {
+  const pg = await open(view, 'live-melee-respawn', '', 0, MELEE_STAMP);
+  must(await until(pg, () => window.__ml.some(x => x.s === 'cool'), null, 10000), 'the swing never dimmed the fist');
+  const t0 = await pg.evaluate(() => window.__ml.find(x => x.s === 'cool').at);
+  must(await until(pg, () => window.brx.engine.alive === false, null, 5000), 'the stage never went DOWN');
+  must(await until(pg, () => window.brx.engine.alive === true, null, 5000), 'the stage never respawned');
+  await pg.waitForTimeout(150); const back = await meleeRead(pg);
+  must(await until(pg, () => window.__ml.some(x => x.s === 'ready'), null, 5000), 'no shimmer after the respawn');
+  const ml = await pg.evaluate(() => window.__ml); await pg.close();
+  const ready = ml.find(x => x.s === 'ready');
+  must(back.melee === 'cool' && back.op < 0.5, `after the respawn the gun still cools, so the fist must be dim: ${JSON.stringify(back)}`);
+  must(!ready.down && ready.at - t0 >= 2900, `the shimmer came early or while DOWN: ${Math.round(ready.at - t0)} ms ${JSON.stringify(ml)}`);
+});
+
 if (SHARD) fs.writeFileSync(path.join(CLAIM_DIR, `walk-${SHARD[0]}.json`), JSON.stringify({ stepCount: stepIdx, namesHash: namesHash(walkedNames) }));
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
