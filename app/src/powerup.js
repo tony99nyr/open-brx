@@ -36,6 +36,9 @@ export class PowerupStation {
     // F658: who may claim. `claimGame` 0 = any game (either side 0, as Presence), else only that byte; `requireLive` (a
     // following station) only a player whose match is live. The scope (A86) always applies: see `claimant`.
     this.claimGame = 0; this.requireLive = false;
+    // F658 bounce: every local award counts here, with its time, so the follower can tell a claim made after MC's
+    // remembered update (PowerupFollower.step). Not saved: the follower's memo is not saved either.
+    this.takes = 0; this.takenAt = null;
   }
   /** F658: the station follows a new live game (PowerupFollower): its item spawns `first_at_s` after `now`, then every
    *  interval. The last game's item, taker and award protection go; queued `taken` reports stay (MC dates them). */
@@ -96,6 +99,7 @@ export class PowerupStation {
       const ready = mine.filter(p => p.state & PLAYER_STATE.claim_ready).sort((a, b) => a.id - b.id);
       if (ready.length) {
         this.available = false; this.taker = ready[0].id; this.ringAt = null; this.awardedNext = this.nextAt;
+        this.takes++; this.takenAt = now;
         events.push({ type: 'taken', player_num: this.taker }); changed = true;
         this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now }); if (this.unsent.length > 16) this.unsent.shift();
         this.log.push({ t: now, type: 'taken', player_num: this.taker }); if (this.log.length > 64) this.log.shift();
@@ -141,7 +145,9 @@ export class PowerupStation {
  *  - MC's own game keeps MC's schedule: the follower remembers MC's last `station_update` for the game MC armed
  *    (`noteMc`), applied or not. Following into that game (the first follow, or a switch from another game, review
  *    round 1) keeps or re-applies it instead of starting the clock at the sighting. A first follow also keeps a schedule
- *    MC anchored since the last arming after a reload (`mcAnchored`). Every arming forgets both (`onArm`). With MC armed and START known,
+ *    MC anchored since the last arming after a reload (`mcAnchored`). Every arming forgets both (`onArm`). A local
+ *    claim in MC's game after the remembered update forgets the update (it would hand the claimed item back on a bounce
+ *    from another game); the next switch into that game then starts the clock at the sighting. With MC armed and START known,
  *    today's behaviour is the fallback, and MC's later updates for the followed game apply (`acceptsMc`).
  *  - Following, only live-bit players of the current game claim (`claimGame`, `requireLive`).
  *
@@ -156,6 +162,7 @@ export class PowerupFollower {
     this.since = null;      // when the current game's clock started (its first sighting)
     this.mc = null;         // MC's last station_update: { game: the byte MC armed, body, at }
     this.mcAnchored = false;   // a station_update arrived since the last arming: saved, unlike `mc`, so a reload keeps it
+    this.seenTakes = 0;        // the station's `takes` at the last step (F658 bounce)
   }
   /** Remember MC's `station_update` for its armed game `armedGame`, whether the station applied it or not. */
   noteMc(armedGame, body, now) {
@@ -174,6 +181,12 @@ export class PowerupFollower {
    * kept }` when the current game changed (or restarted) this step, else null.
    */
   step(station, players, now, { expiryMs, armedGame = 0, stationId }) {
+    // F658 bounce: a local claim in MC's game after MC's remembered update makes that update wrong (it would hand the
+    // claimed item back), so the memo goes. `station.claimGame` is still the rule the last tick claimed under.
+    if (station.takes !== this.seenTakes) {
+      this.seenTakes = station.takes;
+      if (this.mc && station.takenAt != null && station.takenAt >= this.mc.at && station.claimGame === this.mc.game) this.mc = null;
+    }
     const heard = new Map();   // byte -> { at, n }: the newest advert time and the in-scope live players heard
     for (const p of players || []) {
       if (!p || !(p.state & PLAYER_STATE.live) || !inScope(p, 'powerup', stationId)) continue;

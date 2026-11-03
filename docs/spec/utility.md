@@ -763,7 +763,10 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
    schedule and players of MC's game claim. The station remembers MC's last update for the game MC armed, applied
    or not. Following into that game (the first follow, or a switch from another game) keeps or re-applies MC's
    schedule instead of starting the clock at the sighting, and MC's later updates for that game still apply. Every
-   `station_config` forgets the remembered update, since a new match can reuse the byte. A phone reloaded before its
+   `station_config` forgets the remembered update, since a new match can reuse the byte. A local claim in MC's game
+   after the remembered update forgets it too: a bounce from that game to another and back (52, 51, 52 with no
+   re-arm) would otherwise re-apply the update and hand the claimed item back. Following back into that game then
+   starts the clock at the sighting, as for any other game. A phone reloaded before its
    first follow keeps MC's saved schedule if MC's update arrived after the last arming. Following another game, MC's update is ignored, and
    MC's END does not freeze the item: the live bit replaces MC's window. A new game byte in `station_config` leaves a
    following station's item alone; a new kind or id clears follow mode.
