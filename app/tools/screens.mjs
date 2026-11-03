@@ -7108,7 +7108,7 @@ for (const view of VIEWS) await step(`${view.name} F665 melee respawn: still coo
 });
 
 // ---------- F666: Domination's row of hills (Tony's picks 2026-11-02: top middle under the clock, the night scheme as
-// rendered, an out-of-range hill dim only, and no hill card in Domination; KOTH keeps its card, gated above) ----------
+// rendered, an out-of-range hill dim and dashed with no AGO text, and no hill card in Domination; KOTH keeps its card, gated above) ----------
 // You are BLUE (tid 1) against RED (tid 0); A B C are ids 11 12 13. Each advert is [id, team, state, value, present, ageMs],
 // state bits held 1 · contested 2 · rising 4.
 const DOM_Q = '&team=blue&foe=red';
@@ -7146,7 +7146,7 @@ for (const view of VIEWS) await step(`${view.name} F666 domination: capture and 
   must(b.con === '1', `B must show contested: ${JSON.stringify(b)}`);
   must(!r.hillCard, 'the KOTH hill card (HILL CAPTURE STARTED) fired in Domination; Tony: the row carries it');
 });
-for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F666 domination: a hill out of earshot dims, keeps its last owner, and shows no text`, async () => {
+for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F666 domination: a hill out of earshot dims and goes dashed, keeps its last owner, and shows no text`, async () => {
   const pg = await open(view, 'live-dom', DOM_Q + N);
   await domFeed(pg, [[11, 1, 1, 100, 0], [12, 0, 1, 100, 0], [13, 1, 1, 100, 0]]);
   const before = await domRead(pg);
@@ -7156,7 +7156,7 @@ for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.nam
   const b = r.tiles[1], a = r.tiles[0];
   must(b.fresh === 'old' && b.own === 'theirs', `B must be last known (theirs): ${JSON.stringify(b)}`);
   must(b.op < 0.6 && a.op > 0.95, `out of earshot must dim B only: A ${a.op}, B ${b.op}`);
-  must(b.bst === before.tiles[1].bst, `dim only: the edge changed style (${before.tiles[1].bst} -> ${b.bst})`);
+  must(before.tiles[1].bst === 'solid' && b.bst === 'dashed', `out of earshot is dim with a dashed edge, as Tony picked: ${before.tiles[1].bst} -> ${b.bst}`);
   must(b.t === 'B' && !/\d|AGO/i.test(b.t), `no AGO text or timer on the tile: "${b.t}"`);
 });
 for (const view of VIEWS) await step(`${view.name} F666 domination row: absent outside Domination`, async () => {
