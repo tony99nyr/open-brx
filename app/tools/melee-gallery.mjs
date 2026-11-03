@@ -14,8 +14,8 @@ fs.mkdirSync(OUT, { recursive: true });
 const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', decodePath: true });
 const VIEWS = [{ name: 'pixel', width: 891, height: 411, label: '891×411' }, { name: 'se', width: 667, height: 375, label: '667×375' }];   // = screens.mjs VIEWS
 const SKINS = [{ name: 'day', q: '', label: 'Day' }, { name: 'night', q: '&night', label: 'Night ops' }];
-const PLACES = [{ name: 'a', q: '', label: 'A: at the start of the weapon-name row' }, { name: 'b', q: '&meleepos=b', label: 'B: left of the ammo column, at its foot' }];
-const MELEE_MS = 3000;   // placeholder until brx3's catalogue change sets the melee t14 (brx1, 2026-11-02)
+const PLACES = [{ name: 'a', q: '', label: 'A: at the start of the weapon-name row' }];
+const MELEE_MS = 3000;   // = the golden bundle's slot-4 t14 (weapons.json melee wire.fire_ms, F649); the stages read it from the bundle
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 let base = '?'; try { base = execSync('git rev-parse --short HEAD', { cwd: HERE }).toString().trim(); } catch (_) { /* no git */ }
 
@@ -32,7 +32,7 @@ const b = await chromium.launch();
 const openPg = async (view, stage, skin, place) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); pg.__err = []; pg.on('pageerror', e => pg.__err.push(e.message));
   await pg.addInitScript(INIT);
-  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}&melee_ms=${MELEE_MS}${skin.q}${place.q}`);
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${skin.q}${place.q}`);
   await pg.waitForSelector('#melee', { timeout: 15000 });
   return pg;
 };
@@ -99,7 +99,7 @@ figure{margin:0;flex:0 0 auto}figure img{width:100%;display:block;border:1px sol
 .states{font-size:12px;color:#7f93a6}code{color:#ffd27a}</style></head><body>
 <h1>Melee-ready icon (F665)</h1>
 <p class="lede">Frozen renders of the real phone HUD (the <code>?demo</code> stages, built from branch <code>fix/f665-melee-ready</code> at <code>${esc(base)}</code>, ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC).
-Melee is one swing every ${MELEE_MS / 1000} s. The ${MELEE_MS} ms is a placeholder: the build reads the melee line's own time between swings ($WEAP slot 4, token 14), so the icon follows whatever the catalogue sets.
+Melee is one swing every ${MELEE_MS / 1000} s. The build reads the melee line's own time between swings ($WEAP slot 4, token 14), so the icon follows whatever the catalogue sets.
 The icon is the BEAT DOWN fist without its ring. It dims after a swing, and it shimmers once when the gun takes the next swing. No number and no timer.
 It times from the gun's own report of the swing, so ready can only be late, never early. While you are DOWN it does not change. Original designs.</p>
 <h2>Open questions</h2>

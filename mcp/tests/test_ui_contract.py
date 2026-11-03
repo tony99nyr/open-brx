@@ -176,7 +176,7 @@ def test_ui_art_coverage_and_weapon_tree_parity():
     assert modes, "MODES list changed shape; update the asset coverage guard"
     weapons = json.loads(WEAPONS_JSON.read_text(encoding="utf-8"))["weapons"]
     mode_gaps: set[str] = {"domination"}   # Domination (2026-11-02) has no art yet: FOLLOWUPS F666
-    weapon_gaps = {"melee"}
+    weapon_gaps = {"melee", "energy_shotgun"}   # F661: hidden until its bench passes; art comes with the ship step
     for mode in sorted(modes - mode_gaps):
         assert (app / "modes" / f"{mode}.jpg").is_file(), f"app missing mode art: {mode}"
         assert (mc / "modes" / f"{mode}.jpg").is_file(), f"MC missing mode art: {mode}"

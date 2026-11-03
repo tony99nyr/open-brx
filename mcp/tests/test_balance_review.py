@@ -193,7 +193,7 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
         w, specs = _shipped_specs()
         runs.append(R.dominance_matrix(w, specs, MATRIX_REPS_SCALE, 1, anchor_world=w))
     a, b = runs
-    assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
+    assert a["kits"] == ["Assault Rifle", "Burst Rifle", "SMG", "Energy Shotgun", "Shotgun", "Sniper Rifle", "AMR", "Suppressor",
                          "Energy Rifle", "Charge Rifle", "Toxin Rifle", "CR+Sniper+BA", "CR+Sniper+FH"], a["kits"]
     assert a["keys"]["Sniper Rifle"] == "sniper_rifle" and a["keys"]["CR+Sniper+BA"] == "CR+Sniper+BA"
     assert R.COLUMNS == ("1v1 close", "1v1 mid", "1v1 long", "real aim close", "real aim mid", "real aim long", "long contact",
@@ -2212,6 +2212,7 @@ def test_shared_finish_estimator_counts_charge_heat_lockout_in_both_engines():
     row = copy.deepcopy(WeaponCatalog()._row("charge_rifle"))
     row["heat"]["per_charge"] = 55
     row["heat"]["per_tap"] = 14
+    row["wire"]["dmg"] = 70          # the pre-F646 charge, so the kill is a charge plus five taps on 150
     world = R.World(WeaponCatalog([row]), PerkCatalog())
     kit = R.make_kit(world, "charge", "charge_rifle")
     field = R.field_kit(world, "charge", "charge_rifle")
@@ -2302,13 +2303,16 @@ def test_heat_candidate_reports_all_cooling_assumptions():
     assert "## Heated Balance rule cells" in R.report_markdown(v)
     assert "shields|R1" not in v.get("failed_heat_branches", {}).get("none", [])
     assert "shields|R1" in v["heat_rules"]
-    assert not v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
+    # F646 (2026-11-02): the bench heat fit (2 a tap) no longer locks the shipped Charge Rifle out on Shields
+    assert v["heat_rules"]["shields|R1"]["none"]["shipped"]["pass"]
 
 
 def test_heated_pickup_utility_checks_every_cooling_branch():
     row = _copy("charge_rifle", "test_heated_pickup", "Heated pickup")
     row.update(pickup_only=True, hidden=True)
     row["wire"]["tap_dmg"] = 45
+    row["wire"]["dmg"] = 70          # the pre-F646 charge and tap heat, which this test's numbers were measured on
+    row["heat"]["per_tap"] = 14
     v = R.review({"row": row}, reps_scale=0.001)
     utility = v["heat_pickup_utility"]
     assert set(utility) == set(B.HEAT_COOLING_BRANCHES)
@@ -2573,6 +2577,33 @@ def test_the_kit_engine_resets_recoil_on_release_only_with_the_f663_flag():
     assert on[8] == off[8] < on[0]   # the 9th held round is degraded either way
     assert on[9] == on[0]            # the release reset brings the next burst back to the ceiling
     assert off[9] == off[8]          # without it, a 200 ms pause is too short to settle
+
+
+def test_the_kit_engine_recovers_by_hold_length_only_with_the_r2_flag():
+    def hit_chances(recovery, pause, n=10):
+        rows = copy.deepcopy(WeaponCatalog()._rows)
+        ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
+        if recovery:
+            ar["recoil"] = dict(ar["recoil"], recovery=recovery)
+        kit = R.make_kit(R.World(WeaponCatalog(rows), PerkCatalog(), {}), "plain", "assault_rifle")
+        rng = random.Random(7)
+        fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
+        fighter.targets = [R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)]
+        out, t = [], 0.0
+        with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (pause, pause)):
+            while len(out) < n:
+                shot = fighter._act(t)
+                if shot is not None:
+                    out.append(shot[1])
+                t = fighter.next_t
+        return out
+    r2 = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+    off, on = hit_chances(None, 300.0), hit_chances(r2, 300.0)   # 9 rounds: 100 ms timer + 160 ms write < 300
+    assert on[8] == off[8] < on[0]
+    assert on[9] == on[0]            # recovered by the timer
+    assert off[9] == off[8]          # today, 300 ms is too short to settle
+    short = hit_chances(r2, 50.0, 14)   # a pull before the 100 ms timer: the rung carries through the next burst
+    assert short[9] == short[13] == short[8] < short[0]
 
 
 def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():

@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import copy
 import time
-from typing import Callable, Protocol, cast
+from typing import Callable, Protocol, TypeGuard, cast
 
 from . import powerups as _pu
 from .interfaces import Compiler as CompilerPort
 from .match import Match
-from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
+from .types import (ADOPT_SLACK_MS, HILL_CAPTURE_S_MAX, HILL_CAPTURE_S_MIN, HILL_NET_CAP_MAX, HILL_NET_CAP_MIN, ROSTER_PHASES, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM, StationConfig, StationPowerup, StationPowerupGame, StationRingGame, StationUpdate, STATION_ARMED_OLDER, STATION_BATTERY_LOW, STATION_BRING_BACK, STATION_FOLLOWS, STATION_NO_HILL, station_pace_line, LIVE_BIT_MIN_APP, station_old_app_line, OBJECTIVE_MODES,
     STATION_NOT_ARMED, STATION_REARM, DEFAULT_RUNWAY_S, PHONE_CONTROL_THRESHOLD_DBM, POWERUP_STATION_ID_MAX, STATION_ID_MAX, ADVERT_SCOPE_ID_BITS, OWNERSHIP_SCORED_MODES, DOMINATION_HILLS,
     PHONE_POWERUP_THRESHOLD_DBM, PHONE_RESPAWN_THRESHOLD_DBM, PHONE_STATION_THRESHOLD_DBM,
     PHONE_THRESHOLD_ZERO_APP, STATION_EDIT_AGE_UNKNOWN_MS, STATION_KINDS,
@@ -143,6 +143,16 @@ def _ago(ms: int) -> str:
     return f"{s // 3600} H AGO"
 
 
+def _byte(v: object) -> TypeGuard[int]:
+    """A wire byte 0..255 (never a bool)."""
+    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255
+
+
+def _ms(v: object) -> TypeGuard[int]:
+    """A non-negative ms count (never a bool)."""
+    return isinstance(v, int) and not isinstance(v, bool) and v >= 0
+
+
 def _hill_value(v: object, lo: int, hi: int) -> int | None:
     """F559: a stored `config.hill` value fit to send, else None. `set_config` checks every PUT, but a restored
     session.json is taken verbatim, so a bool or an out-of-range number would otherwise reach the hill."""
@@ -167,7 +177,8 @@ class StationRegistry:
                  pu_state: Callable[[str], tuple[StationUpdate | None, dict | None, int | None]],
                  note_departed_station: Callable[[str, RecapStationRow], None],
                  station_sync_state: Callable[[], tuple[int | None, dict[str, str]]],
-                 game_no_started: Callable[[], bool]):
+                 game_no_started: Callable[[], bool],
+                 push_pu_update: Callable[[str], None] | None = None):
         self.stations: dict[str, dict] = {}
         # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
@@ -191,6 +202,7 @@ class StationRegistry:
         self.note_departed_station = note_departed_station
         self.station_sync_state = station_sync_state
         self.game_no_started = game_no_started
+        self.push_pu_update = push_pu_update
 
     def has(self, nid: str) -> bool:
         return nid in self.stations
@@ -219,7 +231,7 @@ class StationRegistry:
     def on_heartbeat(self, nid: str, body: dict, t_recv: int) -> None:
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
-                                                 "armed", "control", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
+                                                 "armed", "control", "powerup", "battery", "uptime_s", "boot_count", "nvs_fail", "assoc",
                                                  "threshold_src", "tx_power", "tx_power_src") if k in body}
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             st["report"]["control"] = ownership_clock(st["report"].get("control"))
@@ -1091,6 +1103,11 @@ class StationRegistry:
         st["arm_pending"] = False
         st["armed"] = {"game": body["game"], "at": self.now_ms(), "kind": a["kind"], "team": a["team"], "id": a["id"]}
         self._note_station_lock(st, body["game"], lock)
+        # F658: an arming makes a powerup forget MC's last station_update, so the match in play's schedule follows it
+        # on the wire (config, then update). Every caller gets it: a hello, UNLOCK, a range edit, a release, a handoff.
+        # The ledger sends nothing outside the match in play.
+        if a["kind"] == "powerup" and self.push_pu_update is not None:
+            self.push_pu_update(nid)
         return True
 
     def _station_lock_s(self) -> int:
@@ -1251,9 +1268,11 @@ class StationRegistry:
         armed = None if self.stood_down(a) else st.get("armed")   # F535: an older game's arming is not this game's
         rep = st.get("report") or {}
         attention: list[str] = []
-        # F658: a hill that follows the players' live game needs no arming for the game, so it gets a note, not a re-arm line
+        # F658: a hill or a powerup that follows the players' live game needs no arming for the game, so it gets a note,
+        # not a re-arm line
         rep_control = rep.get("control")
-        follows = bool(a) and a["kind"] == "control" and isinstance(rep_control, dict) and rep_control.get("follows") is True
+        rep_follow = rep_control if a and a["kind"] == "control" else rep.get("powerup") if a and a["kind"] == "powerup" else None
+        follows = isinstance(rep_follow, dict) and rep_follow.get("follows") is True
         # F658 review: following replaces only the GAME an arming carries. A missed kind, id or team still needs a re-arm.
         no_rearm = follows and a is not None and armed is not None and all(armed.get(k) == a[k] for k in ("kind", "id", "team"))
         if self.stood_down(a):
@@ -1277,9 +1296,10 @@ class StationRegistry:
                 want, have = _hill_value(hill.get(key), lo, hi), _hill_value(rep_control.get(key), lo, hi)
                 if want is not None and have is not None and have != want:
                     attention.append(station_pace_line(key, have, want))
-        if a and a["kind"] == "control" and not self.stood_down(a) and (old := self._old_app_phones()):
-            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it
-            attention.append(station_old_app_line(old))
+        if a and a["kind"] in ("control", "powerup") and not self.stood_down(a) and (old := self._old_app_phones()):
+            # F658 review; A86: an app older than LIVE_BIT_MIN_APP sends no scope, so NO control station counts it and no
+            # powerup hands it the pickup
+            attention.append(station_old_app_line(old, a["kind"]))
         if a and fresh and rep.get("armed") is False:
             attention.append(STATION_NOT_ARMED)               # the push was sent; the phone never applied it
         if a and fresh and rep.get("station_id") not in (None, a["id"]):
@@ -1369,6 +1389,24 @@ class StationRegistry:
                     if ring:
                         decoded_control["games"] = ring
             report["control"] = decoded_control
+        powerup = rep.get("powerup")
+        if isinstance(powerup, dict) and powerup.get("follows") is True and _byte(powerup.get("game")):   # F658: the static powerup
+            decoded_pu: StationPowerup = {"follows": True, "game": powerup["game"]}
+            games = powerup.get("games")
+            if isinstance(games, dict):
+                pu_games: dict[str, StationPowerupGame] = {}
+                for g, v in games.items():
+                    if not (isinstance(g, str) and g.isdigit() and int(g) <= 255 and isinstance(v, dict)):
+                        continue
+                    avail, taker, since, last, nxt = v.get("available"), v.get("taker"), v.get("since_ms"), v.get("last_ms"), v.get("next_ms")
+                    if isinstance(avail, bool) and _byte(taker) and _ms(since) and _ms(last):
+                        pg: StationPowerupGame = {"available": avail, "taker": taker, "since_ms": since, "last_ms": last}
+                        if _ms(nxt):
+                            pg["next_ms"] = nxt
+                        pu_games[g] = pg
+                if pu_games:
+                    decoded_pu["games"] = pu_games
+            report["powerup"] = decoded_pu
         # 2026-09-19 (field, twice in one day): a station's `online` used to ask `OFFLINE_AFTER_MS`
         # (10 min) -- the "has this record left the field entirely" line, not "can I reach it right
         # now". A phone that had re-opened elsewhere under a NEW node_id (a fresh player node, or the

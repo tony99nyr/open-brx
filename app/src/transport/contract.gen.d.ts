@@ -109,8 +109,10 @@ export declare const SESSION_STORE_V: 1;
  *  `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
  *  change is one MC needs. "h8-0.2" was the first build that reports the git sha and `nvs_fail`. "h8-0.3"
  *  (2026-10-25) is the first with the hill gap rule, the F391 lock restore and F591's hill fields, so a Stick on
- *  any older build is flagged for a reflash. */
-export declare const STATION_MIN_FW: 'h8-0.3';
+ *  any older build is flagged for a reflash. "h8-0.4" (2026-11-02) is the first with F642's discovery and F658's
+ *  enablement scope, live-game follow and `own_ms`: an older Stick reads advert byte 6 as a player id high byte, so
+ *  under the new APK its powerup claims go to nobody. */
+export declare const STATION_MIN_FW: 'h8-0.4';
 /** Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
  *  of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
  *  The four proof prefixes whose cure is the push itself (A36/A37), plus GUN_DID_NOT_TAKE_CONFIG: a re-push replaces them (`state.cured_by_push`). */
@@ -132,7 +134,8 @@ export declare const STATION_BATTERY_LOW: 'BATTERY LOW: CHARGE OR SWAP IT BEFORE
 /** F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed */
 export declare const STATION_NO_HILL: 'NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF';
 /** F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
- *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line. */
+ *  STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+ *  A powerup that reports `follows` (the static powerup) gets the same note. */
 export declare const STATION_FOLLOWS: 'FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED';
 export declare const STATION_PACE_REARM: 'BRING IT INTO WI-FI TO UPDATE';
 /** F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
@@ -260,6 +263,13 @@ export declare const HILL_REFUSED_TID: 2;
 export declare const HILL_RING_SIZE: 4;
 /** F658: a game byte unheard for longer than this starts a fresh tally (wrap, MC restart) */
 export declare const HILL_RING_STALE_MS: 600000;
+/** F658: a following hill or powerup switches away from a game it still hears only after the challenger keeps a strict
+ *  lead in heard live players for this long. Against PRESENCE_EXPIRY_MS (4 s) and PRESENCE_EXIT_GRACE_MS (4 s): one stray
+ *  advert keeps a passer-by counted for up to 4 s, and a real player who steps off or is body-shadowed drops out for up
+ *  to 4 s + 4 s = 8 s, so a lead shorter than 8 s is radio noise or a walk-past, never a new game. Phones advertise about
+ *  every 250 ms (PRESENCE_ALPHA_REF_MS), so 10 s is about 40 adverts of agreement. It equals HILL_CAPTURE_S: a real
+ *  handover costs at most one capture time. A current game with no live player heard switches at once (utility.md §5d.8). */
+export declare const FOLLOW_SWITCH_HOLD_MS: 10000;
 /** Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
  *  and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
  *  broadcasts team HILL_REFUSED_TID (2).
@@ -1093,6 +1103,16 @@ export interface DotSpec {
   duration_ms: number;
 }
 
+/** F662 R2 (brx3's spec, Tony 2026-11-02): hold-length recovery. A degraded or heavy weapon released by the trigger goes
+ *  back to crisp after `per_round_ms` for each round of the hold past `after_shots`, clamped to `min_ms`..`max_ms`, in
+ *  one write. A pull before then cancels it, and the rung and the count carry into the new pull. An alternative to
+ *  `reset_on_release`: when both are set, this one wins. Absent = today's settle clock. */
+export interface RecoilRecovery {
+  per_round_ms: number;
+  min_ms: number;
+  max_ms: number;
+}
+
 /** S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
  *  on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
  *  reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
@@ -1123,6 +1143,8 @@ export interface Recoil {
   settle_ms?: number;
   /** F663: back to crisp the moment the trigger comes up (default off) */
   reset_on_release?: boolean;
+  /** F662 R2: back to crisp after a pause that grows with the hold (default off) */
+  recovery?: RecoilRecovery;
 }
 
 /** F559: a game's hill tuning, sent to every control station it arms. A key that is absent keeps the station's own
@@ -2056,6 +2078,28 @@ export interface StationRingGame {
   last_ms: number;
 }
 
+/** F658: the followed game's item in a following powerup's `powerup.games` (one entry, the current game). */
+export interface StationPowerupGame {
+  available: boolean;
+  /** the player_num the current item went to, 0 = none */
+  taker: number;
+  /** ms to the next spawn; absent = no spawn clock yet */
+  next_ms?: number;
+  /** ms since this game's clock started (its first live sighting) */
+  since_ms: number;
+  /** ms since this game was last heard */
+  last_ms: number;
+}
+
+/** F658 (the static powerup): a powerup station that follows the players' live game, as a hill does (`control.follows`).
+ *  Absent until it follows. */
+export interface StationPowerup {
+  follows: boolean;
+  /** the followed game byte */
+  game: number;
+  games?: Record<string, StationPowerupGame>;
+}
+
 /** A67 (F365): one on-station range edit, as the station reports it in `status.range_edits` (the last up to 8,
  *  oldest first) and as MC serves it in `StationView.range_edits`. `seq` rises per edit and survives a reboot;
  *  `locked` = the edit was made while the station held a tamper lock. `age_ms` is ms since the edit (on the wire,
@@ -2102,6 +2146,8 @@ export interface StationReport {
   armed?: boolean;
   battery?: number;
   control?: StationControl;
+  /** F658: a powerup that follows the players' live game */
+  powerup?: StationPowerup;
   /** A58: seconds since this station booted */
   uptime_s?: number;
   /** A58: boots since the station was flashed (persisted) */

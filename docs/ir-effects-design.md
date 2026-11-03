@@ -317,7 +317,7 @@ one thing they wait on.
 | **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
 | **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
 | **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |
-| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | shipped: F62 closed 2026-09-18 (`t6` is a percentage the gun rolls); `crit_pct` 40 on the Burst Rifle, 30 on the AMR |
+| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | shipped: F62 closed 2026-09-18 (`t6` is a percentage the gun rolls); `crit_pct` 40 on the Burst Rifle, 20 on the AMR (30 until 2026-11-02) |
 
 Two cautions carry over from §6.2. A `$SIR` table is **game-wide**, so any archetype that needs its own
 function needs per-player keys before it can ship beside the others. And a victim-side multiplier is

@@ -101,6 +101,29 @@ export function inScope(p, kind, stationId) {
   return !!((p.scopeKinds || 0) & bit) && !!((p.scope || 0) & (1 << (stationId % ADVERT_SCOPE_ID_BITS)));
 }
 
+/** F658 (A86): is the station `e` (a decoded advert or Presence entry) enabled in this player's match? Only when the
+ *  player's own `config.stations` lists its id WITH this kind. The phone decides, the station knows nothing of the
+ *  game: an absent list puts no station of the kind in play, so a stray station from an old setup does nothing. PURE. */
+export function stationEnabled(e, config, kind) {
+  const list = config && Array.isArray(config.stations) ? config.stations : [];
+  return !!e && list.some(x => x && typeof x === 'object' && x.id === e.id && x.kind === kind);
+}
+
+/** F658: the station kinds a player hears WHATEVER game byte they advertise. A respawn station only advertises, and
+ *  the player's own `config.stations` enables it (`stationEnabled`), so one set up for an earlier game keeps working in
+ *  every later one with no re-arm. Every other kind is still scoped by the game byte (`Presence.game`). */
+export const ANY_GAME_STATION_KINDS = Object.freeze(['respawn']);
+const gameBlind = d => d.role === 'station' && ANY_GAME_STATION_KINDS.includes(d.kind);
+
+/** The respawn station a down player of team `tid` uses (utility.md §4.1): an enabled respawn station (`stationEnabled`),
+ *  not disabled (state 0), neutral or on the player's team; a present one first, else the first (the strongest, as
+ *  `stations` arrives strongest first). Null = none. PURE: engine.js reads it, the stage has its twin. */
+export function respawnStation(stations, config, tid) {
+  const mine = (stations || []).filter(e => e && e.kind === 'respawn' && e.state !== 0
+    && (e.team === STATION_TEAM_ANY || e.team === tid) && stationEnabled(e, config, 'respawn'));
+  return mine.find(e => e.present) || mine[0] || null;
+}
+
 /** The first Open BRX advert among a scan result's service UUIDs, decoded, or null. */
 export function decodeAdvert(uuids) {
   for (const u of uuids || []) { const d = decodeUuid(u); if (d) return d; }
@@ -246,12 +269,12 @@ export class Presence {
     if (g === this._game) return;
     this._game = g;
     if (!g) return;
-    for (const [key, e] of this.entries) if (e.game && e.game !== g) this.entries.delete(key);
+    for (const [key, e] of this.entries) if (e.game && e.game !== g && !gameBlind(e)) this.entries.delete(key);
   }
   observe(uuids, rssi, now) {
     const d = decodeAdvert(uuids);
     if (!d || typeof rssi !== 'number') return null;
-    if (this.game && d.game && d.game !== this.game) return null;   // another match's station
+    if (this.game && d.game && d.game !== this.game && !gameBlind(d)) return null;   // another match's station (F658: a respawn station serves any game)
     if (this._pausedAt != null) this.resume(now);   // F537 (review): an advert proves we are listening, so no clock lands in the future
     const key = this.keyByGame && d.role === 'player' ? `player:${d.game}:${d.id}` : `${d.role}:${d.id}`;
     let e = this.entries.get(key);

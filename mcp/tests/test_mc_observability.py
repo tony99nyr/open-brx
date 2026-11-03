@@ -208,12 +208,14 @@ def test_o10_a_match_start_clears_stored_stick_counts_so_a_wrapped_game_byte_nev
 
 def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_version_in_the_view():
     from brx_mcp.mc.types import STATION_MIN_FW, parse_station_fw, station_fw_too_old
-    assert STATION_MIN_FW == "h8-0.3" and parse_station_fw("h8-0.2+a1b2c3d") == (8, 0, 2)
+    assert STATION_MIN_FW == "h8-0.4" and parse_station_fw("h8-0.2+a1b2c3d") == (8, 0, 2)
     assert parse_station_fw("0.4.1") is None and parse_station_fw(None) is None
-    assert not station_fw_too_old("h8-0.3+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
+    assert not station_fw_too_old("h8-0.4+a1b2c3d") and not station_fw_too_old("h8-0.10+unknown")
     assert station_fw_too_old("h8-0.1") and station_fw_too_old("garbage") and not station_fw_too_old(None)
     # 2026-10-25: a Stick on an h8-0.2 build predates the hill gap fix, F391 and F591, so it is flagged too
     assert station_fw_too_old("h8-0.2+a1b2c3d")
+    # 2026-11-02: an h8-0.3 build predates F642 and F658 (it reads advert byte 6 as a player id high byte)
+    assert station_fw_too_old("h8-0.3+a1b2c3d")
     s, net, clock, ps = mk_session()
     base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "platform": "esp32"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
@@ -222,6 +224,8 @@ def test_o13_a_stick_below_the_firmware_floor_gets_a_reflash_line_with_its_versi
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.2+a1b2c3d"}, clock["t"])
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"], "an h8-0.2 Stick must be reflashed"
     net.simulate_status("stick-1", {**base, "app_ver": "h8-0.3+a1b2c3d"}, clock["t"])
+    assert "STICK FIRMWARE TOO OLD: REFLASH IT" in stick()["attention"], "an h8-0.3 Stick must be reflashed (F658)"
+    net.simulate_status("stick-1", {**base, "app_ver": "h8-0.4+a1b2c3d"}, clock["t"])
     assert "STICK FIRMWARE TOO OLD: REFLASH IT" not in stick()["attention"]
     net.simulate_status("phone-1", {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 5,
                                     "platform": "android", "app_ver": "0.4.1"}, clock["t"])
@@ -250,7 +254,7 @@ def test_o13_a_released_stick_with_no_platform_on_record_still_counts_as_returne
 
 def test_o12_a_stick_that_failed_flash_writes_says_so_and_a_clean_one_does_not():
     s, net, clock, ps = mk_session()
-    base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.3+a1b2c3d"}
+    base = {"arm_state": "connected", "role": "utility", "kind": "powerup", "station_id": 4, "app_ver": "h8-0.4+a1b2c3d"}
     stick = lambda: next(v for v in s.stations_view() if v["node_id"] == "stick-1")
     net.simulate_status("stick-1", {**base, "platform": "esp32"}, clock["t"])
     assert stick()["attention"] == [], stick()["attention"]

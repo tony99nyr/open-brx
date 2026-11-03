@@ -6,11 +6,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encodeUuid, decodeUuid, Presence, PLAYER_STATE, medianOf } from '../src/beacon.js';
 import { PowerupStation, stationItemAdvert } from '../src/powerup.js';
+import { ADVERT_SCOPE_KIND } from '../src/transport/contract.gen.js';
 
 const ROCKETS = { kind: 'weapon', weapon_id: 'rocket_launcher', charges: 2, spawn_every_s: 120, first_at_s: 120, name: 'ROCKETS', color: '#ff7a1a' };
 const READY = PLAYER_STATE.alive | PLAYER_STATE.claiming | PLAYER_STATE.claim_ready;
 const CLAIMING = PLAYER_STATE.alive | PLAYER_STATE.claiming;
-const player = (id, state, value, raw = -50, ageMs = 0) => ({ role: 'player', id, kind: null, team: 1, state, value, raw, rssi: raw, ageMs });
+// F658 (A86): a claimant's advert names the powerup stations in play (the powerup kind bit; every id bit here)
+const player = (id, state, value, raw = -50, ageMs = 0) => ({ role: 'player', id, kind: null, team: 1, state, value, raw, rssi: raw, ageMs, scopeKinds: ADVERT_SCOPE_KIND.powerup, scope: 0xffff });
 
 test('byte 15 round-trips as `taker` (0 = none), and a player advert carries the two claim bits', () => {
   const u = encodeUuid({ role: 'station', id: 4, kind: 'powerup', state: 0, value: 42, taker: 19 });

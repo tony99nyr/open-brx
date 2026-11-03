@@ -114,7 +114,9 @@ export function startDemo({ engine, log }) {
     // never be previewed. Found by the HUD moment suite 2026-09-02.
     night: q.has('night'), time_limit_s: 600,
     respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
-    scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
+    scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe],
+    // F658 (A86): MC lists the respawn station in play; the player's config alone enables it (the fake station is id 3)
+    ...(q.get('respawn') === 'scanner' ? { stations: [{ id: 3, kind: 'respawn' }] } : {}) };
   const bundle = { ...golden, player_id: 'p-demo' };
   // F665 storyboard: `&melee_ms=<ms>` sets the melee line's time between swings ($WEAP slot 4, token 14) before the catalogue does
   if (+q.get('melee_ms') > 0) bundle.head = bundle.head.map(f => f.startsWith('$WEAP,4,') ? f.split(',').map((x, i) => i === 15 ? String(+q.get('melee_ms')) : x).join(',') : f);
@@ -502,7 +504,9 @@ export function startDemo({ engine, log }) {
         const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
         if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms — so the fake lives in presence
         engine.setStations(list); },
-      scanner: (delay_s = 3, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate }; },   // stage-time: the SHORTEST legal delay (F13/F34: the engine floors anything under 3 s, so a 1 s fixture silently ran at 3 s and the harness read HOLD where it expected the trigger prompt)
+      scanner: (delay_s = 3, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate };
+        // F658 (A86): the fake respawn station (id 3, `station` above) is enabled by the player's own config.stations
+        if (!(config.stations || []).some(x => x.id === 3 && x.kind === 'respawn')) config.stations = [...(config.stations || []), { id: 3, kind: 'respawn' }]; },   // stage-time: the SHORTEST legal delay (F13/F34: the engine floors anything under 3 s, so a 1 s fixture silently ran at 3 s and the harness read HOLD where it expected the trigger prompt)
       state: () => engine.state(),
       // the diagnostics panel (the ⓘ button). `on` omitted = toggle. F122's screen-truth steps drive it
       // while the 250 ms render loop keeps pushing fresh diag data underneath.
@@ -611,7 +615,6 @@ export function startDemo({ engine, log }) {
     const kitted = [...kit, [300, 'briefDone']];
     const lobby = [...kitted, [500, 'config']];
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
-    const meleePos = () => { const f = typeof document !== 'undefined' && document.getElementById('frame'); if (f && q.get('meleepos') === 'b') f.dataset.meleepos = 'b'; };
     const STAGES = {
       'idle':              [[0, 'scan']],
       // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.
@@ -740,14 +743,14 @@ export function startDemo({ engine, log }) {
       'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
       'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
-      // F665: the melee-ready icon. `&melee_ms=` sets the cooldown, `&meleepos=b` is the gallery's placement B
-      'live-melee':         [[0, meleePos], ...live],
+      // F665: the melee-ready icon. `&melee_ms=` sets the cooldown
+      'live-melee':         [...live],
       // F666: Domination with three phone control points, A B C (ids 11 12 13). The gallery drives `points` frame by frame.
       'live-dom':           [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
-        const f = typeof document !== 'undefined' && document.getElementById('frame'); if (f && q.get('dompos') === 'b') f.dataset.dompos = 'b'; meleePos(); }], ...live],
-      'live-melee-swing':   [[0, meleePos], ...live, [2300, () => ev.swing()]],
-      'live-melee-down':    [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die']],
-      'live-melee-respawn': [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
+        }], ...live],
+      'live-melee-swing':   [...live, [2300, () => ev.swing()]],
+      'live-melee-down':    [...live, [2300, () => ev.swing()], [2500, 'die']],
+      'live-melee-respawn': [...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
       'down-full':         [[0, 'addGhost'], ...live, ...fullLife],

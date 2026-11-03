@@ -239,6 +239,85 @@
    "notes": "A close-combat hose. The gun word deals 7 and the deliberately added headset word deals 2, for 9 per pull when both emissions land: thirteen pulls and 1200ms against the standard pool -- htk/ttk are unchanged by the 2026-09-23 split, since the close-range total still holds at 9. The magazine moves from 72 to 54, preserving four standard kills per reload so the Suppressor keeps its larger-magazine advantage. Covering the gun emitter in the 2026-09-20 playtest proved the old frame sent no headset damage at all; a Shotgun control did. The cycle moves from 95 to 100ms so the bonus stays inside the arsenal's 1.2-3.5s balance band. 2026-09-23 (R5, F308): the split moved 8+1 to 7+2 so the gun word ALONE (past the headset word's own reach, F275) drops from 8 to 7, which a bursting AR's own 9 beats more often -- see the Balance rules table."
   },
   {
+   "weapon_id": "energy_shotgun",
+   "name": "Energy Shotgun",
+   "desc": "A shotgun that runs on a cell, not shells. Three blasts end a close fight, and a long string of blasts locks it until you pull the lever.",
+   "cls": 5,
+   "role": "cqb",
+   "types": [
+    "close"
+   ],
+   "class": "energy",
+   "hidden": true,
+   "hidden_why": "F661 (Tony, 2026-11-02): approved to replace the SMG, but it ships only after bench-plan.md ES0-ES5 passes. Unhiding this row is the ship step; the SMG row stays hidden, never deleted (F653).",
+   "mag": 24,
+   "reserve": 48,
+   "reload_ms": 1400,
+   "dmg": 34,
+   "rof": 17,
+   "rng": 75,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
+   "htk": 3,
+   "ttk_ms": 1074,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
+   "capture": {
+    "src": "2026-08-23-gset-respawn15.btsnoop",
+    "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
+   },
+   "wire": {
+    "dmg": 19,
+    "headset_dmg": 20,
+    "headset_range_outdoor": 100,
+    "headset_range_indoor": 100,
+    "fire_ms": 450,
+    "range_outdoor_pct": 30
+   },
+   "min_app": "0.4.5",
+   "verified": false,
+   "captured": false,
+   "tags": [
+    "cqb"
+   ],
+   "notes": "F661 (Tony, 2026-11-02): replaces the SMG with a comparable close-range weapon and a different trigger feel. Built on the Shotgun's own capture (its two words: 19 from the gun, 20 from the shooter's headset) with a 450 ms pump, a 24-round cell and 48 behind, and the Energy Rifle's overheat, PREDICTED: +13 heat a blast and a lockout on the 8th blast in a row. That prediction reads t24 as heat a shot; on the Energy Rifle t24 6 read about 3 a shot (F229) and about 1.3 (2026-11-01), so the real lock may come much later or not inside one cell. ES2 measures it, and the F661 verdict holds only once ES2 agrees (t24 13, t38 1 until ES0 picks, t35 D11), and a lever that vents and refills the cell in 1.4 s (t19 0, a cell reload). A pull fires slower than 250 ms, so its headset word cannot queue the way the SMG's did (F638). Unproven until bench-plan.md ES0-ES5 runs: t38 on a two-word weapon may also be the headset word's repeat count (ES0 decides t38), the heat a blast (ES1, ES2), the lever vent (ES3), and no trailing headset word (ES4). Balance: docs/balance-decisions.md, 2026-11-02 (option A2 passes every test).",
+   "heat": {
+    "per_shot": 13,
+    "lock_at": 99,
+    "cool_per_s": 0,
+    "vent": "lever",
+    "vent_per_pull": 35
+   },
+   "overrides": {
+    "t19": {
+     "value": 0,
+     "why": "cell reload, not shells"
+    },
+    "t24": {
+     "value": 13,
+     "why": "heat a blast, so the 8th blast in a row locks the gun (F661; the Energy Rifle's t24 is the model, F229). Unproven on this frame: bench-plan.md ES1 and ES2"
+    },
+    "t38": {
+     "value": "1",
+     "why": "overheat on. On a two-word weapon (t1 2) the firmware may also read t38 as the headset word's repeat count, so 150 (the Energy Rifle's value, F229) could send about 150 headset words a pull. 1 cannot flood the headset. bench-plan.md ES0 picks 150 or 1; ES1 checks that it overheats"
+    },
+    "t35": {
+     "value": "D11",
+     "why": "overheat cue, as the Energy Rifle (F229)"
+    }
+   },
+   "ap_dmg": 15,
+   "ap_fire_ms": 525,
+   "based_on": {
+    "weapon_id": "shotgun",
+    "why": "no energy shotgun was ever captured. The Shotgun frame carries the two-word pull and the close-range reach this weapon needs; the heat tokens come from the Energy Rifle (F229)."
+   }
+  },
+  {
    "weapon_id": "shotgun",
    "name": "Shotgun",
    "desc": "Three pulls and it is over, if you were close enough to mean it. Shell by shell, and the fastest recovery on the board.",
@@ -449,7 +528,7 @@
     "fire_ms": 450,
     "range_outdoor_pct": 85
    },
-   "crit_pct": 30,
+   "crit_pct": 20,
    "overrides": {
     "t33": {
      "value": "D02",
@@ -462,7 +541,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 450ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it. 2026-10-25 (Tony's balance sign-off, 0.4.31): fire interval t14 350 -> 450ms."
+   "notes": "Anti-materiel weight at a rifle's cadence. 26 a hit, a round every 450ms at most, five hits to a kill, 14 up and 112 behind. The hardest hit outside the power tier. 2026-09-18 (F62): dmg 24 -> 21 to pay for its own 30% crit_pct (a crit is x1.5 truncated, so 21 -> 31), which raised htk 5 -> 6; the published number is now the guaranteed six-hit kill, five when a crit lands. 2026-10-17 (the player-paced retune, Balance rules row 14): dmg 21 -> 26 and t14 400 -> 350ms, five hits to a kill (a crit lands 39), so it keeps its standing against the rifles once a player's own pull rate paces it. 2026-10-25 (Tony's balance sign-off, 0.4.31): fire interval t14 350 -> 450ms. 2026-11-02 (Tony): crit chance 30 -> 20 %. docs/balance-decisions.md, 2026-11-02."
   },
   {
    "weapon_id": "suppressor",
@@ -568,7 +647,7 @@
   {
    "weapon_id": "charge_rifle",
    "heat": {
-    "per_tap": 14,
+    "per_tap": 2,
     "per_charge": 56,
     "lock_at": 103,
     "lockout_ms": 4800,
@@ -576,7 +655,7 @@
     "vent": "self"
    },
    "name": "Charge Rifle",
-   "desc": "Hold it, and it holds. A full charge and three taps ends a standard player (more health takes five taps), which is why it belongs to whoever saw the other person first.",
+   "desc": "Hold it, and it holds. A full charge and four taps ends a standard player (more health takes six taps), which is why it belongs to whoever saw the other person first.",
    "cls": 5,
    "role": "marksman",
    "types": ["rifle", "long"],
@@ -586,11 +665,11 @@
    "reload_ms": 2500,
    "rounds_per_charge": 10,
    "caution": "A full charge spends 10 rounds. With fewer than 10 left, a charge fires nothing and the phone reloads the cell for you.",
-   "dmg": 61,
+   "dmg": 52,
    "rof": 6,
    "rng": 75,
-   "htk": 4,
-   "ttk_ms": 855,
+   "htk": 5,
+   "ttk_ms": 1140,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
    "recoil": {
@@ -604,7 +683,7 @@
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
    },
    "wire": {
-    "dmg": 70,
+    "dmg": 60,
     "tap_dmg": 16,
     "range_outdoor_pct": 85
    },
@@ -620,7 +699,7 @@
     "marksman",
     "sniper"
    ],
-   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, 160 back -- three combo kills a magazine, 15 across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py). The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: +56 a charge, +14 a tap, a lockout at about 103 for about 4.8 s, then a restart from 0, and about 30 a second of passive cooling."
+   "notes": "2026-09-23 (F280): charge damage 85 -> 70 (`wire.dmg`), which raises the kill from one charge plus two taps to one charge plus THREE. Pre-charge it behind cover, then the kill is one release and three taps: a 70-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus three taps drops a 115 pool from release -- 13 of the 40 rounds up, about 98 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, 160 back -- three combo kills a magazine, 15 across the kit. 2026-09-23 (F291, later the same day): the recoil duel sim's rule 2 (an AR catching an uncharged CR should win) failed at the shipped tap damage. First tried moving the tap CADENCE (285 -> 350ms) -- reverted the same day, because that constant is the player's own physical pull rate: no $WEAP token encodes it and the gun neither reads nor enforces it, so it fixed nothing the gun does. Fixed on the wire instead: tap damage 20 -> 16 (`wire.tap_dmg`, t37, independent of the charge magnitude on t5, bench-proven 2026-09-17). 16 still closes the pool in exactly three taps (3 x 16 = 48 >= the 45 left after the charge), so the combo stays charge + 3 taps -- htk 4, ttk_ms 855, both unchanged from the pre-F291 numbers. Tap cadence stays the bench-measured 285ms (CHARGE_TAP_CADENCE_MS, compile.py). The `heat` block holds the bench F229 facts (2026-09-17) for the balance sims: +56 a charge, +14 a tap, a lockout at about 103 for about 4.8 s, then a restart from 0, and about 30 a second of passive cooling. 2026-11-02 (F646, Tony): the charge 70 -> 60 (tap stays 16) and the bench heat fit per_tap 14 -> 2 (2026-11-01: six fast taps after a charge read 1 to 2 heat each, and heat falls fast after a charge). A Standard kill is now a charge plus four taps (60 + 4 x 16 = 124). docs/balance-decisions.md, 2026-11-02."
   },
   {
    "weapon_id": "glock",
@@ -1041,16 +1120,18 @@
    "mag": 1,
    "reserve": 0,
    "reload_ms": 0,
-   "dmg": 78,
-   "rof": 8,
+   "dmg": 52,
+   "rof": 2,
    "rng": 20,
    "htk": 2,
-   "ttk_ms": 1000,
+   "ttk_ms": 3000,
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
     "frame": "$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*"
    },
    "wire": {
+    "dmg": 60,
+    "fire_ms": 3000,
     "range_outdoor_pct": 60
    },
    "verified": false,
@@ -1059,7 +1140,7 @@
    "tags": [
     "melee"
    ],
-   "notes": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4."
+   "notes": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. Hidden from the picker, always bound to slot 4. 2026-11-02 (F649, Tony): 60 on contact, not the captured 90 (`wire.dmg`), and one swing every 3 s, day and night (`wire.fire_ms` 3000, t14; the captured 1000). The gun blocking a second swing inside 3 s is unproven (bench-plan.md MN1). The HUD reads the same t14 from the slot-4 frame in the config head. docs/balance-decisions.md, 2026-11-02."
   },
   {
    "weapon_id": "stripper",

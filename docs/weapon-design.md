@@ -17,7 +17,7 @@ in the pickup tier. Each review and Tony's call is logged in [balance-decisions.
 | 2 | A one-press burst or single-shot trigger does not recoil at all — the Burst Rifle and the Charge Rifle both ship flat (`ceiling == floor == 100`). | Tony, 2026-09-23 | S54/F280 | `mcp/tests/test_balance_sim.py::test_recoil_profile_pins_the_engine_tests_synthetic_rows_too`, `::test_the_charge_rifle_carries_no_recoil_profile` |
 | 3 | Recoil floors are 60 for the SMG and the Stinger. The Assault Rifle is the deliberate exception, deeper still at 100/70/45, degraded from round 6 and heavy from round 7 (tightened from round 8 the same day, R7 row 11; `heavy` eased 40 → 45 the following day, polish round 2 — "full auto point blank … too harsh") — only a player who holds past round 6 is punished. The Suppressor is the exception the OTHER way (R10, row 12): Tony — "it should be weaker since its silent but not too weak" — so its `heavy` is declared at 70, not the 60 floor; `degraded` derives between crisp and the new heavy, to 85 (was 80). | Tony, 2026-09-18 (floor raise); the AR exception 2026-09-23; tightened 2026-09-23 (R7); eased 2026-09-24 (F308, polish round 2); the Suppressor exception 2026-09-23 (R10) | F268; F291 (`1884c90e`); F308 | same two tests as row 1; the per-weapon table in `docs/spec/node.md` §3.15 |
 | 4 | Three duel rules, each "most of the time" meaning **≥ 65%** in a stochastic 1v1 at full Standard health: (R1) a Charge Rifle with its charge already built beats an Assault Rifle; (R2) a skilled Assault Rifle (controlled 3-5 round bursts) that catches an uncharged Charge Rifle beats it; (R3) an Assault Rifle firing controlled bursts beats one held in full auto. | Tony, 2026-09-23 | F291 | `python3 mcp/tools/balance_sim.py --scenario recoil-duel`; gated in CI by `mcp/tests/test_balance_sim.py::test_recoil_duel_rules_clear_the_65_percent_bar` |
-| 5 | Charge Rifle: charge damage 70 (`t5`), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus three taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23 | F280; F291 (`3759cd68`) | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
+| 5 | Charge Rifle: charge damage 60 (`t5`, 70 until F646 on 2026-11-02), tap damage 16 (`t37`); a charged kill on Standard health is one charge plus four taps. The 285 ms tap cadence is the player's own trigger-pull speed, not a gun setting — no `$WEAP` field carries it. | Tony, 2026-09-23; 2026-11-02 | F280; F291 (`3759cd68`); F646 | `weapons.json` `wire.dmg`/`wire.tap_dmg`, pinned by the row-4 CI gate; `CHARGE_TAP_CADENCE_MS`'s comment in `compile.py` |
 | 6 | Shotgun: 3 pulls to kill on Standard health, still no recoil model — it has none. Its gap from the rifles was the 800 ms cadence until row 11's R8 tightened it to 700 ms. 2026-10-17: 700 → 400 ms, so it wins close range against the rifles and the SMG under the player-paced model (row 14). Its pull stayed at 40 (20 + 20) until F579 (2026-10-24) moved the gun word to 19, so a pull is 39: 45 or more would one-shot the 45-health presets, and the 4 pulls it needs at the AP check's armoured 140 pool keep Armour Piercing a trade (AP 15 at 500 ms). | Tony, 2026-09-18; retuned 2026-09-23 (R8), 2026-10-17 (R11/R12) and 2026-10-24 (F579) | F291; F308; F579 | 3-pull kill is judgement; the cadence is gated by row 11's test |
 | 7 | One-shot heavies (Rocket Launcher, Rail Gun, Laser Cannon, Energy Launcher, Ion Sniper) are a pickup-only tier: 2-round magazine, 4 kills total, earned at close range rather than out-reaching the rest of the arsenal. On the Shields preset (150): the Rocket Launcher's headset word adds 35 (`wire.headset_dmg`), so a close hit still kills (the word's reach is unmeasured, F275); the Rail Gun does 149 (`wire.dmg`), a kill on Standard and Hardcore that leaves a full Shields player on 1 HP. | Tony, 2026-09-17; Shields 2026-09-23 (F310) | weapon-design.md §2.1 principle 7; §7.5f | `mcp/tests/test_weapon_derivations.py` §2.5 rows; the bench check in `bench-2026-09-24.md` 4.9 |
 | 8 | The headset is the primary target: 4 of the tagger's 5 hit sensors sit there, so it carries no bonus multiplier. `criticalShotModifier` (`t7`) compiles to 0, and a headset hit lands the same as a gun-body hit. | Tony, 2026-09-17 (arsenal review) | — | `mcp/tests/test_gameconfig.py::test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x` |
@@ -156,21 +156,22 @@ the last pull's headset word adds 88 ms (F614): the Shotgun at 115.
 
 | weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | one-mag kill % (p=0.7) | heat | changed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **2026-10-17**: outdoor range t2 90→60 (Tony, F567) |
+| *Melee* | melee | 60 | 3000 | 2 | **3.00** | 20.0 | 20.0 | 1 | 0 | 0 | 0% | — | **2026-11-02** (F649): damage 90→60 and one swing every 3 s (`wire.dmg`, `wire.fire_ms`); outdoor range t2 90→60 since 2026-10-17 (Tony, F567) |
 | Sniper Rifle | marksman | 75 | 1500 | 2 | **2.71** | 50.0 | 20.3 | 1 | 48 | 2200 | 0% | — | dmg 80→60, cycle 300→1500; **2026-10-17/18**: bolt action, 75, 2.2 s bolt (Balance rules row 17, F573) |
 | Shotgun | cqb | 19 | 400 | 3 | **0.97** | 47.5 | 40.7 | 6 | 48 | 400 | 0% | — | **2026-10-24** (F579): gun word 19 plus a 20 headset word (`wire.headset_dmg`, t12), 400 ms pump since 2026-10-17. `dmg`, `dps`, `sust` and one-mag % here are the GUN WORD ALONE |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.33** | 62.5 | 41.7 | 10 | 160 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400. Headset word 10 (t12), never captured on this weapon. `dmg`, `dps`, `sust` and one-mag % here are the gun word alone |
-| AMR | marksman | 26 | 450 | 5 | **1.97** | 57.8 | 47.3 | 14 | 112 | 1400 | 100% | — | **2026-10-25**: cycle 350→450 ms on both presets. 30% `crit_pct` (a crit is ×1.5, so 26→39) |
+| AMR | marksman | 26 | 450 | 5 | **1.97** | 57.8 | 47.3 | 14 | 112 | 1400 | 100% | — | **2026-10-25**: cycle 350→450 ms on both presets. 20% `crit_pct` since 2026-11-02, 30% before (a crit is ×1.5, so 26→39) |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 288 | 1700 | 100% | — | dmg 9→10 |
 | Burst Rifle | assault | 10 | 75 +540 | 12 | **2.53** | 43.5 | 36.1 | 36 | 384 | 1700 | 100% | — | **2026-09-24**: burst gap 540 ms (R6/R7, §7.5d); 40% `crit_pct` (a crit is ×1.5, so 10→15) |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 288 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 15 | 150 | 8 | **1.35** | 100.0 | 57.4 | 18 | 360 | 2000 | 99% | — | stock until **2026-10-17** (hidden; R10b, Balance rules row 14): dmg 13→15, cycle 225→150, htk 9→8 |
+| *Energy Shotgun* | cqb | 19 | 450 | 3 | **1.07** | 42.2 | 37.4 | 24 | 48 | 1400 | 100% | 13 | **2026-11-02** (F661): hidden until `bench-plan.md` ES0-ES5 passes, then it replaces the SMG. The Shotgun's two words (19 + 20), a 450 ms pump, a 24-round cell, a lockout on the 8th blast in a row, a 1.4 s lever vent. `dmg`, `dps`, `sust` and one-mag % here are the GUN WORD ALONE |
 | SMG | cqb | 7 | 100 | 13 | **1.20** | 70.0 | 47.8 | 54 | 384 | 2500 | 100% | 5 | **2026-09-23** (R5, F308): 7 gun word + 2 headset word at carrier 100. `dmg`, `dps`, `sust` and one-mag % here are the GUN WORD ALONE |
 | Toxin Rifle | assault | 8 | 110 | 15 | **1.54** | 72.7 | 49.0 | 30 | 360 | 1600 | 99% | 5 | In the picker since 2026-09-19. The gun lands the direct hit and POISON is a tick clock on the victim's node (S16, `spec/node.md` §3.17): 4 damage a second for 5 s, refreshed on each hit, never stacked. §7.5b |
 | Suppressor | assault | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 384 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | assault | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | marksman | 70 | 1250 | 4 | **0.85** | 56.0 | 37.3 | 40 | 160 | 2500 | 92% | 14 | **2026-09-23** (F280, F291): charge 70 (`wire.dmg`), tap 16 (`wire.tap_dmg`, t37), tap cadence 285 ms (bench-proven); the kill is one charge plus three taps. `dps` and `sust` count CHARGES only; `ttk s` reads the mixed kill |
+| Charge Rifle | marksman | 60 | 1250 | 5 | **1.14** | 48.0 | 32.0 | 40 | 160 | 2500 | 92% | 14 | **2026-11-02** (F646): charge 70→60 (`wire.dmg`), the sims' heat a tap 14→2 (the bench fit, `heat.per_tap`; the frame's t24 stays 14); tap 16 (`wire.tap_dmg`, t37), tap cadence 285 ms (bench-proven); the kill is one charge plus four taps. `dps` and `sust` count CHARGES only; `ttk s` reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -201,10 +202,10 @@ Melee, were retuned on 2026-10-17 (15 at 150 ms; outdoor melee range 60). Both a
 - **Stinger**: hidden. Full auto, eight hits.
 - **Sniper Rifle**: the only two-hit weapon outside the power tier. A bolt action with a 2.2 s bolt (F573).
 - **Plasma Sniper**: hidden. A marksman rifle that fires like a carbine and overheats (`t24 = 30`).
-- **AMR**: semi-automatic (`t20 = 7`), 26 a hit, 5 hits, a 14-round magazine and a 30% `crit_pct` (F62).
+- **AMR**: semi-automatic (`t20 = 7`), 26 a hit, 5 hits, a 14-round magazine and a 20% `crit_pct` (F62; 30% until 2026-11-02).
 - **Suppressor**: quiet, no muzzle flash, a 75-round magazine, the slowest kill. The deep magazine gives it the lead on kills per clip against the SMG (§2.3).
 - **Energy Rifle**: 150 ms cycle, overheat on (`t38 = 150` and `t35 = D11` as `overrides`). Full auto locks it out near heat 99; only a reload hold clears the lockout.
-- **Charge Rifle**: charge 70 (`t5`) and tap 16 (`t37`) are separate numbers. A full charge costs 10 rounds (`rounds_per_charge`) of a 40-round cell. The intended kill is one charge plus three taps (70 + 16 + 16 + 16 = 118 ≥ 115). `hits_to_kill()` counts that combo, and `ttk_ms` is release-to-kill because the charge is built behind cover (S43). `rounds_to_kill()` is the round count of the same combo; the one-magazine guard and kills per clip use it. The sustained-DPS and one-magazine axes (§2.3) model repeated full charges.
+- **Charge Rifle**: charge 60 (`t5`) and tap 16 (`t37`) are separate numbers (F646, 2026-11-02: the charge was 70). A full charge costs 10 rounds (`rounds_per_charge`) of a 40-round cell. The intended kill is one charge plus four taps (60 + 4 × 16 = 124 ≥ 115). `hits_to_kill()` counts that combo, and `ttk_ms` is release-to-kill because the charge is built behind cover (S43). `rounds_to_kill()` is the round count of the same combo; the one-magazine guard and kills per clip use it. The sustained-DPS and one-magazine axes (§2.3) model repeated full charges.
 - **Sidearms** (Glock-18, USP-S, Desert Eagle): slot-2 backups on the Bolt Rifle frame (`t20 = 7`). They are finish-a-kill weapons, deliberately dominated by the rifles (Balance rules row 12), and they are a family of their own for the dominance check (§2.3). Draw time is `wire.swap_ms = 500`; the gun applies the larger swap delay of the two slots. In hand a pistol kills slower than its wire TTK, because a semi-automatic fires no faster than the player pulls.
 - **Power tier**: Rocket, Rail, Laser, Energy Launcher, Ion Sniper. 115 damage (the Rail Gun does 149, Balance rules row 7), one-shot on Standard, a 2 + 2 round cell, 4 kills. Charge behaviour and a cycle/reload ladder tell them apart (§2.4).
 
@@ -340,9 +341,10 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Power tier (115 dmg) | 1 | **1** | **2** | 2 |
 | Rocket Launcher | 1 | **1** | 1 | 2 |
 | Rail Gun | 1 | **1** | 2 | 2 |
-| Charge Rifle | 3 | **4** | 6 | 10 |
+| Charge Rifle | 4 | **5** | 7 | 10 |
 | Sniper Rifle | 2 | **2** | 2 | 3 |
 | Shotgun | 3 | **3** | 4 | 6 |
+| Energy Shotgun | 3 | **3** | 4 | 6 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
 | AMR | 4 | **5** | 6 | 8 |
 | Burst Rifle | 10 | **12** | 15 | 20 |
@@ -555,6 +557,10 @@ drops words"; and the SMG and Rocket Launcher (both 40, since 2026-09-25) sit ju
 unmeasured at that value. Keep the numbers until S49 measures the receiver's response curve; do not
 read this table as a calibrated metre ladder. **The real reach at 40/100 outdoors is unmeasured;
 bench Block 5.**
+
+**Night (2026-11-02):** a night game compiles every value in this table, and the headset words' `t13`/`t42`, at 0.75
+(`compile.NIGHT_RANGE_KEYS`, never under 13). Only the values at 30 land in the 13-26 band (23); the rest stay on the
+shelf. `bench-plan.md` MN2/MN3 check whether it changes anything.
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.

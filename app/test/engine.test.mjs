@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
+import { Engine, recoilRecovery, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
 import { MELEE_PRESS_MS } from '../src/ammo.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
@@ -50,7 +50,9 @@ function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = tru
   let clock = 1_000_000;
   const config = { config_id: golden.config_id, mode, environment: 'outdoor', night: false, time_limit_s: timeLimit,
     respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
-    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }],
+    // F658 (A86): MC lists the stations in play; a respawn station is enabled only by this list (beacon.js stationEnabled)
+    ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}) };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const team = { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 };
   const roster = [{ player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue' }, { player_id: 'p2', player_num: 19, display: 'VIPER', team_id: 'yellow' }];
@@ -1203,6 +1205,7 @@ test('control point: state() carries the whole reading a HUD needs, from one adv
 
 test('control point: a respawn station in the same list is not mistaken for a point, and vice versa', () => {
   const h = koth();
+  h.eng.config.stations = [{ id: 3, kind: 'respawn' }, { id: 11, kind: 'control' }];   // F658: the config enables each by kind
   h.eng.setStations([{ role: 'station', id: 3, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -74, rssi: -40, raw: -40, present: true }]);
   assert.equal(h.eng.state().hill, null, 'a respawn station is not a control point (the F84 trap, on the BLE wire)');
   assert.equal(h.eng.state().station.id, 3, 'it is still the respawn station');
@@ -4117,6 +4120,104 @@ test('F663 x F15: a release during a stun writes nothing until the stun ends', (
   assert.equal(h.eng._recoil.state, 'crisp', 'the model still recorded the release');
 });
 
+// ---------- F662 R2: hold-length recovery, `recoil.recovery` (brx3's spec, Tony 2026-11-02 "lets go with that") ----------
+// A released degraded or heavy weapon waits per_round_ms for each round of the hold past after_shots, clamped to
+// min_ms..max_ms, then goes back to crisp in one write. A pull before then cancels it. Off unless the catalogue sets it.
+const R2 = { per_round_ms: 25, min_ms: 100, max_ms: 500 };
+const RECOVER = { ...TWO_STEP, settle_ms: 999999, recovery: R2 };   // a huge settle: only R2 may recover it
+
+test('F662 R2: the block parses only when well formed, and wins over reset_on_release', () => {
+  assert.deepEqual(recoilRecovery(R2), { perRoundMs: 25, minMs: 100, maxMs: 500 });
+  for (const bad of [null, 'x', {}, { ...R2, min_ms: 0 }, { ...R2, max_ms: 50 }, { ...R2, per_round_ms: -1 }, { ...R2, max_ms: 'big' }]) {
+    assert.equal(recoilRecovery(bad), null, `malformed: ${JSON.stringify(bad)}`);
+  }
+  const h = armRecoil({ ...RECOVER, reset_on_release: true });
+  assert.deepEqual(h.eng._recoil.recovery, { perRoundMs: 25, minMs: 100, maxMs: 500 }, 'the arm carries it');
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$BUT,0,0,*');
+  assert.equal(h.eng._recoil.state, 'heavy', 'with both set, the release starts the timer and does not reset at once');
+});
+
+test('F662 R2: the Assault Rifle table: 7-10 rounds 100 ms, 12 150 ms, 20 350 ms, 26 and more 500 ms', () => {
+  const h = armRecoil(RECOVER);
+  const ms = burst => h.eng._recoilRecoverMs({ recovery: { perRoundMs: 25, minMs: 100, maxMs: 500 }, afterShots: 6, burst });
+  assert.deepEqual([7, 10, 12, 20, 26, 40].map(ms), [100, 100, 150, 350, 500, 500]);
+});
+
+test('F662 R2: a release while heavy restores crisp after the timer, in one write, and the next pull starts at the ceiling', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;   // 6 rounds, 3 past the clean count: 75 ms, clamped to 100
+  h.frame('$BUT,0,0,*');
+  assert.equal(accuracyTmps(h).length, 0, 'the release itself writes nothing');
+  h.adv(99); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'heavy', '1 ms short of the timer');
+  h.adv(1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'crisp');
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*'], 'one write back to crisp');
+  assert.equal(h.eng._recoil.burst, 0, 'and the count is zero');
+});
+
+test('F662 R2: a longer hold waits longer: 23 rounds wait the 500 ms cap', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, 23); ack(h); h.writes.length = 0;   // 20 rounds past the clean count: 500 ms
+  h.frame('$BUT,0,0,*');
+  h.adv(499); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'heavy');
+  h.adv(1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'crisp');
+  assert.equal(accuracyTmps(h).length, 1);
+});
+
+test('F662 R2: a pull before the timer runs out carries the rung and the count into the new pull', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$BUT,0,0,*');
+  h.adv(60); h.frame('$BUT,0,1,*');
+  h.adv(200); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'heavy', 'the pull cancelled the recovery');
+  fire(h, 2);
+  assert.equal(h.eng._recoil.burst, TWO_STEP_HEAVY_AFTER + 2, 'the count carried');
+  assert.equal(accuracyTmps(h).length, 0, 'and nothing was written');
+});
+
+test('F662 R2: a release while still crisp clears the count, as S54 does', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, TWO_STEP_AFTER - 1);
+  h.frame('$BUT,0,0,*');
+  assert.equal(h.eng._recoil.burst, 0);
+  assert.equal(accuracyTmps(h).length, 0);
+});
+
+test('F662 R2: a lost release is inferred at the F663 fallback, and the timer runs from there', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;   // no release edge arrives
+  const wait = releaseQuiet(h) + 100;
+  h.adv(wait - 1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'heavy', '1 ms short of fallback + timer');
+  h.adv(1); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'crisp');
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*']);
+});
+
+test('F662 R2 x S55: the recovery write waits out the smoke, then lands once', () => {
+  const h = armRecoil(RECOVER);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$HIR,0,7,19,2,6,0,0,*'); h.frame(`$ALCD,${h.mag},0,0,215,0,*`);
+  h.frame('$BUT,0,0,*');
+  h.adv(200); h.eng.tick();
+  assert.equal(accuracyTmps(h).length, 0, 'native fn-23 smoke keeps t4');
+  h.adv(SMOKE_MS + 10); h.eng.tick();
+  assert.deepEqual(accuracyTmps(h), ['$TMP,,,,0,,,,,,,,*']);
+});
+
+test('F662 R2: a weapon without the block is unchanged', () => {
+  const h = armRecoil({ ...TWO_STEP, settle_ms: 999999 });
+  assert.equal(h.eng._recoil.recovery, null);
+  fire(h, TWO_STEP_HEAVY_AFTER); ack(h); h.writes.length = 0;
+  h.frame('$BUT,0,0,*'); h.adv(600); h.eng.tick();
+  assert.equal(h.eng._recoil.state, 'heavy');
+});
+
 // ---------- F259 step 2: crisp, degraded, heavily degraded, and still ONE recovery ----------
 // Tony, at the bench 2026-09-18, after the one-step writer ran on hardware: "maybe we can update it to do
 // 2 steps instead of 1? normal degraded and very degraded."
@@ -4304,7 +4405,7 @@ test('S54: the round counts are derived from the row\'s dmg -- rounds per trigge
   const h = armRecoil(RECOIL_PROFILE);
   const from = (dmg, recoil) => h.eng._recoilProfile({ dmg, recoil });
   const row = (crisp, degraded, heavy, afterShots, heavyAfter) =>
-    ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
+    ({ crisp, degraded, heavy, afterShots, heavyAfter, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false, recovery: null });
   assert.deepEqual(from(8, { ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 }), row(100, 85, 70, 6, 9),
     'energy_rifle: reference calibre, its own (derived) depths');
   assert.deepEqual(from(8, { ceiling: 100, floor: 60, per_shot: 15, recover_ms: 150 }), row(100, 80, 60, 6, 9),
@@ -4351,20 +4452,20 @@ test('F259 step 2: the DECLARED fields win outright, because the catalogue owner
   // the declared numbers must reach the model untouched.
   const h = armRecoil(RECOIL_PROFILE);
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 78, heavy: 60, after_shots: 3, after_heavy: 6, settle_ms: 600 } }),
-    { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600, resetOnRelease: false }, 'the SMG as the catalogue declares it');
+    { crisp: 100, degraded: 78, heavy: 60, afterShots: 3, heavyAfter: 6, settleMs: 600, resetOnRelease: false, recovery: null }, 'the SMG as the catalogue declares it');
   // A half-adopted row works too: a declared `heavy` IS the ladder's floor, and everything absent derives
   // from it (including the round counts, off `dmg`) rather than from the old one.
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 45, per_shot: 8, recover_ms: 120, heavy: 60 } }),
-    { crisp: 100, degraded: 80, heavy: 60, afterShots: 6, heavyAfter: 9, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
+    { crisp: 100, degraded: 80, heavy: 60, afterShots: 6, heavyAfter: 9, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false, recovery: null });
 });
 
 test('F259: a ladder too short to split in two collapses back to ONE step, rather than writing the same number twice', () => {
   // A second write that sends the gun the value it is already holding spends a magazine reset for nothing.
   const h = armRecoil(RECOIL_PROFILE);
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 99, per_shot: 1, recover_ms: 150 } }),
-    { crisp: 100, degraded: 99, heavy: null, afterShots: 6, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false });
+    { crisp: 100, degraded: 99, heavy: null, afterShots: 6, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false, recovery: null });
   assert.deepEqual(h.eng._recoilProfile({ dmg: 8, recoil: { crisp: 100, degraded: 70, heavy: 70, after_shots: 3 } }),
-    { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false },
+    { crisp: 100, degraded: 70, heavy: null, afterShots: 3, heavyAfter: 0, settleMs: RECOIL_SETTLE_MIN_MS, resetOnRelease: false, recovery: null },
     'two rungs declared at the same accuracy are one rung');
   assert.equal(h.eng._recoilProfile({ dmg: 8, recoil: { ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 } }), null, 'and a flat weapon has no profile at all');
 });

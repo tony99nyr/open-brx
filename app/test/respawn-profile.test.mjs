@@ -36,7 +36,7 @@ function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0 }
   const writes = []; const facts = []; const timed = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
-    respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
+    respawn: { type: respawn, delay_s: 8 }, ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}), scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const eng = new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) timed.push([clock, f]); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });

@@ -89,7 +89,7 @@ def test_the_derived_profile_is_the_engines_arithmetic():
 
     def want(crisp, degraded, heavy, after_shots, heavy_after):
         return {"crisp": crisp, "degraded": degraded, "heavy": heavy, "after_shots": after_shots,
-                "heavy_after": heavy_after, "settle_ms": 600, "reset_on_release": False}
+                "heavy_after": heavy_after, "settle_ms": 600, "reset_on_release": False, "recovery": None}
 
     cases = [
         (row(8, ceiling=100, floor=70, per_shot=10, recover_ms=150), want(100, 85, 70, 6, 9)),
@@ -312,3 +312,32 @@ def test_a_reset_on_release_weapon_goes_crisp_on_the_trigger_release_and_on_the_
     short, after = asyncio.run(go(True, False))
     assert short == ([], "degraded"), short
     assert after == (["$TMP,,,,0,,,,,,,,*"], "crisp"), after
+
+
+def test_f662_r2_a_released_weapon_recovers_after_a_pause_that_grows_with_the_hold():
+    """F662 R2 (engine.js `_recoilRelease`, `_recoilQuiet`, `_recoilPull`): a release while degraded starts the hold-length
+    timer (25 ms a round past after_shots, 100..500 ms) and the tick restores crisp in one write when it runs out. A pull
+    before then cancels it and the rung carries. CONTROL: no block, no recovery."""
+    async def go(block, pull_at=None):
+        ar = copy.deepcopy(AR); ar["recoil"]["settle_ms"] = 999999
+        if block:
+            ar["recoil"]["recovery"] = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+        st, mgr, clock = _mk(rows=(ar, FLAT_SHOTGUN))
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        await _tick(st, mgr, clock, 0.1)
+        assert st._recoil["state"] == "degraded"
+        n = mark(mgr)
+        st._inject_rx("$BUT,0,0,*"); await settle(st)
+        if pull_at is not None:
+            await _tick(st, mgr, clock, pull_at)
+            st._inject_rx("$BUT,0,1,*"); await settle(st)
+        await _tick(st, mgr, clock, 0.06)
+        early = (_tmp(mgr, n), st._recoil["state"])
+        await _tick(st, mgr, clock, 0.06)
+        return early, (_tmp(mgr, n), st._recoil["state"])
+
+    assert asyncio.run(go(True)) == (([], "degraded"), (["$TMP,,,,0,,,,,,,,*"], "crisp")), "100 ms after the release"
+    assert asyncio.run(go(True, pull_at=0.03)) == (([], "degraded"), ([], "degraded")), "a pull cancels it"
+    assert asyncio.run(go(False)) == (([], "degraded"), ([], "degraded")), "CONTROL: no block"
