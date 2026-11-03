@@ -7057,7 +7057,12 @@ const meleeRead = pg => pg.evaluate(() => { const m = document.getElementById('m
     mag: (document.getElementById('mag') || {}).innerText || '', overlap: !!(r && tr && r.right > tr.left + 0.5 && r.left < tr.right && r.bottom > tr.top && r.top < tr.bottom) }; });
 for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F665 melee icon: the fist leads the weapon-name row, full strength, clear of the name`, async () => {
   const pg = await open(view, 'live-melee', N);
-  const r = await meleeRead(pg); await pg.close();
+  const r = await meleeRead(pg);
+  // The gate of 2026-11-02: inside the row's box the fist widened the ammo column 36 px into the centre, under the kill
+  // cards and the tells. The column must keep the width it has with no fist.
+  const box = () => pg.evaluate(() => { const a = document.querySelector('.ammo').getBoundingClientRect(); return [a.left, a.width]; });
+  const withFist = await box(); await pg.addStyleTag({ content: '#melee{display:none!important}' }); const noFist = await box(); await pg.close();
+  must(Math.abs(withFist[0] - noFist[0]) < 1 && Math.abs(withFist[1] - noFist[1]) < 1, `the fist widens the ammo column: ${withFist} vs ${noFist} without it`);
   must(r.has && r.inRow && r.first, `the fist is not the first thing in the weapon-name row: ${JSON.stringify(r)}`);
   must(r.w >= 12 && r.h >= 12, `the fist is too small to read: ${r.w}x${r.h}`);
   must(r.melee === 'idle' && r.op > 0.95, `ready before any swing must be full strength: ${JSON.stringify(r)}`);
