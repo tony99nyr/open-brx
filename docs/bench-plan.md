@@ -32,6 +32,7 @@ of it); about 3 h 40 min more for the rest.
 | P11 | can wait | 45 | The melee swing and night range, MN1-MN3 (MN2 and MN3 need outdoors in the dark). MN1 decides whether the HUD's melee icon (F665) can trust t14. | [MN1-MN3](#next-the-melee-swing-and-the-night-range-cut-f649-f580) |
 | P12 | can wait | 85 | The hit effect of accuracy, HE1-HE5, plus the 25 m set-up. It decides F662's recoil numbers before the R2 flag goes on. | [HE1-HE5](#next-the-hit-effect-of-accuracy-f662) |
 | P13 | can wait | 85 | The Energy Shotgun frame, ES0-ES5. It ships F661 (the row is hidden until then). | [ES0-ES5](#next-the-energy-shotgun-frame-f661) |
+| P14 | in the game | – | The Charge Rifle play-test (F646, option A): include it in one TDM preset, and after that match ask the players how it felt. Note who carried it and their kills. | [`balance-decisions.md`](balance-decisions.md), 2026-11-02 |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
 

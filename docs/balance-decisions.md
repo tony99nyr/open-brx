@@ -535,3 +535,16 @@ Candidate:
   play. The shape changes how a sloppy burst feels. With the full hit effect every shape clears Tony's 60 %; with
   half, none does, and a damage change does not help. The Balance rule duels burst 3-5 rounds, so no rule cell moves.
 - Command: recorded by hand; no `--record-from` run.
+
+## 2026-11-02: F646 the Charge Rifle rush: accepted for play-test
+
+- Verdict: none new. The follow-up runs on top of option A (charge 60, tap 16, the bench heat fit) found that nothing
+  except tap damage moves an AR rush from 20 m (0.007 plain, 0.016 with Body Armor), and every tap cut that brings it
+  back breaks rule R1 (a charged Charge Rifle beats an AR): tap 12 gives 0.039 / 0.128 and fails Shields R1 (0.58,
+  bar 0.60); tap 10 gives 0.119 / 0.159 and fails R1 on both presets and `value_addition`. Tried with no effect: the
+  gap between charges 1600 and 2000 ms, a 30-round cell, charge 55 and 45, tap heat 8, cooling 15 a second.
+- Tony's call (2026-11-02, relayed by brx1): option 1, "ship A and play-test it in the next game".
+- The rush question is closed as accepted for play-test, revisit by feel. `marksman_rush_counter` keeps failing
+  against the pre-F646 row; that is the known cost of the bench heat fit. The next game includes the Charge Rifle in
+  one TDM preset, and the players say how it felt (`bench-plan.md` NEXT GAME PREP P14).
+- Command: recorded by hand; no `--record-from` run.
