@@ -314,7 +314,12 @@ export class HillListener {
     // source's state) is adopted SILENTLY, exactly as walking back into range is (`onBeacon`).
     const sameSite = !!prev && prev.source === 'station' && prev.site === e.id;
     const remembered = this._controlLastOwner;
-    const rememberedFresh = remembered?.site === e.id && now - remembered.at <= CONTROL_RECONNECT_MS;
+    // The uncertainty rule (brx1 2026-11-02, from the Domination storyboard; the same rule as pickups): the HUD never claims
+    // a change it did not hear. The remembered owner bridges only a gap inside the stale window, a point we never stopped
+    // hearing. A point that went out of earshot and comes back owned by someone else is adopted SILENTLY: no HILL LOST and
+    // no HILL CAPTURED, because nobody here heard it change hands. It used to bridge CONTROL_RECONNECT_MS (30 s), so
+    // walking back to a hill the enemy took while we were away said HILL LOST.
+    const rememberedFresh = remembered?.site === e.id && now - remembered.at <= CONTROL_STALE_MS;
     if (sameSite && !rememberedFresh) {
       if (this._controlSpokenOwner?.site === e.id) this._controlSpokenOwner = null;
       if (this._hillPendingCallout?.site === e.id) this._hillPendingCallout = null;

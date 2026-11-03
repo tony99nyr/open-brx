@@ -47,8 +47,10 @@ REFLASH IT (amber, it does not block) for any Stick not yet reflashed.
    exits 0. An upload keeps NVS: Wi-Fi, the MC address, the last good MC and the station role survive. A Stick still on
    factory firmware (likely the 3 that have never joined MC): hold the small side button while you plug in USB, then
    replug without it (the `m5stick-bench` skill).
-3. `python3 hardware/m5sticks3/tools/stick.py status`: `LINK state=LOOKING FOR MC` or better. If Wi-Fi was lost, run
-   `stick.py cmd 5 WIFI <ssid> <pass>` and check again. A Stick that has never joined has no Wi-Fi yet: set it here.
+3. `python3 hardware/m5sticks3/tools/stick.py status`: `LINK state=LOOKING FOR MC` or better. If Wi-Fi was lost, or
+   the Stick has never joined, Tony sets Wi-Fi himself by typing
+   `! python3 hardware/m5sticks3/tools/stick.py cmd 5 "WIFI <ssid> <pass>"` in his own prompt (the quotes keep it one
+   serial line), then checks again. The Wi-Fi password never passes through an agent: an agent never sends this command.
 4. Unplug it, and repeat for the next Stick (6 in all).
 
 Post-flash check, with MC on the field LAN and all 6 Sticks powered:

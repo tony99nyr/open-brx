@@ -4797,8 +4797,10 @@ class GunStage:
         same_site = prev is not None and prev.get("source") == "station" and prev.get("site") == e["id"]
         remembered = self._control_last_owner
         remembered_owner: int | None = None
+        # hill.js `rememberedFresh` (the uncertainty rule, 2026-11-02): only a point we never stopped hearing keeps its
+        # remembered owner. One that went out of earshot is adopted silently when it comes back, whoever owns it now.
         if (remembered is not None and remembered["site"] == e["id"]
-                and now - remembered["at"] <= CONTROL_RECONNECT_S):
+                and now - remembered["at"] <= CONTROL_STALE_S):
             remembered_owner = remembered["owner"]
         elif same_site:
             if self._control_spoken_owner and self._control_spoken_owner["site"] == e["id"]:
