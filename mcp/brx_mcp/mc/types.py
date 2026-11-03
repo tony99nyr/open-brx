@@ -167,8 +167,10 @@ APP_MINOR = 4
 # `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
 # change is one MC needs. "h8-0.2" was the first build that reports the git sha and `nvs_fail`. "h8-0.3"
 # (2026-10-25) is the first with the hill gap rule, the F391 lock restore and F591's hill fields, so a Stick on
-# any older build is flagged for a reflash.
-STATION_MIN_FW = "h8-0.3"
+# any older build is flagged for a reflash. "h8-0.4" (2026-11-02) is the first with F642's discovery and F658's
+# enablement scope, live-game follow and `own_ms`: an older Stick reads advert byte 6 as a player id high byte, so
+# under the new APK its powerup claims go to nobody.
+STATION_MIN_FW = "h8-0.4"
 
 
 def parse_station_fw(app_ver: str | None) -> tuple[int, int, int] | None:
