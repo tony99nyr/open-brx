@@ -2,6 +2,37 @@
 import { mmss, poolWrong, gunDot, hpPct, hpLow, pct, armorPct, hasArmor, itemColor, num, esc, accShown, splitGun, isEnergyWeapon, chargeCost, AIM_REASON, WARN, magText } from './shared.js';
 import * as SV from './shieldmeter.js';
 import { fistGlyph } from './medalicons.js';
+import { TEAM_KEYS } from '../transport/contract.gen.js';
+
+/** F666: Domination's row of hills (domination-design.md §2.6). One tile per control point, A B C, from `st.hills`. The
+ *  structure is the tiles; their owner, contest, progress, freshness and on-point marks are patched (`patchDomRow`), so
+ *  a capture bar moving never rebuilds the screen. No number and no timer. Drawn in Domination only. */
+// `st.mode` is `config.mode` upper-cased (engine.js state()).
+export function domShown(st) { return st.phase === 'live' && st.mode === 'DOMINATION' && Array.isArray(st.hills) && st.hills.length > 0; }
+export function domSig(st) { return domShown(st) ? st.hills.map(h => `${h.site}:${h.letter || ''}`).join(',') : ''; }
+export function domRow(st) {
+  if (!domShown(st)) return '';
+  return `<div class="domrow" id="domrow" role="group" aria-label="Hills">${st.hills.map(h =>
+    `<span class="dh" id="dh-${h.site}" role="img"><span class="dl">${esc(h.letter || '·')}</span><i class="dp"></i></span>`).join('')}</div>`;
+}
+/** F666: the row's live marks, written in place. `data-own` mine | theirs | none; `data-hold` mine | theirs while a bar
+ *  builds; `data-fresh` heard | old | never; `data-con` contested; `data-on` this player stands in its circle. */
+export function patchDomRow(root, st) {
+  if (!root || !domShown(st)) return;
+  for (const h of st.hills) {
+    const el = root.querySelector(`#dh-${h.site}`);
+    if (!el) continue;
+    const side = tid => tid == null ? 'none' : TEAM_KEYS[tid] === st.teamKey ? 'mine' : 'theirs';
+    const own = side(h.owner), hold = h.holding != null && h.holding !== h.owner && h.progress > 0 ? side(h.holding) : 'none';
+    const fresh = h.ageMs == null ? 'never' : h.heard ? 'heard' : 'old';
+    const set = (k, v) => { if (el.dataset[k] !== v) el.dataset[k] = v; };
+    set('own', own); set('hold', hold); set('fresh', fresh); set('con', h.contested && h.heard ? '1' : '0'); set('on', h.onPoint && h.heard ? '1' : '0');
+    el.style.setProperty('--own', own === 'none' ? 'transparent' : `var(--team-${TEAM_KEYS[h.owner]})`);
+    el.style.setProperty('--hold', hold === 'none' ? 'transparent' : `var(--team-${TEAM_KEYS[h.holding]})`);
+    el.style.setProperty('--p', `${hold === 'none' ? 0 : Math.max(0, Math.min(100, h.progress | 0))}%`);
+    el.setAttribute('aria-label', `Hill ${h.letter || ''}: ${own === 'none' ? 'neutral' : own === 'mine' ? 'ours' : 'theirs'}${h.contested && h.heard ? ', contested' : ''}${fresh === 'old' ? ', last known' : fresh === 'never' ? ', not heard yet' : ''}`);
+  }
+}
 
 /** F665: the melee-ready icon, the BEAT DOWN fist without its ring. Drawn only while the engine knows the melee cooldown
  *  (`st.melee`). Its dim and its one shimmer are `data-melee` on the frame (`hud/ammo.js` `_meleeCue`), so a rebuild
@@ -65,7 +96,7 @@ export function _live(st) {
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
     return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}${st.alive && st.stunned ? ' stunned' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
-      ${overheating && !starved ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
+      ${overheating && !starved ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}${domRow(st)}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>

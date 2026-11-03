@@ -7112,6 +7112,64 @@ for (const view of VIEWS) await step(`${view.name} F665 melee respawn: still coo
   must(!ready.down && ready.at - t0 >= 2900, `the shimmer came early or while DOWN: ${Math.round(ready.at - t0)} ms ${JSON.stringify(ml)}`);
 });
 
+// ---------- F666: Domination's row of hills (Tony's picks 2026-11-02: top middle under the clock, the night scheme as
+// rendered, an out-of-range hill dim and dashed with no AGO text, and no hill card in Domination; KOTH keeps its card, gated above) ----------
+// You are BLUE (tid 1) against RED (tid 0); A B C are ids 11 12 13. Each advert is [id, team, state, value, present, ageMs],
+// state bits held 1 · contested 2 · rising 4.
+const DOM_Q = '&team=blue&foe=red';
+const domFeed = async (pg, rows) => { await pg.evaluate(r => window.brxDemo.points(r), rows); await pg.waitForTimeout(400); };
+const domRead = pg => pg.evaluate(() => { const row = document.querySelector('.domrow'), f = document.getElementById('frame').getBoundingClientRect(), c = document.getElementById('clock');
+  const tiles = [...document.querySelectorAll('.domrow .dh')].map(e => { const cs = getComputedStyle(e); return { t: e.textContent.trim(), ...e.dataset, p: e.style.getPropertyValue('--p'),
+    op: +cs.opacity, bst: cs.borderTopStyle, bc: cs.borderTopColor, bg: cs.backgroundColor, w: e.getBoundingClientRect().width }; });
+  const r = row && row.getBoundingClientRect(), cr = c && c.getBoundingClientRect();
+  return { has: !!row, vis: !!(row && r.width > 0 && getComputedStyle(row).visibility !== 'hidden'), tiles, cx: r ? (r.left + r.right) / 2 - (f.left + f.right) / 2 : null,
+    belowClock: !!(r && cr && r.top >= cr.bottom - 1), inFrame: !!(r && r.left >= f.left && r.right <= f.right && r.bottom <= f.bottom),
+    hillCard: !!document.querySelector('#lanes .lo[data-key="hill"]') }; });
+for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F666 domination row: three lettered hills, centred under the clock, letters only`, async () => {
+  const pg = await open(view, 'live-dom', DOM_Q + N);
+  await domFeed(pg, [[11, 1, 1, 100, 0], [12, 0, 1, 100, 0], [13, 255, 0, 0, 0]]);
+  const r = await domRead(pg); await pg.close();
+  must(r.has && r.vis && r.tiles.length === 3, `no row of three hills: ${JSON.stringify(r)}`);
+  must(r.tiles.map(t => t.t).join('') === 'ABC', `each tile carries its letter and nothing else (no numbers, no timer): ${r.tiles.map(t => t.t)}`);
+  must(Math.abs(r.cx) <= 4 && r.belowClock && r.inFrame, `the row is not centred under the clock: ${JSON.stringify({ cx: r.cx, belowClock: r.belowClock, inFrame: r.inFrame })}`);
+  const [a, b, c] = r.tiles;
+  must(a.own === 'mine' && b.own === 'theirs' && c.own === 'none', `owners: ${r.tiles.map(t => t.own)}`);
+  must(a.bc !== b.bc || a.bg !== b.bg, `ours and theirs look the same: ${JSON.stringify([a, b])}`);
+  must(c.bc !== a.bc || c.bg !== a.bg, `neutral looks like ours: ${JSON.stringify([a, c])}`);
+});
+for (const view of VIEWS) await step(`${view.name} F666 domination: capture and contest show on the tile, and the hill card stays out of Domination`, async () => {
+  const pg = await open(view, 'live-dom', DOM_Q);
+  await domFeed(pg, [[11, 1, 1, 100, 0], [12, 0, 1, 100, 0], [13, 255, 0, 0, 0]]);
+  await domFeed(pg, [[11, 1, 1, 100, 0], [12, 0, 3, 100, 0], [13, 1, 4, 40, 1]]);   // B contested; you build C to 40 %
+  // The card fires only for the one hill the phone latched (hill.js `begins`), so raise it the way hill.js does: in
+  // Domination the lanes must still drop it.
+  await pg.evaluate(() => window.brx.engine._laneObj('hill', { kind: 'hill_capture_started', team: 'blue', tid: 1, src: 'BLE' }));
+  await pg.waitForTimeout(800);
+  const r = await domRead(pg); await pg.close();
+  const [, b, c] = r.tiles;
+  must(c.hold === 'mine' && parseFloat(c.p) > 30 && parseFloat(c.p) < 50 && c.on === '1', `C must show our bar near 40 % and you on it: ${JSON.stringify(c)}`);
+  must(b.con === '1', `B must show contested: ${JSON.stringify(b)}`);
+  must(!r.hillCard, 'the KOTH hill card (HILL CAPTURE STARTED) fired in Domination; Tony: the row carries it');
+});
+for (const view of VIEWS) for (const N of ['', '&night']) await step(`${view.name}${N ? ' night' : ''} F666 domination: a hill out of earshot dims and goes dashed, keeps its last owner, and shows no text`, async () => {
+  const pg = await open(view, 'live-dom', DOM_Q + N);
+  await domFeed(pg, [[11, 1, 1, 100, 0], [12, 0, 1, 100, 0], [13, 1, 1, 100, 0]]);
+  const before = await domRead(pg);
+  await pg.evaluate(r => window.brxDemo.points(r), [[11, 1, 1, 100, 0], [13, 1, 1, 100, 0]]);   // B goes off the air
+  await pg.waitForTimeout(4600);   // past CONTROL_STALE_MS (4 s)
+  const r = await domRead(pg); await pg.close();
+  const b = r.tiles[1], a = r.tiles[0];
+  must(b.fresh === 'old' && b.own === 'theirs', `B must be last known (theirs): ${JSON.stringify(b)}`);
+  must(b.op < 0.6 && a.op > 0.95, `out of earshot must dim B only: A ${a.op}, B ${b.op}`);
+  must(before.tiles[1].bst === 'solid' && b.bst === 'dashed', `out of earshot is dim with a dashed edge, as Tony picked: ${before.tiles[1].bst} -> ${b.bst}`);
+  must(b.t === 'B' && !/\d|AGO/i.test(b.t), `no AGO text or timer on the tile: "${b.t}"`);
+});
+for (const view of VIEWS) await step(`${view.name} F666 domination row: absent outside Domination`, async () => {
+  const pg = await open(view, 'live');
+  const r = await domRead(pg); await pg.close();
+  must(!r.has, 'a Domination row in a TDM match');
+});
+
 if (SHARD) fs.writeFileSync(path.join(CLAIM_DIR, `walk-${SHARD[0]}.json`), JSON.stringify({ stepCount: stepIdx, namesHash: namesHash(walkedNames) }));
 if (EXPECT_STEPS !== null && pass + fail !== EXPECT_STEPS) {
   errs.push(`selected ${pass + fail} steps, expected ${EXPECT_STEPS}`); fail++;
