@@ -1113,3 +1113,17 @@ def test_every_preset_default_is_a_legal_override():
         item = pu.expand(preset)
         out = pu.apply_overrides(item, {"spawn_every_s": item["spawn_every_s"]})
         assert out["spawn_every_s"] == item["spawn_every_s"], preset
+
+
+def test_an_in_play_re_arm_follows_the_config_with_the_schedule():
+    # F658: every station_config makes a powerup forget MC's last station_update, so MC sends the schedule again
+    # right after it (config, then update), on UNLOCK as on a hello. Outside the match in play, nothing follows.
+    s, clock = powerup_session()
+    powerup_station(s, "u1", 5, "overshield")
+    go = powerup_live(s, clock)
+    clock.t = go + 25_000; s.tick()
+    s.net.pushed.clear()
+    s.unlock_stations()
+    kinds = [k for n, k, _ in s.net.pushed if n == "u1"]
+    assert kinds == ["station_config", "station_update"], kinds
+    assert _pushed(s, "station_update", "u1") == [{"id": 5, "available": False, "next_spawn_in_ms": 35_000}]

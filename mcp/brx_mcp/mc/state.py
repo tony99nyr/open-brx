@@ -479,6 +479,7 @@ class Session:
             note_departed_station=self._note_departed_station,
             station_sync_state=lambda: (self._match_end_t, self._sync_pending),
             game_no_started=lambda: self._game_no_started,
+            push_pu_update=lambda nid: self.powerup_ledger.push_station_update(nid),
         )
 
     @property
@@ -2913,7 +2914,9 @@ class Session:
         cfg = self._compile_config()
         if (cfg.get("respawn") or {}).get("type") == "scanner":
             assigned = [a for _nid, a in self.station_registry.assignments() if a.get("kind") == "respawn"]
-            if assigned and not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
+            # F658 review: a player uses only a respawn station config.stations lists, so with none assigned every team
+            # falls back to the timer (the setup warning still says so); a neutral station covers every team
+            if not any(a.get("team") == STATION_TEAM_ANY for a in assigned):
                 covered = {a.get("team") for a in assigned}
                 auto = [int(t["tid"]) for t in (cfg.get("teams") or []) if isinstance(t.get("tid"), int) and t["tid"] not in covered]
                 if auto:
@@ -3807,8 +3810,7 @@ class Session:
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
             if self.station_registry.on_hello(nid, nv["last_seen_ms"], n.get("app_ver"), nv.get("platform")):
-                self.station_registry.arm_station(nid)
-                self.powerup_ledger.push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
+                self.station_registry.arm_station(nid)   # A56: arm_station follows a powerup's config with its update
             self._changed()
             return None
         # F184 (field 2026-09-22): RELEASE can only ask a utility phone to reload as a HUD; until this

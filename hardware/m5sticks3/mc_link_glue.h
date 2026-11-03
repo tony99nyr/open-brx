@@ -28,6 +28,7 @@
 #include <WebSocketsClient.h>
 #include <WiFi.h>
 #include <esp_random.h>
+#include <esp_system.h>  // esp_reset_reason (F658: a power-on restarts the hill ring fresh)
 #include <esp_task_wdt.h>  // the loop watchdog while the match lock is on (pmicWatchLoop)
 #include <errno.h>
 #include <fcntl.h>
@@ -84,7 +85,7 @@ StationController station;
 #endif
 #define BRX_STR_(x) #x
 #define BRX_STR(x) BRX_STR_(x)
-String stationAppVer = station_version("h8-0.3", BRX_STR(BRX_FW_SHA)).c_str();
+String stationAppVer = station_version("h8-0.4", BRX_STR(BRX_FW_SHA)).c_str();
 NvsFailures nvsFails;  // O12: failed Preferences writes since boot; rides on the status as `nvs_fail`
 // Print the serial line for a failed write; passes the result through.
 static bool nvsOk(bool ok) {
@@ -225,7 +226,7 @@ static void mcLoadSavedHill() {
   mcPrefs.begin("brxmc", true);
   const HillLoad h = load_saved_hill(mcPrefs, contract::STATION_TEAM_ANY);  // hill_v1 first, the legacy keys when it is missing or invalid
   mcPrefs.end();
-  savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr);
+  savedHill.loaded(h.has, h.owner, h.game, h.id, h.sid, h.have_hold ? h.hold : nullptr, h.own);   // own_ms: 0 from a v1 or legacy save
 }
 
 // ---- A68 review 2026-09-25: the duration hill's time left ("hclk_game"/"hclk_id"/"hclk_sid"/"hclk_rem") ----
@@ -266,10 +267,53 @@ static void mcEraseSavedClock() {
 static void mcWriteSavedHill() {
   mcPrefs.begin("brxmc", false);
   const bool ok = save_hill(mcPrefs, nvsFails, savedHill.owner(), savedHill.game(), savedHill.id(), savedHill.hold_ms(),
-                            savedHill.session_id());
+                            savedHill.session_id(), savedHill.own_ms());
   if (!ok) Serial.println(nvsFails.last_line);
   mcPrefs.end();
   if (ok) Serial.printf("# hill owner saved: %d (game %d, id %d)\n", savedHill.owner(), savedHill.game(), savedHill.id());
+}
+
+// ---- F658: the static hill's follower and tally ring ("brxmc"/"hill_ring", presence.h encode_hill_ring) ----------
+// StationLink::ring_save_due decides WHEN (follow starts or ends, a game switch, an owner change, a growing tally at most
+// every HILL_CLOCK_SAVE_MS). Restored at boot after the saved config, so a restarted hill keeps following.
+static void mcWriteSavedRing(StationLink& link) {
+  mcPrefs.begin("brxmc", false);
+  const std::string body = encode_hill_ring(link.assignment().id, link.follower(), link.hill(), millis());
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "hill_ring", body.c_str()));
+  mcPrefs.end();
+}
+
+static void mcLoadSavedRing(StationLink& link) {
+  if (!link.has_control_assignment()) return;
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("hill_ring", "");
+  mcPrefs.end();
+  // Review of F658: after a power-on the saved times say nothing about the hours the Stick was off: start every game fresh
+  const bool power_on = esp_reset_reason() == ESP_RST_POWERON;
+  if (decode_hill_ring(body.c_str(), link.assignment().id, link.follower(), link.hill(), millis(), power_on))
+    Serial.printf("RESTORED hill follows game %d (owner %d)\n", link.follower().current, link.hill().owner);
+}
+
+// ---- F658: the static powerup's follower and item ("brxmc"/"pu_follow", station_link.h encode_powerup_follow) -----
+// StationLink::pu_save_due decides WHEN (follow starts, a game switch, a spawn or a claim). Restored at boot after the
+// saved config, so a restarted powerup keeps following its game with its item and spawn clock.
+static void mcWriteSavedPuFollow(StationLink& link) {
+  mcPrefs.begin("brxmc", false);
+  const std::string body = encode_powerup_follow(link.assignment().id, link.pu_follower(), link.powerup(), millis());
+  nvsOk(nvs_put_str(mcPrefs, nvsFails, "pu_follow", body.c_str()));
+  mcPrefs.end();
+}
+
+static void mcLoadSavedPuFollow(StationLink& link) {
+  if (!link.has_powerup_assignment()) return;
+  mcPrefs.begin("brxmc", true);
+  String body = mcPrefs.getString("pu_follow", "");
+  mcPrefs.end();
+  const bool power_on = esp_reset_reason() == ESP_RST_POWERON;   // as the hill ring: the time off is unknown
+  if (decode_powerup_follow(body.c_str(), link.assignment().id, link.pu_follower(), link.powerup(), millis(), power_on)) {
+    link.claims().set_follow(link.pu_follower().current, true);   // at boot, before the player scan starts: no claimMux
+    Serial.printf("RESTORED powerup follows game %d\n", link.pu_follower().current);
+  }
 }
 
 // ---- F365 / A67: the on-station range edit in NVS ("brxmc"/"range") -----------------------------------
@@ -371,6 +415,8 @@ static void mcRestoreSavedConfig(StationLink& link) {
     Serial.printf("RESTORED hill owner=%d (held at 100 if a team)\n", link.hill().owner == contract::STATION_TEAM_ANY ? -1 : link.hill().owner);
   }
   link.enforce_restored_hill_freeze();
+  mcLoadSavedRing(link);   // F658: a following hill comes back following, with every game's tally
+  mcLoadSavedPuFollow(link);   // F658: a following powerup comes back following, with its item
   // A68 review: a duration hill resumes its whistle from the saved time left, before any advert.
   if (savedClock.note_config(a, savedConfig.session_id())) mcEraseSavedClock();
   const int32_t rem = savedClock.restore_remaining(a, savedConfig.session_id());
@@ -641,14 +687,10 @@ class PlayerScanCallbacks : public BLEAdvertisedDeviceCallbacks {
     if (a.role != contract::ADVERT_ROLE_PLAYER) return;
     const int rssi = advertisedDevice.getRSSI();
     if (scanFeedsPresence) seenPush(a, rssi, millis());
-    bool claiming = (a.state & contract::ADVERT_PLAYER_STATE_CLAIMING) != 0;
-    bool ready = (a.state & contract::ADVERT_PLAYER_STATE_CLAIM_READY) != 0;
-    if (!claiming && !ready) return;
+    if (!(a.state & (contract::ADVERT_PLAYER_STATE_CLAIMING | contract::ADVERT_PLAYER_STATE_CLAIM_READY))) return;
     portENTER_CRITICAL(&claimMux);
-    if (scanFeedsClaims) {
-      link.claims().observe(/*player_num=*/a.id, /*target_station_id=*/a.value, a.game, claiming,
-                             ready, /*alive=*/(a.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0, rssi, millis());
-    }
+    // F658 (A86): the gate checks the scope (and the live bit while following) before the claim rule
+    if (scanFeedsClaims) link.claims().observe_advert(a, rssi, millis());
     portEXIT_CRITICAL(&claimMux);
   }
 };
@@ -710,7 +752,9 @@ static void mcPollPlayerScan(uint32_t now) {
   portENTER_CRITICAL(&claimMux);
   scanFeedsClaims = link.has_powerup_assignment();
   portEXIT_CRITICAL(&claimMux);
-  scanFeedsPresence = link.has_control_assignment() || (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment());
+  // F658: a powerup feeds presence too, so its follower hears the players' live game
+  scanFeedsPresence = link.has_control_assignment() || link.has_powerup_assignment() ||
+                      (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment());
   scan->start(SCAN_WINDOW_S, onPlayerScanComplete, false);
 }
 
@@ -728,6 +772,8 @@ static void mcApplyTickIntents(const TickIntents& intents) {
     switch (intent.kind) {
       case TickIntentKind::SAVE_HILL: mcWriteSavedHill(); break;
       case TickIntentKind::SAVE_CLOCK: mcWriteSavedClock(); break;
+      case TickIntentKind::SAVE_RING: mcWriteSavedRing(link); break;   // F658
+      case TickIntentKind::SAVE_PU_FOLLOW: mcWriteSavedPuFollow(link); break;   // F658
       case TickIntentKind::QUEUE_CAPTURE: pendingCaptureTeam = intent.value; break;
       case TickIntentKind::WAKE_SCREEN: mcScreenWake = true; break;
       case TickIntentKind::REVIVE_FLASH: reviveFlashUntilMs = millis() + REVIVE_FLASH_MS; break;
@@ -751,6 +797,10 @@ static void mcTickPlayers(uint32_t now) {
   while (seenPop(sp)) tickController.observe_player(link, presence, now, sp);
   mcApplyTickIntents(tickController.finish_players(link, presence, savedHill, savedClock,
                                                     savedConfig.session_id(), now));
+  // F658 review round 1: the powerup follower's claim rule reaches the gate under claimMux (the BLE callback reads it)
+  portENTER_CRITICAL(&claimMux);
+  link.apply_claim_follow();
+  portEXIT_CRITICAL(&claimMux);
 }
 
 // ---- WebSocket event handling ------------------------------------------------------------------

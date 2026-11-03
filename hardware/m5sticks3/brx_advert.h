@@ -50,16 +50,29 @@ struct Advert {
   uint8_t game = 0;
   int threshold = 0;  // dBm, int8 on the wire, 0 = scanner default
   uint8_t taker = 0;  // A56: a powerup's current holder, player_num 1..63, 0 = none
+  // F658 (A86): a PLAYER's scope. Byte 8 is the kind mask (ADVERT_SCOPE_KIND_*), bytes 6 (high) and 15 (low) the
+  // 16-bit map of the station ids in the player's match, bit (id % 16). A player's id is byte 7 alone. 0 on a station.
+  uint8_t scope_kinds = 0;
+  uint16_t scope = 0;
 };
+
+// A86: may the station of scope kind `kind_bit` (ADVERT_SCOPE_KIND_*) and id `station_id` count this player? Only with
+// its own kind bit and its own id bit set (beacon.js inScope). A zero scope (an older APK) or station id 0 never counts.
+inline bool in_scope(uint8_t scope_kinds, uint16_t scope, int kind_bit, int station_id) {
+  if (station_id < 1 || !(scope_kinds & kind_bit)) return false;
+  return (scope >> (station_id % contract::ADVERT_SCOPE_ID_BITS)) & 1;
+}
 
 inline void advert_bytes(const Advert& a, uint8_t out[16]) {
   int thr = 0;
   if (a.threshold) thr = a.threshold < 0 ? 256 + (a.threshold < -128 ? -128 : a.threshold)
                                          : (a.threshold > 127 ? 127 : a.threshold);
+  // A86: a player's bytes 6, 8 and 15 carry its scope
+  const bool player = a.role == contract::ADVERT_ROLE_PLAYER;
   const uint8_t b[16] = {contract::ADVERT_MAGIC[0], contract::ADVERT_MAGIC[1], contract::ADVERT_MAGIC[2], contract::ADVERT_MAGIC[3],
                          contract::ADVERT_VERSION, a.role,
-                         (uint8_t)(a.id >> 8), (uint8_t)(a.id & 0xff), a.kind, a.team,
-                         a.state, a.value, a.seq, a.game, (uint8_t)(thr & 0xff), a.taker};
+                         (uint8_t)(player ? a.scope >> 8 : a.id >> 8), (uint8_t)(a.id & 0xff), player ? a.scope_kinds : a.kind, a.team,
+                         a.state, a.value, a.seq, a.game, (uint8_t)(thr & 0xff), player ? (uint8_t)(a.scope & 0xff) : a.taker};
   for (int i = 0; i < 16; i++) out[i] = b[i];
 }
 
@@ -88,13 +101,19 @@ inline bool decode_advert(const std::string& uuid, Advert& out) {
   out.role = b[5];
   out.id = (uint16_t)((b[6] << 8) | b[7]);
   out.kind = b[8];
+  if (out.role == contract::ADVERT_ROLE_PLAYER) {  // A86: the player id is byte 7 alone; bytes 6, 8 and 15 are its scope
+    out.id = b[7];
+    out.kind = 0;
+    out.scope_kinds = b[8];
+    out.scope = (uint16_t)((b[6] << 8) | b[15]);
+  }
   out.team = b[9];
   out.state = b[10];
   out.value = b[11];
   out.seq = b[12];
   out.game = b[13];
   out.threshold = (b[14] >= 128) ? (int)b[14] - 256 : (int)b[14];
-  out.taker = b[15];
+  out.taker = out.role == contract::ADVERT_ROLE_PLAYER ? 0 : b[15];
   return true;
 }
 

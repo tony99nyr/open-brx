@@ -16,13 +16,15 @@ DOC = json.loads((pathlib.Path(__file__).resolve().parents[2] / "app" / "test" /
 
 def _fields(c: dict) -> dict:
     return {"role": c["role"], "id": c["id"], "kind": c["kind_name"], "team": c["team"], "state": c["state"],
-            "value": c["value"], "seq": c["seq"], "game": c["game"], "threshold": c["threshold"], "taker": c["taker"]}
+            "value": c["value"], "seq": c["seq"], "game": c["game"], "threshold": c["threshold"], "taker": c["taker"],
+            "scope_kinds": c["scope_kinds"], "scope": c["scope"]}
 
 
 def test_every_vector_encodes_to_its_uuid_and_decodes_back():
     for c in DOC["cases"]:
         got = encode(c["role"], id=c["id"], kind=c["kind"], team=c["team"], state=c["state"], value=c["value"],
-                     seq=c["seq"], game=c["game"], threshold=c["threshold"], taker=c["taker"])
+                     seq=c["seq"], game=c["game"], threshold=c["threshold"], taker=c["taker"],
+                     scope_kinds=c["scope_kinds"], scope=c["scope"])
         assert got == c["uuid"], f"encode: {c['name']}"
         a = decode(c["uuid"])
         assert a is not None and a.__dict__ == _fields(c), f"decode: {c['name']}"

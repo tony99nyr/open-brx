@@ -1,6 +1,6 @@
 # Post-MVP: ideas and the roadmap
 
-Updated: 2026-11-01 (see experiment-log/2026-10.md for the day's changes).
+Updated: 2026-11-02 (see experiment-log/2026-11.md for the day's changes).
 
 The ideas and roadmap list: real work, not scheduled for MVP. Open MVP work is in [`FOLLOWUPS.md`](FOLLOWUPS.md);
 what is done is in [`archive/followups-closed.md`](archive/followups-closed.md). Ids stay unique across all three
@@ -743,6 +743,9 @@ Groups: 1. Modes, extensibility and spectating · 2. Stations, the grenade and t
   knowing for gameplay: a miss is VISUALLY IDENTICAL to a hit** (same green flash), so no observer can tell them apart. **→ 2026-09-17: BUILT** (commit 76ad3764): `tick()` repaints the team colour
   every 5 s while the player is alive (`app/test/engine.test.mjs`, the F68 test). Left: `stage.py` does not mirror it
   (`test_stage_mirror.py` pins `_teamRepaintTick` as unmirrored), and one eyes check on a gun. `build` + `eyes`.
+  **→ 2026-11-02:** Tony asked whether a recoil miss (a magnitude-0 word) flashes the headset green. It was seen green on
+  2026-09-09 (above), and F227 later found that the flash follows the team. `bench-plan.md` NEXT GAME PREP P10 re-checks
+  it with the team stated and a magnitude-100 control, and does the eyes check of the 5 s repaint.
 
 - **F13 🟡** a respawn within ~2 s of death wedges the headset in the green out-blink (threshold 2.0–2.5 s; use ≥ 3 s).
   (1) ✅ floored everywhere 2026-09-11 (F34 closed: PUT refuses 1–2 s, the node floors at 3 s, the CLI already did); (2) headset-side frame pacing of

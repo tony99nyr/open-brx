@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader.",
+  "about": "F440 presence and the kind-5 hill, one statement for three implementations: app/src/beacon.js Presence + app/src/control.js ControlPoint (phone), hardware/m5sticks3/presence.h PlayerPresence + BleControlPoint (Stick), and the stage's reading of the hill advert (mcp/brx_mcp/stage/stage.py). Driven by app/test/presence-hill-cases.test.mjs, hardware/m5sticks3/test/test_presence_cases.cpp and mcp/tests/test_presence_hill_cases.py. Times are ms on one clock. setup holds every number a runner needs, so no runner relies on its own defaults. `players` gives each id its team (tid) and player-advert state names (alive). `sightings` {t,id,rssi} are adverts heard; `series` {id,from_ms,to_ms,every_ms,rssi[]} expands to one sighting per step, cycling the rssi list (a dense advertiser has a short every_ms, a sparse one a long one). A runner feeds every sighting with t <= the tick time, then ticks presence, then updates the hill, every tick_ms from 0 to until_ms. A case's `stalls` [{from_ms, to_ms}] (both on a tick) skips every tick strictly between the two, as a station whose timers were throttled does; the sightings heard in a stall feed the tick at its end. An expect checkpoint (t on a tick) holds `in` (in the circle: present or a credible sighting, the test the hill counts), `present` (dwell passed, debounced exit) and `fading` (C.7: present with the exit level under the band for fade_after_ms or more, so the player contests but builds no capture) per player id, and `hill` {team, state names from held/contested/rising/falling, value}, the three advert bytes the hill sends. A case's `only` lists the implementations that must pass it (default all of phone, stick, stage); `stage` reads only the `hill` advert, because the stage has no presence model of its own. `why` is for the reader. F658 (the static hill): a player may name its `game` byte (default 0) and carry the `live` state bit; a series or sighting may override `game` too. The hill hears every game (presence keyed by game) and a follower picks who counts: it follows the newest live game once it has heard any live-bit player, and before that counts the players of `setup.armed_game` (0 = any). `setup.ring_size` and `setup.ring_stale_ms` size the per-game tally ring. A checkpoint may hold `hill.game` (the byte the hill advertises), `follows` (follow mode), `ring` (the game bytes in the ring, ascending) and `games` ({byte: {owner, hold_ms}} from the ring summary). The stage reads only the three hill bytes, so it ignores all of these. A86 (the enablement scope): `setup.station_id` (default 1) is the hill's own station id, and a player may name its advert scope with `scope_kinds` (names from ADVERT_SCOPE_KIND) and `scope_stations` (station ids, each sets bit id % 16). The default for both is the scope that names this hill (`[\"control\"]` and `[setup.station_id]`), so a case without them is in scope; an empty list is a zero scope (an older APK). A player outside the scope never counts. A checkpoint may hold `own_ms` ({tid: ms}, the owned clock: it banks while that team owns the point, contested or empty) beside `hold_ms`, and a `games` entry may hold `own_ms` too.",
   "cases": [
     {
       "name": "lone red player enters at the threshold at once, and is present after the dwell",
@@ -1004,6 +1004,259 @@
         {"t": 20000, "in": {"1": false, "2": true}, "hold_ms": {"0": 6000}},
         {"t": 80000, "in": {"1": true, "2": false}, "hold_ms": {"0": 7000}}
       ]
-    }
+    },
+    {
+      "name": "F658: live-bit counting: a live red captures, a blue still in the countdown does not count",
+      "why": "Once the hill hears a live-bit player it follows that game. Only live-bit players of the followed game count, so a blue phone of the same game that is still in the countdown (no live bit) neither contests nor builds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive"], "game": 7}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: the hill follows a newer game once the old game has no live player left",
+      "why": "Red holds game 7 and leaves at 12 s. Blue goes live in game 8 at 14 s, but game 7 stays current while a red live advert is within the 4 s expiry. Then the hill moves to game 8 on a fresh, neutral point, advertises byte 8, and keeps game 7's tally in the ring.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}},
+      "until_ms": 27000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 14000, "to_ms": 27000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 16000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
+        {"t": 16250, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8], "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}, "own_ms": {"0": 6000}}}},
+        {"t": 21250, "hill": {"team": 1, "state": ["rising"], "value": 50, "game": 8}},
+        {"t": 27000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}}, "8": {"owner": 1, "own_ms": {"1": 750}}}}
+      ]
+    },
+    {
+      "name": "F658: two live games at once: no cross-counting",
+      "why": "Red is live in game 7 from 0 s and blue in game 8 from 1 s, both on the point. The hill keeps game 7 while a game-7 live player is heard, and blue of game 8 neither contests nor drains it.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 1000, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 12000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}, "ring": [7, 8]}
+      ]
+    },
+    {
+      "name": "F658: the ring keeps four games and evicts the least recently heard",
+      "why": "Five games go live one after another. The ring holds four game bytes; the fifth evicts the one heard longest ago (game 1).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 1}, "2": {"team": 0, "state": ["alive", "live"], "game": 2}, "3": {"team": 0, "state": ["alive", "live"], "game": 3}, "4": {"team": 0, "state": ["alive", "live"], "game": 4}, "5": {"team": 0, "state": ["alive", "live"], "game": 5}},
+      "until_ms": 44000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 2000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 20000, "to_ms": 22000, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 30000, "to_ms": 32000, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 40000, "to_ms": 42000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 35000, "ring": [1, 2, 3, 4], "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 4}},
+        {"t": 44000, "ring": [2, 3, 4, 5], "hill": {"team": 0, "state": ["rising"], "value": 40, "game": 5}}
+      ]
+    },
+    {
+      "name": "F658: a game byte heard again after more than ten minutes starts a fresh tally",
+      "why": "Red captures game 7, then game 8 goes live. Game 7 comes back more than 600 s after it was last heard (a byte wrap, or an MC restart that reuses it), so its old owner and tally are gone.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 7}},
+      "until_ms": 625000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 20000, "to_ms": 21000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 623000, "to_ms": 625000, "every_ms": 1000, "rssi": [-60]}],
+      "expect": [
+        {"t": 22000, "hill": {"team": 1, "state": ["rising"], "value": 20, "game": 8}, "games": {"7": {"owner": 0}}},
+        {"t": 623000, "hill": {"team": 255, "state": [], "value": 0, "game": 7}, "games": {"7": {"owner": 255, "hold_ms": {"0": 0}}}}
+      ]
+    },
+    {
+      "name": "F658: a game byte heard again within ten minutes keeps its tally",
+      "why": "The twin of the case above: game 7 comes back 300 s later, so the hill restores its owner and tally.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 7}},
+      "until_ms": 303000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 20000, "to_ms": 21000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 301000, "to_ms": 303000, "every_ms": 1000, "rssi": [-60]}],
+      "expect": [
+        {"t": 301000, "hill": {"team": 0, "state": ["held", "falling"], "value": 100, "game": 7}, "games": {"7": {"owner": 0, "hold_ms": {"0": 6000}}}}
+      ]
+    },
+    {
+      "name": "F658: fallback: a hill that never hears a live bit counts its MC-armed game only",
+      "why": "Old phones send no live bit, so the hill keeps today's rules: it counts players of its armed game 7 (or game 0) and ignores a blue phone of game 9.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 7, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive"], "game": 7}, "2": {"team": 1, "state": ["alive"], "game": 9}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "follows": false, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: at the whistle players drop the live bit and stop counting",
+      "why": "Red builds while live. At 6 s the whistle goes and the phone drops the live bit: it no longer counts, so the half-built capture decays after the F464 delay. The hill stays in follow mode on game 7.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5750, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 6000, "to_ms": 14000, "every_ms": 250, "rssi": [-60], "state": ["alive"]}],
+      "expect": [
+        {"t": 5750, "hill": {"team": 0, "state": ["rising"], "value": 58, "game": 7}},
+        {"t": 8000, "follows": true, "hill": {"team": 0, "state": [], "value": 40, "game": 7}},
+        {"t": 14000, "hill": {"team": 255, "state": [], "value": 0, "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: one live phone that missed END cannot pin the hill to its old game",
+      "why": "Red holds game 7, then walks off still live (it missed END) and stays heard at the edge. Two blue players of game 8 arrive on the point: game 8 has more live players there than game 7, and game 7 is still heard, so the hill moves to game 8 once that lead has held for FOLLOW_SWITCH_HOLD_MS (10 s).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}},
+      "until_ms": 38000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 12250, "to_ms": 38000, "every_ms": 250, "rssi": [-80]}, {"id": 2, "from_ms": 14000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 14000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 13750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
+        {"t": 23750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
+        {"t": 24000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8]},
+        {"t": 38000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}}
+      ]
+    },
+    {
+      "name": "F658: a stranger takes an empty hill, and loses it when more real players arrive; the real game gets its tally back",
+      "why": "Blue holds game 8 and leaves. A red stranger of game 9 alone on the empty hill takes it at once: game 8 is no longer heard at all. Two blue players of game 8 come back: 2 beats 1, and game 9 is still heard, so the hill returns to game 8 with its saved owner once that lead has held for 10 s.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"2": {"team": 1, "state": ["alive", "live"], "game": 8}, "4": {"team": 1, "state": ["alive", "live"], "game": 8}, "5": {"team": 0, "state": ["alive", "live"], "game": 9}},
+      "until_ms": 38000,
+      "series": [{"id": 2, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 20000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 25000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 25000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 19750, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}},
+        {"t": 20000, "hill": {"team": 255, "state": [], "value": 0, "game": 9}, "games": {"8": {"owner": 1}}},
+        {"t": 24000, "hill": {"team": 0, "state": ["rising"], "value": 40, "game": 9}},
+        {"t": 34750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 9}},
+        {"t": 35000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"9": {"owner": 0}}}
+      ]
+    },
+    {
+      "name": "F658: the first follow into the hill's own game keeps the point it counted",
+      "why": "Armed for game 7, the hill counts an old-app red player (no live bit) by today's rules. When that phone goes live in game 7, the hill starts following game 7 and keeps the bar: it does not wipe the match it already counted.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 7, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive"], "game": 7}},
+      "until_ms": 11000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 5000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 5250, "to_ms": 11000, "every_ms": 250, "rssi": [-60], "state": ["alive", "live"]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 5250, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 53, "game": 7}},
+        {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "F658: a hill of game 7 never follows a hand-played phone (game 0)",
+      "why": "A live phone on game 0 plays by hand. A hill MC armed for game 7 does not follow it; by today's rules it still counts that phone (0 is any game).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 7, "ring_size": 4, "ring_stale_ms": 600000},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 0}},
+      "until_ms": 6000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 6000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}}
+      ]
+    },
+    {
+      "name": "A86: a station whose id bit is clear in the scope stays inert, and an out-of-scope red does not contest",
+      "why": "Station 1 hears two live phones of game 7 on the point: a red one whose scope names station 2 only (id bit 2) and a blue one in scope. Only blue exists for the hill, so red neither contests nor builds and blue captures alone in ten seconds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["control"], "scope_stations": [2]}, "2": {"team": 1, "state": ["alive", "live"], "game": 7}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": true, "hill": {"team": 1, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "A86: a scope without the control kind bit stays inert",
+      "why": "The phone's match has station 1 in play, but as a respawn or powerup station, not a control point: the hill counts nobody, never follows, and stays neutral.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["respawn", "powerup"], "scope_stations": [1]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}},
+        {"t": 12000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "A86: a zero scope (an older APK) stays inert, even with the live bit and on the armed game",
+      "why": "An APK from before A86 sends zeros in bytes 6, 8 and 15. A station never counts it: no follow mode, no capture, even on the game MC armed the hill for.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 1, "armed_game": 7},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": [], "scope_stations": []}, "2": {"team": 1, "state": ["alive"], "game": 7, "scope_kinds": [], "scope_stations": []}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}},
+        {"t": 12000, "follows": false, "hill": {"team": 255, "state": [], "value": 0}}
+      ]
+    },
+    {
+      "name": "A86: in scope counts as before: station 17 is bit 1 of the map",
+      "why": "A phone whose match has control station 17 and respawn station 3 in play (kind bits control and respawn, id bits 1 and 3) counts at station 17 exactly as before: a lone red captures in ten seconds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000, "station_id": 17},
+      "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7, "scope_kinds": ["control", "respawn"], "scope_stations": [3, 17]}},
+      "until_ms": 12000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 5000, "follows": true, "hill": {"team": 0, "state": ["rising"], "value": 50, "game": 7}},
+        {"t": 10000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}
+      ]
+    },
+    {
+      "name": "own_ms: an owned point that is contested banks own_ms, not hold_ms",
+      "why": "The owned clock (Domination) banks while a team owns the point, contested or not. Red captures alone at 10 s; a blue arrives at 10.25 s, so the point is contested: hold_ms stops at once, own_ms runs on, and the 1v1 neither drains nor builds.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 14000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10250, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 10000, "hold_ms": {"0": 0}, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 14000, "hold_ms": {"0": 0}, "own_ms": {"0": 4000}, "hill": {"team": 0, "state": ["held", "contested"], "value": 100}}
+      ]
+    },
+    {
+      "name": "own_ms: an owned point with nobody on it banks own_ms only",
+      "why": "Red captures at 10 s and walks off: its last advert is at 10 s, and it leaves the circle 4 s later. hold_ms stops when red is no longer counted; own_ms banks on with nobody there, because an owned point never decays.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 20000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 16000, "hold_ms": {"0": 4000}, "own_ms": {"0": 6000}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 20000, "hold_ms": {"0": 4000}, "own_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held"], "value": 100}}
+      ]
+    },
+    {
+      "name": "own_ms: a lone enemy drains the point to neutral, and own_ms stops there",
+      "why": "Red captures at 10 s and leaves (last advert at 10 s, out of the circle 4 s later). Blue arrives at 14.25 s and drains the bar at the one-player rate. Red banks own_ms until the point reaches neutral, then nothing more.",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}, "2": {"team": 1, "state": ["alive"]}},
+      "until_ms": 30000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 10000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 14250, "to_ms": 30000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 20000, "own_ms": {"0": 10000}, "hill": {"team": 0, "state": ["held", "falling"], "value": 40}},
+        {"t": 24000, "own_ms": {"0": 14000}, "hill": {"team": 1, "state": ["rising"], "value": 0}},
+        {"t": 30000, "own_ms": {"0": 14000, "1": 0}, "hill": {"team": 1, "state": ["rising"], "value": 60}}
+      ]
+    },
+    {
+      "name": "own_ms gap: a capture on the tick that ends a stall banks none of the stall",
+      "why": "Red builds to 95 by 9.5 s; the station stalls from 9.5 s to 60 s, and red captures on the tick at 60 s. own_ms banks to the owner from BEFORE the step's conversion, so the stall, which red did not own, banks nothing; banking to the owner after the conversion would credit red with the whole stall. The HILL_MAX_STEP_MS gap clamp is not exercised here (control.test.mjs covers it).",
+      "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250},
+      "players": {"1": {"team": 0, "state": ["alive"]}},
+      "until_ms": 62000,
+      "stalls": [{"from_ms": 9500, "to_ms": 60000}],
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 62000, "every_ms": 250, "rssi": [-60]}],
+      "expect": [
+        {"t": 9500, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["rising"], "value": 95}},
+        {"t": 60000, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["held"], "value": 100}},
+        {"t": 62000, "own_ms": {"0": 2000}}
+      ]
+    },
+    {"name": "F658 hysteresis: a short lead does not switch the hill while its current game is still heard", "why": "Red of game 7 holds the point. Two blue players of game 8 pass over it for 3 s: game 8 leads for about 7 s with the presence expiry, under FOLLOW_SWITCH_HOLD_MS (10 s), so the hill stays on game 7.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 30000, "series": [{"id": 1, "from_ms": 0, "to_ms": 30000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 13000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 10000, "to_ms": 13000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 12000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 16000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 20000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 30000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}]},
+    {"name": "F658 hysteresis: a lead kept for 10 s switches the hill", "why": "Red of game 7 holds the point. Two blue players of game 8 arrive at 12 s and stay: game 8 leads 2 to 1 from then, so the hill moves to game 8 at 22 s, FOLLOW_SWITCH_HOLD_MS later, and keeps game 7's tally in the ring.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 40000, "series": [{"id": 1, "from_ms": 0, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 12000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 12000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 21750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 22000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8], "games": {"7": {"owner": 0}}}]},
+    {"name": "F658 hysteresis: a lead that drops back to a tie starts the hold again", "why": "Red of game 7 holds the point. Blue players 2 and 3 of game 8 lead from 10 s; player 3 goes silent at 14 s and expires, so the lead drops back to a tie before 10 s have passed. Player 3 returns at 22 s: the hold starts again then, and the hill moves to game 8 at 32 s, not earlier.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 40000, "series": [{"id": 1, "from_ms": 0, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 10000, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 22000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 21750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 31750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 32000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}}]}
   ]
 }

@@ -113,7 +113,9 @@ export function startDemo({ engine, log }) {
     // never be previewed. Found by the HUD moment suite 2026-09-02.
     night: q.has('night'), time_limit_s: 600,
     respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
-    scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
+    scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe],
+    // F658 (A86): MC lists the respawn station in play; the player's config alone enables it (the fake station is id 3)
+    ...(q.get('respawn') === 'scanner' ? { stations: [{ id: 3, kind: 'respawn' }] } : {}) };
   const bundle = { ...golden, player_id: 'p-demo' };
   // F665 storyboard: `&melee_ms=<ms>` sets the melee line's time between swings ($WEAP slot 4, token 14) before the catalogue does
   if (+q.get('melee_ms') > 0) bundle.head = bundle.head.map(f => f.startsWith('$WEAP,4,') ? f.split(',').map((x, i) => i === 15 ? String(+q.get('melee_ms')) : x).join(',') : f);
@@ -501,7 +503,9 @@ export function startDemo({ engine, log }) {
         const pr = (typeof window !== 'undefined' && window.brx) ? window.brx.presence : null;
         if (pr) pr.stations = () => list;   // the app feeds engine.setStations(presence.stations()) every 250 ms — so the fake lives in presence
         engine.setStations(list); },
-      scanner: (delay_s = 3, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate }; },   // stage-time: the SHORTEST legal delay (F13/F34: the engine floors anything under 3 s, so a 1 s fixture silently ran at 3 s and the harness read HOLD where it expected the trigger prompt)
+      scanner: (delay_s = 3, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate };
+        // F658 (A86): the fake respawn station (id 3, `station` above) is enabled by the player's own config.stations
+        if (!(config.stations || []).some(x => x.id === 3 && x.kind === 'respawn')) config.stations = [...(config.stations || []), { id: 3, kind: 'respawn' }]; },   // stage-time: the SHORTEST legal delay (F13/F34: the engine floors anything under 3 s, so a 1 s fixture silently ran at 3 s and the harness read HOLD where it expected the trigger prompt)
       state: () => engine.state(),
       // the diagnostics panel (the ⓘ button). `on` omitted = toggle. F122's screen-truth steps drive it
       // while the 250 ms render loop keeps pushing fresh diag data underneath.

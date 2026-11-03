@@ -167,8 +167,10 @@ APP_MINOR = 4
 # `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
 # change is one MC needs. "h8-0.2" was the first build that reports the git sha and `nvs_fail`. "h8-0.3"
 # (2026-10-25) is the first with the hill gap rule, the F391 lock restore and F591's hill fields, so a Stick on
-# any older build is flagged for a reflash.
-STATION_MIN_FW = "h8-0.3"
+# any older build is flagged for a reflash. "h8-0.4" (2026-11-02) is the first with F642's discovery and F658's
+# enablement scope, live-game follow and `own_ms`: an older Stick reads advert byte 6 as a player id high byte, so
+# under the new APK its powerup claims go to nobody.
+STATION_MIN_FW = "h8-0.4"
 
 
 def parse_station_fw(app_ver: str | None) -> tuple[int, int, int] | None:
@@ -260,6 +262,29 @@ STATION_NOT_ARMED = f"PHONE SAYS NOT ARMED: {STATION_REARM}"
 STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE"
 # F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed
 STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF"
+# F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
+# STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+# A powerup that reports `follows` (the static powerup) gets the same note.
+STATION_FOLLOWS = "FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED"
+STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE"
+# F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
+# an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658.
+LIVE_BIT_MIN_APP = "0.4.34"
+
+
+def station_old_app_line(n: int, kind: str = "control") -> str:
+    """F658 review: the amber line for a hill or a powerup when `n` bound player phones run an app older than
+    LIVE_BIT_MIN_APP: it sends no A86 scope, so a hill cannot count it and a powerup will not hand it the pickup."""
+    if kind == "powerup":
+        return f"{n} PHONE{'' if n == 1 else 'S'} ON AN OLD APP: {'IT' if n == 1 else 'THEY'} CANNOT TAKE THIS PICKUP"
+    return f"{n} PHONE{'' if n == 1 else 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT {'IT' if n == 1 else 'THEM'}"
+
+
+def station_pace_line(field: str, have: int, want: int) -> str:
+    """F658: the amber line for a hill whose reported pace (`capture_s` or `net_cap`) is not this game's."""
+    if field == "capture_s":
+        return f"HILL SET FOR {have} S CAPTURE, THIS GAME USES {want} S: {STATION_PACE_REARM}"
+    return f"HILL SET FOR NET CAP {have}, THIS GAME USES {want}: {STATION_PACE_REARM}"
 
 # ---- §1 armory ----
 class BleId(TypedDict, total=False):
@@ -705,9 +730,17 @@ ADVERT_VERSION = 1
 # Advert byte 5: the role. A decoder rejects any other value.
 ADVERT_ROLE = {"station": 1, "player": 2}
 # A player advert's byte 10 (state), as independent bits. `revived` (64) is RESERVED, post-MVP (F344): only the Stick
-# reads it, and the phone never sets it.
+# reads it, and the phone never sets it. `live` (128, F658): the player's match is live (go-live to the whistle, the
+# engine's phase 'live'), so a hill can follow the newest live game with no MC arming.
 ADVERT_PLAYER_STATE = {"alive": 1, "planting": 2, "defusing": 4, "extracting": 8, "claiming": 16, "claim_ready": 32,
-                       "revived": 64}
+                       "revived": 64, "live": 128}
+# F658 (A86, enablement scope): a PLAYER advert's byte 8, the kinds of utility station in play in the player's match,
+# as independent bits. Bytes 6 (high) and 15 (low) carry a 16-bit map of the station ids in play, bit (id % 16), and
+# byte 7 alone is the player id (1..63). A station counts a player only with its own kind bit AND its own id bit set,
+# so a scope of 0 (an older APK, or a match with no stations) never counts anywhere. MC keeps the ids of one match
+# apart modulo ADVERT_SCOPE_ID_BITS.
+ADVERT_SCOPE_KIND = {"control": 1, "respawn": 2, "powerup": 4}
+ADVERT_SCOPE_ID_BITS = 16
 # A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown.
 ADVERT_CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
 # The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82).
@@ -735,6 +768,15 @@ HILL_DECAY_DELAY_MS = 500            # F464 option 1: milliseconds nobody must b
 HILL_NET_CAP = 3                     # the most a net difference counts for
 HILL_MAX_STEP_MS = 1000              # the longest step one tick may advance the hill
 HILL_REFUSED_TID = 2                 # F82: a neutral grenade says this team
+HILL_RING_SIZE = 4                   # F658: a hill that follows the live game keeps one tally per game byte, this many
+HILL_RING_STALE_MS = 600000          # F658: a game byte unheard for longer than this starts a fresh tally (wrap, MC restart)
+# F658: a following hill or powerup switches away from a game it still hears only after the challenger keeps a strict
+# lead in heard live players for this long. Against PRESENCE_EXPIRY_MS (4 s) and PRESENCE_EXIT_GRACE_MS (4 s): one stray
+# advert keeps a passer-by counted for up to 4 s, and a real player who steps off or is body-shadowed drops out for up
+# to 4 s + 4 s = 8 s, so a lead shorter than 8 s is radio noise or a walk-past, never a new game. Phones advertise about
+# every 250 ms (PRESENCE_ALPHA_REF_MS), so 10 s is about 40 adverts of agreement. It equals HILL_CAPTURE_S: a real
+# handover costs at most one capture time. A current game with no live player heard switches at once (utility.md §5d.8).
+FOLLOW_SWITCH_HOLD_MS = 10000
 # Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
 # and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
 # broadcasts team HILL_REFUSED_TID (2).
@@ -864,6 +906,16 @@ class DotSpec(TypedDict):
     duration_ms: int    # how long one hit keeps the stack alive; a second hit REFRESHES it, never stacks
 
 
+class RecoilRecovery(TypedDict):
+    """F662 R2 (brx3's spec, Tony 2026-11-02): hold-length recovery. A degraded or heavy weapon released by the trigger goes
+    back to crisp after `per_round_ms` for each round of the hold past `after_shots`, clamped to `min_ms`..`max_ms`, in
+    one write. A pull before then cancels it, and the rung and the count carry into the new pull. An alternative to
+    `reset_on_release`: when both are set, this one wins. Absent = today's settle clock."""
+    per_round_ms: int
+    min_ms: int
+    max_ms: int
+
+
 class Recoil(TypedDict):
     """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
     on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
@@ -893,6 +945,7 @@ class Recoil(TypedDict):
     after_heavy: NotRequired[int]
     settle_ms: NotRequired[int]
     reset_on_release: NotRequired[bool]   # F663: back to crisp the moment the trigger comes up (default off)
+    recovery: NotRequired[RecoilRecovery]  # F662 R2: back to crisp after a pause that grows with the hold (default off)
 
 
 class HillSettings(TypedDict, total=False):
@@ -1647,6 +1700,9 @@ class StationControl(TypedDict):
     progress: NotRequired[int]
     contested: NotRequired[bool]
     hold_ms: NotRequired[dict[str, int]]
+    # The owned clock (Domination): ms per tid the team OWNED the point, contested or not, with or without a body on it;
+    # it stops when the point drains to neutral. Keyed like hold_ms. Absent from an older station.
+    own_ms: NotRequired[dict[str, int]]
     game: NotRequired[int]       # F555: the game byte the hill counts under; wire only (MC's tally reads it, the view does not)
     # Milestone review: the pace the hill RUNS (A77 makes MC's value win on an arming that carries one; absent keeps the
     # station's own), so ITEMS can show what each hill is really doing.
@@ -1657,6 +1713,34 @@ class StationControl(TypedDict):
     net: NotRequired[int]
     counts: NotRequired[dict[str, int]]
     lead: NotRequired[int | None]
+    # F658: the hill follows the players' live game (no re-arm needed), and its per-game tally ring, keyed by game byte
+    follows: NotRequired[bool]
+    games: NotRequired[dict[str, "StationRingGame"]]
+
+
+class StationRingGame(TypedDict):
+    """F658: one game's tally in a following hill's ring (`control.games`)."""
+    hold_ms: dict[str, int]
+    own_ms: NotRequired[dict[str, int]]   # the owned clock (see StationControl.own_ms); absent from an older station
+    owner: int
+    last_ms: int               # ms since that game was last heard
+
+
+class StationPowerupGame(TypedDict):
+    """F658: the followed game's item in a following powerup's `powerup.games` (one entry, the current game)."""
+    available: bool
+    taker: int                 # the player_num the current item went to, 0 = none
+    next_ms: NotRequired[int]  # ms to the next spawn; absent = no spawn clock yet
+    since_ms: int              # ms since this game's clock started (its first live sighting)
+    last_ms: int               # ms since this game was last heard
+
+
+class StationPowerup(TypedDict):
+    """F658 (the static powerup): a powerup station that follows the players' live game, as a hill does (`control.follows`).
+    Absent until it follows."""
+    follows: bool
+    game: int                  # the followed game byte
+    games: NotRequired[dict[str, StationPowerupGame]]
 
 
 # `from` and `to` are Python keywords, so the two fields live on a functional base (gen_contract flattens it).
@@ -1702,6 +1786,7 @@ class StationReport(TypedDict):
     armed: NotRequired[bool]
     battery: NotRequired[float]
     control: NotRequired[StationControl]
+    powerup: NotRequired[StationPowerup]             # F658: a powerup that follows the players' live game
     uptime_s: NotRequired[int]                       # A58: seconds since this station booted
     boot_count: NotRequired[int]                     # A58: boots since the station was flashed (persisted)
     nvs_fail: NotRequired[int]                       # O12: NVS writes that failed since boot (absent = none)

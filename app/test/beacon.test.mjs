@@ -1,7 +1,7 @@
 // beacon.js — the utility-item UUID codec and the presence tracker (docs/spec/utility.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeUuid, decodeUuid, decodeAdvert, Presence, PLAYER_STATE, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, decodeAdvert, Presence, PLAYER_STATE, playerScope, inScope, thinWindow, timeWeightedMedian, medianOf } from '../src/beacon.js';
 import { STATION_TEAM_ANY, PRESENCE_EXIT_GRACE_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_EXPIRY_MS } from '../src/transport/contract.gen.js';
 import { GUARD_PAUSE_MS } from '../src/scanwatch.js';
 import { PRESENCE_PAUSE_CAP_MS } from '../src/beacon.js';
@@ -12,7 +12,7 @@ test('station uuid round-trips every field, and is a well-formed 128-bit uuid', 
   assert.ok(u.startsWith('4f425258-01'), 'magic OBRX then version 1');
   assert.equal(u, '4f425258-0101-012c-0101-0100075ac600', 'the exact vector mcp/tests/test_beacon.py pins too — the phones and MC must agree byte for byte');
   const d = decodeUuid(u);
-  assert.deepEqual(d, { role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58, taker: 0 });   // A56: byte 15 is `taker` (0 = none)
+  assert.deepEqual(d, { role: 'station', id: 300, kind: 'respawn', team: 1, state: 1, value: 0, seq: 7, game: 0x5a, threshold: -58, taker: 0, scopeKinds: 0, scope: 0 });   // A56: byte 15 is `taker` (0 = none); A86: a station has no scope
 });
 
 test('player uuid: id is the player_num, kind is null, state carries the alive/intent bits', () => {
@@ -21,6 +21,19 @@ test('player uuid: id is the player_num, kind is null, state carries the alive/i
   assert.equal(d.role, 'player'); assert.equal(d.id, 19); assert.equal(d.kind, null); assert.equal(d.team, 2);
   assert.equal(d.state & PLAYER_STATE.alive, 1); assert.equal(d.state & PLAYER_STATE.planting, 2);
   assert.equal(d.threshold, 0, 'unset threshold reads 0 = use the default');
+});
+
+test('A86: the player scope: byte 7 is the id, byte 8 the kind mask, bytes 6 and 15 the id map', () => {
+  const sc = playerScope({ stations: [{ id: 1, kind: 'control' }, { id: 15, kind: 'powerup' }, { id: 4, kind: 'extraction' }, 7] });
+  assert.deepEqual(sc, { scopeKinds: 1 | 4, scope: (1 << 1) | (1 << 15) }, 'extraction has no scope bit, and a bare id names no kind');
+  assert.deepEqual(playerScope({}), { scopeKinds: 0, scope: 0 }, 'no stations named (an older MC) = zeros');
+  assert.deepEqual(playerScope({ stations: [{ id: 17, kind: 'control' }] }), { scopeKinds: 1, scope: 1 << 1 }, 'bit id % 16');
+  const d = decodeUuid(encodeUuid({ role: 'player', id: 63, team: 1, state: 1, ...sc }));
+  assert.equal(d.id, 63); assert.equal(d.scopeKinds, 5); assert.equal(d.scope, 0x8002); assert.equal(d.taker, 0);
+  assert.ok(inScope(d, 'control', 1)); assert.ok(inScope(d, 'powerup', 15)); assert.ok(inScope(d, 'control', 17), 'one bit names 1 and 17: MC keeps them apart');
+  assert.ok(!inScope(d, 'control', 2), 'id bit clear'); assert.ok(!inScope(d, 'respawn', 1), 'kind bit clear');
+  assert.ok(!inScope({ scopeKinds: 0, scope: 0 }, 'control', 1), 'a zero scope (an older APK) is never in scope');
+  assert.ok(!inScope(d, 'control', 0), 'an unassigned station (id 0) counts nobody');
 });
 
 test('decode accepts uppercase (iOS) and dashless forms; rejects foreign uuids and other versions', () => {
@@ -96,9 +109,10 @@ test('presence: the station advertised threshold wins over the default; a neutra
 });
 
 test('X10: a game byte change drops presence learnt under the old byte at once, not after expiryMs', () => {
+  // F658: a respawn station serves any game, so the game scope is shown on a powerup station
   const p = new Presence({ dwellMs: 0, game: 7 });
-  p.observe(station({ game: 7 }), -40, 0);
-  p.observe(station({ id: 6, game: 0 }), -40, 0);
+  p.observe(station({ game: 7, kind: 'powerup' }), -40, 0);
+  p.observe(station({ id: 6, game: 0, kind: 'powerup' }), -40, 0);
   p.tick(0);
   assert.equal(p.stations().filter(e => e.present).length, 2, 'CONTROL: both stations are present first');
   p.game = 7;                                         // app.js reassigns the same byte on every render
@@ -107,6 +121,8 @@ test('X10: a game byte change drops presence learnt under the old byte at once, 
   p.tick(1);
   assert.deepEqual(p.stations().map(e => e.id), [6], 'the old game station is gone; the any-game one stays');
   assert.equal(p.game, 8);
+  p.observe(station({ id: 9, game: 8 }), -40, 2); p.game = 9;   // F658: a respawn station's game byte drops nothing
+  assert.deepEqual(p.stations().map(e => e.id).sort(), [6, 9]);
 });
 
 test('presence: EMA smooths, seq/state changes stamp changedAt, other games are ignored', () => {
@@ -116,7 +132,8 @@ test('presence: EMA smooths, seq/state changes stamp changedAt, other games are 
   assert.equal(p.stations()[0].changedAt, undefined);
   p.observe(station({ game: 7, state: 0, seq: 1 }), -60, 500);
   assert.equal(p.stations()[0].changedAt, 500); assert.equal(p.stations()[0].state, 0);
-  assert.equal(p.observe(station({ game: 9 }), -30, 750), null, 'another game');
+  assert.equal(p.observe(station({ game: 9, kind: 'powerup' }), -30, 750), null, 'another game');
+  assert.equal(p.observe(station({ game: 9 }), -30, 750).id, 5, 'F658: a respawn station of another game is still heard');
   assert.equal(p.observe(station({ game: 0 }), -30, 750).id, 5, 'game 0 = any game');
 });
 
@@ -482,4 +499,16 @@ test('F537 (review): an advert heard during a pause ends it, so no clock lands i
   const e = p.stations()[0];
   assert.ok(e.seenAt <= t + 5000, `seenAt ${e.seenAt - t} ms must not pass the resume time`);
   assert.ok(e.recent.every(x => x.t <= t + 3000), 'no window sample moves past its arrival');
+});
+
+test('F658 gate: switching keyByGame re-keys the player entries, so one phone never shows as two', () => {
+  const pres = new Presence({ defaultThreshold: -75 });
+  const adv = encodeUuid({ role: 'player', id: 7, team: 1, state: PLAYER_STATE.alive, game: 0 });
+  pres.observe([adv], -50, 1000);
+  pres.keyByGame = true;   // the station became a control point: presence is keyed by game from here
+  pres.observe([adv], -50, 1250);
+  assert.equal(pres.players().length, 1, 'one phone, one entry');
+  pres.keyByGame = false;
+  pres.observe([adv], -50, 1500);
+  assert.equal(pres.players().length, 1, 'and back');
 });

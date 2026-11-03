@@ -8,11 +8,11 @@ import { ADVERT_PLAYER_STATE } from '../src/transport/contract.gen.js';
 
 const doc = JSON.parse(readFileSync(new URL('./fixtures/advert-vectors.json', import.meta.url), 'utf8'));
 const fields = c => ({ role: c.role, id: c.id, kind: c.kind_name, team: c.team, state: c.state, value: c.value, seq: c.seq,
-  game: c.game, threshold: c.threshold, taker: c.taker });
+  game: c.game, threshold: c.threshold, taker: c.taker, scopeKinds: c.scope_kinds, scope: c.scope });
 
 test('every vector encodes to its uuid and decodes back to its fields', () => {
   for (const c of doc.cases) {
-    assert.equal(encodeUuid({ ...c, kind: c.kind }), c.uuid, `encode: ${c.name}`);
+    assert.equal(encodeUuid({ ...c, kind: c.kind, scopeKinds: c.scope_kinds }), c.uuid, `encode: ${c.name}`);
     assert.deepEqual(decodeUuid(c.uuid), fields(c), `decode: ${c.name}`);
   }
 });

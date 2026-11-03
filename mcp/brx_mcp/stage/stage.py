@@ -100,6 +100,20 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
 _WRITE_SENDS: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar("stage_write_sends", default=None)
 
 
+
+def _recoil_recovery(v) -> dict | None:
+    """engine.js `recoilRecovery` (F662 R2): a catalogue `recoil.recovery` block as numbers, or None. All three finite,
+    0 < min_ms <= max_ms and per_round_ms >= 0, or the weapon keeps today's rule. PURE."""
+    if not isinstance(v, dict):
+        return None
+    vals = [_js_plus(v.get(k, _UNDEF)) for k in ("per_round_ms", "min_ms", "max_ms")]
+    if not all(math.isfinite(x) for x in vals):
+        return None
+    per, lo, hi = vals
+    if per < 0 or not (lo > 0) or hi < lo:
+        return None
+    return {"per_round_ms": per, "min_ms": lo, "max_ms": hi}
+
 class Advert(TypedDict):
     """One decoded phone beacon advertisement at the stage JSON boundary."""
 
@@ -113,6 +127,8 @@ class Advert(TypedDict):
     game: int
     threshold: int
     taker: int
+    scope_kinds: int   # A86: a player's scope (beacon.js `scopeKinds`/`scope`); 0 on a station
+    scope: int
 
 
 class StationEntry(Advert):
@@ -403,13 +419,14 @@ def claimable(tid) -> bool:
 
 
 def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
-                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0) -> str:
+                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0, taker: int = 0,
+                       scope_kinds: int = 0, scope: int = 0) -> str:
     """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
     r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
     if r not in _beacon.ROLE_NAME:
         raise ValueError("role required (station|player)")
     return _beacon.encode(_beacon.ROLE_NAME[r], int(id), kind, int(team), int(state), int(value), int(seq), int(game),
-                          threshold, int(taker))
+                          threshold, int(taker), int(scope_kinds), int(scope))
 
 
 def decode_advert_uuid(s: str) -> Advert | None:
@@ -418,6 +435,32 @@ def decode_advert_uuid(s: str) -> Advert | None:
     positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
     a = _beacon.decode(s)
     return Advert(**_dc.asdict(a)) if a else None
+# F658 (A86): beacon.js `ANY_GAME_STATION_KINDS`, `stationEnabled` and `respawnStation`, for the cases the phone shares with
+# the stage (app/test/fixtures/respawn-station-cases.json). The stage models no respawn station of its own (`station_advert`
+# takes control points only), so these are the rule as a pure twin, pinned against the phone by
+# mcp/tests/test_respawn_station_cases.py.
+ANY_GAME_STATION_KINDS = ("respawn",)
+
+
+def heard_by_player(advert: dict, game: int) -> bool:
+    """beacon.js `Presence.observe`'s game scope: a player on byte `game` hears a station of another non-zero byte only when
+    its kind serves any game (a respawn station, enabled by the player's own config instead)."""
+    g = int(advert.get("game") or 0)
+    return not (game and g and g != game) or (advert.get("role", "station") == "station" and advert.get("kind") in ANY_GAME_STATION_KINDS)
+
+
+def station_enabled(entry: dict, config: dict, kind: str) -> bool:
+    """beacon.js `stationEnabled`: the player's own `config.stations` lists this id WITH this kind. No list, no station."""
+    rows = config.get("stations") if isinstance(config, dict) else None
+    return any(isinstance(x, dict) and x.get("id") == entry.get("id") and x.get("kind") == kind for x in (rows if isinstance(rows, list) else []))
+
+
+def respawn_station(stations: list[dict], config: dict, tid: int | None) -> dict | None:
+    """beacon.js `respawnStation`: an enabled respawn station, not disabled, neutral or on team `tid`; a present one first,
+    else the first (the strongest: `stations` arrives strongest first)."""
+    mine = [e for e in stations if e.get("kind") == "respawn" and e.get("state") != 0
+            and (e.get("team") == STATION_TEAM_ANY or e.get("team") == tid) and station_enabled(e, config, "respawn")]
+    return next((e for e in mine if e.get("present")), mine[0] if mine else None)
 # The literal fallbacks, straight off engine.js `HILL_CUES` (ids confirmed by ear on hardware 2026-09-10, rung S).
 # A8: MC ships all five from `presentation.EVENTS`, the one source; these frames are only the fallback for a bundle
 # compiled before those rows existed. `s` is the clip's catalogue length (filled in below `clip_s`, as engine.js takes
@@ -1077,6 +1120,7 @@ class GunStage:
         self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
         self._hill_source_warned = ""              # B: the refused objective source, logged once per game
         self._hill_mode_warned = ""                # F535: a mode with no hill, logged once per game
+        self._hills_seen: dict[int, dict] = {}     # F666: each control point's last heard state (hill.js `_hillsSeen`)
         # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
         # rarer HUD moment (engine.js's one moment slot) -- so the stage keeps the moment kinds that matter to it.
         self._moment: tuple[str, float] | None = None
@@ -4640,6 +4684,48 @@ class GunStage:
         self._control_sig = ""; self._hill_said_at = 0.0
         self._hill_was_contested = False; self._hill_contested_at = -1e9; self._hill_contest_owed = False; self._hill_owner_when_silenced = _UNSET
         self._hill_team2_warned = False; self._hill_source_warned = ""; self._hill_mode_warned = ""
+        self._hills_seen = {}
+
+    def _note_stations(self, now: float) -> None:
+        """hill.js `noteStations` (F666): remember each allowed control point's last heard state, decoded as
+        `_on_control_advert` does, so a point out of earshot keeps its last owner. A mode with no hill, or a grenade
+        objective, keeps nothing."""
+        mode = self.config.get("mode")
+        if mode and mode not in OBJECTIVE_MODES:
+            return
+        src = self.config.get("station_source")
+        if src and src != "phone":
+            return
+        for e in self._control_stations():
+            state = int(e["state"])
+            held = bool(state & ADVERT_CONTROL_STATE["held"])
+            both_ways = bool(state & ADVERT_CONTROL_STATE["rising"]) and bool(state & ADVERT_CONTROL_STATE["falling"])
+            self._hills_seen[e["id"]] = {
+                "owner": e["team"] if (held and claimable(e["team"])) else None,
+                "contested": bool(state & ADVERT_CONTROL_STATE["contested"]),
+                "progress": max(0, min(100, int(e["value"]))),
+                "holding": e["team"] if e["team"] <= 3 else None,
+                "rising": not both_ways and bool(state & ADVERT_CONTROL_STATE["rising"]),
+                "falling": not both_ways and bool(state & ADVERT_CONTROL_STATE["falling"]),
+                "on_point": bool(e.get("present")),
+                "at": e["seen_at"],
+            }
+
+    def _hills_view(self, now: float) -> list[dict]:
+        """hill.js `hillsView` (F666): one entry per control point, the bundle's and any other heard, sorted by id. `heard`
+        is an advert inside CONTROL_STALE_S; an unheard point keeps its last state with a growing `age_ms`."""
+        ids = {x.get("id") for x in (self.config.get("stations") or []) if isinstance(x, dict) and x.get("kind") == "control"}
+        ids |= set(self._hills_seen)
+        out = []
+        for sid in sorted(i for i in ids if isinstance(i, int)):
+            s = self._hills_seen.get(sid)
+            age_ms = max(0, round((now - s["at"]) * 1000)) if s else None
+            out.append({"site": sid, "letter": self._hill_letter_of(sid), "heard": age_ms is not None and age_ms <= CONTROL_STALE_S * 1000,
+                        "age_ms": age_ms, "owner": s["owner"] if s else None, "contested": s["contested"] if s else False,
+                        "progress": s["progress"] if s else 0, "holding": s["holding"] if s else None,
+                        "rising": s["rising"] if s else False, "falling": s["falling"] if s else False,
+                        "on_point": s["on_point"] if s else False})
+        return out
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
     def _station_allowed(self, e: StationEntry) -> bool:
@@ -4685,6 +4771,7 @@ class GunStage:
         through `_hill_callout` / `_hill_say`. Two things differ from the IR path, both because the station
         MEASURES what a grenade cannot: ownership changes only through neutral (drain to 0, build to 100), and
         "Hill Contested" IS wired here -- the station counts living bodies of each team in its bubble."""
+        self._note_stations(now)
         e = self._control_station()
         if not e:
             return
@@ -5659,6 +5746,7 @@ class GunStage:
                 if not self._life_burst_queued():
                     self._pulled_life = self._life_queued
                 self._await_shot()                 # F208 (engine.js `_onButton`)
+                self._recoil_pull()                # F662 R2 (engine.js `_onButton` -> `_recoilPull`)
             return
         if state != 0:
             return
@@ -6083,6 +6171,7 @@ class GunStage:
         derived_heavy_after = max(after + 1, clean + extra + 1)
         return {"crisp": crisp, "degraded": mid if two else bottom, "after_shots": after, "settle_ms": settle,
                 "reset_on_release": r.get("reset_on_release") is True,   # F663: only an explicit true turns it on
+                "recovery": _recoil_recovery(r.get("recovery")),          # F662 R2 (engine.js `recoilRecovery`)
                 "heavy": bottom if two else None,
                 "heavy_after": _js_round(_js_plus(r["after_heavy"] if r.get("after_heavy") is not None else derived_heavy_after)) if two else 0}
 
@@ -6111,6 +6200,7 @@ class GunStage:
             "weapon_id": wid, "slot": self.active_slot, "crisp": target, "degraded": p["degraded"] if p else target,
             "after_shots": p["after_shots"] if p else 0, "settle_ms": p["settle_ms"] if p else RECOIL_SETTLE_MIN_MS,
             "reset_on_release": bool(p and p["reset_on_release"]),
+            "recovery": p["recovery"] if p else None, "released_at": 0, "recover_ms": 0,
             "heavy": p["heavy"] if p else None, "heavy_after": p["heavy_after"] if p else 0, "model": bool(p), "base": base,
             "value": target, "state": "crisp", "burst": 0, "dirty": force or prior_offset != offset,
             "last_shot_at": 0, "last_write_at": 0, "last_write_value": None, "pending_write_at": 0,
@@ -6156,7 +6246,7 @@ class GunStage:
         r = self._recoil
         if not r or not self.alive:
             return
-        if r["model"] and not r["disabled"] and now - r["last_shot_at"] >= self._recoil_quiet_ms(r):
+        if r["model"] and not r["disabled"] and self._recoil_quiet(r, now):
             r["burst"] = 0
             if r["state"] != "crisp":
                 r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
@@ -6165,10 +6255,30 @@ class GunStage:
     def _recoil_quiet_ms(self, r: dict) -> int | float:
         """engine.js `_recoilQuietMs`: `settle_ms`, and for an F663 `reset_on_release` weapon the shorter of that and
         the lost-release fallback, twice the slot's fire interval plus RECOIL_RELEASE_MARGIN_MS. PURE."""
-        if not r["reset_on_release"]:
+        if not r["reset_on_release"] and not r["recovery"]:
             return r["settle_ms"]
         iv = self._fire_interval_s(r["slot"])
         return r["settle_ms"] if iv is None else min(r["settle_ms"], 2 * round(iv * 1000) + RECOIL_RELEASE_MARGIN_MS)
+
+    def _recoil_recover_ms(self, r: dict) -> float:
+        """engine.js `_recoilRecoverMs` (F662 R2): `per_round_ms` per round past `after_shots`, clamped to min..max. PURE."""
+        c = r["recovery"]
+        return min(c["max_ms"], max(c["min_ms"], c["per_round_ms"] * max(0, r["burst"] - r["after_shots"])))
+
+    def _recoil_quiet(self, r: dict, now: int) -> bool:
+        """engine.js `_recoilQuiet`: a `recovery` weapon off crisp waits its timer from a release seen after the last round,
+        or, with the release lost, from the F663 fallback after the last round. Every other weapon: `_recoil_quiet_ms`."""
+        if r["recovery"] and r["state"] != "crisp":
+            if r["released_at"] and r["released_at"] >= r["last_shot_at"]:
+                return now - r["released_at"] >= r["recover_ms"]
+            return now - r["last_shot_at"] >= self._recoil_quiet_ms(r) + self._recoil_recover_ms(r)
+        return now - r["last_shot_at"] >= self._recoil_quiet_ms(r)
+
+    def _recoil_pull(self) -> None:
+        """engine.js `_recoilPull` (F662 R2): a pull before the timer runs out cancels it; the rung and the count carry."""
+        r = self._recoil
+        if r and r["recovery"]:
+            r["released_at"] = 0
 
     def _recoil_release(self) -> None:
         """engine.js `_recoilRelease`, the trigger's `$BUT,0,0`. S54: a burst still crisp is forgotten, no write.
@@ -6176,6 +6286,13 @@ class GunStage:
         the normal writer, so smoke, a stun, a reload, a swap or a spawn hold still delays the write."""
         r = self._recoil
         if not r or not r["model"] or r["disabled"]:
+            return
+        if r["recovery"]:
+            # F662 R2: a crisp burst is forgotten; a degraded or heavy one starts the hold-length timer (`_recoil_quiet`)
+            if r["state"] == "crisp":
+                r["burst"] = 0
+                return
+            r["released_at"] = self._now_ms(); r["recover_ms"] = self._recoil_recover_ms(r)
             return
         if not r["reset_on_release"]:
             if r["state"] == "crisp":
@@ -7465,6 +7582,7 @@ class GunStage:
                       "fire_first": self._fire_first_shown(),
                       "cure": dict(self.cure) if self.cure else None,   # F264 (engine.js `state().cure`): null, or {verdict, at}
                       "hill": dict(self.hill) if self.hill else None,
+                      "hills": self._hills_view(self.now()),   # F666: hill.js `hillsView`
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.
                       # Read ONCE through `_reloading_view()`, which is null past the deadline exactly like
                       # engine.js `reloadingMs()` -- so `elapsed_s` and `overrun` can never be published beside

@@ -255,6 +255,22 @@ struct StatusFields {
   int control_game = -1;   // F555 (additive; -1 = left out): the game byte the hill counts under, so MC never seeds a
                            // new game's tally from a beat sent before this Stick applied that game's config
   uint32_t control_hold_ms[4] = {0, 0, 0, 0};
+  // The owned clock (additive; left out unless set): `own_ms` per tid, control.js `ownMs` (Domination)
+  bool control_has_own = false;
+  uint32_t control_own_ms[4] = {0, 0, 0, 0};
+  // F658 (additive; left out until the hill follows the players' live game): `follows` and the ring summary
+  // `games` {"<byte>": {hold_ms, own_ms, owner, last_ms}}, so MC can tell this hill needs no re-arm
+  bool control_follows = false;
+  struct RingGame { int game; int owner; uint32_t hold_ms[4]; uint32_t last_ms; uint32_t own_ms[4]; };
+  std::vector<RingGame> control_games;
+  // F658 (additive; left out until a powerup follows the players' live game): `powerup` {follows, game, games}, the
+  // followed game and its item (utility.js `powerup`, PowerupFollower.summary), so MC can tell it needs no re-arm
+  bool pu_follows = false;
+  int pu_game = 0;
+  bool pu_available = false;
+  int pu_taker = 0;
+  long pu_next_ms = -1;   // -1 = no spawn clock (left out)
+  uint32_t pu_since_ms = 0, pu_last_ms = 0;
   // F591 (additive; 0 = left out): the hill pace this Stick applies, as utility.js's status reports it
   int control_capture_s = 0;
   int control_net_cap = 0;
@@ -286,6 +302,19 @@ struct StatusFields {
   // with a count above 0 as unable to save, so a restart would lose its hill, config or typed URL.
   uint32_t nvs_fail = 0;
 };
+
+// {"0":1000,...}: a per-tid tally, a tid at 0 left out (control.js holdMs/ownMs never name a team that banked nothing)
+inline std::string tid_ms_json(const uint32_t ms[4]) {
+  std::string j = "{";
+  bool first = true;
+  for (int t = 0; t < 4; t++) {
+    if (!ms[t]) continue;
+    if (!first) j += ",";
+    first = false;
+    j += "\"" + std::to_string(t) + "\":" + std::to_string(ms[t]);
+  }
+  return j + "}";
+}
 
 inline std::string build_status_body(const StatusFields& f) {
   std::string j = "{";
@@ -329,9 +358,34 @@ inline std::string build_status_body(const StatusFields& f) {
       }
       j += "}";
     }
+    if (f.control_has_own) j += ",\"own_ms\":" + tid_ms_json(f.control_own_ms);
     if (f.control_capture_s) j += ",\"capture_s\":" + std::to_string(f.control_capture_s);
     if (f.control_net_cap) j += ",\"net_cap\":" + std::to_string(f.control_net_cap);
+    if (f.control_follows) {
+      j += ",\"follows\":true,\"games\":{";
+      for (size_t i = 0; i < f.control_games.size(); i++) {
+        const auto& g = f.control_games[i];
+        if (i) j += ",";
+        j += "\"" + std::to_string(g.game) + "\":{\"hold_ms\":{";
+        bool first = true;
+        for (int t = 0; t < 4; t++) {
+          if (!g.hold_ms[t]) continue;
+          if (!first) j += ",";
+          first = false;
+          j += "\"" + std::to_string(t) + "\":" + std::to_string(g.hold_ms[t]);
+        }
+        j += "},\"own_ms\":" + tid_ms_json(g.own_ms) + ",\"owner\":" + std::to_string(g.owner) + ",\"last_ms\":" + std::to_string(g.last_ms) + "}";
+      }
+      j += "}";
+    }
     j += "}";
+  }
+  if (f.pu_follows) {
+    const std::string g = std::to_string(f.pu_game);
+    j += ",\"powerup\":{\"follows\":true,\"game\":" + g + ",\"games\":{\"" + g + "\":{\"available\":" +
+         (f.pu_available ? "true" : "false") + ",\"taker\":" + std::to_string(f.pu_taker) +
+         (f.pu_next_ms >= 0 ? ",\"next_ms\":" + std::to_string(f.pu_next_ms) : std::string()) +
+         ",\"since_ms\":" + std::to_string(f.pu_since_ms) + ",\"last_ms\":" + std::to_string(f.pu_last_ms) + "}}}";
   }
   if (f.has_revives) j += ",\"revives\":" + std::to_string(f.revives);
   if (f.has_health) {
@@ -708,13 +762,15 @@ constexpr uint32_t HILL_CLOCK_SAVE_MS = 30000;
 class SavedHill {
  public:
   // At boot, from Preferences (`has` false = no hill_owner key). `hold` may be null (no tally saved).
-  void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold) {
+  void loaded(bool has, int owner, int game, int id, const std::string& session_id, const uint32_t* hold,
+              const uint32_t* own = nullptr) {
     has_ = has;
     owner_ = owner;
     tag_.game = game;
     tag_.id = id;
     tag_.session_id = session_id;
     for (int t = 0; t < 4; t++) hold_[t] = hold ? hold[t] : 0;
+    for (int t = 0; t < 4; t++) own_[t] = own ? own[t] : 0;
     final_saved_ = false;
     written_at_ = 0;
   }
@@ -724,6 +780,7 @@ class SavedHill {
   int id() const { return tag_.id; }
   const std::string& session_id() const { return tag_.session_id; }
   const uint32_t* hold_ms() const { return hold_; }
+  const uint32_t* own_ms() const { return own_; }   // F658: the owned clock, saved beside the hold tally
 
   // After every hill tick of a control assignment, with the session the assignment came in (the saved
   // config's, which a restored MUSTER Stick still knows with no WELCOME). Write on owner change or
@@ -738,7 +795,7 @@ class SavedHill {
     // Unchanged = same owner under the same tag (HillSaveTag::same_as, not matches).
     if (has_ && owner == owner_ && tag_.same_as(a, session_id) && !(hill.frozen && !final_saved_)) {
       bool grown = false;
-      for (int t = 0; t < 4; t++) grown = grown || hill.hold_ms[t] != hold_[t];
+      for (int t = 0; t < 4; t++) grown = grown || hill.hold_ms[t] != hold_[t] || hill.own_ms[t] != own_[t];   // own_ms grows on an empty owned hill
       if (!grown || now_ms < 0 || (uint32_t)((uint32_t)now_ms - written_at_) < HILL_CLOCK_SAVE_MS) return false;
     }
     if (now_ms >= 0) written_at_ = (uint32_t)now_ms;
@@ -746,6 +803,7 @@ class SavedHill {
     owner_ = owner;
     tag_.set(a, session_id);
     for (int t = 0; t < 4; t++) hold_[t] = hill.hold_ms[t];
+    for (int t = 0; t < 4; t++) own_[t] = hill.own_ms[t];
     final_saved_ = hill.frozen;
     return true;
   }
@@ -771,6 +829,7 @@ class SavedHill {
     has_ = false;
     owner_ = contract::STATION_TEAM_ANY;
     for (auto& h : hold_) h = 0;
+    for (auto& o : own_) o = 0;
     final_saved_ = false;
     return true;
   }
@@ -779,7 +838,7 @@ class SavedHill {
   // left as it is) when the save is not this config's.
   bool restore_into(const StationAssignment& a, const std::string& session_id, BleControlPoint& hill) const {
     if (!has_ || !tag_.matches(a, session_id)) return false;
-    hill.restore_held(owner_, hold_);
+    hill.restore_held(owner_, hold_, own_);
     return true;
   }
 
@@ -788,6 +847,7 @@ class SavedHill {
   int owner_ = contract::STATION_TEAM_ANY;
   HillSaveTag tag_;
   uint32_t hold_[4] = {0, 0, 0, 0};
+  uint32_t own_[4] = {0, 0, 0, 0};   // F658: the owned clock
   bool final_saved_ = false;
   uint32_t written_at_ = 0;   // F557: the tick of the last write, for the growing-tally throttle
 };
@@ -894,6 +954,27 @@ class PowerupSchedule {
   void assume_available() { known_ = true; available_ = true; }
   // F374 round 1: a Stick that lost MC before START's update falls back the same way; a known schedule is kept.
   void assume_available_if_unknown() { if (!known_) assume_available(); }
+  // F658: MC's START anchored this schedule (a station_update with a next spawn), or a followed game started it.
+  bool has_anchor() const { return has_anchor_; }
+  // F658 (powerup.js `startGame`): a followed live game starts the item's clock at its first sighting: the first spawn
+  // `first_at_s` after `now_ms`, then every interval. The last game's item, taker and award protection go.
+  void start_game(uint32_t now_ms, int first_at_s) {
+    known_ = true;
+    available_ = false;
+    taker_ = 0;
+    has_awarded_instant_ = false;
+    anchor_ms_ = now_ms + (uint32_t)(first_at_s > 0 ? first_at_s : 0) * 1000u;
+    has_anchor_ = true;
+  }
+  // F658: a restart puts back what encode_powerup_follow saved (times already rebased onto this boot's millis()).
+  void restore_state(bool available, uint8_t taker, bool has_anchor, uint32_t anchor_ms) {
+    known_ = true;
+    available_ = available;
+    taker_ = available ? 0 : taker;
+    has_anchor_ = has_anchor;
+    anchor_ms_ = anchor_ms;
+    has_awarded_instant_ = false;
+  }
 
   void apply_item(const StationItem& it) {
     if (it.present && it.spawn_every_s > 0) spawn_every_s_ = it.spawn_every_s;
@@ -964,6 +1045,8 @@ class PowerupSchedule {
   // spawn instant that was just claimed (the caller enqueues it as the CLAIM report's dedup key).
   uint32_t mark_taken(uint8_t player_num, uint32_t now_ms) {
     uint32_t awarded = has_anchor_ ? anchor_ms_ : now_ms;
+    take_seq_++;   // F658 bounce: PowerupFollower::step reads these to forget MC's update a later claim made wrong
+    taken_at_ms_ = now_ms;
     available_ = false;
     taker_ = player_num;
     has_awarded_instant_ = false;
@@ -977,6 +1060,10 @@ class PowerupSchedule {
     awarded_instant_ms_ = anchor_ms_;
     return awarded;
   }
+
+  // F658 bounce (powerup.js `takes`, `takenAt`): how many local awards so far, and when the last one was.
+  uint32_t take_seq() const { return take_seq_; }
+  uint32_t taken_at_ms() const { return taken_at_ms_; }
 
   PowerupAdvertView view(uint32_t now_ms) const {
     PowerupAdvertView v;
@@ -1003,6 +1090,8 @@ class PowerupSchedule {
   uint8_t taker_ = 0;
   bool has_awarded_instant_ = false;  // true once a LOCAL claim has awarded the current spawn
   uint32_t awarded_instant_ms_ = 0;
+  uint32_t take_seq_ = 0;
+  uint32_t taken_at_ms_ = 0;
 };
 
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
@@ -1026,6 +1115,21 @@ constexpr uint32_t CLAIM_TIE_WINDOW_MS = 100;
 class ClaimGate {
  public:
   void configure(int station_id, int game) { station_id_ = station_id; game_ = game; }
+  // F658: a following station takes claims only from live players of the followed game (PowerupFollower). Not
+  // following: MC's game (0 = any), any player of it, as before.
+  void set_follow(int game, bool require_live) { game_ = game; require_live_ = require_live; }
+  // F658 (A86, powerup.js `claimant`): one decoded player advert from the scan. Only a player whose scope names this
+  // powerup station (the powerup kind bit and its id bit) may claim, so a zero scope (an older APK) never does; a
+  // following station also wants the live bit. Then `observe` below decides as before.
+  void observe_advert(const Advert& a, int rssi_dbm, uint32_t now_ms) {
+    if (a.role != contract::ADVERT_ROLE_PLAYER) return;
+    const bool claiming = (a.state & contract::ADVERT_PLAYER_STATE_CLAIMING) != 0;
+    const bool ready = (a.state & contract::ADVERT_PLAYER_STATE_CLAIM_READY) != 0;
+    if (!claiming && !ready) return;
+    if (!in_scope(a.scope_kinds, a.scope, contract::ADVERT_SCOPE_KIND_POWERUP, station_id_)) return;
+    if (require_live_ && !(a.state & contract::ADVERT_PLAYER_STATE_LIVE)) return;
+    observe(a.id, a.value, a.game, claiming, ready, (a.state & contract::ADVERT_PLAYER_STATE_ALIVE) != 0, rssi_dbm, now_ms);
+  }
 
   // Feed every player advert seen in the current scan batch. `player_num` is the claimant (1..63,
   // the advert's own `id` field), `target_station_id` is that advert's `value`. A game of 0 is
@@ -1069,11 +1173,188 @@ class ClaimGate {
 
  private:
   int station_id_ = 0, game_ = 0;
+  bool require_live_ = false;  // F658: following, only a live player claims
   bool candidate_seen_ = false;
   uint32_t first_ready_at_ms_ = 0;
   int candidate_player_num_ = 0;
   bool any_claiming_ = false;
 };
+
+// ---- PowerupFollower (powerup.js PowerupFollower, F658: the static powerup) ---------------------------------
+// A powerup station set up once plays every later game with no walk-out, no Wi-Fi and no re-arm, the way the hill does.
+// It FOLLOWS once it hears an in-scope player (the powerup kind bit and its own id bit, A86) with the live bit: its
+// current game is the byte of those players, at any signal strength. Another live game takes it only with MORE such
+// players heard than the current one (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still
+// heard (presence.h follow_hold_switch). A new game starts the item's clock at that first sighting
+// (PowerupSchedule::start_game, first spawn `first_at_s` later); a byte heard again after more than HILL_RING_STALE_MS
+// unheard starts again. MC's own game keeps MC's schedule: the follower remembers MC's last station_update for the game
+// MC armed (note_mc), applied or not, and following into that game (the first follow, or a switch from another game,
+// review round 1) keeps or re-applies it, unless a local claim in that game came after it. MC's updates for the followed
+// game still apply (accepts_mc). powerup.js says
+// why, line for line. One item, one game: no ring.
+struct PowerupFollowStep {
+  bool switched = false;  // the current game changed (or restarted) this step
+  int from = -1, to = -1;
+  bool fresh = false;     // the item's clock started again
+  bool kept = false;      // MC's schedule was kept (or re-applied)
+  // Who may claim now (ClaimGate::set_follow). The step does not write the gate itself: the BLE callback reads it on
+  // core 0, so the glue applies this under claimMux (StationLink::apply_claim_follow, review round 1).
+  int claim_game = 0;
+  bool claim_live = false;
+};
+
+class PowerupFollower {
+ public:
+  uint32_t stale_ms = (uint32_t)contract::HILL_RING_STALE_MS;
+  bool follows = false;
+  bool has_current = false;
+  uint8_t current = 0;
+  uint32_t heard_at = 0;  // the newest live advert of the current game
+  uint32_t since = 0;     // when the current game's clock started
+  bool has_mc = false;    // MC's last station_update, for the game MC armed (mc_game), received at mc_at
+  uint8_t mc_game = 0;
+  StationUpdateMsg mc;
+  uint32_t mc_at = 0;
+  // powerup.js `mcAnchored`: a station_update arrived since the last arming. The phone saves it across a reload; the
+  // Stick saves no schedule before it follows, so here it always equals has_mc. Kept for parity with the phone.
+  bool mc_anchored = false;
+  // F658 bounce: the schedule's take_seq at the last step, and the claim game that step set (what the gate claimed under
+  // until this step). `stepped` is false before the first step: the gate then holds MC's game, as configure() set it.
+  uint32_t seen_takes = 0;
+  bool stepped = false;
+  int claim_game = 0;
+  FollowLead lead;  // a challenger leading the current game (presence.h follow_hold_switch)
+
+  void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
+    has_mc = u.present;
+    mc_game = armed_game;
+    mc = u;
+    mc_at = at;
+    mc_anchored = u.present;
+  }
+  // powerup.js `onArm`: any station_config may be a new match on the same byte (an MC restart, the 255-to-1 wrap), so
+  // MC's remembered update and the anchored mark go.
+  void on_arm() {
+    has_mc = false;
+    mc_anchored = false;
+  }
+  uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
+  bool accepts_mc(uint8_t armed_game) const { return !follows || (has_current && current == armed_game); }
+
+  PowerupFollowStep step(PowerupSchedule& sched, const PlayerPresence& players, uint32_t now,
+                         uint8_t armed_game, int station_id, int first_at_s) {
+    PowerupFollowStep out;
+    // F658 bounce (powerup.js): a local claim in MC's game after MC's remembered update makes that update wrong (it would
+    // hand the claimed item back), so the memo goes.
+    if (sched.take_seq() != seen_takes) {
+      seen_takes = sched.take_seq();
+      const int under = stepped ? claim_game : (int)armed_game;
+      if (has_mc && (int32_t)(sched.taken_at_ms() - mc_at) >= 0 && under == (int)mc_game) has_mc = false;
+    }
+    struct H { uint8_t game; uint32_t at; int n; };
+    H heard[PRESENCE_MAX_PLAYERS];
+    size_t nh = 0;
+    for (size_t i = 0; i < players.capacity(); i++) {
+      const PlayerEntry& p = players.slot(i);
+      if (!p.used || !(p.state & contract::ADVERT_PLAYER_STATE_LIVE) || p.age_ms > players.expiry_ms) continue;
+      if (!in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_POWERUP, station_id)) continue;
+      if (p.game == 0 && armed_game != 0) continue;
+      const uint32_t at = now - p.age_ms;
+      size_t k = 0;
+      while (k < nh && heard[k].game != p.game) k++;
+      if (k == nh) heard[nh++] = {p.game, at, 0};
+      else if ((int32_t)(at - heard[k].at) > 0) heard[k].at = at;
+      heard[k].n++;
+    }
+    const bool first = !follows && nh > 0;
+    if (nh) follows = true;
+    if (follows) {
+      auto count = [&](int g) { for (size_t k = 0; k < nh; k++) if (heard[k].game == g) return heard[k].n; return 0; };
+      const H* best = nullptr;
+      for (size_t k = 0; k < nh; k++) {
+        if (has_current && heard[k].game == current) continue;
+        const H& h = heard[k];
+        if (!best || h.n > best->n || (h.n == best->n && ((int32_t)(h.at - best->at) > 0 || (h.at == best->at && h.game > best->game)))) best = &h;
+      }
+      const H* cur = nullptr;
+      for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) cur = &heard[k];
+      if (follow_hold_switch(lead, has_current, cur != nullptr, best != nullptr, best ? best->game : 0,
+                             best && (!has_current || best->n > count(current)), now)) {
+        out.switched = true;
+        out.from = has_current ? current : -1;
+        out.to = best->game;
+        const bool was_following = has_current;
+        out.kept = (has_mc && armed_game != 0 && best->game == armed_game && mc_game == armed_game) ||
+                   (first && !was_following && armed_game != 0 && best->game == armed_game && mc_anchored &&
+                    sched.has_anchor());
+        out.fresh = !out.kept;
+        current = best->game;
+        has_current = true;
+        heard_at = best->at;
+        since = now;
+        if (!out.kept) sched.start_game(now, first_at_s);
+        else if (!first || was_following) {   // a switch from another game: MC's schedule for this one, re-applied
+          sched.start_game(now, first_at_s);
+          sched.apply_update(mc, mc_at);
+        }
+      } else if (cur) {
+        if ((int32_t)(cur->at - heard_at) > (int32_t)stale_ms) {
+          since = now;
+          sched.start_game(now, first_at_s);
+          out.switched = true;
+          out.from = out.to = current;
+          out.fresh = true;
+        }
+        if ((int32_t)(cur->at - heard_at) > 0) heard_at = cur->at;
+      }
+    }
+    out.claim_game = follows && has_current ? current : armed_game;
+    out.claim_live = follows;
+    stepped = true;
+    claim_game = out.claim_game;
+    return out;
+  }
+  void clear() { *this = PowerupFollower(); }
+};
+
+// F658: the follower and the item's state in one NVS string ("pu_follow"), so a restarted powerup keeps following its
+// game with its item, taker and spawn clock (the phone saves the same in localStorage "brx.station.pufollow" and
+// "brx.station.powerup"). Times are saved relative to now, since millis() restarts at boot:
+// "p1|<station id>|<current>|<heard ago>|<since ago>|<available>|<taker>|<has anchor>|<anchor in ms from now>".
+inline std::string encode_powerup_follow(int station_id, const PowerupFollower& f, const PowerupSchedule& s, uint32_t now) {
+  if (!f.follows || !f.has_current) return "";
+  char b[160];
+  std::snprintf(b, sizeof b, "p1|%d|%u|%lu|%lu|%d|%u|%d|%ld", station_id, (unsigned)f.current, (unsigned long)(now - f.heard_at),
+                (unsigned long)(now - f.since), s.available() ? 1 : 0, (unsigned)s.taker(), s.has_anchor() ? 1 : 0,
+                (long)(int32_t)(s.anchor_ms() - now));
+  return b;
+}
+
+// Restore what encode_powerup_follow saved, for this station id only. False (nothing changed) when it does not parse or
+// is another station's. `power_on` (the glue: esp_reset_reason() == ESP_RST_POWERON): the saved times cannot count the
+// hours the Stick was off, so the game is marked stale (its next sighting starts the clock again) and the item keeps no
+// spawn clock until then. A software reset (brownout, watchdog, panic) keeps everything as saved.
+inline bool decode_powerup_follow(const std::string& s, int station_id, PowerupFollower& f, PowerupSchedule& sched, uint32_t now,
+                                  bool power_on = false) {
+  int id = 0, current = -1, available = 0, has_anchor = 0;
+  unsigned taker = 0;
+  unsigned long heard = 0, since = 0;
+  long anchor = 0;
+  if (std::sscanf(s.c_str(), "p1|%d|%d|%lu|%lu|%d|%u|%d|%ld", &id, &current, &heard, &since, &available, &taker, &has_anchor, &anchor) != 8)
+    return false;
+  if (id != station_id || current < 0 || current > 255 || taker > 255) return false;
+  PowerupFollower out;
+  out.stale_ms = f.stale_ms;
+  out.follows = true;
+  out.has_current = true;
+  out.current = (uint8_t)current;
+  out.heard_at = power_on ? now - out.stale_ms - 1 : now - (uint32_t)heard;
+  out.since = power_on ? out.heard_at : now - (uint32_t)since;
+  out.seen_takes = sched.take_seq();
+  f = out;
+  sched.restore_state(available != 0, (uint8_t)taker, has_anchor != 0 && !power_on, now + (uint32_t)(int32_t)anchor);
+  return true;
+}
 
 // ---- reconnect backoff, mirroring app/src/transport/transport.js (base 500 ms, x2, cap 10 s, +-20%) --
 struct Backoff {
@@ -1280,6 +1561,55 @@ class StationLink {
   // (MC's mid-match lock carrier) keeps the match going.
   BleControlPoint& hill() { return hill_; }
   const BleControlPoint& hill() const { return hill_; }
+  // F658: the static hill's follower (presence.h HillFollower) and the game byte the hill advertises and counts under.
+  HillFollower& follower() { return follower_; }
+  const HillFollower& follower() const { return follower_; }
+  uint8_t hill_game() const { return follower_.game((uint8_t)assignment_.game); }
+  // F658: the static powerup's follower, and the game byte any station advertises: a following hill's or powerup's
+  // followed game, else MC's.
+  PowerupFollower& pu_follower() { return pu_follower_; }
+  const PowerupFollower& pu_follower() const { return pu_follower_; }
+  uint8_t advert_game() const {
+    return has_powerup_assignment() ? pu_follower_.game((uint8_t)assignment_.game) : hill_game();
+  }
+  const PowerupFollowStep& last_pu_follow() const { return last_pu_follow_; }
+  // F658 review round 1: hand the last follower step's claim rule to the claim gate. The glue calls this under claimMux
+  // after the players tick, since the BLE callback (core 0) reads the gate; a host test calls it directly.
+  void apply_claim_follow() {
+    if (!claim_follow_due_ || !has_powerup_assignment()) return;
+    claim_follow_due_ = false;
+    claims_.set_follow(last_pu_follow_.claim_game, last_pu_follow_.claim_live);
+  }
+  // F658: whether the glue must write "pu_follow" now (encode_powerup_follow): when follow mode starts, on a switch of
+  // game, and when the item's state or taker changes (a spawn, a claim). Nothing to save while not following.
+  bool pu_save_due() {
+    if (!has_powerup_assignment() || !pu_follower_.follows) return false;
+    const int key = (pu_follower_.current << 9) | (powerup_.available() ? 256 : 0) | powerup_.taker();
+    if (key == pu_saved_key_ && !pu_switch_unsaved_) return false;
+    pu_saved_key_ = key;
+    pu_switch_unsaved_ = false;
+    return true;
+  }
+  // F658: what the last tick's follower step did (a switch the glue logs, republishes and saves).
+  const HillFollowStep& last_follow() const { return last_follow_; }
+  // F658: whether the glue must write the ring now ("hill_ring", encode_hill_ring), after tick_players: when follow mode
+  // starts or ends, on a switch of game, when the current owner changes, and at most once per HILL_CLOCK_SAVE_MS while the
+  // tally grows (SavedHill's budget, F557).
+  bool ring_save_due(uint32_t now_ms) {
+    if (!has_control_assignment()) return false;
+    const bool f = follower_.follows;
+    if (!f && !ring_saved_follows_) return false;
+    uint32_t hold = 0;   // both tallies: an owned, empty hill grows own_ms only, and a reboot must keep it
+    for (uint32_t h : hill_.hold_ms) hold += h;
+    for (uint32_t o : hill_.own_ms) hold += o;
+    const bool edge = f != ring_saved_follows_ || last_follow_.switched || hill_.owner != ring_saved_owner_;
+    if (!edge && (hold == ring_saved_hold_ || (uint32_t)(now_ms - ring_saved_at_) < HILL_CLOCK_SAVE_MS)) return false;
+    ring_saved_follows_ = f;
+    ring_saved_owner_ = hill_.owner;
+    ring_saved_hold_ = hold;
+    ring_saved_at_ = now_ms;
+    return true;
+  }
   const ReviveCounter& revives() const { return revives_; }
 
   // The operator's point RESET (serial RESET, the bench A hold; utility.js btnPointReset): the Bluetooth
@@ -1289,6 +1619,7 @@ class StationLink {
     if (!has_control_assignment()) return false;
     if (hill_.frozen) return false;  // keep the finished match's recap tally
     hill_.reset();
+    follower_.clear();  // F658: a reset forgets every game's tally (utility.js resetPoint)
     return true;
   }
 
@@ -1301,9 +1632,16 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) {
+      // F658: the follower first. Following, the live bit replaces MC's window: no wait, no whistle, no freeze.
+      last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id);
+      if (follower_.follows) {
+        hill_.thaw();
+        return hill_.update(players, now_ms, &last_follow_.filter);
+      }
+      const HillFilter* filter = &last_follow_.filter;
       if (starts_known_ && !hill_live_ && (int32_t)(now_ms - hill_starts_ms_) >= 0 && !hill_.frozen) {
         hill_live_ = true;
-        hill_.update(players, hill_starts_ms_);
+        hill_.update(players, hill_starts_ms_, filter);
       } else if (!starts_known_ && !heard_start_ && !hill_live_ && assignment_.duration_ms <= 0 &&
                  state_ == LinkState::JOINING_WIFI) {
         // A duration hill waits for its anchor instead (anchor_hill_on_advert): going live here would count the lobby.
@@ -1314,14 +1652,21 @@ class StationLink {
       }
       if (deadline_known_ && (int32_t)(now_ms - hill_deadline_ms_) >= 0) {
         if (!hill_.frozen) {
-          if (hill_live_) u = hill_.update(players, hill_deadline_ms_);
+          if (hill_live_) u = hill_.update(players, hill_deadline_ms_, filter);
           hill_.freeze();
         }
       } else if (hill_live_) {
-        u = hill_.update(players, now_ms);
+        u = hill_.update(players, now_ms, filter);
       }
     }
     else if (REVIVE_FEEDBACK_ENABLED && has_respawn_assignment()) revives_.update(players, assignment_.id);
+    else if (has_powerup_assignment()) {
+      // F658: the follower decides which live game the item plays, starts a new game's clock, and who may claim
+      last_pu_follow_ = pu_follower_.step(powerup_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id,
+                                          assignment_.item.present ? assignment_.item.first_at_s : 0);
+      if (last_pu_follow_.switched) pu_switch_unsaved_ = true;
+      claim_follow_due_ = true;
+    }
     return u;
   }
   // A68 fallback anchor, fed every player advert the scan hears (any RSSI). Only the alive advert of a player
@@ -1332,6 +1677,8 @@ class StationLink {
   bool anchor_hill_on_advert(const Advert& d, uint32_t now_ms) {
     if (!has_control_assignment() || assignment_.duration_ms <= 0 || mc_start_known_ || duration_anchor_known_ ||
         d.role != contract::ADVERT_ROLE_PLAYER || d.game == 0 || d.game != assignment_.game) return false;
+    // A86: only a player whose scope names this hill may anchor it (a zero scope, an older APK, never does)
+    if (!in_scope(d.scope_kinds, d.scope, contract::ADVERT_SCOPE_KIND_CONTROL, assignment_.id)) return false;
     const bool heard_down = std::find(heard_down_.begin(), heard_down_.end(), d.id) != heard_down_.end();
     if (!(d.state & contract::ADVERT_PLAYER_STATE_ALIVE)) {
       if (!heard_down && heard_down_.size() < HEARD_DOWN_MAX) heard_down_.push_back(d.id);
@@ -1387,7 +1734,8 @@ class StationLink {
   // deadline passes (deadline_known_/hill_deadline_ms_, the same fields the hill's own clock uses; a
   // station is only ever one kind at a time, so the two never collide). Cleared by a new game/kind/id or
   // by a config carrying a fresh START.
-  bool powerup_ended() const { return has_powerup_assignment() && powerup_ended_; }
+  // F658: a following powerup ignores MC's window (the live bit decides who claims), as a following hill does.
+  bool powerup_ended() const { return has_powerup_assignment() && powerup_ended_ && !pu_follower_.follows; }
   bool hill_waiting(uint32_t now_ms) const {
     return has_control_assignment() && !hill_live_ &&
            (duration_restore_wait_ || (!hill_.frozen && (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0)));
@@ -1510,6 +1858,8 @@ class StationLink {
   // the default exists only so the many older host tests that never look at the lock stay short.
   bool apply_station_config(const StationAssignment& a, uint32_t received_at_ms = 0) {
     if (!a.present) return false;
+    // F658: any arming may be a new match on the same byte: the powerup follower forgets MC's remembered update
+    pu_follower_.on_arm();
     // A58: every station_config REPLACES the running lock, before and independent of the kind/id/game
     // logic below -- a same-game re-push (MC's mid-match lock carrier) must change the lock and
     // nothing else, and lock_s 0 (or absent) unlocks at once.
@@ -1537,9 +1887,17 @@ class StationLink {
     // taker and anchor of the last match must not carry over (under MUSTER no station_update can arrive to correct it
     // before play). Only a same-game re-push (the same config sent again) keeps the schedule.
     if (kind_or_id_changed || game_changed) {
-      powerup_ = PowerupSchedule();
-      claims_ = ClaimGate();
-      hill_.reset();
+      // F658: a following powerup keeps its item across MC's new game (the live bit decides); a new kind or id forgets it
+      const bool keep_powerup = !kind_or_id_changed && pu_follower_.follows;
+      if (!keep_powerup) {
+        powerup_ = PowerupSchedule();
+        claims_ = ClaimGate();
+      }
+      if (kind_or_id_changed) pu_follower_.clear();
+      // F658: a following hill keeps its point and ring across MC's new game (the live bit decides); a new kind or id
+      // is a different station and forgets both.
+      if (kind_or_id_changed || !follower_.follows) hill_.reset();
+      if (kind_or_id_changed) follower_.clear();
       revives_.reset();
       hill_live_ = false;
       starts_known_ = false;
@@ -1554,7 +1912,7 @@ class StationLink {
       epoch_++;
     }
     if (a.kind == "control" && a.starts_known) {
-      if (a.starts_in_ms > 0 && hill_live_) hill_.reset();
+      if (a.starts_in_ms > 0 && hill_live_ && !follower_.follows) hill_.reset();   // F658: following, the live bit is the window
       heard_start_ = true;
       mc_start_known_ = true;
       duration_anchor_known_ = false;
@@ -1631,6 +1989,7 @@ class StationLink {
     if (a.kind == "powerup") {
       powerup_.apply_item(a.item);
       claims_.configure(a.id, a.game);
+      if (pu_follower_.follows && pu_follower_.has_current) claims_.set_follow(pu_follower_.current, true);   // F658
     }
     // The actual Wi-Fi disconnect is the glue's (it owns the radio); this only records the decision,
     // so mcLoop's reconnect logic can respect it. It stays latched until the operator's explicit
@@ -1718,6 +2077,7 @@ class StationLink {
     lock_.clear();
     powerup_ = PowerupSchedule();
     claims_ = ClaimGate();
+    pu_follower_.clear();  // F658: the glue brings a saved follower back (decode_powerup_follow) after this
     hill_.reset();  // neutral here; the glue brings a saved hold back (SavedHill::restore_into, F332)
     revives_.reset();
     epoch_++;
@@ -1772,6 +2132,10 @@ class StationLink {
   // parity gate uses for a bad IR frame).
   bool apply_station_update(const StationUpdateMsg& u, uint32_t received_at_ms) {
     if (!u.present || !has_powerup_assignment() || u.id != assignment_.id) return false;
+    // F658: following another live game, MC's update is about the game it armed, not the one on the field. It is kept
+    // for that game: following into it later applies it (review round 1).
+    pu_follower_.note_mc((uint8_t)assignment_.game, u, received_at_ms);
+    if (!pu_follower_.accepts_mc((uint8_t)assignment_.game)) return false;
     last_update_ = u;
     last_update_at_ms_ = received_at_ms;
     powerup_.apply_update(u, received_at_ms);
@@ -1847,6 +2211,8 @@ class StationLink {
     last_update_ = StationUpdateMsg();
     powerup_ = PowerupSchedule();
     hill_.reset();
+    follower_.clear();  // F658: a released station follows nothing
+    pu_follower_.clear();
     revives_.reset();
     hill_live_ = false;
     hill_offline_waiting_ = false;
@@ -1894,6 +2260,16 @@ class StationLink {
   PowerupSchedule powerup_;
   ClaimGate claims_;
   BleControlPoint hill_;
+  HillFollower follower_;        // F658
+  PowerupFollower pu_follower_;  // F658: the static powerup
+  PowerupFollowStep last_pu_follow_;
+  int pu_saved_key_ = -1;        // pu_save_due's last write
+  bool pu_switch_unsaved_ = false;
+  bool claim_follow_due_ = false;   // apply_claim_follow has a step to hand over  // a switch (or a restarted clock) pu_save_due has not written yet
+  HillFollowStep last_follow_;   // F658
+  bool ring_saved_follows_ = false;   // F658: ring_save_due's last write
+  int ring_saved_owner_ = contract::STATION_TEAM_ANY;
+  uint32_t ring_saved_hold_ = 0, ring_saved_at_ = 0;
   ReviveCounter revives_;
   uint32_t epoch_ = 0;
   PendingActionQueue pending_actions_;
@@ -1989,15 +2365,39 @@ inline StatusFields fill_status(const StationLink& link, uint32_t now_ms, bool l
     f.control_owner = h.owner;
     f.control_progress = (int)BleControlPoint::js_round(h.progress);
     f.control_contested = h.contested;
-    f.control_game = a.game;
+    f.control_game = link.follower().game((uint8_t)a.game);   // F658: the followed byte once following
     f.control_has_inputs = true;   // F558
+    if (link.follower().follows) {
+      f.control_follows = true;
+      for (const HillGame& g : link.follower().games) {
+        if (!g.used) continue;
+        const HillSnap t = link.follower().tally(g, h);
+        StatusFields::RingGame r{g.game, t.owner, {t.hold_ms[0], t.hold_ms[1], t.hold_ms[2], t.hold_ms[3]}, now_ms - g.heard_at,
+                                 {t.own_ms[0], t.own_ms[1], t.own_ms[2], t.own_ms[3]}};
+        f.control_games.push_back(r);
+      }
+      std::sort(f.control_games.begin(), f.control_games.end(), [](const StatusFields::RingGame& x, const StatusFields::RingGame& y) { return x.game < y.game; });
+    }
     f.control_net = h.net;
     for (int t = 0; t < 4; t++) f.control_counts[t] = h.counts[t];
     f.control_lead = h.lead;
     f.control_has_hold = true;
     for (int t = 0; t < 4; t++) f.control_hold_ms[t] = h.hold_ms[t];
+    f.control_has_own = true;   // the owned clock (Domination)
+    for (int t = 0; t < 4; t++) f.control_own_ms[t] = h.own_ms[t];
     f.control_capture_s = h.capture_s;   // F591
     f.control_net_cap = h.net_cap;
+  }
+  if (link.has_powerup_assignment() && link.pu_follower().follows && link.pu_follower().has_current) {   // F658
+    const PowerupFollower& pf = link.pu_follower();
+    const PowerupSchedule& ps = link.powerup();
+    f.pu_follows = true;
+    f.pu_game = pf.current;
+    f.pu_available = ps.available();
+    f.pu_taker = ps.available() ? 0 : ps.taker();
+    if (ps.has_anchor()) f.pu_next_ms = std::max<long>(0, (long)(int32_t)(ps.anchor_ms() - now_ms));
+    f.pu_since_ms = now_ms - pf.since;
+    f.pu_last_ms = now_ms - pf.heard_at;
   }
   if (REVIVE_FEEDBACK_ENABLED && link.has_respawn_assignment()) {  // post-MVP (presence.h): off by default
     f.has_revives = true;

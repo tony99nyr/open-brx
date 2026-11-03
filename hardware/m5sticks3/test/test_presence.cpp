@@ -22,7 +22,7 @@ using namespace brx;
 
 static Advert player(uint16_t id, uint8_t team, bool alive = true, uint8_t game = 0) {
   Advert a;
-  a.role = contract::ADVERT_ROLE_PLAYER;
+  a.role = contract::ADVERT_ROLE_PLAYER; a.scope_kinds = 7; a.scope = 0xFFFF;  // A86: in every station's scope
   a.id = id;
   a.team = team;
   a.state = alive ? contract::ADVERT_PLAYER_STATE_ALIVE : 0;
@@ -678,7 +678,7 @@ static void test_which_kinds_scan_for_players() {
   CHECK_EQ((int)scan_window_units("control"), 50);
   CHECK_EQ((int)scan_window_units("powerup"), 50);  // ready claim must reach the next 1 s scan batch
   CHECK(station_needs_player_scan("powerup", true));
-  CHECK(!station_needs_player_scan("powerup", false));  // unchanged: no claim scan while taken
+  CHECK(station_needs_player_scan("powerup", false));  // F658: a taken item still listens, to follow the live game
   CHECK(!station_needs_player_scan("extraction", true));
   CHECK(!station_needs_player_scan("bomb", true));
   CHECK(!station_needs_player_scan("", true));

@@ -67,6 +67,7 @@ const ALERT_WORDS: Record<string, string> = {
   'station-attention-restarted': 'restarted', 'station-attention-lock-expires': 'lock expires mid-match',
   'station-attention-claims-dropped': 'dropped claim reports', 'station-attention-nvs-fail': 'cannot save its settings',
   'station-attention-stick-fw-old': 'firmware too old',
+  'station-attention-follows': 'follows the players', 'station-attention-hill-pace': 'old hill pace', 'station-attention-old-app': 'phones on an old app',   // F658
 };
 const alertName = (id: string, line: string): string =>
   line === STATION_NO_HILL ? 'not armed: no hill in this mode' : ALERT_WORDS[id] ?? 'needs attention';

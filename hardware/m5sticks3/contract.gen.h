@@ -107,8 +107,10 @@ constexpr int32_t SESSION_STORE_V = 1;
 // `app_ver` is `<that>+<short git sha>`, `mc_link_glue.h`). Bump it with `stationAppVer` there when a Stick
 // change is one MC needs. "h8-0.2" was the first build that reports the git sha and `nvs_fail`. "h8-0.3"
 // (2026-10-25) is the first with the hill gap rule, the F391 lock restore and F591's hill fields, so a Stick on
-// any older build is flagged for a reflash.
-constexpr const char* STATION_MIN_FW = "h8-0.3";
+// any older build is flagged for a reflash. "h8-0.4" (2026-11-02) is the first with F642's discovery and F658's
+// enablement scope, live-game follow and `own_ms`: an older Stick reads advert byte 6 as a player id high byte, so
+// under the new APK its powerup claims go to nobody.
+constexpr const char* STATION_MIN_FW = "h8-0.4";
 // Exported through `gen_contract` so the console (`api/derive.ts`) and its `?mock` backend read the SAME words instead
 // of keeping a hand copy that can drift. Every line reads `WHAT IS WRONG: WHAT TO DO` (F221; `test_mc_alert_wording.py`).
 // The four proof prefixes whose cure is the push itself (A36/A37), plus GUN_DID_NOT_TAKE_CONFIG: a re-push replaces them (`state.cured_by_push`).
@@ -129,6 +131,14 @@ constexpr const char* STATION_NOT_ARMED = "PHONE SAYS NOT ARMED: RE-ARM IT FROM 
 constexpr const char* STATION_BATTERY_LOW = "BATTERY LOW: CHARGE OR SWAP IT BEFORE THE WHISTLE";
 // F535 (bench 2026-10-16): a control assignment in a mode with no hill objective (not in OBJECTIVE_MODES) is not armed
 constexpr const char* STATION_NO_HILL = "NOT ARMED: THIS MODE HAS NO HILL. CLEAR IT IN ITEMS, OR TURN THE HILL PHONE OFF";
+// F658 (the static hill): a hill that reports `follows` plays the players' live game with no arming, so it replaces
+// STATION_ARMED_OLDER and STATION_BRING_BACK with this note. Its pace still comes only from an arming, hence the amber line.
+// A powerup that reports `follows` (the static powerup) gets the same note.
+constexpr const char* STATION_FOLLOWS = "FOLLOWS THE GAME FROM THE PLAYERS: NO RE-ARM NEEDED";
+constexpr const char* STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE";
+// F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
+// an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658.
+constexpr const char* LIVE_BIT_MIN_APP = "0.4.34";
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 1500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;
@@ -204,7 +214,8 @@ constexpr int32_t ADVERT_VERSION = 1;
 constexpr int32_t ADVERT_ROLE_STATION = 1;
 constexpr int32_t ADVERT_ROLE_PLAYER = 2;
 // A player advert's byte 10 (state), as independent bits. `revived` (64) is RESERVED, post-MVP (F344): only the Stick
-// reads it, and the phone never sets it.
+// reads it, and the phone never sets it. `live` (128, F658): the player's match is live (go-live to the whistle, the
+// engine's phase 'live'), so a hill can follow the newest live game with no MC arming.
 constexpr int32_t ADVERT_PLAYER_STATE_ALIVE = 1;
 constexpr int32_t ADVERT_PLAYER_STATE_PLANTING = 2;
 constexpr int32_t ADVERT_PLAYER_STATE_DEFUSING = 4;
@@ -212,6 +223,16 @@ constexpr int32_t ADVERT_PLAYER_STATE_EXTRACTING = 8;
 constexpr int32_t ADVERT_PLAYER_STATE_CLAIMING = 16;
 constexpr int32_t ADVERT_PLAYER_STATE_CLAIM_READY = 32;
 constexpr int32_t ADVERT_PLAYER_STATE_REVIVED = 64;
+constexpr int32_t ADVERT_PLAYER_STATE_LIVE = 128;
+// F658 (A86, enablement scope): a PLAYER advert's byte 8, the kinds of utility station in play in the player's match,
+// as independent bits. Bytes 6 (high) and 15 (low) carry a 16-bit map of the station ids in play, bit (id % 16), and
+// byte 7 alone is the player id (1..63). A station counts a player only with its own kind bit AND its own id bit set,
+// so a scope of 0 (an older APK, or a match with no stations) never counts anywhere. MC keeps the ids of one match
+// apart modulo ADVERT_SCOPE_ID_BITS.
+constexpr int32_t ADVERT_SCOPE_KIND_CONTROL = 1;
+constexpr int32_t ADVERT_SCOPE_KIND_RESPAWN = 2;
+constexpr int32_t ADVERT_SCOPE_KIND_POWERUP = 4;
+constexpr int32_t ADVERT_SCOPE_ID_BITS = 16;
 // A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown.
 constexpr int32_t ADVERT_CONTROL_STATE_HELD = 1;
 constexpr int32_t ADVERT_CONTROL_STATE_CONTESTED = 2;
@@ -262,6 +283,17 @@ constexpr int32_t HILL_NET_CAP = 3;
 constexpr int32_t HILL_MAX_STEP_MS = 1000;
 // F82: a neutral grenade says this team
 constexpr int32_t HILL_REFUSED_TID = 2;
+// F658: a hill that follows the live game keeps one tally per game byte, this many
+constexpr int32_t HILL_RING_SIZE = 4;
+// F658: a game byte unheard for longer than this starts a fresh tally (wrap, MC restart)
+constexpr int32_t HILL_RING_STALE_MS = 600000;
+// F658: a following hill or powerup switches away from a game it still hears only after the challenger keeps a strict
+// lead in heard live players for this long. Against PRESENCE_EXPIRY_MS (4 s) and PRESENCE_EXIT_GRACE_MS (4 s): one stray
+// advert keeps a passer-by counted for up to 4 s, and a real player who steps off or is body-shadowed drops out for up
+// to 4 s + 4 s = 8 s, so a lead shorter than 8 s is radio noise or a walk-past, never a new game. Phones advertise about
+// every 250 ms (PRESENCE_ALPHA_REF_MS), so 10 s is about 40 adverts of agreement. It equals HILL_CAPTURE_S: a real
+// handover costs at most one capture time. A current game with no live player heard switches at once (utility.md §5d.8).
+constexpr int32_t FOLLOW_SWITCH_HOLD_MS = 10000;
 // Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
 // and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
 // broadcasts team HILL_REFUSED_TID (2).

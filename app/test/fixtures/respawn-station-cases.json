@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "about": "F658 (A86): which respawn station a down player's phone uses. One rule, two readers: app/src/beacon.js (Presence and respawnStation, read by engine.js) through app/test/respawn-station-cases.test.mjs, and the stage's twin in mcp/brx_mcp/stage/stage.py through mcp/tests/test_respawn_station_cases.py. The phone decides whether a station is enabled: only a station that the player's own config.stations lists with kind respawn. Its game byte does not matter, so a station set up for an earlier game keeps working with no re-arm. `config_stations` is the bundle's list (null = absent). `player` is the gun's team tid and the game bytes it plays in turn, on one presence tracker. `heard` lists the station adverts heard in each of those games (`present` is the presence verdict). `expect` is the station id used in every game (null = none); `expect_heard`, when given, the station ids the tracker keeps in every game.",
+  "cases": [
+    {
+      "name": "a respawn station the match config does not list is ignored",
+      "config_stations": [{"id": 3, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [{"id": 4, "kind": "respawn", "team": 1, "state": 1, "game": 7, "present": true, "rssi": -50}],
+      "expect": null
+    },
+    {
+      "name": "an id listed with another kind does not enable a respawn station",
+      "config_stations": [{"id": 4, "kind": "control"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [{"id": 4, "kind": "respawn", "team": 1, "state": 1, "game": 7, "present": true, "rssi": -50}],
+      "expect": null
+    },
+    {
+      "name": "no config.stations: no respawn station is in play",
+      "config_stations": null,
+      "player": {"tid": 1, "games": [7]},
+      "heard": [{"id": 4, "kind": "respawn", "team": 1, "state": 1, "game": 7, "present": true, "rssi": -50}],
+      "expect": null
+    },
+    {
+      "name": "a listed station that advertises another game byte still works",
+      "config_stations": [{"id": 3, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [{"id": 3, "kind": "respawn", "team": 1, "state": 1, "game": 5, "present": true, "rssi": -50}],
+      "expect": 3
+    },
+    {
+      "name": "a station armed for an old game keeps working in every later game with no re-arm",
+      "config_stations": [{"id": 3, "kind": "respawn"}],
+      "player": {"tid": 0, "games": [7, 8, 9]},
+      "heard": [{"id": 3, "kind": "respawn", "team": 0, "state": 1, "game": 7, "present": true, "rssi": -50}],
+      "expect": 3,
+      "expect_heard": [3]
+    },
+    {
+      "name": "team scoping holds: another team's station is never mine, a neutral one admits every team",
+      "config_stations": [{"id": 3, "kind": "respawn"}, {"id": 4, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [
+        {"id": 4, "kind": "respawn", "team": 0, "state": 1, "game": 7, "present": true, "rssi": -45},
+        {"id": 3, "kind": "respawn", "team": 255, "state": 1, "game": 2, "present": false, "rssi": -70}
+      ],
+      "expect": 3
+    },
+    {
+      "name": "a present station comes before a stronger one that is not present",
+      "config_stations": [{"id": 3, "kind": "respawn"}, {"id": 4, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [
+        {"id": 4, "kind": "respawn", "team": 1, "state": 1, "game": 7, "present": false, "rssi": -45},
+        {"id": 3, "kind": "respawn", "team": 1, "state": 1, "game": 6, "present": true, "rssi": -60}
+      ],
+      "expect": 3
+    },
+    {
+      "name": "a disabled station (state 0) is never used",
+      "config_stations": [{"id": 3, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [{"id": 3, "kind": "respawn", "team": 1, "state": 0, "game": 7, "present": true, "rssi": -50}],
+      "expect": null
+    },
+    {
+      "name": "only respawn adverts ignore the game byte: a control point or a powerup of another game is still dropped",
+      "config_stations": [{"id": 3, "kind": "respawn"}, {"id": 5, "kind": "control"}, {"id": 6, "kind": "powerup"}],
+      "player": {"tid": 1, "games": [7]},
+      "heard": [
+        {"id": 3, "kind": "respawn", "team": 1, "state": 1, "game": 6, "present": true, "rssi": -50},
+        {"id": 5, "kind": "control", "team": 255, "state": 0, "game": 6, "present": true, "rssi": -50},
+        {"id": 6, "kind": "powerup", "team": 255, "state": 1, "game": 6, "present": true, "rssi": -50}
+      ],
+      "expect": 3,
+      "expect_heard": [3]
+    },
+    {
+      "name": "a station on game 0 (any) and a player on game 0 both still work",
+      "config_stations": [{"id": 3, "kind": "respawn"}],
+      "player": {"tid": 1, "games": [0, 7]},
+      "heard": [{"id": 3, "kind": "respawn", "team": 1, "state": 1, "game": 0, "present": true, "rssi": -50}],
+      "expect": 3
+    }
+  ]
+}

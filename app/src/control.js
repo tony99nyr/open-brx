@@ -39,8 +39,8 @@
 // is at `value`% of taking it and NOBODY owns it yet. Ownership changes only at 100 (build) and 0 (drain),
 // never in between, which is condition 2 expressed on the wire.
 
-import { PLAYER_STATE } from './beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS } from './transport/contract.gen.js';
+import { PLAYER_STATE, inScope } from './beacon.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS, FOLLOW_SWITCH_HOLD_MS } from './transport/contract.gen.js';
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
 //  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
@@ -66,6 +66,8 @@ export function claimable(tid) { return HILL_CLAIMABLE_TIDS.includes(tid); }
  *   progress   0..100, always "how far along the team named by owner-or-capturing is"
  *   lastOwner  who held it before it went neutral — so a capture can name who was robbed
  *   holdMs     per-team milliseconds of possession, for the station's own recap (§5c)
+ *   ownMs      per-team milliseconds of OWNERSHIP (Domination's clock): banks while the team owns the point, contested
+ *              or not, with or without a body on it, and stops when the point drains to neutral
  */
 export class ControlPoint {
   constructor({ captureS = HILL_CAPTURE_S, netCap = HILL_NET_CAP, decayS = HILL_DECAY_S, decayDelayMs = HILL_DECAY_DELAY_MS } = {}) {
@@ -79,6 +81,8 @@ export class ControlPoint {
     this.progress = 0;
     this.lastOwner = null;
     this.holdMs = {};
+    this.ownMs = {};              // the owned clock (Domination): see update()
+    this.ownedBy = null;          // the owner when update() last ran, or null (a restored or fresh point)
     this.contested = false;
     this.dir = 0;                 // +1 rising, -1 falling, 0 static
     this.net = 0;                 // the leading team's lead, in players
@@ -100,12 +104,13 @@ export class ControlPoint {
     if (!s || typeof s !== 'object') return this;
     const own = Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY;
     this.owner = (own === STATION_TEAM_ANY || claimable(own)) ? own : STATION_TEAM_ANY;
-    const cap = Number.isFinite(+s.capturing) ? +s.capturing : null;
+    const cap = s.capturing != null && Number.isFinite(+s.capturing) ? +s.capturing : null;   // +null is 0 (red): a null stays null
     this.capturing = cap != null && claimable(cap) ? cap : null;
     this.progress = Math.max(0, Math.min(100, +s.progress || 0));
-    const last = Number.isFinite(+s.lastOwner) ? +s.lastOwner : null;
+    const last = s.lastOwner != null && Number.isFinite(+s.lastOwner) ? +s.lastOwner : null;
     this.lastOwner = last != null && claimable(last) ? last : null;
     this.holdMs = (s.holdMs && typeof s.holdMs === 'object') ? { ...s.holdMs } : {};
+    this.ownMs = (s.ownMs && typeof s.ownMs === 'object') ? { ...s.ownMs } : {};
     this.log = Array.isArray(s.log) ? s.log.slice(-64) : [];
     this.contested = !!s.contested;
     this.dir = [1, 0, -1].includes(s.dir) ? s.dir : 0;
@@ -115,6 +120,7 @@ export class ControlPoint {
     else if (this.capturing == null) this.progress = 0;
     this.at = null;               // the first tick back measures no elapsed time
     this.heldBy = null;           // F554: and no earlier sample saw anybody on the point
+    this.ownedBy = null;          // own_ms: nor any owner
     this.absentMs = 0;            // F464: a restored point restarts the decay delay (the conservative choice; not in the snapshot)
     return this;
   }
@@ -122,7 +128,7 @@ export class ControlPoint {
    *  advertiser's and is folded in by the caller, which owns it. */
   snapshot() {
     return { owner: this.owner, capturing: this.capturing, progress: Math.round(this.progress * 10) / 10,
-      lastOwner: this.lastOwner, holdMs: this.holdMs, log: this.log.slice(-64),
+      lastOwner: this.lastOwner, holdMs: this.holdMs, ownMs: this.ownMs, log: this.log.slice(-64),
       contested: this.contested, dir: this.dir, net: this.net };
   }
 
@@ -206,6 +212,11 @@ export class ControlPoint {
     const sole = this.contested ? null : this.lead;
     if (this.owner !== STATION_TEAM_ANY && sole === this.owner && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + (this.heldBy === this.owner ? elapsedMs : dtMs);
     this.heldBy = sole;
+    // ---- own_ms, the owned clock (Domination) ----
+    // Banks to the team that owns the point across this interval (the owner before this step's conversion), contested
+    // or not, with or without a body on it; a point drained to neutral banks nobody. The same gap clamp as hold_ms: a
+    // gap whose start did not see this owner (`ownedBy`, the owner the last update left) banks at most HILL_MAX_STEP_MS.
+    if (this.owner !== STATION_TEAM_ANY && elapsedMs) this.ownMs[this.owner] = (this.ownMs[this.owner] || 0) + (this.ownedBy === this.owner ? elapsedMs : dtMs);
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
@@ -269,6 +280,7 @@ export class ControlPoint {
       const h = this.owner !== STATION_TEAM_ANY ? this.owner : this.capturing;
       if (h != null) this.dir = this.lead === h ? (this.progress < 100 ? 1 : 0) : (this.progress > 0 ? -1 : 0);
     }
+    this.ownedBy = this.owner !== STATION_TEAM_ANY ? this.owner : null;
     return { changed: before !== `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`, events };
   }
 }
@@ -297,4 +309,180 @@ export class ControlAdvertiser {
     if (view) { this.last = { team: view.team, state: view.state, value: view.value }; this.lastAt = now; }
     return this.seq;
   }
+}
+
+/**
+ * F658, the static hill: a hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player
+ * phones set the `live` bit (byte 10, 128) from go-live to the whistle, and the hill follows the newest live game.
+ *
+ *  - FOLLOW MODE starts the first time the hill hears any live-bit player, and lasts. Before that (only old phones heard)
+ *    the hill keeps today's rules: it counts players of its MC-armed game (`armedGame`, 0 = any) inside MC's window.
+ *  - The CURRENT game is the byte of the live players it hears. Another live game takes the hill only with MORE live
+ *    players on the point (present or in sight) than the current game; a tie keeps it. A game-0 phone is skipped unless
+ *    the hill's own game is 0. The first follow into the hill's own game (or from a game-0 hill) keeps its point.
+ *  - Only live-bit players of the current game count. A player without the bit (the countdown, after the whistle) never
+ *    counts in follow mode, so the live bit replaces MC's window.
+ *  - SCOPE (A86, Tony 2026-11-02: "the phone decides whether a station is enabled"): a player counts toward the point
+ *    and toward the follower's choice of game only when its advert names this station: the control kind bit and this
+ *    station's id bit (`inScope`). A zero scope (an older APK) never counts, so a station no match put in play stays inert.
+ *  - THE RING: one point state per game byte, at most HILL_RING_SIZE, with the last time the byte was heard. A byte back
+ *    after more than HILL_RING_STALE_MS unheard starts fresh (MC wraps 255 to 1, an MC restart that reuses a byte); a
+ *    new byte with the ring full evicts the least recently heard one (never the current).
+ *
+ * `point` is the ONE ControlPoint the station shows and advertises: a switch saves its state into the ring and loads the
+ * other game's (or a fresh one) with `restore`, which also restarts its clock, so no time banks across a switch. PURE.
+ */
+/**
+ * F658 switch hysteresis, one rule for the hill (HillFollower) and the powerup (powerup.js PowerupFollower), and the
+ * Stick's presence.h `follow_hold_switch`. `f` holds `current` and `lead` ({ game, since } or null). `best` is the
+ * strongest other live game (null = none), `leads` whether it has strictly more heard live players than the current
+ * game, and `currentHeard` whether any live in-scope player of the current game is heard at all. True = switch to `best`
+ * now.
+ *  - No current game yet (the first follow): at once.
+ *  - The current game has no live player heard (its whistle, its players gone, or gone stale): at once, so the next game
+ *    loses no time at the hill or the pickup.
+ *  - Else the challenger must lead for FOLLOW_SWITCH_HOLD_MS without a break: a lead that drops back to a tie or less,
+ *    or passes to another game, starts the hold again. The hold is not saved: a restart starts it again.
+ */
+export function followHoldSwitch(f, best, leads, currentHeard, now, holdMs = FOLLOW_SWITCH_HOLD_MS) {
+  if (best == null || !leads) { f.lead = null; return false; }
+  if (f.current == null || !currentHeard) { f.lead = null; return true; }
+  if (!f.lead || f.lead.game !== best) f.lead = { game: best, since: now };
+  if (now - f.lead.since < holdMs) return false;
+  f.lead = null;
+  return true;
+}
+
+export class HillFollower {
+  constructor({ size = HILL_RING_SIZE, staleMs = HILL_RING_STALE_MS } = {}) {
+    this.size = size; this.staleMs = staleMs;
+    this.follows = false;
+    this.current = null;        // the followed game byte, once following
+    this.games = new Map();     // byte -> { heardAt, since, snap } (snap: the point's state while not current, null = fresh)
+    this.lead = null;           // { game, since }: a challenger leading the current game, and since when (followHoldSwitch)
+  }
+  /** The game byte the hill advertises and counts under: the current one when following, else MC's. */
+  game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
+
+  /**
+   * One step, before the point's own update. `players` is `Presence.players()` (with `ageMs`, `game`, `state`).
+   * Returns `{ players, switched }`: the players the point may count, and `{ from, to, fresh }` when the current game
+   * changed this step (else null).
+   */
+  step(point, players, now, { expiryMs, armedGame = 0, stationId }) {
+    // A86: only players whose scope names this control station exist for the hill at all
+    players = (players || []).filter(p => inScope(p, 'control', stationId));
+    // byte -> { at: the newest advert time of a live player, n: its live players on the point (present or in sight) }
+    const heard = new Map();
+    for (const p of players) {
+      if (!p || !(p.state & PLAYER_STATE.live)) continue;
+      const age = Number.isFinite(p.ageMs) ? p.ageMs : 0;
+      if (age > expiryMs) continue;
+      const g = p.game || 0, at = now - age;
+      if (g === 0 && armedGame !== 0) continue;   // a hand-played phone (game 0) is followed only by a hill of game 0
+      const h = heard.get(g) || { at, n: 0 };
+      h.at = Math.max(h.at, at);
+      if (p.present || p.inCircle) h.n++;
+      heard.set(g, h);
+    }
+    const first = !this.follows && heard.size > 0;
+    if (heard.size) this.follows = true;
+    if (!this.follows) {
+      // Fallback, today's rule: MC's game byte scopes the players (0 on either side = any game).
+      return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched: null };
+    }
+    let freshCurrent = false;
+    for (const [g, { at }] of heard) {
+      let e = this.games.get(g);
+      if (e && at - e.heardAt > this.staleMs) { e.snap = null; e.since = at; if (g === this.current) freshCurrent = true; }
+      if (!e) {
+        if (this.games.size >= this.size) this._evict();
+        e = { heardAt: at, since: at, snap: null };
+        this.games.set(g, e);
+      }
+      e.heardAt = Math.max(e.heardAt, at);
+    }
+    // Review of F658: another live game takes the hill only with MORE live players on the point than the current game
+    // (a tie keeps it), so one phone that missed END cannot pin the hill, and a stranger takes an empty hill only until
+    // more real players arrive. The first follow takes the game with the most players there (then the newest). While the
+    // current game is still heard, that lead must hold for FOLLOW_SWITCH_HOLD_MS (followHoldSwitch).
+    const n = g => (heard.get(g) || { n: 0 }).n;
+    let best = null;
+    for (const g of heard.keys()) {
+      if (g === this.current) continue;
+      const e = this.games.get(g), b = best == null ? null : this.games.get(best);
+      if (!e) continue;   // evicted in this same step (more live games than the ring holds)
+      if (!b || n(g) > n(best) || (n(g) === n(best) && (e.since > b.since || (e.since === b.since && g > best)))) best = g;
+    }
+    // The switch waits for a sustained lead while the current game is still heard (followHoldSwitch)
+    let next = this.current;
+    if (followHoldSwitch(this, best, best != null && (this.current == null || n(best) > n(this.current)), this.current != null && heard.has(this.current), now)) next = best;
+    let switched = null;
+    if (next !== this.current && first && (!armedGame || armedGame === next)) {
+      // Review of F658: the first follow into MC's own game (or from a hill of any game) keeps the point it counted
+      this.current = next;
+      switched = { from: null, to: next, fresh: false, kept: true };
+    } else if (next !== this.current) {
+      const from = this.current;
+      if (from != null && this.games.has(from)) this.games.get(from).snap = point.snapshot();
+      const e = this.games.get(next);
+      loadPoint(point, e.snap);
+      switched = { from, to: next, fresh: !e.snap };
+      e.snap = null;
+      this.current = next;
+    } else if (freshCurrent) {
+      loadPoint(point, null);
+      switched = { from: this.current, to: this.current, fresh: true };
+    }
+    return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched };
+  }
+  /** May the point count this player? Never outside its scope (A86: the control bit and station `stationId`'s id bit).
+   *  Following: a live-bit player of the current game. Not following: a player of MC's game (0 on either side = any
+   *  game), today's rule. */
+  counts(p, armedGame = 0, stationId) {
+    if (!p || !inScope(p, 'control', stationId)) return false;
+    if (this.follows) return !!(p.state & PLAYER_STATE.live) && (p.game || 0) === this.current;
+    return !armedGame || !p.game || p.game === armedGame;
+  }
+  /** Forget every game: the operator's point reset. */
+  clear() { this.follows = false; this.current = null; this.games = new Map(); this.lead = null; }
+  _evict() {
+    let worst = null;
+    for (const [g, e] of this.games) if (g !== this.current && (worst == null || e.heardAt < this.games.get(worst).heardAt)) worst = g;
+    if (worst != null) this.games.delete(worst);
+  }
+
+  /** The heartbeat's ring summary: byte -> { hold_ms, own_ms, owner, last_ms } (last_ms = ms since that game was last heard). */
+  summary(point, now) {
+    const out = {};
+    for (const [g, e] of this.games) {
+      const s = g === this.current ? point : (e.snap || {});
+      out[String(g)] = { hold_ms: { ...(s.holdMs || {}) }, own_ms: { ...(s.ownMs || {}) }, owner: Number.isFinite(+s.owner) ? +s.owner : STATION_TEAM_ANY, last_ms: Math.max(0, now - e.heardAt) };
+    }
+    return out;
+  }
+  /** What a restart needs (§5d.6): the mode, the current byte and every other game's saved point. The current game's
+   *  point is saved by the caller, as before. */
+  snapshot() {
+    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]) };
+  }
+  restore(s) {
+    if (!s || typeof s !== 'object') return this;
+    this.follows = !!s.follows;
+    this.current = Number.isInteger(s.current) && s.current >= 0 && s.current <= 255 ? s.current : null;
+    this.games = new Map();
+    for (const [g, e] of Array.isArray(s.games) ? s.games.slice(0, this.size) : []) {
+      if (!Number.isInteger(g) || g < 0 || g > 255 || !e) continue;
+      this.games.set(g, { heardAt: +e.heardAt || 0, since: +e.since || 0, snap: e.snap && typeof e.snap === 'object' ? e.snap : null });
+    }
+    if (this.current != null && !this.games.has(this.current)) this.current = null;
+    if (this.current == null) this.follows = this.follows && this.games.size > 0;
+    return this;
+  }
+}
+
+/** Load a saved point state into `point` (null = a fresh, neutral point), with its clock restarted. */
+function loadPoint(point, snap) {
+  point.restore(snap || { owner: STATION_TEAM_ANY, capturing: null, progress: 0, holdMs: {}, ownMs: {}, log: [] });
+  point.counts = {}; point.lead = null; point.refusedSeen = false;
 }
