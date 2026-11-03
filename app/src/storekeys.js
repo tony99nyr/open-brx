@@ -7,6 +7,7 @@
 //   brx.engine               engine.js              the match context a restart must survive (`_save`/`_load`)   yes, `v` (ENGINE_STORE_V)
 //   brx.night                engine.js              HUD skin, '1' or '0' (outside brx.engine: no TTL)             no
 //   brx.night_choice         engine.js              the night-skin choice, JSON                                   no
+//   brx.melee_not_ready      engine.js              F665 bench switch: the melee not-ready sound id; absent = off  no
 //   brx.outbox               transport/ring.js      the persisted fact outbox (`Ring`); utility: `brxu.outbox`    yes, `v` (RING_STORE_V)
 //   brx.clock                transport/clock.js     the MC clock offset, last sync, sample count; `brxu.clock`    no
 //   brx.node_id              transport/transport.js this node's id; `brxu.node_id`                                no

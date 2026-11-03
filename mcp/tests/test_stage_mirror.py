@@ -2279,6 +2279,9 @@ def test_every_powerup_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # F665 bench switch (2026-11-03): a melee not-ready sound, off by default, tried by ear at MN1. Not mirrored while it is an
+    # experiment; port it if Tony keeps it (FOLLOWUPS F665)
+    "setMeleeNotReady", "_meleeNotReadyCue", "_audioBusyNow",
     # The EMP perk's THROW (2026-10-24): a LEFT press on the holder's own phone writes a host `$IRTX`. The stage plays a
     # victim gun, which never throws; the victim half (`_empSpec`, `_empWord`, `_stun(empMs)`) is mirrored.
     "_empThrow", "_empHeld", "_empLeftMs", "_empView", "_empPicked",

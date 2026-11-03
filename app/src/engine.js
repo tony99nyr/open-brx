@@ -434,6 +434,14 @@ export const ENGINE_STORE_V = 1;
 /** The HUD skin lives outside `KEY`: it is the phone's, not the match's, so no TTL expires it. `brx.night` is '1'/'0'
  *  (the key the app used before); `brx.night_choice` is `{session}`, the MC session a player's own tap belongs to. */
 const NIGHT_KEY = 'brx.night', NIGHT_CHOICE_KEY = 'brx.night_choice';
+/** F665 bench switch (brx1 2026-11-03, Tony: try it at the bench): the sound id the phone plays when a melee press arrives
+ *  during the cooldown. Empty or absent = off, the default. The phone's, not the match's, like the skin. */
+const MELEE_NOT_READY_KEY = 'brx.melee_not_ready';
+/** F665: a sound id the melee not-ready switch accepts (`U55`, `N92`, `VX0W`), upper-cased, or null (off). PURE. */
+export function meleeNotReadyId(v) {
+  const id = typeof v === 'string' ? v.trim().toUpperCase() : '';
+  return /^[A-Z][A-Z0-9]{1,4}$/.test(id) ? id : null;
+}
 
 /** Maint review 2026-09-17: "the writer stands down" was re-typed at seven call sites and no two agreed --
  *  `_recoilFlush` alone read `_accHoldUntil`, `_awaitShot` alone read `tutorial`, `_noFireTick` dropped
@@ -662,6 +670,7 @@ export const PERSIST_AS = Object.freeze({
 /** F530: `_operatorAct`'s answer for a FORCE RESPAWN held to the F13 floor; its result is reported when the hold fires. */
 const OP_RESPAWN_HELD = Symbol('op-respawn-held');
 export const PERSIST_TRANSIENT = Object.freeze({
+  _meleeNotReady: 'F665 bench switch: the phone\'s own key (`brx.melee_not_ready`), read again by the constructor',
   _headEcho: 'F532: a heal head echo window; a restart has no head in flight',
   _opReviveHeld: 'F530: an operator respawn held for the F13 floor; a restart drops the hold (MC can press again)',
   _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
@@ -805,6 +814,7 @@ export class Engine {
     this.reset();
     this._load();
     this._loadNight();
+    this._meleeNotReady = null; try { this._meleeNotReady = this.storage ? meleeNotReadyId(this.storage.getItem(MELEE_NOT_READY_KEY)) : null; } catch (_) { /* a blocked store leaves it off */ }
   }
 
   reset() {
@@ -1325,6 +1335,32 @@ export class Engine {
       const c = JSON.parse(this.storage.getItem(NIGHT_CHOICE_KEY) || 'null');
       this.nightChoice = c && typeof c === 'object' ? { session: typeof c.session === 'string' ? c.session : null } : null;
     } catch (_) { /* a blocked or corrupt store starts on day with no pick */ }
+  }
+  /** F665 bench switch: set the melee not-ready sound (`'N92'`), or turn it off (`null`, `''`). Kept in `brx.melee_not_ready`, so
+   *  it survives an app restart. Returns the id now in force, or null. From WSL over CDP: `brx.engine.setMeleeNotReady('N92')`. */
+  setMeleeNotReady(v) {
+    const id = meleeNotReadyId(v);
+    this._meleeNotReady = id;
+    try { if (this.storage) { if (id) this.storage.setItem(MELEE_NOT_READY_KEY, id); else this.storage.removeItem(MELEE_NOT_READY_KEY); } } catch (_) { /* best-effort */ }
+    this.log(`melee not-ready sound: ${id || 'off'} (F665 bench switch)`, 'li');
+    return id;
+  }
+  /** F665: true when any sound is playing, waiting on the gun, or held on the phone, or the play gap has not run out. The
+   *  not-ready sound must play at the press or not at all, so it never waits behind any of these. */
+  _audioBusyNow(now) {
+    const g = this._gun, a = this._ann;
+    return a.audioBusy(now) || a.queue.length > 0 || g.holding() || g.outstanding(now) > 0
+      || (g.nextAt || 0) > now || (g.lastAt != null && g.lastAt + g.gapMs > now);
+  }
+  /** F665 bench switch: a melee press the gun refuses (inside the cooldown) plays the not-ready sound once, now, while live
+   *  and alive. A busy speaker drops it: a late beep is worse than none. If a refused swing sends no `$BUT`, this never runs. */
+  _meleeNotReadyCue(now) {
+    const id = this._meleeNotReady;
+    if (!id || this.phase !== 'live' || !this.alive) return;
+    const cd = this.meleeCooldown(now);
+    if (!cd || !(cd.leftMs > 0)) return;
+    if (this._audioBusyNow(now)) { this.log(`melee not ready (${cd.leftMs} ms left): the speaker is busy, no sound`, 'li'); return; }
+    this._write([`$PLAY,,4,6,${id},,,,*`], `F665: melee not ready (${cd.leftMs} ms left)`);
   }
   _storeNight() {
     if (!this.storage) return;
@@ -6589,7 +6625,7 @@ export class Engine {
     if (state === 1) {
       if (this.held[id] == null) this.held[id] = now;
       this.lastButton = { id, state: 1, at: now, heldMs: null };
-      if (this._meleeButtons().includes(id)) this._meleePressAt = now;   // F665: a swing's `$ALCD` must follow a melee press
+      if (this._meleeButtons().includes(id)) { this._meleePressAt = now; this._meleeNotReadyCue(now); }   // F665: a swing's `$ALCD` must follow a melee press
       // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
       // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.

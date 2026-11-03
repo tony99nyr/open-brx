@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, recoilRecovery, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS } from '../src/engine.js';
+import { Engine, recoilRecovery, HILL_CUES, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, RECOIL_RELEASE_MARGIN_MS, SMOKE_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, weap0Spawn, isPoolProbe, PROBE_LIFE, CONTROL_RECONNECT_MS, twoSlotPlay, playSlotFrames, SAVE_HEARTBEAT_MS, meleeNotReadyId } from '../src/engine.js';
 import { MELEE_PRESS_MS } from '../src/ammo.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
@@ -9024,6 +9024,59 @@ test('F665: the cooldown runs on through DOWN, and there is no icon without a kn
   const k = goLive(harness());
   k.eng.frames.head = k.eng.frames.head.filter(f => !f.startsWith('$BMAP,8,'));
   assert.equal(k.eng.state().melee, null, 'no button bound to melee: no icon');
+});
+
+// F665 bench switch (brx1 2026-11-03): a melee press the gun refuses plays a short not-ready sound, at the press or never.
+const NOT_READY = id => `$PLAY,,4,6,${id},,,,*`;
+const press8 = h => { h.frame('$BUT,8,1,*'); h.frame('$BUT,8,0,*'); };
+const beeps = (h, id = 'N92') => h.writes.filter(f => f === NOT_READY(id)).length;
+const nrQuiet = h => { h.adv(30_000); h.eng.tick(); h.adv(30_000); h.eng.tick(); };   // past the go-live audio and any cooldown
+
+test('F665 bench switch: off by default; on, a press inside the cooldown plays the sound once and a press after it plays none', () => {
+  const h = goLive(harness()); nrQuiet(h);
+  swing(h); h.adv(50);
+  press8(h);
+  assert.equal(h.writes.filter(f => /,N92,/.test(f)).length, 0, 'off by default: no sound');
+  assert.equal(h.eng.setMeleeNotReady('n92'), 'N92', 'the id is upper-cased');
+  assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), 'N92', 'kept for the next app start');
+  press8(h);
+  assert.equal(beeps(h), 1, 'a press inside the cooldown: one sound, at the press');
+  h.adv(meleeMs(h)); nrQuiet(h);
+  swing(h);
+  assert.equal(beeps(h), 1, 'a press after the cooldown is a swing: no sound');
+  h.adv(50); press8(h);
+  assert.equal(beeps(h), 2, 'the next refused press sounds again');
+  assert.equal(h.eng.setMeleeNotReady(''), null, 'an empty id turns it off');
+  assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), null);
+  h.adv(meleeMs(h)); nrQuiet(h); swing(h); h.adv(50); press8(h);
+  assert.equal(beeps(h), 2, 'off again: no sound');
+});
+
+test('F665 bench switch: a down player and a busy speaker get no sound, and nothing queues it for later', () => {
+  const h = goLive(harness()); nrQuiet(h);
+  h.eng.setMeleeNotReady('N92');
+  swing(h); h.adv(50);
+  h.eng._write(['$PLAY,,4,6,VX0W,,,,*'], 'test: a voice line');   // the speaker is busy with a voice line
+  press8(h);
+  assert.equal(beeps(h), 0, 'a busy speaker drops the sound');
+  nrQuiet(h); h.eng.tick();
+  assert.equal(beeps(h), 0, 'and it never plays late');
+  swing(h); h.adv(50);
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'setup: down');
+  h.eng._audioBusyNow = () => false;   // the death scream keeps the speaker busy; hold it idle so only the alive rule is under test
+  press8(h);
+  assert.equal(beeps(h), 0, 'a down player gets no sound');
+  const k = goLive(harness()); nrQuiet(k);
+  k.eng.setMeleeNotReady('N92');
+  k.frame('$BUT,1,1,*'); k.frame('$BUT,1,0,*'); swing(k); k.adv(50); k.frame('$BUT,1,1,*'); k.frame('$BUT,1,0,*');
+  assert.equal(beeps(k), 0, 'a press of a button not bound to melee gets no sound');
+});
+
+test('F665 bench switch: the id it accepts', () => {
+  assert.equal(meleeNotReadyId(' u55 '), 'U55');
+  assert.equal(meleeNotReadyId('VX0W'), 'VX0W');
+  for (const bad of ['', null, undefined, 5, 'N', '9AB', 'N92,*', '$PLAY']) assert.equal(meleeNotReadyId(bad), null, String(bad));
 });
 
 // F665 (game 2026-11-01 logs): a real melee swing is the gyro press `$BUT,8,1`, then `$ALCD,1,100,4,0,0,*` 3 to 18 ms later.
