@@ -14,12 +14,12 @@ Do not copy a procedure into this file. When a sitting ends, strike its steps he
 The order Tony works in before the next game. Each step links the sheet or row that holds its procedure; this list
 does not repeat it. **Before a game** means a game cannot run well without it. **Can wait** means a later bench sitting.
 Build everything from current main: the F645 and F650 fixes are merged, so one APK from main serves the SR sheet too.
-About 3 h 15 min for the before-a-game part with the Mac, Domination and phone-hill steps (the SR sheet is 85 min
+About 3 h 35 min for the before-a-game part with the Mac, Domination and phone-hill steps (the SR sheet is 85 min
 of it); about 3 h 40 min more for the rest.
 
 | # | when | minutes | step | procedure |
 |---|---|---|---|---|
-| P1 | before a game | 20 | Reflash all 3 Sticks over USB from main, one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6, so powerup claims go to nobody. Reflash all 3 before any phone gets the new APK (P3). Commands and the post-flash check: [P1 in detail](#p1-in-detail-the-stick-reflash) below. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
+| P1 | before a game | 40 | Reflash all 6 Sticks over USB from main (about 6 min a Stick; MC has seen 3 of them, and the other 3 have never joined, so they likely need the first-flash download mode and their Wi-Fi set), one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6, so powerup claims go to nobody. Reflash all 6 Sticks before any phone gets the new APK (P3). Commands and the post-flash check: [P1 in detail](#p1-in-detail-the-stick-reflash) below. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
 | P2 | before a game | 15 | F642 on one Stick: (1) a typed address that is absent, then the log shows typed, (2) mDNS, (3) the subnet scan, (4) a welcome and "last good saved"; (5) a reboot rejoins through the last good MC. A moved MC is found again (one Stick is enough). Then power the other two and see each one join MC. | FOLLOWUPS F642 |
 | P3 | before a game | 20 | Build the APK from a main checkout and install it on every phone, one phone at a time, after P1. The iPhone build needs the MacBook. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
 | P4 | before a game | 10 | F659. (1) The black phone, with its stale `:8765` address, joins MC by itself. (2) Each other phone joins by itself. (3) A phone this MC has never seen (or any phone on a fresh MC home) shows NEW PHONE JOINED on the console; a phone it already knows does not. (4) Every phone shows in the LOBBY before READY. | FOLLOWUPS F659 |
@@ -45,12 +45,13 @@ REFLASH IT (amber, it does not block) for any Stick not yet reflashed.
 1. `python3 hardware/m5sticks3/tools/stick.py ports`: exactly one line is labelled as the Stick.
 2. `python3 hardware/m5sticks3/tools/stick.py flash`: prints the "Sketch uses ... (53%)" line and the upload log, and
    exits 0. An upload keeps NVS: Wi-Fi, the MC address, the last good MC and the station role survive. A Stick still on
-   factory firmware: hold the small side button while you plug in USB, then replug without it.
+   factory firmware (likely the 3 that have never joined MC): hold the small side button while you plug in USB, then
+   replug without it (the `m5stick-bench` skill).
 3. `python3 hardware/m5sticks3/tools/stick.py status`: `LINK state=LOOKING FOR MC` or better. If Wi-Fi was lost, run
-   `stick.py cmd 5 WIFI <ssid> <pass>` and check again.
-4. Unplug it, and repeat for the next Stick (3 in all).
+   `stick.py cmd 5 WIFI <ssid> <pass>` and check again. A Stick that has never joined has no Wi-Fi yet: set it here.
+4. Unplug it, and repeat for the next Stick (6 in all).
 
-Post-flash check, with MC on the field LAN and all 3 Sticks powered:
+Post-flash check, with MC on the field LAN and all 6 Sticks powered:
 
 - a. Each Stick joins with no typed address: `stick.py status` shows `LINK state=LINKED` (NOT ARMED until it is
   assigned), and the console's ITEMS panel lists it.
