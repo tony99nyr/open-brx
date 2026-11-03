@@ -177,7 +177,8 @@ class StationRegistry:
                  pu_state: Callable[[str], tuple[StationUpdate | None, dict | None, int | None]],
                  note_departed_station: Callable[[str, RecapStationRow], None],
                  station_sync_state: Callable[[], tuple[int | None, dict[str, str]]],
-                 game_no_started: Callable[[], bool]):
+                 game_no_started: Callable[[], bool],
+                 push_pu_update: Callable[[str], None] | None = None):
         self.stations: dict[str, dict] = {}
         # F364 (Tony 2026-09-25): the station id MC handed each node_id this session, kept after a clear or a
         # release and saved in the snapshot, so a station keeps its number across its own restart, a relink and
@@ -201,6 +202,7 @@ class StationRegistry:
         self.note_departed_station = note_departed_station
         self.station_sync_state = station_sync_state
         self.game_no_started = game_no_started
+        self.push_pu_update = push_pu_update
 
     def has(self, nid: str) -> bool:
         return nid in self.stations
@@ -1101,6 +1103,11 @@ class StationRegistry:
         st["arm_pending"] = False
         st["armed"] = {"game": body["game"], "at": self.now_ms(), "kind": a["kind"], "team": a["team"], "id": a["id"]}
         self._note_station_lock(st, body["game"], lock)
+        # F658: an arming makes a powerup forget MC's last station_update, so the match in play's schedule follows it
+        # on the wire (config, then update). Every caller gets it: a hello, UNLOCK, a range edit, a release, a handoff.
+        # The ledger sends nothing outside the match in play.
+        if a["kind"] == "powerup" and self.push_pu_update is not None:
+            self.push_pu_update(nid)
         return True
 
     def _station_lock_s(self) -> int:

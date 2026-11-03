@@ -1205,12 +1205,22 @@ class PowerupFollower {
   uint8_t mc_game = 0;
   StationUpdateMsg mc;
   uint32_t mc_at = 0;
+  // powerup.js `mcAnchored`: a station_update arrived since the last arming. The phone saves it across a reload; the
+  // Stick saves no schedule before it follows, so here it always equals has_mc. Kept for parity with the phone.
+  bool mc_anchored = false;
 
   void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
     has_mc = u.present;
     mc_game = armed_game;
     mc = u;
     mc_at = at;
+    mc_anchored = u.present;
+  }
+  // powerup.js `onArm`: any station_config may be a new match on the same byte (an MC restart, the 255-to-1 wrap), so
+  // MC's remembered update and the anchored mark go.
+  void on_arm() {
+    has_mc = false;
+    mc_anchored = false;
   }
   uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
   bool accepts_mc(uint8_t armed_game) const { return !follows || (has_current && current == armed_game); }
@@ -1250,7 +1260,9 @@ class PowerupFollower {
         out.from = has_current ? current : -1;
         out.to = best->game;
         const bool was_following = has_current;
-        out.kept = has_mc && armed_game != 0 && best->game == armed_game && mc_game == armed_game;
+        out.kept = (has_mc && armed_game != 0 && best->game == armed_game && mc_game == armed_game) ||
+                   (first && !was_following && armed_game != 0 && best->game == armed_game && mc_anchored &&
+                    sched.has_anchor());
         out.fresh = !out.kept;
         current = best->game;
         has_current = true;
@@ -1819,6 +1831,8 @@ class StationLink {
   // the default exists only so the many older host tests that never look at the lock stay short.
   bool apply_station_config(const StationAssignment& a, uint32_t received_at_ms = 0) {
     if (!a.present) return false;
+    // F658: any arming may be a new match on the same byte: the powerup follower forgets MC's remembered update
+    pu_follower_.on_arm();
     // A58: every station_config REPLACES the running lock, before and independent of the kind/id/game
     // logic below -- a same-game re-push (MC's mid-match lock carrier) must change the lock and
     // nothing else, and lock_s 0 (or absent) unlocks at once.

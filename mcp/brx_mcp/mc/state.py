@@ -479,6 +479,7 @@ class Session:
             note_departed_station=self._note_departed_station,
             station_sync_state=lambda: (self._match_end_t, self._sync_pending),
             game_no_started=lambda: self._game_no_started,
+            push_pu_update=lambda nid: self.powerup_ledger.push_station_update(nid),
         )
 
     @property
@@ -3809,8 +3810,7 @@ class Session:
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
             if self.station_registry.on_hello(nid, nv["last_seen_ms"], n.get("app_ver"), nv.get("platform")):
-                self.station_registry.arm_station(nid)
-                self.powerup_ledger.push_station_update(nid)     # A56: a powerup station re-anchors its spawn countdown
+                self.station_registry.arm_station(nid)   # A56: arm_station follows a powerup's config with its update
             self._changed()
             return None
         # F184 (field 2026-09-22): RELEASE can only ask a utility phone to reload as a HUD; until this

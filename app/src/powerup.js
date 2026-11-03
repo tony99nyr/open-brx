@@ -140,7 +140,8 @@ export class PowerupStation {
  *    HILL_RING_STALE_MS unheard starts again too (MC wraps 255 to 1, or reuses a byte after a restart).
  *  - MC's own game keeps MC's schedule: the follower remembers MC's last `station_update` for the game MC armed
  *    (`noteMc`), applied or not. Following into that game (the first follow, or a switch from another game, review
- *    round 1) keeps or re-applies it instead of starting the clock at the sighting. With MC armed and START known,
+ *    round 1) keeps or re-applies it instead of starting the clock at the sighting. A first follow also keeps a schedule
+ *    MC anchored since the last arming after a reload (`mcAnchored`). Every arming forgets both (`onArm`). With MC armed and START known,
  *    today's behaviour is the fallback, and MC's later updates for the followed game apply (`acceptsMc`).
  *  - Following, only live-bit players of the current game claim (`claimGame`, `requireLive`).
  *
@@ -154,9 +155,15 @@ export class PowerupFollower {
     this.heardAt = null;    // the newest live advert of the current game
     this.since = null;      // when the current game's clock started (its first sighting)
     this.mc = null;         // MC's last station_update: { game: the byte MC armed, body, at }
+    this.mcAnchored = false;   // a station_update arrived since the last arming: saved, unlike `mc`, so a reload keeps it
   }
   /** Remember MC's `station_update` for its armed game `armedGame`, whether the station applied it or not. */
-  noteMc(armedGame, body, now) { this.mc = body && typeof body === 'object' ? { game: armedGame || 0, body, at: now } : null; }
+  noteMc(armedGame, body, now) {
+    this.mc = body && typeof body === 'object' ? { game: armedGame || 0, body, at: now } : null;
+    this.mcAnchored = !!this.mc;
+  }
+  /** MC armed the station (any `station_config`): an update from before it may be an old match's, so forget it. */
+  onArm() { this.mc = null; this.mcAnchored = false; }
   /** The game byte the station advertises: the followed one when following, else MC's. */
   game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
   /** May MC's `station_update` re-anchor the schedule? Always before following; following, only for MC's own game. */
@@ -196,7 +203,9 @@ export class PowerupFollower {
         // MC's own game keeps MC's schedule (its START reached this station): a first follow already holds it, a switch
         // from another game re-applies it (review round 1)
         const mc = this.mc && armedGame !== 0 && best === armedGame && this.mc.game === armedGame ? this.mc : null;
-        const kept = !!mc;
+        // A first follow also keeps a schedule MC anchored since the last arming when the memo is gone (a reload: `mc`
+        // is not saved, `mcAnchored` and the station's nextAt are)
+        const kept = !!mc || (first && from == null && armedGame !== 0 && best === armedGame && this.mcAnchored && station.nextAt != null);
         if (!kept) station.startGame(now);
         else if (!first || from != null) { station.startGame(now); station.update(mc.body, mc.at); }
         switched = { from, to: best, fresh: !kept, kept };
@@ -210,7 +219,7 @@ export class PowerupFollower {
     return { switched };
   }
   /** Forget the followed game: the operator's reset, a new kind or id. */
-  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; }
+  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; this.mcAnchored = false; }
   /** The heartbeat's summary, the hill's shape (`games`, keyed by byte; one entry, the current game): the item's state,
    *  its taker, ms to the next spawn (null = unknown), ms since this game's clock started and since it was last heard. */
   summary(station, now) {
@@ -219,8 +228,9 @@ export class PowerupFollower {
     return { [String(this.current)]: { available: v.available === true, taker: v.taker || 0, ...(v.nextInMs != null ? { next_ms: v.nextInMs } : {}),
       since_ms: Math.max(0, now - (this.since ?? now)), last_ms: Math.max(0, now - (this.heardAt ?? now)) } };
   }
-  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since }; }
+  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since, mcAnchored: this.mcAnchored }; }
   restore(s) {
+    if (s && typeof s === 'object') this.mcAnchored = s.mcAnchored === true;
     if (!s || typeof s !== 'object' || !s.follows || !Number.isInteger(s.current) || s.current < 0 || s.current > 255) return this;
     this.follows = true; this.current = s.current;
     this.heardAt = Number.isFinite(s.heardAt) ? s.heardAt : null; this.since = Number.isFinite(s.since) ? s.since : null;
