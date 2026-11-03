@@ -604,7 +604,6 @@ export function startDemo({ engine, log }) {
     const kitted = [...kit, [300, 'briefDone']];
     const lobby = [...kitted, [500, 'config']];
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
-    const meleePos = () => { const f = typeof document !== 'undefined' && document.getElementById('frame'); if (f && q.get('meleepos') === 'b') f.dataset.meleepos = 'b'; };
     const STAGES = {
       'idle':              [[0, 'scan']],
       // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.
@@ -733,11 +732,11 @@ export function startDemo({ engine, log }) {
       'live-kill-mc-ir':   [...live, [2300, () => ev.killConfirm()], [2500, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)]],
       'live-kill-ir-mc':   [...live, [2300, () => engine.feedFrame(`$HIR,4,15,7,3,${21 + foe.tid},0,0,*`)], [2500, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
-      // F665: the melee-ready icon. `&melee_ms=` sets the cooldown, `&meleepos=b` is the gallery's placement B
-      'live-melee':         [[0, meleePos], ...live],
-      'live-melee-swing':   [[0, meleePos], ...live, [2300, () => ev.swing()]],
-      'live-melee-down':    [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die']],
-      'live-melee-respawn': [[0, meleePos], ...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
+      // F665: the melee-ready icon. `&melee_ms=` sets the cooldown
+      'live-melee':         [...live],
+      'live-melee-swing':   [...live, [2300, () => ev.swing()]],
+      'live-melee-down':    [...live, [2300, () => ev.swing()], [2500, 'die']],
+      'live-melee-respawn': [...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
       'down-recap':        [...live, [2100, () => { ev.hit(); ev.dealt(18); ev.dealt(9); }], [2300, () => ev.score(3, 1, 1)], [2350, 'die']],   // S56: TAKEN and DEALT on the down screen
       // The death screen's states (deathscreen.js). Each is a real life through the engine; see `fullLife` above.
       'down-full':         [[0, 'addGhost'], ...live, ...fullLife],

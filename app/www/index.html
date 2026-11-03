@@ -1008,8 +1008,6 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 @keyframes meleelift{0%{filter:brightness(1)}40%{filter:brightness(1.7) drop-shadow(0 0 6px var(--glow))}100%{filter:brightness(1)}}
 [data-env="night"] .ammo .wn .melee::after{display:none}
 #frame[data-env="night"][data-melee="ready"] .ammo .wn .melee{animation:none;filter:brightness(1.45)}
-/* gallery option B (demo only, &meleepos=b): the fist to the left of the whole ammo column, at its foot */
-#frame[data-meleepos="b"] .ammo .wn .melee{position:absolute;right:calc(100% + 14px);bottom:0;width:34px;height:36px}
 @media (prefers-reduced-motion:reduce){.ammo .wn .melee::after{display:none}#frame[data-melee="ready"] .ammo .wn .melee{animation:none;filter:brightness(1.5)}}
 
 /* ============ live scores overlay (bench 2026-09-17) ============
