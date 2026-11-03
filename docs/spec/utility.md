@@ -762,7 +762,9 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
 5. **MC as the fallback.** Before follow mode the station keeps today's rules: MC's `station_update` anchors the
    schedule and players of MC's game claim. The station remembers MC's last update for the game MC armed, applied
    or not. Following into that game (the first follow, or a switch from another game) keeps or re-applies MC's
-   schedule instead of starting the clock at the sighting, and MC's later updates for that game still apply. Following another game, MC's update is ignored, and
+   schedule instead of starting the clock at the sighting, and MC's later updates for that game still apply. Every
+   `station_config` forgets the remembered update, since a new match can reuse the byte. A phone reloaded before its
+   first follow keeps MC's saved schedule if MC's update arrived after the last arming. Following another game, MC's update is ignored, and
    MC's END does not freeze the item: the live bit replaces MC's window. A new game byte in `station_config` leaves a
    following station's item alone; a new kind or id clears follow mode.
 6. **The advert** carries the followed game's byte, so that game's phones read the item.
