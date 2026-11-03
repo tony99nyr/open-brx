@@ -398,7 +398,8 @@ def test_lost_lands_on_the_drain_to_neutral_captured_on_the_rebuild_and_the_3s_f
 
 
 def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor_ends():
-    """A suppressed engine.js transition stays pending; expiry keeps the last owner for a returning edge."""
+    """A suppressed engine.js transition stays pending. After expiry a returning owner is adopted silently (hill.js, the
+    uncertainty rule): nobody here heard the point change hands."""
     async def go():
         st, mgr, clock = mk_point(tid=1)
         await in_play(st)
@@ -420,7 +421,7 @@ def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor
         assert changed.hill is None
         n = mark(cm)
         await adv(changed, id=1, team=0, held=True, value=100)
-        assert audio(cm, n) == [LOST], "a returning different owner is announced"
+        assert audio(cm, n) == [], "a different owner back from out of earshot is adopted silently"
 
         same, sm, sc = mk_point(tid=1)
         await in_play(same)
@@ -433,27 +434,28 @@ def test_a_control_point_transition_inside_the_floor_is_deferred_until_the_floor
     asyncio.run(go())
 
 
-def test_station_owner_memory_expires_30_seconds_after_the_last_advert():
-    assert S.CONTROL_RECONNECT_S == 30.0
+def test_station_owner_memory_bridges_only_the_stale_window():
+    """hill.js `rememberedFresh` (the uncertainty rule, 2026-11-02): a point that expired comes back silently, whoever owns it;
+    a gap inside the stale window was never out of earshot, so a change across it is heard."""
     async def go():
-        inside, im, ic = mk_point(tid=1)
-        await in_play(inside)
-        await adv(inside, id=1, team=1, held=True, value=100)
-        await stop(inside, id=1)
-        await ticks(inside, ic, 2 * S.CONTROL_STALE_S + 0.2)
-        assert inside.hill is None
-        n = mark(im)
-        await adv(inside, id=1, team=0, held=True, value=100)
-        assert audio(im, n) == [LOST], "a different owner inside 30 s is announced"
+        away, am, ac = mk_point(tid=1)
+        await in_play(away)
+        await adv(away, id=1, team=1, held=True, value=100)
+        await stop(away, id=1)
+        await ticks(away, ac, 2 * S.CONTROL_STALE_S + 0.2)
+        assert away.hill is None
+        n = mark(am)
+        await adv(away, id=1, team=0, held=True, value=100)
+        assert audio(am, n) == [], "a different owner after expiry is adopted silently"
+        assert away.hill["owner"] == 0
 
-        outside, om, oc = mk_point(tid=1)
-        await in_play(outside)
-        await adv(outside, id=1, team=1, held=True, value=100)
-        await stop(outside, id=1)
-        oc.advance(31.0)
-        n = mark(om)
-        await adv(outside, id=1, team=0, held=True, value=100)
-        assert audio(om, n) == [], "a different owner after 30 s is adopted silently"
+        blip, bm, bc = mk_point(tid=1)
+        await in_play(blip)
+        await adv(blip, id=1, team=1, held=True, value=100)
+        bc.advance(S.CONTROL_STALE_S - 1.0)
+        n = mark(bm)
+        await adv(blip, id=1, team=0, held=True, value=100)
+        assert audio(bm, n) == [LOST], "CONTROL: a change across a gap inside the stale window is heard"
     asyncio.run(go())
 
 

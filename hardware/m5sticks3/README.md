@@ -395,7 +395,7 @@ refuse/accept rule mirrors `app/src/powerup.js` and is held to it by `app/test/f
 
 **Bench steps (Tony's):**
 
-1. Flash (`stick.py flash`), then `stick.py cmd 5 WIFI <your-ssid> <your-pass>` and confirm it joins
+1. Flash (`stick.py flash`), then `stick.py cmd 5 "WIFI <your-ssid> <your-pass>"` (quoted: each argument goes out as its own serial line) and confirm it joins
    (`STATUS` shows `LINK state=LOOKING FOR MC` or better).
 2. Start MC on the same LAN. The Stick finds it with no typed address (mDNS, else the /24 scan); `MC ws://<mc-ip>:<port>/ws` from the QR/console is still the floor. The serial log prints `MC dial <typed|last-good|mdns|scan> <host>` for every dial.
 3. `STATUS` should show `LINK state=LINKED, NOT ARMED node_id=stick-...`.
