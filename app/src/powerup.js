@@ -8,6 +8,7 @@
 // winner in byte 15 (`taker`), which is what the winning phone waits for before it applies the item. The station
 // owns taken and untaken; MC's `station_update` only re-anchors its countdown.
 import { PLAYER_STATE, inScope } from './beacon.js';
+import { followHoldSwitch } from './control.js';   // F658: the switch hysteresis the hill uses
 import { POWERUP_DEFAULT_EVERY_S, ADVERT_VALUE_MAX, HILL_RING_STALE_MS } from './transport/contract.gen.js';   // seams D: shared with the Stick
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
@@ -36,6 +37,9 @@ export class PowerupStation {
     // F658: who may claim. `claimGame` 0 = any game (either side 0, as Presence), else only that byte; `requireLive` (a
     // following station) only a player whose match is live. The scope (A86) always applies: see `claimant`.
     this.claimGame = 0; this.requireLive = false;
+    // F658 bounce: every local award counts here, with its time, so the follower can tell a claim made after MC's
+    // remembered update (PowerupFollower.step). Not saved: the follower's memo is not saved either.
+    this.takes = 0; this.takenAt = null;
   }
   /** F658: the station follows a new live game (PowerupFollower): its item spawns `first_at_s` after `now`, then every
    *  interval. The last game's item, taker and award protection go; queued `taken` reports stay (MC dates them). */
@@ -96,6 +100,7 @@ export class PowerupStation {
       const ready = mine.filter(p => p.state & PLAYER_STATE.claim_ready).sort((a, b) => a.id - b.id);
       if (ready.length) {
         this.available = false; this.taker = ready[0].id; this.ringAt = null; this.awardedNext = this.nextAt;
+        this.takes++; this.takenAt = now;
         events.push({ type: 'taken', player_num: this.taker }); changed = true;
         this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now }); if (this.unsent.length > 16) this.unsent.shift();
         this.log.push({ t: now, type: 'taken', player_num: this.taker }); if (this.log.length > 64) this.log.shift();
@@ -133,7 +138,8 @@ export class PowerupStation {
  *    claim (`armedGame`, 0 = any).
  *  - IN SCOPE (A86): the powerup kind bit and this station's id bit. A zero scope (an older APK) never counts.
  *  - The CURRENT game is the byte of the in-scope live players it hears, at any signal strength. Another live game takes
- *    the station only with MORE such players heard than the current game; a tie keeps it. A game-0 phone is skipped unless
+ *    the station only with MORE such players heard than the current game; a tie keeps it. While the current game is still
+ *    heard, that lead must hold for FOLLOW_SWITCH_HOLD_MS (control.js followHoldSwitch); with none of it heard, at once. A game-0 phone is skipped unless
  *    MC armed the station for game 0, as the hill does.
  *  - A NEW game starts the item's clock at its first sighting: the first spawn `first_at_s` later, then every
  *    `spawn_every_s` (`PowerupStation.startGame`). No MC START is needed. A byte heard again after more than
@@ -141,7 +147,9 @@ export class PowerupStation {
  *  - MC's own game keeps MC's schedule: the follower remembers MC's last `station_update` for the game MC armed
  *    (`noteMc`), applied or not. Following into that game (the first follow, or a switch from another game, review
  *    round 1) keeps or re-applies it instead of starting the clock at the sighting. A first follow also keeps a schedule
- *    MC anchored since the last arming after a reload (`mcAnchored`). Every arming forgets both (`onArm`). With MC armed and START known,
+ *    MC anchored since the last arming after a reload (`mcAnchored`). Every arming forgets both (`onArm`). A local
+ *    claim in MC's game after the remembered update forgets the update (it would hand the claimed item back on a bounce
+ *    from another game); the next switch into that game then starts the clock at the sighting. With MC armed and START known,
  *    today's behaviour is the fallback, and MC's later updates for the followed game apply (`acceptsMc`).
  *  - Following, only live-bit players of the current game claim (`claimGame`, `requireLive`).
  *
@@ -156,6 +164,8 @@ export class PowerupFollower {
     this.since = null;      // when the current game's clock started (its first sighting)
     this.mc = null;         // MC's last station_update: { game: the byte MC armed, body, at }
     this.mcAnchored = false;   // a station_update arrived since the last arming: saved, unlike `mc`, so a reload keeps it
+    this.seenTakes = 0;        // the station's `takes` at the last step (F658 bounce)
+    this.lead = null;          // { game, since }: a challenger leading the current game (control.js followHoldSwitch)
   }
   /** Remember MC's `station_update` for its armed game `armedGame`, whether the station applied it or not. */
   noteMc(armedGame, body, now) {
@@ -174,6 +184,12 @@ export class PowerupFollower {
    * kept }` when the current game changed (or restarted) this step, else null.
    */
   step(station, players, now, { expiryMs, armedGame = 0, stationId }) {
+    // F658 bounce: a local claim in MC's game after MC's remembered update makes that update wrong (it would hand the
+    // claimed item back), so the memo goes. `station.claimGame` is still the rule the last tick claimed under.
+    if (station.takes !== this.seenTakes) {
+      this.seenTakes = station.takes;
+      if (this.mc && station.takenAt != null && station.takenAt >= this.mc.at && station.claimGame === this.mc.game) this.mc = null;
+    }
     const heard = new Map();   // byte -> { at, n }: the newest advert time and the in-scope live players heard
     for (const p of players || []) {
       if (!p || !(p.state & PLAYER_STATE.live) || !inScope(p, 'powerup', stationId)) continue;
@@ -197,7 +213,7 @@ export class PowerupFollower {
         if (b == null || h.n > b.n || (h.n === b.n && (h.at > b.at || (h.at === b.at && g > best)))) best = g;
       }
       const cur = this.current != null ? heard.get(this.current) : null;
-      if (best != null && (this.current == null || n(best) > n(this.current))) {
+      if (followHoldSwitch(this, best, best != null && (this.current == null || n(best) > n(this.current)), !!cur, now)) {
         const from = this.current;
         this.current = best; this.heardAt = heard.get(best).at; this.since = now;
         // MC's own game keeps MC's schedule (its START reached this station): a first follow already holds it, a switch
@@ -219,7 +235,7 @@ export class PowerupFollower {
     return { switched };
   }
   /** Forget the followed game: the operator's reset, a new kind or id. */
-  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; this.mcAnchored = false; }
+  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; this.mcAnchored = false; this.lead = null; }
   /** The heartbeat's summary, the hill's shape (`games`, keyed by byte; one entry, the current game): the item's state,
    *  its taker, ms to the next spawn (null = unknown), ms since this game's clock started and since it was last heard. */
   summary(station, now) {

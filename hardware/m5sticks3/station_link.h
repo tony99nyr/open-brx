@@ -1045,6 +1045,8 @@ class PowerupSchedule {
   // spawn instant that was just claimed (the caller enqueues it as the CLAIM report's dedup key).
   uint32_t mark_taken(uint8_t player_num, uint32_t now_ms) {
     uint32_t awarded = has_anchor_ ? anchor_ms_ : now_ms;
+    take_seq_++;   // F658 bounce: PowerupFollower::step reads these to forget MC's update a later claim made wrong
+    taken_at_ms_ = now_ms;
     available_ = false;
     taker_ = player_num;
     has_awarded_instant_ = false;
@@ -1058,6 +1060,10 @@ class PowerupSchedule {
     awarded_instant_ms_ = anchor_ms_;
     return awarded;
   }
+
+  // F658 bounce (powerup.js `takes`, `takenAt`): how many local awards so far, and when the last one was.
+  uint32_t take_seq() const { return take_seq_; }
+  uint32_t taken_at_ms() const { return taken_at_ms_; }
 
   PowerupAdvertView view(uint32_t now_ms) const {
     PowerupAdvertView v;
@@ -1084,6 +1090,8 @@ class PowerupSchedule {
   uint8_t taker_ = 0;
   bool has_awarded_instant_ = false;  // true once a LOCAL claim has awarded the current spawn
   uint32_t awarded_instant_ms_ = 0;
+  uint32_t take_seq_ = 0;
+  uint32_t taken_at_ms_ = 0;
 };
 
 // ---- the CLAIM award (A56, confirmed 2026-09-24) -------------------------------------------------
@@ -1176,11 +1184,13 @@ class ClaimGate {
 // A powerup station set up once plays every later game with no walk-out, no Wi-Fi and no re-arm, the way the hill does.
 // It FOLLOWS once it hears an in-scope player (the powerup kind bit and its own id bit, A86) with the live bit: its
 // current game is the byte of those players, at any signal strength. Another live game takes it only with MORE such
-// players heard than the current one (a tie keeps it). A new game starts the item's clock at that first sighting
+// players heard than the current one (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still
+// heard (presence.h follow_hold_switch). A new game starts the item's clock at that first sighting
 // (PowerupSchedule::start_game, first spawn `first_at_s` later); a byte heard again after more than HILL_RING_STALE_MS
 // unheard starts again. MC's own game keeps MC's schedule: the follower remembers MC's last station_update for the game
 // MC armed (note_mc), applied or not, and following into that game (the first follow, or a switch from another game,
-// review round 1) keeps or re-applies it. MC's updates for the followed game still apply (accepts_mc). powerup.js says
+// review round 1) keeps or re-applies it, unless a local claim in that game came after it. MC's updates for the followed
+// game still apply (accepts_mc). powerup.js says
 // why, line for line. One item, one game: no ring.
 struct PowerupFollowStep {
   bool switched = false;  // the current game changed (or restarted) this step
@@ -1208,6 +1218,12 @@ class PowerupFollower {
   // powerup.js `mcAnchored`: a station_update arrived since the last arming. The phone saves it across a reload; the
   // Stick saves no schedule before it follows, so here it always equals has_mc. Kept for parity with the phone.
   bool mc_anchored = false;
+  // F658 bounce: the schedule's take_seq at the last step, and the claim game that step set (what the gate claimed under
+  // until this step). `stepped` is false before the first step: the gate then holds MC's game, as configure() set it.
+  uint32_t seen_takes = 0;
+  bool stepped = false;
+  int claim_game = 0;
+  FollowLead lead;  // a challenger leading the current game (presence.h follow_hold_switch)
 
   void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
     has_mc = u.present;
@@ -1228,6 +1244,13 @@ class PowerupFollower {
   PowerupFollowStep step(PowerupSchedule& sched, const PlayerPresence& players, uint32_t now,
                          uint8_t armed_game, int station_id, int first_at_s) {
     PowerupFollowStep out;
+    // F658 bounce (powerup.js): a local claim in MC's game after MC's remembered update makes that update wrong (it would
+    // hand the claimed item back), so the memo goes.
+    if (sched.take_seq() != seen_takes) {
+      seen_takes = sched.take_seq();
+      const int under = stepped ? claim_game : (int)armed_game;
+      if (has_mc && (int32_t)(sched.taken_at_ms() - mc_at) >= 0 && under == (int)mc_game) has_mc = false;
+    }
     struct H { uint8_t game; uint32_t at; int n; };
     H heard[PRESENCE_MAX_PLAYERS];
     size_t nh = 0;
@@ -1255,7 +1278,8 @@ class PowerupFollower {
       }
       const H* cur = nullptr;
       for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) cur = &heard[k];
-      if (best && (!has_current || best->n > count(current))) {
+      if (follow_hold_switch(lead, has_current, cur != nullptr, best != nullptr, best ? best->game : 0,
+                             best && (!has_current || best->n > count(current)), now)) {
         out.switched = true;
         out.from = has_current ? current : -1;
         out.to = best->game;
@@ -1286,6 +1310,8 @@ class PowerupFollower {
     }
     out.claim_game = follows && has_current ? current : armed_game;
     out.claim_live = follows;
+    stepped = true;
+    claim_game = out.claim_game;
     return out;
   }
   void clear() { *this = PowerupFollower(); }
@@ -1324,6 +1350,7 @@ inline bool decode_powerup_follow(const std::string& s, int station_id, PowerupF
   out.current = (uint8_t)current;
   out.heard_at = power_on ? now - out.stale_ms - 1 : now - (uint32_t)heard;
   out.since = power_on ? out.heard_at : now - (uint32_t)since;
+  out.seen_takes = sched.take_seq();
   f = out;
   sched.restore_state(available != 0, (uint8_t)taker, has_anchor != 0 && !power_on, now + (uint32_t)(int32_t)anchor);
   return true;
