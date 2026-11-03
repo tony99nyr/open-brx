@@ -1184,7 +1184,8 @@ class ClaimGate {
 // A powerup station set up once plays every later game with no walk-out, no Wi-Fi and no re-arm, the way the hill does.
 // It FOLLOWS once it hears an in-scope player (the powerup kind bit and its own id bit, A86) with the live bit: its
 // current game is the byte of those players, at any signal strength. Another live game takes it only with MORE such
-// players heard than the current one (a tie keeps it). A new game starts the item's clock at that first sighting
+// players heard than the current one (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still
+// heard (presence.h follow_hold_switch). A new game starts the item's clock at that first sighting
 // (PowerupSchedule::start_game, first spawn `first_at_s` later); a byte heard again after more than HILL_RING_STALE_MS
 // unheard starts again. MC's own game keeps MC's schedule: the follower remembers MC's last station_update for the game
 // MC armed (note_mc), applied or not, and following into that game (the first follow, or a switch from another game,
@@ -1222,6 +1223,7 @@ class PowerupFollower {
   uint32_t seen_takes = 0;
   bool stepped = false;
   int claim_game = 0;
+  FollowLead lead;  // a challenger leading the current game (presence.h follow_hold_switch)
 
   void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
     has_mc = u.present;
@@ -1276,7 +1278,8 @@ class PowerupFollower {
       }
       const H* cur = nullptr;
       for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) cur = &heard[k];
-      if (best && (!has_current || best->n > count(current))) {
+      if (follow_hold_switch(lead, has_current, cur != nullptr, best != nullptr, best ? best->game : 0,
+                             best && (!has_current || best->n > count(current)), now)) {
         out.switched = true;
         out.from = has_current ? current : -1;
         out.to = best->game;

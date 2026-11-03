@@ -693,6 +693,16 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    the game with the most players on the point, then the newest. When that first game is the hill's MC-armed game
    (or the hill's game is 0), the point it already counted is kept. A live phone on game 0 (played by hand) is
    followed only by a hill whose own game is 0.
+   **Switch hysteresis.** The first follow is immediate. While any live player of the current game is still heard
+   (at any signal strength), a challenger must keep its strict lead for `FOLLOW_SWITCH_HOLD_MS` (10 s) without a
+   break. A lead that drops back to a tie or less, or passes to another game, starts the hold again. A current game
+   with no live player heard at all (its whistle, its players gone, or unheard long enough to go stale) is replaced
+   at once, so the next game loses no time at the hill. Why 10 s: a stray advert keeps a passer-by counted for up to
+   `PRESENCE_EXPIRY_MS` (4 s), and a real player who steps off or is body-shadowed drops out for up to 4 s plus
+   `PRESENCE_EXIT_GRACE_MS` (4 s). A lead under 8 s is radio noise or a walk-past. 10 s is about 40 adverts at the
+   250 ms advert rate, and equals one capture time (`HILL_CAPTURE_S`). The hold is not saved: a restart starts it
+   again. The powerup (§5d.9) uses the same rule and constant (`control.js` `followHoldSwitch`, `presence.h`
+   `follow_hold_switch`).
 3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
    A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
    The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
@@ -738,7 +748,7 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    was not the owner at the start of the gap. It rides in `status.control` and in each `games` entry, and in the
    point snapshot and the tally ring (phone and Stick). `hold_ms` and the capture rate do not change.
 
-The rules are pinned by the `F658:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
+The rules are pinned by the `F658:`, `F658 hysteresis:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
 runners).
 
 ### 5d.9 The static powerup: it follows the live game too (F658)
@@ -751,7 +761,9 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
    (A86). A zero scope (an older APK) is inert, MC-armed or not. Following, only players with the live bit count.
 2. **Follow mode.** It starts at the first in-scope live player heard, at any signal strength, and lasts. Its
    current game is the byte of those players. Another live game takes the station only with more such players
-   heard than the current game; a tie keeps it. A game-0 phone is followed only by a station MC armed for game 0.
+   heard than the current game; a tie keeps it. The switch hysteresis of §5d.8 item 2 applies unchanged: immediate
+   for the first follow and when no live player of the current game is heard, else after a lead held for
+   `FOLLOW_SWITCH_HOLD_MS` (10 s). A game-0 phone is followed only by a station MC armed for game 0.
 3. **The clock.** A new followed game starts the item's clock at that first sighting: the item is not there, the
    first spawn is `first_at_s` later, then every `spawn_every_s` as before. The last game's item and taker go. No MC
    START is needed. A byte heard again after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts its clock
@@ -783,7 +795,7 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
 
 Known limit: the station's clock starts at its first sighting, not at MC's go-live, so with MC out of reach its
 spawns run later than MC's schedule by that delay. A player HUD that reads MC's schedule can say an item is due
-before the station spawns it; a claim waits for the station's advert. The rules are pinned by the `F658:` cases in
+before the station spawns it; a claim waits for the station's advert. The rules are pinned by the `F658:`, `F658 memo:`, `F658 bounce:` and `F658 hysteresis:` cases in
 `app/test/fixtures/powerup-station-cases.json` (phone and Stick runners).
 
 ## 5e / 5f. Roaming hills and TERRITORIES — designed, not built

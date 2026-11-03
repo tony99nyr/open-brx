@@ -1105,29 +1105,31 @@
     },
     {
       "name": "F658: one live phone that missed END cannot pin the hill to its old game",
-      "why": "Red holds game 7, then walks off still live (it missed END) and stays heard at the edge. Two blue players of game 8 arrive on the point: game 8 has more live players there than game 7, so the hill moves to game 8 at once.",
+      "why": "Red holds game 7, then walks off still live (it missed END) and stays heard at the edge. Two blue players of game 8 arrive on the point: game 8 has more live players there than game 7, and game 7 is still heard, so the hill moves to game 8 once that lead has held for FOLLOW_SWITCH_HOLD_MS (10 s).",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
       "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}},
-      "until_ms": 26000,
-      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 12250, "to_ms": 26000, "every_ms": 250, "rssi": [-80]}, {"id": 2, "from_ms": 14000, "to_ms": 26000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 14000, "to_ms": 26000, "every_ms": 250, "rssi": [-60]}],
+      "until_ms": 38000,
+      "series": [{"id": 1, "from_ms": 0, "to_ms": 12000, "every_ms": 250, "rssi": [-60]}, {"id": 1, "from_ms": 12250, "to_ms": 38000, "every_ms": 250, "rssi": [-80]}, {"id": 2, "from_ms": 14000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 14000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}],
       "expect": [
         {"t": 13750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
-        {"t": 14000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8]},
-        {"t": 26000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}}
+        {"t": 23750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}},
+        {"t": 24000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8]},
+        {"t": 38000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}}
       ]
     },
     {
       "name": "F658: a stranger takes an empty hill, and loses it when more real players arrive; the real game gets its tally back",
-      "why": "Blue holds game 8 and leaves. A red stranger of game 9 alone on the empty hill takes it (1 live player against 0). Two blue players of game 8 come back: 2 beats 1, so the hill returns to game 8 with its saved owner.",
+      "why": "Blue holds game 8 and leaves. A red stranger of game 9 alone on the empty hill takes it at once: game 8 is no longer heard at all. Two blue players of game 8 come back: 2 beats 1, and game 9 is still heard, so the hill returns to game 8 with its saved owner once that lead has held for 10 s.",
       "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000},
       "players": {"2": {"team": 1, "state": ["alive", "live"], "game": 8}, "4": {"team": 1, "state": ["alive", "live"], "game": 8}, "5": {"team": 0, "state": ["alive", "live"], "game": 9}},
-      "until_ms": 28000,
-      "series": [{"id": 2, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 20000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 25000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 25000, "to_ms": 28000, "every_ms": 250, "rssi": [-60]}],
+      "until_ms": 38000,
+      "series": [{"id": 2, "from_ms": 0, "to_ms": 11000, "every_ms": 250, "rssi": [-60]}, {"id": 5, "from_ms": 20000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 25000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}, {"id": 4, "from_ms": 25000, "to_ms": 38000, "every_ms": 250, "rssi": [-60]}],
       "expect": [
         {"t": 19750, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}},
         {"t": 20000, "hill": {"team": 255, "state": [], "value": 0, "game": 9}, "games": {"8": {"owner": 1}}},
         {"t": 24000, "hill": {"team": 0, "state": ["rising"], "value": 40, "game": 9}},
-        {"t": 25000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"9": {"owner": 255}}}
+        {"t": 34750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 9}},
+        {"t": 35000, "hill": {"team": 1, "state": ["held"], "value": 100, "game": 8}, "games": {"9": {"owner": 0}}}
       ]
     },
     {
@@ -1252,6 +1254,9 @@
         {"t": 60000, "own_ms": {"0": 0}, "hill": {"team": 0, "state": ["held"], "value": 100}},
         {"t": 62000, "own_ms": {"0": 2000}}
       ]
-    }
+    },
+    {"name": "F658 hysteresis: a short lead does not switch the hill while its current game is still heard", "why": "Red of game 7 holds the point. Two blue players of game 8 pass over it for 3 s: game 8 leads for about 7 s with the presence expiry, under FOLLOW_SWITCH_HOLD_MS (10 s), so the hill stays on game 7.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 30000, "series": [{"id": 1, "from_ms": 0, "to_ms": 30000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 13000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 10000, "to_ms": 13000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 12000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 16000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 20000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 30000, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}]},
+    {"name": "F658 hysteresis: a lead kept for 10 s switches the hill", "why": "Red of game 7 holds the point. Two blue players of game 8 arrive at 12 s and stay: game 8 leads 2 to 1 from then, so the hill moves to game 8 at 22 s, FOLLOW_SWITCH_HOLD_MS later, and keeps game 7's tally in the ring.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 40000, "series": [{"id": 1, "from_ms": 0, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 12000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 12000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 21750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 22000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}, "ring": [7, 8], "games": {"7": {"owner": 0}}}]},
+    {"name": "F658 hysteresis: a lead that drops back to a tie starts the hold again", "why": "Red of game 7 holds the point. Blue players 2 and 3 of game 8 lead from 10 s; player 3 goes silent at 14 s and expires, so the lead drops back to a tie before 10 s have passed. Player 3 returns at 22 s: the hold starts again then, and the hill moves to game 8 at 32 s, not earlier.", "setup": {"threshold_dbm": -75, "dwell_ms": 800, "exit_band_db": 3, "exit_grace_ms": 4000, "fade_after_ms": 1000, "expiry_ms": 4000, "sight_ms": 4000, "alpha": 0.35, "capture_s": 10, "net_cap": 3, "decay_s": 10, "decay_delay_ms": 500, "tick_ms": 250, "armed_game": 0, "ring_size": 4, "ring_stale_ms": 600000}, "players": {"1": {"team": 0, "state": ["alive", "live"], "game": 7}, "2": {"team": 1, "state": ["alive", "live"], "game": 8}, "3": {"team": 1, "state": ["alive", "live"], "game": 8}}, "until_ms": 40000, "series": [{"id": 1, "from_ms": 0, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 2, "from_ms": 10000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 10000, "to_ms": 14000, "every_ms": 250, "rssi": [-60]}, {"id": 3, "from_ms": 22000, "to_ms": 40000, "every_ms": 250, "rssi": [-60]}], "expect": [{"t": 21750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 31750, "hill": {"team": 0, "state": ["held"], "value": 100, "game": 7}}, {"t": 32000, "hill": {"team": 255, "state": [], "value": 0, "game": 8}}]}
   ]
 }

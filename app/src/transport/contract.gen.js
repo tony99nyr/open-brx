@@ -261,6 +261,13 @@ export const HILL_REFUSED_TID = 2;
 export const HILL_RING_SIZE = 4;
 /** F658: a game byte unheard for longer than this starts a fresh tally (wrap, MC restart) */
 export const HILL_RING_STALE_MS = 600000;
+/** F658: a following hill or powerup switches away from a game it still hears only after the challenger keeps a strict
+ *  lead in heard live players for this long. Against PRESENCE_EXPIRY_MS (4 s) and PRESENCE_EXIT_GRACE_MS (4 s): one stray
+ *  advert keeps a passer-by counted for up to 4 s, and a real player who steps off or is body-shadowed drops out for up
+ *  to 4 s + 4 s = 8 s, so a lead shorter than 8 s is radio noise or a walk-past, never a new game. Phones advertise about
+ *  every 250 ms (PRESENCE_ALPHA_REF_MS), so 10 s is about 40 adverts of agreement. It equals HILL_CAPTURE_S: a real
+ *  handover costs at most one capture time. A current game with no live player heard switches at once (utility.md §5d.8). */
+export const FOLLOW_SWITCH_HOLD_MS = 10000;
 /** Seams batch D: the grenade/hill IR beacon words (bench 2026-09-10), one home for engine.js, the stage, hillbeacon.py
  *  and the Stick's brx_ir.h. A beacon is `$HIR` protocol 15; its magnitude is a MODE, not damage. A neutral point
  *  broadcasts team HILL_REFUSED_TID (2).

@@ -92,7 +92,8 @@ test('memo fix: a new arming on the same byte forgets MC\'s remembered update, s
   api.applyStationUpdate({ id: 6, available: false, next_spawn_in_ms: 20_000 });   // an old match's START for game 55
   await api.applyStationConfig({ ...station, game: 55 });   // MC restarted and armed game 55 again; its new START is lost
   assert.equal(JSON.parse(store.get('brx.station.pufollow')).mcAnchored, false, 'the saved mark is gone too');
-  stand(1000, [{ id: 5, game: 54, live: false }, { id: 7, game: 55, live: true }, { id: 8, game: 55, live: true }]);
+  // 5 s: game 54's last live advert (player 6, the test above) must expire first, or the switch waits for the hold
+  stand(5000, [{ id: 5, game: 54, live: false }, { id: 7, game: 55, live: true }, { id: 8, game: 55, live: true }]);
   assert.equal(api.statusBody().powerup.game, 55);
   assert.ok(air().value >= 59, `a fresh clock, not the old match's schedule: ${air().value}`);
 });
