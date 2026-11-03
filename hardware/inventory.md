@@ -5,7 +5,7 @@ recorded here the day they are made, so a buying decision never lives only in ch
 shopping list this grew from is archived at `docs/archive/hardware/bench-shopping-list.md` (grep it, do
 not read it). Gun sticker labels stay out of the repo; the device registry in `~/.brx-mcp/` holds them.
 
-**Updated: 2026-09-23.**
+**Updated: 2026-11-02.**
 
 ## On hand
 
@@ -18,7 +18,7 @@ not read it). Gun sticker labels stay out of the repo; the device registry in `~
 | ELEGOO Electronic Fun Kit (235 pc) | 1 kit | breadboard, jumpers, resistors, 2N2222, caps, status LEDs | 2026-08-26 |
 | Aideepen nRF24L01+PA+LNA + HW-200 adapter | 3 + 3 | exploratory gun-mesh tap; off the critical path | 2026-08-26 |
 | USB-C cables, 5 V USB charger | several | power + serial for every board | before 2026-08 |
-| M5StickS3 ESP32-S3 Mini IoT Dev Kit (M5Stack K150) | 2 | the hardware Station node (`brx-station-spec.md` S1 tier in a case): IR RX G42, IR TX G46, 1.14" LCD, speaker, 250 mAh, BLE 5. First unit flashed and bench-brought-up 2026-09-23 (`hardware/m5sticks3/README.md`, `docs/bench-sticks3-2026-09-23.md`) | 2026-09-11 |
+| M5StickS3 ESP32-S3 Mini IoT Dev Kit (M5Stack K150) | 6 | the hardware Station node (`brx-station-spec.md` S1 tier in a case): IR RX G42, IR TX G46, 1.14" LCD, speaker, 250 mAh, BLE 5. First unit flashed and bench-brought-up 2026-09-23 (`hardware/m5sticks3/README.md`, `docs/bench-sticks3-2026-09-23.md`). 6 units (Tony, 2026-11-02); MC has seen 3, and the other 3 have never joined (their first flash needs download mode) | 2026-09-11 |
 | Seeed Grove Infrared Emitter (101020026), 940 nm, ±17°, driver on board | 3 | the stronger beacon for the Stick (the bare CHANZON LED cliffs at 8 to 10 ft). Two in use, one spare | 2026-09-11 |
 
 Seeed direct wanted $26.11 DHL on $8.60 of parts. Mouser and Amazon (the Seeed listing and the
