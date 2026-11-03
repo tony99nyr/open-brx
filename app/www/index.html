@@ -995,8 +995,10 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 /* ============ melee-ready icon (F665) ============
    hud/ammo.js `_meleeCue`: the BEAT DOWN fist at the start of the weapon-name row. After a swing the frame carries
    data-melee="cool" (the fist dims) for the melee slot's t14, then "ready" for 450 ms: one light sweep and a brief lift.
-   No number and no timer. Night and reduced motion get a brightness step instead of the moving sweep. */
-.ammo .wn .melee{position:relative;align-self:center;display:inline-flex;width:26px;height:28px;overflow:hidden;border-radius:6px;
+   No number and no timer. Night and reduced motion get a brightness step instead of the moving sweep. The fist sits just
+   outside the row's box (absolute), so the ammo column keeps its width and the kill cards and tells keep their room. */
+.ammo .wn{position:relative}
+.ammo .wn .melee{position:absolute;right:calc(100% + 8px);top:50%;margin-top:-14px;display:inline-flex;width:26px;height:28px;overflow:hidden;border-radius:6px;
   color:var(--num);transition:opacity 120ms linear,filter 120ms linear}
 .ammo .wn .melee svg{width:100%;height:100%;display:block}
 #frame[data-melee="cool"] .ammo .wn .melee{opacity:.28;filter:saturate(.2)}
