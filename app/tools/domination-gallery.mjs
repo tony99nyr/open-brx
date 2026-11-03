@@ -14,7 +14,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const { port: PORT, close } = await startStaticServer(WWW, { host: '127.0.0.1', decodePath: true });
 const VIEWS = [{ name: 'pixel', width: 891, height: 411, label: '891×411' }, { name: 'se', width: 667, height: 375, label: '667×375' }];   // = screens.mjs VIEWS
 const SKINS = [{ name: 'day', q: '', label: 'Day' }, { name: 'night', q: '&night', label: 'Night ops' }];
-const PLACES = [{ name: 'a', q: '', label: 'A: centred under the clock' }, { name: 'b', q: '&dompos=b', label: 'B: top left, under your name' }];
+const PLACES = [{ name: 'a', q: '', label: 'A: centred under the clock' }];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 let base = '?'; try { base = execSync('git rev-parse --short HEAD', { cwd: HERE }).toString().trim(); } catch (_) { /* no git */ }
 
