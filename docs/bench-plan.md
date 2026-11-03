@@ -3,16 +3,42 @@
 Updated: 2026-11-02. **Open this file first at the bench.** How a live bench run works with Tony (who drives
 the tools, the "1" reply, the recorder at the end): the [`bench-session` skill](../.claude/skills/bench-session/SKILL.md).
 
-The next bench is the swap and reload sheet ([below](#next-game-swap-and-reload-the-torture-sheet-f650-f645)), before the next game. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
+The next sitting is NEXT GAME PREP ([below](#next-game-prep-one-sitting-in-this-order-2026-11-02)), before the next game; it includes the swap and reload sheet. The Sunday AM sheet ([below](#sunday-am-the-bench-before-the-game-on-2026-11-01)) put gameplay first
 for the game on 2026-11-01. NEXT ([below](#next-the-bench-after-0430-2026-10-26)) is every MVP bench row, in rig order.
 
 This file holds the ORDER only. Each step points to the sheet section or the FOLLOWUPS row that holds the procedure.
 Do not copy a procedure into this file. When a sitting ends, strike its steps here (the skill's close, step 4).
 
+## NEXT GAME PREP: one sitting, in this order (2026-11-02)
+
+The order Tony works in before the next game. Each step links the sheet or row that holds its procedure; this list
+does not repeat it. **Before a game** means a game cannot run well without it. **Can wait** means a later bench sitting.
+Build everything from current main: the F645 and F650 fixes are merged, so one APK from main serves the SR sheet too.
+About 3 h 15 min for the before-a-game part with the Mac, Domination and phone-hill steps (the SR sheet is 85 min
+of it); about 3 h 40 min more for the rest.
+
+| # | when | minutes | step | procedure |
+|---|---|---|---|---|
+| P1 | before a game | 20 | Reflash all 3 Sticks over USB from main, one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
+| P2 | before a game | 15 | F642 on one Stick: (1) a typed address that is absent, then the log shows typed, (2) mDNS, (3) the subnet scan, (4) a welcome and "last good saved"; (5) a reboot rejoins through the last good MC. A moved MC is found again (one Stick is enough). Then power the other two and see each one join MC. | FOLLOWUPS F642 |
+| P3 | before a game | 20 | Build the APK from a main checkout and install it on every phone, one phone at a time, after P1. The iPhone build needs the MacBook. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
+| P4 | before a game | 10 | F659. (1) The black phone, with its stale `:8765` address, joins MC by itself. (2) Each other phone joins by itself. (3) A phone this MC has never seen (or any phone on a fresh MC home) shows NEW PHONE JOINED on the console; a phone it already knows does not. (4) Every phone shows in the LOBBY before READY. | FOLLOWUPS F659 |
+| P5 | before a game on the Mac | 10 | The Mac 5-step check, with the phone that could not ping on 2026-11-01 (F643). Skip it when MC runs on the PC. | [`mac-dev-runbook.md`](mac-dev-runbook.md) §1b, *5-step check* |
+| P6 | before a game | 5 | Hill off: an FFA with hills turned off, with a Stick hill powered in the field. | FOLLOWUPS F658 (its hill-off bench line) |
+| P7 | before a Domination game | 20 | F666: three Stick hills, a Domination game, two players. Check the target reads 1000 before START (a KOTH game before it can carry its hold target over, F666 item 6). Capture each hill once; an owned hill keeps scoring while contested; the console shows the score. The phone HUD shows one hill only for now (F666 item 2). | FOLLOWUPS F666 (open item 5), [`domination-design.md`](domination-design.md) §2 |
+| P8 | before a game (P0) | 85 | Swap and reload, SR1-SR14. Zero desyncs is the pass. | [the swap and reload sheet](#next-game-swap-and-reload-the-torture-sheet-f650-f645) |
+| P9 | before a game with phone hills | 10 | F648: arm a phone hill, toggle its Bluetooth off and on mid-match. Pass: it logs "the advert is down" and comes back with the point intact. Needs the APK from P3. | FOLLOWUPS F648 |
+| P10 | can wait | 5 | The near-miss flash colour (F68): Tony asked whether a recoil miss flashes the headset green. State the headset's team. Fire one magnitude-0 word from the IR rig at the worn headset, then one magnitude-100 word as the control. Tony reports each colour; the gun should buzz and play `H06` on the miss, with no `$HIR`. Then watch the headset return to its team colour within about 5 s (F68's eyes check). | post-mvp F68 |
+| P11 | can wait | 45 | The melee swing and night range, MN1-MN3 (MN2 and MN3 need outdoors in the dark). MN1 decides whether the HUD's melee icon (F665) can trust t14. | [MN1-MN3](#next-the-melee-swing-and-the-night-range-cut-f649-f580) |
+| P12 | can wait | 85 | The hit effect of accuracy, HE1-HE5, plus the 25 m set-up. It decides F662's recoil numbers before the R2 flag goes on. | [HE1-HE5](#next-the-hit-effect-of-accuracy-f662) |
+| P13 | can wait | 85 | The Energy Shotgun frame, ES0-ES5. It ships F661 (the row is hidden until then). | [ES0-ES5](#next-the-energy-shotgun-frame-f661) |
+
+`$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
+
 ## NEXT GAME: swap and reload, the torture sheet (F650, F645)
 
-Tony, 2026-11-01: swap and reload are P0 core gameplay. Build: a bench APK from `fix/f650-alt-before-first-pull` (it holds
-`fix/f650-lever-last-fired`) on top of `fix/f645-gset-resend`, MC from current main. One gun with a two-weapon kit (a primary
+Tony, 2026-11-01: swap and reload are P0 core gameplay. Build: an APK and MC from current main (the F650 and F645 fix
+branches are merged). One gun with a two-weapon kit (a primary
 and a pistol secondary) for every step unless the step names others. Before you start and after every step, read the phone
 log: a line `gun was on slot N: the HUD showed slot M` is a desync. The pass rule for the whole sheet is zero desync lines.
 
