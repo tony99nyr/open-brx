@@ -52,6 +52,12 @@ EXTRAS = {
     "V124": "the other killtacular read (presentation.py)",
     "H22": "'Hit on Shield' (community_sound_labels.csv), a material hit take",
     "A10": "the hum an older $PSET slot shipped (hitaudio.py, F347)",
+    # F665 bench switch (engine.js `setMeleeNotReady`): the melee not-ready candidates. On the 2.5 s default a 0.2 s beep
+    # would hold the next voice line, and the next refused press, for 2.5 s. Only that switch plays them.
+    "N92": "F665 melee not-ready candidate, a 0.2 s low buzz",
+    "U55": "F665 melee not-ready candidate, a 0.3 s falling beep",
+    "N98": "F665 melee not-ready candidate, a 0.1 s dull click",
+    "VX0W": "F665 melee not-ready fallback, 'Error!'",
 }
 # On-gun ids the golden bundle ships that the hand table did not time. A row changes timing, so each waits for the bench.
 DEFERRED = {
