@@ -678,7 +678,7 @@ static void test_which_kinds_scan_for_players() {
   CHECK_EQ((int)scan_window_units("control"), 50);
   CHECK_EQ((int)scan_window_units("powerup"), 50);  // ready claim must reach the next 1 s scan batch
   CHECK(station_needs_player_scan("powerup", true));
-  CHECK(!station_needs_player_scan("powerup", false));  // unchanged: no claim scan while taken
+  CHECK(station_needs_player_scan("powerup", false));  // F658: a taken item still listens, to follow the live game
   CHECK(!station_needs_player_scan("extraction", true));
   CHECK(!station_needs_player_scan("bomb", true));
   CHECK(!station_needs_player_scan("", true));

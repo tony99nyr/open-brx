@@ -179,20 +179,20 @@ static void test_json_escapes_quotes_and_backslashes() {
 static void test_hello_body_matches_the_wire_contract() {
   StationIdentity id;
   id.node_id = "stick-7f3a";
-  id.app_ver = "h8-0.3+abc1234";
+  id.app_ver = "h8-0.4+abc1234";
   CHECK_EQ(build_hello_body(id, 0),
-           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.3+abc1234\","
+           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.4+abc1234\","
                        "\"platform\":\"esp32\",\"seq_next\":0}"));
   id.node_key = "wk-99";
   CHECK_EQ(build_hello_body(id, 0),
-           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.3+abc1234\","
+           std::string("{\"node_id\":\"stick-7f3a\",\"node_type\":\"utility\",\"app_ver\":\"h8-0.4+abc1234\","
                        "\"platform\":\"esp32\",\"seq_next\":0,\"node_key\":\"wk-99\"}"));
 }
 
 static void test_status_body_matches_utility_js_shape() {
   StatusFields f;
   f.node_id = "stick-7f3a";
-  f.app_ver = "h8-0.3+abc1234";
+  f.app_ver = "h8-0.4+abc1234";
   f.kind = "respawn";
   f.team = 1;
   f.station_id = 3;
@@ -203,7 +203,7 @@ static void test_status_body_matches_utility_js_shape() {
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"stick-7f3a\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"respawn\",\"team\":1,\"station_id\":3,"
-                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.3+abc1234\","
+                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.4+abc1234\","
                        "\"platform\":\"esp32\",\"battery\":81}"));
   f.kind = "control";
   f.team = 255;
@@ -219,7 +219,7 @@ static void test_status_body_matches_utility_js_shape() {
   CHECK_EQ(build_status_body(f),
            std::string("{\"node_id\":\"stick-7f3a\",\"arm_state\":\"connected\",\"synced\":false,"
                        "\"role\":\"utility\",\"kind\":\"control\",\"team\":255,\"station_id\":9,"
-                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.3+abc1234\","
+                       "\"threshold\":-74,\"live\":true,\"armed\":true,\"app_ver\":\"h8-0.4+abc1234\","
                        "\"platform\":\"esp32\",\"control\":{\"owner\":1,\"progress\":50,\"contested\":false,"
                        "\"net\":1,\"counts\":{\"1\":2},\"lead\":1}}"));
 }
@@ -3116,8 +3116,65 @@ static void test_f658_hill_follows_the_live_game() {
   CHECK(link.reset_hill() && !link.follower().follows);
 }
 
+// F658, the static powerup: a Stick powerup armed for game 6 with no START follows a LIVE in-scope player of game 7,
+// starts the item's clock at first_at_s, advertises and reports byte 7 with `follows`, ignores MC's update for game 6,
+// keeps its item across MC's next arming and is not frozen by MC's END. A zero scope never starts it.
+static void test_f658_powerup_follows_the_live_game() {
+  StationLink link;
+  StationAssignment a;
+  a.present = true; a.kind = "powerup"; a.id = 4; a.team = 255; a.game = 6;
+  a.item.present = true; a.item.spawn_every_s = 60; a.item.first_at_s = 60;
+  link.apply_station_config(a, 0);
+  PlayerPresence p;
+  p.key_by_game = true;
+  uint8_t kinds = 0;
+  auto hear = [&](uint8_t game, uint32_t t) {
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = kinds; d.scope = 1u << 4; d.id = 3; d.team = 0;
+    d.state = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE; d.game = game;
+    p.observe(d, -70, t);
+  };
+  for (uint32_t t = 0; t <= 1000; t += 250) { hear(7, t); p.tick(t); link.tick_players(p, t); }
+  CHECK(!link.pu_follower().follows && link.advert_game() == 6);   // A86: a zero scope is inert
+  CHECK(!link.pu_save_due());
+  kinds = contract::ADVERT_SCOPE_KIND_POWERUP;
+  hear(7, 2000); p.tick(2000); link.tick_players(p, 2000);
+  CHECK(link.pu_follower().follows && link.advert_game() == 7 && link.last_pu_follow().switched);
+  CHECK(link.powerup_advert_view(2000).value == 60);   // the clock from first_at_s
+  CHECK(link.pu_save_due());
+  CHECK(!link.pu_save_due());
+  {  // review round 1: the claim rule reaches the gate only through apply_claim_follow (the glue holds claimMux)
+    Advert c; c.role = contract::ADVERT_ROLE_PLAYER; c.id = 9; c.value = 4; c.game = 0; c.scope_kinds = contract::ADVERT_SCOPE_KIND_POWERUP;
+    c.scope = 1u << 4; c.state = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_CLAIM_READY;   // no live bit
+    link.claims().observe_advert(c, -60, 2000);
+    CHECK(link.claims().ready_due(2100));   // not handed over yet: the gate still takes any player
+    link.discard_claim_batch();
+    link.apply_claim_follow();
+    link.claims().observe_advert(c, -60, 2200);
+    CHECK(!link.claims().ready_due(2300));  // following: a player without the live bit cannot claim
+    c.state |= contract::ADVERT_PLAYER_STATE_LIVE;
+    link.claims().observe_advert(c, -60, 2400);
+    CHECK(link.claims().ready_due(2500));
+    link.discard_claim_batch();
+  }
+  const std::string body = build_status_body(fill_status(link, 3000, true, 1, 0));
+  CHECK(body.find("\"powerup\":{\"follows\":true,\"game\":7,\"games\":{\"7\":{\"available\":false,\"taker\":0,\"next_ms\":59000,\"since_ms\":1000,\"last_ms\":1000}}}") != std::string::npos);
+  StationUpdateMsg u; u.present = true; u.id = 4; u.available = true; u.next_spawn_in_ms = 60000;
+  CHECK(!link.apply_station_update(u, 3000));   // MC armed game 6: not the game on the field
+  CHECK(!link.powerup().available());
+  CHECK(link.pu_follower().has_mc && link.pu_follower().mc_anchored);   // remembered for game 6
+  StationAssignment b = a; b.game = 8; b.ends_in_ms = 0;   // MC's next arming, with an END: neither touches the item
+  link.apply_station_config(b, 4000);
+  CHECK(!link.pu_follower().has_mc && !link.pu_follower().mc_anchored);   // any arming forgets MC's remembered update
+  CHECK(link.pu_follower().follows && link.advert_game() == 7 && !link.powerup_ended());
+  CHECK(link.powerup_advert_view(4000).value == 58);
+  StationAssignment c = a; c.id = 5;   // another station id is another station: it follows nothing yet
+  link.apply_station_config(c, 5000);
+  CHECK(!link.pu_follower().follows);
+}
+
 int main(int argc, char** argv) {
   test_f658_hill_follows_the_live_game();
+  test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f390_deadline_rejoin_for_each_station_kind();
   test_f389_every_dial_path_respects_link_stops();
@@ -3135,14 +3192,14 @@ int main(int argc, char** argv) {
     };
     StationIdentity id;
     id.node_id = "stick-h8-demo";
-    id.app_ver = "h8-0.3+abc1234";
+    id.app_ver = "h8-0.4+abc1234";
     write("hello.json", make_envelope("hello", build_hello_body(id, 0), "hello0000001", 1700000000000LL));
     id.node_key = "wk-h8-demo-1";
     write("hello_rekeyed.json",
           make_envelope("hello", build_hello_body(id, 0), "hello0000002", 1700000010000LL));
     StatusFields resp;
     resp.node_id = "stick-h8-demo";
-    resp.app_ver = "h8-0.3+abc1234";
+    resp.app_ver = "h8-0.4+abc1234";
     resp.kind = "respawn";
     resp.team = 1;
     resp.station_id = 3;
@@ -3154,7 +3211,7 @@ int main(int argc, char** argv) {
           make_envelope("status", build_status_body(resp), "status000001", 1700000020000LL));
     StatusFields ctrl;
     ctrl.node_id = "stick-h8-demo";
-    ctrl.app_ver = "h8-0.3+abc1234";
+    ctrl.app_ver = "h8-0.4+abc1234";
     ctrl.kind = "control";
     ctrl.team = 255;
     ctrl.station_id = 9;

@@ -63,7 +63,7 @@ def _named_lines() -> list[str]:
     return [st.WAITING_FOR_PHONE, st.GUN_LINK_LOST, st.CLOCK_NOT_SYNCED, st.WRONG_WIFI, st.IDENTITY_REVERTED,
             st.GUN_DID_NOT_ANSWER, st.GUN_DID_NOT_TAKE_CONFIG, st.BATTERY_UNREAD, st.PHONE_BATTERY_LOW, st.SCREEN_OFF, st.GUN_FLAPPING_LINE,
             st.STATION_BRING_BACK, st.STATION_ARMED_OLDER, st.STATION_NOT_ARMED, st.STATION_BATTERY_LOW,
-            STATION_FOLLOWS, station_pace_line("capture_s", 10, 15), station_pace_line("net_cap", 2, 3), station_old_app_line(1), station_old_app_line(2),   # F658
+            STATION_FOLLOWS, station_pace_line("capture_s", 10, 15), station_pace_line("net_cap", 2, 3), station_old_app_line(1), station_old_app_line(2), station_old_app_line(1, "powerup"), station_old_app_line(2, "powerup"),   # F658
             st.not_reached_line("2M", False), st.not_reached_line("2M", True),
             Session._ONE_TEAM_REFUSAL, *tamper]
 

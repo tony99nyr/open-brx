@@ -36,7 +36,7 @@ function harness({ health = SHIELDS, respawn = 'auto', fill = 'echo', head = [] 
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const bundle0 = atPools(golden, health), bundle = { ...bundle0, head: [...bundle0.head, ...head] };
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
-    respawn: { type: respawn, delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
+    respawn: { type: respawn, delay_s: 8 }, ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}), scoring: { frag_limit: 25, win_by: 'kills' }, health, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
   const eng = new Engine({ writer: fr => { const frames = [...fr]; writes.push(...frames); writeGroups.push({ frames, gapMs: scheduledGap }); scheduledGap = null; }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => { scheduledGap = ms; fn(); scheduledGap = null; }, rng: () => 0 });

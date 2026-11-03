@@ -40,7 +40,7 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { PLAYER_STATE, inScope } from './beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS } from './transport/contract.gen.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS, FOLLOW_SWITCH_HOLD_MS } from './transport/contract.gen.js';
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
 //  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
@@ -332,12 +332,34 @@ export class ControlAdvertiser {
  * `point` is the ONE ControlPoint the station shows and advertises: a switch saves its state into the ring and loads the
  * other game's (or a fresh one) with `restore`, which also restarts its clock, so no time banks across a switch. PURE.
  */
+/**
+ * F658 switch hysteresis, one rule for the hill (HillFollower) and the powerup (powerup.js PowerupFollower), and the
+ * Stick's presence.h `follow_hold_switch`. `f` holds `current` and `lead` ({ game, since } or null). `best` is the
+ * strongest other live game (null = none), `leads` whether it has strictly more heard live players than the current
+ * game, and `currentHeard` whether any live in-scope player of the current game is heard at all. True = switch to `best`
+ * now.
+ *  - No current game yet (the first follow): at once.
+ *  - The current game has no live player heard (its whistle, its players gone, or gone stale): at once, so the next game
+ *    loses no time at the hill or the pickup.
+ *  - Else the challenger must lead for FOLLOW_SWITCH_HOLD_MS without a break: a lead that drops back to a tie or less,
+ *    or passes to another game, starts the hold again. The hold is not saved: a restart starts it again.
+ */
+export function followHoldSwitch(f, best, leads, currentHeard, now, holdMs = FOLLOW_SWITCH_HOLD_MS) {
+  if (best == null || !leads) { f.lead = null; return false; }
+  if (f.current == null || !currentHeard) { f.lead = null; return true; }
+  if (!f.lead || f.lead.game !== best) f.lead = { game: best, since: now };
+  if (now - f.lead.since < holdMs) return false;
+  f.lead = null;
+  return true;
+}
+
 export class HillFollower {
   constructor({ size = HILL_RING_SIZE, staleMs = HILL_RING_STALE_MS } = {}) {
     this.size = size; this.staleMs = staleMs;
     this.follows = false;
     this.current = null;        // the followed game byte, once following
     this.games = new Map();     // byte -> { heardAt, since, snap } (snap: the point's state while not current, null = fresh)
+    this.lead = null;           // { game, since }: a challenger leading the current game, and since when (followHoldSwitch)
   }
   /** The game byte the hill advertises and counts under: the current one when following, else MC's. */
   game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
@@ -382,7 +404,8 @@ export class HillFollower {
     }
     // Review of F658: another live game takes the hill only with MORE live players on the point than the current game
     // (a tie keeps it), so one phone that missed END cannot pin the hill, and a stranger takes an empty hill only until
-    // more real players arrive. The first follow takes the game with the most players there (then the newest).
+    // more real players arrive. The first follow takes the game with the most players there (then the newest). While the
+    // current game is still heard, that lead must hold for FOLLOW_SWITCH_HOLD_MS (followHoldSwitch).
     const n = g => (heard.get(g) || { n: 0 }).n;
     let best = null;
     for (const g of heard.keys()) {
@@ -391,8 +414,9 @@ export class HillFollower {
       if (!e) continue;   // evicted in this same step (more live games than the ring holds)
       if (!b || n(g) > n(best) || (n(g) === n(best) && (e.since > b.since || (e.since === b.since && g > best)))) best = g;
     }
+    // The switch waits for a sustained lead while the current game is still heard (followHoldSwitch)
     let next = this.current;
-    if (best != null && (this.current == null || n(best) > n(this.current))) next = best;
+    if (followHoldSwitch(this, best, best != null && (this.current == null || n(best) > n(this.current)), this.current != null && heard.has(this.current), now)) next = best;
     let switched = null;
     if (next !== this.current && first && (!armedGame || armedGame === next)) {
       // Review of F658: the first follow into MC's own game (or from a hill of any game) keeps the point it counted
@@ -421,7 +445,7 @@ export class HillFollower {
     return !armedGame || !p.game || p.game === armedGame;
   }
   /** Forget every game: the operator's point reset. */
-  clear() { this.follows = false; this.current = null; this.games = new Map(); }
+  clear() { this.follows = false; this.current = null; this.games = new Map(); this.lead = null; }
   _evict() {
     let worst = null;
     for (const [g, e] of this.games) if (g !== this.current && (worst == null || e.heardAt < this.games.get(worst).heardAt)) worst = g;

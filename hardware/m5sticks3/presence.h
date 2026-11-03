@@ -130,17 +130,20 @@ inline bool hill_claimable(int tid) {
   return false;
 }
 
-// Which assigned kinds run the shared player scan. `control` reads PlayerPresence all the time; `powerup` reads only its CLAIM gate, and only while the item is available, exactly as the
-// pickup scan always has (so a taken item keeps the radio as quiet as before). Every other kind
+// Which assigned kinds run the shared player scan. `control` and `powerup` read PlayerPresence all the time (a powerup
+// also feeds its CLAIM gate). Every other kind
 // (extraction, bomb) runs no player-side rule on a Stick yet.
 // `respawn` scans at a LIGHT duty (scan_window_units): at the hill's 50/100 the scan starved the Stick's
 // own advert (bench 2026-09-24, Block 9 S7: a phone 3 m away saw the station go "left" at -54 dBm every
 // few seconds). It scans only with REVIVE_FEEDBACK_ENABLED: the scan exists to count revives and flash
 // REDEPLOY, both post-MVP, so by default a respawn Stick only advertises.
+// F658: a powerup now scans all the time, taken or not: it follows the players' live game (a new game must reach it
+// while its item is taken), so it reads PlayerPresence as a hill does. `powerup_available` no longer gates it.
 inline bool station_needs_player_scan(const std::string& kind, bool powerup_available) {
+  (void)powerup_available;
   if (kind == "control") return true;
   if (kind == "respawn") return REVIVE_FEEDBACK_ENABLED;
-  if (kind == "powerup") return powerup_available;
+  if (kind == "powerup") return true;
   return false;
 }
 
@@ -689,11 +692,33 @@ class BleControlPoint {
   uint32_t at_ = 0;
 };
 
+// ---- F658 switch hysteresis (control.js followHoldSwitch): one rule for the hill and the powerup follower ------------
+// `best` / `has_best`: the strongest other live game; `leads`: it has strictly more heard live players than the current
+// game; `current_heard`: any live in-scope player of the current game is heard. True = switch to `best` now. No current
+// game yet, or a current game with no live player heard (its whistle, gone, stale): at once. Else the challenger must
+// lead for FOLLOW_SWITCH_HOLD_MS without a break; a lead that drops back, or passes to another game, starts the hold
+// again. Not saved: a restart starts the hold again.
+struct FollowLead {
+  bool has = false;
+  uint8_t game = 0;
+  uint32_t since = 0;
+};
+
+inline bool follow_hold_switch(FollowLead& lead, bool has_current, bool current_heard, bool has_best, uint8_t best,
+                               bool leads, uint32_t now, uint32_t hold_ms = (uint32_t)contract::FOLLOW_SWITCH_HOLD_MS) {
+  if (!has_best || !leads) { lead = FollowLead(); return false; }
+  if (!has_current || !current_heard) { lead = FollowLead(); return true; }
+  if (!lead.has || lead.game != best) { lead.has = true; lead.game = best; lead.since = now; }
+  if ((uint32_t)(now - lead.since) < hold_ms) return false;
+  lead = FollowLead();
+  return true;
+}
+
 // ---- HillFollower (control.js HillFollower, F658: the static hill) --------------------------------
 // A hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones set the live
 // bit from go-live to the whistle; once the hill hears any live-bit player it FOLLOWS: its current game is the byte of
 // the live players it hears. Another live game takes it only with MORE live players on the point than the current one
-// (a tie keeps it). Only live-bit players of the current game count. One point state per game byte, at most
+// (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still heard (follow_hold_switch). Only live-bit players of the current game count. One point state per game byte, at most
 // HILL_RING_SIZE, with the last time each was heard: a byte back after more than HILL_RING_STALE_MS starts fresh, and a
 // new byte with the ring full evicts the least recently heard (never the current). control.js says why, line for line.
 struct HillGame {
@@ -720,6 +745,7 @@ class HillFollower {
   bool has_current = false;
   uint8_t current = 0;
   HillGame games[contract::HILL_RING_SIZE];
+  FollowLead lead;  // a challenger leading the current game, and since when (follow_hold_switch)
 
   // The byte the hill advertises and counts under: the followed game, else MC's.
   uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
@@ -780,8 +806,13 @@ class HillFollower {
       const int ne = heard[k].n, nb = best ? count(best->game) : -1;
       if (!best || ne > nb || (ne == nb && ((int32_t)(e->since - best->since) > 0 || (e->since == best->since && e->game > best->game)))) best = e;
     }
+    // The switch waits for a sustained lead while the current game is still heard (follow_hold_switch)
     int next = has_current ? current : -1;
-    if (best && (!has_current || count(best->game) > count(current))) next = best->game;
+    bool current_heard = false;
+    for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) current_heard = true;
+    if (follow_hold_switch(lead, has_current, current_heard, best != nullptr, best ? best->game : 0,
+                           best && (!has_current || count(best->game) > count(current)), now))
+      next = best->game;
     if (next >= 0 && !has_current && first && (armed_game == 0 || armed_game == next)) {
       // the first follow into MC's own game (or from a hill of any game) keeps the point it counted
       current = (uint8_t)next;

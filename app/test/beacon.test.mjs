@@ -109,9 +109,10 @@ test('presence: the station advertised threshold wins over the default; a neutra
 });
 
 test('X10: a game byte change drops presence learnt under the old byte at once, not after expiryMs', () => {
+  // F658: a respawn station serves any game, so the game scope is shown on a powerup station
   const p = new Presence({ dwellMs: 0, game: 7 });
-  p.observe(station({ game: 7 }), -40, 0);
-  p.observe(station({ id: 6, game: 0 }), -40, 0);
+  p.observe(station({ game: 7, kind: 'powerup' }), -40, 0);
+  p.observe(station({ id: 6, game: 0, kind: 'powerup' }), -40, 0);
   p.tick(0);
   assert.equal(p.stations().filter(e => e.present).length, 2, 'CONTROL: both stations are present first');
   p.game = 7;                                         // app.js reassigns the same byte on every render
@@ -120,6 +121,8 @@ test('X10: a game byte change drops presence learnt under the old byte at once, 
   p.tick(1);
   assert.deepEqual(p.stations().map(e => e.id), [6], 'the old game station is gone; the any-game one stays');
   assert.equal(p.game, 8);
+  p.observe(station({ id: 9, game: 8 }), -40, 2); p.game = 9;   // F658: a respawn station's game byte drops nothing
+  assert.deepEqual(p.stations().map(e => e.id).sort(), [6, 9]);
 });
 
 test('presence: EMA smooths, seq/state changes stamp changedAt, other games are ignored', () => {
@@ -129,7 +132,8 @@ test('presence: EMA smooths, seq/state changes stamp changedAt, other games are 
   assert.equal(p.stations()[0].changedAt, undefined);
   p.observe(station({ game: 7, state: 0, seq: 1 }), -60, 500);
   assert.equal(p.stations()[0].changedAt, 500); assert.equal(p.stations()[0].state, 0);
-  assert.equal(p.observe(station({ game: 9 }), -30, 750), null, 'another game');
+  assert.equal(p.observe(station({ game: 9, kind: 'powerup' }), -30, 750), null, 'another game');
+  assert.equal(p.observe(station({ game: 9 }), -30, 750).id, 5, 'F658: a respawn station of another game is still heard');
   assert.equal(p.observe(station({ game: 0 }), -30, 750).id, 5, 'game 0 = any game');
 });
 

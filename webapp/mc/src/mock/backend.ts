@@ -245,8 +245,8 @@ export class MockBackend implements Api {
       const attention: string[] = [];
       const a = st.assigned, rep = st.report;
       const down = this.stoodDown(a);   // F535: stations.py stood_down
-      const rc = rep.control;   // F658: a hill that follows the players' live game gets a note, not a re-arm line
-      const follows = !!a && a.kind === 'control' && !!rc && rc.follows === true;
+      const rc = rep.control;   // F658: a hill or a powerup that follows the players' live game gets a note, not a re-arm line
+      const follows = !!a && ((a.kind === 'control' && !!rc && rc.follows === true) || (a.kind === 'powerup' && rep.powerup?.follows === true));
       // F658 review: following replaces only the game; a missed kind, id or team still needs a re-arm (stations.py no_rearm)
       const noRearm = follows && !!st.armed && st.armed.kind === a!.kind && st.armed.id === a!.id && st.armed.team === a!.team;
       if (down) attention.push(STATION_NO_HILL);
@@ -268,8 +268,9 @@ export class MockBackend implements Api {
             ? `HILL SET FOR ${have} S CAPTURE, THIS GAME USES ${want} S: ${STATION_PACE_REARM}` : `HILL SET FOR NET CAP ${have}, THIS GAME USES ${want}: ${STATION_PACE_REARM}`);
         }
       }
-      const old = a && a.kind === 'control' && !down ? this.oldAppPhones() : 0;   // F658 review, A86 (no scope): stations.py _old_app_phones
-      if (old) attention.push(`${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT ${old === 1 ? 'IT' : 'THEM'}`);
+      const old = a && (a.kind === 'control' || a.kind === 'powerup') && !down ? this.oldAppPhones() : 0;   // F658 review, A86 (no scope): stations.py _old_app_phones
+      if (old) attention.push(a!.kind === 'powerup' ? `${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: ${old === 1 ? 'IT' : 'THEY'} CANNOT TAKE THIS PICKUP`
+        : `${old} PHONE${old === 1 ? '' : 'S'} ON AN OLD APP: THIS HILL CANNOT COUNT ${old === 1 ? 'IT' : 'THEM'}`);
       if (a && fresh && rep.armed === false) attention.push(STATION_NOT_ARMED);
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}: ${STATION_REARM}`);
       if (batteryLow(rep.battery)) attention.push(STATION_BATTERY_LOW);

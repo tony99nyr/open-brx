@@ -17,7 +17,7 @@ import { ANNOUNCE_GAP_MS, PLAY_GAP_MS, SPAWN_KILL_WINDOW_MS, READOUT_LEAD_MS, RE
 // and moves no pool, so it latches but never names who did damage; a grant word (heals, armour, shields) HELPS its
 // target, so it is never the damage behind a drop or a kill. The cell decides, never the protocol alone.
 export { SIR_NO_POOL_FNS, SIR_GRANT_FNS };
-import { stationView, configGameByte } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { stationView, configGameByte, respawnStation } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
 import { Announcer, clipMs, clipId, CLIP_MS } from './announcer.js';
 import { PlayQueue, isQueueSlotPlay, playSlotFrames } from './play-queue.js';   // ARCH-3: the gun's audio model and its play queue
 export { isQueueSlotPlay, playSlotFrames };
@@ -315,6 +315,14 @@ const SHOT_CUE_MIN_MS = 400;
 const ACC_FLOOR_IDX = 23;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
 const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3, BTN_LEFT = 4;
+/** F662 R2: a catalogue `recoil.recovery` block as numbers, or null. All three must be finite and
+ *  0 < min_ms <= max_ms with per_round_ms >= 0, or the weapon keeps today's rule. PURE. */
+export function recoilRecovery(v) {
+  if (!v || typeof v !== 'object') return null;
+  const perRoundMs = +v.per_round_ms, minMs = +v.min_ms, maxMs = +v.max_ms;
+  if (![perRoundMs, minMs, maxMs].every(Number.isFinite) || perRoundMs < 0 || !(minMs > 0) || maxMs < minMs) return null;
+  return { perRoundMs, minMs, maxMs };
+}
 /** The EMP perk's throw (2026-10-24): a host `$IRTX` on the free cell <8,1>, from every dome. Every gun in a match with a
  *  holder carries `$SIR,8,1,,23` (compile.py `_EMP_SIR_ROW`). MAGNITUDE 1: every proven host `$IRTX` carried a non-zero
  *  damage token, and fn 23 moves no pool whatever it says. */
@@ -4642,7 +4650,10 @@ export class Engine {
     if (this.smoke) return { reason: 'smoke', acc: this.gunAcc != null ? this.gunAcc : 0, leftMs: Math.max(0, this.smoke.until - now), totalMs: SMOKE_MS };
     const r = this._recoil;
     if (!r || !r.model || r.disabled || r.state === 'crisp') return null;
-    const quiet = this._recoilQuietMs(r);   // F663: a reset_on_release weapon's fallback clock is shorter
+    if (r.recovery && r.releasedAt && r.releasedAt >= r.lastShotAt) {   // F662 R2: released, so the timer is the clock
+      return { reason: 'recoil', acc: r.value, leftMs: Math.max(0, r.recoverMs - (now - r.releasedAt)), totalMs: r.recoverMs };
+    }
+    const quiet = this._recoilQuietMs(r) + (r.recovery ? this._recoilRecoverMs(r) : 0);   // F663: a reset_on_release weapon's fallback clock is shorter
     return { reason: 'recoil', acc: r.value, leftMs: Math.max(0, quiet - (now - r.lastShotAt)), totalMs: quiet };
   }
   /** Bench 2026-09-17: a slot's time between rounds, `$WEAP` token 14 (split index 15) from the head the gun
@@ -5051,6 +5062,7 @@ export class Engine {
     const derivedHeavyAfter = Math.max(after + 1, clean + extra + 1);
     return { crisp, degraded: two ? mid : bottom, afterShots: after, settleMs: settle,
       resetOnRelease: r.reset_on_release === true,   // F663: only an explicit `true` turns it on
+      recovery: recoilRecovery(r.recovery),          // F662 R2: hold-length recovery, null when absent or malformed
       heavy: two ? bottom : null,
       heavyAfter: two ? Math.round(+(r.after_heavy != null ? r.after_heavy : derivedHeavyAfter)) : 0 };
   }
@@ -5075,7 +5087,7 @@ export class Engine {
     if (!p && !force && priorOffset === offset) return;
     this._recoil = { weaponId: id, slot: this.activeSlot, crisp: target, degraded: p ? p.degraded : target,
       afterShots: p ? p.afterShots : 0, settleMs: p ? p.settleMs : RECOIL_SETTLE_MIN_MS,
-      resetOnRelease: !!(p && p.resetOnRelease),
+      resetOnRelease: !!(p && p.resetOnRelease), recovery: p ? p.recovery : null, releasedAt: 0, recoverMs: 0,
       heavy: p ? p.heavy : null, heavyAfter: p ? p.heavyAfter : 0, model: !!p, base,
       value: target, state: 'crisp', burst: 0, dirty: force || priorOffset !== offset,
       lastShotAt: 0, lastWriteAt: 0, lastWriteValue: null, pendingWriteAt: 0,
@@ -5132,7 +5144,7 @@ export class Engine {
    *  back to crisp. The player releases the trigger once, so the gun is told once. */
   _recoilTick(now) {
     const r = this._recoil; if (!r || !this.alive) return;   // a dead gun has no accuracy worth spending a write on (a write would not revive it either, bench 2026-09-17 -- just wasted BLE traffic)
-    if (r.model && !r.disabled && now - r.lastShotAt >= this._recoilQuietMs(r)) {
+    if (r.model && !r.disabled && this._recoilQuiet(r, now)) {
       r.burst = 0;
       if (r.state !== 'crisp') { r.state = 'crisp'; r.value = r.crisp; r.dirty = true; }
     }
@@ -5143,9 +5155,32 @@ export class Engine {
    *  interval plus RECOIL_RELEASE_MARGIN_MS (see that constant for the 2026-11-01 numbers behind it). The
    *  release edge itself (`_recoilRelease`) normally gets there first. PURE. */
   _recoilQuietMs(r) {
-    if (!r.resetOnRelease) return r.settleMs;
+    if (!r.resetOnRelease && !r.recovery) return r.settleMs;
     const ms = this._fireIntervalMs(r.slot);
     return ms == null ? r.settleMs : Math.min(r.settleMs, 2 * ms + RECOIL_RELEASE_MARGIN_MS);
+  }
+  /** F662 R2 (brx3's spec, Tony 2026-11-02 "lets go with that"): how long a released degraded or heavy weapon waits before
+   *  it is crisp again: `per_round_ms` for every round of the hold past the clean count (`afterShots`), clamped to
+   *  `min_ms`..`max_ms`. On the Assault Rifle (after_shots 6, 25/100/500): 7 to 10 rounds 100 ms, 12 rounds 150 ms,
+   *  20 rounds 350 ms, 26 or more 500 ms. PURE. */
+  _recoilRecoverMs(r) {
+    const c = r.recovery;
+    return Math.min(c.maxMs, Math.max(c.minMs, c.perRoundMs * Math.max(0, r.burst - r.afterShots)));
+  }
+  /** Has the trigger been quiet long enough to forget the burst? F662 R2 (a `recovery` weapon off crisp): the timer from
+   *  the release, when a release was seen after the last round. A LOST release (the F663 fallback) is inferred at
+   *  `_recoilQuietMs` after the last round, and the timer runs from there. Every other weapon: `_recoilQuietMs`. PURE. */
+  _recoilQuiet(r, now) {
+    if (r.recovery && r.state !== 'crisp') {
+      if (r.releasedAt && r.releasedAt >= r.lastShotAt) return now - r.releasedAt >= r.recoverMs;
+      return now - r.lastShotAt >= this._recoilQuietMs(r) + this._recoilRecoverMs(r);
+    }
+    return now - r.lastShotAt >= this._recoilQuietMs(r);
+  }
+  /** The trigger's `$BUT,0,1`. F662 R2: a pull before the recovery timer runs out cancels it, so the rung and the count
+   *  carry into the new pull. */
+  _recoilPull() {
+    const r = this._recoil; if (r && r.recovery) r.releasedAt = 0;
   }
   /** The trigger's `$BUT,0,0`. S54 (every weapon): a burst still CRISP is forgotten, at no cost in writes.
    *  F663 (Tony 2026-11-02, "simply letting go of trigger immediately resets it"): a `reset_on_release` weapon
@@ -5155,6 +5190,13 @@ export class Engine {
    *  2026-09-24 (F308): the release always arrived after the burst's last `$ALCD`, 0 to 60 ms later. */
   _recoilRelease() {
     const r = this._recoil; if (!r || !r.model || r.disabled) return;
+    if (r.recovery) {
+      // F662 R2: a crisp burst is forgotten as S54 does; a degraded or heavy one starts the hold-length timer, and the
+      // tick restores crisp when it runs out (`_recoilQuiet`). A pull before then cancels it (`_recoilPull`).
+      if (r.state === 'crisp') { r.burst = 0; return; }
+      r.releasedAt = this.now(); r.recoverMs = this._recoilRecoverMs(r);
+      return;
+    }
     if (!r.resetOnRelease) { if (r.state === 'crisp') r.burst = 0; return; }
     r.burst = 0;
     if (r.state === 'crisp') return;
@@ -6005,11 +6047,11 @@ export class Engine {
     return !allow || allow.has(e.id);
   }
   /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
-   *  A station admits me when it is neutral or on my gun's $TID team. */
+   *  A station admits me when it is neutral or on my gun's $TID team, and only when my config enables it. */
   _respawnStation() {
     const tid = this.team ? this.team.tid : null;
-    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === STATION_TEAM_ANY || e.team === tid) && this._stationAllowed(e));
-    return mine.find(e => e.present) || mine[0] || null;
+    // F658 (A86): only a station this match's config.stations lists as a respawn station (beacon.js respawnStation)
+    return respawnStation(this.stations, this.config, tid);
   }
   /** Every control point heard right now (F556: the possession clock counts each one, not only the one the HUD reads). */
   _controlStations() {
@@ -6543,6 +6585,7 @@ export class Engine {
         // still wants a pull after it (F436): it does not arm ALT or a pickup equip for the life.
         const queued = !!(this._lifeBurst && this._lifeBurst.life === this._lifeSeq);
         this._pull = { at: this.now(), slot: this.activeSlot }; if (!queued) this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
+        this._recoilPull();   // F662 R2: a pull cancels a pending hold-length recovery
       }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       else if (id === BTN_SELECT) this.pu.onSelect();   // A56: a PRESS only; `$PHONE` also sends `$BUT,3,0`, a release, which never acts
       else if (id === BTN_LEFT) this._empThrow();       // the EMP perk; the head maps LEFT to 98, so the gun does nothing itself
