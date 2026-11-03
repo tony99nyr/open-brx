@@ -670,6 +670,7 @@ export const PERSIST_AS = Object.freeze({
 /** F530: `_operatorAct`'s answer for a FORCE RESPAWN held to the F13 floor; its result is reported when the hold fires. */
 const OP_RESPAWN_HELD = Symbol('op-respawn-held');
 export const PERSIST_TRANSIENT = Object.freeze({
+  _meleeNotReady: 'F665 bench switch: the phone\'s own key (`brx.melee_not_ready`), read again by the constructor',
   _headEcho: 'F532: a heal head echo window; a restart has no head in flight',
   _opReviveHeld: 'F530: an operator respawn held for the F13 floor; a restart drops the hold (MC can press again)',
   _spawnEchoLife: 'C.4b: a restart reads the next spawn echo afresh', _spawnEchoHeals: 'C.4b: a restart begins a fresh count',
