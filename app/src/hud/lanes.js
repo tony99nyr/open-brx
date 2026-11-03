@@ -116,7 +116,8 @@ export function _lanes(st) {
     const tk = st.teamKey && TEAM_COLOR[st.teamKey] ? st.teamKey : null, O = L.obj || {}, ours = tk ? TEAM_COLOR[tk] : 'var(--glow)';
     const ICON = { lead: lost => `<svg viewBox="0 0 16 16"><path d="${lost ? 'M2 5h12L8 13z' : 'M2 11h12L8 3z'}"/></svg>`,
       hill: () => '<svg viewBox="0 0 16 16"><path d="M4 1h1.6v14H4zM5.6 2h8l-2.2 3.2 2.2 3.2h-8z"/></svg>' };
-    const obj = ['lead', 'hill'].filter(key => O[key]).map(key => {
+    // F666 (Tony 2026-11-02): in Domination the row of hills carries the hill news, so the hill card stays out; KOTH keeps it.
+    const obj = ['lead', 'hill'].filter(key => O[key] && !(key === 'hill' && st.mode === 'DOMINATION')).map(key => {
       const o = O[key], lead = key === 'lead', lost = o.kind === 'lead_lost' || o.kind === 'hill_lost', cap = o.kind === 'hill_capture_started';
       const kick = lead ? (tk ? tk.toUpperCase() : 'YOU') : 'OBJECTIVE', text = lead ? (lost ? 'LOST THE LEAD' : 'TAKES THE LEAD') : (HILL_WORD[o.kind] || 'HILL CAPTURED');
       return `<div class="lo${now - o.at > LANE_SETTLE_MS ? ' settled' : ''}${lost ? ' lost' : ''}" data-lk="${key}:${o.id || o.at}" data-key="${key}" data-kind="${esc(o.kind)}" style="--lc:${lost ? 'var(--bad)' : cap ? 'var(--glow)' : ours}">${ICON[key](lost)}<span class="lot"><span class="lok"><span>${esc(kick)}</span>${srcl(o.src)}</span>${cap ? `<span class="lowr">${capMark(o.team)}<span class="low">${esc(text)}</span></span>` : `<span class="low">${esc(text)}</span>`}</span></div>`;
