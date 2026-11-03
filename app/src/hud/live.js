@@ -96,8 +96,7 @@ export function _live(st) {
     const sv = SV.meterShown(st);   // the shield meter: a shield game, or an overshield held
     return `<div class="alive${gunStale ? ' gunstale' : ''}${mcStale ? ' mcstale' : ''}${sv ? ' sv' : ''}${poolWrong(st) && !gunStale ? ' poolwrong' : ''}${st.alive && st.stunned ? ' stunned' : ''}"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
-      ${overheating && !starved ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
-      ${domRow(st)}
+      ${overheating && !starved ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}${domRow(st)}
       <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="${gunDot(st)}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
