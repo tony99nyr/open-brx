@@ -9046,10 +9046,12 @@ test('F665 bench switch: off by default; on, a press inside the cooldown plays t
   assert.equal(beeps(h), 1, 'a press after the cooldown is a swing: no sound');
   h.adv(50); press8(h);
   assert.equal(beeps(h), 2, 'the next refused press sounds again');
+  h.adv(400); press8(h);
+  assert.equal(beeps(h), 3, 'the gun model times the real 0.2 s clip (clipms.gen.js), not the 2.5 s default: 400 ms later it is free');
   assert.equal(h.eng.setMeleeNotReady(''), null, 'an empty id turns it off');
   assert.equal(h.eng.storage.getItem('brx.melee_not_ready'), null);
   h.adv(meleeMs(h)); nrQuiet(h); swing(h); h.adv(50); press8(h);
-  assert.equal(beeps(h), 2, 'off again: no sound');
+  assert.equal(beeps(h), 3, 'off again: no sound');
 });
 
 test('F665 bench switch: a down player and a busy speaker get no sound, and nothing queues it for later', () => {
