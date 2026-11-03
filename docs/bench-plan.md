@@ -19,7 +19,7 @@ of it); about 3 h 40 min more for the rest.
 
 | # | when | minutes | step | procedure |
 |---|---|---|---|---|
-| P1 | before a game | 20 | Reflash all 3 Sticks over USB from main, one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
+| P1 | before a game | 20 | Reflash all 3 Sticks over USB from main, one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6, so powerup claims go to nobody. Reflash all 3 before any phone gets the new APK (P3). Commands and the post-flash check: [P1 in detail](#p1-in-detail-the-stick-reflash) below. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
 | P2 | before a game | 15 | F642 on one Stick: (1) a typed address that is absent, then the log shows typed, (2) mDNS, (3) the subnet scan, (4) a welcome and "last good saved"; (5) a reboot rejoins through the last good MC. A moved MC is found again (one Stick is enough). Then power the other two and see each one join MC. | FOLLOWUPS F642 |
 | P3 | before a game | 20 | Build the APK from a main checkout and install it on every phone, one phone at a time, after P1. The iPhone build needs the MacBook. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
 | P4 | before a game | 10 | F659. (1) The black phone, with its stale `:8765` address, joins MC by itself. (2) Each other phone joins by itself. (3) A phone this MC has never seen (or any phone on a fresh MC home) shows NEW PHONE JOINED on the console; a phone it already knows does not. (4) Every phone shows in the LOBBY before READY. | FOLLOWUPS F659 |
@@ -34,6 +34,30 @@ of it); about 3 h 40 min more for the rest.
 | P13 | can wait | 85 | The Energy Shotgun frame, ES0-ES5. It ships F661 (the row is hidden until then). | [ES0-ES5](#next-the-energy-shotgun-frame-f661) |
 
 `$VOL,65` for every bench step. Keep the guns' sticker labels and any addresses out of notes that go into the repo.
+
+### P1 in detail: the Stick reflash
+
+From WSL, in an up-to-date main checkout. One Stick on USB at a time, with a data cable. Main builds at about 1.8 MB
+(53 % of the app partition) and reports firmware `h8-0.4`; MC's floor is `h8-0.4`, so MC shows STICK FIRMWARE TOO OLD:
+REFLASH IT (amber, it does not block) for any Stick not yet reflashed.
+
+1. `python3 hardware/m5sticks3/tools/stick.py ports`: exactly one line is labelled as the Stick.
+2. `python3 hardware/m5sticks3/tools/stick.py flash`: prints the "Sketch uses ... (53%)" line and the upload log, and
+   exits 0. An upload keeps NVS: Wi-Fi, the MC address, the last good MC and the station role survive. A Stick still on
+   factory firmware: hold the small side button while you plug in USB, then replug without it.
+3. `python3 hardware/m5sticks3/tools/stick.py status`: `LINK state=LOOKING FOR MC` or better. If Wi-Fi was lost, run
+   `stick.py cmd 5 WIFI <ssid> <pass>` and check again.
+4. Unplug it, and repeat for the next Stick (3 in all).
+
+Post-flash check, with MC on the field LAN and all 3 Sticks powered:
+
+- a. Each Stick joins with no typed address: `stick.py status` shows `LINK state=LINKED` (NOT ARMED until it is
+  assigned), and the console's ITEMS panel lists it.
+- b. In ITEMS, each Stick's firmware reads `h8-0.4+<sha>`. An amber STICK FIRMWARE TOO OLD line means that Stick missed
+  the reflash.
+- c. The new scope: assign one Stick as CONTROL in a KOTH game. A phone on the new APK, in the circle after START, is
+  counted (the hill's console row shows the count, and capture progresses). A phone on 0.4.33 or older is never
+  counted, and the hill's row shows the amber old-app line for it. P6 (hill off) is the negative control.
 
 ## NEXT GAME: swap and reload, the torture sheet (F650, F645)
 
@@ -574,7 +598,7 @@ Tactix-FE30 is player 1 and Tactix-9498 player 2 (0422 Sitting C).
 The procedure is 0422 Sitting B; run it with the m5stick-bench skill.
 
 63. Reflash every Stick from main (15 min). Control: a Stick on its old build shows STICK FIRMWARE TOO OLD in MC's
-   station list. Pass: `app_ver` reads `h8-0.3+` and the checkout's 10-character sha, no `_dirty`, and the line is
+   station list. Pass: `app_ver` reads `h8-0.4+` and the checkout's 10-character sha, no `_dirty`, and the line is
    gone. Unplug each Stick when done. (0426 P1.0, 0422 B.0)
 64. **F434**, the powerup claim distance at -45 dBm (35 min). Control: STATUS after `RANGE CLEAR` reads `threshold=-45
    threshold_src=default`. Closes: on both phones the weakest 30 cm median is at least 4 dB above -45, and the
