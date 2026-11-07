@@ -361,7 +361,9 @@ def credited_inside_window(world: World) -> None:
     post = _post_end_keys(sc)
     before_end = world.end_delivered or set()
     for nid, seq, ev in facts:
-        if (nid, seq) in post or ev.get("type") == "possession" or not world.session.synced_at_lobby.get(nid):
+        # a tally (a phone's possession, or a hill's own relayed by a phone, A88) speaks for the whole game and arrives
+        # after the whistle by design: its own `t` is when it was sent, not a moment of play
+        if (nid, seq) in post or ev.get("type") in ("possession", "hill_tally") or not world.session.synced_at_lobby.get(nid):
             continue
         t = _judged_t(world, nid, seq, ev)
         end = min(limits) if limits else None

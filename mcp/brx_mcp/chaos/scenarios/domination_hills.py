@@ -477,3 +477,94 @@ scenario(Scenario(
     setup_script=SETUP, script=[*_HELD, {"name": "hill_end_now", "params": {}}],
     checks=(domination_hills_check, domination_held_check), ci_seeds=(1,),
 ))
+
+
+# A88 (brx1 2026-11-07, option b): a phone relays each hill's FINAL tally. It replaces a hill's points only where the
+# phones' timeline is shown incomplete (a capture only a dead phone saw), and never where the timeline is complete.
+def _hill_truth(world: World, nid: str, start: int, end: int) -> dict[int, int]:
+    owned: dict[int, int] = {}
+    cur, t0 = NEUTRAL, start
+    for t, own in _timelines(world)[nid]:
+        if t > end:
+            break
+        owned[cur] = owned.get(cur, 0) + max(0, t - t0)
+        cur, t0 = own, max(t, start)
+    owned[cur] = owned.get(cur, 0) + max(0, end - t0)
+    return {tid: ms for tid, ms in owned.items() if tid != NEUTRAL and ms > 0}
+
+
+@action("hill_tally_relay", pick=_never)
+async def hill_tally_relay(world: World, node: int) -> None:
+    """Phone `node` walks past each hill after the whistle and relays the hill's final tally, trimmed to the end."""
+    s, sc = world.session, match_scorer(world.session)
+    if sc is None or sc.end_t is None:
+        return
+    n = world.nodes[node]
+    for nid in HILLS:
+        site, own = _site(world, nid), _hill_truth(world, nid, sc.go_live_t, sc.end_t)
+        if site is None or not own:
+            continue
+        n.emit({"type": "hill_tally", "match_id": sc.match_id, "site": site, "game_byte": sc.game_byte,
+                "own_s": {str(t): round(ms / 1000) for t, ms in own.items()}, "final": True})
+    await world.settle()
+    rc = s.recap() or {}
+    world.hill_relayed = {"possession": dict(rc.get("possession") or {}), "winner": sc.winner()}   # type: ignore[attr-defined]
+
+
+def _truth_winner(world: World) -> str | None:
+    sc = match_scorer(world.session)
+    assert sc is not None and sc.end_t is not None
+    owned, _ = _truth_ms(world, sc.go_live_t, sc.end_t)
+    by = sorted(((owned.get(t["tid"], 0), team_id) for team_id, t in sc.teams.items()), reverse=True)
+    return by[0][1] if by and by[0][0] > by[1][0] else None
+
+
+def domination_tally_dead_check(world: World) -> None:
+    """Phone 1 is dead with the only report of blue's capture. The hill's final tally must decide it before END NOW."""
+    relayed, end_now = getattr(world, "hill_relayed", None), getattr(world, "hill_end_now", None)
+    want = _truth_winner(world)
+    site_a = _site(world, "dom-hill-a")
+    if relayed is None or end_now is None:
+        raise InvariantError("domination_tally", "the scenario never relayed a tally or pressed END NOW")
+    if site_a not in ((relayed["possession"].get("from_tally")) or {}):
+        raise InvariantError("domination_tally", f"hill A's final tally did not replace the incomplete timeline: {relayed}")
+    if (end_now["winner"] or {}).get("team_id") != want:
+        raise InvariantError("domination_tally", f"END NOW named {end_now['winner']}; the hills say {want}")
+
+
+def domination_tally_complete_check(world: World) -> None:
+    """Every phone heard every flip: a final tally that agrees must not replace the phones' timeline."""
+    relayed = getattr(world, "hill_relayed", None)
+    if relayed is None:
+        raise InvariantError("domination_tally", "the scenario never relayed a tally")
+    if relayed["possession"].get("from_tally"):
+        raise InvariantError("domination_tally", f"a tally replaced a complete timeline: {relayed['possession']}")
+
+
+scenario(Scenario(
+    name="domination-tally-dead", mode="domination", nodes=4, real_stations=True, config={"scoring": {"hold_target_s": 20}},
+    doc="A88: as domination-held-dead, but phone 0 relays each hill's final tally after the whistle. Hill A's tally shows "
+        "the capture only dead phone 1 saw, replaces the phones' timeline for that hill, and END NOW names the right winner.",
+    setup_script=SETUP,
+    script=[*_HELD, {"name": "hill_tally_relay", "params": {"node": 0}}, {"name": "hill_end_now", "params": {}}],
+    checks=(domination_tally_dead_check,), ci_seeds=(1,),
+))
+
+_COMPLETE = [
+    {"name": "hill_walk", "params": {"node": 0, "nid": "dom-hill-a", "near": True}},
+    {"name": "hill_walk", "params": {"node": 1, "nid": "dom-hill-a", "near": True}},
+    {"name": "hill_walk", "params": {"node": 1, "nid": "dom-hill-b", "near": True}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 0}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-b", "owner": 1}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 2}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 1}},
+    {"name": "hill_end", "params": {}},
+    {"name": "hill_tally_relay", "params": {"node": 0}},
+]
+
+scenario(Scenario(
+    name="domination-tally-complete", mode="domination", nodes=4, real_stations=True,
+    doc="A88: every phone near a hill hears each flip, so the phones' timeline is complete. Each hill's final tally agrees "
+        "with it within the tolerance and replaces nothing; the recap's points are still the timeline's.",
+    setup_script=SETUP, script=_COMPLETE, checks=(domination_hills_check, domination_tally_complete_check), ci_seeds=(1,),
+))

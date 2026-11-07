@@ -184,4 +184,22 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     expect(block.textContent).not.toMatch(/NEEDS SYNC/);
     m.unmount();
   });
+  it('A88: a hill its final tally scored says so, with what the phones said; another hill does not', async () => {
+    const d = await demo();
+    const red = d.state.teams[0].team_id;
+    const recap = { ...recapWith([
+      { node_id: 'util-a', kind: 'control', id: 1, team: 255, heard: true, owner: 1, hold_ms: { '1': 279000 } },
+      { node_id: 'util-b', kind: 'control', id: 2, team: 255, heard: true, owner: 0, hold_ms: { '0': 50000 } },
+      { node_id: 'util-c', kind: 'control', id: 3, team: 255, heard: false, owner: null },
+    ]), possession: { by_team: {}, neutral_s: 0, sites: 3, reports: 2, observed_s: 0, of_s: 300,
+      from_tally: { '1': { [red]: 290 }, '3': {} } } } as RecapView;
+    const state: State = { ...d.state, phase: 'recap', config: { ...d.state.config, mode: 'domination' }, recap };
+    const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+    const one = (m.find('[data-testid="tally-scored-1"]')[0]?.textContent ?? '').toUpperCase();
+    expect(one).toContain('SCORED FROM HILL TALLY');
+    expect(one).toContain(`PHONES SAID ${d.state.teams[0].name.toUpperCase()} 290`);
+    expect((m.find('[data-testid="tally-scored-3"]')[0]?.textContent ?? '').toUpperCase()).toContain('NO PHONE REPORTED IT');
+    expect(m.find('[data-testid="tally-scored-2"]').length, 'a hill the phones scored is not marked').toBe(0);
+    m.unmount();
+  });
 });

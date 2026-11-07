@@ -25,3 +25,116 @@ def test_the_socket_takes_a_hill_tally_and_refuses_one_missing_a_required_field(
             assert key in str(e), (key, e)
         else:
             raise AssertionError(f"a hill_tally without {key} was accepted")
+
+
+# ---------- the merge (brx1 2026-11-07, option b) ----------
+from _domination import domination_live, own_fact   # noqa: E402
+
+_SEQ = {"n": 9000}
+
+
+def _hill_tally(s, net, clock, node, hill, own_s, final, game_byte=None, mid=None):
+    _SEQ["n"] += 1
+    site = str(s.station_registry.stations[hill]["assigned"]["id"])
+    net.simulate_event(node, {"type": "hill_tally", "t": clock["t"], "match_id": mid or s._m().scorer.match_id,
+                              "site": site, "game_byte": s._m().scorer.game_byte if game_byte is None else game_byte,
+                              "own_s": {str(k): v for k, v in own_s.items()}, "final": final}, clock["t"], seq=_SEQ["n"])
+    return site
+
+
+def _ended_with_red_on_a(stored=False):
+    """Red takes hill A at 10 s, heard by phone 0. Phone 1 alone saw blue drain A at 20 s and take it at 21 s, and its
+    phone died: MC never hears it. The operator ends the match at 300 s. The phones' timeline says red 290."""
+    s, net, clock = domination_live("domination", 1000, stored=stored)
+    go = s._m().head["go_live_t"]
+    r, b = (t["tid"] for t in s.config["teams"][:2])
+    own_fact(s, net, clock, "node0", "util-a", 2, r, at=go + 10_000)
+    clock["t"] = go + 300_000
+    s.control("end")
+    assert s.phase == "recap"
+    return s, net, clock, r, b
+
+
+def _by(s):
+    return (s.recap() or {}).get("possession", {}).get("by_team", {})
+
+
+def test_a_final_tally_scores_a_capture_only_a_dead_phone_saw_and_the_row_keeps_the_timeline():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    assert _by(s) == {red: 290, blue: 0}, _by(s)
+    clock["t"] += 600_000   # phone 0 walks past the hill ten minutes later; a final tally is never too late
+    site = _hill_tally(s, net, clock, "node0", "util-a", {r: 10, b: 279}, True)
+    rc = s.recap()
+    assert rc["possession"]["by_team"] == {red: 10, blue: 279}, rc["possession"]
+    assert rc["possession"]["from_tally"] == {site: {red: 290}}, rc["possession"]
+    assert s._m().scorer.winner() == {"team_id": blue}, s._m().scorer.winner()   # the recap shows it once released
+
+
+def test_a_final_tally_that_agrees_with_a_complete_timeline_does_not_replace_it():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 292}, True)   # within 1 s a change plus 3 s
+    rc = s.recap()
+    assert rc["possession"]["by_team"] == {red: 290, blue: 0} and "from_tally" not in rc["possession"], rc["possession"]
+
+
+def test_a_live_tally_never_changes_the_score_and_never_follows_a_final():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 10, b: 279}, False)
+    assert _by(s) == {red: 290, blue: 0}, "only a final tally scores"
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 10, b: 285}, True)
+    _hill_tally(s, net, clock, "node1", "util-a", {r: 10, b: 279}, True)   # a later final, trimmed further, replaces it
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 10, b: 299}, False)  # a live tally after the final: ignored
+    assert _by(s) == {red: 10, blue: 279}, _by(s)
+
+
+def test_a_tally_of_another_game_byte_is_ignored():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    _hill_tally(s, net, clock, "node0", "util-a", {b: 279}, True, game_byte=(s._m().scorer.game_byte % 255) + 1)
+    assert _by(s) == {red: 290, blue: 0}, _by(s)
+
+
+def test_a_hill_no_phone_reported_scores_from_its_final_tally_and_its_row_says_so():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    site = _hill_tally(s, net, clock, "node1", "util-b", {b: 120}, True)
+    rc = s.recap()
+    assert rc["possession"]["by_team"] == {red: 290, blue: 120}, rc["possession"]
+    assert rc["possession"]["from_tally"] == {site: {}}, rc["possession"]
+
+
+def test_a_hill_is_in_on_the_sync_track_once_its_final_tally_arrives():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    site = str(s.station_registry.stations["util-a"]["assigned"]["id"])
+    row = lambda: next(x for x in s.recap()["sync"]["rows"] if x["kind"] == "station" and x["id"] == site)   # noqa: E731
+    assert row()["stage"] != "received", row()
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 290}, True)
+    assert row()["stage"] == "received", row()
+
+
+def test_the_phones_are_told_to_relay_tallies_in_domination_only():
+    s, net, clock, r, b = _ended_with_red_on_a()
+    assert s._wire_config().get("hill_tally") is True
+    s2, _net, _clock = domination_live("koth", 1000)
+    assert "hill_tally" not in s2._wire_config()
+
+
+def test_a_restart_after_the_next_push_keeps_the_matchs_own_game_byte():
+    """The next push moves MC's game byte; the ended match keeps the one its hills tallied under, through a restart."""
+    import pathlib
+    import tempfile
+    from _session import restart_session
+    s, net, clock, r, b = _ended_with_red_on_a(stored=True)
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    gb = s._m().scorer.game_byte
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    _hill_tally(s, net, clock, "node0", "util-a", {r: 10, b: 279}, True)
+    s._bump_game_no()
+    assert s._game_byte() != gb
+    s2, net2 = restart_session(s, clock)
+    assert s2.resume_match() == "recap"
+    assert s2._m().scorer.game_byte == gb, (s2._m().scorer.game_byte, gb)
+    assert _by(s2) == {red: 10, blue: 279}, _by(s2)
