@@ -1113,9 +1113,17 @@ class Scorer:
         if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
             return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
         readings = list(self._hold_readings(hold_ms))
-        if not readings:
-            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         site = str(site)
+        if not readings:
+            # Review 2026-11-06: a hill heard IN PLAY with nothing banked yet is still heard. Without this, a hill nobody
+            # had captured when it left Wi-Fi was "unverified" at its report after the whistle, and every point it banked
+            # while away was dropped. Its receipt time and an empty reading become the base `_late_bound` measures from.
+            # It still scores nothing and does not silence the phones (the site stays out of `station_possession_ms`).
+            if (seen_ms is not None and site not in self.station_possession_ms
+                    and (self.end_t is None or seen_ms <= self.end_t)):
+                self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
+                self.station_pre_end.setdefault(site, {})
+            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         if seen_ms is None and site in self.station_unverified:
             return "ignored"   # milestone r4: a reading with no receipt time cannot verify a site the scorer could not
         end = self.end_t
@@ -1247,9 +1255,10 @@ class Scorer:
             # operator a kills table and "UNDECIDED". Nothing else changes: survival (infection / LMS)
             # has no tally to consult and stays undecided, as does an objective match nobody observed
             # (A5.9/A6.1 — decided by the host, not by kills).
-            if self.hold_target_s and "hold_target" in self._announced:
+            if self.hold_target_s:
                 # Review 2026-11-06: the target is crossed in raw ms (`_check_hold_target`), so the team that crossed it
-                # wins. Rounded seconds called blue's 999.6 s against red's 1000.0 s a tie.
+                # wins. Rounded seconds called blue's 999.6 s against red's 1000.0 s a tie. Round 2: decided on the raw
+                # ms alone, never on `_announced`, which a rebuilt scorer (a rescore, a resume) does not carry.
                 by_ms, _neutral = self._possession_ms()
                 reached = sorted(t for t, ms in by_ms.items() if ms >= self.hold_target_s * 1000)
                 if len(reached) == 1:

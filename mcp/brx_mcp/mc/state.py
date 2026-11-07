@@ -3323,7 +3323,11 @@ class Session:
             return None
         hold = tally.get("hold_ms")
         seen = tally.get("at")   # milestone round 3: when MC last received this tally (a bare hello refreshes last_seen_ms)
-        return (str(a["id"]), hold, seen if isinstance(seen, int) else None) if isinstance(hold, dict) and hold else None
+        # Review 2026-11-06: an EMPTY hold heard in play (a hill nobody has captured yet) still goes to the scorer, as the
+        # zero a report after the whistle is bounded against (`Scorer.station_possession`); `at` says a report wrote it
+        if isinstance(hold, dict) and (hold or isinstance(seen, int)):
+            return str(a["id"]), hold, seen if isinstance(seen, int) else None
+        return None
 
     def _station_possession(self, nid: str, t_recv: int | None) -> None:
         """F555: hand a control station's own tally for this match to the scorer, the authority for its point. A LIVE beat

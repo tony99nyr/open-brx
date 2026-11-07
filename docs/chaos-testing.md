@@ -150,6 +150,8 @@ MC is not checked against its own bookkeeping.
   their owned clock on every heartbeat, and the check holds the recap's points to the hills' own clocks. Its
   restart and crash actions wait at field time scales: a crash comes 2 s after the last bank (MC writes its
   snapshot at least that often on a busy field), and MC counts no hill beat within one heartbeat of an arming.
+  A hill out of Wi-Fi keeps counting and reports when it is back, in play or after the whistle.
+  `domination-hills-target` sets a target the hills can reach.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the

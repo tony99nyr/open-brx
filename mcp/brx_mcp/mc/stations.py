@@ -263,6 +263,8 @@ class StationRegistry:
 
     def begin_match(self) -> None:
         self._range_epoch += 1
+        if self.play.in_play() and self._hill_letters:
+            return   # round 2: a RESCHEDULE in ARMED is the same match; the phones already hold these letters
         self._hill_letters = {}
         self._hill_letters = {r["id"]: r["letter"] for r in self.station_ids() if "letter" in r}
 

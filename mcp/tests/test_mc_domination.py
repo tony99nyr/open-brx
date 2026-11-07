@@ -190,6 +190,8 @@ def test_the_team_that_crosses_the_target_wins_though_both_round_to_it():
     assert sc.possession()["by_team"] == {red["team_id"]: 1000, blue["team_id"]: 1000}, sc.possession()
     assert sc.winner() == {"team_id": red["team_id"]}, sc.winner()
     assert (s.last_recap or {}).get("winner") == {"team_id": red["team_id"]}, (s.last_recap or {}).get("winner")
+    sc._announced.discard("hold_target")     # round 2: a rebuilt scorer (a rescore, a resume) carries no such mark
+    assert sc.winner() == {"team_id": red["team_id"]}, "the raw ms decide it, whatever the scorer remembers"
 
 
 def test_a_hill_keeps_its_letter_when_another_leaves_in_play_and_across_a_restart():
@@ -257,3 +259,48 @@ def test_a_restart_keeps_each_hills_owner_and_points_on_its_row_before_it_beats_
     got = s2.station_registry.station_view("util-a")["report"].get("control") or {}
     assert got.get("owner") == red["tid"] and got.get("hold_ms") == {r: 300_000}, got
     assert not s2.station_registry.station_view("util-b")["report"], "CONTROL: a hill that never reported stays unheard"
+
+
+def test_a_reschedule_in_armed_keeps_the_letters_the_phones_hold():
+    """Review round 2: RESCHEDULE runs START's bookkeeping again; a hill released while ARMED must not re-letter the rest."""
+    s, net, clock, ps = mk_session(2)
+    s.set_config({"mode": "domination", "time_limit_s": 1800})
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    for nid in ("util-a", "util-b", "util-c"):
+        net.simulate_utility_hello(nid)
+        s.set_station(nid, {"kind": "control"})
+    s.push_config(force=True)
+    s.start(runway_s=60, force=True)
+    assert s.phase == "armed", s.phase
+    letters = lambda: {r["id"]: r["letter"] for r in s.station_registry.station_ids() if r["kind"] == "control"}
+    before = letters()
+    gone = min(before)
+    nid = next(n for n, st in s.station_registry.stations.items() if (st.get("assigned") or {}).get("id") == gone)
+    assert s.release_station(nid)
+    s.reschedule(60)
+    assert letters() == {k: v for k, v in before.items() if k != gone}, (before, letters())
+
+
+def test_a_hill_captured_only_while_out_of_wifi_scores_its_late_report():
+    """Review 2026-11-06 (chaos `domination-hills`): a far hill heard in play with nothing banked, captured only after it
+    lost Wi-Fi, reports after the whistle. That report was "unverified" (no in-play reading) and all its points dropped.
+    The empty in-play beat is the base now; the late gain is bounded by the time from that beat to the whistle."""
+    s, net, clock = _live("domination", 1000)
+    red = s.config["teams"][0]
+    r = str(red["tid"])
+    clock["t"] += 100_000
+    _beat(s, net, clock, "util-a", 2, {}, {})                  # heard in play: nobody owns it yet
+    clock["t"] += 3_000
+    _beat(s, net, clock, "util-a", 2, {}, {})                  # beats on (the first may sit in the arming window)
+    heard_at = clock["t"]
+    clock["t"] += 60_000                                       # out of Wi-Fi; red captures it and holds it
+    s.control("end")
+    end = clock["t"]
+    assert s.phase == "recap", s.phase
+    clock["t"] += 20_000
+    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 50_000})   # back in Wi-Fi after the whistle
+    clock["t"] += 3_000
+    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 50_000})   # past the relock's window
+    poss = (s.last_recap or {}).get("possession") or {}
+    assert poss.get("by_team", {}).get(red["team_id"]) == 50, (poss, end - heard_at)

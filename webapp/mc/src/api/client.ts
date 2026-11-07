@@ -148,7 +148,7 @@ export function createHttpApi(): Api {
         const tok = getToken();
         const socket = new WebSocket(`${proto}://${location.host}/ui-ws${tok ? `?tok=${encodeURIComponent(tok)}` : ''}`);
         ws = socket;
-        // F644: MC sends a `heartbeat` whenever it has sent nothing else for 5 s. A socket that has carried one and then
+        // F644: MC sends a `heartbeat` every 5 s, and one right after a socket's first snapshot. A socket that has carried one and then
         // hears nothing for LINK_SILENT_MS is a dead path (a sleeping laptop, the Windows port proxy) that may never fire
         // `onclose`: give it up, say MC is offline, and redial. An older MC sends no heartbeat, so it is never watched.
         let heard = Date.now(), beats = false;

@@ -49,11 +49,12 @@ def _station_body(world: World, nid: str) -> dict | None:
 def _pick_hill_bank(world: World, rng: random.Random):
     if world.session.phase != "live":
         return None
-    up = [nid for nid in HILLS if (n := world.station_nodes.get(nid)) is not None and n.connected]
-    if not up:
+    # a hill out of Wi-Fi keeps counting (review round 2): its next beat, in play or after the whistle, brings it
+    known = [nid for nid in HILLS if world.station_nodes.get(nid) is not None]
+    if not known:
         return None
     tids = sorted(world.tid(t) for t in world.team_ids())
-    return {"nid": rng.choice(up), "tid": rng.choice(tids), "share": rng.choice((0.25, 0.5, 1.0))}
+    return {"nid": rng.choice(known), "tid": rng.choice(tids), "share": rng.choice((0.25, 0.5, 1.0))}
 
 
 @action("hill_bank", pick=_pick_hill_bank)
@@ -61,14 +62,27 @@ async def hill_bank(world: World, nid: str, tid: int, share: float) -> None:
     """The hill `nid` banks `share` of its unbanked played time to team `tid` and says so on its next beat."""
     node = world.station_nodes.get(nid)
     sc = match_scorer(world.session)
-    if node is None or not node.connected or sc is None or world.session.phase != "live":
+    if node is None or sc is None or world.session.phase != "live":
+        return
+    own = _hill_state(world)[nid]
+    if not node.connected:
+        # Out of Wi-Fi: it banks only time since MC last heard it, as a real hill does (one owner at a time), and says
+        # so when it is back. MC bounds a report after the whistle by that same window (`Scorer._late_bound`).
+        spent = _away_spent(world)
+        away = world.session.now_ms() - _dropped_at(world).get(nid, world.session.now_ms()) - spent.get(nid, 0)
+        room = min(world.session.now_ms() - sc.go_live_t - sum(own.values()), away) - _MARGIN_MS
+        if room > 0:
+            add = int(room * share)
+            own[tid] = own.get(tid, 0) + add
+            spent[nid] = spent.get(nid, 0) + add
+            if (body := _station_body(world, nid)) is not None:
+                node.extra_status.update(body)
         return
     st = world.session.station_registry.stations.get(nid) or {}
     armed_at = (st.get("armed") or {}).get("at") or 0
     # a beat within one heartbeat of an arming may carry the last game's tally, so MC does not seed from it
     # (`_keep_tally`); a real hill beats on. Wait that window out instead.
     await until(lambda: world.session.now_ms() >= armed_at + STATUS_HEARTBEAT_MS + 100, 4.0)
-    own = _hill_state(world)[nid]
     room = world.session.now_ms() - sc.go_live_t - sum(own.values()) - _MARGIN_MS
     if room <= 0:
         return
@@ -81,6 +95,21 @@ async def hill_bank(world: World, nid: str, tid: int, share: float) -> None:
     # wait until MC has the beat: its tally for this hill reads the new clock
     want = dict(own)
     await until(lambda: _mc_hill(world, nid) == want or world.session.phase != "live", 3.0)
+    if world.session.phase != "live":
+        await _after_whistle(world)   # this beat crossed the target: the hills out of Wi-Fi come back and report late
+
+
+def _dropped_at(world: World) -> dict[str, int]:
+    if not hasattr(world, "hill_dropped_at"):
+        world.hill_dropped_at = {}   # type: ignore[attr-defined]
+    return world.hill_dropped_at   # type: ignore[attr-defined]
+
+
+def _away_spent(world: World) -> dict[str, int]:
+    """Per hill, the ms it banked since it left Wi-Fi: one owner at a time, so never more than the time away."""
+    if not hasattr(world, "hill_away_spent"):
+        world.hill_away_spent = {}   # type: ignore[attr-defined]
+    return world.hill_away_spent   # type: ignore[attr-defined]
 
 
 def _mc_hill(world: World, nid: str) -> dict[int, int] | None:
@@ -100,6 +129,12 @@ async def hill_drop(world: World, nid: str) -> None:
     node = world.station_nodes.get(nid)
     if node is not None and node.connected:
         await node.disconnect()
+        # after the last beat MC heard from it. A hill MC never heard in play (gone inside the first heartbeat after its
+        # arming) has no base a late report can be bounded against, so MC calls that report unverified, by design
+        # (`Scorer.station_possession`): such a hill banks nothing while away here.
+        heard = ((world.session.station_registry.stations.get(nid) or {}).get("tally") or {}).get("at") is not None
+        _dropped_at(world)[nid] = world.session.now_ms()
+        _away_spent(world)[nid] = 0 if heard else 10**12
 
 
 def _pick_hill_return(world: World, rng: random.Random):
@@ -176,6 +211,11 @@ async def hill_end(world: World) -> None:
     await world.settle()
     world.mark_end()
     world.session.control("end")
+    await _after_whistle(world)
+
+
+async def _after_whistle(world: World) -> None:
+    """After the whistle each hill out of Wi-Fi walks back in and reports late, and every hill beats on."""
     for nid in HILLS:
         if (n := world.station_nodes.get(nid)) is not None and not n.connected:
             await hill_return(world, nid)
@@ -201,14 +241,20 @@ def domination_hills_check(world: World) -> None:
     held = {k: v for k, v in want.items() if v > 0}
     if not held:
         return
+    target = (world.session.config.get("scoring") or {}).get("hold_target_s")
+    winner = recap.get("winner") or {}
+    reached = sorted(k for k, v in want_ms.items() if target and v >= target * 1000)
+    if len(reached) == 1:
+        # the team that crossed the target wins, in raw ms, even when both round to it (scoring.py `winner()`)
+        if winner.get("team_id") != reached[0]:
+            raise InvariantError("domination_points", f"{reached[0]} crossed the {target} target ({want_ms} ms); MC's winner is {winner}")
+        return
     top = max(held.values())
     lead = sorted(k for k, v in held.items() if v == top)
-    winner = recap.get("winner") or {}
     if len(lead) == 1 and winner.get("team_id") != lead[0]:
         raise InvariantError("domination_points", f"the hills say {lead[0]} won {held}; MC's winner is {winner}")
     if len(lead) > 1 and sorted(winner.get("tie") or []) != lead:
         raise InvariantError("domination_points", f"the hills say a tie {lead} {held}; MC's winner is {winner}")
-    target = (world.session.config.get("scoring") or {}).get("hold_target_s")
     if world.session.end_reason == "hold_target" and target and not any(v * 1000 >= target * 1000 for v in want_ms.values()):
         raise InvariantError("domination_points", f"MC ended on the {target} s target; the hills banked only {want_ms} ms")
 
@@ -217,6 +263,14 @@ HILL_MIX = {
     "hit": 4, "kill": 4, "respawn": 4, "drop": 1, "reconnect": 1.5, "duplicate": 1, "reorder": 0.5,
     "hill_restart": 0.8, "hill_crash": 0.8, "hill_bank": 8, "hill_drop": 1, "hill_return": 1.5,
 }
+
+scenario(Scenario(
+    name="domination-hills-target", mode="domination", nodes=6, steps=40, finish="hill_end", real_stations=True,
+    config={"scoring": {"hold_target_s": 4}},
+    doc="domination-hills with a target the hills can reach (4 points): MC ends on it, the team that crossed it wins "
+        "even when both round to it, and a hill out of Wi-Fi at the whistle reports its count late.",
+    setup_script=SETUP, weights=HILL_MIX, checks=(domination_hills_check,), ci_seeds=(3,),
+))
 
 scenario(Scenario(
     name="domination-hills", mode="domination", nodes=6, steps=40, finish="hill_end", real_stations=True,
