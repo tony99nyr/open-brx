@@ -1626,7 +1626,7 @@ def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
         assert st.reloading and st.switching is None, (st.reloading, st.switching)
         assert any("ALT ignored" in l["text"] for l in st.log)
         assert st._alt_ptr == 0
-        clock.advance(st.reloading["s"] + 0.05)                      # the stale tail: past reload_s, before the deadline
+        clock.advance(st.reloading["s"] * 1.3 + 0.05)                # the stale tail: past the gun's refill (F27), before the deadline
         assert st.reloading
         st._on_rx("$BUT,1,1,*")                                      # ALT: the gun swaps
         assert st.reloading is None and st.switching, (st.reloading, st.switching)
@@ -1937,6 +1937,8 @@ def test_the_published_takeover_goes_null_all_at_once_past_the_deadline():
         clock.advance(st._reload_deadline() - clock.t + 0.01)        # past the deadline, before any tick
         assert st.reloading is not None, "the model still holds it: only the tick books the timeout"
         assert st.state()["model"]["reloading"] is None, "but nothing stale is published under it"
+        # the gun stopped feeding: the poll drains frames before its tick (Codex pass 2026-11-07), so the fake's refill must not land
+        mgr.get_events = lambda *_a, **_k: {"events": []}   # type: ignore[method-assign]
         st.poll(); await settle(st)
         assert st.reloading is None and st.reload_outcome["why"] == "timeout"
     asyncio.run(go())
