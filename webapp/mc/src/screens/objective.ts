@@ -4,7 +4,7 @@
 // reads of what the snapshot already carries.
 import type { LiveView, State, StationView } from '../api/types';
 import { fmtDuration } from '../tokens';
-import { isOwnershipScored } from '../rules/scoring';
+import { isHillMode, isOwnershipScored } from '../rules/scoring';
 // isObjectiveScored and objectiveWord live in ../rules/scoring (the mock reads them too).
 
 /** Seconds held for one team, or null when no node has reported possession yet (the field is absent). */
@@ -53,6 +53,11 @@ export function sitesNote(p: { sites: number; of_s: number | null } | null | und
 /** A hill broadcasts tid 2 while nobody owns it (bench 2026-09-10); 255 is a station's "any / nobody". */
 const NEUTRAL_TID = 2;
 const NOBODY_TID = 255;
+
+/** A hill's owner that is no team: 255 (nobody yet), or tid 2 in a hill mode, where yellow is the hill's own neutral
+ *  team and never a side (F82). Review 2026-11-06: the recap and ITEMS read it as YELLOW. */
+export const isNeutralOwner = (tid: number | null | undefined, mode: string): boolean =>
+  tid === NOBODY_TID || (tid === NEUTRAL_TID && isHillMode(mode));
 
 export interface HillOwner {
   text: string;

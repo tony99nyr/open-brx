@@ -8,7 +8,8 @@ import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton, chip } from '../u
 import { OrphanMatch } from '../ui/OrphanMatch';
 import { TEAM_KILL_NOTE, bestStreak } from './Live';
 import { objectiveUnit, objectiveWord } from '../rules/scoring';
-import { fmtObjective } from './objective';
+import { fmtObjective, isNeutralOwner } from './objective';
+import { isOwnershipScored } from '../rules/scoring';
 import { columnEdges, type Column } from './columns';
 import { AWARDS, MEDALS, STATION_TEAM_ANY, TEAM_NAMES } from '../api/contract.gen';
 import { medalChip, medalIcon } from '../api/medalicons.gen';
@@ -348,7 +349,7 @@ export function Recap() {
           things that would name a winner (hold time, honours, stations) stay off the page. */}
       {syncRows.length > 0 && <SyncStrip rows={syncRows} phase={phase} />}
       {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} mode={mode} />}
-      {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} />}
+      {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} mode={mode} />}
       {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -519,7 +520,7 @@ function Possession({ p, label, mode }: { p: NonNullable<RecapView['possession']
  *  §5c/§5d.6). A station never heard from still gets a row (its fields null, `heard: false`), so "no
  *  revives" and "never armed" read differently instead of both showing a bare 0 -- and, since extraction/
  *  powerup/bomb have no count of their own, `heard` is what tells them apart at all (F105, 2026-09-11). */
-function Stations({ rows }: { rows: RecapStationRow[] }) {
+function Stations({ rows, mode }: { rows: RecapStationRow[]; mode: string }) {
   return (
     <div data-testid="recap-stations" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
       <SectionRule label="STATIONS // WHAT THE FIELD ITEMS REPORTED" hint={`${rows.length} ASSIGNED`} />
@@ -537,8 +538,10 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
             )}
             {r.kind === 'control' && (
               <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.owner == null ? colourOf('recap-station-never-heard') : T.ok }}>
-                {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : `HELD BY ${r.owner === STATION_TEAM_ANY ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
-                {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}
+                {/* review 2026-11-06: a neutral hill (255, or yellow in a hill mode) says so in the console's own words, never
+                    HELD BY YELLOW; Domination's count is points (one owned-hill second each), so it shows no "s" */}
+                {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : isNeutralOwner(r.owner, mode) ? 'NOBODY HOLDS IT' : `HELD BY ${STATION_TID_NAME[r.owner] ?? r.owner}`}
+                {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}${isOwnershipScored(mode) ? '' : 's'}`).join(' · ')}
               </span>
             )}
             {(r.kind === 'extraction' || r.kind === 'powerup' || r.kind === 'bomb') && (

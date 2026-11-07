@@ -31,7 +31,7 @@ import { markPristine, picksDirty, seedBaseline } from '../playBaseline';
 import { FavouriteChip } from './games/FavouriteChip';
 import { matchItems } from './matchItems';
 import { ModeMark, MatchItem } from './games/match';
-import { isHillMode } from '../rules/scoring';
+import { isHillMode, isOwnershipScored } from '../rules/scoring';
 
 /** F411 games-presets.md §5: PLAY's picker order. GAMEPLAY is always hidden for MVP (§3/§13/§15). */
 const PICKER_ORDER: Exclude<PieceKind, 'gameplay'>[] = ['mode', 'life', 'spawn', 'primary', 'secondary', 'perks', 'misc_loadouts'];
@@ -450,7 +450,8 @@ pickTeams={pickTeams} />
                     if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
                     // Review 2026-11-06: a target is seconds in KOTH and points in Domination, so it carries only onto the mode it
                     // was played on (a KOTH 5:00 must not become 300 POINTS). A record from an older MC names no mode.
-                    if (lm.hold_target_s !== undefined && (!items || items.includes('hold')) && (lm.mode ?? cfg.mode) === cfg.mode) patch.hold_target_s = lm.hold_target_s;
+                    if (lm.hold_target_s !== undefined && (!items || items.includes('hold')) && (lm.mode ?? cfg.mode) === cfg.mode
+                        && !(lm.hold_target_s == null && isOwnershipScored(cfg.mode))) patch.hold_target_s = lm.hold_target_s;   // brx1: a Domination match played with no target keeps first to 1000
                     // F559: a mode that offers the hill item gets the last match's hill EXPLICITLY, so a last match played at STATION
                     // DEFAULT clears the hill now in force (a null key clears that key; null clears both).
                     if (items?.includes('hill')) {

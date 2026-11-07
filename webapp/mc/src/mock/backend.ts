@@ -2239,7 +2239,11 @@ export class MockBackend implements Api {
     if (!row) throw Object.assign(new Error('no such favourite'), { status: 404 });
     const { ids, fallbacks } = this.resolvePiecesMixed(row.pick.pieces, new Set());
     const match = clone(row.pick.match);
-    this.hillForMode(match, (this.pieces.find(x => x.piece_id === ids.mode)!.value as { mode: string }).mode);
+    const favMode = (this.pieces.find(x => x.piece_id === ids.mode)!.value as { mode: string }).mode;
+    this.hillForMode(match, favMode);
+    // review 2026-11-06 (brx1), as picks.py `load`: a Domination favourite saved with no target loads as first to 1000
+    const dflt = MODES.find(m => m.mode === favMode)?.defaults.scoring.hold_target_s;
+    if (!match.hold_target_s && dflt) match.hold_target_s = dflt;
     const partial = this.composePartial(ids, match);
     await this.rollFromRecap();   // routes/config_game.py: `_refuse_config_locked` rolls RECAP forward before the precheck
     const before = this.composeSnapshot();
