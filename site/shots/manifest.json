@@ -1,9 +1,9 @@
 {
-  "taken": "2026-11-07T23:05:51.393Z",
-  "mc_src": "3a5cae0d3b18f0b9cda4433582c05fbba1120884",
-  "hud_src": "a80c55d4de9758f7dadeab2944f0d00c4eff4a25",
+  "taken": "2026-11-07T23:29:18.731Z",
+  "mc_src": "b02a3a5778e09292b2a489ce24e52bb7a87cf008",
+  "hud_src": "52dea40846ed09953b46141ea75879de075598bd",
   "mc_shell": "9ea5c65bbafd244cb934229dd67dd1de33c5c2a6",
-  "hud_shell": "9899fb7cd11d0ba7c209095ef380b39bddb48d1c",
+  "hud_shell": "97e6e58a5ba5cfe05c5ca9d0ced5d55281922ef8",
   "files": {
     "mc-armory.jpg": {
       "w": 1280,
@@ -38,7 +38,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 94308
+      "bytes": 94185
     },
     "hud-down.jpg": {
       "w": 891,
