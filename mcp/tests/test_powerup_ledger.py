@@ -46,6 +46,9 @@ class FakePowerupMatch:
     def powerup_t_match(self, now):
         return now // 1000
 
+    def powerup_game_byte(self):
+        return 5
+
 
 class FakePowerupFeed:
     def __init__(self):
@@ -174,3 +177,20 @@ def test_real_collaborators_satisfy_powerup_protocols():
     _assert_implements(PowerupStations, StationRegistry)
     _assert_implements(PowerupMatch, Session)
     _assert_implements(PowerupFeed, Session)
+
+
+def test_a_taken_report_from_another_game_is_not_this_match_taker():
+    """Codex review 2026-11-07: a following powerup plays another game than MC's. Its `taken` report names that game,
+    and MC drops it; a report of MC's own game, or with no game (an older station), still marks the item taken."""
+    players = {"p": {"player_num": 12, "display": "ALPHA"}}
+    ledger, _feed, _push = _ledger(now=10_001, players=players)
+    ledger.tick(10_001)
+    assert ledger.rows["station-a"]["available"] is True
+    ledger.station_report("station-a", {"id": 7, "action": "taken", "player_num": 12, "age_ms": 0, "game": 6}, 10_001)
+    assert ledger.rows["station-a"]["available"] is True, "game 6's taker is not this match's"
+    ledger.station_report("station-a", {"id": 7, "action": "taken", "player_num": 12, "age_ms": 0, "game": 5}, 10_001)
+    assert ledger.rows["station-a"]["taken_by"] == 12, "MC's own game takes it"
+    ledger2, _f, _p = _ledger(now=10_001, players=players)
+    ledger2.tick(10_001)
+    ledger2.station_report("station-a", {"id": 7, "action": "taken", "player_num": 12, "age_ms": 0}, 10_001)
+    assert ledger2.rows["station-a"]["taken_by"] == 12, "an older station with no game is taken as before"

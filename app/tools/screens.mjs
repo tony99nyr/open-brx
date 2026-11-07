@@ -4212,7 +4212,7 @@ for (const view of VIEWS) {
 // ---------- Domination scores POINTS (brx1 2026-11-06): no live-HUD place may show its tally as a clock. The KOTH board
 // and DOWN chips read the phone's possession as mm:ss (F424); with hills owned, Domination must not take that path. ----------
 for (const view of VIEWS) for (const skin of ['', '&night']) {
-  await step(`${view.name} live-dom-scores${skin}: Domination's live HUD, TEAMS board and DOWN chips never show a clock for points`, async () => {
+  await step(`${view.name} live-dom-scores${skin}: Domination's live HUD never shows a clock for points; the board and DOWN chips show team points, the players table keeps K D A`, async () => {
     const pg = await open(view, 'live-dom-scores', '&team=blue&foe=red' + skin);
     const feed = () => pg.evaluate(() => window.brxDemo.points([[11, 0, 1, 100, 1], [12, 1, 1, 100, 0], [13, 0, 1, 100, 0]]));
     for (let k = 0; k < 4; k++) { await feed(); await pg.waitForTimeout(500); }
@@ -4232,12 +4232,41 @@ for (const view of VIEWS) for (const skin of ['', '&night']) {
       teams: Array.from(document.querySelectorAll('.bdteam .tm')).map(x => x.textContent.replace(/\s+/g, ' ').trim()) }));
     must(board.open && board.teams.length === 2, 'the TEAMS board did not open with both teams: ' + JSON.stringify(board));
     must(!board.koth && !board.teams.some(t => /\d:\d\d/.test(t)), 'a Domination board chip reads a clock: ' + JSON.stringify(board));
+    // Tony 2026-11-07: the chips show each team's POINTS (whole seconds owned), the table keeps every stat
+    const chipNums = sel => pg.evaluate(q => Array.from(document.querySelectorAll(q)).filter(e => e.offsetWidth).map(e => ({ tid: e.dataset.tid, txt: e.querySelector('b').textContent.trim() })), sel);
+    const tally = () => pg.evaluate(() => { const o = {}; for (const site of Object.values((window.brx.engine.state().possession || {}).by_site || {}))
+      for (const [tid, v] of Object.entries(site || {})) o[tid] = (o[tid] || 0) + (+v || 0); return o; });
+    const checkPoints = async (where, chips, before, after) => {
+      must(chips.length === 2, where + ' wants two points chips: ' + JSON.stringify(chips));
+      let differs = false;
+      for (const c of chips) {
+        must(/^\d+$/.test(c.txt), where + ' chip is not a whole number: ' + JSON.stringify(c));
+        const lo = Math.floor((before[c.tid] || 0) / 1000), hi = Math.floor((after[c.tid] || 0) / 1000);
+        must(+c.txt >= lo && +c.txt <= hi, where + ' chip ' + c.txt + ' is not floor(liveHold/1000) in [' + lo + ',' + hi + '] for tid ' + c.tid);
+        if (+c.txt !== 18 && +c.txt !== 21) differs = true;
+      }
+      must(differs, where + ' chips still show the kills score (18/21): ' + JSON.stringify(chips));
+    };
+    const t0 = await tally(); const bc = await chipNums('.bdteam .tm.pts'); const t1 = await tally();
+    await checkPoints('the TEAMS board', bc, t0, t1);
+    must(bc.some(c => +c.txt > 0), 'the board points are all zero, so the check proves nothing: ' + JSON.stringify(bc));
+    must(/POINTS/.test(await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || '')), 'the board caption does not say POINTS');
+    await pg.click('.bdseg .sg:nth-child(2)'); await settled(pg);
+    const head = await pg.evaluate(() => Array.from(document.querySelectorAll('.bdr.bdh span')).map(e => e.textContent.trim()));
+    const kv = await pg.evaluate(() => Array.from(document.querySelectorAll('.bdlist .bdr:not(.bdh)')).map(r => Array.from(r.querySelectorAll('span.tab')).map(e => e.textContent.trim())));
+    must(['K', 'D', 'A'].every(h => head.includes(h)), 'the PLAYERS table lost a K, D or A column: ' + JSON.stringify(head));
+    must(kv.length >= 2 && kv.every(c => c.length >= 4 && /^\d+$/.test(c[1]) && /^\d+$/.test(c[2]) && /^\d+$/.test(c[3])), 'the PLAYERS table K D A cells are not numbers: ' + JSON.stringify(kv));
+    must(kv.some(c => +c[1] > 0), 'the PLAYERS table shows no kill values: ' + JSON.stringify(kv));
+    await pg.click('.bdseg .sg:nth-child(1)'); await settled(pg);
     await pg.screenshot({ path: `${OUT}/${view.name}-live-dom-scores${skin ? '-night' : ''}.png` });
     await pg.click('.bdx'); await settled(pg);
     await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
+    const d0 = await tally();
     const down = await pg.evaluate(() => ({ koth: document.querySelectorAll('.tm.koth').length,
       chips: Array.from(document.querySelectorAll('.tm')).filter(e => e.offsetWidth).map(x => x.textContent.replace(/\s+/g, ' ').trim()) }));
+    const dchips = await chipNums('.tm.pts'); const d1 = await tally();
     await pg.close();
+    await checkPoints('the DOWN strip', dchips, d0, d1);
     must(down.chips.length >= 2, 'the DOWN screen shows no team chips: ' + JSON.stringify(down));
     must(!down.koth && !down.chips.some(t => /\d:\d\d/.test(t)), 'a Domination DOWN chip reads a clock: ' + JSON.stringify(down));
   });

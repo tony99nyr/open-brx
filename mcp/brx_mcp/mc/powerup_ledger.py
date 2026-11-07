@@ -75,6 +75,7 @@ class PowerupMatch(Protocol):
     def powerup_active_match(self) -> str | None: ...
     def powerup_pickup_time(self, src: str, raw: int, t_recv: int, seq: int | None) -> tuple[str | None, bool]: ...
     def powerup_t_match(self, now: int) -> int: ...
+    def powerup_game_byte(self) -> int: ...
 
 
 class PowerupFeed(Protocol):
@@ -388,6 +389,11 @@ class PowerupLedger:
         if body.get("action") == "reset":
             self.reset_item(nid)
         elif body.get("action") == "taken":
+            # Codex review 2026-11-07: a following station may play another game than MC's. Its report names the game
+            # it awarded the item in, and another game's taker is not this match's. An older station sends no game; 0 is any game.
+            game = body.get("game")
+            if isinstance(game, int) and not isinstance(game, bool) and game not in (0, self.match.powerup_game_byte()):
+                return
             num = body.get("player_num")
             player = self._player_num(num)
             # Dated by `age_ms` (how long ago the station awarded it), never by the station's `t`: a Stick has no

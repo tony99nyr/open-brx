@@ -8,7 +8,7 @@
 // winner in byte 15 (`taker`), which is what the winning phone waits for before it applies the item. The station
 // owns taken and untaken; MC's `station_update` only re-anchors its countdown.
 import { PLAYER_STATE, inScope } from './beacon.js';
-import { followHoldSwitch } from './control.js';   // F658: the switch hysteresis the hill uses
+import { noteGameEnd, followSwitch, startGameEnd, restoreGameEnd } from './control.js';   // F658: the game-end rule the hill uses
 import { POWERUP_DEFAULT_EVERY_S, ADVERT_VALUE_MAX, HILL_RING_STALE_MS } from './transport/contract.gen.js';   // seams D: shared with the Stick
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
@@ -102,7 +102,7 @@ export class PowerupStation {
         this.available = false; this.taker = ready[0].id; this.ringAt = null; this.awardedNext = this.nextAt;
         this.takes++; this.takenAt = now;
         events.push({ type: 'taken', player_num: this.taker }); changed = true;
-        this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now }); if (this.unsent.length > 16) this.unsent.shift();
+        this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now, ...(this.claimGame ? { game: this.claimGame } : {}) }); if (this.unsent.length > 16) this.unsent.shift();   /* the game it went in (Codex review 2026-11-07) */
         this.log.push({ t: now, type: 'taken', player_num: this.taker }); if (this.log.length > 64) this.log.shift();
       } else if (mine.some(p => p.state & PLAYER_STATE.claiming)) { if (this.ringAt == null) { this.ringAt = now; changed = true; } }
       else if (this.ringAt != null) { this.ringAt = null; changed = true; }
@@ -138,8 +138,8 @@ export class PowerupStation {
  *    claim (`armedGame`, 0 = any).
  *  - IN SCOPE (A86): the powerup kind bit and this station's id bit. A zero scope (an older APK) never counts.
  *  - The CURRENT game is the byte of the in-scope live players it hears, at any signal strength. Another live game takes
- *    the station only with MORE such players heard than the current game; a tie keeps it. While the current game is still
- *    heard, that lead must hold for FOLLOW_SWITCH_HOLD_MS (control.js followHoldSwitch); with none of it heard, at once. A game-0 phone is skipped unless
+ *    the station only once the current game has ended here (control.js noteGameEnd: a whistle heard, or 10 min unheard),
+ *    never while it is live; then the game with the most such players takes it at once. A game-0 phone is skipped unless
  *    MC armed the station for game 0, as the hill does.
  *  - A NEW game starts the item's clock at its first sighting: the first spawn `first_at_s` later, then every
  *    `spawn_every_s` (`PowerupStation.startGame`). No MC START is needed. A byte heard again after more than
@@ -165,7 +165,8 @@ export class PowerupFollower {
     this.mc = null;         // MC's last station_update: { game: the byte MC armed, body, at }
     this.mcAnchored = false;   // a station_update arrived since the last arming: saved, unlike `mc`, so a reload keeps it
     this.seenTakes = 0;        // the station's `takes` at the last step (F658 bounce)
-    this.lead = null;          // { game, since }: a challenger leading the current game (control.js followHoldSwitch)
+    this.liveIds = new Set();  // the player ids heard live in the current game (control.js noteGameEnd)
+    this.ended = false;        // the current game has ended at this station
   }
   /** Remember MC's `station_update` for its armed game `armedGame`, whether the station applied it or not. */
   noteMc(armedGame, body, now) {
@@ -205,7 +206,6 @@ export class PowerupFollower {
     if (heard.size) this.follows = true;
     let switched = null;
     if (this.follows) {
-      const n = g => (heard.get(g) || { n: 0 }).n;
       let best = null;
       for (const [g, h] of heard) {
         if (g === this.current) continue;
@@ -213,7 +213,13 @@ export class PowerupFollower {
         if (b == null || h.n > b.n || (h.n === b.n && (h.at > b.at || (h.at === b.at && g > best)))) best = g;
       }
       const cur = this.current != null ? heard.get(this.current) : null;
-      if (followHoldSwitch(this, best, best != null && (this.current == null || n(best) > n(this.current)), !!cur, now)) {
+      // Codex review r2, as the hill: the current byte back after HILL_RING_STALE_MS is a new game on that byte, and the
+      // silence is judged with this step's adverts in
+      if (cur && this.heardAt != null && cur.at - this.heardAt > this.staleMs) startGameEnd(this);
+      for (const p of players || []) {
+        if (p && inScope(p, 'powerup', stationId) && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
+      }
+      if (followSwitch(this, best, cur ? Math.max(this.heardAt ?? cur.at, cur.at) : this.heardAt, now)) {
         const from = this.current;
         this.current = best; this.heardAt = heard.get(best).at; this.since = now;
         // MC's own game keeps MC's schedule (its START reached this station): a first follow already holds it, a switch
@@ -229,13 +235,19 @@ export class PowerupFollower {
         if (this.heardAt != null && cur.at - this.heardAt > this.staleMs) { this.since = now; station.startGame(now); switched = { from: this.current, to: this.current, fresh: true, kept: false }; }
         this.heardAt = Math.max(this.heardAt ?? cur.at, cur.at);
       }
+      if (switched) {   // a new current game (or the same byte started again): nothing of it heard yet
+        startGameEnd(this);
+        for (const p of players || []) {
+          if (p && inScope(p, 'powerup', stationId) && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
+        }
+      }
     }
     station.claimGame = this.follows ? this.current : (armedGame || 0);
     station.requireLive = this.follows;
     return { switched };
   }
   /** Forget the followed game: the operator's reset, a new kind or id. */
-  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; this.mcAnchored = false; this.lead = null; }
+  clear() { this.follows = false; this.current = null; this.heardAt = null; this.since = null; this.mc = null; this.mcAnchored = false; startGameEnd(this); }
   /** The heartbeat's summary, the hill's shape (`games`, keyed by byte; one entry, the current game): the item's state,
    *  its taker, ms to the next spawn (null = unknown), ms since this game's clock started and since it was last heard. */
   summary(station, now) {
@@ -244,12 +256,13 @@ export class PowerupFollower {
     return { [String(this.current)]: { available: v.available === true, taker: v.taker || 0, ...(v.nextInMs != null ? { next_ms: v.nextInMs } : {}),
       since_ms: Math.max(0, now - (this.since ?? now)), last_ms: Math.max(0, now - (this.heardAt ?? now)) } };
   }
-  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since, mcAnchored: this.mcAnchored }; }
+  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since, mcAnchored: this.mcAnchored, ended: this.ended, liveIds: [...this.liveIds] }; }
   restore(s) {
     if (s && typeof s === 'object') this.mcAnchored = s.mcAnchored === true;
     if (!s || typeof s !== 'object' || !s.follows || !Number.isInteger(s.current) || s.current < 0 || s.current > 255) return this;
     this.follows = true; this.current = s.current;
     this.heardAt = Number.isFinite(s.heardAt) ? s.heardAt : null; this.since = Number.isFinite(s.since) ? s.since : null;
+    restoreGameEnd(this, s);   // the current game's end evidence (Codex review r2)
     return this;
   }
 }

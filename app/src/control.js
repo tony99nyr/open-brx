@@ -40,7 +40,7 @@
 // never in between, which is condition 2 expressed on the wire.
 
 import { PLAYER_STATE, inScope } from './beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS, FOLLOW_SWITCH_HOLD_MS } from './transport/contract.gen.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS } from './transport/contract.gen.js';
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
 //  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
@@ -317,9 +317,10 @@ export class ControlAdvertiser {
  *
  *  - FOLLOW MODE starts the first time the hill hears any live-bit player, and lasts. Before that (only old phones heard)
  *    the hill keeps today's rules: it counts players of its MC-armed game (`armedGame`, 0 = any) inside MC's window.
- *  - The CURRENT game is the byte of the live players it hears. Another live game takes the hill only with MORE live
- *    players on the point (present or in sight) than the current game; a tie keeps it. A game-0 phone is skipped unless
- *    the hill's own game is 0. The first follow into the hill's own game (or from a game-0 hill) keeps its point.
+ *  - The CURRENT game is the byte of the live players it hears. The first follow takes the game with the most live
+ *    players on the point (present or in sight). Another live game takes the hill only once the current game has ended
+ *    here (noteGameEnd above), never while it is live. A game-0 phone is skipped unless the hill's own game is 0. The
+ *    first follow into the hill's own game (or from a game-0 hill) keeps its point.
  *  - Only live-bit players of the current game count. A player without the bit (the countdown, after the whistle) never
  *    counts in follow mode, so the live bit replaces MC's window.
  *  - SCOPE (A86, Tony 2026-11-02: "the phone decides whether a station is enabled"): a player counts toward the point
@@ -333,24 +334,36 @@ export class ControlAdvertiser {
  * other game's (or a fresh one) with `restore`, which also restarts its clock, so no time banks across a switch. PURE.
  */
 /**
- * F658 switch hysteresis, one rule for the hill (HillFollower) and the powerup (powerup.js PowerupFollower), and the
- * Stick's presence.h `follow_hold_switch`. `f` holds `current` and `lead` ({ game, since } or null). `best` is the
- * strongest other live game (null = none), `leads` whether it has strictly more heard live players than the current
- * game, and `currentHeard` whether any live in-scope player of the current game is heard at all. True = switch to `best`
- * now.
- *  - No current game yet (the first follow): at once.
- *  - The current game has no live player heard (its whistle, its players gone, or gone stale): at once, so the next game
- *    loses no time at the hill or the pickup.
- *  - Else the challenger must lead for FOLLOW_SWITCH_HOLD_MS without a break: a lead that drops back to a tie or less,
- *    or passes to another game, starts the hold again. The hold is not saved: a restart starts it again.
+ * F658 game end (Tony 2026-11-07: "if a utility is going to switch roles, it can be assumed it must be reset at mc"): a
+ * following station never leaves its current game for another while the current game is live. One rule for the hill
+ * (HillFollower), the powerup (powerup.js PowerupFollower) and the Stick (presence.h FollowEnd). `f` holds `current`,
+ * `liveIds` (the player ids heard live in the current game) and `ended`.
+ *  - The current game ENDS at the station when a player it heard live in that game advertises without the live bit (its
+ *    whistle; a countdown phone was never heard live, so it cannot end a game), or when no live player of the game has
+ *    been heard for HILL_RING_STALE_MS (10 min). A phone that missed MC's END still drops the bit at its own time limit.
+ *  - Only an in-scope advert of the current game's byte counts, so no advert of another game can end it.
+ *  - Then the strongest other live game takes the station at once. The first follow takes a game at once too.
  */
-export function followHoldSwitch(f, best, leads, currentHeard, now, holdMs = FOLLOW_SWITCH_HOLD_MS) {
-  if (best == null || !leads) { f.lead = null; return false; }
-  if (f.current == null || !currentHeard) { f.lead = null; return true; }
-  if (!f.lead || f.lead.game !== best) f.lead = { game: best, since: now };
-  if (now - f.lead.since < holdMs) return false;
-  f.lead = null;
-  return true;
+export function noteGameEnd(f, p) {
+  if (f.current == null || !p || (p.game || 0) !== f.current) return;
+  if (p.state & PLAYER_STATE.live) f.liveIds.add(p.id);
+  else if (f.liveIds.has(p.id)) f.ended = true;
+}
+/** True = switch to the strongest other live game now: no current game yet, or the current game has ended. */
+export function followSwitch(f, best, heardAt, now, staleMs = HILL_RING_STALE_MS) {
+  if (best == null) return false;
+  if (f.current == null) return true;
+  if (!f.ended && heardAt != null && now - heardAt > staleMs) f.ended = true;
+  return f.ended;
+}
+/** A new current game: nothing heard of it yet. */
+export function startGameEnd(f) { f.liveIds = new Set(); f.ended = false; }
+/** A restart: the saved end evidence of the current game (`ended`, `liveIds`); none saved (an older save) = none. */
+export function restoreGameEnd(f, s) {
+  startGameEnd(f);
+  if (!s || typeof s !== 'object') return;
+  f.ended = s.ended === true;
+  for (const id of Array.isArray(s.liveIds) ? s.liveIds : []) if (Number.isInteger(id) && id >= 0 && id <= 255) f.liveIds.add(id);
 }
 
 export class HillFollower {
@@ -359,7 +372,8 @@ export class HillFollower {
     this.follows = false;
     this.current = null;        // the followed game byte, once following
     this.games = new Map();     // byte -> { heardAt, since, snap } (snap: the point's state while not current, null = fresh)
-    this.lead = null;           // { game, since }: a challenger leading the current game, and since when (followHoldSwitch)
+    this.liveIds = new Set();   // the player ids heard live in the current game (noteGameEnd)
+    this.ended = false;         // the current game has ended at this hill (noteGameEnd, followSwitch)
   }
   /** The game byte the hill advertises and counts under: the current one when following, else MC's. */
   game(armedGame = 0) { return this.follows && this.current != null ? this.current : (armedGame || 0); }
@@ -402,10 +416,12 @@ export class HillFollower {
       }
       e.heardAt = Math.max(e.heardAt, at);
     }
-    // Review of F658: another live game takes the hill only with MORE live players on the point than the current game
-    // (a tie keeps it), so one phone that missed END cannot pin the hill, and a stranger takes an empty hill only until
-    // more real players arrive. The first follow takes the game with the most players there (then the newest). While the
-    // current game is still heard, that lead must hold for FOLLOW_SWITCH_HOLD_MS (followHoldSwitch).
+    // The first follow takes the game with the most live players on the point (then the newest). Later, another live
+    // game takes the hill only once the current game has ENDED here (noteGameEnd, followSwitch): never while it is live.
+    // The current byte back after HILL_RING_STALE_MS is a new game on that byte (a wrap, an MC restart): the last one's
+    // end does not end it (Codex review r2)
+    if (freshCurrent) startGameEnd(this);
+    for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
     const n = g => (heard.get(g) || { n: 0 }).n;
     let best = null;
     for (const g of heard.keys()) {
@@ -414,9 +430,9 @@ export class HillFollower {
       if (!e) continue;   // evicted in this same step (more live games than the ring holds)
       if (!b || n(g) > n(best) || (n(g) === n(best) && (e.since > b.since || (e.since === b.since && g > best)))) best = g;
     }
-    // The switch waits for a sustained lead while the current game is still heard (followHoldSwitch)
     let next = this.current;
-    if (followHoldSwitch(this, best, best != null && (this.current == null || n(best) > n(this.current)), this.current != null && heard.has(this.current), now)) next = best;
+    const cur = this.current != null ? this.games.get(this.current) : null;
+    if (followSwitch(this, best, cur ? cur.heardAt : null, now)) next = best;
     let switched = null;
     if (next !== this.current && first && (!armedGame || armedGame === next)) {
       // Review of F658: the first follow into MC's own game (or from a hill of any game) keeps the point it counted
@@ -434,6 +450,10 @@ export class HillFollower {
       loadPoint(point, null);
       switched = { from: this.current, to: this.current, fresh: true };
     }
+    if (switched) {   // a new current game (or the same byte started again): nothing of it heard yet
+      startGameEnd(this);
+      for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
+    }
     return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched };
   }
   /** May the point count this player? Never outside its scope (A86: the control bit and station `stationId`'s id bit).
@@ -445,7 +465,7 @@ export class HillFollower {
     return !armedGame || !p.game || p.game === armedGame;
   }
   /** Forget every game: the operator's point reset. */
-  clear() { this.follows = false; this.current = null; this.games = new Map(); this.lead = null; }
+  clear() { this.follows = false; this.current = null; this.games = new Map(); startGameEnd(this); }
   _evict() {
     let worst = null;
     for (const [g, e] of this.games) if (g !== this.current && (worst == null || e.heardAt < this.games.get(worst).heardAt)) worst = g;
@@ -464,7 +484,8 @@ export class HillFollower {
   /** What a restart needs (§5d.6): the mode, the current byte and every other game's saved point. The current game's
    *  point is saved by the caller, as before. */
   snapshot() {
-    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]) };
+    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]),
+      ended: this.ended, liveIds: [...this.liveIds] };   // the current game's end evidence (Codex review r2)
   }
   restore(s) {
     if (!s || typeof s !== 'object') return this;
@@ -477,6 +498,7 @@ export class HillFollower {
     }
     if (this.current != null && !this.games.has(this.current)) this.current = null;
     if (this.current == null) this.follows = this.follows && this.games.size > 0;
+    restoreGameEnd(this, this.current != null ? s : null);
     return this;
   }
 }

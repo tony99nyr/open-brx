@@ -1248,17 +1248,29 @@ class StationRegistry:
         if not tally or tally.get("key") != key:
             tally = st["tally"] = {"key": key, "hold_ms": {}, "revives": None}
         control = rep.get("control")
-        hold = control.get("hold_ms") if isinstance(control, dict) else None
+        hold_control = control if isinstance(control, dict) else None
         # F555 (Codex review): a beat from a station still on another id is another point's count, and this tally is
         # now what MC scores the point on, so it never seeds it (the raw beat still passes through to `rep`).
         # F555 (brx3 review): a beat naming another game was sent before the station applied this arming; it is the last
         # game's count. A station that sends no game (older) cannot be told apart, and seeds as before.
         cg = control.get("game") if isinstance(control, dict) else None
         old_game = isinstance(cg, int) and not isinstance(cg, bool) and cg != game
+        if old_game and isinstance(control, dict):
+            games = control.get("games")
+            ring_game = games.get(str(game)) if isinstance(games, dict) else None
+            hold_control = ring_game if isinstance(ring_game, dict) else None
+            if hold_control is not None:
+                ring_hold = hold_control.get("hold_ms")
+                if isinstance(ring_hold, dict):
+                    ring_hold = {tid: ms for tid, ms in ring_hold.items() if _rostered_tid(tid)}
+                hold_control = {**hold_control, "hold_ms": ring_hold}
+                control = {**control, "hold_ms": ring_hold, "owner": hold_control.get("owner")}
+                rep["control"] = control
+        hold = hold_control.get("hold_ms") if isinstance(hold_control, dict) else None
         # F555 (Opus review): MC scores a hill on this tally, so only time the match PLAYED seeds it. A phone hill counts
         # in the lobby under this same game byte (it resets at START, but a max merge would keep the lobby count).
         unplayed = armed.get("kind") == "control" and self.play.phase not in ("live", "recap")
-        if isinstance(hold, dict) and not old_game and not unplayed and rep.get("station_id") in (None, armed.get("id")):
+        if isinstance(hold, dict) and (not old_game or hold_control is not None) and not unplayed and rep.get("station_id") in (None, armed.get("id")):
             tally["at"] = t_recv   # milestone round 3: when MC last RECEIVED this tally (a bare hello says nothing about it)
             for tid, ms in hold.items():
                 if isinstance(ms, int) and not isinstance(ms, bool) and ms > tally["hold_ms"].get(tid, -1):
@@ -1270,7 +1282,8 @@ class StationRegistry:
             # `tally["hold_ms"]` LAST. The same rostered-tid filter applies to it here too.
             rostered_tally = {tid: ms for tid, ms in tally["hold_ms"].items() if _rostered_tid(tid)}
             rep["control"] = {**control, "hold_ms": {**hold, **rostered_tally}}
-            owner = control.get("owner")
+            owner_src = (hold_control if old_game else control) or {}   # another game's beat: its ring entry for MC's game
+            owner = owner_src.get("owner")
             if isinstance(owner, int) and not isinstance(owner, bool) and owner in (0, 1, 2, 3, STATION_TEAM_ANY):
                 tally["owner"] = owner
         rv = rep.get("revives")
