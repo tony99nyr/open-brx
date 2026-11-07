@@ -14,6 +14,11 @@ from .ownership import NEUTRAL_TID, OWN_SKEW_MS, clock_offsets, owned_ms
 OWN_AT_SLACK_MS = 60_000   # how long before go-live an own_change may be stamped (a phone's clock error)
 TALLY_STEP_MS = 1000       # A88: how far a hill's final tally may differ from the phones' timeline, per owner change
 TALLY_TRIM_MS = 3000       # A88: plus the hill's ±2 s end trim and 1 s of whole-second rounding
+
+
+def _tally_key(own_ms: dict[int, int]) -> tuple:
+    """A88: the order of two final tallies for one hill: the least banked first, then a fixed order, never arrival."""
+    return (sum(own_ms.values()), sorted(own_ms.items()))
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
@@ -1168,7 +1173,10 @@ class Scorer:
         site = str(ev.get("site") or "A")
         cur = self.hill_tallies.get(site)
         if final:
-            self.hill_tallies[site] = {"final": True, "own_ms": own_ms}
+            # Codex review: a hill only trims its final down (a later end age), so of two finals the one with the least
+            # banked is the newer. Keeping it, not the last to arrive, gives a replay (in `t` order) the same answer.
+            if cur is None or not cur["final"] or _tally_key(own_ms) < _tally_key(cur["own_ms"]):
+                self.hill_tallies[site] = {"final": True, "own_ms": own_ms}
         elif cur is None or not cur["final"]:
             merged = dict(cur["own_ms"]) if cur else {}
             for tid, ms in own_ms.items():
@@ -1333,7 +1341,9 @@ class Scorer:
             if site in timed:
                 per_site = self._owned_site_ms(site, ref)
                 if site in tallied and after_end:
-                    per_site = self._site_from_tally(site, per_site, self._owned_site_steps(site)) or per_site
+                    # Codex review: an empty final ({}: nobody owned the hill) replaces too, so no `or` here
+                    from_tally = self._site_from_tally(site, per_site, self._owned_site_steps(site))
+                    per_site = per_site if from_tally is None else from_tally
             elif site in tallied and (after_end or (site not in self.possession_ms and site not in stations)):
                 per_site = (self._site_from_tally(site, None, 0) if after_end else None) or {}
             elif site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):

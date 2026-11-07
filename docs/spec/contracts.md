@@ -644,7 +644,8 @@ Event =
   idempotent by `(node_id, seq)` (§5 envelope). MC stores `operator_result` [A47] and `pickup` [A56] and writes the
   feed from them; no scorer reads them. **[A88]** MC takes a `hill_tally` only for its match's own game byte (kept with
   the match through a restart and the next push), never parks it as late, and merges it per site: a `final` tally
-  replaces anything earlier, even a larger one; before a final, the max per team. Only a final tally scores, and only
+  replaces any live one, even a larger one; of two finals MC keeps the one with the least banked (the hill only trims
+  a final down), so arrival order and a restart's replay give the same answer; before a final, the max per team. Only a final tally scores, and only
   after the whistle: it replaces a hill's points when no phone reported that hill, or when the phones' `own_change`
   timeline differs from it by more than 1 s an owner change plus 3 s (the hill's ±2 s trim and 1 s of rounding), which
   is a capture no phone in Wi-Fi reported. A tally that agrees leaves the timeline's points. `possession.from_tally`

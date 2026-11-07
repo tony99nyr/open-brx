@@ -138,3 +138,35 @@ def test_a_restart_after_the_next_push_keeps_the_matchs_own_game_byte():
     assert s2.resume_match() == "recap"
     assert s2._m().scorer.game_byte == gb, (s2._m().scorer.game_byte, gb)
     assert _by(s2) == {red: 10, blue: 279}, _by(s2)
+
+
+def test_an_empty_final_tally_clears_a_hill_nobody_owned():
+    """Codex review: a final tally of {} (the hill was never owned) must take the hill's points to 0, not keep the
+    phones' timeline behind an `or`."""
+    s, net, clock, r, b = _ended_with_red_on_a()
+    red, blue = (t["team_id"] for t in s.config["teams"][:2])
+    site = _hill_tally(s, net, clock, "node0", "util-a", {}, True)
+    rc = s.recap()
+    assert rc["possession"]["by_team"] == {red: 0, blue: 0}, rc["possession"]
+    assert rc["possession"]["from_tally"] == {site: {red: 290}}, rc["possession"]
+
+
+def test_two_finals_keep_the_most_trimmed_whatever_order_they_arrive_in_and_across_a_restart():
+    """Codex review: live play kept the last final to arrive, a replay the last by timestamp, so a restart could change
+    the winner. A hill only trims its final down, so MC keeps the final with the least banked, in any order."""
+    import pathlib
+    import tempfile
+    from _session import restart_session
+    for order in ((100, 98), (98, 100)):
+        s, net, clock, r, b = _ended_with_red_on_a(stored=True)
+        red, blue = (t["team_id"] for t in s.config["teams"][:2])
+        s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+        t0 = clock["t"]
+        for i, secs in enumerate(order):
+            clock["t"] = t0 + 5_000 - i * 4_000   # the second arrives later but carries an earlier phone timestamp
+            _hill_tally(s, net, clock, f"node{i}", "util-a", {r: secs}, True)
+        clock["t"] = t0 + 10_000
+        assert _by(s)[red] == 98, (order, _by(s))
+        s2, _ = restart_session(s, clock)
+        assert s2.resume_match() == "recap"
+        assert _by(s2)[red] == 98, (order, _by(s2))
