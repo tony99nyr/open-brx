@@ -121,6 +121,9 @@ class Match:
     release_reason: ReleaseReason | None = None  # what ended the wait (RecapSyncView.released_by)
     release_in_told: int | None = None  # the whole seconds left last broadcast; in process only
     result_changed: bool = False
+    # Tony 2026-11-07: a Domination match ended on its target or its clock while a phone was silent. Its result waits for
+    # the phones (no bound, hills do not block) or the operator's END NOW: a phone out of Wi-Fi may hold a capture.
+    score_pending: bool = False
     end_reason: str | None = None
     ended_head: dict | None = None
 
@@ -198,6 +201,7 @@ class Match:
                     **({"release_due_in_ms": max(0, self.release_due_mono - sync_mono_ms)}
                        if self.release_due_mono is not None and not self.released else {}),
                     "result_changed": self.result_changed,
+                    **({"score_pending": True} if self.score_pending else {}),
                     "sync_nodes": {nid: {**{key: entry[key] for key in ("received", "status_received", "changed_t")
                                              if key in entry},
                                          "idle_ms": max(0, sync_mono_ms - entry.get("changed_mono", sync_mono_ms))}

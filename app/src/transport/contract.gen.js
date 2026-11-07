@@ -690,6 +690,7 @@ export const CONTROL_CMDS = new Set([
  *  A56 (S58): a player took a powerup station's item (never scored) */
 export const PERSISTED_EVENT_TYPES = new Set([
   'death',
+  'hill_tally',
   'hit_taken',
   'operator_result',
   'own_change',
@@ -790,6 +791,7 @@ export const EVENT_REQUIRED = {
   team_change: ['tid'],
   possession: ['hold_ms'],
   own_change: ['site', 'from_tid', 'owner_tid', 'at_ms'],
+  hill_tally: ['site', 'game_byte', 'own_s', 'final'],
   operator_result: ['cmd', 'ok'],
   pickup: ['station_id', 'item_kind'],
 };

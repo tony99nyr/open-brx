@@ -35,7 +35,7 @@
 // sit side by side. At 900 px they stack, the two share one viewport's height, and eight rows came out
 // about 20 px tall. Below 1024 the page scrolls instead, and under the fit rule every row keeps a
 // readable minimum height (`rowMin`) rather than shrinking past its own text.
-import { recapSync } from '../api/recapSync';
+import { pendingTitle, recapSync } from '../api/recapSync';
 import { SyncStrip, waitingLine } from './SyncStrip';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
@@ -450,7 +450,7 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
     return (
       <div data-spectate="pending" style={{ border: `1px solid ${T.line}`, borderLeft: `6px solid ${T.warn}`, padding: '24px 28px', flex: 'none', display: 'flex', flexDirection: 'column', gap: 18 }}>
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 26, flexWrap: 'wrap' }}>
-          <span style={{ ...osw(700, Math.round(SZ.score * 0.78)), letterSpacing: '.08em' }}>RESULTS PENDING</span>
+          <span style={{ ...osw(700, Math.round(SZ.score * 0.78)), letterSpacing: '.08em' }}>{pendingTitle(sync)}</span>
           {line && <span style={{ ...chk(700, SZ.label), letterSpacing: '.2em', color: T.dim }}>{line}</span>}
         </span>
         {sync.rows.length > 0 && sync.rows.length <= 16 && <SyncStrip rows={sync.rows} phase="live" />}

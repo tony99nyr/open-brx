@@ -19,6 +19,9 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "SCORE_SILENT_MS": "A89 (2026-11-07): how long a phone must have been silent at a Domination whistle for MC to hold the\n"
+                       "result. Read once, at the whistle, against the phone's last message; it never fires, and a hill's\n"
+                       "beacon is not a phone's message, so no beacon can reset it",
     "OWN_AT_SLACK_MS": "A87 (2026-11-07): how long before go-live a phone's own_change may be stamped (its clock error).\n"
                        "A bound on a fact's own time stamp, checked once at ingest; it never fires and no beacon reaches it",
     "SEND_TIMEOUT_S": "F644 (2026-11-01): how long one `/ui-ws` send to a console tab may wait before MC drops the socket.\n"

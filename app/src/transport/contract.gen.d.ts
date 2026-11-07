@@ -713,7 +713,7 @@ export type ControlCmd = 'abort_start' | 'clock_resync' | 'end' | 'panic' | 'rec
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
  *  A56 (S58): a player took a powerup station's item (never scored) */
 export declare const PERSISTED_EVENT_TYPES: ReadonlySet<PersistedEventType>;
-export type PersistedEventType = 'death' | 'hit_taken' | 'operator_result' | 'own_change' | 'pickup' | 'possession' | 'respawn' | 'team_change';
+export type PersistedEventType = 'death' | 'hill_tally' | 'hit_taken' | 'operator_result' | 'own_change' | 'pickup' | 'possession' | 'respawn' | 'team_change';
 export declare const STATION_KINDS: ReadonlySet<StationKind>;
 /** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
  *  persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
@@ -1195,6 +1195,9 @@ export interface GameConfigBase {
    *  scores the hills from the phones' `own_change` facts, so the phone sends them.
    *  Absent (an older MC, which rejects the fact) = send `possession` only. */
   own_change?: boolean;
+  /** A88: Domination only, set by `Session._wire_config()`. True = this MC takes the
+   *  `hill_tally` fact, so the phone relays each hill's advert tally. Absent = send none. */
+  hill_tally?: boolean;
   /** Derived scanner fallback: teams without a station use timed AUTO respawn. */
   respawn_auto_teams?: number[];
   /** F70: what is emitting this game's objective -- `STATION_SOURCES` above
@@ -1276,6 +1279,7 @@ export interface GameConfig {
   powerups?: PowerupSlot[];
   game_byte?: number;
   own_change?: boolean;
+  hill_tally?: boolean;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -1312,6 +1316,7 @@ export interface ConfigView {
   powerups?: PowerupSlot[];
   game_byte?: number;
   own_change?: boolean;
+  hill_tally?: boolean;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -1696,7 +1701,7 @@ export interface OutboxLostReport {
 }
 
 export interface Event {
-  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'own_change' | 'operator_result' | 'pickup';
+  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'own_change' | 'hill_tally' | 'operator_result' | 'pickup';
   t?: number;
   match_id?: string | null;
   node_id?: string;
@@ -1764,6 +1769,14 @@ export interface Event {
   from_tid?: number;
   owner_tid?: number;
   at_ms?: number;
+  /** hill_tally (A88, Domination): a hill's own tally for one game, as this phone last heard it in the hill's advert
+   *  (`site` and `game_byte` as above). `own_s` is whole seconds of owned time per tid; `final` = the hill ended that game
+   *  and trimmed it to the end; `partial` = more than two teams banked (the top two only); `heard_age_ms` = how long ago
+   *  the phone heard it. MC uses a final tally only, and only where the phones' timeline is shown incomplete. */
+  own_s?: Record<string, number>;
+  final?: boolean;
+  partial?: boolean;
+  heard_age_ms?: number;
   /** status */
   hp?: number;
   armor?: number;
@@ -2450,13 +2463,15 @@ export interface RecapSyncRow {
 /** F596: whether the result can be shown. `pending` while any row is not received, the operator has not
  *  finalised and SYNC_STUCK_S has not passed since the whistle. `result_changed` once the winner differs from the
  *  one first shown as final. `released_by` says what ended the wait (null while pending); `release_in_s` is the
- *  whole seconds left until the timeout releases it, sent only while pending. */
+ *  whole seconds left until the timeout releases it, sent only while pending. `score_pending` (Tony 2026-11-07) marks a
+ *  Domination match that ended with a phone silent: no timeout, only the phones block, and END NOW releases it. */
 export interface RecapSyncView {
   pending: boolean;
   finalised: boolean;
   result_changed: boolean;
   released_by: ReleaseReason | null;
   release_in_s?: number;
+  score_pending?: boolean;
   rows: RecapSyncRow[];
 }
 

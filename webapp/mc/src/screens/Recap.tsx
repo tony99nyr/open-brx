@@ -1,6 +1,6 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow, State } from '../api/types';
-import { recapSync } from '../api/recapSync';
+import { pendingTitle, recapSync } from '../api/recapSync';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtDuration, teamColor } from '../tokens';
 import { SYNC_STUCK_S } from '../api/contract.gen';
@@ -170,7 +170,8 @@ export function Recap() {
   const unsynced = syncRows.filter(r => r.stage !== 'received');
   const stuckAny = unsynced.some(r => r.stuck);
   const allIn = syncRows.length > 0 && unsynced.length === 0;
-  const missPhones = unsynced.filter(r => r.kind === 'phone'), missHills = unsynced.filter(r => r.kind === 'station');
+  // Tony 2026-11-07: a held Domination score waits for the phones only, so its END NOW and FINAL WITHOUT name no hill
+  const missPhones = unsynced.filter(r => r.kind === 'phone'), missHills = sync?.score_pending ? [] : unsynced.filter(r => r.kind === 'station');
   const without = (rows: RecapSyncRow[], noun: string, full = false) => rows.length ? `${plural(rows.length, noun)} (${full ? rows.map(r => r.name).join(', ') : shortNames(rows.map(r => r.name))})` : '';
   const finalWithout = [without(missPhones, 'PHONE'), without(missHills, 'HILL')].filter(Boolean).join(' AND ');
   // Tony 2026-10-26: the wait is bounded. A result the bound released says so, so the host knows why it shows.
@@ -236,12 +237,12 @@ export function Recap() {
       </div>
       {pendingResults ? (
         <Brackets color={T.warn} size={18} style={{ background: `linear-gradient(90deg,rgba(255,176,32,.08),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '8px 36px 8px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 18px', marginBottom: 8 }}>
-          <div data-testid="results-pending" style={{ font: F.osw(700, 30), letterSpacing: '.08em', lineHeight: 1.15 }}>RESULTS PENDING</div>
+          <div data-testid="results-pending" style={{ font: F.osw(700, 30), letterSpacing: '.08em', lineHeight: 1.15 }}>{pendingTitle(sync)}</div>
           {waitingLine(syncRows) && <span aria-hidden="true" style={{ color: T.micro }}>·</span>}
           {waitingLine(syncRows) && <div data-testid="waiting-for" title={`Waiting for ${waitingNames(syncRows)}`} style={{ font: F.chk(700, 16), letterSpacing: '.14em', color: T.dim }}>{waitingLine(syncRows)}</div>}
           {sync?.release_in_s != null && <div data-testid="release-in" title={`MC releases the result without the missing rows in ${fmtDuration(sync.release_in_s)}`} style={{ font: F.mono(700, 12), letterSpacing: '.12em', color: T.micro }}>FINAL IN {fmtDuration(sync.release_in_s)}</div>}
           <span style={{ flex: 1 }} />
-          <FinaliseButton prominent={stuckAny} missingPhones={missPhones.length} missingHills={missHills.length} onFinalise={async () => { await api.finaliseRecap(); }} />
+          <FinaliseButton prominent={stuckAny} endNow={!!sync?.score_pending} missingPhones={missPhones.length} missingHills={missHills.length} onFinalise={async () => { await api.finaliseRecap(); }} />
         </Brackets>
       ) : (
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: syncRows.length ? 10 : 18 }}>
@@ -249,7 +250,7 @@ export function Recap() {
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
             <span style={{ background: winColor, color: T.accInk, padding: '0 12px' }}>{winnerBlock.text}</span>{winnerBlock.tail}
           </div>
-          {(sync?.finalised || sync?.released_by === 'timeout') && unsynced.length > 0 && (
+          {(sync?.finalised || sync?.released_by === 'timeout') && missPhones.length + missHills.length > 0 && (
             <div data-testid="final-without" data-released-by={sync.released_by ?? 'finalise'} title={`${finalLead} WITHOUT ${finalWithoutFull}`} style={{ marginTop: 14, font: F.mono(700, 12), letterSpacing: '.12em', color: T.warn }}>
               {finalLead} WITHOUT {finalWithout}
             </div>

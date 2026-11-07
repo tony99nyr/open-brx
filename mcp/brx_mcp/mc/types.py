@@ -987,6 +987,8 @@ class GameConfigBase(TypedDict):
     own_change: NotRequired[bool]        # Tony 2026-11-07: Domination only, set by `Session._wire_config()`. True = this MC
     #                                     scores the hills from the phones' `own_change` facts, so the phone sends them.
     #                                     Absent (an older MC, which rejects the fact) = send `possession` only.
+    hill_tally: NotRequired[bool]        # A88: Domination only, set by `Session._wire_config()`. True = this MC takes the
+    #                                     `hill_tally` fact, so the phone relays each hill's advert tally. Absent = send none.
     respawn_auto_teams: NotRequired[list[int]]  # Derived scanner fallback: teams without a station use timed AUTO respawn.
     station_source: NotRequired[str]    # F70: what is emitting this game's objective -- `STATION_SOURCES` above
     #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
@@ -1390,7 +1392,7 @@ class OutboxLostReport(TypedDict):
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "own_change", "operator_result", "pickup"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "own_change", "hill_tally", "operator_result", "pickup"]
     t: int
     match_id: str | None
     node_id: str
@@ -1454,6 +1456,14 @@ class Event(TypedDict, total=False):
     from_tid: int
     owner_tid: int
     at_ms: int
+    # hill_tally (A88, Domination): a hill's own tally for one game, as this phone last heard it in the hill's advert
+    # (`site` and `game_byte` as above). `own_s` is whole seconds of owned time per tid; `final` = the hill ended that game
+    # and trimmed it to the end; `partial` = more than two teams banked (the top two only); `heard_age_ms` = how long ago
+    # the phone heard it. MC uses a final tally only, and only where the phones' timeline is shown incomplete.
+    own_s: dict[str, int]
+    final: bool
+    partial: bool
+    heard_age_ms: int
     # status
     hp: int
     armor: int
@@ -2086,12 +2096,14 @@ class RecapSyncView(TypedDict):
     """F596: whether the result can be shown. `pending` while any row is not received, the operator has not
     finalised and SYNC_STUCK_S has not passed since the whistle. `result_changed` once the winner differs from the
     one first shown as final. `released_by` says what ended the wait (null while pending); `release_in_s` is the
-    whole seconds left until the timeout releases it, sent only while pending."""
+    whole seconds left until the timeout releases it, sent only while pending. `score_pending` (Tony 2026-11-07) marks a
+    Domination match that ended with a phone silent: no timeout, only the phones block, and END NOW releases it."""
     pending: bool
     finalised: bool
     result_changed: bool
     released_by: ReleaseReason | None
     release_in_s: NotRequired[int]
+    score_pending: NotRequired[bool]
     rows: list[RecapSyncRow]
 
 
