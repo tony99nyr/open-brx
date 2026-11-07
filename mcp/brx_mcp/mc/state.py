@@ -3393,11 +3393,23 @@ class Session:
         if not (same_live or same_departed):
             return   # the assignment moved on -- this heartbeat belongs to the NEXT match's setup
         rep = self.station_registry.station_view(nid)["report"]
+        control = body.get("control")
+        game_claim = control.get("game") if isinstance(control, dict) else None
+        if (frozen["kind"] == "control" and type(game_claim) is int and game_claim != self._game_byte()):
+            # Codex review 2026-11-07: a hill now following another game; only its ring entry for MC's game is this
+            # match's. Read from the decoded report, where Domination's own_ms already stands in hold_ms.
+            rc = rep.get("control")
+            games = rc.get("games") if isinstance(rc, dict) else None
+            ring_game = games.get(str(self._game_byte())) if isinstance(games, dict) else None
+            rep = dict(rep)
+            if isinstance(ring_game, dict):
+                rep["control"] = {**(rep.get("control") or {}), "hold_ms": ring_game.get("hold_ms"),
+                                  "owner": ring_game.get("owner")}
+            else:
+                rep.pop("control", None)
         self._merge_station_recap_report(frozen, rep)
         self._station_possession(nid, None)   # F555: the station's late final tally is the authority for its point
         tally = live.get("tally") or {}
-        control = body.get("control")
-        game_claim = control.get("game") if isinstance(control, dict) else None
         if (frozen["kind"] == "control" and body.get("station_id") == frozen["id"]
                 and isinstance(control, dict) and isinstance(control.get("hold_ms"), dict)
                 and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte())
