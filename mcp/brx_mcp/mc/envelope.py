@@ -34,6 +34,7 @@ MAX_LOG_CHUNK_BYTES = 48 * 1024       # log_data chunk cap (fits under the envel
 # both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
 PERSISTED_EVENT_TYPES = {"hit_taken", "death", "respawn", "team_change", "possession",
                          "own_change",        # Tony 2026-11-07: a Domination hill's owner changed, as a phone heard it
+                         "hill_tally",        # A88: a Domination hill's own tally, as a phone heard it in the hill's advert
                          "operator_result",   # A47: the phone's answer to an operator action (never scored)
                          "pickup"}            # A56 (S58): a player took a powerup station's item (never scored)
 
@@ -112,6 +113,9 @@ EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     # Tony 2026-11-07: Domination is scored from the phones. `from_tid` == `owner_tid` is a re-assertion; `at_ms` is when
     # the phone heard it, on MC's clock.
     "own_change": ("site", "from_tid", "owner_tid", "at_ms"),
+    # A88: the latest tally a phone heard in a hill's advert for one game byte. `final` = the hill ended that game and
+    # trimmed it to the end (±2 s); `partial` (more than two teams banked: the top two only) and `heard_age_ms` are optional.
+    "hill_tally": ("site", "game_byte", "own_s", "final"),
     # A47: `why` is optional (present on a refusal). `cmd` and `ok` are the fact itself.
     "operator_result": ("cmd", "ok"),
     # A56 (S58): a player took a powerup station's item. `weapon_id` is optional (an overshield has none).
