@@ -529,6 +529,7 @@ function hillHost(e) {
     show: (name, value) => e.show(name, value), _laneObj: (name, value) => e._laneObj(name, value),
     _laneAge: (at, now) => e._laneAge(at, now), _alertsMissed: () => e._alertsMissed(),
     emitFact: fact => e.emitFact(fact), _controlStation: () => e._controlStation(), _controlStations: () => e._controlStations(),
+    clockOffset: () => e.clockOffset(),
     get goLiveT() { return e.goLiveT; },   // F556 review: no anchor before go-live
     get _lanes() { return e._lanes; },
     _ann: { push: item => e._ann.push(item), dead: () => e._ann.dead(),
@@ -4067,6 +4068,7 @@ export class Engine {
       }
       // F272 recovery is a hard gameplay stand-down. The model intentionally stays alive until the replacement
       // head is confirmed, but no poison/shield/recoil/poll/death clock may run behind that instruction.
+      this.hl.ownTick(now);   // own_change reports what the phone hears, so it runs before the gun-lock stand-down
       if (this.gunLocked) return;
       // Recovery: a cold boot / resync can land us DOWN (alive false) with no death time — deadAt is not
       // persisted, and resync observes a dead gun without stamping one. Without a deadAt the respawn logic

@@ -56,6 +56,16 @@ test('gameNow: an old board keeps its numbers with a short age tag, the phone\'s
   assert.deepEqual(said(gameNow(st, now)), ['time left 01:01', 'your match: 3 kills, 2 deaths']);
 });
 
+test('gameNow: Domination chips that show MC\'s points carry MC\'s age when the push is old; the phone\'s own tally does not', () => {
+  const teams = [{ team_id: 'blue', name: 'BLUE', tid: 1 }, { team_id: 'red', name: 'RED', tid: 0 }];
+  const st = { clockMs: 61000, board: { teams }, scoreAt: 1, teamKey: 'blue', mode: 'DOMINATION' };
+  const old = { ...now, stale: true, age: '40 S AGO' };
+  assert.doesNotMatch(gameNow(st, old), /class="rc stale"><span class="rv"><span class="tms"/, 'the phone\'s own tally is never stale');
+  const mc = gameNow({ ...st, board: { teams: teams.map((t, i) => ({ ...t, points: [140, 95][i] })) } }, old);
+  assert.match(mc, /class="rc stale"><span class="rv"><span class="tms"/, 'MC\'s points from an old push are marked stale');
+  assert.match(txt(mc), /140 .*95 40 S AGO/);
+});
+
 test('gameNow: FFA gives your place, a hill names its holder, no score push shows only the phone\'s own facts', () => {
   const rows = [{ player_id: 'p2', display: 'VIPER', kills: 9 }, { player_id: 'me', display: 'REAPER', kills: 4 }];
   const ffa = gameNow({ clockMs: 0, mode: 'FFA', scoreRows: rows, scoreAt: 1, player: { player_id: 'me' }, board: { cap: 15 }, kills: 4, deaths: 1 }, now);

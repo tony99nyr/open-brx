@@ -1,5 +1,5 @@
 import { TEAM_KEYS, HILL_REFUSED_TID } from '../transport/contract.gen.js';
-import { TEAM_COLOR, TEAM_INK, esc, num, mmss, liveHold, teamHold, teamChip, isPointsMode } from './shared.js';
+import { TEAM_COLOR, TEAM_INK, esc, num, mmss, liveHold, teamHold, teamChip, isPointsMode, mcPoints } from './shared.js';
 // The DOWN screen's recap. Tony 2026-09-23: "we can simplify what is shown, what were we killed by and just a few
 // callouts, it doesn't have to be a financial report". Pure functions of engine state; `hud.js` places the HTML.
 //  - The killer line: who, with what, and the hit that finished you (its damage, and gun or headset).
@@ -106,7 +106,9 @@ export function gameNow(st, { stale, age, resultRows }) {
     const chips = bd.teams.filter(t => t && typeof t === 'object').map(t => {
       const mine = !!(st.teamKey && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey);
       return koth ? teamChip(t, { mine, koth: true, value: teamHold(holdByTid, t) }) : dom ? teamChip(t, { mine, points: true, value: teamHold(holdByTid, t) }) : teamChip(t, { mine, lenient: true }); }).join('');
-    out.push(tile(`<span class="tms">${chips}</span>${own ? "" : capTag + ageTag}`, stale && !own ? "stale" : ""));   // a hold is this phone's own tally: MC's score age does not describe it
+    // a hold is this phone's own tally, so MC's score age does not describe it; MC's Domination points do carry that age
+    const mcAged = dom && bd.teams.some(t => mcPoints(t) != null);
+    out.push(tile(`<span class="tms">${chips}</span>${own ? (mcAged ? ageTag : "") : capTag + ageTag}`, stale && (!own || mcAged) ? "stale" : ""));
   } else if (cap != null) out.push(tile(`<span class="cap">FIRST TO ${cap}</span>`));
   const h = hillOf(st);
   // HUD QA R2-08: the owner is a <b>, so the hill tile has the weight of the score chips beside it (it was about 8 px)
