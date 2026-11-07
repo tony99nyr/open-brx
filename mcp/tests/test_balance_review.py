@@ -2598,12 +2598,46 @@ def test_the_kit_engine_recovers_by_hold_length_only_with_the_r2_flag():
                 t = fighter.next_t
         return out
     r2 = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
-    off, on = hit_chances(None, 300.0), hit_chances(r2, 300.0)   # 9 rounds: 100 ms timer + 160 ms write < 300
+    # 9 rounds: a 100 ms timer + the 160 ms write < the 400 ms rest (100 ms interval + 300 ms pause)
+    off, on = hit_chances(None, 300.0), hit_chances(r2, 300.0)
     assert on[8] == off[8] < on[0]
     assert on[9] == on[0]            # recovered by the timer
-    assert off[9] == off[8]          # today, 300 ms is too short to settle
-    short = hit_chances(r2, 50.0, 14)   # a pull before the 100 ms timer: the rung carries through the next burst
+    assert off[9] == off[8]          # today, 400 ms is too short to settle
+    # a 200 ms floor and a 50 ms pause: a 150 ms rest, a pull before the timer, so the rung carries through burst two
+    short = hit_chances({**r2, "min_ms": 200}, 50.0, 14)
     assert short[9] == short[13] == short[8] < short[0]
+    # Tony 2026-11-07 ("fix it"): the rest runs from the release, so it is the interval plus the pause. A 150 ms pause
+    # is a 250 ms rest: past the 200 ms timer, and 2 rounds leak before the write lands. The old rule (150) carried.
+    mid = hit_chances({**r2, "min_ms": 200}, 150.0, 13)
+    assert mid[9] == mid[10] == mid[8] < mid[0] and mid[11] == mid[12] == mid[0]
+
+
+def test_a_kill_on_a_bursts_last_round_judges_the_release_once_with_the_longer_rest():
+    """Codex review 2026-11-07: a kill on the round that ends a burst ran the release twice. The second call saw the
+    first call's crisp and dropped its leaked rounds. after_shots 4, R2 25/300/500, 5-round bursts, 100 ms rounds,
+    250 ms pause: the kill's rest is 400 ms (RETARGET_MS), past the 300 ms timer, and the write lands at 460 ms, so the
+    next round, at +400 ms, still fires at the old rung (1 leaked round)."""
+    rows = copy.deepcopy(WeaponCatalog()._rows)
+    ar = next(r for r in rows if r["weapon_id"] == "assault_rifle")
+    ar["recoil"] = dict(ar["recoil"], after_shots=4, recovery={"per_round_ms": 25, "min_ms": 300, "max_ms": 500})
+    kit = R.make_kit(R.World(WeaponCatalog(rows), PerkCatalog(), {}), "plain", "assault_rifle")
+    rng = random.Random(7)
+    fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
+    fighter.targets = [R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)]
+    t, n = 0.0, 0
+    with mock.patch.object(R, "BURST_LEN", (5, 5)), mock.patch.object(R, "BURST_PAUSE_MS", (250.0, 250.0)):
+        while n < 5:
+            shot = fighter._act(t)
+            if shot is not None:
+                n += 1
+                last = t
+            t = fighter.next_t
+        s = fighter.gs[fighter.active]
+        before = s.pre_release[1]
+        assert before != "crisp", s.pre_release
+        fighter.after(last, False, True)
+    assert fighter.next_t == last + R.RETARGET_MS
+    assert (s.state, s.count, s.leak, s.held) == ("crisp", 0, 1, before)
 
 
 def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():
@@ -2615,12 +2649,12 @@ def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():
     fighter = R.Fighter(kit, (45, 70, 0), 1.0, R.DIST["mid"], rng)
     fighter.targets = [R.Fighter(kit, (10_000, 0, 0), 0, R.DIST["mid"], rng)]
     out, t = [], 0.0
-    with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (100.0, 100.0)):
+    with mock.patch.object(R, "BURST_LEN", (9, 9)), mock.patch.object(R, "BURST_PAUSE_MS", (0.0, 0.0)):
         while len(out) < 11:
             shot = fighter._act(t)
             if shot is not None:
                 out.append(shot[1])
             t = fighter.next_t
     assert out[8] < out[0]       # the 9th held round is heavy
-    assert out[9] == out[8]      # fired 100 ms after release: the reset has not landed on the gun
+    assert out[9] == out[8]      # no pause: fired one interval (100 ms) after release, before the reset lands
     assert out[10] == out[0]     # the next round is back at the ceiling

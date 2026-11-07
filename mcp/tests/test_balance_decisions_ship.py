@@ -33,7 +33,9 @@ import balance_sim as B  # noqa: E402
 C = Compiler()
 T = WeaponCatalog._T
 ROWS = {r["weapon_id"]: r for r in json.loads((ROOT / "mcp/brx_mcp/mc/weapons.json").read_text())["weapons"]}
-NIGHT_CELLS = {T[k] + 1 for k in compile_mod.NIGHT_RANGE_KEYS}
+# Tony 2026-11-02: night changes the outdoor range and both headset ranges, written out here rather than read from the
+# compiler, so a key dropped from NIGHT_RANGE_KEYS turns this red (Codex review 2026-11-07).
+NIGHT_CELLS = {T[k] + 1 for k in ("range_outdoor", "headset_range_outdoor", "headset_range_indoor")}
 PICKUPS = [{"weapon_id": "energy_shotgun", "slot": 2}, {"weapon_id": "charge_rifle", "slot": 3}]
 
 

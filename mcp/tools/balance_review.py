@@ -539,7 +539,7 @@ def make_kit(world: World, name: str, primary: str, secondary: str | None = None
 # --------------------------------------------------------------------------- #
 
 class _GunState:
-    __slots__ = ("ammo", "reserve", "count", "state", "blen", "leak", "held", "charged", "heat", "heat_t",
+    __slots__ = ("ammo", "reserve", "count", "state", "blen", "leak", "held", "pre_release", "charged", "heat", "heat_t",
                  "locked_until",
                  "vent_until", "ready_at", "reload_amount", "venting", "bolt_until", "pending_pickup",
                  "cooling_started", "vent_heat_after")
@@ -547,6 +547,7 @@ class _GunState:
     def __init__(self, g: Gun, charged=True):
         self.ammo, self.reserve = g.mag, g.reserve
         self.count, self.state, self.blen, self.leak, self.held = 0, "crisp", 0, 0, None
+        self.pre_release = None   # (round time, state, count) before a burst's release, for a kill on that round
         self.charged = charged
         self.heat, self.heat_t, self.locked_until, self.vent_until = 0.0, 0.0, 0.0, 0.0
         self.ready_at = 0.0
@@ -1076,8 +1077,11 @@ class Fighter:
                 if s.blen == 0:
                     pause = self.rng.uniform(*BURST_PAUSE_MS)
                     self.next_t += pause
-                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, pause,
-                                                                             g.fire_ms)
+                    # the rest from the release (with this round) to the next round: the interval plus the pause
+                    # (Tony 2026-11-07, "fix it": it was the pause alone, one interval short)
+                    s.pre_release = (t, s.state, s.count)
+                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count,
+                                                                             self.next_t - t, g.fire_ms)
         self._add_heat(g, s, t, False)
         if self.kit.plan == "haze" and g.sir_fn == 23:
             self._swap(0, t)
@@ -1096,13 +1100,18 @@ class Fighter:
         if killed:
             s = self.gs[self.active]
             g = self.kit.guns[self.active]
+            rest = max(self.next_t, t + RETARGET_MS) - t   # the kill round to the next round, as the burst path
             if g.profile is not None and g.mode == "auto":
-                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, RETARGET_MS,
-                                                                         g.fire_ms)
+                if s.pre_release is not None and s.pre_release[0] == t:
+                    # the kill came on a burst's last round: one release, judged once with the longer rest, from the
+                    # state before it (Codex review 2026-11-07: a second call saw crisp and dropped the leaked rounds)
+                    s.state, s.count = s.pre_release[1], s.pre_release[2]
+                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, rest, g.fire_ms)
             elif s.state == "crisp":
                 s.count = 0
+            s.pre_release = None
             s.blen = 0
-            self.next_t = max(self.next_t, t + RETARGET_MS)
+            self.next_t = t + rest
             if self.persistent_reload and self.kit.plan == "combo":
                 self.phase, self.active = "open", 0
                 self.gs[0].charged = True

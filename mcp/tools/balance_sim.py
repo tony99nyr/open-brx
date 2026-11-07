@@ -1247,12 +1247,15 @@ def _ar_shots(first_time: float, dmg: int, fire_ms: float, mag: int, reserve: in
             state, burst = _recoil_step(profile, state, burst)
             if leak:
                 leak -= 1   # F663: once the leaked rounds are out, the reset write has landed on the gun
-            t += fight_semi_interval(rng, fire_ms, overshoot_ms) if pull_ms > 0 else fire_ms
+            step = fight_semi_interval(rng, fire_ms, overshoot_ms) if pull_ms > 0 else fire_ms
+            t += step
         if not burst_mode:
             continue   # full auto never releases; the mag running dry is the only interruption
         pause = rng.uniform(pause_min_ms, pause_max_ms)
         t += pause
-        state, burst, leak, held = release_after_pause(profile, state, burst, pause, fire_ms)
+        # The release comes with the burst's last round, so the rest the phone's timer sees is the round interval plus
+        # the pause, up to the next round (Tony 2026-11-07, "fix it": the rest was the pause alone, one interval short).
+        state, burst, leak, held = release_after_pause(profile, state, burst, step + pause, fire_ms)
 
 
 def _cr_shots(first_time: float, charge_dmg: int, tap_dmg: int, rounds_per_charge: int, tap_ms: float,

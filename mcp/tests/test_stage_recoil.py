@@ -343,6 +343,30 @@ def test_f662_r2_a_released_weapon_recovers_after_a_pause_that_grows_with_the_ho
     assert asyncio.run(go(False)) == (([], "degraded"), ([], "degraded")), "CONTROL: no block"
 
 
+def test_f662_r2_a_pull_after_the_timer_ran_out_is_crisp_before_any_tick():
+    """Codex review 2026-11-07 (engine.js `_recoilPull`): the pull cancelled an R2 timer that had run out but that no tick
+    had seen yet, so the heavy rung carried. A pull 150 ms after the release, with no tick between, restores crisp and
+    marks the write dirty; the pull's own shot guard (`shotInFlight`) holds the write until the round lands, as on
+    the phone. CONTROL: a pull at 30 ms, before the 100 ms timer runs out, still cancels it."""
+    async def go(pull_after_s):
+        ar = copy.deepcopy(AR); ar["recoil"]["settle_ms"] = 999999
+        ar["recoil"]["recovery"] = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+        st, mgr, clock = _mk(rows=(ar, FLAT_SHOTGUN))
+        await _live(st, mgr, clock)
+        gun = mgr.taggers[GUN]
+        _shoot(st, gun, 3); await settle(st)
+        await _tick(st, mgr, clock, 0.1)
+        assert st._recoil["state"] == "degraded"
+        n = mark(mgr)
+        st._inject_rx("$BUT,0,0,*"); await settle(st)
+        clock.advance(pull_after_s)                      # no tick
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        return st._recoil["state"], st._recoil["dirty"], st._recoil["burst"]
+
+    assert asyncio.run(go(0.15)) == ("crisp", True, 0)
+    assert asyncio.run(go(0.03)) == ("degraded", False, 3), "CONTROL: a pull before the timer runs out cancels it"
+
+
 def test_f662_the_stage_reads_a_recovery_block_as_the_phone_does_real_numbers_only():
     """Desk review 2026-11-06: engine.js `recoilRecovery` takes real numbers only (null, true and "500" are malformed),
     so the stage's copy must refuse them too, or it shows a recovery the phone never runs."""

@@ -6301,10 +6301,17 @@ class GunStage:
         return now - r["last_shot_at"] >= self._recoil_quiet_ms(r)
 
     def _recoil_pull(self) -> None:
-        """engine.js `_recoilPull` (F662 R2): a pull before the timer runs out cancels it; the rung and the count carry."""
+        """engine.js `_recoilPull` (F662 R2): a pull before the timer runs out cancels it; the rung and the count carry.
+        A timer that ran out since the last tick restores crisp first, as the tick would have (Codex review 2026-11-07)."""
         r = self._recoil
-        if r and r["recovery"]:
-            r["released_at"] = 0
+        if not r or not r["recovery"]:
+            return
+        now = self._now_ms()
+        if r["model"] and not r["disabled"] and r["state"] != "crisp" and self._recoil_quiet(r, now):
+            r["burst"] = 0; r["state"] = "crisp"; r["value"] = r["crisp"]; r["dirty"] = True
+            if self.alive:
+                self._recoil_flush(now)
+        r["released_at"] = 0
 
     def _recoil_release(self) -> None:
         """engine.js `_recoilRelease`, the trigger's `$BUT,0,0`. S54: a burst still crisp is forgotten, no write.
