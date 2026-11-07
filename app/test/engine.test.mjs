@@ -5633,6 +5633,24 @@ test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is no
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true, 'the ALT opens the swap');
 });
+test('review 2026-11-06 (brx1): if the gun DOES take the held ALT, the first round from the other slot corrects the HUD', () => {
+  // The hold rests on an unproven gun fact (bench-plan SR15). If it is wrong, the cost must be one wrong label until the
+  // next round, never a stuck HUD: a round ends the hold, and a round from another slot moves the trigger (GUN WAS ON).
+  const h = liveSwapHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  leverOnFull(h);                                                  // slot 0 fired last (29); on slot 1, full
+  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: the phone held the ALT');
+  assert.ok(h.eng.am.gunOther, 'setup: still inside the hold');
+  f542Shot(h, '$ALCD,28,100,0,384,0,*');                          // the gun had taken the ALT: the round comes from slot 0
+  const s = h.eng.state();
+  assert.equal(s.activeSlot, 0, 'the first round from slot 0 moves the HUD there');
+  assert.equal(s.ammo, 28);
+  assert.ok(logs.some(l => /gun was on slot 0/.test(l)), 'the one desync line, then right');
+  assert.equal(h.eng.am.gunOther, null, 'the round ended the hold');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'and the next ALT is a swap again');
+});
 test('review 2026-11-06 r3: an energy weapon fired last holds ALT through its late recharge (pl4: up to 3.9 s)', () => {
   const h = liveSwapHarness();
   h.player.loadout = { weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'smg' }] };   // no catalogue row: the id says energy
