@@ -80,7 +80,8 @@ SPLIT = {"test_mc_e2e": 5, "test_mc_polish": 6, "test_stage": 3, "test_stage_ser
 # reads one docs page stays in mcp, and changed.mjs MCP_DOCS_READERS sends that page to mcp.
 # Exact file stems, not substrings: test_every_group_names_real_test_files fails when a file is renamed.
 GROUPS = {
-    "sim": ("test_balance_review", "test_balance_review_field_kit", "test_balance_sim"),
+    "sim": ("test_balance_decisions_ship", "test_balance_review", "test_balance_review_field_kit", "test_balance_sim",
+            "test_recoil_engine_sim_parity"),
     "docs": ("test_docs_hygiene", "test_suite_registry", "test_amendment_citations", "test_site_external_links",
              "test_generated_fresh", "test_fw_commands", "test_run_tests_guards"),
 }

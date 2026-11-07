@@ -1117,18 +1117,23 @@ def recoil_profile(row: dict) -> RecoilProfile | None:
         if two else 0
     return RecoilProfile(crisp=crisp, degraded=(mid if two else bottom), heavy=(bottom if two else None),
                          after_shots=after, heavy_after=heavy_after, settle_ms=settle,
-                         reset_on_release=bool(r.get("reset_on_release")),
+                         reset_on_release=r.get("reset_on_release") is True,   # engine.js: only an explicit `true`
                          recovery=_recovery(r.get("recovery")))
 
 
 def _recovery(block) -> tuple[float, float, float] | None:
-    """`recoil.recovery` (F662 R2): `{per_round_ms, min_ms, max_ms}`, or None when the row has none or a partial one."""
+    """`recoil.recovery` (F662 R2): `{per_round_ms, min_ms, max_ms}`, or None when the row has none or a malformed one.
+    Mirrors engine.js `recoilRecovery()`: all three finite, `per_round_ms >= 0`, `min_ms > 0`, `max_ms >= min_ms`, or
+    the weapon keeps today's rule (desk review 2026-11-06: the sim used to apply a block the phone ignores)."""
     if not isinstance(block, dict):
         return None
     vals = [block.get(k) for k in ("per_round_ms", "min_ms", "max_ms")]
-    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in vals):
         return None
-    return float(vals[0]), float(vals[1]), float(vals[2])
+    per_round, lo, hi = (float(v) for v in vals)
+    if per_round < 0 or not lo > 0 or hi < lo:
+        return None
+    return per_round, lo, hi
 
 
 def recovery_ms(profile: RecoilProfile, burst: int) -> float:
