@@ -1244,7 +1244,7 @@ test('control point: silent in Domination, like the grenade path, because one po
 });
 
 /** Domination on Bluetooth hills (`station_source: "phone"`, the only source MC allows for it, 2026-11-02). */
-function dom() { const h = harness({ mode: 'domination' }); h.config.station_source = 'phone'; h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
+function dom(cfg = {}) { const h = harness({ mode: 'domination' }); h.config.station_source = 'phone'; Object.assign(h.config, cfg); h.kit().config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(3000); h.eng.tick(); return h; }
 
 test('Domination: a contested point we own still scores and still ticks; KOTH pauses both (F382)', () => {
   const play = h => {
@@ -1259,6 +1259,41 @@ test('Domination: a contested point we own still scores and still ticks; KOTH pa
   const k = play(koth());
   assert.ok(k.held <= 250, `CONTROL: KOTH banks nothing while contested (${k.held} ms)`);
   assert.equal(k.ticks, 0, 'CONTROL: and plays no tick');
+});
+
+test('Domination scored from the phones: own_change on the first hearing, on every owner change, every 30 s, and after a gap', () => {
+  const old = dom();   // an MC that does not ask for own_change gets none (it would refuse the fact)
+  runControl(old, 1000, { team: 1, state: HELD, value: 100 });
+  assert.equal(old.facts.filter(f => f.type === 'own_change').length, 0, 'no own_change without config.own_change');
+  const h = dom({ own_change: true });
+  const own = () => h.facts.filter(f => f.type === 'own_change');
+  runControl(h, 250, { team: 1, state: HELD, value: 100 });
+  let f = own();
+  assert.equal(f.length, 1, 'the first hearing re-asserts the owner');
+  assert.deepEqual({ ...f[0], at_ms: 0 }, { type: 'own_change', match_id: f[0].match_id, site: '11', from_tid: 1, owner_tid: 1, at_ms: 0 });
+  assert.ok(Number.isFinite(f[0].at_ms) && f[0].at_ms >= h.eng.goLiveT, 'at_ms is on MC\'s clock, in the match');
+  runControl(h, 20_000, { team: 1, state: HELD, value: 100 });
+  assert.equal(own().length, 1, 'nothing between changes within 30 s');
+  runControl(h, 11_000, { team: 1, state: HELD, value: 100 });
+  assert.equal(own().length, 2, 'the 30 s re-assertion');
+  runControl(h, 1000, { team: 0, state: HELD, value: 100 });
+  f = own();
+  assert.equal(f.length, 3); assert.equal(f[2].from_tid, 1); assert.equal(f[2].owner_tid, 0, 'a change names the old owner and the new');
+  runControl(h, 1000, { team: 0, state: 0, value: 40 });
+  assert.equal(own().at(-1).owner_tid, 2, 'a point not held is neutral (tid 2)');
+  const n = own().length;
+  for (let i = 0; i < 48; i++) { h.adv(250); h.eng.setStations([]); h.eng.tick(); }   // 12 s unheard
+  runControl(h, 500, { team: 0, state: 0, value: 40 });
+  assert.equal(own().length, n + 1, 'back after a gap of 10 s or more: a re-assertion');
+  assert.equal(own().at(-1).from_tid, 2); assert.equal(own().at(-1).owner_tid, 2);
+});
+
+test('own_change: KOTH sends none (it keeps possession alone)', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 40_000, { team: 1, state: HELD, value: 100 });
+  assert.equal(h.facts.filter(f => f.type === 'own_change').length, 0);
+  assert.ok(h.facts.some(f => f.type === 'possession'), 'CONTROL: possession still goes');
 });
 
 test('Domination: the hill carries the letter MC named it in the bundle, and none without one', () => {
