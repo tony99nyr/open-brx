@@ -4209,6 +4209,40 @@ for (const view of VIEWS) {
   });
 }
 
+// ---------- Domination scores POINTS (brx1 2026-11-06): no live-HUD place may show its tally as a clock. The KOTH board
+// and DOWN chips read the phone's possession as mm:ss (F424); with hills owned, Domination must not take that path. ----------
+for (const view of VIEWS) for (const skin of ['', '&night']) {
+  await step(`${view.name} live-dom-scores${skin}: Domination's live HUD, TEAMS board and DOWN chips never show a clock for points`, async () => {
+    const pg = await open(view, 'live-dom-scores', '&team=blue&foe=red' + skin);
+    const feed = () => pg.evaluate(() => window.brxDemo.points([[11, 0, 1, 100, 1], [12, 1, 1, 100, 0], [13, 0, 1, 100, 0]]));
+    for (let k = 0; k < 4; k++) { await feed(); await pg.waitForTimeout(500); }
+    const clockless = sel => pg.evaluate(q => { const out = [];
+      for (const el of document.querySelectorAll(q)) { if (el.closest('#clock, .clockplate') || !el.offsetWidth) continue;
+        const t = el.textContent.replace(/\s+/g, ' ').trim(); if (/\b\d{1,2}:\d\d\b/.test(t)) out.push(t.slice(0, 60)); }
+      return out; }, sel);
+    const live = await pg.evaluate(() => ({ env: (document.querySelector('[data-env]') || { dataset: {} }).dataset.env || 'day',
+      held: Object.values((window.brx.engine.state().possession || {}).by_site || {}).reduce((n, s) => n + Object.values(s || {}).reduce((a, v) => a + (+v || 0), 0), 0),
+      row: document.querySelectorAll('.domrow .dh').length }));
+    must(live.env === (skin ? 'night' : 'day'), 'the skin did not apply: ' + live.env);
+    must(live.held > 0 && live.row === 3, 'the guard needs a real possession tally and the row of hills: ' + JSON.stringify(live));
+    const hud = await clockless('#frame .domrow, #frame .domrow *, #lanes *, .hill, .hill *');
+    must(!hud.length, 'a Domination hill or card reads a clock: ' + JSON.stringify(hud));
+    await pg.click('.clockplate'); await settled(pg);
+    const board = await pg.evaluate(() => ({ open: !!document.querySelector('.bdpanel'), koth: document.querySelectorAll('.bdteam .tm.koth').length,
+      teams: Array.from(document.querySelectorAll('.bdteam .tm')).map(x => x.textContent.replace(/\s+/g, ' ').trim()) }));
+    must(board.open && board.teams.length === 2, 'the TEAMS board did not open with both teams: ' + JSON.stringify(board));
+    must(!board.koth && !board.teams.some(t => /\d:\d\d/.test(t)), 'a Domination board chip reads a clock: ' + JSON.stringify(board));
+    await pg.screenshot({ path: `${OUT}/${view.name}-live-dom-scores${skin ? '-night' : ''}.png` });
+    await pg.click('.bdx'); await settled(pg);
+    await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
+    const down = await pg.evaluate(() => ({ koth: document.querySelectorAll('.tm.koth').length,
+      chips: Array.from(document.querySelectorAll('.tm')).filter(e => e.offsetWidth).map(x => x.textContent.replace(/\s+/g, ' ').trim()) }));
+    await pg.close();
+    must(down.chips.length >= 2, 'the DOWN screen shows no team chips: ' + JSON.stringify(down));
+    must(!down.koth && !down.chips.some(t => /\d:\d\d/.test(t)), 'a Domination DOWN chip reads a clock: ' + JSON.stringify(down));
+  });
+}
+
 // ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
 // F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
 for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {

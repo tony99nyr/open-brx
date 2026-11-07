@@ -750,6 +750,10 @@ export function startDemo({ engine, log }) {
       // F666: Domination with three phone control points, A B C (ids 11 12 13). The gallery drives `points` frame by frame.
       'live-dom':           [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
         }], ...live],
+      // Domination's points are never a clock on the live HUD (brx1 2026-11-06): the hills fed so the phone has a possession
+      // tally (the KOTH board reads it as mm:ss), and MC's score push so the board has its teams
+      'live-dom-scores':    [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
+        }], ...live, [2300, () => ev.score(3, 1, 1)]],
       'live-melee-swing':   [...live, [2300, () => ev.swing()]],
       'live-melee-down':    [...live, [2300, () => ev.swing()], [2500, 'die']],
       'live-melee-respawn': [...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],
