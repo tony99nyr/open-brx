@@ -1076,8 +1076,10 @@ class Fighter:
                 if s.blen == 0:
                     pause = self.rng.uniform(*BURST_PAUSE_MS)
                     self.next_t += pause
-                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, pause,
-                                                                             g.fire_ms)
+                    # the rest from the release (with this round) to the next round: the interval plus the pause
+                    # (Tony 2026-11-07, "fix it": it was the pause alone, one interval short)
+                    s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count,
+                                                                             self.next_t - t, g.fire_ms)
         self._add_heat(g, s, t, False)
         if self.kit.plan == "haze" and g.sir_fn == 23:
             self._swap(0, t)
@@ -1096,13 +1098,13 @@ class Fighter:
         if killed:
             s = self.gs[self.active]
             g = self.kit.guns[self.active]
+            rest = max(self.next_t, t + RETARGET_MS) - t   # the kill round to the next round, as the burst path
             if g.profile is not None and g.mode == "auto":
-                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, RETARGET_MS,
-                                                                         g.fire_ms)
+                s.state, s.count, s.leak, s.held = B.release_after_pause(g.profile, s.state, s.count, rest, g.fire_ms)
             elif s.state == "crisp":
                 s.count = 0
             s.blen = 0
-            self.next_t = max(self.next_t, t + RETARGET_MS)
+            self.next_t = t + rest
             if self.persistent_reload and self.kit.plan == "combo":
                 self.phase, self.active = "open", 0
                 self.gs[0].charged = True

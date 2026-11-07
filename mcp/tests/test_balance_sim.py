@@ -1277,10 +1277,29 @@ def test_a_short_rest_leaks_the_old_rung_then_the_reset_lands():
     prof = B.recoil_profile(_ar_row_with_reset(True))
     rng = random.Random(1)
     gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
-                      pause_min_ms=100.0, pause_max_ms=100.0, rng=rng)
+                      pause_min_ms=0.0, pause_max_ms=0.0, rng=rng)
     shots = [next(gen) for _ in range(11)]
-    assert shots[9][1] == prof.heavy / 100.0   # fired 100 ms after release: the reset has not landed
+    assert shots[9][1] == prof.heavy / 100.0   # no pause: fired one interval (100 ms) after release, before the reset lands
     assert shots[10][1] == 1.0                 # fired 200 ms after release: back at the ceiling
+
+
+def test_the_burst_rest_runs_from_the_release_so_it_is_the_interval_plus_the_pause():
+    """Tony 2026-11-07 ("fix it"): the release comes with a burst's last round, and the next round comes one fire
+    interval plus the pause later, so the phone's R2 timer sees that whole rest. The sim passed the pause alone.
+    9 rounds on a 200 ms floor (25/200/500), 100 ms rounds:
+    - a 150 ms pause is a 250 ms rest: the timer runs out, and the write lands 160 ms later, so 2 rounds leak;
+    - a 300 ms pause is a 400 ms rest: past the timer and the write, so burst two starts crisp."""
+    row = _ar_row_with_recovery()
+    row["recoil"]["recovery"] = {"per_round_ms": 25, "min_ms": 200, "max_ms": 500}
+    prof = B.recoil_profile(row)
+
+    def burst_two(pause):
+        gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
+                          pause_min_ms=pause, pause_max_ms=pause, rng=random.Random(1))
+        return [x[1] for x in [next(gen) for _ in range(13)][9:]]
+    heavy = prof.heavy / 100.0
+    assert burst_two(150.0) == [heavy, heavy, 1.0, 1.0]   # the old rule: a 150 ms rest, the rung carries
+    assert burst_two(300.0) == [1.0, 1.0, 1.0, 1.0]       # the old rule: a 300 ms rest, one round leaks
 
 
 def test_a_leaked_round_counts_as_round_one_of_the_new_pull():
@@ -1289,7 +1308,7 @@ def test_a_leaked_round_counts_as_round_one_of_the_new_pull():
     prof = B.recoil_profile(_ar_row_with_reset(True))
     rng = random.Random(1)
     gen = B._ar_shots(0.0, 8, 100.0, 999, 0, 0, prof, 1.0, burst_min=9, burst_max=9,
-                      pause_min_ms=100.0, pause_max_ms=100.0, rng=rng)
+                      pause_min_ms=0.0, pause_max_ms=0.0, rng=rng)
     second = [next(gen) for _ in range(18)][9:]
     assert second[0][1] == prof.heavy / 100.0          # the leaked round fires at the old rung
     assert all(x[1] == 1.0 for x in second[1:prof.after_shots])
