@@ -156,3 +156,25 @@ test('M1: an unsent `taken` report waits in the queue and goes out on re-bind', 
   assert.deepEqual(s.unsent, []);
   assert.deepEqual(new PowerupStation({ id: 4, item: ROCKETS }).restore({ ...s.snapshot(), unsent: [{ id: 4, action: 'taken', player_num: 7, t: 1 }] }).unsent.length, 1, 'the queue survives a station restart');
 });
+
+test('Codex review 2026-11-07: a `taken` report names the game the item went in, so MC drops another game\'s taker', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  s.update({ available: true, next_spawn_in_ms: 100_000 }, 0);
+  s.claimGame = 9;   // a following station plays game 9
+  s.tick([{ ...player(7, READY, 4), game: 9 }], 1000);
+  assert.deepEqual(s.unsent, [{ id: 4, action: 'taken', player_num: 7, t: 1000, game: 9 }]);
+  const any = new PowerupStation({ id: 4, item: ROCKETS });   // claimGame 0 = any game: no game key, as before
+  any.update({ available: true, next_spawn_in_ms: 100_000 }, 0);
+  any.tick([player(7, READY, 4)], 1000);
+  assert.deepEqual(any.unsent, [{ id: 4, action: 'taken', player_num: 7, t: 1000 }]);
+});
+
+test('M1: the unsent queue keeps the newest 16 reports (Codex review r2)', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  for (let k = 0; k < 18; k++) {
+    s.available = true;   // a fresh spawn each time
+    s.tick([player(7, READY, 4)], k * 1000 + 500);
+  }
+  assert.equal(s.unsent.length, 16);
+  assert.equal(s.unsent[0].t, 2500, 'the oldest two went');
+});

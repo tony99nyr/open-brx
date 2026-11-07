@@ -692,33 +692,36 @@ class BleControlPoint {
   uint32_t at_ = 0;
 };
 
-// ---- F658 switch hysteresis (control.js followHoldSwitch): one rule for the hill and the powerup follower ------------
-// `best` / `has_best`: the strongest other live game; `leads`: it has strictly more heard live players than the current
-// game; `current_heard`: any live in-scope player of the current game is heard. True = switch to `best` now. No current
-// game yet, or a current game with no live player heard (its whistle, gone, stale): at once. Else the challenger must
-// lead for FOLLOW_SWITCH_HOLD_MS without a break; a lead that drops back, or passes to another game, starts the hold
-// again. Not saved: a restart starts the hold again.
-struct FollowLead {
-  bool has = false;
-  uint8_t game = 0;
-  uint32_t since = 0;
+// ---- F658 game end (control.js noteGameEnd / followSwitch): one rule for the hill and the powerup follower ---------
+// Tony 2026-11-07: a following station never leaves its current game for another while the current game is live. The
+// current game ENDS here when a player this station heard live in it advertises without the live bit (its whistle; a
+// countdown phone was never heard live, so it cannot end a game), or when no live player of it has been heard for
+// HILL_RING_STALE_MS (10 min). Only an in-scope advert of the current byte counts. Then the strongest other live game
+// takes the station at once; the first follow takes a game at once too. Not saved: a restart has heard no one live yet.
+struct FollowEnd {
+  uint64_t live_ids = 0;  // bit n: player n heard live in the current game (player_num 1..63)
+  bool ended = false;
+  void reset() { *this = FollowEnd(); }
+  void note(const PlayerEntry& p, bool has_current, uint8_t current) {
+    if (!has_current || p.game != current || p.id >= 64) return;
+    const uint64_t bit = (uint64_t)1 << p.id;
+    if (p.state & contract::ADVERT_PLAYER_STATE_LIVE) live_ids |= bit;
+    else if (live_ids & bit) ended = true;
+  }
+  // True = switch to the strongest other live game now.
+  bool switch_now(bool has_current, bool has_best, uint32_t current_heard_at, uint32_t now, uint32_t stale_ms) {
+    if (!has_best) return false;
+    if (!has_current) return true;
+    if (!ended && (int32_t)(now - current_heard_at) > (int32_t)stale_ms) ended = true;
+    return ended;
+  }
 };
-
-inline bool follow_hold_switch(FollowLead& lead, bool has_current, bool current_heard, bool has_best, uint8_t best,
-                               bool leads, uint32_t now, uint32_t hold_ms = (uint32_t)contract::FOLLOW_SWITCH_HOLD_MS) {
-  if (!has_best || !leads) { lead = FollowLead(); return false; }
-  if (!has_current || !current_heard) { lead = FollowLead(); return true; }
-  if (!lead.has || lead.game != best) { lead.has = true; lead.game = best; lead.since = now; }
-  if ((uint32_t)(now - lead.since) < hold_ms) return false;
-  lead = FollowLead();
-  return true;
-}
 
 // ---- HillFollower (control.js HillFollower, F658: the static hill) --------------------------------
 // A hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones set the live
 // bit from go-live to the whistle; once the hill hears any live-bit player it FOLLOWS: its current game is the byte of
-// the live players it hears. Another live game takes it only with MORE live players on the point than the current one
-// (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still heard (follow_hold_switch). Only live-bit players of the current game count. One point state per game byte, at most
+// the live players it hears. Another live game takes it only once the current game has ended here (FollowEnd), never
+// while it is live. Only live-bit players of the current game count. One point state per game byte, at most
 // HILL_RING_SIZE, with the last time each was heard: a byte back after more than HILL_RING_STALE_MS starts fresh, and a
 // new byte with the ring full evicts the least recently heard (never the current). control.js says why, line for line.
 struct HillGame {
@@ -745,7 +748,7 @@ class HillFollower {
   bool has_current = false;
   uint8_t current = 0;
   HillGame games[contract::HILL_RING_SIZE];
-  FollowLead lead;  // a challenger leading the current game, and since when (follow_hold_switch)
+  FollowEnd end;  // the current game's end at this hill (FollowEnd)
 
   // The byte the hill advertises and counts under: the followed game, else MC's.
   uint8_t game(uint8_t armed_game) const { return follows && has_current ? current : armed_game; }
@@ -795,8 +798,15 @@ class HillFollower {
       }
       if ((int32_t)(heard[k].at - e->heard_at) > 0) e->heard_at = heard[k].at;
     }
-    // Review of F658 (control.js): another live game takes the hill only with MORE live players on the point than the
-    // current game (a tie keeps it). The first follow takes the game with the most players there, then the newest.
+    // The first follow takes the game with the most live players on the point, then the newest. Later, another live
+    // game takes the hill only once the current game has ended here (FollowEnd), never while it is live. The current
+    // byte back after HILL_RING_STALE_MS is a new game on that byte: the last one's end does not end it (Codex review r2).
+    if (fresh_current) end.reset();
+    for (size_t i = 0; i < players.capacity(); i++) {
+      const PlayerEntry& p = players.slot(i);
+      if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id))
+        end.note(p, has_current, current);
+    }
     auto count = [&](int g) { for (size_t k = 0; k < nh; k++) if (heard[k].game == g) return heard[k].n; return 0; };
     const HillGame* best = nullptr;
     for (size_t k = 0; k < nh; k++) {
@@ -806,13 +816,9 @@ class HillFollower {
       const int ne = heard[k].n, nb = best ? count(best->game) : -1;
       if (!best || ne > nb || (ne == nb && ((int32_t)(e->since - best->since) > 0 || (e->since == best->since && e->game > best->game)))) best = e;
     }
-    // The switch waits for a sustained lead while the current game is still heard (follow_hold_switch)
     int next = has_current ? current : -1;
-    bool current_heard = false;
-    for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) current_heard = true;
-    if (follow_hold_switch(lead, has_current, current_heard, best != nullptr, best ? best->game : 0,
-                           best && (!has_current || count(best->game) > count(current)), now))
-      next = best->game;
+    const HillGame* cur = has_current ? find(current) : nullptr;
+    if (end.switch_now(has_current, best != nullptr, cur ? cur->heard_at : now, now, stale_ms)) next = best->game;
     if (next >= 0 && !has_current && first && (armed_game == 0 || armed_game == next)) {
       // the first follow into MC's own game (or from a hill of any game) keeps the point it counted
       current = (uint8_t)next;
@@ -838,6 +844,14 @@ class HillFollower {
       out.switched = true;
       out.from = out.to = current;
       out.fresh = true;
+    }
+    if (out.switched) {  // a new current game (or the same byte started again): nothing of it heard yet
+      end.reset();
+      for (size_t i = 0; i < players.capacity(); i++) {
+        const PlayerEntry& p = players.slot(i);
+        if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id))
+          end.note(p, has_current, current);
+      }
     }
     out.filter.follows = true;
     out.filter.game = current;
@@ -880,12 +894,15 @@ class HillFollower {
 
 // F658: the follower and its ring in one NVS string ("hill_ring"), so a restarted hill keeps following with every game's
 // tally (the phone saves the same in localStorage "brx.station.hillring"). Times are saved as ms AGO, since millis()
-// restarts at boot. "r1|<station id>|<follows>|<current or -1>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
+// restarts at boot. "r2|<station id>|<follows>|<current or -1>|<ended>|<live ids, hex>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
 // <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>,<own0>,<own1>,<own2>,<own3>;..." with the current game's
-// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0.
+// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0. An "r1"
+// string (saved before the end evidence, Codex review r2) restores with no end evidence.
 inline std::string encode_hill_ring(int station_id, const HillFollower& f, const BleControlPoint& point, uint32_t now) {
-  std::string s = "r1|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
-                  (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|";
+  char e[40];
+  std::snprintf(e, sizeof e, "%d|%llx|", f.end.ended ? 1 : 0, (unsigned long long)f.end.live_ids);
+  std::string s = "r2|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
+                  (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|" + e;
   for (const HillGame& g : f.games) {
     if (!g.used) continue;
     const HillSnap t = f.tally(g, point);
@@ -906,9 +923,15 @@ inline std::string encode_hill_ring(int station_id, const HillFollower& f, const
 // reset (brownout, watchdog, panic) keeps the ring as saved.
 inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower& f, BleControlPoint& point, uint32_t now,
                              bool power_on = false) {
-  if (s.rfind("r1|", 0) != 0) return false;
-  int id = 0, follows = 0, current = -1, used = 0;
-  if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
+  int id = 0, follows = 0, current = -1, used = 0, ended = 0;
+  unsigned long long live_ids = 0;
+  if (s.rfind("r2|", 0) == 0) {   // r2 adds the current game's end evidence; r1 (older firmware) restores none
+    if (std::sscanf(s.c_str(), "r2|%d|%d|%d|%d|%llx|%n", &id, &follows, &current, &ended, &live_ids, &used) < 5 || used <= 0) return false;
+  } else if (s.rfind("r1|", 0) == 0) {
+    if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
+  } else {
+    return false;
+  }
   if (id != station_id || follows != 1 || current < 0 || current > 255) return false;
   HillFollower out;
   out.size = f.size;
@@ -946,6 +969,8 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
   out.follows = true;
   out.has_current = true;
   out.current = (uint8_t)current;
+  out.end.ended = ended != 0;
+  out.end.live_ids = (uint64_t)live_ids;
   if (power_on) {
     for (HillGame& g : out.games) {
       if (!g.used) continue;

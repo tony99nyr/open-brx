@@ -157,10 +157,6 @@ JUDGED = {
     "HILL_RING_STALE_MS": "F658 (2026-11-01): how long a following hill keeps a game's tally in its ring unheard; a byte heard\n"
                           "again after this starts fresh. It ages a stored tally, not presence or an advert, so a hill beacon\n"
                           "has nothing to keep from firing",
-    "FOLLOW_SWITCH_HOLD_MS": "F658 (2026-11-02): how long a challenger game must keep a strict lead in heard live players before a\n"
-                             "following hill or powerup switches to it. It runs on the station from the lead's own start and is reset\n"
-                             "only when that lead drops back; a hill beacon is IR, not a player advert, so it can neither hold it off\n"
-                             "nor bring it on",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

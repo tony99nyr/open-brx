@@ -687,22 +687,23 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    go-live to the whistle (the engine's phase `live`; `armed` is the countdown).
 2. **Follow mode.** A control point hears every game byte (presence is keyed by game and player number). Once it has
    heard any live-bit player it follows, and it stays in follow mode. Its current game is the byte of the live
-   players it hears. Another live game takes the hill only when it has MORE live players on the point (present or
-   in sight) than the current game; a tie keeps the current game. So one phone that missed END cannot pin the
-   hill, and a stranger alone on an empty hill holds it only until more real players arrive. The first follow takes
-   the game with the most players on the point, then the newest. When that first game is the hill's MC-armed game
-   (or the hill's game is 0), the point it already counted is kept. A live phone on game 0 (played by hand) is
-   followed only by a hill whose own game is 0.
-   **Switch hysteresis.** The first follow is immediate. While any live player of the current game is still heard
-   (at any signal strength), a challenger must keep its strict lead for `FOLLOW_SWITCH_HOLD_MS` (10 s) without a
-   break. A lead that drops back to a tie or less, or passes to another game, starts the hold again. A current game
-   with no live player heard at all (its whistle, its players gone, or unheard long enough to go stale) is replaced
-   at once, so the next game loses no time at the hill. Why 10 s: a stray advert keeps a passer-by counted for up to
-   `PRESENCE_EXPIRY_MS` (4 s), and a real player who steps off or is body-shadowed drops out for up to 4 s plus
-   `PRESENCE_EXIT_GRACE_MS` (4 s). A lead under 8 s is radio noise or a walk-past. 10 s is about 40 adverts at the
-   250 ms advert rate, and equals one capture time (`HILL_CAPTURE_S`). The hold is not saved: a restart starts it
-   again. The powerup (§5d.9) uses the same rule and constant (`control.js` `followHoldSwitch`, `presence.h`
-   `follow_hold_switch`).
+   players it hears. The first follow takes the game with the most live players on the point, then the newest. When
+   that first game is the hill's MC-armed game (or the hill's game is 0), the point it already counted is kept. A live
+   phone on game 0 (played by hand) is followed only by a hill whose own game is 0.
+   **Game end (Tony 2026-11-07).** A following station never leaves its current game for another while the current
+   game is live: "if a utility is going to switch roles, it can be assumed it must be reset at mc". The current game
+   ends at the station when either:
+   - a player the station heard live in that game advertises without the live bit (its whistle). A countdown phone
+     was never heard live, so it cannot end a game. A phone that missed MC's END still drops the bit at its own time
+     limit; or
+   - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes).
+   Only an in-scope advert of the current game's own byte counts, so no advert of another game can end it, however
+   strong. Once the current game has ended, the strongest other live game takes the station at once, so the next
+   game loses no time. The end evidence is saved with the follower, so a restart keeps it; after a power-on every
+   game is stale anyway. The current byte heard again after 10 minutes unheard is a new game on that byte (a wrap, an
+   MC restart), which the last game's whistle does not end. A change of kind or id needs MC: a new arming as another station starts
+   with nothing followed. The powerup (§5d.9) uses the same rule (`control.js` `noteGameEnd` and `followSwitch`,
+   `presence.h` `FollowEnd`).
 3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.
    A player without the bit counts for nothing: the countdown, after the whistle, and a phone on 0.4.33 or older.
    The live bit replaces MC's window (`starts_in_ms`, `ends_in_ms`): no wait, no whistle freeze. The hill advertises
@@ -760,10 +761,10 @@ A powerup station set up once plays every later game with no walk-out, no Wi-Fi 
 1. **Who counts.** Only a player whose advert scope names this station: the powerup kind bit and its own id bit
    (A86). A zero scope (an older APK) is inert, MC-armed or not. Following, only players with the live bit count.
 2. **Follow mode.** It starts at the first in-scope live player heard, at any signal strength, and lasts. Its
-   current game is the byte of those players. Another live game takes the station only with more such players
-   heard than the current game; a tie keeps it. The switch hysteresis of §5d.8 item 2 applies unchanged: immediate
-   for the first follow and when no live player of the current game is heard, else after a lead held for
-   `FOLLOW_SWITCH_HOLD_MS` (10 s). A game-0 phone is followed only by a station MC armed for game 0.
+   current game is the byte of those players. The game end rule of §5d.8 item 2 applies unchanged: another live game
+   takes the station only once the current game has ended there, and then at once. A game-0 phone is followed only by
+   a station MC armed for game 0. A `taken` report to MC names the game the item went in (`game`), and MC drops a
+   report from another game than its own.
 3. **The clock.** A new followed game starts the item's clock at that first sighting: the item is not there, the
    first spawn is `first_at_s` later, then every `spawn_every_s` as before. The last game's item and taker go. No MC
    START is needed. A byte heard again after more than `HILL_RING_STALE_MS` (10 minutes) unheard starts its clock
