@@ -2112,7 +2112,7 @@ _AMMO_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Ammo\s*\{", _re.M)
 _AMMO_PAIRS = {
     # the F259 magazine account
     "am.acctLive": "_acct_live", "am.acctOutstanding": "_acct_outstanding", "am.acctEchoing": "_acct_echoing",
-    "am.acctWrote": "_acct_wrote", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
+    "am.acctWrote": "_acct_wrote", "am.acctUnwrite": "_acct_unwrite", "am.acctPress": "_acct_press", "am.acctAmmo": "_acct_ammo", "am._acctSpent": "_acct_spent",
     # the counts per slot and the HUD's ammo block
     "am.liveAmmo": "_live_ammo", "am.spawnAmmo": "_spawn_ammo", "am.ammoBySlot": "_ammo_by_slot",
     "am.publish": "_publish_ammo", "am.showSlot": "_show_slot_ammo",
