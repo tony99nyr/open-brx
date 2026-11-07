@@ -123,6 +123,9 @@ def _tally_ok(t: object) -> bool:
     if not all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0
                for k, v in t["hold_ms"].items()):
         return False
+    o = t.get("owner")   # the hill's owner at its last beat, so a resume can show it before the next one
+    if o is not None and not (isinstance(o, int) and not isinstance(o, bool) and o in (0, 1, 2, 3, STATION_TEAM_ANY)):
+        return False
     r = t.get("revives")
     return r is None or (isinstance(r, int) and not isinstance(r, bool))
 
@@ -194,6 +197,8 @@ class StationRegistry:
         # F535: every game byte MC armed a CONTROL station on. A hill keeps advertising its byte after a CLEAR (which
         # sends it nothing) and across an MC restart, so a push in a mode with no hill must not reuse one of these.
         self._hill_bytes: set[int] = set()
+        # Review 2026-11-06: Domination's hill letters as frozen at START, {hill id: letter} (`station_ids`)
+        self._hill_letters: dict[int, str] = {}
         self.compiler, self.net = compiler, net
         # `play`: the Session's match-in-play view (StationMatch); `play.match` is the Match itself.
         self.play, self.roster, self.feed, self.changes = match, roster, feed, changes
@@ -258,6 +263,8 @@ class StationRegistry:
 
     def begin_match(self) -> None:
         self._range_epoch += 1
+        self._hill_letters = {}
+        self._hill_letters = {r["id"]: r["letter"] for r in self.station_ids() if "letter" in r}
 
     def lock_for_start(self) -> None:
         self._stations_unlocked = False
@@ -282,6 +289,7 @@ class StationRegistry:
                                    if st.get("assigned") and st.get("range_seen")},
             "range_epoch": self._range_epoch,
             "hill_bytes": sorted(self._hill_bytes),
+            "hill_letters": {str(k): v for k, v in self._hill_letters.items()},
         }
 
     def capture_state(self) -> dict:
@@ -289,7 +297,7 @@ class StationRegistry:
             "stations": self.stations, "station_ids": self._station_id_of,
             "station_departures": self._station_departures,
             "stations_unlocked": self._stations_unlocked, "range_epoch": self._range_epoch,
-            "hill_bytes": self._hill_bytes,
+            "hill_bytes": self._hill_bytes, "hill_letters": self._hill_letters,
         })
 
     def restore_state(self, state: dict) -> None:
@@ -299,12 +307,32 @@ class StationRegistry:
         self._stations_unlocked = state["stations_unlocked"]
         self._range_epoch = state["range_epoch"]
         self._hill_bytes = state["hill_bytes"]
+        self._hill_letters = state.get("hill_letters", {})
+
+    def seed_reports_from_tallies(self, game: int) -> None:
+        """Review 2026-11-06 (brx4): the report is the station's last beat and a restart does not keep it, but the tally
+        does. Until a hill beats again (never, if it is out of Wi-Fi until the whistle), its STATIONS row said NOT HEARD
+        with no hold and no owner while its points stayed in the score. A control station's tally for THIS game seeds the
+        report's `control` (only a tally a hill's report wrote: `at` is set; any beat keys an empty one); the next beat
+        replaces it, and `_keep_tally` merges the tally back as before."""
+        for st in self.stations.values():
+            a, tally = st.get("assigned"), st.get("tally")
+            if (not a or a.get("kind") != "control" or st.get("report") or not isinstance(tally, dict) or not _tally_ok(tally)
+                    or tally.get("key") != [game, "control", a.get("id")] or tally.get("at") is None):
+                continue
+            control: StationControl = {"hold_ms": dict(tally["hold_ms"])}
+            if tally.get("owner") is not None:
+                control["owner"] = tally["owner"]
+            st["report"] = {"control": control}
 
     def restore(self, snap: dict) -> list[str]:
         restored: list[str] = []
         self._hill_bytes = {b for b in (snap.get("hill_bytes") or [])
                             if isinstance(b, int) and not isinstance(b, bool) and 0 <= b <= 255}
         legacy_hill_bytes = "hill_bytes" not in snap   # F535: an older file; seeded from its control stations below
+        letters = snap.get("hill_letters")
+        self._hill_letters = ({int(k): v for k, v in letters.items() if isinstance(k, str) and k.isdigit()
+                               and isinstance(v, str) and 0 < len(v) <= 3} if isinstance(letters, dict) else {})
         for nid, a in (snap.get("stations") or {}).items():
             if not isinstance(a, dict):
                 continue
@@ -375,10 +403,20 @@ class StationRegistry:
         rows.sort(key=lambda x: x["id"])
         if self.roster.config.get("mode") in OWNERSHIP_SCORED_MODES:
             # Domination: the hills are named A, B, C... in id order, so the HUD and the voice can say "Hill B"
-            # (domination-design.md §2.3 item 4). Ids are MC's (A66), so the letters stay stable across a match.
+            # (domination-design.md §2.3 item 4). Review 2026-11-06: a letter is a hill's RANK, so a hill that left in
+            # play (BACK TO HUD) renamed the rest in a late joiner's bundle while the other phones kept the old names.
+            # START freezes the letters (`begin_match`); in play a hill keeps its letter and a new one takes the next free.
             hills = [r for r in rows if r["kind"] == "control"]
+            frozen = self._hill_letters if self.play.in_play() else {}
+            used = set(frozen.values())
+            free = (chr(ord("A") + i) if i < 26 else None for i in range(10_000))
             for i, r in enumerate(hills):
-                r["letter"] = chr(ord("A") + i) if i < 26 else str(r["id"])
+                if r["id"] in frozen:
+                    r["letter"] = frozen[r["id"]]
+                    continue
+                letter = chr(ord("A") + i) if not frozen and i < 26 else next((x for x in free if x and x not in used), None)
+                r["letter"] = letter or str(r["id"])
+                used.add(r["letter"])
         return rows
 
     def _active_item(self, a: dict | None) -> StationItem | None:
@@ -1228,6 +1266,9 @@ class StationRegistry:
             # `tally["hold_ms"]` LAST. The same rostered-tid filter applies to it here too.
             rostered_tally = {tid: ms for tid, ms in tally["hold_ms"].items() if _rostered_tid(tid)}
             rep["control"] = {**control, "hold_ms": {**hold, **rostered_tally}}
+            owner = control.get("owner")
+            if isinstance(owner, int) and not isinstance(owner, bool) and owner in (0, 1, 2, 3, STATION_TEAM_ANY):
+                tally["owner"] = owner
         rv = rep.get("revives")
         if isinstance(rv, int) and not isinstance(rv, bool):
             tally["revives"] = max(rv, tally["revives"] or 0)

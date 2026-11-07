@@ -172,3 +172,88 @@ def test_an_unreachable_target_is_said_in_points():
     assign_koth_hill(s, "util-b")
     s.set_config({"time_limit_s": 600})
     assert not any("SCORE TARGET" in w for w in s.config_warnings), "two hills bank up to 1200: reachable"
+
+
+def test_the_team_that_crosses_the_target_wins_though_both_round_to_it():
+    """Review 2026-11-06: blue at 999.6 points and red reaching 1000.0 both round to 1000, and the winner (rounded
+    seconds) said a tie although red crossed the target and ended the match. KOTH shares the rule."""
+    s, net, clock = _live("domination", 1000)
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    r, b = str(red["tid"]), str(blue["tid"])
+    clock["t"] += 1_100_000
+    _beat(s, net, clock, "util-c", blue["tid"], {b: 1}, {b: 999_600})
+    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 500_000})
+    assert s.phase == "live", "CONTROL: nobody has crossed yet"
+    _beat(s, net, clock, "util-b", red["tid"], {r: 1}, {r: 500_000})
+    assert s.end_reason == "hold_target", s.end_reason
+    sc = s._m().scorer
+    assert sc.possession()["by_team"] == {red["team_id"]: 1000, blue["team_id"]: 1000}, sc.possession()
+    assert sc.winner() == {"team_id": red["team_id"]}, sc.winner()
+    assert (s.last_recap or {}).get("winner") == {"team_id": red["team_id"]}, (s.last_recap or {}).get("winner")
+
+
+def test_a_hill_keeps_its_letter_when_another_leaves_in_play_and_across_a_restart():
+    """Review 2026-11-06: a letter was a hill's rank among the hills assigned NOW. A hill that left in play (BACK TO
+    HUD) renamed the others in a late joiner's bundle (B became A) while every other phone still said B."""
+    import pathlib
+    import tempfile
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s, net, clock = _live("domination", 1000)
+    letters = lambda sess: {r["id"]: r["letter"] for r in sess.station_registry.station_ids() if r["kind"] == "control"}
+    before = letters(s)
+    assert sorted(before.values()) == ["A", "B", "C"], before
+    gone = min(before)                                   # hill A leaves mid-match
+    nid = next(n for n, st in s.station_registry.stations.items() if (st.get("assigned") or {}).get("id") == gone)
+    assert s.release_station(nid)
+    after = letters(s)
+    assert after == {k: v for k, v in before.items() if k != gone}, (before, after)
+    path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = path
+    s.persist_now()
+    s._persist()
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s2._persist_path = path
+    s2.restore_snapshot()
+    assert s2.station_registry._hill_letters == before, s2.station_registry._hill_letters
+
+
+def test_the_end_line_says_the_target_in_points():
+    """Review 2026-11-06: the feed said "HOLD TARGET 16:40 REACHED" for a 1000-point Domination target."""
+    s, net, clock = _live("domination", 1000)
+    red = s.config["teams"][0]
+    r = str(red["tid"])
+    clock["t"] += 1_100_000
+    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 1_000_000})
+    assert s.end_reason == "hold_target", s.end_reason
+    lines = [e.get("text", "") for e in s.feed]
+    assert any("SCORE TARGET 1000 POINTS REACHED" in t for t in lines), lines[-5:]
+    assert not any("HOLD TARGET 16:40" in t for t in lines), lines[-5:]
+
+
+def test_a_restart_keeps_each_hills_owner_and_points_on_its_row_before_it_beats_again():
+    """Review 2026-11-06 (found by chaos `domination-hills`): a restart keeps a hill's tally (its points still score)
+    but not its last report, so until the hill beats again its STATIONS row said NEVER HEARD FROM with no points. A hill
+    out of Wi-Fi from the restart to the whistle kept that row on the recap while its points counted."""
+    import pathlib
+    import tempfile
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s, net, clock = _live("domination", 1000)
+    red = s.config["teams"][0]
+    r = str(red["tid"])
+    clock["t"] += 400_000
+    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 300_000})
+    before = s.station_registry.station_view("util-a")["report"]["control"]
+    assert before["owner"] == red["tid"] and before["hold_ms"] == {r: 300_000}, before
+    path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = path
+    s._persist_last = 0.0
+    s._persist_dirty = True
+    s.persist_now()
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    s2._persist_path = path
+    s2.restore_snapshot()
+    got = s2.station_registry.station_view("util-a")["report"].get("control") or {}
+    assert got.get("owner") == red["tid"] and got.get("hold_ms") == {r: 300_000}, got
+    assert not s2.station_registry.station_view("util-b")["report"], "CONTROL: a hill that never reported stays unheard"

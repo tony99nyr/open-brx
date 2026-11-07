@@ -733,7 +733,7 @@ def test_last_match_captured_at_start_and_survives_a_restart():
     s.start(runway_s=42, force=True)
     # F413: TDM's own default teams (red+blue) ride along in MATCH SETTINGS now too.
     assert s.last_match == {"time_limit_s": s.game_pick["match"]["time_limit_s"], "frag_limit": 15,
-                            "night": True, "silenced": False, "countdown_s": 42, "teams": ["red", "blue"]}
+                            "night": True, "silenced": False, "countdown_s": 42, "teams": ["red", "blue"], "mode": "tdm"}
     path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path = path
     s._persist()

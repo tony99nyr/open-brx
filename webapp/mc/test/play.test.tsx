@@ -249,7 +249,7 @@ describe('PLAY — LAST MATCH', () => {
     await api.start(45, true);
     const state = await api.getState();
     expect(state.last_match).toEqual({ time_limit_s: 600, frag_limit: 15, night: true, silenced: true,
-      teams: ['blue', 'yellow'], countdown_s: 45 });
+      teams: ['blue', 'yellow'], countdown_s: 45, mode: 'tdm' });
     const { m } = await renderPlay(api);
     expect(m.find('[data-testid="last-match"]').length).toBe(1);
     m.unmount();
@@ -1058,6 +1058,34 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     expect(after.game_pick?.match.night).toBe(true);
     expect(after.game_pick?.match.silenced).toBe(true);
     expect(after.game_pick?.match.teams, 'the illegal 3-team array was dropped, koth kept its own default').toEqual(['red', 'blue']);
+  });
+
+  // Review 2026-11-06: a target is seconds in KOTH and points in Domination. LAST MATCH from a KOTH 5:00 onto Domination
+  // made it 300 POINTS (about 100 s a hill on three hills); it now keeps Domination's own target.
+  it('LAST MATCH carries a hold target only onto the mode it was played on', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
+    await api.pick({ match: { hold_target_s: 300, frag_limit: null } });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    expect((await api.getState()).last_match?.hold_target_s, 'control: the last match had a 5:00 target').toBe(300);
+    await api.pick({ pieces: { mode: 'builtin:mode:domination' } });
+    expect((await api.getState()).config.scoring.hold_target_s, 'control: Domination is first to 1000').toBe(1000);
+    const { m, settle } = await renderPlay(api);
+    await m.click('LAST MATCH');
+    m.unmount();
+    await settle();
+    expect((await api.getState()).config.scoring.hold_target_s, 'a KOTH 5:00 is not 300 POINTS').toBe(1000);
+    // and onto KOTH again it does carry
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    const r2 = await renderPlay(api);
+    await r2.m.click('LAST MATCH');
+    r2.m.unmount();
+    await r2.settle();
+    expect((await api.getState()).config.scoring.hold_target_s, 'CONTROL: the same mode keeps it').toBe(300);
   });
 
   // brx1's review of 4275fad2: the yellow half of `kothLegal` had no test (a 2-team array that is legal

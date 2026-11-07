@@ -1247,6 +1247,13 @@ class Scorer:
             # operator a kills table and "UNDECIDED". Nothing else changes: survival (infection / LMS)
             # has no tally to consult and stays undecided, as does an objective match nobody observed
             # (A5.9/A6.1 — decided by the host, not by kills).
+            if self.hold_target_s and "hold_target" in self._announced:
+                # Review 2026-11-06: the target is crossed in raw ms (`_check_hold_target`), so the team that crossed it
+                # wins. Rounded seconds called blue's 999.6 s against red's 1000.0 s a tie.
+                by_ms, _neutral = self._possession_ms()
+                reached = sorted(t for t, ms in by_ms.items() if ms >= self.hold_target_s * 1000)
+                if len(reached) == 1:
+                    return {"team_id": reached[0]}
             poss = self.possession()
             held = {t: s for t, s in (poss or {}).get("by_team", {}).items() if s > 0}
             if held:

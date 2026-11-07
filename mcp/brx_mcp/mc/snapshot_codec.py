@@ -88,6 +88,7 @@ class SnapshotHost(Protocol):
     def _notify_listeners(self) -> None: ...
     def _render_join(self) -> str: ...
     def _validate(self, roster: list[Player] | None = None) -> dict: ...
+    def _game_byte(self) -> int: ...
     def _gun_index(self) -> Any: ...
     def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]: ...
     def _keep_bad_snapshot(self) -> Path | None: ...
@@ -164,6 +165,7 @@ class SnapshotCodec:
                     "station_range_seen": station["station_range_seen"],
                     "range_epoch": station["range_epoch"],
                     "hill_bytes": station["hill_bytes"],   # F535: a hill MC armed may still advertise these bytes
+                    "hill_letters": station["hill_letters"],   # review 2026-11-06: Domination's letters frozen at START
                     "join_secret": self.host.join_secret,
                     # Bench 2026-11-01: the LOAD announcement (which game the host loaded). Without it a restart read NOT
                     # LOADED on GAMES and the heartbeat retry never ran. Only the host's decision is kept, never who was
@@ -418,6 +420,7 @@ class SnapshotCodec:
                 self.host.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
                                                  "synced": False, "last_seen_ms": 0})
             self.host.game_no = snap.get("game_no", self.host.game_no)
+            self.host.station_registry.seed_reports_from_tallies(self.host._game_byte())
             self._restore_load(snap.get("load"))
             self.host._game_no_started = bool(snap.get("game_no_started", False))
             if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:

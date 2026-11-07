@@ -448,7 +448,9 @@ pickTeams={pickTeams} />
                     // let the round-trip find out; the mode's own current teams stay put instead.
                     const kothLegal = !isHillMode(cfg.mode) || (lm.teams != null && lm.teams.length === 2 && !lm.teams.includes('yellow'));
                     if (lm.teams && kothLegal && (!items || items.includes('teams'))) patch.teams = lm.teams;
-                    if (lm.hold_target_s !== undefined && (!items || items.includes('hold'))) patch.hold_target_s = lm.hold_target_s;
+                    // Review 2026-11-06: a target is seconds in KOTH and points in Domination, so it carries only onto the mode it
+                    // was played on (a KOTH 5:00 must not become 300 POINTS). A record from an older MC names no mode.
+                    if (lm.hold_target_s !== undefined && (!items || items.includes('hold')) && (lm.mode ?? cfg.mode) === cfg.mode) patch.hold_target_s = lm.hold_target_s;
                     // F559: a mode that offers the hill item gets the last match's hill EXPLICITLY, so a last match played at STATION
                     // DEFAULT clears the hill now in force (a null key clears that key; null clears both).
                     if (items?.includes('hill')) {
