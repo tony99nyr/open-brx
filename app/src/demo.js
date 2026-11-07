@@ -421,8 +421,10 @@ export function startDemo({ engine, log }) {
           { t: t0, session: 'demo-session', match_id: 'h1', mode: 'tdm', kills: 7, deaths: 9, assists: 2, accuracy: 22, shots: 190, outcome: 'lose', win_by: 'kills', best_streak: 3, medals: [], team_scores: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 25 }] },
           // F657: MC's own KOTH shape. `score` is kills (the foe led 14-3) and `held_s` is the hill time that won it.
           { t: t0 + 1200e3, session: 'demo-session', match_id: 'h2', mode: 'koth', kills: 2, deaths: 4, assists: 6, accuracy: 31, shots: 120, outcome: 'win', win_by: 'objective', best_streak: 2, medals: ['killing_spree'], team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 424 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 211 }] },
+          // Domination: `held_s` carries POINTS, so the row lists 770 and 412, never 12:50
+          { t: t0 + 1800e3, session: 'demo-session', match_id: 'h4', mode: 'domination', kills: 3, deaths: 2, assists: 1, accuracy: 30, shots: 90, outcome: 'win', win_by: 'objective', best_streak: 2, medals: [], team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 770 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 412 }] },
           { t: t0 + 2400e3, session: 'demo-session', match_id: 'h3', mode: 'ffa', kills: 12, deaths: 5, assists: 1, accuracy: 44, shots: 160, outcome: null, win_by: null, best_streak: null, medals: null, team_scores: null },   // MC never confirmed this one — "—", never a guess
-          ...(h.history || []).filter(g => g.session === 'demo-session' && !['h1', 'h2', 'h3'].includes(g.match_id))];
+          ...(h.history || []).filter(g => g.session === 'demo-session' && !['h1', 'h2', 'h3', 'h4'].includes(g.match_id))];
         h.sig = null; h.render(engine.state()); },
       view: v => { const h = hud(); if (!h) return; h.view = v || null; h.sig = null; h.render(engine.state()); },
       rtab: t => { const h = hud(); if (!h) return; h.rtab = t; h.sig = null; h.render(engine.state()); },
@@ -850,6 +852,13 @@ export function startDemo({ engine, log }) {
       'result-koth-kill-leader-loses': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win', { mode: 'koth', win_by: 'objective',
         team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 424 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 211 }],
         possession: { by_team: { [teamKey]: 424, [foeKey]: 211 }, neutral_s: 5, sites: 1, reports: 4, observed_s: 640, of_s: 600 } })]],
+      // Domination scores POINTS in the same `held_s` / `possession` fields (one per owned hill per second): 770 must read 770, never 12:50.
+      'result-dom-points': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win', { mode: 'domination', win_by: 'objective',
+        team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 770 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 412 }],
+        possession: { by_team: { [teamKey]: 770, [foeKey]: 412 }, neutral_s: 0, sites: 3, reports: 4, observed_s: 640, of_s: 600 } })]],
+      'result-dom-points-player': [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win', { mode: 'domination', win_by: 'objective',
+        team_scores: [{ team_id: teamKey, name: team.name, score: 3, held_s: 770 }, { team_id: foeKey, name: foe.name, score: 14, held_s: 412 }],
+        possession: { by_team: { [teamKey]: 770, [foeKey]: 412 }, neutral_s: 0, sites: 3, reports: 4, observed_s: 640, of_s: 600 } })], [2700, () => ev.rtab('player')]],
       'result-players':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => ev.rtab('player')]],
       'history':           [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, 'seedHistory'], [2800, () => ev.view('history')]],
       'down-at-cap-offline': [...live, [2300, 'capBoard'], [2400, 'mcLost'], [2500, 'die']],                                                  // A31: one off the cap with no MC link
