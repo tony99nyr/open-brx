@@ -576,7 +576,9 @@ class Scorer:
                 self.stats[pid0].flushed = True
                 self.possession_pid[node_id] = pid0
             result = self._possession(node_id, ev)
-            if result == "scored":
+            if result == "scored" and self.mode not in OWNERSHIP_SCORED_MODES:
+                # Codex review of the phone half: in Domination a tally can sit in a batch between own_change steps, and
+                # checked here it read a half-built timeline; Domination's target is the tick's (`tick_hold_target`)
                 self._check_hold_target(t_recv)
             return result
         pid = self._pid(node_id, ev)
@@ -863,9 +865,10 @@ class Scorer:
         self.on_limit(t)
 
     def tick_hold_target(self, t: int) -> None:
-        """Domination: an owned hill scores with no new report, so the target can be crossed between facts. The Session's
-        tick calls this while LIVE."""
-        if self.mode in OWNERSHIP_SCORED_MODES and self.own_changes and (self.end_t is None or t <= self.end_t):
+        """Domination: an owned hill scores with no new report, so the target can be crossed between facts, and a fact is
+        never checked on its own (it may sit in a batch). The Session's tick calls this while LIVE; it covers a match
+        scored from possession tallies alone (phones older than OWN_CHANGE_MIN_APP) too."""
+        if self.mode in OWNERSHIP_SCORED_MODES and (self.end_t is None or t <= self.end_t):
             self._check_hold_target(t)
 
     def recheck_limits(self, first_t: int) -> None:

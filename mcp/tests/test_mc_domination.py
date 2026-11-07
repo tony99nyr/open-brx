@@ -252,6 +252,39 @@ def test_a_batch_from_a_phone_back_in_wifi_does_not_end_the_match_on_its_first_s
     assert s._m().scorer.possession()["by_team"] == {red["team_id"]: 10, blue["team_id"]: 10}
 
 
+
+def test_a_possession_fact_inside_a_batch_does_not_end_the_match_on_a_half_built_timeline():
+    """Codex review of the phone half (2026-11-07): a phone back in Wi-Fi sends red's capture at 10 s, a possession
+    tally at 30 s and the drain at 40 s as one batch. The tally's own target check read the timeline with only the
+    capture in it (red 90 points on a 60 target) and the match ended. In Domination every target check is the tick's."""
+    s, net, clock = _live("domination", 60)
+    red = s.config["teams"][0]
+    go, mid = s._m().head["go_live_t"], s._m().head["match_id"]
+    site = str(s.station_registry.stations["util-a"]["assigned"]["id"])
+    ev = lambda at, **b: {"t": go + at, "match_id": mid, **b}
+    batch = [ev(10_000, type="own_change", site=site, from_tid=2, owner_tid=red["tid"], at_ms=go + 10_000, seq=7100),
+             ev(30_000, type="possession", site=site, hold_ms={str(red["tid"]): 20_000}, observed_ms=30_000, seq=7101),
+             ev(40_000, type="own_change", site=site, from_tid=red["tid"], owner_tid=2, at_ms=go + 40_000, seq=7102)]
+    clock["t"] = go + 100_000
+    net.simulate_batch("node0", batch, clock["t"])
+    s.tick()
+    assert s.phase == "live", (s.phase, s.end_reason)
+    assert s._m().scorer.possession()["by_team"][red["team_id"]] == 30
+
+
+def test_a_domination_match_scored_from_tallies_alone_still_ends_on_its_target():
+    """Phones older than OWN_CHANGE_MIN_APP send only possession tallies. A tally no longer checks the target itself, so
+    the tick must cover a match with no own_change at all."""
+    s, net, clock = _live("domination", 60)
+    red = s.config["teams"][0]
+    go, mid = s._m().head["go_live_t"], s._m().head["match_id"]
+    site = str(s.station_registry.stations["util-a"]["assigned"]["id"])
+    clock["t"] = go + 70_000
+    net.simulate_event("node0", {"type": "possession", "t": clock["t"], "match_id": mid, "site": site,
+                                 "hold_ms": {str(red["tid"]): 61_000}, "observed_ms": 70_000}, clock["t"], seq=7200)
+    s.tick()
+    assert s.phase == "recap" and s.end_reason == "hold_target", (s.phase, s.end_reason)
+
 def test_an_own_change_stamped_outside_the_match_is_refused():
     """Codex review: a step stamped long before go-live fabricated points from go-live, and one stamped after MC received
     it stood as the site's only fact and blanked the phones' tally for it."""
