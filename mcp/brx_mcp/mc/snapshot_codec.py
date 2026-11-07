@@ -477,12 +477,12 @@ class SnapshotCodec:
             hts = old_scoring.get("hold_target_s")
             if self.host.config["mode"] in OBJECTIVE_MODES and _check.hold_target_ok(hts):
                 self.host.config["scoring"]["hold_target_s"] = hts
-            elif mode_scoring.get("hold_target_s") and snap.get("match") is None:
+            elif (dflt := mode_scoring.get("hold_target_s")) and snap.get("match") is None:
                 # Review 2026-11-06 (brx1): a Domination setup saved while a mode change dropped its target restores as
                 # first to 1000, silently. Never under a match in play: that match keeps the rules it started with.
-                self.host.config["scoring"]["hold_target_s"] = mode_scoring["hold_target_s"]
+                self.host.config["scoring"]["hold_target_s"] = dflt
                 if isinstance(self.host.game_pick, dict) and isinstance(self.host.game_pick.get("match"), dict):
-                    self.host.game_pick["match"]["hold_target_s"] = mode_scoring["hold_target_s"]
+                    self.host.game_pick["match"]["hold_target_s"] = dflt
             elif isinstance(self.host.game_pick, dict) and isinstance(self.host.game_pick.get("match"), dict):
                 self.host.game_pick["match"].pop("hold_target_s", None)   # a dropped target leaves the PLAY pick too
             self.host.config["loadout_policy"] = _policy.normalize(self.host.config.get("loadout_policy"), self.host.config["mode"])

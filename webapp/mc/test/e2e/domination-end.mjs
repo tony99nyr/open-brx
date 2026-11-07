@@ -166,7 +166,8 @@ try {
       const owner = TID_NAME[row.owner];
       c.expect(owner && stations.includes(`HELD BY ${owner}`), `tab ${tab}: hill ${row.id} held by ${owner}`);
       for (const [t, ms] of Object.entries(row.hold_ms || {})) {
-        c.expect(stations.includes(`${TID_NAME[t]} ${Math.round(ms / 1000)}S`), `tab ${tab}: hill ${row.id} shows ${TID_NAME[t]} ${Math.round(ms / 1000)}s`);
+        const pts = `${TID_NAME[t]} ${Math.round(ms / 1000)}`;   // Domination: points, so no "s" (brx1 2026-11-06)
+        c.expect(new RegExp(`${pts}(?!\\d|S)`).test(stations), `tab ${tab}: hill ${row.id} shows ${pts} points, not seconds`);
       }
     }
     c.expect(await page.evaluate(() => window.__noReload === 1), `tab ${tab}: never reloaded`);
