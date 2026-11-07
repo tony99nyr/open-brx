@@ -455,6 +455,16 @@ test('F537: a 5 s scan pause does not expire a station, and the expiry still run
   assert.equal(p.stations()[0].present, false, 'CONTROL: 4 s of real silence after the resume still expires it');
 });
 
+test('own_change: each advert counts once in rx, and a resume moves the entry clocks but never rx', () => {
+  const { p, t } = presentAt();
+  const rx = p.stations()[0].rx;
+  assert.ok(rx > 1, 'setup: one count per advert');
+  p.pause(t); p.resume(t + 5000);
+  assert.equal(p.stations()[0].rx, rx, 'a resume is not a reception');
+  p.observe(HILL, -50, t + 5100);
+  assert.equal(p.stations()[0].rx, rx + 1, 'the next advert is');
+});
+
 test('F537 (brx5): a pause freezes fading too; pause and resume are idempotent; a clock step back is clamped', () => {
   const { p, t } = presentAt();
   let u = t;

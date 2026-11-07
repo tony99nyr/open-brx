@@ -1289,6 +1289,31 @@ test('Domination scored from the phones: own_change on the first hearing, on eve
   assert.equal(own().at(-1).from_tid, 2); assert.equal(own().at(-1).owner_tid, 2);
 });
 
+test('own_change (Codex review 2026-11-07): a new advert only, through a gun-lock recovery, and on the raw clock', () => {
+  const h = dom({ own_change: true });
+  const own = () => h.facts.filter(f => f.type === 'own_change');
+  let rx = 0;
+  const hear = (ms, o) => { for (let i = 0; i < ms / 250; i++) { h.adv(250); h.eng.setStations([controlEntry({ ...o, rx: ++rx, ageMs: 0 })]); h.eng.tick(); } };
+  hear(250, { team: 1, state: HELD, value: 100 });
+  assert.equal(own().length, 1);
+  // A resumed scan moves the entry's clocks on (a small ageMs) with no new advert: that is not a hearing, so no re-assertion
+  for (let i = 0; i < 160; i++) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, rx, ageMs: 0 })]); h.eng.tick(); }
+  assert.equal(own().length, 1, 'no own_change from an entry with no new advert');
+  hear(250, { team: 1, state: HELD, value: 100 });
+  assert.equal(own().length, 2, 'the next real advert re-asserts');
+  // A gun-lock recovery stands gameplay down, but the phone still hears the point, and MC needs every step
+  h.eng.gunLocked = true;
+  hear(500, { team: 0, state: HELD, value: 100 });
+  h.eng.gunLocked = false;
+  assert.equal(own().length, 3, 'a change heard during a gun-lock recovery still goes');
+  assert.equal(own().at(-1).from_tid, 1); assert.equal(own().at(-1).owner_tid, 0);
+  // MC's clock offset steps by +12 s: the raw gap is 250 ms, so the next change is a change, not a re-assertion
+  const base = h.eng.clockOffset();
+  h.eng.clockOffset = () => base + 12_000; h.adv(12_000);
+  hear(250, { team: 1, state: HELD, value: 100 });
+  assert.equal(own().length, 4); assert.equal(own().at(-1).from_tid, 0, 'an offset step is not a gap'); assert.equal(own().at(-1).owner_tid, 1);
+});
+
 test('own_change: KOTH sends none (it keeps possession alone)', () => {
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });

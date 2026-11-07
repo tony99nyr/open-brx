@@ -80,7 +80,7 @@ export class HillListener {
     this._hillsSig = '';            // F666: what the row of hills last rendered
     this._holdAt = 0;               // when the accrual last ran
     this._siteHold = {};            // F556: per control point (site), its own accrual anchor {_holdAt}
-    this._own = {};                 // own_change: site -> { owner, heardAt, sentAt } (Domination scored from the phones)
+    this._own = {};                 // own_change: site -> { owner, heard, sentAt (raw clock), rx (last advert count) } (Domination scored from the phones)
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
   }
   get hill() { return this._hill; }
@@ -518,7 +518,6 @@ export class HillListener {
       const held = !!(e.state & ADVERT_CONTROL_STATE.held);
       const owner = (held && claimable(e.team)) ? e.team : HILL_REFUSED_TID, at = Number.isFinite(e.ageMs) ? now - e.ageMs : now;
       this.accrue({ owner, contested: !!(e.state & ADVERT_CONTROL_STATE.contested), at, site: e.id, source: 'station' }, now, slot);
-      this.ownChange(site, owner, at, now);
     }
     this._siteHold = keep;
   }
@@ -526,8 +525,18 @@ export class HillListener {
    *  and retried like `possession`). On every owner change (`from_tid` the last owner heard), as a re-assertion
    *  (`from_tid` = `owner_tid`) on the first hearing and after OWN_GAP_MS unheard, and every OWN_REASSERT_MS while heard.
    *  `at_ms` is when the advert was heard, on MC's clock. Live and Domination only, and only when MC's config asks for it
-   *  (`own_change: true`); KOTH and an older MC keep `possession` alone. */
-  ownChange(site, owner, at, now) {
+   *  (`own_change: true`); KOTH and an older MC keep `possession` alone.
+   *  Codex review 2026-11-07: the engine calls `ownTick` before its gun-lock stand-down, so a recovery cannot lose a step
+   *  MC needs. A step counts only on a new advert (`rx`), because a resumed scan moves an entry's clocks on. The gap and
+   *  the 30 s cadence run on the raw clock, so an MC offset step cannot fake a gap or stall a re-assertion. */
+  ownTick(now) {
+    for (const e of (this.host._controlStations && this.host._controlStations()) || []) {
+      if (e.paused) continue;   // our own scan is closed: the entry is frozen, not a hearing
+      const owner = ((e.state & ADVERT_CONTROL_STATE.held) && claimable(e.team)) ? e.team : HILL_REFUSED_TID;
+      this.ownChange(String(e.id), owner, Number.isFinite(e.ageMs) ? now - e.ageMs : now, now, e.rx);
+    }
+  }
+  ownChange(site, owner, at, now, rx) {
     if (this.host.phase !== 'live' || !this.host.matchId || !this.ownershipScored()) return;
     // Only an MC that reads the fact asks for it: an older MC refuses an unknown fact type (bad_event)
     if (!(this.host.config && this.host.config.own_change === true)) return;
@@ -535,12 +544,14 @@ export class HillListener {
     if (Number.isFinite(goLive) && at < goLive) return;   // heard before go-live: not this match's play
     this.holdTally();
     const o = this._own[site];
+    if (o && Number.isFinite(rx) && rx === o.rx) return;                     // no new advert since the last look
+    const off = Number(this.host.clockOffset && this.host.clockOffset()) || 0, heard = at - off, rawNow = now - off;
     let from = null;
-    if (!o || at - o.heardAt >= OWN_GAP_MS) from = owner;                  // first hearing, or back after a gap
-    else if (o.owner !== owner) from = o.owner;                            // a change
-    else if (now - o.sentAt >= OWN_REASSERT_MS) from = owner;              // the 30 s re-assertion
-    if (from == null) { o.heardAt = Math.max(o.heardAt, at); return; }
-    this._own[site] = { owner, heardAt: o ? Math.max(o.heardAt, at) : at, sentAt: now };
+    if (!o || heard - o.heard >= OWN_GAP_MS) from = owner;                   // first hearing, or back after a gap
+    else if (o.owner !== owner) from = o.owner;                              // a change
+    else if (rawNow - o.sentAt >= OWN_REASSERT_MS) from = owner;             // the 30 s re-assertion
+    if (from == null) { o.heard = Math.max(o.heard, heard); o.rx = rx; return; }
+    this._own[site] = { owner, heard: o ? Math.max(o.heard, heard) : heard, sentAt: rawNow, rx };
     this.host.emitFact({ type: 'own_change', match_id: this.host.matchId, site, from_tid: from, owner_tid: owner, at_ms: Math.round(at) });
   }
   /** Send the tally to MC. `hold_ms` is CUMULATIVE and every report is idempotent, so this is
@@ -579,7 +590,7 @@ export class HillListener {
     this._hillEp = null; this._hillBeginsAt = {};
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
-    this._own = {};   // own_change: site -> { owner, heardAt, sentAt }
+    this._own = {};   // own_change: site -> { owner, heard, sentAt (raw clock), rx (last advert count) }
     this._hillsSeen = {}; this._hillsSig = '';
   }
   /** F666 (Domination's row of hills, domination-design.md §2.6): remember what each control point said when we last

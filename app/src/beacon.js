@@ -278,7 +278,7 @@ export class Presence {
     if (this._pausedAt != null) this.resume(now);   // F537 (review): an advert proves we are listening, so no clock lands in the future
     const key = this.keyByGame && d.role === 'player' ? `player:${d.game}:${d.id}` : `${d.role}:${d.id}`;
     let e = this.entries.get(key);
-    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi }; this.entries.set(key, e); }
+    if (!e) { e = { ...d, rssi: rssi, raw: rssi, seenAt: now, present: false, sinceAbove: null, belowSince: null, firstAt: now, samples: [rssi], median: rssi, rx: 0 }; this.entries.set(key, e); }
     else {
       const fresh = d.seq !== e.seq || d.state !== e.state || d.team !== e.team || d.value !== e.value || d.threshold !== e.threshold || d.taker !== e.taker || d.scope !== e.scope || d.scopeKinds !== e.scopeKinds;
       // F440: the last GAP_SAMPLES inter-arrival gaps, so a sparse or stalling advertiser shows as numbers (diag, logs).
@@ -303,6 +303,9 @@ export class Presence {
     // and stay, so the circle edge moved with advert rate. A window median gives every phone the same edge: a sparse
     // phone's window holds its one advert, a dense phone's holds several. Each advert counts for the time it covers, so a burst cannot outvote a longer stretch of one signal; above PRESENCE_SIGHT_RECENT_MAX adverts the window is thinned near-evenly across the 2 s (F452(b)). Staying in comes from `present` (the EMA
     // with its debounced exit). Binary: never weighted by how far above.
+    // own_change: one count per advert received. `resume` moves `seenAt` on, never this, so a reader can tell a new
+    // reception from an old entry whose clocks a paused scan moved.
+    e.rx = (e.rx || 0) + 1;
     e.recent = [...(e.recent || []).filter(x => now - x.t < PRESENCE_SIGHT_WINDOW_MS), { t: now, rssi }];
     e.recent = thinWindow(e.recent);
     // F452(b) round 3: the level is computed HERE, at the advert's own time, and `tick` reads it. Read at tick time the newest
