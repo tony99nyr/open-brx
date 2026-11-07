@@ -7917,8 +7917,9 @@ class Session:
         if self.config.get("mode") not in OWNERSHIP_SCORED_MODES or self.end_reason not in ("hold_target", "time"):
             return False
         now = self.now_ms()
-        return any(now - self.nodes.get(nid, {}).get("last_seen_ms", 0) > SCORE_SILENT_MS
-                   for p in self.players.values() if (nid := p.get("node_id")) and nid not in self._m().evicted)
+        # The match's own bindings, not the roster's node ids: a restart clears those, and a resumed end saw no phone at all
+        # (Codex review). A phone that has not spoken to this MC since has no `last_seen_ms`, so it counts as silent.
+        return any(now - self.nodes.get(nid, {}).get("last_seen_ms", 0) > SCORE_SILENT_MS for nid in self._whistle_map())
 
     def _finish(self, *, resuming: bool = False):
         self._resuming_recap = resuming

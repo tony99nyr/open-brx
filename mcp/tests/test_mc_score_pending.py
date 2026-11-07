@@ -147,3 +147,26 @@ def test_a_restart_keeps_the_result_held_with_no_bound():
     sync = _sync(s2)
     assert sync["pending"] and sync.get("score_pending") is True and "release_in_s" not in sync, sync
     assert s2.recap()["winner"] is None
+
+
+def test_a_target_or_time_reached_while_mc_was_down_holds_the_result_until_the_phones_are_back():
+    """Codex review 2026-11-07: a restart clears the roster's node ids, so the silence check saw no phone and the resumed
+    end took the 120 s bound. The check reads the match's own bindings: no phone has spoken to this MC yet."""
+    from _session import restart_no_repersist
+    for until_ms, reason in ((1_200_000, "hold_target"), (1_810_000, "time")):
+        s, net, clock = _live("domination", 1000 if reason == "hold_target" else 5000, stored=True)
+        s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+        go = s._m().head["go_live_t"]
+        _own(s, net, clock, "node0", "util-a", 2, s.config["teams"][0]["tid"], at=go + 10_000)
+        clock["t"] = go + 20_000
+        s.tick()
+        s._persist_last = 0.0
+        s._persist()
+        clock["t"] = go + until_ms                       # MC was down past red's target, or past the clock
+        s2, _ = restart_no_repersist(s, clock)
+        _mono(s2)
+        s2.resume_match()
+        s2.tick()
+        assert s2.phase == "recap" and s2.end_reason == reason, (s2.phase, s2.end_reason)
+        sync = _sync(s2)
+        assert sync["pending"] and sync.get("score_pending") is True and "release_in_s" not in sync, (reason, sync)
