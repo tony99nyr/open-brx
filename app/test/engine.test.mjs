@@ -4134,7 +4134,7 @@ const RECOVER = { ...TWO_STEP, settle_ms: 999999, recovery: R2 };   // a huge se
 
 test('F662 R2: the block parses only when well formed, and wins over reset_on_release', () => {
   assert.deepEqual(recoilRecovery(R2), { perRoundMs: 25, minMs: 100, maxMs: 500 });
-  for (const bad of [null, 'x', {}, { ...R2, min_ms: 0 }, { ...R2, max_ms: 50 }, { ...R2, per_round_ms: -1 }, { ...R2, max_ms: 'big' }]) {
+  for (const bad of [null, 'x', {}, { ...R2, min_ms: 0 }, { ...R2, max_ms: 50 }, { ...R2, per_round_ms: -1 }, { ...R2, max_ms: 'big' }, { ...R2, per_round_ms: null }, { ...R2, min_ms: true }, { ...R2, max_ms: '500' }]) {
     assert.equal(recoilRecovery(bad), null, `malformed: ${JSON.stringify(bad)}`);
   }
   const h = armRecoil({ ...RECOVER, reset_on_release: true });

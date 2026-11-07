@@ -319,7 +319,7 @@ const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2, BTN_SELECT = 3, BTN_LEFT = 4
  *  0 < min_ms <= max_ms with per_round_ms >= 0, or the weapon keeps today's rule. PURE. */
 export function recoilRecovery(v) {
   if (!v || typeof v !== 'object') return null;
-  const perRoundMs = +v.per_round_ms, minMs = +v.min_ms, maxMs = +v.max_ms;
+  const perRoundMs = v.per_round_ms, minMs = v.min_ms, maxMs = v.max_ms;   // real numbers only: `+null` is 0, `+true` 1 (review 2026-11-06)
   if (![perRoundMs, minMs, maxMs].every(Number.isFinite) || perRoundMs < 0 || !(minMs > 0) || maxMs < minMs) return null;
   return { perRoundMs, minMs, maxMs };
 }
