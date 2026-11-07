@@ -5069,6 +5069,7 @@ export class Engine {
     const slot = r.slot;
     if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) { this.log(`F650: reload of slot ${slot} dropped: the gun is not in play`, 'li'); return null; }
     if (this.activeSlot !== slot || r.life != null && r.life !== this._lifeSeq) { this.log(`F650: reload of slot ${slot} dropped: the weapon is no longer in hand`, 'li'); return null; }
+    if (r.chain && r.inFlight) return 'wait';   // Codex (chain review): one shell on the link at a time, settled before the next is booked
     // Review 2026-11-06 M1: a round the gun fires just before this `$AMMO` lands reads below the written count inside its
     // echo window, and was booked from the written magazine (a whole magazine of shots and a recoil burst). While the
     // trigger is down, or a pull is younger than ACC_ECHO_MS, wait: its round ends the reload as the player's shot
@@ -5085,13 +5086,16 @@ export class Engine {
     this.am.acctWrote(slot, to, left);
     // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
     // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
-    let sent = false;
-    const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; } });
+    let sent = false, refused = false;
+    // Codex (chain review): a chain's shell still queued when the chain stopped (a trigger pull, ALT) is not sent, and is rolled back
+    const shouldSend = () => { if (r.stopped) { refused = true; return false; } return true; };
+    if (r.chain) r.inFlight = true;
+    const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; }, shouldSend });
     // Codex pass 2026-11-07: a write that failed before its frame left (a chunk error with the link still up) gave the gun
     // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
     const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen, until0); };
-    Promise.resolve(w).then(ok => { if (ok === false) failed(); }, failed);
+    Promise.resolve(w).then(ok => { if (ok === false || refused) failed(); r.inFlight = false; }, () => { failed(); r.inFlight = false; });
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
     this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it

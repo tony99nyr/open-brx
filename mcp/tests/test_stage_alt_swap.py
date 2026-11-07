@@ -625,7 +625,7 @@ def test_codex_2026_11_07_r2_alt_stays_held_after_the_phone_s_reload_lands_while
     async def go():
         st, _gun, clock = await _tony_sequence()
         own = st._reload_s
-        st._reload_s = lambda slot=None: 2.0 if slot == 1 else own(slot)   # type: ignore[method-assign]  # slot 1 reloads longer than slot 0
+        st._reload_s = lambda slot=None, **kw: 2.0 if slot == 1 else own(slot, **kw)   # type: ignore[method-assign]  # slot 1 reloads longer than slot 0
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
         assert st.reloading["soft"] and st._gun_other and st._gun_other["slot"] == 1
         await _tick(st, clock, st.reloading["s"] + 0.05)
@@ -652,4 +652,39 @@ def test_codex_2026_11_07_r3_ownership_is_taken_when_the_write_is_booked_not_whe
         for t in tasks:
             await t
         assert st._prev_ammo[0] == cap and st._prev_reserve[0] == left, "the newer write stands"
+    asyncio.run(go())
+
+
+def test_chain_review_a_shell_still_queued_when_the_trigger_stops_the_chain_is_not_sent():
+    """engine.js `_softReloadWrite` (Codex chain review): `should_send` refuses a stopped chain's shell, and it is rolled back."""
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st); st._on_rx("$ALCD,2,100,1,24,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        gate = asyncio.Event()
+        real = st.write
+
+        async def queued(frames, why="", **kw):
+            if any(f.startswith("$AMMO,1,") for f in frames):
+                await gate.wait()   # behind other traffic
+                ss = kw.get("should_send")
+                if ss is not None and not ss():
+                    return None
+            return await real(frames, why, **kw)
+        st.write = queued   # type: ignore[method-assign]
+        tasks: list = []
+        st._spawn_task = lambda c: tasks.append(asyncio.ensure_future(c))   # type: ignore[method-assign]
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        clock.t += st.reloading["s"] + 0.01
+        st._reload_tick()
+        assert st._prev_ammo[1] == 3, "setup: shell 1 booked"
+        st._on_rx("$BUT,0,1,*")                                         # the trigger stops the chain
+        gate.set()
+        for t in tasks:
+            await t
+        assert st._prev_ammo[1] == 2, st._prev_ammo
     asyncio.run(go())

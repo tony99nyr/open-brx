@@ -5551,7 +5551,9 @@ function chainInHand(h, { mag = 2 } = {}) {
   assert.equal(h.eng.state().activeSlot, 1, 'setup: the chain in hand, the rifle fired last');
 }
 const shellRows = (h, n) => h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,'));
-test('Tony 2026-11-07: the lever loads a chain in hand shell by shell when the gun\'s lever goes to the slot fired last', () => {
+// one shell time on, then the write settles (the app ticks every 250 ms, so a settled write is the real order)
+const shellTick = async (h, ms = 400) => { h.adv(ms); h.eng.tick(); await new Promise(r => setImmediate(r)); };
+test('Tony 2026-11-07: the lever loads a chain in hand shell by shell when the gun\'s lever goes to the slot fired last', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   const n = h.writes.length;
@@ -5560,17 +5562,17 @@ test('Tony 2026-11-07: the lever loads a chain in hand shell by shell when the g
   assert.ok(r && r.soft && r.chain && r.ms === 400, 'the phone loads the chain');
   assert.equal(h.eng.state().reloading, true, 'the HUD shows RELOADING');
   for (let k = 1; k <= 3; k++) {
-    h.adv(400); h.eng.tick();
+    await shellTick(h);
     assert.deepEqual(shellRows(h, n), Array.from({ length: k }, (_, i) => `$AMMO,1,${2 + i + 1},${288 - i - 1},1,*`), `shell ${k}`);
     assert.equal(h.eng.state().ammo, 2 + k);
     assert.equal(h.eng.state().reloading, true, 'still loading');
   }
 });
-test('Tony 2026-11-07: a trigger pull ends the phone\'s chain and the shells already written stay', () => {
+test('Tony 2026-11-07: a trigger pull ends the phone\'s chain and the shells already written stay', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   const n = h.writes.length;
-  f542Lever(h); h.adv(400); h.eng.tick(); h.adv(400); h.eng.tick();
+  f542Lever(h); await shellTick(h); await shellTick(h);
   h.frame('$BUT,0,1,*');
   assert.equal(h.eng.state().reloading, false);
   assert.equal(h.eng.am.reloadOutcome.why, 'fired'); assert.equal(h.eng.am.reloadOutcome.gained, 2);
@@ -5579,23 +5581,23 @@ test('Tony 2026-11-07: a trigger pull ends the phone\'s chain and the shells alr
   assert.equal(shellRows(h, n).length, 2, 'no shell after the pull');
   assert.equal(h.eng.state().ammo, 3);
 });
-test('Tony 2026-11-07: ALT the gun takes ends the phone\'s chain', () => {
+test('Tony 2026-11-07: ALT the gun takes ends the phone\'s chain', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   h.eng.am.prevAmmo[0] = h.eng.am.ammoBySlot()[0];                 // the rifle is full: the gun's lever does nothing, ALT is a swap
   const n = h.writes.length;
-  f542Lever(h); h.adv(400); h.eng.tick();
+  f542Lever(h); await shellTick(h);
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.am.reloadOutcome.why, 'swapped');
   h.adv(2000); h.eng.tick();
   assert.equal(shellRows(h, n).length, 1, 'one shell, then nothing');
 });
-test('Tony 2026-11-07: the chain stops when the reserve runs out', () => {
+test('Tony 2026-11-07: the chain stops when the reserve runs out', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   h.eng.am.prevReserve[1] = 2;
   const n = h.writes.length;
-  f542Lever(h); h.adv(400); h.eng.tick(); h.adv(400); h.eng.tick(); h.adv(400); h.eng.tick();
+  f542Lever(h); await shellTick(h); await shellTick(h); await shellTick(h);
   assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,1,1,*', '$AMMO,1,4,0,1,*']);
   assert.equal(h.eng.am.reloadOutcome.why, 'filled'); assert.equal(h.eng.state().reloading, false);
 });
@@ -5605,14 +5607,14 @@ test('Tony 2026-11-07: a shell whose write failed before it left is rolled back,
   const real = h.eng.writer; let failNext = true;
   h.eng.writer = (fr, why, o) => (failNext && fr.some(f => f.startsWith('$AMMO,1,')) ? (failNext = false, Promise.resolve(false)) : real(fr, why, o));
   const n = h.writes.length;
-  f542Lever(h); h.adv(400); h.eng.tick();
+  f542Lever(h); await shellTick(h);
   await new Promise(r => setImmediate(r));
   assert.equal(h.eng.am.prevAmmo[1], 2, 'the failed shell is off the books');
-  h.adv(400); h.eng.tick();
+  await shellTick(h);
   assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,287,1,*'], 'the next shell loads from 2');
   h.eng.writer = real;
 });
-test('Tony 2026-11-07: a chain that fired last keeps the gun\'s own chain, never both', () => {
+test('Tony 2026-11-07: a chain that fired last keeps the gun\'s own chain, never both', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   f542Shot(h, '$ALCD,1,100,1,288,0,*');                           // the chain in hand fires: now it is the slot fired last
@@ -5621,6 +5623,52 @@ test('Tony 2026-11-07: a chain that fired last keeps the gun\'s own chain, never
   assert.ok(h.eng.am.reloading && !h.eng.am.reloading.soft, 'the gun loads it');
   h.adv(2000); h.eng.tick();
   assert.deepEqual(shellRows(h, n), [], 'no `$AMMO` from the phone');
+});
+test('chain review (Codex): one shell on the link at a time, so a failed shell rolls back cleanly before the next is booked', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let settle = null;
+  h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,')) ? new Promise(r => { settle = r; }) : real(fr, why, o));
+  f542Lever(h); await shellTick(h);
+  const first = settle; assert.ok(first, 'setup: shell 1 is on the link');
+  settle = null; await shellTick(h);
+  assert.equal(settle, null, 'no second shell while the first is unsettled');
+  first(false); await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'the failed shell is off the books');
+  h.eng.writer = real; const n = h.writes.length;
+  await shellTick(h);
+  assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,287,1,*'], 'the next shell loads from the gun\'s count');
+});
+test('chain review (Codex): a shell still queued when the trigger stops the chain is not sent, and is rolled back', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let release = null;
+  h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,'))
+    ? new Promise(r => { release = () => r(o && o.shouldSend && !o.shouldSend() ? null : (o && o.onFrameSent && o.onFrameSent(fr[0]), true)); })
+    : real(fr, why, o));
+  f542Lever(h); await shellTick(h);
+  assert.ok(release, 'setup: shell 1 waits behind other traffic');
+  h.frame('$BUT,0,1,*');                                           // the trigger stops the chain
+  release(); await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'the unsent shell is off the books');
+  assert.equal(h.eng.state().ammo, 2);
+});
+test('chain review (Codex): shells keep the reload\'s pace on the app\'s 250 ms tick', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const n = h.writes.length;
+  f542Lever(h);
+  for (let k = 0; k < 5; k++) await shellTick(h, 250);           // 1250 ms: shells due at 400, 800, 1200
+  assert.equal(shellRows(h, n).length, 3);
+});
+test('chain review (Codex): a chain\'s shell time has no 300 ms floor (Fast Hands)', () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const row = h.eng.weaponRow.bind(h.eng);
+  h.eng.weaponRow = id => (id === 'smg' ? { ...(row(id) || {}), reload_s: 0.2 } : row(id));
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.ms, 200);
 });
 test('F650 review M1: ALT during the phone\'s reload, the last-fired slot full, is a swap and the reload is dropped', () => {
   const h = liveSwapHarness();

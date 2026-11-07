@@ -605,14 +605,15 @@ export class Ammo {
     // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
     // Bench 2026-10-17: inside an ALT swap the gun reloads the old slot only once the swap ends, so the deadline waits out the window.
     const swapTo = this.switching && !this.switching.pu ? this.switching.to : null;
-    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
+    const chain = !!(row && row.reload_type === 'chain');   // Codex (chain review): a shell's time is the perk-adjusted reload_s, no 300 ms floor
+    this.reloading = { at: now, ms: Math.max(chain ? 1 : 300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
                        // BOLT: one lever chambers one round, so the bolt is done at the magazine plus one, whatever the spawn cap
                        from: this.host.ammo, cap: row && row.reload_type === 'bolt' ? (this.host.ammo || 0) + 1 : cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
                        bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
                        soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
-                       chain: !!(row && row.reload_type === 'chain') };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
+                       chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
     if (this.reloading.soft) { this.host.softReloadStart(this.reloading); this.noteGunOther('the phone reloads the weapon in hand'); }   // Codex pass r2
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
@@ -705,6 +706,7 @@ export class Ammo {
   endReload(why) {
     const r = this.reloading; if (!r) return;
     this.reloading = null;
+    if (r.chain && why !== 'filled') r.stopped = true;   // Codex (chain review): a shell still queued for the link is not sent
     const gained = Math.max(0, (r.mag ?? r.from) - r.from);
     this.reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
                             from: r.from, to: r.mag, cap: r.cap, gained, slot: r.slot,
@@ -738,7 +740,9 @@ export class Ammo {
       r.mag = to;
       // Tony 2026-11-07 (option a): a chain loads one shell a `reload_s` until the tube is full or the reserve is out. The next
       // shell is due one reload time from this one; a trigger pull (engine.js `_onButton`), ALT, a stun, death or a drop ends it.
-      if (r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0) { r.at = now; r.lastGainAt = now; this.host.changed(); return; }
+      // Codex (chain review): the next shell is due one reload time after THIS one was due, not after the tick that wrote it (the
+      // app ticks every 250 ms), so the chain keeps the reload's pace; a tick far behind does not let shells catch up in a burst.
+      if (r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.host.changed(); return; }
       this.endReload('filled'); return;
     }
     if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');

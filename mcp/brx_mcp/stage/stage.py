@@ -6744,7 +6744,7 @@ class GunStage:
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or {}
         chain = (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain"
-        s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
+        s_nominal = self._reload_s(floor=0.001 if chain else 0.3) + (self._switch_window_s() if swap_to is not None else 0.0)   # chain review
         self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
                           "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
@@ -6823,14 +6823,26 @@ class GunStage:
         cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
         return not (cap and mag is not None and mag >= cap) and res != 0
 
-    async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int, own: tuple) -> None:
-        """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing."""
+    async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int, own: tuple, r: dict | None = None) -> None:
+        """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing. A chain's
+        shell still queued when the chain stopped is not sent, and is rolled back (chain review)."""
         life, gen, until0 = own
+        refused = [False]
+
+        def should_send() -> bool:
+            if r is not None and r.get("stopped"):
+                refused[0] = True
+                return False
+            return True
         try:
-            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0)
+            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0,
+                                  should_send=should_send)
         except Exception:   # Codex pass r2: a raised write failed too (engine.js: a rejected write runs `failed`)
             ok = False
-        if ok is False:
+        finally:
+            if r is not None:
+                r["in_flight"] = False
+        if ok is False or refused[0]:
             self._soft_reload_unwrite(slot, mag, res, to, left, life, gen, until0)
 
     def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int, gen: int | None,
@@ -6876,6 +6888,8 @@ class GunStage:
         if self.active_slot != slot or (r.get("life") is not None and r["life"] != self._life_queued):
             self._log(f"F650: reload of slot {slot} dropped: the weapon is no longer in hand", "info")
             return None
+        if r.get("chain") and r.get("in_flight"):
+            return "wait"   # engine.js `_softReloadWrite` (chain review): one shell on the link at a time
         cap = self._ammo_by_slot().get(slot)
         mag = self._acct_live(slot)
         if mag is None:
@@ -6901,7 +6915,9 @@ class GunStage:
         own = (self._life_queued, (self._shot_acct.get(slot) or {}).get("echo_gen"), until0)   # r3: owned at booking, as engine.js
         end = self._reload_sounds(slot)[1:]
         # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
-        self._spawn_task(self._soft_reload_send(slot, mag, res, to, left, own))
+        if r.get("chain"):
+            r["in_flight"] = True   # engine.js `_softReloadWrite` (chain review): one shell on the link at a time
+        self._spawn_task(self._soft_reload_send(slot, mag, res, to, left, own, r))
         if end:
             self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
         self._hold_accuracy_writes("F650 reload")
@@ -6919,7 +6935,7 @@ class GunStage:
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
-    def _reload_s(self, slot: int | None = None) -> float:
+    def _reload_s(self, slot: int | None = None, floor: float = 0.3) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
 
         The stage exists to PREDICT the phone, so this is the phone's chain, not a literal: the ACTIVE
@@ -6946,7 +6962,7 @@ class GunStage:
         # compile applies reload_mult to slot 0 only, and never to a bolt (ammo.js `_reloadPulled`, F573 review; F587)
         if rm and float(rm) > 0 and float(rm) != 1 and sl == 0 and (row or {}).get("reload_type") != "bolt":
             secs *= float(rm)
-        return max(0.3, round(secs * 1000) / 1000)
+        return max(floor, round(secs * 1000) / 1000)   # a chain's shell has no floor (ammo.js `reloadPulled`, chain review)
 
     def perk_effects(self, perk_id: str | None) -> dict:
         """engine.js `perkEffects(id)`: a perk's effects as THIS game resolves them. The Shields variant (Extended Mags
@@ -7007,6 +7023,8 @@ class GunStage:
         if not r:
             return
         self.reloading = None
+        if r.get("chain") and why != "filled":
+            r["stopped"] = True   # ammo.js `endReload` (chain review): a shell still queued is not sent
         gained = max(0, (r.get("mag") if r.get("mag") is not None else r["from"]) - r["from"])
         self.reload_outcome = {"ok": gained > 0, "filled": (r["mag"] >= r["cap"]) if r["cap"] is not None else gained > 0,
                                "from": r["from"], "to": r["mag"], "cap": r["cap"], "gained": gained,
@@ -7112,7 +7130,7 @@ class GunStage:
             r["mag"] = to
             # ammo.js `reloadTick` (Tony 2026-11-07): a chain loads one shell a reload time until full or out of reserve
             if r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0:
-                r["at"] = self.now(); r["last_gain_at"] = self.now()
+                r["at"] = max(r["at"] + r["s"], self.now() - r["s"] / 2); r["last_gain_at"] = self.now()   # chain review: the reload's pace
                 self._spawn_task(self._reload_watchdog(dict(r)))
                 return
             self._end_reload("filled")
