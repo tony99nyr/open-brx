@@ -91,3 +91,44 @@ def test_a_pick_keeps_the_operators_venue():
     res = g.load(s.game_pick)
     assert res["ok"], res["errors"]
     assert s.config["environment"] == "indoor", "a favourite load reset the venue"
+
+
+def test_an_old_domination_favourite_with_no_target_loads_as_first_to_1000():
+    """brx1 2026-11-06 (Tony's auto-fix rule, no warning): a Domination favourite saved while a mode change dropped the
+    target has no `hold_target_s`; it loads as first to 1000, never as a match that runs to the clock."""
+    g, s = _pick()
+    assert g.pick({"mode": "builtin:mode:domination"}, {})["ok"]
+    old = {"pieces": dict(s.game_pick["pieces"]), "match": {k: v for k, v in s.game_pick["match"].items() if k != "hold_target_s"}}
+    assert "hold_target_s" not in old["match"]
+    assert g.pick({"mode": "builtin:mode:tdm"}, {})["ok"]
+    res = g.load(old)
+    assert res["ok"], res["errors"]
+    assert s.config["mode"] == "domination" and s.config["scoring"].get("hold_target_s") == 1000, s.config["scoring"]
+    assert s.game_pick["match"].get("hold_target_s") == 1000, s.game_pick["match"]
+    assert "hold_target_s" not in old["match"], "the stored favourite stays as saved"
+    kept = {**old, "match": {**old["match"], "hold_target_s": 600}}
+    assert g.load(kept)["ok"] and s.config["scoring"]["hold_target_s"] == 600, "CONTROL: a saved target is kept"
+
+
+def test_a_restored_domination_setup_with_no_target_gets_first_to_1000():
+    """brx1 2026-11-06: an idle session saved on Domination with no target restores as first to 1000. KOTH keeps none."""
+    import json
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    for mode, want in (("domination", 1000), ("koth", None)):
+        g, s = _pick()
+        assert g.pick({"mode": f"builtin:mode:{mode}"}, {})["ok"]
+        path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+        s._persist_path = path
+        s._persist_last, s._persist_dirty = 0.0, True
+        s.persist_now()
+        snap = json.loads(path.read_text())
+        snap["config"]["scoring"].pop("hold_target_s", None)
+        snap.get("game_pick", {}).get("match", {}).pop("hold_target_s", None)
+        assert "match" not in snap or snap["match"] is None, "CONTROL: no match in play"
+        path.write_text(json.dumps(snap))
+        s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+        s2._persist_path = path
+        s2.restore_snapshot()
+        assert s2.config["scoring"].get("hold_target_s") == want, (mode, s2.config["scoring"])
+        assert s2.game_pick["match"].get("hold_target_s") == want, (mode, s2.game_pick["match"])

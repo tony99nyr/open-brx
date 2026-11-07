@@ -1088,6 +1088,21 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     expect((await api.getState()).config.scoring.hold_target_s, 'CONTROL: the same mode keeps it').toBe(300);
   });
 
+  // brx1 2026-11-06 (Tony's auto-fix rule): a Domination favourite saved while a mode change dropped its target loads as
+  // first to 1000, silently; the mock does as picks.py `load` does.
+  it('an old Domination favourite with no target loads as first to 1000', async () => {
+    const api = new MockBackend();
+    await api.pick({ pieces: { mode: 'builtin:mode:domination' } });
+    const pick = (await api.getState()).game_pick!;
+    const { hold_target_s: _drop, ...match } = pick.match;
+    const fav = await api.createFavourite({ name: 'OLD DOM', countdown_s: 30, pick: { pieces: pick.pieces, match } });
+    expect(fav.pick.match.hold_target_s, 'control: saved with no target').toBeUndefined();
+    await api.pick({ pieces: { mode: 'builtin:mode:tdm' } });
+    const r = await api.loadFavourite(fav.favourite_id);
+    expect(r.ok, r.errors.join(' ')).toBe(true);
+    expect((await api.getState()).config.scoring.hold_target_s).toBe(1000);
+  });
+
   // brx1's review of 4275fad2: the yellow half of `kothLegal` had no test (a 2-team array that is legal
   // by COUNT but carries yellow, KOTH's neutral team, F82).
   it('LAST MATCH drops a 2-team array that includes YELLOW when the current mode is KOTH', async () => {

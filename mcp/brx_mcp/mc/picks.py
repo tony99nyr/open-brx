@@ -160,6 +160,10 @@ class GamePick:
         resolved, fallbacks = _gamepick.resolve_pieces_with_fallback(self._pieces(), fav_pick["pieces"])
         mode = resolved["mode"]["value"]["mode"]
         match = self._hill_for_mode(cast(MatchSettings, dict(fav_pick["match"])), mode)   # a copy: the stored favourite stays as saved
+        # Review 2026-11-06 (brx1, Tony's auto-fix rule): a Domination favourite saved while a mode change dropped the
+        # target has none; it loads as first to 1000, silently, never as a match that runs to the clock
+        if not match.get("hold_target_s") and (hts := (default_config(mode).get("scoring") or {}).get("hold_target_s")):
+            match["hold_target_s"] = hts
         ids = {kind: piece["piece_id"] for kind, piece in resolved.items()}
         patch = _gamepick.compose(resolved, match, self._mode_row(mode), TEAM_DEFS)
         res = self._apply_patch(patch)

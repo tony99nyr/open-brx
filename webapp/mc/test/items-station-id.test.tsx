@@ -49,3 +49,20 @@ describe('F364: the station id is MC\'s, shown read-only', () => {
   });
 
 });
+
+// Review 2026-11-06 (brx1): yellow is a hill mode's neutral team (F82), so a hill whose owner is tid 2 reads NEUTRAL on
+// its ITEMS card in KOTH and Domination, never YELLOW. In TDM tid 2 is yellow's side.
+describe('a neutral hill on ITEMS', () => {
+  it('owner tid 2 reads NEUTRAL in a hill mode and YELLOW only where yellow is a side', async () => {
+    const { st, proto } = await base();
+    const hill: StationView = { ...proto, node_id: 'util-h', assigned: { kind: 'control', team: 255, id: 3, threshold: 0, at: 5 },
+      armed: null, attention: [], report: { ...proto.report, kind: 'control', control: { owner: 2, progress: 100 } } };
+    for (const [mode, want] of [['koth', 'NEUTRAL'], ['domination', 'NEUTRAL'], ['tdm', 'YELLOW']] as const) {
+      const state = { ...st, config: { ...st.config, mode }, stations: [hill] } as State;
+      const m = await mount(<StoreCtx.Provider value={makeStore({ state, view: 'muster' })}><Armory /></StoreCtx.Provider>);
+      const card = m.find('[data-station-card="util-h"]')[0]?.textContent ?? '';
+      expect(card, mode).toContain(`POINT${want} · 100%`);
+      m.unmount();
+    }
+  });
+});

@@ -24,6 +24,7 @@ import { CONTROL_CONFLICT, setupLines } from '../ui/SetupSteps';
 import { AlertTag } from '../ui/Alert';
 import { GLYPH, SEV_COLOUR, batteryColour, colourOf, serverLine } from '../alerts';
 import { STATION_KIND_LABEL, STATION_KIND_SHORT, STATION_THRESHOLD_MAX_DBM, STATION_THRESHOLD_MIN_DBM } from '../api/contract.gen';
+import { isNeutralOwner } from './objective';
 
 const KIND_LABEL: Record<StationKind, string> = STATION_KIND_LABEL;   // MC's own labels (stations.py), generated
 /** the picker's labels: short enough for five in a card row */
@@ -316,7 +317,7 @@ function StationCard({ s, pu, departure }: { s: StationView; pu: PowerupsState; 
         {rep.control && (<>
           <Micro>POINT</Micro>
           <Val color={T.dim}>
-            {rep.control.owner == null || rep.control.owner === STATION_TEAM_ANY ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
+            {rep.control.owner == null || isNeutralOwner(rep.control.owner, state?.config.mode ?? '') ? 'NEUTRAL' : (TID_NAME[rep.control.owner] ?? rep.control.owner)}
             {rep.control.progress != null && ` · ${rep.control.progress}%`}{rep.control.contested && ' · CONTESTED'}
           </Val>
           {rep.control.hold_ms && Object.keys(rep.control.hold_ms).length > 0 && (<>

@@ -58,6 +58,37 @@ describe('RECAP — the stations row (roadmap A6)', () => {
     m.unmount();
   });
 
+  // Review 2026-11-06 (brx1): a Domination hill's count is points, so it shows no "s"; KOTH keeps its seconds.
+  it('a Domination hill shows its count as points, KOTH as seconds', async () => {
+    const d = await demo();
+    const row = { node_id: 'util-d4e5f6', kind: 'control' as const, id: 9, team: 255, heard: true, owner: 0, hold_ms: { '0': 26000, '1': 4000 } };
+    for (const [mode, want, not] of [['domination', /RED 26 · BLUE 4(?!s)/, /RED 26s/], ['koth', /RED 26s · BLUE 4s/, /RED 26(?!s)/]] as const) {
+      const state: State = { ...d.state, phase: 'recap', config: { ...d.state.config, mode }, recap: recapWith([row]) };
+      const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+      const block = m.find('[data-testid="recap-stations"]')[0];
+      expect(block.textContent, mode).toMatch(want);
+      expect(block.textContent, mode).not.toMatch(not);
+      m.unmount();
+    }
+  });
+
+  // Review 2026-11-06 (brx1): yellow is a hill mode's neutral team (F82), never a side, so a neutral hill must not
+  // read HELD BY YELLOW. It reads as the live board says it (objective.ts `hillOwner`).
+  it('a neutral hill reads NOBODY HOLDS IT in KOTH and Domination, never HELD BY YELLOW', async () => {
+    const d = await demo();
+    for (const mode of ['koth', 'domination']) {
+      for (const owner of [2, 255]) {
+        const state: State = { ...d.state, phase: 'recap', config: { ...d.state.config, mode },
+          recap: recapWith([{ node_id: 'util-d4e5f6', kind: 'control', id: 9, team: 255, heard: true, owner, hold_ms: {} }]) };
+        const m = await mountScreen(<Recap />, { ...d, state, view: 'recap' });
+        const block = m.find('[data-testid="recap-stations"]')[0];
+        expect(block.textContent, `${mode} owner ${owner}`).toMatch(/NOBODY HOLDS IT/);
+        expect(block.textContent, `${mode} owner ${owner}`).not.toMatch(/HELD BY (YELLOW|ANY|NOBODY)/);
+        m.unmount();
+      }
+    }
+  });
+
   // Finding 1 (review 2026-09-11, F105): extraction/powerup/bomb have no count of their own — before this
   // fix the block rendered NOTHING for them, so a station that never reported looked identical to one that
   // had. `heard` is the only signal there is for these three kinds.
