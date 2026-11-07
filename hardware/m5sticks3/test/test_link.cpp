@@ -3078,6 +3078,13 @@ static void test_f658_hill_follows_the_live_game() {
   // review: an owned, empty hill banks own_ms only, and that growth must re-save the ring too (a reboot kept no Domination time)
   link.hill().own_ms[0] += 5000;
   CHECK(link.ring_save_due(5250 + HILL_CLOCK_SAVE_MS));
+  // A88 (Codex review): an end that changes no total (trimmed nothing) is saved at once, so a restart keeps it final
+  CHECK(!link.ring_save_due(5300 + HILL_CLOCK_SAVE_MS));
+  link.hill().end_own(5300 + HILL_CLOCK_SAVE_MS, true);
+  CHECK(link.ring_save_due(5300 + HILL_CLOCK_SAVE_MS));
+  CHECK(!link.ring_save_due(5301 + HILL_CLOCK_SAVE_MS));
+  link.hill().own_ended = link.hill().own_final = false;   // the rest of this test plays on
+  CHECK(link.ring_save_due(5302 + HILL_CLOCK_SAVE_MS));
   // MC arms game 42 (in range for a moment): the following hill keeps its point
   const double progress = link.hill().progress;
   StationAssignment b = a; b.game = 42; b.starts_in_ms = 5000;

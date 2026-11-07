@@ -76,7 +76,7 @@ dash tolerance, foreign UUIDs rejected, version-gated). Adverts are non-connecta
 carries the TX-power field so a scanner can do path-loss later; 21–24 bytes, inside the legacy 31.
 
 **The hill tally (A88).** A following control point on a Stick or an Android phone adds one manufacturer-data field
-beside the UUID: company `ADVERT_TALLY_COMPANY` (0xFFFF, the SIG test id, unregistered), then 6 bytes, the game byte,
+beside the UUID: company `ADVERT_TALLY_COMPANY` (0xFFFF, the SIG test id, unregistered: F667), then 6 bytes, the game byte,
 a flags byte (bit 0 `final`, bit 1 `partial`, high nibble `ADVERT_TALLY_FORMAT` 1) and two big-endian u16 slots,
 `tid << 14 | seconds` of `own_ms` for the two teams with the most (capped at `ADVERT_TALLY_SECS_MAX`; a zero-second
 slot is empty). The Android hill drops the TX-power field for it, so both make exactly 31 bytes. An iOS hill cannot

@@ -709,7 +709,7 @@ function onSighting(uuids, rssi, now = stationNow()) {
 }
 /** One step of the point (control.js does the arithmetic), then its log lines, its save and its advert.
  *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
-let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0;
+let _hillWaited = false, _holdSaved = 0, _holdSavedAt = 0, _endSaved = '';
 const HOLD_SAVE_MS = 2000;
 function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
@@ -751,7 +751,9 @@ function controlTick(now) {
   // F557 (Codex review of F555): the hold grows on every held tick without `changed` flipping, and MC now scores on it.
   // Save it at most every HOLD_SAVE_MS as it grows, so a reload loses seconds, not minutes.
   const held = [...Object.values(point.holdMs), ...Object.values(point.ownMs)].reduce((a, b) => a + b, 0);   // own_ms grows with no body on the point
-  if (changed || events.length || (held !== _holdSaved && now - _holdSavedAt >= HOLD_SAVE_MS)) { saveControl(); _holdSaved = held; _holdSavedAt = now; }
+  // A88 (Codex review): the end of the owned clock and its finality are saved at once, even when no total changed
+  const endSig = `${point.ownEndAt != null}:${point.ownFinal}:${follower.ended}`;
+  if (changed || events.length || endSig !== _endSaved || (held !== _holdSaved && now - _holdSavedAt >= HOLD_SAVE_MS)) { saveControl(); _holdSaved = held; _holdSavedAt = now; _endSaved = endSig; }
   // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
   // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
   // four times a second.
@@ -770,10 +772,8 @@ function controlTick(now) {
 }
 /** Hand the point back to nobody: between games (a `station_config` naming a new game) or from the button. */
 function resetPoint(why) {
-  point.owner = STATION_TEAM_ANY; point.capturing = null; point.progress = 0; point.lastOwner = null;
-  point.holdMs = {}; point.ownMs = {}; point.ownedBy = null; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
-  point.counts = {}; point.lead = null;   // F558: no stale inputs in the heartbeat while a countdown skips updates
-  point.heldBy = null; point.at = null;   // F554 gap, F593: no earlier sample, and no old game's time in the first step (the Stick's reset() does the same)
+  // F558, F554, F593 and A88: no stale inputs, no earlier sample, no old game's time and no old game's end (ControlPoint.clear)
+  point.clear();
   follower.clear();   // F658: a reset forgets every game's tally; the next live player starts follow mode again
   saveControl();
   log(`control point reset to NEUTRAL (${why})`, 'lk');

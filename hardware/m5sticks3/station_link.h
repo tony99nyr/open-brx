@@ -1631,10 +1631,13 @@ class StationLink {
     uint32_t hold = 0;   // both tallies: an owned, empty hill grows own_ms only, and a reboot must keep it
     for (uint32_t h : hill_.hold_ms) hold += h;
     for (uint32_t o : hill_.own_ms) hold += o;
-    const bool edge = f != ring_saved_follows_ || last_follow_.switched || hill_.owner != ring_saved_owner_;
+    // A88 (Codex review): the end of the owned clock and its finality are saved at once, even when no total changed
+    const int end_sig = (hill_.own_ended ? 1 : 0) | (hill_.own_final ? 2 : 0) | (follower_.end.ended ? 4 : 0);
+    const bool edge = f != ring_saved_follows_ || last_follow_.switched || hill_.owner != ring_saved_owner_ || end_sig != ring_saved_end_;
     if (!edge && (hold == ring_saved_hold_ || (uint32_t)(now_ms - ring_saved_at_) < HILL_CLOCK_SAVE_MS)) return false;
     ring_saved_follows_ = f;
     ring_saved_owner_ = hill_.owner;
+    ring_saved_end_ = end_sig;
     ring_saved_hold_ = hold;
     ring_saved_at_ = now_ms;
     return true;
@@ -2310,6 +2313,7 @@ class StationLink {
   HillFollowStep last_follow_;   // F658
   bool ring_saved_follows_ = false;   // F658: ring_save_due's last write
   int ring_saved_owner_ = contract::STATION_TEAM_ANY;
+  int ring_saved_end_ = 0;   // A88: the end flags ring_save_due last wrote
   uint32_t ring_saved_hold_ = 0, ring_saved_at_ = 0;
   ReviveCounter revives_;
   uint32_t epoch_ = 0;

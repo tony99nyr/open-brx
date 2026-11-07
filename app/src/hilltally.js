@@ -21,11 +21,18 @@ export const HILL_TALLY_SEND_MS = 30000;
 export const HILL_TALLY_LISTEN_MS = 17 * 60000;
 
 export class HillTallyRelay {
-  /** `emit(fact)`: the engine's emitFact (persisted and retried by the outbox). */
-  constructor({ emit } = {}) {
+  /** `emit(fact)`: the engine's emitFact (persisted and retried by the outbox). `store` ({load() -> json|null, save(json)}):
+   *  where the game-byte -> match map survives an app restart, so a final for the previous match still goes out (Codex
+   *  review). */
+  constructor({ emit, store = null } = {}) {
     this.emit = emit || (() => {});
+    this.store = store;
     this.games = new Map();   // game byte -> match_id (the current and the previous match)
     this.tallies = new Map(); // `${site}:${game}` -> { site, game, matchId, ownS, final, partial, heardAt, sent, sentAt, owed }
+    try {
+      const saved = store && store.load();
+      for (const [g, m] of Array.isArray(saved) ? saved.slice(-2) : []) if (Number.isInteger(g) && g >= 1 && g <= 255 && typeof m === 'string' && m) this.games.set(g, m);
+    } catch (_) { /* a broken save is no save */ }
   }
   /** The match this phone plays (or played) on `gameByte`. Keeps the newest two. */
   noteMatch(gameByte, matchId) {
@@ -34,6 +41,7 @@ export class HillTallyRelay {
     this.games.delete(gameByte);
     this.games.set(gameByte, matchId);
     while (this.games.size > 2) this.games.delete(this.games.keys().next().value);
+    try { if (this.store) this.store.save([...this.games]); } catch (_) { /* best-effort */ }
     // a byte that now names another match: its old tallies are another game's
     for (const [k, t] of this.tallies) if (!this.games.has(t.game) || this.games.get(t.game) !== t.matchId) this.tallies.delete(k);
   }
@@ -54,17 +62,37 @@ export class HillTallyRelay {
     const e = old || { site: String(st.id), game: t.game, matchId, sent: null, sentAt: -Infinity };
     Object.assign(e, { ownS: t.ownS, final: t.final, partial: t.partial, heardAt: now, owed: sig !== e.sent });
     this.tallies.set(key, e);
-    this.tick(now);
+    this.tick(now, enabled);
     return e;
   }
-  /** Send what is owed: a new final at once, a changed live tally at most every HILL_TALLY_SEND_MS. */
-  tick(now) {
+  /** Send what is owed: a new final at once, a changed live tally at most every HILL_TALLY_SEND_MS. `enabled`: MC's config
+   *  still asks for the fact (Codex review: a tally owed under one config must not go to an MC that no longer asks). */
+  tick(now, enabled) {
+    if (!enabled) return;
     for (const e of this.tallies.values()) {
       if (!e.owed || (!e.final && now - e.sentAt < HILL_TALLY_SEND_MS)) continue;
       e.owed = false; e.sentAt = now; e.sent = JSON.stringify([e.ownS, e.final, e.partial]);
       this.emit({ type: 'hill_tally', match_id: e.matchId, site: e.site, game_byte: e.game, own_s: { ...e.ownS },
         final: e.final, partial: e.partial, heard_age_ms: Math.max(0, Math.round(now - e.heardAt)) });
     }
+  }
+}
+
+/** When this phone's match ended, on the engine's clock (Codex review). `endedAt` is when the phone NOTICED the end: a phone
+ *  suspended across its time limit notices minutes late, and its end info would then let a hill keep those minutes. So
+ *  the scheduled end (`endT`, go-live + time limit) is remembered while the match runs, and the end is the earlier one. */
+export class EndClock {
+  constructor() { this.endT = null; this.matchId = null; }
+  /** Every tick: `st` is engine.state(), `endT` the engine's scheduled end (null after the end or with no time limit). */
+  note(st, endT, matchId) {
+    if (matchId !== this.matchId) { this.matchId = matchId; this.endT = null; }
+    if (st && !st.ended && Number.isFinite(endT)) this.endT = endT;
+  }
+  /** The ms since the end, or null when the match has not ended. */
+  ageMs(st, now) {
+    if (!st || !st.ended || !st.endedAt) return null;
+    const at = Number.isFinite(this.endT) ? Math.min(st.endedAt, this.endT) : st.endedAt;
+    return now - at;
   }
 }
 

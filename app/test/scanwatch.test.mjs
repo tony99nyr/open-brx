@@ -264,7 +264,7 @@ test('utility.js: the station scan step knows when the station is a control poin
 test('app.js: the beacon watch gets the game config, and the player advert needs stations too', async () => {
   const { readFile } = await import('node:fs/promises');
   const src = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config, radioQuiet: !!st\.radioQuiet \}\)/,
+  assert.match(src, /beaconWatch\.tick\(st, \{ pickerOpen: scanning \|\| link\.connecting, config: engine\.config, radioQuiet: !!st\.radioQuiet, walkBack \}\)/,   // A88: and the walk back
     'without the config the watch cannot tell a station game from a plain TDM');
   const dir = await readFile(new URL('../src/advert-director.js', import.meta.url), 'utf8');   // architecture round 2 item 8
   assert.match(dir, /const want = \([^;]*stationsInPlay\(config\)/, 'a player advert is carried by every other phone scan: only a station game sends one');

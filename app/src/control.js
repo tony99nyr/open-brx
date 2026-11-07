@@ -100,6 +100,9 @@ export class ControlPoint {
     this.at = null;               // when update() last ran, for dt
     this.heldBy = null;           // F554: the team counted ALONE on the point at the last update, or null
   }
+  /** Hand the point back to nobody, keeping the tuning (utility.js resetPoint; the Stick's reset()). Codex review of A88:
+   *  the reset kept the owned clock's end, so the next game's own_ms never banked. */
+  clear() { loadPoint(this, null); this.refusedSeen = false; }
   /** Progress points per second at net 1 — the spec's `100 / capture_s`. */
   get rate() { return 100 / this.captureS; }
   /** F464: progress points per second a neutral capture drains while its team is not on the point. */
@@ -164,6 +167,12 @@ export class ControlPoint {
   /** A88: the game ended here at `endAt`. Take back the own_ms banked after it (the spans it still keeps) and bank no
    *  more. `exact`: the end came from evidence, so the tally is final. Idempotent; a later, earlier end trims further. */
   endOwn(endAt, exact) {
+    // Codex review: a stalled station (a throttled or backgrounded tick) last banked before the end. Bank the owner's time
+    // up to the end first, with update()'s gap clamp, so the end does not lose it.
+    if (this.ownEndAt == null && this.at != null && endAt > this.at && this.owner !== STATION_TEAM_ANY) {
+      const gap = endAt - this.at;
+      this._bankOwn(this.owner, this.ownedBy === this.owner ? gap : Math.min(HILL_MAX_STEP_MS, gap), endAt);
+    }
     if (this.ownEndAt == null || endAt < this.ownEndAt) {
       for (const sp of this.ownSpans) {
         const cut = sp.t1 - Math.max(sp.t0, endAt);
@@ -513,14 +522,15 @@ export class HillFollower {
   _noteEnd(p, now) {
     if (this.current == null || (p.game || 0) !== this.current) return;
     const heardAt = now - (Number.isFinite(p.ageMs) ? p.ageMs : 0);
+    const code = playerEndCode(p);
+    const e = this.games.get(this.current), t = code ? heardAt - endAgeMs(code) : null;
+    // Codex review: end info older than this game is another game's (a reused byte), so that advert says nothing about
+    // this one, not even as a whistle
+    if (code && e && t < e.since) return;
     const was = this.ended;
     noteGameEnd(this, p);
-    const code = playerEndCode(p);
     let at = !was && this.ended ? heardAt : null;
-    if (code) {
-      const e = this.games.get(this.current), t = heardAt - endAgeMs(code);
-      if (!e || t >= e.since) { this.ended = true; at = at == null ? t : Math.min(at, t); }
-    }
+    if (code) { this.ended = true; at = at == null ? t : Math.min(at, t); }
     if (at != null) { this.endAt = this.endAt == null ? at : Math.min(this.endAt, at); this.endExact = true; }
   }
   /** A88: the tallies the hill advertises: the current game, then its most recently heard other game (a game it switched

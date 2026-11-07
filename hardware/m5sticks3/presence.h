@@ -705,6 +705,12 @@ class BleControlPoint {
   // A88: control.js endOwn: the game ended here at `end_at`. Give back the own_ms banked after it (the spans kept) and
   // bank no more. `exact`: the end came from evidence, so the tally is final. A later, earlier end trims further.
   void end_own(uint32_t end_at, bool exact) {
+    // Codex review (control.js endOwn): a stalled station last banked before the end. Bank the owner's time up to the end
+    // first, with update()'s gap clamp, so the end does not lose it.
+    if (!own_ended && has_at_ && (int32_t)(end_at - at_) > 0 && owner != contract::STATION_TEAM_ANY && owner < 4) {
+      const uint32_t gap = end_at - at_;
+      bank_own(owner, owned_by == owner ? gap : std::min<uint32_t>(gap, contract::HILL_MAX_STEP_MS), end_at);
+    }
     if (!own_ended || (own_end_known && (int32_t)(end_at - own_end_at) < 0)) {
       for (int i = 0; i < n_own_spans; i++) {
         OwnSpan& sp = own_spans[i];
@@ -925,19 +931,20 @@ class HillFollower {
   void note_end(const PlayerEntry& p, uint32_t now) {
     if (!has_current || p.game != current) return;
     const uint32_t heard_at = now - p.age_ms;
+    const uint8_t code = player_end_code(p.state, p.value);
+    const HillGame* e = get(current);
+    const uint32_t t = heard_at - end_age_ms(code);
+    // Codex review: end info older than this game is another game's (a reused byte): that advert says nothing about this
+    // one, not even as a whistle
+    if (code && e && (int32_t)(t - e->since) < 0) return;
     const bool was = end.ended;
     end.note(p, has_current, current);
-    const uint8_t code = player_end_code(p.state, p.value);
     bool have = !was && end.ended;
     uint32_t at = heard_at;
     if (code) {
-      const HillGame* e = get(current);
-      const uint32_t t = heard_at - end_age_ms(code);
-      if (!e || (int32_t)(t - e->since) >= 0) {
-        end.ended = true;
-        if (!have || (int32_t)(t - at) < 0) at = t;
-        have = true;
-      }
+      end.ended = true;
+      if (!have || (int32_t)(t - at) < 0) at = t;
+      have = true;
     }
     if (have) {
       if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
