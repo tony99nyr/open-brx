@@ -1269,6 +1269,9 @@ class MatchSettings(TypedDict):
 class LastMatch(MatchSettings):
     """F411 LAST MATCH: the strip values of the last match STARTed, kept across an MC restart."""
     countdown_s: int
+    # Review 2026-11-06: the mode it was played on, because `hold_target_s` means seconds in KOTH and points in
+    # Domination; the console carries the target only onto the same mode. Absent on a record from before.
+    mode: NotRequired[str]
 
 
 class GamePick(TypedDict):

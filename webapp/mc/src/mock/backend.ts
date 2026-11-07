@@ -2093,7 +2093,9 @@ export class MockBackend implements Api {
         ? carryTeams(this.gamePick.match.teams
             ?? this.config.teams.filter(t => t.team_id !== 'ffa').map(t => t.team_id as TeamColour), modeInfo.defaults.teams.map(t => t.team_id as TeamColour), modeInfo.mode)
         : undefined;
-      delete match.hold_target_s;
+      // review 2026-11-06: the NEW mode's default (Domination: first to 1000), as picks.py takes it, not none
+      if (modeInfo.defaults.scoring.hold_target_s != null) match.hold_target_s = modeInfo.defaults.scoring.hold_target_s;
+      else delete match.hold_target_s;
       // F559: `hill` is kept across a mode change, as picks.py keeps it; only koth composes it
     }
     const pm = p.match ?? {};
@@ -2843,7 +2845,7 @@ export class MockBackend implements Api {
     this.gameStarted = true;
     // F411 LAST MATCH (games-presets.md §2): captured when a match STARTs, `countdown_s` from this
     // request. Survives an MC restart and a new session — a small session-store key, not a preset.
-    this.lastMatch = { ...this.gamePick.match, countdown_s: runway_s };
+    this.lastMatch = { ...this.gamePick.match, countdown_s: runway_s, mode: this.config.mode };
     return this.schedule(runway_s, 1, uid('match'));
   }
   async reschedule(runway_s: number) { return this.schedule(runway_s, (this.start_?.seq ?? 0) + 1, uid('match')); }

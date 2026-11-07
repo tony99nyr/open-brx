@@ -11,6 +11,8 @@ brx_mcp.mc` on its real node socket, and takes commands on stdin, one per line:
     status <name> <key>=<int|text|none>[,...]   # extra heartbeat fields now (O6 dropped_total, O10 actions_dropped);
                                          # for a station: its report fields (station_id=4,platform=esp32). `none` removes one
     set <name> key=value [key=value ...] # the same as `status`, space separated (battery=20, assoc=muster, pool_stale=none)
+    control <station> <owner> <tid>=<ms>[,...]   # a hill's clocks on its heartbeat from now on: Domination's owned clock
+                                         # (`own_ms`) and the presence clock (`hold_ms`, half of it), owner the tid
     drop <gun>                           # walk out of range: the socket closes and the node stays quiet
     up <gun>                             # walk back: it reconnects and heartbeats again
     die <gun> <shooter_num> <shooter_tid> [match_id]   # this gun's player is killed by that shooter (F489: once it is live in match_id)
@@ -99,8 +101,18 @@ async def main(url: str, specs: list[str]) -> None:
                 if cmd == "quit":
                     break
                 name = args[0]
-                if name in stations and cmd not in ("status", "set"):
+                if name in stations and cmd not in ("status", "set", "control"):
                     raise RuntimeError(f"`{cmd}` is a phone command: {name} is a station")
+                if cmd == "control":
+                    station = stations[name]
+                    own = {k: int(v) for k, v in (kv.split("=") for kv in args[2].split(","))} if len(args) > 2 else {}
+                    station.report["control"] = {"owner": int(args[1]), "progress": 100, "contested": False,
+                                                 "hold_ms": {k: v // 2 for k, v in own.items()}, "own_ms": own}
+                    if not station.send_status():
+                        raise RuntimeError("the station is offline: the status went nowhere")
+                    await station.flush()
+                    print(f"ok {cmd} {name}", flush=True)
+                    continue
                 if cmd in ("status", "set"):
                     pairs = args[1].split(",") if cmd == "status" else args[1:]
                     kv = {k: _value(v) for k, v in (p.split("=", 1) for p in pairs)}

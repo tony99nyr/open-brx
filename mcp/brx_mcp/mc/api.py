@@ -93,7 +93,10 @@ class Broadcaster:
     """Coalesces session changes into ≤4 snapshots/s over /ui-ws; feed entries go immediately.
 
     F644: delivery is per socket (`_UiClient`) and never awaited here, so no tab can hold up another. A `heartbeat`
-    frame goes out when nothing else has for `HEARTBEAT_S`, so a console can tell a quiet MC from a dead link."""
+    frame goes out every `HEARTBEAT_S`, so a console can tell a quiet MC from a dead link. Review 2026-11-06: it went
+    out only after `HEARTBEAT_S` with no change, and every phone status is a change (one each 2 s), so with a phone
+    online no heartbeat ever went and the console's watchdog never started (it starts at the first heartbeat). A new
+    socket also gets one straight after its first snapshot, so its watchdog starts at once."""
 
     SEND_TIMEOUT_S = 10.0    # one send this long is a socket that stopped reading, not a slow one
     OUTBOX_MAX = 512         # frames queued for one socket before it counts as stalled
@@ -122,6 +125,7 @@ class Broadcaster:
         """Register an accepted socket; its first frame is a snapshot. Runs on the event loop."""
         c = _UiClient(ws)
         c.put("snapshot", json.dumps({"kind": "snapshot", "state": self.s.snapshot()}, default=str))
+        c.put("heartbeat", json.dumps({"kind": "heartbeat"}))
         self.clients[ws] = c
         c.task = asyncio.ensure_future(self._writer(c))
         return c
@@ -162,12 +166,17 @@ class Broadcaster:
                     return
 
     async def run(self):
-        self.loop = asyncio.get_running_loop()
+        self.loop = loop = asyncio.get_running_loop()
+        beat_at = loop.time() + self.HEARTBEAT_S
         while True:
             try:
-                await asyncio.wait_for(self._dirty.wait(), self.HEARTBEAT_S)
+                await asyncio.wait_for(self._dirty.wait(), max(0.0, beat_at - loop.time()))
             except asyncio.TimeoutError:
+                pass
+            if loop.time() >= beat_at:     # on a clock, never only after a quiet spell
                 self.broadcast({"kind": "heartbeat"})
+                beat_at = loop.time() + self.HEARTBEAT_S
+            if not self._dirty.is_set():
                 continue
             self._dirty.clear()
             try:

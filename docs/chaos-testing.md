@@ -144,7 +144,14 @@ MC is not checked against its own bookkeeping.
   `test_chaos_fuzz.py` runs its CI seeds. Use `setup_script` for fixed actions before PUSH/START, and
   include `field_join` when a script must act in MUSTER before the player nodes join. `setup_weights`
   and `setup_steps` draw seeded pre-match actions; traces keep those draws for replay. Use `checks=`
-  for a rule that only this scenario sets up.
+  for a rule that only this scenario sets up. `finish` may also name a terminal action of the scenario's own
+  (`domination_hills.py` ends with `hill_end`, so the hills are heard before and after the whistle).
+- **Domination scoring from real hills** is `scenarios/domination_hills.py` (2026-11-06): three utility nodes send
+  their owned clock on every heartbeat, and the check holds the recap's points to the hills' own clocks. Its
+  restart and crash actions wait at field time scales: a crash comes 2 s after the last bank (MC writes its
+  snapshot at least that often on a busy field), and MC counts no hill beat within one heartbeat of an arming.
+  A hill out of Wi-Fi keeps counting and reports when it is back, in play or after the whistle.
+  `domination-hills-target` sets a target the hills can reach.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the

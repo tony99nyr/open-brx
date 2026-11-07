@@ -33,6 +33,25 @@ def test_a_mode_change_resets_the_strip_to_the_new_modes_defaults():
     assert s.game_pick["match"]["frag_limit"] == (dc.get("scoring") or {}).get("frag_limit"), s.game_pick["match"]
 
 
+def test_picking_domination_takes_its_first_to_1000_target_from_any_mode():
+    """Review 2026-11-06: a mode change dropped the target, so Domination picked on PLAY had none and always ran to
+    the clock. The new mode's default comes with it, from TDM and from a KOTH that had its own target."""
+    g, s = _pick()
+    res = g.pick({"mode": "builtin:mode:domination"}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["scoring"].get("hold_target_s") == 1000, s.config["scoring"]
+    assert s.game_pick["match"].get("hold_target_s") == 1000, s.game_pick["match"]
+    res = g.pick({"mode": "builtin:mode:koth"}, {"hold_target_s": 300})
+    assert res["ok"], res["errors"]
+    assert s.config["scoring"].get("hold_target_s") == 300, "CONTROL: the same request's own target wins"
+    res = g.pick({"mode": "builtin:mode:domination"}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["scoring"].get("hold_target_s") == 1000, "a KOTH 5:00 is not 300 POINTS"
+    res = g.pick({"mode": "builtin:mode:koth"}, {})
+    assert res["ok"], res["errors"]
+    assert s.config["scoring"].get("hold_target_s") is None, "KOTH keeps no default target, never Domination's 1000"
+
+
 def test_a_refused_pick_changes_neither_the_config_nor_the_pick():
     g, s = _pick()
     import copy

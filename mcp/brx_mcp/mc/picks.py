@@ -102,7 +102,12 @@ class GamePick:
             # (`carry_teams`), so a TDM blue/yellow roster picked into KOTH stays two sides, blue/red.
             # A pick that never named teams (an older session) carries the roster's own.
             prev_teams = match.pop("teams", None) or _gamepick.match_from_config(s.config).get("teams")
-            match.pop("hold_target_s", None)
+            # Review 2026-11-06: the NEW mode's default, not none. A pop here left Domination picked on PLAY with no
+            # target at all (its default is first to 1000), so the match always ran to the clock.
+            if (hts := (dc.get("scoring") or {}).get("hold_target_s")) is None:
+                match.pop("hold_target_s", None)
+            else:
+                match["hold_target_s"] = hts
             # F559: `hill` is NOT reset here: like `PUT /api/config` (`_candidate_config`), a mode change keeps the hill
             # tuning, and only a mode offering "hill" (koth) ever writes it, so a value kept under TDM is never sent.
             row = self._mode_row(mode)

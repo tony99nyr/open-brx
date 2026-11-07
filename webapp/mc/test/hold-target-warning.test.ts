@@ -15,4 +15,9 @@ describe('holdTargetWarning', () => {
     expect(holdTargetWarning(cfg(720), 2)).toBeNull();
     expect(holdTargetWarning(cfg(1200), 2)).toContain('IS AT OR PAST THE TIME LIMIT (10:00) TIMES 2 HILLS:');
   });
+  it('Domination says the target in points, as the server does (review 2026-11-06)', () => {
+    const dom = (hold: number) => ({ ...cfg(hold), mode: 'domination' }) as unknown as ConfigView;
+    expect(holdTargetWarning(dom(1000))).toContain('SETUP: THE SCORE TARGET (1000 POINTS) IS AT OR PAST THE TIME LIMIT (10:00):');
+    expect(holdTargetWarning(dom(1000), 2)).toBeNull();
+  });
 });

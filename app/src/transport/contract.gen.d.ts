@@ -1570,6 +1570,9 @@ export interface LastMatch {
   hold_target_s?: number | null;
   hill?: HillSettings;
   countdown_s: number;
+  /** Review 2026-11-06: the mode it was played on, because `hold_target_s` means seconds in KOTH and points in
+   *  Domination; the console carries the target only onto the same mode. Absent on a record from before. */
+  mode?: string;
 }
 
 /** What PLAY has picked: one piece id per kind, plus the strip. The config is composed from it. */

@@ -170,10 +170,12 @@
     }
   },
   "hill_bytes": [],
+  "hill_letters": {},
   "join_secret": "fixture-join-secret",
   "last_match": {
     "countdown_s": 10,
     "frag_limit": 3,
+    "mode": "tdm",
     "night": false,
     "silenced": false,
     "teams": [

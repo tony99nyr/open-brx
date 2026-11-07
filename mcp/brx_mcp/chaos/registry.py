@@ -94,8 +94,8 @@ class Scenario:
     # Seeded operator actions after setup_script and before PUSH/START.
     setup_weights: dict[str, float] = field(default_factory=dict)
     setup_steps: int = 0
-    # How the match ends after the live steps: "end" (operator END), "time" (the time limit) or
-    # "none" (only a frag cap reached during the steps ends it).
+    # How the match ends after the live steps: "end" (operator END), "time" (the time limit),
+    # "none" (only a frag cap reached during the steps ends it), or the name of a terminal action.
     finish: str = "end"
     # Extra config patch for `Session.set_config` (frag limit, teams, ...).
     config: dict = field(default_factory=dict)

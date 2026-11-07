@@ -131,6 +131,7 @@
     }
   },
   "hill_bytes": [],
+  "hill_letters": {},
   "join_secret": "fixture-join-secret",
   "match": {
     "acks": {},

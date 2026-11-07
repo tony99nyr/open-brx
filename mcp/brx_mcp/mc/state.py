@@ -3323,7 +3323,11 @@ class Session:
             return None
         hold = tally.get("hold_ms")
         seen = tally.get("at")   # milestone round 3: when MC last received this tally (a bare hello refreshes last_seen_ms)
-        return (str(a["id"]), hold, seen if isinstance(seen, int) else None) if isinstance(hold, dict) and hold else None
+        # Review 2026-11-06: an EMPTY hold heard in play (a hill nobody has captured yet) still goes to the scorer, as the
+        # zero a report after the whistle is bounded against (`Scorer.station_possession`); `at` says a report wrote it
+        if isinstance(hold, dict) and (hold or isinstance(seen, int)):
+            return str(a["id"]), hold, seen if isinstance(seen, int) else None
+        return None
 
     def _station_possession(self, nid: str, t_recv: int | None) -> None:
         """F555: hand a control station's own tally for this match to the scorer, the authority for its point. A LIVE beat
@@ -4884,7 +4888,7 @@ class Session:
             hold_ended = scorer.win_by == "objective"
             self.end_reason = "hold_target" if hold_ended else "frag_limit"
             self._finish()
-            label = "HOLD TARGET" if hold_ended else "FRAG LIMIT"
+            label = ("SCORE TARGET" if self.config.get("mode") in OWNERSHIP_SCORED_MODES else "HOLD TARGET") if hold_ended else "FRAG LIMIT"
             self._on_feed(self._feed_alert("RESUMED", f"MC RESTARTED. THE MATCH REACHED ITS {label} WHILE MC WAS DOWN: RECAP BUILT",
                                            t_match_s=0))
         elif too_old or past_clock:
@@ -5023,7 +5027,8 @@ class Session:
             # Low (brx1 review of e8811fea): named FRAG LIMIT unconditionally, even for an adopted
             # koth draft whose own hold target was what the replay actually reached.
             if scorer.win_by == "objective":
-                label, cap = "HOLD TARGET", scorer.hold_target_s
+                label = "SCORE TARGET" if self.config.get("mode") in OWNERSHIP_SCORED_MODES else "HOLD TARGET"
+                cap = scorer.hold_target_s
             else:
                 label, cap = "FRAG LIMIT", scorer.frag_limit
             self._on_feed(self._feed_alert("NOTE", f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S {label} "
@@ -7270,7 +7275,7 @@ class Session:
         # preset change since the last game must not leave LAST MATCH offering stale values. From
         # `self.config` (H2, polish round 1), not `game_pick["match"]`: `set_config` keeps the two in
         # sync already, but the config is the ground truth a match actually ran on.
-        self.last_match = {**_gamepick.match_from_config(self.config), "countdown_s": runway_s}
+        self.last_match = {**_gamepick.match_from_config(self.config), "countdown_s": runway_s, "mode": self.config["mode"]}
         now = self.now_ms()
         # A42: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
         # has moved on, and a straggler line left standing over a live board would be read as this match's.
@@ -7824,8 +7829,11 @@ class Session:
         self.end_reason = "hold_target"
         self._finish()
         mins = f"{target // 60}:{target % 60:02d}" if target else "?"
+        # Review 2026-11-06: Domination's target is points (1000), not a time (16:40)
+        what = (f"SCORE TARGET {target} POINTS" if self.config.get("mode") in OWNERSHIP_SCORED_MODES and target
+                else f"HOLD TARGET {mins}")
         self._on_feed(self._feed_alert("ALERT" if reached >= bound else "WITHHELD",
-                                       f"HOLD TARGET {mins} REACHED · MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
+                                       f"{what} REACHED · MATCH OVER · END REACHED {reached} OF {bound} NODE(S)",
                                        t_match_s=t_match_s))
         self._changed()
 

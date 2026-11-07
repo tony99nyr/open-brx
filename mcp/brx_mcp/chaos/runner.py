@@ -172,7 +172,8 @@ async def _run(world: World, res: RunResult, script: list[dict] | None,
                 break
     # the finish (a script carries its own terminal step)
     if script is None and sc.script is None and world.session.phase in ("live", "armed"):
-        finish = {"end": "end", "time": "time_up"}.get(sc.finish)
+        # a scenario may also name its own terminal action (domination_hills.py `hill_end`)
+        finish = {"end": "end", "time": "time_up"}.get(sc.finish, sc.finish if sc.finish in ACTIONS else None)
         if finish:
             step = {"name": finish, "params": {}}
             world.step = i

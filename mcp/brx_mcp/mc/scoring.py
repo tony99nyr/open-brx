@@ -287,6 +287,13 @@ class Scorer:
                         bound = [(tid, min(ms, played)) for tid, ms in bound]
                     self.station_possession_ms[site] = {**pre, **dict(bound)}
                 continue
+            if site not in self.station_possession_ms:
+                # Review round 3: an empty in-play base (`station_possession`) received after the moved whistle was not in
+                # play after all. It never scored, so it goes, and the site is not made station-scored with nothing (that
+                # silenced the phones' readings for it).
+                self.station_seen_ms.pop(site, None)
+                self.station_pre_end.pop(site, None)
+                continue
             hist = self.station_history.get(site)
             latest = self.station_possession_ms.get(site, {})
             if not hist:
@@ -1113,9 +1120,17 @@ class Scorer:
         if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
             return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
         readings = list(self._hold_readings(hold_ms))
-        if not readings:
-            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         site = str(site)
+        if not readings:
+            # Review 2026-11-06: a hill heard IN PLAY with nothing banked yet is still heard. Without this, a hill nobody
+            # had captured when it left Wi-Fi was "unverified" at its report after the whistle, and every point it banked
+            # while away was dropped. Its receipt time and an empty reading become the base `_late_bound` measures from.
+            # It still scores nothing and does not silence the phones (the site stays out of `station_possession_ms`).
+            if (seen_ms is not None and site not in self.station_possession_ms
+                    and (self.end_t is None or seen_ms <= self.end_t)):
+                self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
+                self.station_pre_end.setdefault(site, {})
+            return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         if seen_ms is None and site in self.station_unverified:
             return "ignored"   # milestone r4: a reading with no receipt time cannot verify a site the scorer could not
         end = self.end_t
@@ -1247,6 +1262,18 @@ class Scorer:
             # operator a kills table and "UNDECIDED". Nothing else changes: survival (infection / LMS)
             # has no tally to consult and stays undecided, as does an objective match nobody observed
             # (A5.9/A6.1 — decided by the host, not by kills).
+            if self.hold_target_s:
+                # Review 2026-11-06: the target is crossed in raw ms (`_check_hold_target`), so the team that crossed it
+                # wins. Rounded seconds called blue's 999.6 s against red's 1000.0 s a tie. Round 2: decided on the raw
+                # ms alone, never on `_announced`, which a rebuilt scorer (a rescore, a resume) does not carry.
+                by_ms, _neutral = self._possession_ms()
+                reached = {t: ms for t, ms in by_ms.items() if ms >= self.hold_target_s * 1000}
+                if reached:
+                    # Round 3: two teams over the target (a late hill report after the whistle) are decided on raw ms too;
+                    # only an exact raw tie is a tie. Rounded seconds would call 1000.0 against 1000.3 a tie.
+                    best = max(reached.values())
+                    tops = sorted(t for t, ms in reached.items() if ms == best)
+                    return {"team_id": tops[0]} if len(tops) == 1 else {"team_id": None, "tie": tops}
             poss = self.possession()
             held = {t: s for t, s in (poss or {}).get("by_team", {}).items() if s > 0}
             if held:

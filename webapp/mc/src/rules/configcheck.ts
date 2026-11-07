@@ -304,13 +304,14 @@ export function compilerWarnings(config: ConfigView, players: Player[], weapons:
 // Port of state.py Session._validate(): a hold target at the time limit cannot end a match. F572: the target counts
 // the time summed across hills, so `hills` assigned CONTROL stations can bank `hills` times the limit.
 export function holdTargetWarning(config: ConfigView, hills = 1): string | null {
-  // Domination's target is hill points, not a time, so it cannot be compared with the clock.
-  if (isOwnershipScored(config.mode)) return null;
+  // Domination's target is hill points (one owned-hill second each), so the same sum applies and only the words differ
+  // (review 2026-11-06: the mock said nothing where the real MC warns, state.py `_validate`).
   const hold = config.scoring.hold_target_s;
   const limit = config.time_limit_s;
   const n = Math.max(1, hills);
   if (!Number.isInteger(hold) || !Number.isInteger(limit) || hold == null || limit == null || hold < limit * n) return null;
   const mmss = (value: number) => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
   const past = n === 1 ? `THE TIME LIMIT (${mmss(limit)})` : `THE TIME LIMIT (${mmss(limit)}) TIMES ${n} HILLS`;
-  return `SETUP: THE HOLD TARGET (${mmss(hold)}) IS AT OR PAST ${past}: THE MATCH WILL ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT`;
+  const target = isOwnershipScored(config.mode) ? `SCORE TARGET (${hold} POINTS)` : `HOLD TARGET (${mmss(hold)})`;
+  return `SETUP: THE ${target} IS AT OR PAST ${past}: THE MATCH WILL ALWAYS END ON THE CLOCK, NEVER THE TARGET. LOWER THE TARGET OR RAISE THE TIME LIMIT`;
 }
