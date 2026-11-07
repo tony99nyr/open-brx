@@ -460,13 +460,13 @@ def test_f650_the_lever_after_alt_is_reloaded_by_the_phone_and_the_gun_s_own_rel
     asyncio.run(go())
 
 
-def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
-    """ammo.js `softReloadNeeded` (Opus review H2): the stage's slot 1 is the Shotgun, a shell-by-shell chain. After ALT onto it
-    with slot 0 the slot that fired last, the lever is never the phone's one-shot `$AMMO`. Codex pass 2026-11-07 r3: slot 0 has
-    room, so the gun's lever reloads slot 0 (F542) and no takeover opens on the Shotgun; ALT is held for slot 0's reload."""
+def test_tony_2026_11_07_the_phone_loads_a_chain_in_hand_shell_by_shell():
+    """ammo.js `reloadTick` (Tony 2026-11-07, option a): the stage's slot 1 is the Shotgun, a shell-by-shell chain. After ALT onto
+    it with slot 0 the slot that fired last, the phone loads it one `$AMMO` a shell every reload_s; a trigger pull ends it and
+    the shells written stay. (Review H2 used to leave it to the gun, whose lever went to slot 0.)"""
     async def go():
         st, _gun, clock = await _live()
-        _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
+        _pull(st); st._on_rx("$ALCD,2,100,1,24,0,*")
         st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
         await _tick(st, clock, st._switch_window_s() + 0.05)
         _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
@@ -475,9 +475,17 @@ def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
         assert st.active_slot == 1
         n = len(_tx(st))
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading is None and st._gun_other and st._gun_other["slot"] == 0, (st.reloading, st._gun_other)
-        await _tick(st, clock, 3)
-        assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
+        assert st.reloading and st.reloading["soft"] and st.reloading["chain"], st.reloading
+        s = st.reloading["s"]
+        await _tick(st, clock, s + 0.01)
+        await _tick(st, clock, s + 0.01)
+        rows = [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
+        assert rows == ["$AMMO,1,3,23,1,*", "$AMMO,1,4,22,1,*"], rows
+        assert st.reloading and st.reloading["chain"], "still loading"
+        st._on_rx("$BUT,0,1,*")
+        assert st.reloading is None and st.reload_outcome["why"] == "fired", st.reload_outcome
+        await _tick(st, clock, 2)
+        assert len([f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]) == 2
     asyncio.run(go())
 
 
@@ -617,7 +625,7 @@ def test_codex_2026_11_07_r2_alt_stays_held_after_the_phone_s_reload_lands_while
     async def go():
         st, _gun, clock = await _tony_sequence()
         own = st._reload_s
-        st._reload_s = lambda slot=None: 2.0 if slot == 1 else own(slot)   # type: ignore[method-assign]  # slot 1 reloads longer than slot 0
+        st._reload_s = lambda slot=None, **kw: 2.0 if slot == 1 else own(slot, **kw)   # type: ignore[method-assign]  # slot 1 reloads longer than slot 0
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
         assert st.reloading["soft"] and st._gun_other and st._gun_other["slot"] == 1
         await _tick(st, clock, st.reloading["s"] + 0.05)
@@ -644,4 +652,39 @@ def test_codex_2026_11_07_r3_ownership_is_taken_when_the_write_is_booked_not_whe
         for t in tasks:
             await t
         assert st._prev_ammo[0] == cap and st._prev_reserve[0] == left, "the newer write stands"
+    asyncio.run(go())
+
+
+def test_chain_review_a_shell_still_queued_when_the_trigger_stops_the_chain_is_not_sent():
+    """engine.js `_softReloadWrite` (Codex chain review): `should_send` refuses a stopped chain's shell, and it is rolled back."""
+    async def go():
+        st, _gun, clock = await _live()
+        _pull(st); st._on_rx("$ALCD,2,100,1,24,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        await _tick(st, clock, st._switch_window_s() + 0.05)
+        gate = asyncio.Event()
+        real = st.write
+
+        async def queued(frames, why="", **kw):
+            if any(f.startswith("$AMMO,1,") for f in frames):
+                await gate.wait()   # behind other traffic
+                ss = kw.get("should_send")
+                if ss is not None and not ss():
+                    return None
+            return await real(frames, why, **kw)
+        st.write = queued   # type: ignore[method-assign]
+        tasks: list = []
+        st._spawn_task = lambda c: tasks.append(asyncio.ensure_future(c))   # type: ignore[method-assign]
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        clock.t += st.reloading["s"] + 0.01
+        st._reload_tick()
+        assert st._prev_ammo[1] == 3, "setup: shell 1 booked"
+        st._on_rx("$BUT,0,1,*")                                         # the trigger stops the chain
+        gate.set()
+        for t in tasks:
+            await t
+        assert st._prev_ammo[1] == 2, st._prev_ammo
     asyncio.run(go())

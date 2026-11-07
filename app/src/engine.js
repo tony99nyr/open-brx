@@ -5059,7 +5059,7 @@ export class Engine {
   /** F650: the lever started the phone's reload of the weapon in hand. The gun plays nothing for it, so the phone plays the
    *  weapon's first reload part now; the last part goes with the `$AMMO` (`_softReloadWrite`). */
   _softReloadStart(r) {
-    this.log(`lever: the phone reloads slot ${r.slot} itself in ${r.ms} ms (the gun's lever goes to the slot that fired last) (F650)`, 'li');
+    this.log(`lever: the phone reloads slot ${r.slot} itself ${r.chain ? `a shell every ${r.ms} ms` : `in ${r.ms} ms`} (the gun's lever goes to the slot that fired last) (F650)`, 'li');
     const snd = this._reloadSounds(r.slot)[0];
     if (snd) this._write([`$PLAY,,4,6,${snd},,,,*`], 'F650: reload sound (start)');
   }
@@ -5069,6 +5069,7 @@ export class Engine {
     const slot = r.slot;
     if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) { this.log(`F650: reload of slot ${slot} dropped: the gun is not in play`, 'li'); return null; }
     if (this.activeSlot !== slot || r.life != null && r.life !== this._lifeSeq) { this.log(`F650: reload of slot ${slot} dropped: the weapon is no longer in hand`, 'li'); return null; }
+    if (r.chain && r.inFlight) return 'wait';   // Codex (chain review): one shell on the link at a time, settled before the next is booked
     // Review 2026-11-06 M1: a round the gun fires just before this `$AMMO` lands reads below the written count inside its
     // echo window, and was booked from the written magazine (a whole magazine of shots and a recoil burst). While the
     // trigger is down, or a pull is younger than ACC_ECHO_MS, wait: its round ends the reload as the player's shot
@@ -5079,19 +5080,22 @@ export class Engine {
     const cap = this.am.ammoBySlot()[slot];
     const mag = this.am.acctLive(slot) ?? this.am.prevAmmo[slot] ?? r.mag, res = this.am.prevReserve[slot];
     if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }
-    const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
+    const give = Math.max(0, Math.min(cap - mag, res, r.chain ? 1 : Infinity)), to = mag + give, left = res - give;   // Tony 2026-11-07: a chain, one shell
     if (!give) return mag;
     const a0 = this.am.acct[slot], until0 = a0 ? a0.echoUntil : 0;   // Codex pass r3: the echo window before this write
     this.am.acctWrote(slot, to, left);
     // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
     // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
-    let sent = false;
-    const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; } });
+    let sent = false, refused = false;
+    // Codex (chain review): a chain's shell still queued when the chain stopped (a trigger pull, ALT) is not sent, and is rolled back
+    const shouldSend = () => { if (r.stopped) { refused = true; return false; } return true; };
+    if (r.chain) r.inFlight = true;
+    const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; }, shouldSend });
     // Codex pass 2026-11-07: a write that failed before its frame left (a chunk error with the link still up) gave the gun
     // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
     const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen, until0); };
-    Promise.resolve(w).then(ok => { if (ok === false) failed(); }, failed);
+    Promise.resolve(w).then(ok => { if (ok === false || refused) failed(); r.inFlight = false; }, () => { failed(); r.inFlight = false; });
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
     this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it
@@ -6713,6 +6717,8 @@ export class Engine {
         // F542 review: a pull while this life's burst still waits in the play queue is before its `$SPAWN`, so the gun
         // still wants a pull after it (F436): it does not arm ALT or a pickup equip for the life.
         const queued = !!(this._lifeBurst && this._lifeBurst.life === this._lifeSeq);
+        // Tony 2026-11-07 (option a): a trigger pull ends the phone's shell-by-shell chain; the shells already written stay
+        { const r = this.am.reloading; if (wasAlive && r && r.soft && r.chain) this.am.endReload('fired'); }
         this._pull = { at: this.now(), slot: this.activeSlot }; if (!queued) this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
         this._recoilPull();   // F662 R2: a pull cancels a pending hold-length recovery
       }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate

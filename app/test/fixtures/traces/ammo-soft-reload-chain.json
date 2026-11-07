@@ -1,7 +1,7 @@
 {
   "name": "ammo-soft-reload-chain",
-  "why": "F650 review H2: the same sequence as ammo-soft-reload-alt-swaps, but the shotgun is a chain weapon (it loads shell by shell at reload_s a shell). One `$AMMO` at reload_s would load the whole tube in one shell's time, so the lever on the shotgun is the gun's own reload: no phone reload sound and no `$AMMO` from the phone.",
-  "source": "app/test/engine.test.mjs 'F650 review H2: a chain weapon in hand keeps the gun's own reload'",
+  "why": "Tony 2026-11-07 (option a): the same sequence as ammo-soft-reload-alt-swaps, but the shotgun is a chain weapon (it loads shell by shell at reload_s a shell). Slot 0 fired last, so the gun's lever goes there, and the phone loads the shotgun itself, one `$AMMO` a shell every reload_s, until the tube is full (here one shell). Review H2 used to leave the chain to the gun.",
+  "source": "app/test/engine.test.mjs 'Tony 2026-11-07: the lever loads a chain in hand shell by shell when the gun's lever goes to the slot fired last'",
   "runners": ["engine","stage"],
   "setup": {
     "catalog": {"weapons":[{"weapon_id":"assault_rifle","name":"AR","reload_s":1.4},{"weapon_id":"shotgun","name":"Shotgun","reload_s":0.4,"reload_type":"chain"}],"perks":[]},
@@ -36,9 +36,9 @@
     {"advance_ms":900},
     {"check":"on_slot_1_slot_0_fired_last_and_full"},
     {"frames":["$BUT,2,1,*","$BUT,2,0,*"]},
-    {"check":"lever_is_the_guns_reload"},
+    {"check":"lever_is_the_phones_chain"},
     {"advance_ms":2000},
-    {"check":"no_phone_ammo"}
+    {"check":"one_shell_fills_the_tube"}
   ],
   "stage_ignores": [],
   "expect": [
@@ -121,18 +121,23 @@
       "writes": []
     },
     {
-      "at": "lever_is_the_guns_reload",
+      "at": "lever_is_the_phones_chain",
       "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":false,"reloading":true,"mag":6,"reload":{"ms":0,"total":400,"at":12840,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$PLAY,,4,6,D01,,,,*"
+      ]
     },
     {
-      "at": "no_phone_ammo",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":5,"to":5,"cap":6,"gained":0,"slot":1,"ms":1250,"why":"timeout","at":14090,"lastFired":0}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "at": "one_shell_fills_the_tube",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":47,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":5,"to":6,"cap":6,"gained":1,"slot":1,"ms":500,"why":"filled","at":13340}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$AMMO,1,6,47,1,*",
+        "$PLAY,,4,6,D27,,,,*"
+      ]
     }
   ]
 }
