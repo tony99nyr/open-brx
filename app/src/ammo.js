@@ -131,7 +131,9 @@ const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears t
 // 600 ms grace covers the first two and misses the charge rifle by 120 ms, which would end the takeover
 // on the frame BEFORE the gun's own echo and book a real reload as failed. The ceiling is therefore
 // proportional as well as flat, and `_reloadDeadline` takes the larger of the two.
-const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
+const RELOAD_OVERRUN = 0.5;
+/** Review 2026-11-06: the gun's own refill lands at most this many times the catalogue reload (F27 above: 1.22 to 1.29). */
+const GUN_RELOAD_MAX_X = 1.3;      // ...and half the nominal reload on top, which clears every measured overrun
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon refills on a HOLD of the lever, the whole cell in one
  *  step, 3.5-3.9 s after the pull starts (catalogue 2400 ms: 2400 + max(600, 1200) = 3600 ms missed the slow
  *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS.
@@ -192,6 +194,7 @@ export class Ammo {
     this.lastSwing = null;
     this.leverAt = null;            // E10: the last lever pull while live and alive, refused or not
     this.fireFirst = null;          // F542: {slot, at, life} of the last lever the gun spent on the LAST-FIRED slot (the HUD hint)
+    this.gunOther = null;           // review 2026-11-06: {slot, until, life} of a lever the phone refused that the gun spends on the last-fired slot
   }
 
   // ---- state resets ----
@@ -229,7 +232,7 @@ export class Ammo {
   /** F416 round 2: the rounds the trigger has asked for on `slot` that may still come back (0 once the press expires). */
   pressedRounds(slot) { const a = this.acct[slot]; return this.acctOutstanding(slot) && a ? a.fired : 0; }
   /** A new life, a death or the match end: no takeover follows the player, and no verdict from the last one. */
-  dropReload() { this.reloading = null; this.reloadOutcome = null; }
+  dropReload() { this.reloading = null; this.reloadOutcome = null; this.gunOther = null; }   // gunOther: a death or a new life ends the gun's reload too
   /** A loaded pull, a new life: the RELOAD nag's dry spell is over. */
   endDrySpell() { this.dryPulls = 0; }
   /** A new life: no slot has a heat reading or a lockout. */
@@ -349,6 +352,8 @@ export class Ammo {
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
     // cue can only be late, never early. Slots 0/1 and a held heavy's pickup slot (bench 2026-10-02: the Rockets never
     // shone); slot 4 is melee and has no gauge.
+    // review 2026-11-06 r2: a round proves the gun is not reloading (it refuses the trigger while it does), so the ALT hold ends
+    if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.gunOther = null;
     if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.lastShot = { slot, at: this.host.now(), ms: this.host.fireIntervalMs(slot), life: this.host.lifeSeq };
     this.host.resyncAmmo(prev, mag);   // §3.10: a magazine move is resync evidence (engine.js `_resyncAmmo`)
     // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
@@ -415,6 +420,7 @@ export class Ammo {
       return;
     }
     if (lastFiredReload) {
+      if (this.gunOther && this.gunOther.slot === slot) this.gunOther = null;   // review 2026-11-06: the gun's reload of it landed
       this.prevAmmo[slot] = mag;
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
       const soft = !!(this.reloading && this.reloading.soft);   // F650: the phone is reloading the weapon in hand; no hint
@@ -578,8 +584,10 @@ export class Ammo {
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
-    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
-    if (!(this.host.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
+    // Review 2026-11-06 (the swap torture run): a lever the phone refuses still reloads the slot that fired last on the gun
+    // (F542), and the gun ignores ALT while that runs (`altPressed`).
+    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) { this.noteGunOther(); return; }   // nothing to reload — the gun ignores the pull
+    if (!(this.host.reserve > 0)) { this.noteGunOther(); return; }                  // dry reserve: no reload happens (whatever is in the mag)
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && (ws[this.host.activeSlot] || ws[0]);
     const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
     // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
@@ -619,6 +627,34 @@ export class Ammo {
     if (row && row.reload_type === 'chain') return false;
     const ls = this.lastShot, known = !!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2);
     return known ? ls.slot !== active : active !== 0;
+  }
+  /** A slot's nominal reload time in ms: the catalogue `reload_s` (1.5 s when unknown), with the perk's reload
+   *  multiplier on slot 0 as compile applies it (never on a bolt). PURE. */
+  reloadMsOf(slot) {
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
+    const fx = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkEffects(this.host.player.loadout.perk) : null;
+    const rm = fx && fx.reload_mult ? +fx.reload_mult : 1;
+    if (rm > 0 && rm !== 1 && slot === 0 && !(row && row.reload_type === 'bolt')) secs *= rm;
+    return Math.max(300, Math.round(secs * 1000));
+  }
+  /** Review 2026-11-06 (the swap torture run): the phone refused a lever (the weapon in hand is full, or has no reserve),
+   *  but the gun spends it on the slot that fired last when that slot has room and reserve (F542). Note that reload, so
+   *  `altPressed` ignores ALT while it runs, as the gun does. It ends when that slot's rise lands, or after the reload
+   *  time with the takeover's overrun allowance. */
+  noteGunOther() {
+    const ls = this.lastShot, a = this.host.activeSlot;
+    this.gunOther = null;
+    if (!(a === 0 || a === 1) || !(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== a)) return;
+    const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
+    if ((cap && mag != null && mag >= cap) || res === 0) return;
+    const ms = this.reloadMsOf(ls.slot);
+    // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
+    const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
+    const holdMs = Math.max(Math.round(ms * GUN_RELOAD_MAX_X), energy ? ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS : 0);
+    this.gunOther = { slot: ls.slot, until: this.host.now() + holdMs, life: this.host.lifeSeq };
+    this.host.log(`lever on a full slot ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
   }
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
    *  fired last, with room and reserve)? Only then does the gun ignore ALT. PURE. */
@@ -679,6 +715,7 @@ export class Ammo {
     // F650: the phone's own reload writes its `$AMMO` at the weapon's reload time. Its echo is bookkeeping (`acctWrote`).
     if (this.reloading && this.reloading.soft && now >= this.reloading.at + this.reloading.ms) {
       const r = this.reloading, to = this.host.softReloadWrite(r);
+      if (to === 'wait') return;   // review 2026-11-06 M1: a pull in flight; its round ends the reload, else the write goes
       if (to == null) { this.endReload('dropped'); return; }
       r.mag = to; this.endReload('filled'); return;
     }
@@ -728,6 +765,7 @@ export class Ammo {
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */
   equipped(slot, mag, res) {
     if (this.reloading) this.endReload('swapped');
+    this.gunOther = null;   // review 2026-11-06 r2: a phone equip moves the trigger; the ALT hold has nothing left to guard
     // F542 review: after a phone equip the gun's last-fired latch is unknown, so the last-fired reload rule waits for a fresh
     // round. A switch-back from a heavy then an ALT the gun ignores (F436) must still snap back with GUN WAS ON on the lever.
     // The round itself stays: the shot-ready cue and the ALT gate still read it (golden trace `ammo-heavy-alt`).
@@ -772,6 +810,9 @@ export class Ammo {
     // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
     const r = this.reloading;
     // F650 review (Opus, M1): a phone reload is not a gun reload; the gun ignores ALT only while it reloads the other slot.
+    const g = this.gunOther;
+    if (!r && g && g.life === this.host.lifeSeq && this.host.now() < g.until) {   // review 2026-11-06: a refused lever the gun spent on the other slot
+      this.host.log(`ALT ignored by the gun while it reloads slot ${g.slot}, the slot fired last`, 'li'); return; }
     if (r && !r.auto && (!r.soft || this.gunReloadsOther(r)) && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)

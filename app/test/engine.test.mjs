@@ -5574,6 +5574,82 @@ test('F650: a death during the phone\'s reload writes nothing', () => {
   h.adv(5000); h.eng.tick();
   assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'no $AMMO to a dead gun');
 });
+test('F650 review 2026-11-06 M1: a round in flight when the phone\'s reload is due is one round, never a magazine', () => {
+  // The phone's `$AMMO` opens an echo window at the written count. A round the gun fired just before the write lands
+  // reads BELOW that count inside the window, so it was measured from the written magazine: 29 rounds booked as shots
+  // and a recoil burst. The write waits for a pull in flight; the round then ends the reload as the player's shot.
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // on slot 0 at 29; slot 1 fired last
+  const n = h.writes.length;
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 0');
+  const due = h.eng.am.reloading.at + h.eng.am.reloading.ms;
+  h.adv(due - h.eng.now() - 5); h.eng.tick();
+  h.frame('$BUT,0,1,*');                                           // the player fires just before the write is due
+  h.adv(10); h.eng.tick();
+  const shots = h.eng.shots;
+  h.frame('$ALCD,28,100,0,384,0,*'); h.frame('$BUT,0,0,*');        // the round lands
+  assert.equal(h.eng.shots - shots, 1, 'one round, not a magazine');
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'no $AMMO over a round in flight');
+  assert.equal(h.eng.state().ammo, 28);
+  assert.equal(h.eng.state().reloadOutcome.why, 'fired', 'the shot ended the reload');
+});
+test('F650 review 2026-11-06 M1: a pull the gun never answers delays the phone\'s reload by at most ACC_ECHO_MS', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);
+  const n = h.writes.length, cap0 = h.eng.am.ammoBySlot()[0];
+  f542Lever(h);
+  const due = h.eng.am.reloading.at + h.eng.am.reloading.ms;
+  h.adv(due - h.eng.now() - 5); h.eng.tick();
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');                   // a pull with no round (the gun was cycling)
+  h.adv(10); h.eng.tick();
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'held while the pull may still bring a round');
+  h.adv(E.ACC_ECHO_MS); h.eng.tick();
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [`$AMMO,0,${cap0},${384 - (cap0 - 29)},1,*`], 'then written');
+  assert.equal(h.eng.state().reloadOutcome.why, 'filled');
+});
+// Review 2026-11-06 (the swap torture run): a lever the phone refuses on a full weapon in hand still reloads the slot that
+// fired last on the gun, which ignores ALT while it runs (ammo.js `noteGunOther`). Round 2: the hold ends with that reload.
+function leverOnFull(h) {
+  f542Shot(h, '$ALCD,31,100,0,384,0,*'); f542Shot(h, '$ALCD,30,100,0,384,0,*'); f542Shot(h, '$ALCD,29,100,0,384,0,*');
+  f542Alt(h);
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: on slot 1, full; slot 0 fired last');
+  f542Lever(h);
+  assert.ok(h.eng.am.gunOther, 'setup: the gun reloads slot 0, so ALT is held');
+}
+test('review 2026-11-06 r2: a stun cuts the gun\'s reload, so ALT after it is a swap again', () => {
+  const h = liveSwapHarness();
+  leverOnFull(h);
+  h.adv(200); h.eng._stun(3000);   // an EMP perk word: its own length, with stun off in the config
+  assert.ok(h.eng.stunned, 'setup: stunned');
+  h.adv(50); h.eng._stunRestore('expired'); h.adv(100); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'the ALT opens the swap');
+});
+test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is not reloading, so ALT is a swap', () => {
+  const h = liveSwapHarness();
+  leverOnFull(h);
+  h.adv(200); f542Shot(h, '$ALCD,5,100,1,48,0,*');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'the ALT opens the swap');
+});
+test('review 2026-11-06 r3: an energy weapon fired last holds ALT through its late recharge (pl4: up to 3.9 s)', () => {
+  const h = liveSwapHarness();
+  h.player.loadout = { weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'smg' }] };   // no catalogue row: the id says energy
+  leverOnFull(h);
+  h.adv(3500); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun is still recharging slot 0, so it ignores this ALT');
+  assert.equal(h.eng.state().activeSlot, 1);
+});
+test('review 2026-11-06 r2: the ALT hold ends at the gun\'s measured reload overrun, not the takeover\'s stale tail', () => {
+  const h = liveSwapHarness();
+  leverOnFull(h);
+  const ms = h.eng.am.reloadMsOf(0);
+  h.adv(Math.round(ms * 1.3) + 10); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'past 1.3x the reload the gun takes ALT (F27)');
+});
 test('F650: a shotgun chain on the last-fired slot books shell by shell while the phone reloads the weapon in hand', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);

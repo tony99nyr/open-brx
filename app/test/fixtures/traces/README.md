@@ -60,7 +60,8 @@ always, plus any of `spawnLost`, `reconciling`, `switching`, `reloading`, `poiso
 `base`, `trig`, `suspect` and `unconfirmed`), `claim`, `powerup` (the hint, overshield, grant, swap and spawn cards, the
 item a death took, the switch-back and its retry), `hill`, `mag`, `shots`, `reload` (the takeover's clock and the last
 outcome), `swap` (the ALT window, from, to and the last swap's length), `heat` (the reading, the lockout and the OVERHEAT
-word), `shotCooldown` and `moment` (the HUD moment's kind and data) from `setup.fields` (`FIELDS` in
+word), `shotCooldown`, `melee` (the melee-ready icon: the last swing and the cooldown left), `hills` (Domination's row of
+hills, every control point heard or remembered) and `moment` (the HUD moment's kind and data) from `setup.fields` (`FIELDS` in
 `app/test/golden-trace-runner.mjs`).
 
 After every step that is not a check, the fake gun's answers are fed back before the next step.
