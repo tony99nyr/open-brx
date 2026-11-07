@@ -12,7 +12,7 @@ import pathlib
 import tempfile
 
 from _session import after_end, mc_session, node_heartbeat, restart_session, results
-from test_mc_domination import _live, _own
+from _domination import domination_live, own_fact
 
 _sess = mc_session
 
@@ -36,8 +36,8 @@ def _red_to_target(s, net, clock, silent=True):
     from 5 s when `silent`; else it beats on. Returns the match id and the go-live time."""
     r = s.config["teams"][0]["tid"]
     go, mid = s._m().head["go_live_t"], s._m().head["match_id"]
-    _own(s, net, clock, "node0", "util-a", 2, r, at=go + 10_000)
-    _own(s, net, clock, "node0", "util-b", 2, r, at=go + 10_000)
+    own_fact(s, net, clock, "node0", "util-a", 2, r, at=go + 10_000)
+    own_fact(s, net, clock, "node0", "util-b", 2, r, at=go + 10_000)
     for t in (go + 509_000, go + 511_000):
         clock["t"] = t
         _keep_fresh(s, net, clock, "node0")
@@ -56,7 +56,7 @@ def test_a_target_reached_with_a_phone_silent_holds_the_result_until_its_reports
     """MC saw red at 1000. node1, out of Wi-Fi, saw blue drain both hills at 20 s and take them at 21 s. MC must not name
     red: the result waits past the old 120 s bound, then the late reports make blue the winner, and only then do the
     phones get a result."""
-    s, net, clock = _live("domination", 1000)
+    s, net, clock = domination_live("domination", 1000)
     mono = _mono(s)
     r, b = s.config["teams"][0]["tid"], s.config["teams"][1]["tid"]
     mid, go = _red_to_target(s, net, clock)
@@ -72,8 +72,8 @@ def test_a_target_reached_with_a_phone_silent_holds_the_result_until_its_reports
     assert _sync(s)["pending"] and s.recap()["winner"] is None, _sync(s)
     assert not results(net), "no phone is told a winner that may change"
     for hill in ("util-a", "util-b"):   # node1 back in Wi-Fi: its two steps on each hill
-        _own(s, net, clock, "node1", hill, r, 2, at=go + 20_000, mid=mid)
-        _own(s, net, clock, "node1", hill, 2, b, at=go + 21_000, mid=mid)
+        own_fact(s, net, clock, "node1", hill, r, 2, at=go + 20_000, mid=mid)
+        own_fact(s, net, clock, "node1", hill, 2, b, at=go + 21_000, mid=mid)
     net.simulate_status("node1", after_end(s, {"player_id": _pids(s)["node1"], "pending": 0}), clock["t"])
     view = s.recap()
     assert not view["sync"]["pending"] and view["sync"]["released_by"] == "sync", view["sync"]
@@ -84,7 +84,7 @@ def test_a_target_reached_with_a_phone_silent_holds_the_result_until_its_reports
 
 
 def test_every_phone_in_wifi_at_the_target_ends_as_before_with_the_bound():
-    s, net, clock = _live("domination", 1000)
+    s, net, clock = domination_live("domination", 1000)
     _mono(s)
     _red_to_target(s, net, clock, silent=False)
     sync = _sync(s)
@@ -92,7 +92,7 @@ def test_every_phone_in_wifi_at_the_target_ends_as_before_with_the_bound():
 
 
 def test_end_now_declares_from_what_mc_has_when_a_phone_is_dead():
-    s, net, clock = _live("domination", 1000)
+    s, net, clock = domination_live("domination", 1000)
     _mono(s)
     _red_to_target(s, net, clock)
     assert _sync(s)["pending"]
@@ -105,7 +105,7 @@ def test_end_now_declares_from_what_mc_has_when_a_phone_is_dead():
 
 def test_a_time_limit_end_with_a_phone_silent_holds_the_result_too():
     """brx1 2026-11-07: the clock's end has the same gap as the target's."""
-    s, net, clock = _live("domination", 1000)
+    s, net, clock = domination_live("domination", 1000)
     _mono(s)
     go = s._m().head["go_live_t"]
     clock["t"] = go + 1800_000 + 5_000
@@ -117,7 +117,7 @@ def test_a_time_limit_end_with_a_phone_silent_holds_the_result_too():
 
 
 def test_koth_with_a_phone_silent_keeps_the_bound():
-    s, net, clock = _live("koth", 1000)
+    s, net, clock = domination_live("koth", 1000)
     _mono(s)
     go = s._m().head["go_live_t"]
     clock["t"] = go + 1800_000 + 5_000
@@ -129,7 +129,7 @@ def test_koth_with_a_phone_silent_keeps_the_bound():
 
 
 def test_a_restart_keeps_the_result_held_with_no_bound():
-    s, net, clock = _live("domination", 1000, stored=True)
+    s, net, clock = domination_live("domination", 1000, stored=True)
     _mono(s)
     _red_to_target(s, net, clock)
     s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
@@ -154,10 +154,10 @@ def test_a_target_or_time_reached_while_mc_was_down_holds_the_result_until_the_p
     end took the 120 s bound. The check reads the match's own bindings: no phone has spoken to this MC yet."""
     from _session import restart_no_repersist
     for until_ms, reason in ((1_200_000, "hold_target"), (1_810_000, "time")):
-        s, net, clock = _live("domination", 1000 if reason == "hold_target" else 5000, stored=True)
+        s, net, clock = domination_live("domination", 1000 if reason == "hold_target" else 5000, stored=True)
         s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
         go = s._m().head["go_live_t"]
-        _own(s, net, clock, "node0", "util-a", 2, s.config["teams"][0]["tid"], at=go + 10_000)
+        own_fact(s, net, clock, "node0", "util-a", 2, s.config["teams"][0]["tid"], at=go + 10_000)
         clock["t"] = go + 20_000
         s.tick()
         s._persist_last = 0.0
