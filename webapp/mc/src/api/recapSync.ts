@@ -41,5 +41,12 @@ export function recapSync(rc: RecapView | null | undefined): RecapSyncView | und
   const releaseIn = typeof v.release_in_s === 'number' && Number.isFinite(v.release_in_s) && v.release_in_s >= 0 ? Math.ceil(v.release_in_s) : undefined;
   return { pending, finalised: v.finalised === true, result_changed: v.result_changed === true,
     // An older MC has no bound and no reason: null, and no countdown.
-    released_by: pending ? null : releasedBy, ...(pending && releaseIn !== undefined ? { release_in_s: releaseIn } : {}), rows };
+    released_by: pending ? null : releasedBy, ...(pending && releaseIn !== undefined ? { release_in_s: releaseIn } : {}),
+    ...(v.score_pending === true ? { score_pending: true } : {}), rows };
+}
+
+/** The pending header. Tony 2026-11-07: a Domination match that ended with a phone out of Wi-Fi waits for its reports,
+ *  because a capture only that phone heard can change the winner. */
+export function pendingTitle(sync: RecapSyncView | undefined): string {
+  return sync?.score_pending ? 'FINAL SCORE PENDING' : 'RESULTS PENDING';
 }

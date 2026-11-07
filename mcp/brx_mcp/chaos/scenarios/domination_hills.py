@@ -382,3 +382,98 @@ scenario(Scenario(
         "after the whistle, and a Stick that drops and returns. No point lost, none counted twice.",
     setup_script=SETUP, script=_SCRIPT, checks=(domination_hills_check,), ci_seeds=(1,),
 ))
+
+
+# Tony 2026-11-07: FINAL SCORE PENDING. Red takes hill A with phones 0 and 1 near it; phone 0 walks away and phone 1 walks
+# out of Wi-Fi, where it alone hears blue drain A and take it. MC's clock then steps 25 s on (the field plays on), so MC,
+# which knows only red's capture, sees red at the 20-point target and ends the match with phone 1 silent. MC must hold
+# the result: no winner on the console, no `result` to any phone, no 120 s bound.
+def _never(world: World, rng: random.Random):
+    return None   # script-only
+
+
+@action("hill_tick", pick=_never)
+async def hill_tick(world: World) -> None:
+    """MC's tick runs (the target is checked on it), then the scenario notes what MC shows: the check reads it."""
+    for _ in range(3):
+        world.session.tick()
+        await asyncio.sleep(0.05)
+    s = world.session
+    sc = match_scorer(s)
+    if s.phase == "recap" and sc is not None and not hasattr(world, "hill_held"):
+        rc = s.recap() or {}
+        world.hill_held = {"reason": s.end_reason, "winner": rc.get("winner"), "sync": dict(rc.get("sync") or {}),   # type: ignore[attr-defined]
+                           "results": sum(1 for n in world.nodes for env in n.received
+                                          if env["kind"] == "result" and env["body"].get("match_id") == sc.match_id)}
+
+
+@action("hill_back", pick=_never)
+async def hill_back(world: World, node: int) -> None:
+    """Phone `node` walks back into Wi-Fi after the whistle: it delivers its queued reports, takes the END it missed and
+    beats on. The step waits (bounded) until MC holds its drained beat, as the field waits for a 2 s beat."""
+    n = world.nodes[node]
+    n.reconnect()
+
+    def drained() -> bool:
+        rows = (((world.session.recap() or {}).get("sync")) or {}).get("rows") or []
+        return any(r["kind"] == "phone" and r["id"] == n.player_id and r["stage"] == "received" for r in rows)
+
+    await until(drained, 5.0)
+
+
+@action("hill_end_now", pick=_never, terminal=True)
+async def hill_end_now(world: World) -> None:
+    """The operator presses END NOW: phone 1 is dead. MC declares from what it has; the run's aftermath brings the phone
+    back later, and its reports then merge in (RESULT CHANGED)."""
+    world.session.finalise_recap()
+    rc = world.session.recap() or {}
+    world.hill_end_now = {"winner": rc.get("winner"), "sync": dict(rc.get("sync") or {})}   # type: ignore[attr-defined]
+
+
+def domination_held_check(world: World) -> None:
+    held = getattr(world, "hill_held", None)
+    if held is None or held["reason"] != "hold_target":
+        raise InvariantError("domination_held", f"the target did not end the match while phone 1 was out ({held})")
+    sync = held["sync"]
+    if (held["winner"] is not None or not sync.get("pending") or sync.get("score_pending") is not True
+            or "release_in_s" in sync or held["results"]):
+        raise InvariantError("domination_held", f"MC showed a result that phone 1 could change: {held}")
+    final = ((world.session.recap() or {}).get("sync")) or {}
+    end_now = getattr(world, "hill_end_now", None)
+    if end_now is None:
+        if final.get("released_by") != "sync":
+            raise InvariantError("domination_held", f"phone 1 came back, but the result was not released by it: {final}")
+        return
+    if end_now["winner"] is None or end_now["sync"].get("released_by") != "finalise":
+        raise InvariantError("domination_held", f"END NOW did not declare the result: {end_now}")
+    if not final.get("result_changed"):
+        raise InvariantError("domination_held", f"phone 1's late reports moved the winner, but RESULT CHANGED is off: {final}")
+
+
+_HELD = [
+    {"name": "hill_walk", "params": {"node": 0, "nid": "dom-hill-a", "near": True}},
+    {"name": "hill_walk", "params": {"node": 1, "nid": "dom-hill-a", "near": True}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 0}},
+    {"name": "hill_walk", "params": {"node": 0, "nid": "dom-hill-a", "near": False}},
+    {"name": "drop", "params": {"node": 1}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 2}},
+    {"name": "hill_flip", "params": {"nid": "dom-hill-a", "owner": 1}},
+    {"name": "mc_clock_step", "params": {"delta_ms": 25_000}},
+    {"name": "hill_tick", "params": {}},
+]
+
+scenario(Scenario(
+    name="domination-held-drained", mode="domination", nodes=4, real_stations=True, config={"scoring": {"hold_target_s": 20}},
+    doc="FINAL SCORE PENDING: MC reaches the target on what it knows while a phone out of Wi-Fi holds the capture that "
+        "changes the winner. MC holds the result past the old bound, then the phone walks back and its reports decide it.",
+    setup_script=SETUP, script=[*_HELD, {"name": "hill_back", "params": {"node": 1}}, {"name": "hill_end", "params": {}}],
+    checks=(domination_hills_check, domination_held_check), ci_seeds=(1,),
+))
+
+scenario(Scenario(
+    name="domination-held-dead", mode="domination", nodes=4, real_stations=True, config={"scoring": {"hold_target_s": 20}},
+    doc="FINAL SCORE PENDING with a dead phone: the result stays held until the operator presses END NOW, which declares "
+        "from what MC has. When the phone does come back, its reports merge in and RESULT CHANGED says so.",
+    setup_script=SETUP, script=[*_HELD, {"name": "hill_end_now", "params": {}}],
+    checks=(domination_hills_check, domination_held_check), ci_seeds=(1,),
+))

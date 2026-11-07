@@ -153,7 +153,10 @@ MC is not checked against its own bookkeeping.
   timelines, within 0.7 s a flip. The Sticks beat on with their own clock (the cross-check) through drops, returns,
   MC restarts and crashes; the restart invariants let a phone-timed match's points grow across a restart (an owned
   hill scores while MC is down) and let it come back ended on its target. `domination-hills-target` sets a target the
-  hills reach.
+  hills reach. `domination-held-drained` and `domination-held-dead` (A89) script the gap A87 leaves: a phone out of
+  Wi-Fi alone hears blue drain and take the hill, MC's clock steps on, and MC ends on red's target. MC must hold the
+  result (no winner, no `result`, no bound) until the phone walks back and its reports make blue the winner, or until
+  END NOW declares from what MC has and the phone's later reports set RESULT CHANGED.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the
@@ -214,7 +217,8 @@ A field bug works the same way: write the actions that the field saw as a script
 - Phone-scored Domination (A87) scores the owner MC knows. When every phone that heard a hill drain is out of Wi-Fi,
   the old owner scores on until one of them is back, and can reach the target first; the recap then counts the drain
   from its time, but the match has ended. `domination_hills_check` accepts a target end only in that case (a step was
-  queued on a phone out of Wi-Fi at the whistle). A Stick-scored hill out of Wi-Fi had the same gap.
+  queued on a phone out of Wi-Fi at the whistle). A Stick-scored hill out of Wi-Fi had the same gap. Since A89 the
+  WINNER no longer suffers from it: a phone silent at the whistle holds the result until it reports or END NOW.
 - The older `possession_station` action still uses a rostered node as its reporter. `stations-mixed`
   uses real utility MockNode sockets, but it does not emulate the phone's BLE station firmware. A
   repeated `hold_ms` models a CONTESTED hold without testing the phone's pause implementation.
