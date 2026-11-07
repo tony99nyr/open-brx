@@ -131,7 +131,9 @@ const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears t
 // 600 ms grace covers the first two and misses the charge rifle by 120 ms, which would end the takeover
 // on the frame BEFORE the gun's own echo and book a real reload as failed. The ceiling is therefore
 // proportional as well as flat, and `_reloadDeadline` takes the larger of the two.
-const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
+const RELOAD_OVERRUN = 0.5;
+/** Review 2026-11-06: the gun's own refill lands at most this many times the catalogue reload (F27 above: 1.22 to 1.29). */
+const GUN_RELOAD_MAX_X = 1.3;      // ...and half the nominal reload on top, which clears every measured overrun
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon refills on a HOLD of the lever, the whole cell in one
  *  step, 3.5-3.9 s after the pull starts (catalogue 2400 ms: 2400 + max(600, 1200) = 3600 ms missed the slow
  *  end). An energy weapon's watchdog waits at least this long from the pull, plus RELOAD_GRACE_MS.
@@ -230,7 +232,7 @@ export class Ammo {
   /** F416 round 2: the rounds the trigger has asked for on `slot` that may still come back (0 once the press expires). */
   pressedRounds(slot) { const a = this.acct[slot]; return this.acctOutstanding(slot) && a ? a.fired : 0; }
   /** A new life, a death or the match end: no takeover follows the player, and no verdict from the last one. */
-  dropReload() { this.reloading = null; this.reloadOutcome = null; }
+  dropReload() { this.reloading = null; this.reloadOutcome = null; this.gunOther = null; }   // gunOther: a death or a new life ends the gun's reload too
   /** A loaded pull, a new life: the RELOAD nag's dry spell is over. */
   endDrySpell() { this.dryPulls = 0; }
   /** A new life: no slot has a heat reading or a lockout. */
@@ -350,6 +352,8 @@ export class Ammo {
     // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
     // cue can only be late, never early. Slots 0/1 and a held heavy's pickup slot (bench 2026-10-02: the Rockets never
     // shone); slot 4 is melee and has no gauge.
+    // review 2026-11-06 r2: a round proves the gun is not reloading (it refuses the trigger while it does), so the ALT hold ends
+    if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.gunOther = null;
     if (prev != null && mag < prev && this.host.phase === 'live' && (slot === 0 || slot === 1 || this.host.pu.isHeldSlot(slot))) this.lastShot = { slot, at: this.host.now(), ms: this.host.fireIntervalMs(slot), life: this.host.lifeSeq };
     this.host.resyncAmmo(prev, mag);   // §3.10: a magazine move is resync evidence (engine.js `_resyncAmmo`)
     // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
@@ -645,7 +649,7 @@ export class Ammo {
     const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
     if ((cap && mag != null && mag >= cap) || res === 0) return;
     const ms = this.reloadMsOf(ls.slot);
-    this.gunOther = { slot: ls.slot, until: this.host.now() + ms + Math.max(RELOAD_GRACE_MS, Math.round(ms * RELOAD_OVERRUN)), life: this.host.lifeSeq };
+    this.gunOther = { slot: ls.slot, until: this.host.now() + Math.round(ms * GUN_RELOAD_MAX_X), life: this.host.lifeSeq };
     this.host.log(`lever on a full slot ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
   }
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
@@ -757,6 +761,7 @@ export class Ammo {
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */
   equipped(slot, mag, res) {
     if (this.reloading) this.endReload('swapped');
+    this.gunOther = null;   // review 2026-11-06 r2: a phone equip moves the trigger; the ALT hold has nothing left to guard
     // F542 review: after a phone equip the gun's last-fired latch is unknown, so the last-fired reload rule waits for a fresh
     // round. A switch-back from a heavy then an ALT the gun ignores (F436) must still snap back with GUN WAS ON on the lever.
     // The round itself stays: the shot-ready cue and the ALT gate still read it (golden trace `ammo-heavy-alt`).

@@ -80,6 +80,7 @@ export class Reconcile {
     // down were never reported, so the re-arm gives them back: a bounded refund, not a free magazine.
     this._win = { since: h.now(), ammo: h.liveAmmo() };
     h.clearResync();                                      // never run the infer-death machine on a rejoin
+    h.clearGunOther();                                    // the disarm below cuts the gun's own reload (ammo.js `gunOther`)
     // F15, r1 S2: a running stun is NOT ended here. Its deadline survives the relink: `end` re-arms nothing before it, and the
     // stun's own expiry restore (or this window's end, once the deadline has passed) re-arms with the live counts snapshotted above.
     h.write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*', ...h.pu.disarmRows()], 'reconcile: disarm');   // no shots count while we reconcile; A56: nor a held heavy's
