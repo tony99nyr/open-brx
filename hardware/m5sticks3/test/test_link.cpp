@@ -3068,6 +3068,8 @@ static void test_f658_hill_follows_the_live_game() {
   for (uint32_t t = 2250; t <= 5000; t += 250) { hear(41, LIVE, t); p.tick(t); link.tick_players(p, t); }
   CHECK(link.follower().follows && link.hill_game() == 41);
   CHECK(link.hill().progress > 20);   // MC's window says wait; the live bit says count
+  // F658 review: the follow is live play, so the /24 scan stays paused (MC's window is still 10 minutes away)
+  CHECK(link.in_live_play(5000) && !link.in_live_play(5000 + StationLink::FOLLOW_LIVE_PLAY_MS + 1));
   const std::string body = build_status_body(fill_status(link, 5000, true, 1, 0));
   CHECK(body.find("\"game\":41") != std::string::npos);
   CHECK(body.find("\"follows\":true,\"games\":{\"41\":{") != std::string::npos);
@@ -3140,6 +3142,7 @@ static void test_f658_powerup_follows_the_live_game() {
   hear(7, 2000); p.tick(2000); link.tick_players(p, 2000);
   CHECK(link.pu_follower().follows && link.advert_game() == 7 && link.last_pu_follow().switched);
   CHECK(link.powerup_advert_view(2000).value == 60);   // the clock from first_at_s
+  CHECK(link.in_live_play(2000) && !link.in_live_play(2000 + StationLink::FOLLOW_LIVE_PLAY_MS + 1));   // F658 review
   CHECK(link.pu_save_due());
   CHECK(!link.pu_save_due());
   {  // review round 1: the claim rule reaches the gate only through apply_claim_follow (the glue holds claimMux)
