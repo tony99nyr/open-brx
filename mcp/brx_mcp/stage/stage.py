@@ -5783,6 +5783,9 @@ class GunStage:
             elif bid == 2:
                 self._reload_pulled()
             elif bid == 0:
+                r = self.reloading   # engine.js `_onButton` (Tony 2026-11-07): a pull ends the phone's chain; written shells stay
+                if self.alive and r and r.get("soft") and r.get("chain"):
+                    self._end_reload("fired")
                 self._pull_at = now                # engine.js `_pull`
                 # engine.js `_onButton` (F542 review): a pull while this life's burst is still queued is before its `$SPAWN`,
                 # so the gun still wants a pull after it (F436): it does not arm ALT for the life. The engine asks the narrower
@@ -6738,20 +6741,16 @@ class GunStage:
         # bench 2026-10-17 (ammo.js `reloadPulled` `swapTo`): a lever inside an ALT swap reloads the OLD slot, and the swap
         # still completes. The gun reloads only after the swap ends, so the deadline gains the swap window (5eb1450e).
         swap_to = self.switching["to"] if self.switching else None
-        # ammo.js `reloadPulled` (Codex pass r3): a chain in hand whose lever goes to the slot fired last opens no takeover
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or {}
-        if (swap_to is None and (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain"
-                and self._lever_goes_elsewhere()):
-            self._note_gun_other("lever with a chain in hand (it loads only once it has fired), slot")
-            if self._gun_other:
-                return   # with the slot fired last full, the takeover stays (H2): unbenched
+        chain = (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain"
         s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
         self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
                           "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
                           # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
-                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued}
+                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued,
+                          "chain": chain}   # Tony 2026-11-07 (ammo.js `reloadPulled`): a phone reload of a chain goes shell by shell
         if self.reloading["soft"]:
             self._soft_reload_start(self.reloading)
             self._note_gun_other("the phone reloads the weapon in hand")   # ammo.js `reloadPulled` (Codex pass r2)
@@ -6766,11 +6765,7 @@ class GunStage:
         active = self.active_slot
         if active not in (0, 1) or self._slot_count() < 2:
             return False
-        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []   # review H2: a chain weapon keeps the gun's reload
-        w = (ws[active] if active < len(ws) else None) or {}
-        if (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain":
-            return False
-        return self._lever_goes_elsewhere()
+        return self._lever_goes_elsewhere()   # Tony 2026-11-07: a chain in hand too (ammo.js `softReloadNeeded`)
 
     def _lever_goes_elsewhere(self) -> bool:
         """ammo.js `leverGoesElsewhere` (F542): the gun's lever goes to the slot fired last, or slot 0 when unknown."""
@@ -6898,7 +6893,7 @@ class GunStage:
         if not cap or mag is None or not (res is not None and res > 0):
             self._log(f"F650: reload of slot {slot} dropped: counts unknown (mag {mag}, reserve {res})", "info")
             return None
-        give = max(0, min(cap - mag, res)); to = mag + give; left = res - give
+        give = max(0, min(cap - mag, res, 1 if r.get("chain") else res)); to = mag + give; left = res - give   # a chain: one shell
         if not give:
             return mag
         a0 = self._shot_acct.get(slot); until0 = a0["echo_until"] if a0 else 0.0   # Codex pass r3: before this write
@@ -7115,6 +7110,11 @@ class GunStage:
                 self._end_reload("dropped")
                 return
             r["mag"] = to
+            # ammo.js `reloadTick` (Tony 2026-11-07): a chain loads one shell a reload time until full or out of reserve
+            if r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0:
+                r["at"] = self.now(); r["last_gain_at"] = self.now()
+                self._spawn_task(self._reload_watchdog(dict(r)))
+                return
             self._end_reload("filled")
             return
         if self.reloading and self.now() > self._reload_deadline():

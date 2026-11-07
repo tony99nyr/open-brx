@@ -5059,7 +5059,7 @@ export class Engine {
   /** F650: the lever started the phone's reload of the weapon in hand. The gun plays nothing for it, so the phone plays the
    *  weapon's first reload part now; the last part goes with the `$AMMO` (`_softReloadWrite`). */
   _softReloadStart(r) {
-    this.log(`lever: the phone reloads slot ${r.slot} itself in ${r.ms} ms (the gun's lever goes to the slot that fired last) (F650)`, 'li');
+    this.log(`lever: the phone reloads slot ${r.slot} itself ${r.chain ? `a shell every ${r.ms} ms` : `in ${r.ms} ms`} (the gun's lever goes to the slot that fired last) (F650)`, 'li');
     const snd = this._reloadSounds(r.slot)[0];
     if (snd) this._write([`$PLAY,,4,6,${snd},,,,*`], 'F650: reload sound (start)');
   }
@@ -5079,7 +5079,7 @@ export class Engine {
     const cap = this.am.ammoBySlot()[slot];
     const mag = this.am.acctLive(slot) ?? this.am.prevAmmo[slot] ?? r.mag, res = this.am.prevReserve[slot];
     if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }
-    const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
+    const give = Math.max(0, Math.min(cap - mag, res, r.chain ? 1 : Infinity)), to = mag + give, left = res - give;   // Tony 2026-11-07: a chain, one shell
     if (!give) return mag;
     const a0 = this.am.acct[slot], until0 = a0 ? a0.echoUntil : 0;   // Codex pass r3: the echo window before this write
     this.am.acctWrote(slot, to, left);
@@ -6713,6 +6713,8 @@ export class Engine {
         // F542 review: a pull while this life's burst still waits in the play queue is before its `$SPAWN`, so the gun
         // still wants a pull after it (F436): it does not arm ALT or a pickup equip for the life.
         const queued = !!(this._lifeBurst && this._lifeBurst.life === this._lifeSeq);
+        // Tony 2026-11-07 (option a): a trigger pull ends the phone's shell-by-shell chain; the shells already written stay
+        { const r = this.am.reloading; if (wasAlive && r && r.soft && r.chain) this.am.endReload('fired'); }
         this._pull = { at: this.now(), slot: this.activeSlot }; if (!queued) this._pulledLife = this._lifeSeq; this._triggerPulled(); this.am.heatLockPress(); if (wasAlive) this._awaitShot();
         this._recoilPull();   // F662 R2: a pull cancels a pending hold-length recovery
       }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate

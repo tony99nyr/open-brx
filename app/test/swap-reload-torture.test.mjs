@@ -141,10 +141,9 @@ class GunModel {
     this.feed('$BUT,2,1,*');
     let s = null;
     if (this.live && !this.reload) {
-      // F542: the lever reloads the slot fired last. UNBENCHED, modelled as the engine assumes (F650 review H2): when that slot
-      // has nothing to load, a chain in hand loads itself.
+      // F542: the lever reloads the slot fired last, whatever is in hand (a chain in hand is the phone's to load, Tony 2026-11-07)
       const room = k => { const z = this.slot(k); return z.mag < z.clip && z.res > 0; };
-      const t = room(this.latch) ? this.latch : this.chain.has(this.active) && room(this.active) ? this.active : null;
+      const t = room(this.latch) ? this.latch : null;
       if (t != null) {
         s = t;
         const x = this.slot(t), life = this.reload = { slot: t };
@@ -285,7 +284,7 @@ const pad2 = n => String(n).padStart(2, '0');
 async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
   const h = harness(sec, seed, { failAmmo }), { eng, gun, rng } = h;
   await h.start();
-  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, idle: 0, swings: 0, rounds: 0, chainHold: 0 };
+  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, idle: 0, swings: 0, rounds: 0, chainHold: 0, phoneChain: 0 };
   let logMark = 0, lastSwingAtEng = null;
   const pick = () => {
     const r = rng() * 100;
@@ -315,8 +314,6 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
     else if (kind === 'lever' || kind === 'leverAlt') {
       const held = gun.active, x = gun.slot(held);
       if (gun.live && x.mag < x.clip && x.res > 0) leverExpect = { slot: held, mag: Math.min(x.clip, x.mag + x.res) };
-      // F542: until a chain in hand fires, the lever reloads the slot fired last when that slot has room; the shotgun waits
-      if (gun.chain.has(held) && gun.latch !== held && gun.slot(gun.latch).mag < gun.slot(gun.latch).clip && gun.slot(gun.latch).res > 0) leverExpect = null;
       const s = gun.lever(); note = `gun reloads ${s == null ? 'nothing' : 'slot ' + s}, held ${held}`;
       if (kind === 'leverAlt') {
         await h.advance(150 + Math.floor(rng() * 500));
@@ -343,6 +340,7 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
     const desync = fresh.filter(l => l.m.startsWith('gun was on slot'));
     if (desync.length) fail(i, `desync: ${desync.map(l => l.m).join('; ')}`);
     const altIgnored = fresh.filter(l => /ALT ignored/.test(l.m));
+    if (fresh.some(l => /itself a shell every/.test(l.m))) counts.phoneChain++;   // Tony 2026-11-07: the phone loads a chain in hand
     if (altIgnored.length && tookAlt === false && gun.chain.size && fresh.some(l => /the gun reloads slot 1, the slot fired last/.test(l.m))) counts.chainHold++;
     if (altIgnored.length && tookAlt !== false) fail(i, `the gun took ALT but the engine logged: ${altIgnored.map(l => l.m).join('; ')}`);
     if (tookAlt === false && !altIgnored.length && eng.am.altEvidencePending != null) fail(i, 'the gun ignored ALT but the engine opened a swap');
@@ -450,21 +448,24 @@ test('swap/reload torture: ALT pressed while the lever reload runs, both loadout
 // The Shotgun's chain on the slot fired last while the phone reloads the rifle (the ALT hold must last the whole chain), and
 // the phone's own reload writes failing before they leave (the books must stay with the gun).
 test('swap/reload torture: assault rifle + shotgun (a chain on the slot fired last), zero desync', async () => {
-  let chainHold = 0;
+  let chainHold = 0, phoneChain = 0;
   for (const seed of [301, 302, 303, 304, 305, 306]) {
     const { counts, fails } = await torture('shotgun', seed, ACTIONS, { combos: true });
     assert.deepEqual(fails, [], fails.join('\n\n'));
     assert.ok(counts.lever > 20 && counts.alt > 20, `seed ${seed} exercised the lever and ALT: ${JSON.stringify(counts)}`);
-    chainHold += counts.chainHold;
+    chainHold += counts.chainHold; phoneChain += counts.phoneChain;
   }
   assert.ok(chainHold >= 3, `the run held ALT through a chain on the slot fired last: ${chainHold}`);
+  assert.ok(phoneChain >= 10, `the run had the phone load the chain in hand shell by shell: ${phoneChain}`);
 });
 test('swap/reload torture: a third of the phone\'s reload writes fail before they leave, zero desync', async () => {
   let failed = 0;
-  for (const [sec, seed] of [['suppressor', 401], ['suppressor', 402], ['usp', 403], ['usp', 404], ['shotgun', 405]]) {
-    const { fails, h } = await torture(sec, seed, ACTIONS, { combos: true, failAmmo: 0.33 });
+  let phoneChain = 0;
+  for (const [sec, seed] of [['suppressor', 401], ['suppressor', 402], ['usp', 403], ['usp', 404], ['shotgun', 405], ['shotgun', 406], ['shotgun', 407]]) {
+    const { fails, h, counts } = await torture(sec, seed, ACTIONS, { combos: true, failAmmo: 0.33 });
     assert.deepEqual(fails, [], fails.join('\n\n'));
-    failed += h.gun.failed;
+    failed += h.gun.failed; phoneChain += counts.phoneChain;
   }
+  assert.ok(phoneChain >= 5, `the phone loaded a chain shell by shell with failing writes: ${phoneChain}`);
   assert.ok(failed >= 5, `the run failed enough writes to mean something: ${failed}`);
 });
