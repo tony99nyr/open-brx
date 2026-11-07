@@ -1,5 +1,5 @@
 // Shared HUD words, icons and formatting.
-import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, MEDALS } from '../transport/contract.gen.js';
+import { TEAM_KEYS, TEAM_INK_HEX, ROLE_LABELS, MEDALS, OWNERSHIP_SCORED_MODES } from '../transport/contract.gen.js';
 import { isEnergyClass } from '../weaponclass.js';
 import { displayHost } from '../transport/autojoin.js';
 
@@ -78,15 +78,20 @@ export const teamHold = (holdByTid, t) => {
   const tid = TEAM_TID[String(t && t.team_id == null ? '' : t.team_id).toLowerCase()];
   return (holdByTid && tid != null && holdByTid[tid]) || 0;
 };
+/** Domination (OWNERSHIP_SCORED_MODES) scores points: one per second a hill is owned. `st.mode` may be any case. */
+export const isPointsMode = mode => OWNERSHIP_SCORED_MODES.includes(String(mode || '').toLowerCase());
+/** Domination points from an ownership time in ms: a whole number, never a clock. */
+export const domPoints = ms => Math.floor((ms || 0) / 1000);
 /** THE team score chip, for the live board, the result screen and the DOWN strip. `value` is the text inside the
- *  bold number (default: the team's score, or a dash when it is not a finite number). `koth` is the F424 hold-time
+ *  bold number (default: the team's score, or a dash when it is not a finite number). `points` is the Domination chip: `value` is an ownership time in ms, shown as whole points (this phone's own tally, so a lower bound). `koth` is the F424 hold-time
  *  chip: `value` is a hold in ms, and `data-tid` lets the board patch it in place every tick. `lenient` is the DOWN
  *  strip's old reading, kept as it was: a numeric string score shows, a blank team shows a blank name, a falsy team id is blank. */
-export function teamChip(t, { mine = false, value, koth = false, lenient = false } = {}) {
+export function teamChip(t, { mine = false, value, koth = false, points = false, lenient = false } = {}) {
   const k = String(lenient ? (t.team_id || '') : (t.team_id == null ? '' : t.team_id)).toLowerCase();
   const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
   const name = esc(String(t.name || k || (lenient ? '' : '—')).toUpperCase());
   if (koth) return `<span class="tm koth${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
+  if (points) return `<span class="tm pts${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${domPoints(value)}</b></span></span>`;
   return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : lenient ? esc(t.score != null ? t.score : '—') : num(t.score) == null ? '—' : t.score}</b></span></span>`;
 }
 export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;

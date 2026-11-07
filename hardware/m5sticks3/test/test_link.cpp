@@ -3170,12 +3170,62 @@ static void test_f658_powerup_follows_the_live_game() {
   CHECK(!link.pu_follower().has_mc && !link.pu_follower().mc_anchored);   // any arming forgets MC's remembered update
   CHECK(link.pu_follower().follows && link.advert_game() == 7 && !link.powerup_ended());
   CHECK(link.powerup_advert_view(4000).value == 58);
+  for (uint32_t t = 4250; t <= 62000; t += 250) { hear(7, t); p.tick(t); link.tick_players(p, t); link.tick_powerup(t); }
+  CHECK(link.powerup().available());
+  ClaimWinner won; won.won = true; won.player_num = 3;
+  CHECK(link.award_claim(won, 62000));
+  PendingTakenReport rep;
+  CHECK(link.pop_pending_action(rep) && rep.game == 7);   // Codex review 2026-11-07: the game it went in, not MC's 6
   StationAssignment c = a; c.id = 5;   // another station id is another station: it follows nothing yet
-  link.apply_station_config(c, 5000);
+  link.apply_station_config(c, 63000);
   CHECK(!link.pu_follower().follows);
 }
 
+// Codex review r2: the hill's NVS ring keeps the current game's end (r2), so after a software reset the next game takes
+// the hill at once; an r1 string (older firmware) restores with no end evidence.
+static void test_hill_ring_keeps_the_current_game_end() {
+  HillFollower f;
+  BleControlPoint pt;
+  PlayerPresence p;
+  p.key_by_game = true;
+  auto hear = [&](uint8_t id, uint8_t game, bool live, uint32_t t) {
+    Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = contract::ADVERT_SCOPE_KIND_CONTROL; d.scope = 1u << 9;
+    d.id = id; d.team = 0; d.game = game;
+    d.state = contract::ADVERT_PLAYER_STATE_ALIVE | (live ? contract::ADVERT_PLAYER_STATE_LIVE : 0);
+    p.observe(d, -60, t);
+    p.tick(t);
+    f.step(pt, p, t, 0, 9);
+  };
+  hear(3, 7, true, 0);
+  CHECK(f.has_current && f.current == 7 && !f.end.ended);
+  hear(3, 7, false, 1000);   // game 7's whistle
+  CHECK(f.end.ended);
+  const std::string saved = encode_hill_ring(9, f, pt, 1000);
+  CHECK(saved.rfind("r2|9|1|7|1|", 0) == 0);
+  HillFollower back;
+  BleControlPoint back_pt;
+  CHECK(decode_hill_ring(saved, 9, back, back_pt, 1000) && back.end.ended && ((back.end.live_ids >> 3) & 1));
+  std::string old = "r1|9|1|7|" + saved.substr(saved.find('|', saved.find('|', std::string("r2|9|1|7|").size()) + 1) + 1);
+  HillFollower legacy;
+  CHECK(decode_hill_ring(old, 9, legacy, back_pt, 1000) && legacy.current == 7 && !legacy.end.ended && legacy.end.live_ids == 0);
+}
+
+// Codex review 2026-11-07: a claim pending from the last game never takes the next game's item. A follow step into
+// another game drops it; the same game keeps it.
+static void test_claim_gate_drops_a_pending_claim_on_a_game_switch() {
+  ClaimGate g;
+  g.configure(/*station_id=*/8, /*game=*/7);
+  g.observe(/*player_num=*/5, /*target_station_id=*/8, /*game=*/7, false, true, true, -50);
+  g.set_follow(7, true);
+  CHECK(g.resolve_batch().won);
+  g.observe(5, 8, 7, false, true, true, -50);
+  g.set_follow(8, true);   // the station now follows game 8
+  CHECK(!g.resolve_batch().won);
+}
+
 int main(int argc, char** argv) {
+  test_claim_gate_drops_a_pending_claim_on_a_game_switch();
+  test_hill_ring_keeps_the_current_game_end();
   test_f658_hill_follows_the_live_game();
   test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();

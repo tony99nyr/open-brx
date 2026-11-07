@@ -2,7 +2,7 @@
 // the viewport. Structure re-renders only when the state "signature" changes; live numbers patch in
 // place so CSS animations don't restart every tick. Moments (T-MINUS, KILL, DOWN, REDEPLOY) live in
 // #overlay so they animate independently of the base HUD.
-import { mmss, gunDot, hpPct, hpLow, armorPct, heatPct, hasArmor, accShown, AMMO_PIP_MAX, chargeCost, AIM_REASON, magText, INFO_SVG } from './shared.js';
+import { mmss, gunDot, hpPct, hpLow, armorPct, heatPct, hasArmor, accShown, AMMO_PIP_MAX, chargeCost, AIM_REASON, magText, INFO_SVG, isPointsMode, domPoints } from './shared.js';
 const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
 const SKIN_MOON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z"/></svg>';
 const SKIN_SUN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></g></svg>';
@@ -461,11 +461,13 @@ export class Hud {
         set('bdage', this._boardAgeLabel(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', this._boardStale(st));
         // F424: the hold climbs every tick, not just on a fresh MC score push (which is what the sig
         // watches) — patch it directly so the board's own numbers do not sit stale while it is open.
-        if (st.mode === 'KOTH') {
-          const holdByTid = this._liveHold(st);
-          for (const el of this.hudEl.querySelectorAll('.bdteam .tm.koth[data-tid]')) {
+        // Domination's chip is the same tally as whole points.
+        if (st.mode === 'KOTH' || isPointsMode(st.mode)) {
+          const holdByTid = this._liveHold(st), dom = isPointsMode(st.mode);
+          for (const el of this.hudEl.querySelectorAll('.bdteam .tm.koth[data-tid], .bdteam .tm.pts[data-tid]')) {
             const tid = el.dataset.tid; if (tid === '') continue;
-            const b = el.querySelector('b'); const txt = mmss((holdByTid && holdByTid[tid]) || 0);
+            const ms = (holdByTid && holdByTid[tid]) || 0;
+            const b = el.querySelector('b'); const txt = dom ? String(domPoints(ms)) : mmss(ms);
             if (b && b.textContent !== txt) b.textContent = txt;
           }
         }

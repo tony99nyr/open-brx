@@ -23,6 +23,12 @@ static void test_station_action_body_is_pinned() {
            std::string("{\"id\":9,\"action\":\"reset\",\"t\":1700000000000}"));
   CHECK_EQ(build_station_action_taken_body(9, 5, 1700000000000LL, 250),
            std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000}"));
+  // Codex review 2026-11-07: the game the item went in, when not 0 (any game)
+  CHECK_EQ(build_station_action_taken_body(9, 5, 1700000000000LL, 250, 42),
+           std::string("{\"id\":9,\"action\":\"taken\",\"player_num\":5,\"age_ms\":250,\"t\":1700000000000,\"game\":42}"));
+  StationLink link;
+  PendingTakenReport rep{9, 5, 0, 1000, 42};
+  CHECK(maybe_build_taken_action(link, rep, 1400).find(",\"game\":42}") != std::string::npos);
 }
 
 // ACTIONS is ON by default since MC accepts station_action (A56, f3fe3cf6). `ACTIONS OFF` (for an older MC, which
