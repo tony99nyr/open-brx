@@ -118,3 +118,16 @@ test('review Low 2: a station that reloads after MC\'s START and before the firs
   const v = decodeUuid(api2.stationUuid()).value;
   assert.ok(v <= 19 && v >= 18, `MC's schedule, not first_at_s: ${v}`);
 });
+
+test('F658 review r2: MC re-arms a powerup as another id in the same game: the old taker and item state go, as on the Stick', async () => {
+  await api.applyStationConfig({ ...station, id: 7, game: 70 });   // another id first, so nothing is followed
+  await api.applyStationConfig({ ...station, game: 70 });
+  stand(65_000, [{ id: 5, game: 71, live: true }]);   // follows game 71, and its item spawns at first_at_s
+  assert.equal(api.pu.available, true);
+  stand(500, [{ id: 5, game: 71, live: true, ready: true }]);
+  assert.equal(api.pu.taker, 5, 'player 5 takes station 6\'s item');
+  await api.applyStationConfig({ ...station, id: 7, game: 70 });
+  assert.equal(api.pu.taker, 0, 'station 7 was never taken');
+  assert.equal(api.pu.available, null, 'and its item is unknown until MC says');
+  assert.equal(api.statusBody().powerup, undefined, 'and it follows nothing yet');
+});
