@@ -136,3 +136,17 @@ def test_two_honours_for_one_player_do_not_hide_each_other():
     from brx_mcp.chaos.invariants import _flat
     flat = _flat({"honors": [{"player_id": "p1", "key": "mvp"}, {"player_id": "p1", "key": "most_kills"}]})
     assert {flat[k] for k in flat if k.endswith(".key")} == {"mvp", "most_kills"}, flat
+
+
+def test_a_match_that_ended_on_its_target_in_the_restart_still_keeps_its_config():
+    """Codex review 2026-11-07: a phone-timed Domination match can end on its target while MC restarts. That skipped the
+    whole comparison; only the live state may change, and the config must still come back."""
+    needs(HAVE_WS, "websockets")
+    import brx_mcp.chaos.invariants as inv
+    real = inv._target_ended_in_restart
+    inv._target_ended_in_restart = lambda _w, _c: True
+    try:
+        _check(STATE, {**STATE, "phase": "recap", "feed": []})
+        assert "config.mode" in _refused(STATE, {**STATE, "phase": "recap", "config": {"mode": "ffa", "mode_params": {}}})
+    finally:
+        inv._target_ended_in_restart = real

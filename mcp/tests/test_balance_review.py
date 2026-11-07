@@ -13,6 +13,7 @@ import json
 import math
 import pathlib
 import random
+import re
 import sys
 import tempfile
 from unittest import mock
@@ -2658,3 +2659,14 @@ def test_the_kit_engine_fires_the_leaked_round_at_the_held_rung():
     assert out[8] < out[0]       # the 9th held round is heavy
     assert out[9] == out[8]      # no pause: fired one interval (100 ms) after release, before the reset lands
     assert out[10] == out[0]     # the next round is back at the ceiling
+
+
+def test_the_phone_chain_pace_matches_the_app_tick():
+    # 2cc490e63: the phone loads a chain in hand one shell a tick at most, so the sheet's stated pace is the app's tick
+    app = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "app.js").read_text()
+    tick = re.search(r"setInterval\(\(\) => \{[^\n]*\bengine\.tick\(\);[^\n]*\}, (\d+)\);", app)
+    assert tick, "app.js no longer ticks the engine with a literal interval"
+    assert int(tick.group(1)) == R.PHONE_CHAIN_TICK_MS, (tick.group(1), R.PHONE_CHAIN_TICK_MS)
+    stress = R.assumptions()["ammo_stress"]
+    assert stress["chain_phone_pace_ms"] == R.PHONE_CHAIN_TICK_MS
+    assert "phone-paced chain" in stress["chain_reload"] and "unproven" not in stress["chain_reload"]

@@ -2231,7 +2231,8 @@ class GunStage:
         a["echo_until"] = now + self.ACC_ECHO_S
         a["echo_expect"] = mag
 
-    def _acct_unwrite(self, slot: int, mag: int, res: int, to: int, gen: int | None) -> bool:
+    def _acct_unwrite(self, slot: int, mag: int, res: int, to: int, gen: int | None, until0: float | None = None,
+                      moved: bool = False) -> bool:
         """ammo.js `acctUnwrite` (Codex pass 2026-11-07): the `$AMMO` booked at `to` never left. Back to `mag`, keeping any
         press since, and that write's echo off the books. False when a newer write owns the slot."""
         a = self._shot_acct.get(slot)
@@ -2239,7 +2240,11 @@ class GunStage:
             return True
         if a.get("echo_gen") != gen:
             return False
-        a["mag"] = mag; a["res"] = res
+        if not moved:
+            a["mag"] = mag   # r3: `moved`, the gun's own rounds since set the account; keep them
+        a["res"] = res
+        if until0 is not None and a.get("echo_until", 0.0) > until0:
+            a["echo_until"] = until0   # r3: the window as it stood before this write
         if a.get("echo_pending", 0) > 0 and a.get("echo_expect") == to:
             a["echo_pending"] -= 1
             stale = a.get("echo_stale") or []
@@ -5684,6 +5689,7 @@ class GunStage:
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
+            self._gun_other_gain(slot, mag, reserve)   # ammo.js `gunOtherGain` (Codex pass r3)
             self._log(f"the gun's lever reloaded slot {slot}; the phone reloads slot {self.reloading['slot']}", "info")
             return
         if self.reloading and prev is not None and not own_echo and not last_fired_reload:
@@ -5719,8 +5725,7 @@ class GunStage:
             self._log(f"reload landed on slot {slot} after the swap to slot {r0['swap_to']}; the trigger stays", "info")
             return
         if last_fired_reload:
-            if self._gun_other and self._gun_other["slot"] == slot:
-                self._gun_other = None   # ammo.js `onAmmo` (review 2026-11-06): the gun's reload of it landed
+            self._gun_other_gain(slot, mag, reserve)   # ammo.js `onAmmo` (review 2026-11-06; Codex pass r3: or a chain's shell)
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
@@ -5778,6 +5783,9 @@ class GunStage:
             elif bid == 2:
                 self._reload_pulled()
             elif bid == 0:
+                r = self.reloading   # engine.js `_onButton` (Tony 2026-11-07): a pull ends the phone's chain; written shells stay
+                if self.alive and r and r.get("soft") and r.get("chain"):
+                    self._end_reload("fired")
                 self._pull_at = now                # engine.js `_pull`
                 # engine.js `_onButton` (F542 review): a pull while this life's burst is still queued is before its `$SPAWN`,
                 # so the gun still wants a pull after it (F436): it does not arm ALT for the life. The engine asks the narrower
@@ -5843,9 +5851,13 @@ class GunStage:
             self._log(f"ALT ignored by the gun while it reloads slot {g['slot']}, the slot fired last", "info")
             return
         sw = self._switch_window_s() if r and r.get("swap_to") is not None else 0.0   # Codex pass r2: the swap window is not scaled
+        # ammo.js `altPressed` (Codex pass r3): a chain that has loaded a shell and is not full holds ALT one shell past the last
+        chaining = bool(r and (r.get("last_gain_at") or 0.0) > r["at"] and r.get("cap") is not None and r.get("mag") is not None
+                        and r["mag"] < r["cap"] and self._prev_reserve.get(r["slot"]) != 0)
+        hold = self._gun_hold_s(r["s"] - sw, bool(r.get("energy"))) if r else 0.0
         if (r and not r.get("auto") and not r.get("soft")   # F226 `!r.auto`; a phone reload is held by `_gun_other` above (Codex pass r2)
-                and self.now() < r["at"] + sw + self._gun_hold_s(r["s"] - sw, bool(r.get("energy")))   # Codex pass 2026-11-07 (ammo.js `gunHoldMs`)
-                and not ((r.get("last_gain_at") or 0.0) > r["at"])):
+                and (self.now() < r["last_gain_at"] + hold if chaining
+                     else self.now() < r["at"] + sw + hold and not ((r.get("last_gain_at") or 0.0) > r["at"]))):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
         # ammo.js `altPressed` (F650): ALT before the first trigger pull of a life is a swap like any other (the F445 rule
@@ -6729,12 +6741,16 @@ class GunStage:
         # bench 2026-10-17 (ammo.js `reloadPulled` `swapTo`): a lever inside an ALT swap reloads the OLD slot, and the swap
         # still completes. The gun reloads only after the swap ends, so the deadline gains the swap window (5eb1450e).
         swap_to = self.switching["to"] if self.switching else None
-        s_nominal = self._reload_s() + (self._switch_window_s() if swap_to is not None else 0.0)
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or {}
+        chain = (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain"
+        s_nominal = self._reload_s(floor=0.001 if chain else 0.3) + (self._switch_window_s() if swap_to is not None else 0.0)   # chain review
         self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
                           "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
                           # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
-                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued}
+                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued,
+                          "chain": chain}   # Tony 2026-11-07 (ammo.js `reloadPulled`): a phone reload of a chain goes shell by shell
         if self.reloading["soft"]:
             self._soft_reload_start(self.reloading)
             self._note_gun_other("the phone reloads the weapon in hand")   # ammo.js `reloadPulled` (Codex pass r2)
@@ -6749,9 +6765,12 @@ class GunStage:
         active = self.active_slot
         if active not in (0, 1) or self._slot_count() < 2:
             return False
-        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []   # review H2: a chain weapon keeps the gun's reload
-        w = (ws[active] if active < len(ws) else None) or {}
-        if (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain":
+        return self._lever_goes_elsewhere()   # Tony 2026-11-07: a chain in hand too (ammo.js `softReloadNeeded`)
+
+    def _lever_goes_elsewhere(self) -> bool:
+        """ammo.js `leverGoesElsewhere` (F542): the gun's lever goes to the slot fired last, or slot 0 when unknown."""
+        active = self.active_slot
+        if active not in (0, 1) or self._slot_count() < 2:
             return False
         ls = self._last_shot_slot
         known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
@@ -6772,13 +6791,25 @@ class GunStage:
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[ls] if ls < len(ws) else None) or {}
         energy = bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id"))
-        self._gun_other = {"slot": ls, "until": self.now() + self._gun_hold_s(s, energy), "life": self._life_queued}
+        self._gun_other = {"slot": ls, "until": self.now() + self._gun_hold_s(s, energy), "life": self._life_queued, "energy": energy}
         self._log(f"{why} {a}: the gun reloads slot {ls}, the slot fired last", "info")
 
     def _gun_hold_s(self, s: float, energy: bool) -> float:
         """ammo.js `gunHoldMs`: how long the gun's own reload can run before its refill lands (F27, pl4), so how long it
         ignores ALT."""
         return max(s * self.GUN_RELOAD_MAX_X, self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S if energy else 0.0)
+
+    def _gun_other_gain(self, slot: int, mag: int, reserve: int | None) -> None:
+        """ammo.js `gunOtherGain` (Codex pass 2026-11-07 r3): a full slot or an empty reserve ends the ALT hold; a chain's
+        shell keeps it for one more shell."""
+        g = self._gun_other
+        if not g or g["slot"] != slot:
+            return
+        cap = self._ammo_by_slot().get(slot)
+        if not (cap and cap > 0) or mag >= cap or reserve == 0:
+            self._gun_other = None
+            return
+        g["until"] = max(g["until"], self.now() + self._gun_hold_s(self._reload_s(slot), bool(g.get("energy"))))
 
     def _gun_reloads_other(self, r: dict | None = None) -> bool:
         """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
@@ -6792,28 +6823,44 @@ class GunStage:
         cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
         return not (cap and mag is not None and mag >= cap) and res != 0
 
-    async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int) -> None:
-        """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing."""
-        life = self._life_queued
-        gen = (self._shot_acct.get(slot) or {}).get("echo_gen")
+    async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int, own: tuple, r: dict | None = None) -> None:
+        """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing. A chain's
+        shell still queued when the chain stopped is not sent, and is rolled back (chain review)."""
+        life, gen, until0 = own
+        refused = [False]
+
+        def should_send() -> bool:
+            if r is not None and r.get("stopped"):
+                refused[0] = True
+                return False
+            return True
         try:
-            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0)
+            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0,
+                                  should_send=should_send)
         except Exception:   # Codex pass r2: a raised write failed too (engine.js: a rejected write runs `failed`)
             ok = False
-        if ok is False:
-            self._soft_reload_unwrite(slot, mag, res, to, left, life, gen)
+        finally:
+            if r is not None:
+                r["in_flight"] = False
+        if ok is False or refused[0]:
+            self._soft_reload_unwrite(slot, mag, res, to, left, life, gen, until0)
 
-    def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int, gen: int | None) -> None:
+    def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int, gen: int | None,
+                             until0: float | None = None) -> None:
         """engine.js `_softReloadUnwrite` (Codex pass 2026-11-07): the books go back to the counts before the write, unless
         a newer fact has moved them."""
-        if life != self._life_queued or self._prev_ammo.get(slot) != to or self._prev_reserve.get(slot) != left:
+        if life != self._life_queued or self._prev_reserve.get(slot) not in (left, res):   # r3: a report may show the old reserve
             return
-        if not self._acct_unwrite(slot, mag, res, to, gen):
+        cur = self._prev_ammo.get(slot); moved = cur != to   # r3: only the gun's own rounds since (engine.js)
+        if moved and not (cur is not None and cur <= mag):
+            return
+        if not self._acct_unwrite(slot, mag, res, to, gen, until0, moved):
             return   # r2: a newer write owns the slot, even at the same counts
-        self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
+        back = cur if moved and cur is not None else mag   # `moved` implies a count (checked above)
+        self._prev_ammo[slot] = back; self._prev_reserve[slot] = res
         if self.active_slot == slot:
-            self._publish_ammo(slot, mag, res)
-        self._log(f"F650: the reload write for slot {slot} failed before it left: back to {mag}, reserve {res}", "error")
+            self._publish_ammo(slot, back, res)
+        self._log(f"F650: the reload write for slot {slot} failed before it left: back to {back}, reserve {res}", "error")
 
     def _reload_sounds(self, slot: int) -> list[str]:
         """engine.js `_reloadSounds` (F650): the head's `$WEAP` reload parts for a slot (t31-t33), empty ids dropped."""
@@ -6841,6 +6888,8 @@ class GunStage:
         if self.active_slot != slot or (r.get("life") is not None and r["life"] != self._life_queued):
             self._log(f"F650: reload of slot {slot} dropped: the weapon is no longer in hand", "info")
             return None
+        if r.get("chain") and r.get("in_flight"):
+            return "wait"   # engine.js `_softReloadWrite` (chain review): one shell on the link at a time
         cap = self._ammo_by_slot().get(slot)
         mag = self._acct_live(slot)
         if mag is None:
@@ -6858,13 +6907,17 @@ class GunStage:
         if not cap or mag is None or not (res is not None and res > 0):
             self._log(f"F650: reload of slot {slot} dropped: counts unknown (mag {mag}, reserve {res})", "info")
             return None
-        give = max(0, min(cap - mag, res)); to = mag + give; left = res - give
+        give = max(0, min(cap - mag, res, 1 if r.get("chain") else res)); to = mag + give; left = res - give   # a chain: one shell
         if not give:
             return mag
+        a0 = self._shot_acct.get(slot); until0 = a0["echo_until"] if a0 else 0.0   # Codex pass r3: before this write
         self._acct_wrote(slot, to, left)
+        own = (self._life_queued, (self._shot_acct.get(slot) or {}).get("echo_gen"), until0)   # r3: owned at booking, as engine.js
         end = self._reload_sounds(slot)[1:]
         # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
-        self._spawn_task(self._soft_reload_send(slot, mag, res, to, left))
+        if r.get("chain"):
+            r["in_flight"] = True   # engine.js `_softReloadWrite` (chain review): one shell on the link at a time
+        self._spawn_task(self._soft_reload_send(slot, mag, res, to, left, own, r))
         if end:
             self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
         self._hold_accuracy_writes("F650 reload")
@@ -6882,7 +6935,7 @@ class GunStage:
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
-    def _reload_s(self, slot: int | None = None) -> float:
+    def _reload_s(self, slot: int | None = None, floor: float = 0.3) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
 
         The stage exists to PREDICT the phone, so this is the phone's chain, not a literal: the ACTIVE
@@ -6909,7 +6962,7 @@ class GunStage:
         # compile applies reload_mult to slot 0 only, and never to a bolt (ammo.js `_reloadPulled`, F573 review; F587)
         if rm and float(rm) > 0 and float(rm) != 1 and sl == 0 and (row or {}).get("reload_type") != "bolt":
             secs *= float(rm)
-        return max(0.3, round(secs * 1000) / 1000)
+        return max(floor, round(secs * 1000) / 1000)   # a chain's shell has no floor (ammo.js `reloadPulled`, chain review)
 
     def perk_effects(self, perk_id: str | None) -> dict:
         """engine.js `perkEffects(id)`: a perk's effects as THIS game resolves them. The Shields variant (Extended Mags
@@ -6970,6 +7023,8 @@ class GunStage:
         if not r:
             return
         self.reloading = None
+        if r.get("chain") and why != "filled":
+            r["stopped"] = True   # ammo.js `endReload` (chain review): a shell still queued is not sent
         gained = max(0, (r.get("mag") if r.get("mag") is not None else r["from"]) - r["from"])
         self.reload_outcome = {"ok": gained > 0, "filled": (r["mag"] >= r["cap"]) if r["cap"] is not None else gained > 0,
                                "from": r["from"], "to": r["mag"], "cap": r["cap"], "gained": gained,
@@ -7017,10 +7072,34 @@ class GunStage:
             return
         give = min(cap - mag, res); to = mag + give; left = res - give
         self._log(f"charge lock on slot {slot}: cell {mag} below a {cost}-round charge, heat {heat}: reloading for the player {mag} -> {to}, reserve {res} -> {left} (F226)", "info")
+        a0 = self._shot_acct.get(slot); until0 = a0["echo_until"] if a0 else 0.0
         self._acct_wrote(slot, to, left)
-        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0))
+        own = (self._life_queued, (self._shot_acct.get(slot) or {}).get("echo_gen"), until0)
+        self._spawn_task(self._charge_lock_send(slot, mag, res, to, left, own))
         self._hold_accuracy_writes("F226 reload")
         self._auto_reload(slot, mag, to, cap)
+
+    async def _charge_lock_send(self, slot: int, mag: int, res: int, to: int, left: int, own: tuple) -> None:
+        """engine.js `_chargeLock`'s send (Codex pass 2026-11-07 r3): a write that never left gave the gun nothing."""
+        life, gen, until0 = own
+        try:
+            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0)
+        except Exception:
+            ok = False
+        if ok is False:
+            self._charge_lock_unwrite(slot, mag, res, to, life, gen, until0)
+
+    def _charge_lock_unwrite(self, slot: int, mag: int, res: int, to: int, life: int, gen: int | None,
+                             until0: float | None = None) -> None:
+        """engine.js `_chargeLockUnwrite`: the account back, the reload ended as not taken, the once-per-lock latch freed."""
+        if life != self._life_queued or not self._acct_unwrite(slot, mag, res, to, gen, until0):
+            return
+        r = self.reloading
+        if r and r.get("auto") and r["slot"] == slot and r["mag"] == to:
+            r["mag"] = mag; self._end_reload("dropped")
+        if self._charge_lock_fix and self._charge_lock_fix["slot"] == slot:
+            self._charge_lock_fix = None
+        self._log(f"charge lock on slot {slot}: the reload write failed before it left: the cell is still {mag} (F226)", "error")
 
     def _auto_reload(self, slot: int, frm: int, to: int, cap: int | None) -> None:
         """ammo.js `autoReload` (F226): the phone's own reload shows as a reload for the weapon's reload time, then
@@ -7049,6 +7128,11 @@ class GunStage:
                 self._end_reload("dropped")
                 return
             r["mag"] = to
+            # ammo.js `reloadTick` (Tony 2026-11-07): a chain loads one shell a reload time until full or out of reserve
+            if r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0:
+                r["at"] = max(r["at"] + r["s"], self.now() - r["s"] / 2); r["last_gain_at"] = self.now()   # chain review: the reload's pace
+                self._spawn_task(self._reload_watchdog(dict(r)))
+                return
             self._end_reload("filled")
             return
         if self.reloading and self.now() > self._reload_deadline():

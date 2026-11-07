@@ -4896,6 +4896,21 @@ test('F226: a charge from 4 rounds (heat 156, no round) gets one reload written 
   assert.equal(h.eng.state().ammo, 4 + give, 'the HUD reads the refilled cell');
 });
 
+test('F226 (Codex pass 2026-11-07 r3): a charge-lock `$AMMO` that failed before it left is no reload, and the next locked report writes again', async () => {
+  const { h, cap, res, ammo } = chargeHarness();
+  const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => fr.some(f => f.startsWith('$AMMO,0,')) ? Promise.resolve(false) : real(fr, why, o);
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  assert.equal(h.eng.state().reloading, true, 'setup: the HUD shows the phone\'s reload');
+  await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.equal(h.eng.state().reloading, false, 'the gun got nothing: no reload on the HUD');
+  assert.equal(h.eng.am.reloadOutcome?.ok, false, 'booked as a reload that did not take');
+  assert.equal(h.eng.am.acctLive(0), 4, 'the account is back at the starved cell');
+  const before = ammo().length, give = Math.min(cap - 4, res);
+  h.frame(`$ALCD,4,100,0,${res},156,*`);                     // the player presses again on the still-locked gun
+  assert.deepEqual(ammo().slice(before), [`$AMMO,0,${4 + give},${res - give},1,*`], 'the lock is written for again');
+});
 test('F226: with no echo from the gun, the phone\'s reload still ends after the weapon\'s reload time', () => {
   const { h, res } = chargeHarness();
   h.frame(`$ALCD,4,100,0,${res},156,*`);
@@ -5559,13 +5574,136 @@ test('F650 review H1: the phone\'s $AMMO goes as a write of its own, never in a 
   assert.ok(b, 'setup: the phone wrote the reload');
   assert.deepEqual(b.filter(f => !f.startsWith('$AMMO,')), [], 'no $PLAY rides with the $AMMO');
 });
-test('F650 review H2: a chain weapon in hand keeps the gun\'s own reload', () => {
-  const h = liveSwapHarness();
+// Tony 2026-11-07 (option a, "the shotgun needs to reload shell by shell"): one lever always loads the weapon in hand, a chain
+// too. When the gun's lever goes to the slot fired last, the phone loads the chain itself, one `$AMMO` a shell every reload_s.
+function chainInHand(h, { mag = 2 } = {}) {
   const row = h.eng.weaponRow.bind(h.eng);
   h.eng.weaponRow = id => (id === 'smg' ? { ...(row(id) || {}), reload_type: 'chain', reload_s: 0.4 } : row(id));
-  morningOnSlot1(h);
+  f542Shot(h, '$ALCD,31,100,0,384,0,*');
+  f542Alt(h); f542Shot(h, `$ALCD,${mag},100,1,288,0,*`);
+  f542Alt(h); f542Shot(h, '$ALCD,30,100,0,384,0,*');               // the rifle fires last, and has room
+  f542Alt(h);
+  assert.equal(h.eng.state().activeSlot, 1, 'setup: the chain in hand, the rifle fired last');
+}
+const shellRows = (h, n) => h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,'));
+// one shell time on, then the write settles (the app ticks every 250 ms, so a settled write is the real order)
+const shellTick = async (h, ms = 400) => { h.adv(ms); h.eng.tick(); await new Promise(r => setImmediate(r)); };
+test('Tony 2026-11-07: the lever loads a chain in hand shell by shell when the gun\'s lever goes to the slot fired last', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const n = h.writes.length;
   f542Lever(h);
-  assert.equal(h.eng.am.reloading && h.eng.am.reloading.soft, false, 'no phone reload of a shell-by-shell tube');
+  const r = h.eng.am.reloading;
+  assert.ok(r && r.soft && r.chain && r.ms === 400, 'the phone loads the chain');
+  assert.equal(h.eng.state().reloading, true, 'the HUD shows RELOADING');
+  for (let k = 1; k <= 3; k++) {
+    await shellTick(h);
+    assert.deepEqual(shellRows(h, n), Array.from({ length: k }, (_, i) => `$AMMO,1,${2 + i + 1},${288 - i - 1},1,*`), `shell ${k}`);
+    assert.equal(h.eng.state().ammo, 2 + k);
+    assert.equal(h.eng.state().reloading, true, 'still loading');
+  }
+});
+test('Tony 2026-11-07: a trigger pull ends the phone\'s chain and the shells already written stay', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const n = h.writes.length;
+  f542Lever(h); await shellTick(h); await shellTick(h);
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.state().reloading, false);
+  assert.equal(h.eng.am.reloadOutcome.why, 'fired'); assert.equal(h.eng.am.reloadOutcome.gained, 2);
+  h.frame('$ALCD,3,100,1,286,0,*'); h.frame('$BUT,0,0,*');
+  h.adv(2000); h.eng.tick();
+  assert.equal(shellRows(h, n).length, 2, 'no shell after the pull');
+  assert.equal(h.eng.state().ammo, 3);
+});
+test('Tony 2026-11-07: ALT the gun takes ends the phone\'s chain', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  h.eng.am.prevAmmo[0] = h.eng.am.ammoBySlot()[0];                 // the rifle is full: the gun's lever does nothing, ALT is a swap
+  const n = h.writes.length;
+  f542Lever(h); await shellTick(h);
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.am.reloadOutcome.why, 'swapped');
+  h.adv(2000); h.eng.tick();
+  assert.equal(shellRows(h, n).length, 1, 'one shell, then nothing');
+});
+test('Tony 2026-11-07: the chain stops when the reserve runs out', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  h.eng.am.prevReserve[1] = 2;
+  const n = h.writes.length;
+  f542Lever(h); await shellTick(h); await shellTick(h); await shellTick(h);
+  assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,1,1,*', '$AMMO,1,4,0,1,*']);
+  assert.equal(h.eng.am.reloadOutcome.why, 'filled'); assert.equal(h.eng.state().reloading, false);
+});
+test('Tony 2026-11-07: a shell whose write failed before it left is rolled back, and the next shell loads from the gun\'s count', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let failNext = true;
+  h.eng.writer = (fr, why, o) => (failNext && fr.some(f => f.startsWith('$AMMO,1,')) ? (failNext = false, Promise.resolve(false)) : real(fr, why, o));
+  const n = h.writes.length;
+  f542Lever(h); await shellTick(h);
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'the failed shell is off the books');
+  await shellTick(h);
+  assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,287,1,*'], 'the next shell loads from 2');
+  h.eng.writer = real;
+});
+test('Tony 2026-11-07: a chain that fired last keeps the gun\'s own chain, never both', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  f542Shot(h, '$ALCD,1,100,1,288,0,*');                           // the chain in hand fires: now it is the slot fired last
+  const n = h.writes.length;
+  f542Lever(h);
+  assert.ok(h.eng.am.reloading && !h.eng.am.reloading.soft, 'the gun loads it');
+  h.adv(2000); h.eng.tick();
+  assert.deepEqual(shellRows(h, n), [], 'no `$AMMO` from the phone');
+});
+test('chain review (Codex): one shell on the link at a time, so a failed shell rolls back cleanly before the next is booked', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let settle = null;
+  h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,')) ? new Promise(r => { settle = r; }) : real(fr, why, o));
+  f542Lever(h); await shellTick(h);
+  const first = settle; assert.ok(first, 'setup: shell 1 is on the link');
+  settle = null; await shellTick(h);
+  assert.equal(settle, null, 'no second shell while the first is unsettled');
+  first(false); await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'the failed shell is off the books');
+  h.eng.writer = real; const n = h.writes.length;
+  await shellTick(h);
+  assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,287,1,*'], 'the next shell loads from the gun\'s count');
+});
+test('chain review (Codex): a shell still queued when the trigger stops the chain is not sent, and is rolled back', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let release = null;
+  h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,'))
+    ? new Promise(r => { release = () => r(o && o.shouldSend && !o.shouldSend() ? null : (o && o.onFrameSent && o.onFrameSent(fr[0]), true)); })
+    : real(fr, why, o));
+  f542Lever(h); await shellTick(h);
+  assert.ok(release, 'setup: shell 1 waits behind other traffic');
+  h.frame('$BUT,0,1,*');                                           // the trigger stops the chain
+  release(); await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'the unsent shell is off the books');
+  assert.equal(h.eng.state().ammo, 2);
+});
+test('chain review (Codex): shells keep the reload\'s pace on the app\'s 250 ms tick', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const n = h.writes.length;
+  f542Lever(h);
+  for (let k = 0; k < 5; k++) await shellTick(h, 250);           // 1250 ms: shells due at 400, 800, 1200
+  assert.equal(shellRows(h, n).length, 3);
+});
+test('chain review (Codex): a chain\'s shell time has no 300 ms floor (Fast Hands)', () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const row = h.eng.weaponRow.bind(h.eng);
+  h.eng.weaponRow = id => (id === 'smg' ? { ...(row(id) || {}), reload_s: 0.2 } : row(id));
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.ms, 200);
 });
 test('F650 review M1: ALT during the phone\'s reload, the last-fired slot full, is a swap and the reload is dropped', () => {
   const h = liveSwapHarness();
@@ -5795,6 +5933,56 @@ test('Codex pass 2026-11-07 r2: ALT stays held after the phone\'s reload lands w
   h.frame('$ALCD,32,100,1,88,0,*');                                // slot 1's refill lands: the hold ends
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true);
+});
+test('Codex pass 2026-11-07 r3: the other slot\'s refill landing during the phone\'s reload ends the ALT hold', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // slot 1 fired last; the phone reloads slot 0
+  f542Lever(h);
+  assert.ok(h.eng.am.reloading.soft && h.eng.am.gunOther, 'setup: the hold runs');
+  const cap1 = h.eng.am.ammoBySlot()[1];
+  h.adv(300); h.frame(`$ALCD,${cap1},100,1,200,0,*`);              // the gun's lever filled slot 1 first
+  assert.equal(h.eng.am.gunOther, null, 'the gun is no longer reloading: no hold');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'ALT is a swap again');
+});
+test('Codex pass 2026-11-07 r3: a chain\'s shell on the held-back slot keeps the ALT hold for one more shell', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // slot 1 at 2
+  f542Lever(h);
+  const g = h.eng.am.gunOther; assert.ok(g, 'setup: the hold runs');
+  h.adv(300); h.frame('$ALCD,3,100,1,286,0,*');                    // one shell of a chain: slot 1 not full
+  assert.ok(h.eng.am.gunOther, 'the chain goes on, and so does the hold');
+  assert.ok(h.eng.am.gunOther.until >= h.eng.now() + h.eng.am.reloadMsOf(1), 'for one more shell from now');
+  h.adv(h.eng.am.reloadMsOf(1)); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun still chains, so it ignores ALT');
+});
+test('Codex pass 2026-11-07 r3: a failed write puts back the echo window as it stood, not stretched', async () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);
+  f542Lever(h);
+  h.adv(h.eng.am.reloading.ms - 300); h.eng.tick();
+  const res = h.eng.am.prevReserve[0];
+  h.eng.am.acctWrote(0, 29, res);                                 // an older write at the same count, still unanswered
+  const until0 = h.eng.am.acct[0].echoUntil;
+  let settle; const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => fr.some(f => f.startsWith('$AMMO,0,')) ? new Promise(r => { settle = r; }) : real(fr, why, o);
+  h.adv(310); h.eng.tick();
+  assert.ok(h.eng.am.acct[0].echoUntil > until0, 'setup: the reload write stretched the window');
+  h.eng.writer = real; settle(false); await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.am.acct[0].echoUntil, until0, 'the older window closes on its own time');
+  assert.equal(h.eng.am.acct[0].echoExpect, 29, 'and still waits for its own echo');
+});
+test('Codex pass 2026-11-07 r3: a round the gun reported before the failure settled is one round, and the reserve is back', async () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // on slot 0 at 29
+  const res = h.eng.am.prevReserve[0], shots0 = h.eng.shots;
+  const fail = failingSoftReload(h);
+  h.adv(30); h.frame('$BUT,0,1,*'); h.adv(5); h.frame('$ALCD,28,100,0,' + res + ',0,*'); h.frame('$BUT,0,0,*');   // fired from 29
+  await fail();
+  assert.equal(h.eng.shots - shots0, 1, 'one round, not four');
+  assert.equal(h.eng.am.prevAmmo[0], 28); assert.equal(h.eng.am.prevReserve[0], res, 'the reserve the gun still holds');
+  assert.equal(h.eng.state().ammo, 28); assert.equal(h.eng.state().reserve, res);
 });
 test('F650: a shotgun chain on the last-fired slot books shell by shell while the phone reloads the weapon in hand', () => {
   const h = liveSwapHarness();

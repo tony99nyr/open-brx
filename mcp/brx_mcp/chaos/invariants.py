@@ -15,7 +15,7 @@ import re
 from typing import NoReturn
 
 from .match_access import match_scorer
-from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS
+from ..mc.types import AWARDS, CLOCK_TIE_MS, MEDALS, MULTI_KILL_MS, OWNERSHIP_SCORED_MODES
 from .registry import InvariantError, invariant
 from .world import World
 
@@ -424,11 +424,26 @@ def game_byte_matches_stations(world: World) -> None:
                   f"node {n.index} holds game_byte {cfg.get('game_byte')!r}; MC arms stations with {want}")
 
 
+def _phone_timed(world: World) -> bool:
+    """Domination scored from the phones' owner timelines (Tony 2026-11-07): an owned hill scores while MC is down, so
+    the points grow across a restart, and the target can be crossed on the new MC's clock."""
+    cfg = getattr(world.session, "config", None) or {}
+    return cfg.get("mode") in OWNERSHIP_SCORED_MODES and bool(getattr(match_scorer(world.session), "own_changes", None))
+
+
+def _target_ended_in_restart(world: World, c: dict) -> bool:
+    return (_phone_timed(world) and c.get("phase_before") == "live" and c["after"].get("phase") == "recap"
+            and world.session.end_reason == "hold_target")
+
+
 @invariant("snapshot_survives_restart")
 def snapshot_survives_restart(world: World) -> None:
-    """An MC restart mid-match brings back the same match, phase and board."""
+    """An MC restart mid-match brings back the same match, phase and board (a phone-timed Domination match may come back
+    ended: its target was crossed on the clock while MC restarted)."""
     for c in world.restart_checks:
         b, a = c["before"], c["after"]
+        if _target_ended_in_restart(world, c) and (b["match_id"], b["rows"]) == (a["match_id"], a["rows"]):
+            continue
         # A46 (2): a pre-match restart boots in MUSTER by design; the match id and the board must still hold.
         want_phase = "muster" if b["phase"] in PRE_MATCH else b["phase"]
         if (b["match_id"], want_phase, b["rows"]) != (a["match_id"], a["phase"], a["rows"]):
@@ -654,6 +669,10 @@ RESTART_KNOWN: dict[str, str] = {
 _VOLATILE_RE = re.compile("^(?:" + "|".join(f"(?:{k})" for k in {**RESTART_VOLATILE, **RESTART_KNOWN}) + ")$")
 
 
+_POSSESSION_RE = re.compile(r"^(live|recap)\.possession\.(by_team\..*|neutral_s)$")
+_WINNER_RE = re.compile(r"^(live|recap)\.winner(\..*)?$")   # a provisional winner follows the growing points
+
+
 FEED_SHOWN = 50   # `Session._snapshot_feed` shows the newest 50 lines
 
 
@@ -698,11 +717,21 @@ def state_survives_restart(world: World) -> None:
     for c in world.restart_checks:
         if "state_before" not in c:
             continue
+        ended = _target_ended_in_restart(world, c)   # the match ended in the restart: only config and bindings must hold
         b, a = _comparable(c["state_before"]), _comparable(c["state_after"])
         fb, fa = _flat(b), _flat(a)
+        if _phone_timed(world):
+            # an owned hill scored while MC restarted: its points may grow, never shrink
+            grew = [k for k in set(fb) & set(fa) if _POSSESSION_RE.match(k) and isinstance(fb[k], int)
+                    and isinstance(fa[k], int) and fa[k] >= fb[k]]
+            for k in grew:
+                fa[k] = fb[k]
+            for k in [k for k in set(fb) | set(fa) if _WINNER_RE.match(k)]:   # the final winner: `domination_hills_check`
+                fb.pop(k, None)
+                fa.pop(k, None)
         gone = object()                  # a key that vanished differs from one that holds None
         in_play = c.get("phase_before") in ("armed", "live")
-        full = in_play and not c.get("crash")
+        full = in_play and not c.get("crash") and not ended
         # The config is frozen in play, so even a crash keeps it; a pre-match crash may lose an edit made in the last
         # debounce window (2 s), so only a CLEAN pre-match restart is held to it.
         config_only = not full and (in_play or not c.get("crash"))

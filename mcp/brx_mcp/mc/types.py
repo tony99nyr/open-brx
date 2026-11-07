@@ -270,6 +270,8 @@ STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE"
 # F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
 # an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658.
 LIVE_BIT_MIN_APP = "0.4.34"
+# Tony 2026-11-07: the first app that sends `own_change` (brx2). An older phone's hill is scored from its possession tally.
+OWN_CHANGE_MIN_APP = "0.4.36"
 
 
 def station_old_app_line(n: int, kind: str = "control") -> str:
@@ -969,6 +971,9 @@ class GameConfigBase(TypedDict):
     game_byte: NotRequired[int]          # F-hotfix (contracts A-row): the advert `game` byte (1..255) MC arms its stations with
     #                                     (`station_config.game`) for THIS match. Set by `Session._wire_config()`; a player phone
     #                                     scopes presence and its own advert by it. Absent (an older MC) = 0, any game.
+    own_change: NotRequired[bool]        # Tony 2026-11-07: Domination only, set by `Session._wire_config()`. True = this MC
+    #                                     scores the hills from the phones' `own_change` facts, so the phone sends them.
+    #                                     Absent (an older MC, which rejects the fact) = send `possession` only.
     respawn_auto_teams: NotRequired[list[int]]  # Derived scanner fallback: teams without a station use timed AUTO respawn.
     station_source: NotRequired[str]    # F70: what is emitting this game's objective -- `STATION_SOURCES` above
     #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
@@ -1372,7 +1377,7 @@ class OutboxLostReport(TypedDict):
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "operator_result", "pickup"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "own_change", "operator_result", "pickup"]
     t: int
     match_id: str | None
     node_id: str
@@ -1429,6 +1434,13 @@ class Event(TypedDict, total=False):
     hold_ms: dict[str, int]
     observed_ms: int
     source: Literal["beacon", "station"]
+    # own_change (Tony 2026-11-07, Domination): the owner in a hill's advert changed, as this phone heard it (`site` as
+    # above). `from_tid` is the owner the phone heard before; `from_tid` == `owner_tid` re-asserts what it hears (first
+    # hearing, after a gap, every 30 s). `at_ms` is when it heard it, on MC's clock. MC builds one owner timeline per hill
+    # from every phone's facts (`ownership.owned_ms`).
+    from_tid: int
+    owner_tid: int
+    at_ms: int
     # status
     hp: int
     armor: int

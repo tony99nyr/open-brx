@@ -321,7 +321,9 @@ class World:
         # `__main__` runs `Session.tick()` about once a second; faster here so a run does not wait on it.
         while True:
             try:
-                if self.stack is not None:
+                # not while MC restarts: a stopped or crashed MC does not tick, and the old Session ticked during the
+                # restart's await could end the match after the new MC had read the snapshot (a phone-timed target)
+                if self.stack is not None and not self._resuming:
                     self.stack.session.tick()
             except Exception as e:     # recorded for `tick_never_raises`; the loop goes on, as `api.py`'s does
                 self.tick_errors.append(f"{type(e).__name__}: {e}")
@@ -353,13 +355,13 @@ class World:
         s.on_change(changed)
         orig = s._finish
 
-        def finish() -> None:
+        def finish(**kw) -> None:   # `resuming=True` when a resume ends the match (a target crossed while MC was down)
             head, scorer = match_head(s), match_scorer(s)
             self.finishes.append({"gen": gen, "phase": s.phase, "reason": s.end_reason, "at_ms": s.now_ms(),
                                   "mono": time.monotonic(),   # F451: the ORDER across a clock step (MC's clock can step back)
                                   "match_id": (head or {}).get("match_id") or (scorer.match_id if scorer else None),
                                   "step": self.step})
-            orig()
+            orig(**kw)
         setattr(s, "_finish", finish)      # every internal `self._finish()` now goes through here
         net, orig_push = s.net, s.net.push
 
