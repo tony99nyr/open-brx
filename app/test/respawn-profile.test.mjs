@@ -367,3 +367,21 @@ test('F645: T-3 re-sends the head\'s $GSET before the live table, once per match
   h.adv(5000);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$GSET,')), [ffaGset], 'not repeated in play');
 });
+test('F645 review 2026-11-06: a T-3 $GSET write that fails rides in front of the T-0 spawn burst', async () => {
+  // `_preArmed` is set before the T-3 write settles, so a failed `$GSET` was never sent again: the gun kept the
+  // try-out's friendly fire off for the match, the exact F645 fault. The T-0 burst must carry it.
+  const ffaGset = '$GSET,1,0,1,0,1,0,0,1,*';
+  const head = golden.head.map(f => (f.startsWith('$GSET,') ? ffaGset : f));
+  const h = harness({ bundle: { ...golden, head }, mode: 'ffa', leadMs: 10000 });
+  const write = h.eng.writer; let failed = 0;
+  h.eng.writer = (fr, why) => { const r = write(fr, why); if (!failed && fr.includes(ffaGset)) { failed++; return false; } return r; };
+  const n = h.mark();
+  const goLive = h.now() + 10000;
+  while (h.now() < goLive - 2500) h.adv(250);
+  await new Promise(r => setImmediate(r));   // the failed write settles
+  assert.equal(failed, 1, 'setup: the T-3 $GSET write failed');
+  while (h.now() < goLive + 200) h.adv(250);
+  const w = h.since(n), g = w.lastIndexOf(ffaGset);
+  assert.equal(w.filter(f => f === ffaGset).length, 2, 'sent again after the failed T-3 write');
+  assert.ok(g >= 0 && w.indexOf(LIVE) > g, 'before the T-0 spawn maps the trigger');
+});

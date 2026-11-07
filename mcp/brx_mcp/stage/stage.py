@@ -1013,6 +1013,7 @@ class GunStage:
         self._down_warn = 1                        # the down-screen warning level, 1..DOWN_WARN_MAX
         self._timed_life_at: float | None = None   # now() of the last timed revive, for the spawn-kill window
         self._shield_at = float("-inf")            # the last shield re-assert after a hit
+        self._gset_armed = False                   # engine.js `_gsetArmed` (review 2026-11-06): the T-3 $GSET write did not fail
         self._pre_armed = False                    # engine.js `_preArmed`: the T-3 table take is written once per match
         # F121 rebuild (engine.js `_sirLive` / `_sirGen`): is the gun's `$SIR` table the live one? Any write with a
         # `$SIR` row or `$CLEAR` makes it False and bumps the generation; a `sir_pool` take claims it.
@@ -1045,6 +1046,8 @@ class GunStage:
         self._last_shot_life: int | None = None    # ammo.js `lastShot.life`: the life of the last round from slot 0 or 1
         self._last_shot_slot: int | None = None    # ammo.js `lastShot.slot` (F542: the lever reloads it until the new weapon fires)
         self._lever_at: float | None = None        # ammo.js `leverAt`: the last lever pull while live and alive, refused or not
+        self._gun_other: dict | None = None        # ammo.js `gunOther` (review 2026-11-06): a refused lever the gun spends on the last-fired slot
+        self._pull_at: float | None = None         # engine.js `_pull.at`: the last trigger press (review 2026-11-06 M1)
         self._fire_first: dict | None = None       # ammo.js `fireFirst` (F542): {slot, at, life} behind PULL THE TRIGGER, THEN RELOAD
         self._burst_reached: dict | None = None    # engine.js `_burstReached`: {life, at} when this life's burst reached the gun
         self._cure: dict | None = None
@@ -3178,8 +3181,12 @@ class GunStage:
             return
         self._pre_armed = True
         gset = self._head_gset()   # F645: re-send the head's friendly-fire setting (engine.js `_preArmTable`)
+        self._gset_armed = True
         if gset:
-            await self.write([gset], "friendly-fire setting again (F645)")
+            ok = await self.write([gset], "friendly-fire setting again (F645)")
+            if ok is False:   # engine.js `_preArmTable` (review 2026-11-06): a failed T-3 write rides in front of the T-0 burst
+                self._gset_armed = False
+                self._log("T-3 $GSET write failed: the T-0 spawn carries it (F645)", "warn")
         if self._sir_live:
             return
         take = self._pick_table("sir_pool")
@@ -3339,7 +3346,7 @@ class GunStage:
         rp = self._respawn_profile()
         late = self._pick_table("sir_pool") if rp and not self._sir_live else []
         # F645 (engine.js `_spawn`): a start that missed T-3 never re-sent the head's `$GSET`, so it rides first here
-        gset_late = self._head_gset() if not self._pre_armed else None
+        gset_late = self._head_gset() if not self._pre_armed or not self._gset_armed else None   # review 2026-11-06: or its T-3 write failed
         gset_pre = [gset_late] if gset_late else []
         if rp and not late and not self._sir_live:
             self._log("T-0 spawn: no live hit table to write (no sir_pool)", "error")
@@ -4007,6 +4014,7 @@ class GunStage:
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
             self._ann.clear(); self._gun_audio.clear()   # engine.js `onBleDropped`: no announcer line, no audio model
             self._light_gen += 1
+            self._gun_other = None
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
@@ -4017,6 +4025,7 @@ class GunStage:
             ev = self.mgr.get_events(self.alias, since_seq=self._last_seq)
         except Exception as e:
             self._log(f"link lost: {e}", "warn"); self.connected = False
+            self._gun_other = None
             self._end_reload("dropped")            # same drop, discovered a different way: same takeover verdict
             self.switching = None; self.held = {}
             self._hill_reset()
@@ -5189,6 +5198,7 @@ class GunStage:
         self._timed_life_at = None
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0   # S29: the heartbeat stops with the life
         self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
+        self._gun_other = None   # ammo.js `dropReload` (review 2026-11-06 r2)
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
         self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
         # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind
@@ -5624,6 +5634,7 @@ class GunStage:
             # phone also counts a held pickup's slot, which the stage never has (`pu.*` is KNOWN_UNMIRRORED).
             self._last_shot_life = self._life_queued
             self._last_shot_slot = slot
+            self._gun_other = None    # ammo.js `onAmmo` (review 2026-11-06 r2): a round ends the ALT hold
             self._fire_first = None   # engine.js `state().fireFirst`: a shot retires the hint
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
             self._arm_life("first shot")   # 2026-09-19: a profile life never ends on a shot
@@ -5685,6 +5696,8 @@ class GunStage:
             self._log(f"reload landed on slot {slot} after the swap to slot {r0['swap_to']}; the trigger stays", "info")
             return
         if last_fired_reload:
+            if self._gun_other and self._gun_other["slot"] == slot:
+                self._gun_other = None   # ammo.js `onAmmo` (review 2026-11-06): the gun's reload of it landed
             self._prev_ammo[slot] = mag
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
@@ -5742,6 +5755,7 @@ class GunStage:
             elif bid == 2:
                 self._reload_pulled()
             elif bid == 0:
+                self._pull_at = now                # engine.js `_pull`
                 # engine.js `_onButton` (F542 review): a pull while this life's burst is still queued is before its `$SPAWN`,
                 # so the gun still wants a pull after it (F436): it does not arm ALT for the life. The engine asks the narrower
                 # `_lifeBurst.life === _lifeSeq` here; the stage's record is always this life's, so the answers agree.
@@ -5801,6 +5815,10 @@ class GunStage:
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
+        g = self._gun_other   # ammo.js `altPressed` (review 2026-11-06): a refused lever the gun spent on the other slot
+        if not r and g and g["life"] == self._life_queued and self.now() < g["until"]:
+            self._log(f"ALT ignored by the gun while it reloads slot {g['slot']}, the slot fired last", "info")
+            return
         if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
                 and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
@@ -6052,6 +6070,7 @@ class GunStage:
             self._log(f"⚡ stun extended: {math.ceil(self.stunned['until'] - now)} s left", "info")
             return
         live = self._live_ammo()
+        self._gun_other = None   # engine.js `_stun` (review 2026-11-06 r2): the disarm cuts the gun's own reload
         self.stunned = {"at": now, "until": now + s, "ammo": live}
         self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60))
         self._hold_accuracy_writes("stun disarm")   # engine.js `_stun`: a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
@@ -6665,8 +6684,10 @@ class GunStage:
             cap = self.mag                      # ammo.js `reloadPulled`: `ammoBySlot()[slot] ?? this.host.mag`
         if cap and self.ammo is not None and self.ammo >= cap and (self.reserve or 0) > 0:
             self._log(f"reload pull ignored: mag full ({self.ammo}/{cap}) with reserve -- the gun ignores it", "info")
+            self._note_gun_other()
             return
         if not (self.reserve is not None and self.reserve > 0):
+            self._note_gun_other()
             self._log("reload pull ignored: no reserve known (the gun reports ammo on a shot: fire once, or inject $ALCD)"
                       if self.reserve is None else "reload pull ignored: dry reserve -- nothing to reload", "info")
             return
@@ -6703,6 +6724,25 @@ class GunStage:
         known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
         return ls != active if known else active != 0
 
+    def _note_gun_other(self) -> None:
+        """ammo.js `noteGunOther` (review 2026-11-06): the phone refused the lever, but the gun spends it on the slot that
+        fired last when that slot has room and reserve (F542), and ignores ALT while it reloads."""
+        self._gun_other = None
+        ls, a = self._last_shot_slot, self.active_slot
+        if a not in (0, 1) or ls is None or ls >= 2 or self._last_shot_life != self._life_queued or ls == a:
+            return
+        cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
+        if (cap and mag is not None and mag >= cap) or res == 0:
+            return
+        s = self._reload_s(ls)
+        # round 3: an energy weapon's recharge lands late (ammo.js `noteGunOther`, as `_reload_deadline`)
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[ls] if ls < len(ws) else None) or {}
+        energy = bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id"))
+        hold = max(s * self.GUN_RELOAD_MAX_X, self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S if energy else 0.0)
+        self._gun_other = {"slot": ls, "until": self.now() + hold, "life": self._life_queued}
+        self._log(f"lever on a full slot {a}: the gun reloads slot {ls}, the slot fired last", "info")
+
     def _gun_reloads_other(self, r: dict | None = None) -> bool:
         """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
         last (room and reserve)? Only then does the gun ignore ALT."""
@@ -6731,7 +6771,7 @@ class GunStage:
         if snd:
             self._spawn_task(self.write([f"$PLAY,,4,6,{snd[0]},,,,*"], "F650: reload sound (start)", gap_ms=0))
 
-    def _soft_reload_write(self, r: dict) -> int | None:
+    def _soft_reload_write(self, r: dict) -> int | str | None:
         """engine.js `_softReloadWrite` (F650): `$AMMO` for the weapon in hand from its own counts and reserve. Returns the
         new magazine, or None when the write must not go out."""
         slot = r["slot"]
@@ -6745,6 +6785,15 @@ class GunStage:
         mag = self._acct_live(slot)
         if mag is None:
             mag = self._prev_ammo.get(slot, r.get("mag"))
+        # engine.js `_softReloadWrite` (review 2026-11-06 M1): wait while a pull may still bring a round, at most ACC_ECHO_S.
+        # The engine reads `acctLive ?? prevAmmo` here, with no fallback to the reload's own count.
+        now = self.now()
+        m = self._acct_live(slot)
+        if m is None:
+            m = self._prev_ammo.get(slot)
+        if (m is not None and m > 0 and now - (r["at"] + r["s"]) < self.ACC_ECHO_S
+                and (0 in self.held or (self._pull_at is not None and now - self._pull_at < self.ACC_ECHO_S))):
+            return "wait"
         res = self._prev_reserve.get(slot)
         if not cap or mag is None or not (res is not None and res > 0):
             self._log(f"F650: reload of slot {slot} dropped: counts unknown (mag {mag}, reserve {res})", "info")
@@ -6773,7 +6822,7 @@ class GunStage:
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         return is_energy_class((row or {}).get("weapon_class"), w.get("weapon_id"))
 
-    def _reload_s(self) -> float:
+    def _reload_s(self, slot: int | None = None) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (ammo.js `reloadPulled`).
 
         The stage exists to PREDICT the phone, so this is the phone's chain, not a literal: the ACTIVE
@@ -6790,14 +6839,15 @@ class GunStage:
         secs = 1.5
         lo = (self.player or {}).get("loadout") or {}
         ws = lo.get("weapons") or []
-        w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or (ws[0] if ws else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
+        sl = self.active_slot if slot is None else slot   # ammo.js `reloadMsOf(slot)` names another slot
+        w = (ws[sl] if sl < len(ws) else None) or ((ws[0] if ws else None) if slot is None else None) or {}   # ammo.js `ws[activeSlot] || ws[0]`
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
         ms = ((row or {}).get("stats") or {}).get("reload_ms")
         if ms:
             secs = round(ms / 1000, 1)
         rm = self.perk_effects(lo.get("perk")).get("reload_mult")
         # compile applies reload_mult to slot 0 only, and never to a bolt (ammo.js `_reloadPulled`, F573 review; F587)
-        if rm and float(rm) > 0 and float(rm) != 1 and self.active_slot == 0 and (row or {}).get("reload_type") != "bolt":
+        if rm and float(rm) > 0 and float(rm) != 1 and sl == 0 and (row or {}).get("reload_type") != "bolt":
             secs *= float(rm)
         return max(0.3, round(secs * 1000) / 1000)
 
@@ -6831,6 +6881,7 @@ class GunStage:
     ALT_LATE_ROUND_S = 0.25  # ammo.js ALT_LATE_ROUND_MS (F542 cause 2): an old-slot round this long after ALT was not in flight
     RELOAD_GRACE_S = 0.6
     RELOAD_OVERRUN = 0.5
+    GUN_RELOAD_MAX_X = 1.3   # ammo.js GUN_RELOAD_MAX_X (review 2026-11-06): F27 measured the gun's refill at 1.22-1.29x reload_s
     ENERGY_REFILL_MAX_S = 3.9   # engine.js ENERGY_REFILL_MAX_MS (pl4: a held recharge landed 3.5-3.9 s after the pull)
 
     def _reload_deadline(self) -> float:
@@ -6932,6 +6983,8 @@ class GunStage:
             return
         if self.reloading and self.reloading.get("soft") and self.now() >= self.reloading["at"] + self.reloading["s"]:
             r = self.reloading; to = self._soft_reload_write(r)   # F650 (ammo.js `reloadTick`)
+            if to == "wait":
+                return
             if to is None:
                 self._end_reload("dropped")
                 return

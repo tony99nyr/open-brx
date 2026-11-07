@@ -101,6 +101,8 @@ export const FIELDS = {
   swap: (e, s) => ({ ms: s.switchingMs, window: s.switchWindowMs, from: s.switchFrom, to: s.switchTo, last: s.lastSwitchMs }),
   heat: (e, s) => ({ heat: s.heat, overheating: s.overheating, shown: s.overheatShown, ever: s.heatEverSeen }),
   shotCooldown: (e, s) => s.shotCooldown,
+  melee: (e, s) => s.melee,   // F665: the melee-ready icon ({at, ms, leftMs}, or null), engine.js `meleeCooldown`
+  hills: (e, s) => s.hills,   // F666: Domination's row of hills, hill.js `hillsView`
   moment: (e, s) => (s.moment ? { kind: s.moment.kind, data: s.moment.data || null } : null),
 };
 export const DEFAULT_FIELDS = ['phase', 'alive', 'spawned', 'hp', 'armor', 'shield', 'activeSlot', 'ammo', 'reserve', 'deaths'];
