@@ -1,7 +1,7 @@
 // Architecture round 2, item 8: the player advert's DECISIONS, out of app.js. PURE: no plugin, no timer, no Date.now().
 // app.js (syncPlayerAdvert) keeps the plugin.beacon.start/stop calls, the busy flag that serialises them, and the log().
 // Every reason string and log line below is the one app.js printed before the move.
-import { encodeUuid, advertChangeReason, advertNeedsSnapshot, configGameByte, playerScope, PLAYER_STATE } from './beacon.js';
+import { encodeUuid, advertChangeReason, advertNeedsSnapshot, configGameByte, playerScope, PLAYER_STATE, endAgeCode } from './beacon.js';
 import { playerClaimAdvert } from './powerup.js';
 import { stationsInPlay } from './scanwatch.js';
 
@@ -28,17 +28,20 @@ const IDLE = (dir) => ({ action: null, uuid: null, mode: null, reason: null, rea
  *   okLog        the log line for a call that worked
  * Apply the result with settleAdvert().
  */
-export function directAdvert({ st, config, tid, scanOpens, dir, gate, now, busy = false }) {
+export function directAdvert({ st, config, tid, scanOpens, dir, gate, now, busy = false, endAgeMs = null }) {
   if (busy) return IDLE(dir);
   const num = st.playerNum;
   const claim = playerClaimAdvert(st.powerupClaim);
   // F658: the live bit, go-live to the whistle (the engine's phase 'live'; 'armed' is the countdown). A hill follows it.
   const liveBit = st.phase === 'live' && !st.ended ? PLAYER_STATE.live : 0;
+  // A88: an ended phone (MC's END or its own time limit) says how long ago it ended in byte 11, so a hill that missed the
+  // whistle ends the game and trims what it banked after it. `endAgeMs` is on the engine's clock (the caller's).
+  const endValue = st.ended && !liveBit && Number.isFinite(endAgeMs) ? endAgeCode(endAgeMs) : 0;
   // F658 (A86): the scope, the kinds and ids of the stations MC armed for this match (config.stations), so a station
   // counts only the players its own match put it in play for. No stations named = zeros.
   // Only a utility station reads a player advert, so a game with no stations advertises nothing.
   const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(config))
-    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits | liveBit, value: claim.value, game: configGameByte(config), ...playerScope(config) }) : null;
+    ? encodeUuid({ role: 'player', id: num, team: tid, state: (st.alive ? 1 : 0) | claim.bits | liveBit, value: claim.bits ? claim.value : endValue, game: configGameByte(config), ...playerScope(config) }) : null;
   const g = gate.clone();
   let next = dir, refreshGate = false;
   // F440: the scan reopened (a flood close, a BLE hiccup): re-assert the advert, which could have stopped silently.

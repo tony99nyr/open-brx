@@ -745,6 +745,19 @@ ADVERT_SCOPE_KIND = {"control": 1, "respawn": 2, "powerup": 4}
 ADVERT_SCOPE_ID_BITS = 16
 # A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown.
 ADVERT_CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
+# A88 (Tony 2026-11-07): a control point's Domination tally rides beside its UUID as manufacturer data: this company id
+# (the SIG test id, unregistered; a reader takes it only beside a kind-5 OBRX UUID), then 6 bytes: the game byte, a
+# flags byte (bit 0 final, bit 1 partial, high nibble ADVERT_TALLY_FORMAT), and two big-endian u16 slots, each
+# `tid << 14 | seconds` with seconds capped at ADVERT_TALLY_SECS_MAX. utility.md §5d.8 item 10.
+ADVERT_TALLY_COMPANY = 0xFFFF
+ADVERT_TALLY_FORMAT = 1
+ADVERT_TALLY_SECS_MAX = 16383
+# A88: an ended player phone's byte 11 (live and claim bits clear) = 1 + floor(seconds since its end / this), capped at 255.
+ADVERT_END_AGE_STEP_S = 4
+# A88: a hill with a recently ended game alternates its tally between the two games this often, and re-keys a tally whose
+# seconds alone changed at most this often (a new game or flag goes out at once).
+HILL_TALLY_ROTATE_MS = 4000
+HILL_TALLY_REFRESH_MS = 5000
 # The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82).
 HILL_CLAIMABLE_TIDS = frozenset({0, 1, 3})
 

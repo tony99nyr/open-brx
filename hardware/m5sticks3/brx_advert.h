@@ -4,6 +4,7 @@
 // decodes a Stick the same way it decodes a phone station. Pure C++17, header-only. The three
 // expected strings in test/test_core.cpp were produced by running the JS encoder.
 #pragma once
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -129,6 +130,60 @@ inline std::string advert_uuid(const Advert& a) {
   return s;
 }
 
+// ---- A88 (Tony 2026-11-07): the hill's Domination tally and the player's end info (beacon.js encodeTally/endAgeCode) ----
+// The tally is the 6-byte payload of a manufacturer-data field (company ADVERT_TALLY_COMPANY) beside the UUID: the game
+// byte; flags (bit 0 final, bit 1 partial, high nibble ADVERT_TALLY_FORMAT); two big-endian u16 slots `tid << 14 | s`,
+// the two tids with the most own_ms whole seconds (then the lower tid), capped at ADVERT_TALLY_SECS_MAX. An empty slot is 0.
+struct TallyView {
+  uint8_t game = 0;
+  bool final = false;
+  uint32_t own_ms[4] = {0, 0, 0, 0};
+};
+inline void encode_tally(const TallyView& t, uint8_t out[6]) {
+  int tid[4], secs[4], n = 0;
+  for (int k = 0; k < 4; k++) {
+    const uint32_t s = std::min<uint32_t>((uint32_t)contract::ADVERT_TALLY_SECS_MAX, t.own_ms[k] / 1000);
+    if (s > 0) { tid[n] = k; secs[n] = (int)s; n++; }
+  }
+  for (int i = 1; i < n; i++) {  // insertion sort: seconds descending, stable on the ascending tid order above
+    const int a = tid[i], b = secs[i];
+    int j = i - 1;
+    while (j >= 0 && secs[j] < b) { tid[j + 1] = tid[j]; secs[j + 1] = secs[j]; j--; }
+    tid[j + 1] = a; secs[j + 1] = b;
+  }
+  out[0] = t.game;
+  out[1] = (uint8_t)((contract::ADVERT_TALLY_FORMAT << 4) | (t.final ? 1 : 0) | (n > 2 ? 2 : 0));
+  for (int i = 0; i < 2; i++) {
+    const uint16_t v = i < n ? (uint16_t)((tid[i] << 14) | secs[i]) : 0;
+    out[2 + 2 * i] = (uint8_t)(v >> 8);
+    out[3 + 2 * i] = (uint8_t)(v & 0xff);
+  }
+}
+// The reverse (beacon.js decodeTally), for the tests: false when it is not a format-1 tally. `own_s` per tid, 0 = none.
+inline bool decode_tally(const uint8_t b[6], uint8_t& game, bool& final, bool& partial, uint32_t own_s[4]) {
+  if ((b[1] >> 4) != contract::ADVERT_TALLY_FORMAT) return false;
+  game = b[0];
+  final = b[1] & 1;
+  partial = (b[1] & 2) != 0;
+  for (int k = 0; k < 4; k++) own_s[k] = 0;
+  for (int i = 2; i <= 4; i += 2) {
+    const uint16_t v = (uint16_t)((b[i] << 8) | b[i + 1]);
+    const uint32_t sec = v & contract::ADVERT_TALLY_SECS_MAX;
+    if (sec > 0) own_s[v >> 14] = sec;
+  }
+  return true;
+}
+// A player advert's end info (beacon.js playerEndCode): byte 11 when neither the live nor a claim bit is set, else 0.
+inline uint8_t player_end_code(uint8_t state, uint8_t value) {
+  const uint8_t busy = contract::ADVERT_PLAYER_STATE_LIVE | contract::ADVERT_PLAYER_STATE_CLAIMING | contract::ADVERT_PLAYER_STATE_CLAIM_READY;
+  return (state & busy) ? 0 : value;
+}
+// beacon.js endAgeMs: the ms since the end the code says, the midpoint of its ADVERT_END_AGE_STEP_S step. 0 for code 0.
+inline uint32_t end_age_ms(uint8_t code) {
+  if (!code) return 0;
+  return ((uint32_t)(code - 1) * contract::ADVERT_END_AGE_STEP_S * 1000) + contract::ADVERT_END_AGE_STEP_S * 500;
+}
+
 // What the advert says about the point; the republish policy compares these three.
 struct AdvertView {
   uint8_t team = contract::STATION_TEAM_ANY;
@@ -143,6 +198,9 @@ struct AdvertView {
   uint16_t id = 0;
   uint8_t game = 0;
   int threshold = 0;
+  // A88: a following hill's tally payload (encode_tally), sent as manufacturer data beside the UUID
+  bool has_tally = false;
+  uint8_t tally[6] = {0, 0, 0, 0, 0, 0};
 };
 
 // Port of control.js ControlAdvertiser: owner/state changes republish at once, a value-only
@@ -150,6 +208,7 @@ struct AdvertView {
 // fresh from stale.
 struct AdvertPolicy {
   uint32_t min_interval_ms = 1000;
+  uint32_t tally_refresh_ms = (uint32_t)contract::HILL_TALLY_REFRESH_MS;  // A88: control.js ControlAdvertiser `tallyRefreshMs`
   uint8_t seq = 0;
   bool have_last = false;
   AdvertView last;
@@ -164,6 +223,10 @@ struct AdvertPolicy {
     // same spawn after an MC correction), so it republishes like a state change.
     if (last.team != v.team || last.state != v.state || last.taker != v.taker) return "state";
     if (last.value != v.value && (now - last_at) >= min_interval_ms) return "progress";
+    // A88 (control.js): a new tally game or flags byte goes out at once; changed seconds alone at most every tally_refresh_ms
+    if (last.has_tally != v.has_tally || (v.has_tally && (last.tally[0] != v.tally[0] || last.tally[1] != v.tally[1]))) return "tally";
+    if (v.has_tally && (now - last_at) >= tally_refresh_ms)
+      for (int i = 2; i < 6; i++) if (last.tally[i] != v.tally[i]) return "tally";
     return nullptr;
   }
   uint8_t published(const AdvertView& v, uint32_t now) {

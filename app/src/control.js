@@ -39,8 +39,12 @@
 // is at `value`% of taking it and NOBODY owns it yet. Ownership changes only at 100 (build) and 0 (drain),
 // never in between, which is condition 2 expressed on the wire.
 
-import { PLAYER_STATE, inScope } from './beacon.js';
-import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS } from './transport/contract.gen.js';
+import { PLAYER_STATE, inScope, playerEndCode, endAgeMs, encodeTally } from './beacon.js';
+import { STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CLAIMABLE_TIDS, HILL_REFUSED_TID, HILL_CAPTURE_S, HILL_DECAY_S, HILL_DECAY_DELAY_MS, HILL_NET_CAP, HILL_MAX_STEP_MS, HILL_RING_SIZE, HILL_RING_STALE_MS, ADVERT_VALUE_MAX, ADVERT_END_AGE_STEP_S, HILL_TALLY_ROTATE_MS, HILL_TALLY_REFRESH_MS } from './transport/contract.gen.js';
+
+// A88: how far back a hill keeps its own_ms banking spans, so an end heard up to 255 steps late can still be trimmed.
+export const OWN_SPAN_KEEP_MS = (ADVERT_VALUE_MAX * ADVERT_END_AGE_STEP_S + 60) * 1000;
+export const OWN_SPAN_MAX = 16;
 
 // What the contract names mean here (values live in transport/contract.gen.js; this file reads them directly):
 //  - ADVERT_CONTROL_STATE: advert byte 10 for kind 5.
@@ -83,6 +87,9 @@ export class ControlPoint {
     this.holdMs = {};
     this.ownMs = {};              // the owned clock (Domination): see update()
     this.ownedBy = null;          // the owner when update() last ran, or null (a restored or fresh point)
+    this.ownSpans = [];           // A88: {o, t0, t1} per stretch of own_ms banking, the last OWN_SPAN_KEEP_MS (endOwn trims them)
+    this.ownEndAt = null;         // A88: the game ended here at this time: no more own_ms banks (-Infinity = ended, time unknown)
+    this.ownFinal = false;        // A88: the end came from evidence (a whistle heard, or an ended phone's end info): the tally is exact
     this.contested = false;
     this.dir = 0;                 // +1 rising, -1 falling, 0 static
     this.net = 0;                 // the leading team's lead, in players
@@ -111,6 +118,9 @@ export class ControlPoint {
     this.lastOwner = last != null && claimable(last) ? last : null;
     this.holdMs = (s.holdMs && typeof s.holdMs === 'object') ? { ...s.holdMs } : {};
     this.ownMs = (s.ownMs && typeof s.ownMs === 'object') ? { ...s.ownMs } : {};
+    this.ownSpans = [];           // A88: a restored point keeps no spans (a Stick cannot rebase its clock either)
+    this.ownEndAt = s.ownEnded === true ? -Infinity : null;
+    this.ownFinal = s.ownEnded === true && s.ownFinal === true;
     this.log = Array.isArray(s.log) ? s.log.slice(-64) : [];
     this.contested = !!s.contested;
     this.dir = [1, 0, -1].includes(s.dir) ? s.dir : 0;
@@ -129,7 +139,7 @@ export class ControlPoint {
   snapshot() {
     return { owner: this.owner, capturing: this.capturing, progress: Math.round(this.progress * 10) / 10,
       lastOwner: this.lastOwner, holdMs: this.holdMs, ownMs: this.ownMs, log: this.log.slice(-64),
-      contested: this.contested, dir: this.dir, net: this.net };
+      contested: this.contested, dir: this.dir, net: this.net, ownEnded: this.ownEndAt != null, ownFinal: this.ownFinal };
   }
 
   /** The three advert bytes. `team` is the owner while held, else whoever is building it up. */
@@ -141,6 +151,27 @@ export class ControlPoint {
     if (this.dir > 0) state |= ADVERT_CONTROL_STATE.rising;
     else if (this.dir < 0) state |= ADVERT_CONTROL_STATE.falling;
     return { team, state, value: Math.round(this.progress) };
+  }
+
+  /** A88: bank `ms` of own_ms to `o`, ending at `now`, and record the span so endOwn can take it back. */
+  _bankOwn(o, ms, now) {
+    this.ownMs[o] = (this.ownMs[o] || 0) + ms;
+    const last = this.ownSpans[this.ownSpans.length - 1], t0 = now - ms;
+    if (last && last.o === o && last.t1 === t0) last.t1 = now;
+    else this.ownSpans.push({ o, t0, t1: now });
+    while (this.ownSpans.length && (this.ownSpans.length > OWN_SPAN_MAX || this.ownSpans[0].t1 < now - OWN_SPAN_KEEP_MS)) this.ownSpans.shift();
+  }
+  /** A88: the game ended here at `endAt`. Take back the own_ms banked after it (the spans it still keeps) and bank no
+   *  more. `exact`: the end came from evidence, so the tally is final. Idempotent; a later, earlier end trims further. */
+  endOwn(endAt, exact) {
+    if (this.ownEndAt == null || endAt < this.ownEndAt) {
+      for (const sp of this.ownSpans) {
+        const cut = sp.t1 - Math.max(sp.t0, endAt);
+        if (cut > 0) { this.ownMs[sp.o] = Math.max(0, (this.ownMs[sp.o] || 0) - cut); sp.t1 = Math.max(sp.t0, endAt); }
+      }
+      this.ownEndAt = endAt;
+    }
+    if (exact) this.ownFinal = true;
   }
 
   /** §5d.4: the seconds until the point actually flips, which is the number a defender reads to decide
@@ -216,7 +247,8 @@ export class ControlPoint {
     // Banks to the team that owns the point across this interval (the owner before this step's conversion), contested
     // or not, with or without a body on it; a point drained to neutral banks nobody. The same gap clamp as hold_ms: a
     // gap whose start did not see this owner (`ownedBy`, the owner the last update left) banks at most HILL_MAX_STEP_MS.
-    if (this.owner !== STATION_TEAM_ANY && elapsedMs) this.ownMs[this.owner] = (this.ownMs[this.owner] || 0) + (this.ownedBy === this.owner ? elapsedMs : dtMs);
+    // A88: an ended game banks no more (endOwn).
+    if (this.owner !== STATION_TEAM_ANY && elapsedMs && this.ownEndAt == null) this._bankOwn(this.owner, this.ownedBy === this.owner ? elapsedMs : dtMs, now);
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The
@@ -294,21 +326,36 @@ export class ControlPoint {
  * player phone acts on, so those go out at once.
  */
 export class ControlAdvertiser {
-  constructor({ minIntervalMs = 1000 } = {}) { this.minIntervalMs = minIntervalMs; this.seq = 0; this.last = null; this.lastAt = 0; }
-  /** Why this advert must go out again ('first' | 'state' | 'progress'), or null to keep the current one. */
-  due(view, now) {
+  constructor({ minIntervalMs = 1000, tallyRefreshMs = HILL_TALLY_REFRESH_MS } = {}) {
+    this.minIntervalMs = minIntervalMs; this.tallyRefreshMs = tallyRefreshMs; this.seq = 0; this.last = null; this.lastAt = 0;
+  }
+  /** Why this advert must go out again ('first' | 'state' | 'progress' | 'tally'), or null to keep the current one.
+   *  A88: `tally` is the payload `tallyPayload` chose (or null). A new game or flags byte goes out at once; seconds alone
+   *  at most every `tallyRefreshMs`. */
+  due(view, now, tally = null) {
     if (!view) return null;
     if (!this.last) return 'first';
     if (this.last.team !== view.team || this.last.state !== view.state) return 'state';
     if (this.last.value !== view.value && (now - this.lastAt) >= this.minIntervalMs) return 'progress';
+    const lt = this.last.tally;
+    if (!lt !== !tally || (tally && (lt[0] !== tally[0] || lt[1] !== tally[1]))) return 'tally';
+    if (tally && lt.some((v, i) => v !== tally[i]) && (now - this.lastAt) >= this.tallyRefreshMs) return 'tally';
     return null;
   }
   /** Called when the advert actually went out: bump `seq` and remember what it said. */
-  published(view, now) {
+  published(view, now, tally = null) {
     this.seq = (this.seq + 1) & 0xff;
-    if (view) { this.last = { team: view.team, state: view.state, value: view.value }; this.lastAt = now; }
+    if (view) { this.last = { team: view.team, state: view.state, value: view.value, tally: tally ? tally.slice() : null }; this.lastAt = now; }
     return this.seq;
   }
+}
+
+/** A88: the tally payload a hill advertises now: one of `HillFollower.tallies()`, alternating every `rotateMs` when there
+ *  are two. Null with none (not following). PURE. */
+export function tallyPayload(tallies, now, rotateMs = HILL_TALLY_ROTATE_MS) {
+  if (!tallies || !tallies.length) return null;
+  const t = tallies.length > 1 ? tallies[Math.floor(now / rotateMs) % 2] : tallies[0];
+  return encodeTally(t);
 }
 
 /**
@@ -357,7 +404,7 @@ export function followSwitch(f, best, heardAt, now, staleMs = HILL_RING_STALE_MS
   return f.ended;
 }
 /** A new current game: nothing heard of it yet. */
-export function startGameEnd(f) { f.liveIds = new Set(); f.ended = false; }
+export function startGameEnd(f) { f.liveIds = new Set(); f.ended = false; f.endAt = null; f.endExact = false; }
 /** A restart: the saved end evidence of the current game (`ended`, `liveIds`); none saved (an older save) = none. */
 export function restoreGameEnd(f, s) {
   startGameEnd(f);
@@ -421,7 +468,7 @@ export class HillFollower {
     // The current byte back after HILL_RING_STALE_MS is a new game on that byte (a wrap, an MC restart): the last one's
     // end does not end it (Codex review r2)
     if (freshCurrent) startGameEnd(this);
-    for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
+    for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) this._noteEnd(p, now);
     const n = g => (heard.get(g) || { n: 0 }).n;
     let best = null;
     for (const g of heard.keys()) {
@@ -433,6 +480,9 @@ export class HillFollower {
     let next = this.current;
     const cur = this.current != null ? this.games.get(this.current) : null;
     if (followSwitch(this, best, cur ? cur.heardAt : null, now)) next = best;
+    // A88: an ended current game banks no more own_ms, and gives back what it banked after its end, BEFORE a switch below
+    // saves the point into the ring. The 10-minute silence (no evidence of when) ends it now, not exact.
+    if (this.ended && this.current != null) point.endOwn(this.endAt != null ? this.endAt : now, this.endExact);
     let switched = null;
     if (next !== this.current && first && (!armedGame || armedGame === next)) {
       // Review of F658: the first follow into MC's own game (or from a hill of any game) keeps the point it counted
@@ -452,10 +502,39 @@ export class HillFollower {
     }
     if (switched) {   // a new current game (or the same byte started again): nothing of it heard yet
       startGameEnd(this);
-      for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
+      for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) this._noteEnd(p, now);
+      if (this.ended) point.endOwn(this.endAt != null ? this.endAt : now, this.endExact);
     }
     return { players: players.filter(p => this.counts(p, armedGame, stationId)), switched };
   }
+  /** The end rule (noteGameEnd) plus A88: when the game ended here. A whistle heard ends it when its advert was heard. An
+   *  ended phone's end info (byte 11, `playerEndCode`) ends it at its end time, even from a phone never heard live here,
+   *  unless that time is before the game was first heard here (an older game on a reused byte). The earliest end wins. */
+  _noteEnd(p, now) {
+    if (this.current == null || (p.game || 0) !== this.current) return;
+    const heardAt = now - (Number.isFinite(p.ageMs) ? p.ageMs : 0);
+    const was = this.ended;
+    noteGameEnd(this, p);
+    const code = playerEndCode(p);
+    let at = !was && this.ended ? heardAt : null;
+    if (code) {
+      const e = this.games.get(this.current), t = heardAt - endAgeMs(code);
+      if (!e || t >= e.since) { this.ended = true; at = at == null ? t : Math.min(at, t); }
+    }
+    if (at != null) { this.endAt = this.endAt == null ? at : Math.min(this.endAt, at); this.endExact = true; }
+  }
+  /** A88: the tallies the hill advertises: the current game, then its most recently heard other game (a game it switched
+   *  away from, so one that ended here) when heard within `staleMs`. `{ game, final, ownMs }` each. */
+  tallies(point, now) {
+    const out = [];
+    if (!this.follows || this.current == null) return out;
+    out.push({ game: this.current, final: point.ownEndAt != null && point.ownFinal, ownMs: { ...point.ownMs } });
+    let prev = null;
+    for (const [g, e] of this.games) if (g !== this.current && e.snap && now - e.heardAt <= this.staleMs && (!prev || e.heardAt > prev[1].heardAt)) prev = [g, e];
+    if (prev) out.push({ game: prev[0], final: prev[1].snap.ownEnded === true && prev[1].snap.ownFinal === true, ownMs: { ...(prev[1].snap.ownMs || {}) } });
+    return out;
+  }
+
   /** May the point count this player? Never outside its scope (A86: the control bit and station `stationId`'s id bit).
    *  Following: a live-bit player of the current game. Not following: a player of MC's game (0 on either side = any
    *  game), today's rule. */

@@ -85,7 +85,7 @@ StationController station;
 #endif
 #define BRX_STR_(x) #x
 #define BRX_STR(x) BRX_STR_(x)
-String stationAppVer = station_version("h8-0.4", BRX_STR(BRX_FW_SHA)).c_str();
+String stationAppVer = station_version("h8-0.5", BRX_STR(BRX_FW_SHA)).c_str();   // A88: h8-0.5 adds the hill tally and the end trim (MC still accepts h8-0.4)
 NvsFailures nvsFails;  // O12: failed Preferences writes since boot; rides on the status as `nvs_fail`
 // Print the serial line for a failed write; passes the result through.
 static bool nvsOk(bool ok) {

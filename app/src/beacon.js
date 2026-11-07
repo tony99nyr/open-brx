@@ -1,4 +1,4 @@
-import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB } from './transport/contract.gen.js';
+import { PRESENCE_FADE_AFTER_MS, STATION_DEFAULT_THRESHOLD_DBM, STATION_TEAM_ANY, PRESENCE_DWELL_MS, PHONE_STATION_THRESHOLD_DBM, ADVERT_MAGIC, ADVERT_VERSION, ADVERT_ROLE, ADVERT_PLAYER_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS, PRESENCE_MEDIAN_SAMPLES, PRESENCE_EXIT_GRACE_MS, PRESENCE_EXIT_BAND_DB, PRESENCE_SIGHT_WINDOW_MS, PRESENCE_SIGHT_MS, PRESENCE_SIGHT_RECENT_MAX, PRESENCE_EXPIRY_MS, PRESENCE_ALPHA, PRESENCE_ALPHA_REF_MS, PRESENCE_ALPHA_DT_CAP_MS, REVIVE_MARGIN_DB, ADVERT_TALLY_COMPANY, ADVERT_TALLY_FORMAT, ADVERT_TALLY_SECS_MAX, ADVERT_END_AGE_STEP_S, ADVERT_VALUE_MAX } from './transport/contract.gen.js';
 // beacon.js — the utility-item identity codec and the presence tracker (docs/spec/utility.md).
 // DOM/BLE-free and pure so it runs in node tests, the desktop stage and on the phone unchanged.
 //
@@ -73,6 +73,58 @@ export function decodeUuid(s) {
   }
   return { role, id: (b[6] << 8) | b[7], kind: KIND_NAME[b[8]] || `kind${b[8]}`,
     team: b[9], state: b[10], value: b[11], seq: b[12], game: b[13], threshold: thr, taker: b[15], scopeKinds: 0, scope: 0 };
+}
+
+/**
+ * A88 (Tony 2026-11-07): a control point's Domination tally, the 6-byte payload of the manufacturer-data field
+ * (company ADVERT_TALLY_COMPANY) a hill adds beside its UUID. Byte 0 the game byte; byte 1 flags (bit 0 `final`: the hill
+ * ended the game and trimmed it, bit 1 `partial`: more than two teams banked, high nibble ADVERT_TALLY_FORMAT); bytes 2-5
+ * two big-endian u16 slots, `tid << 14 | seconds`, the two teams with the most `own_ms` (then the lower tid); a
+ * zero-second slot is empty. Seconds are whole seconds of `own_ms`, capped at ADVERT_TALLY_SECS_MAX. PURE.
+ */
+const PLAYER_STATE_LIVE = ADVERT_PLAYER_STATE.live, PLAYER_STATE_CLAIM = ADVERT_PLAYER_STATE.claiming | ADVERT_PLAYER_STATE.claim_ready;
+export function encodeTally({ game = 0, final = false, ownMs = {} } = {}) {
+  const rows = Object.entries(ownMs || {}).map(([t, ms]) => [+t, Math.min(ADVERT_TALLY_SECS_MAX, Math.floor(Math.max(0, +ms || 0) / 1000))])
+    .filter(([t, s]) => Number.isInteger(t) && t >= 0 && t <= 3 && s > 0)
+    .sort((a, b) => b[1] - a[1] || a[0] - b[0]);
+  const flags = (ADVERT_TALLY_FORMAT << 4) | (final ? 1 : 0) | (rows.length > 2 ? 2 : 0);
+  const out = [game & 0xff, flags];
+  for (let i = 0; i < 2; i++) { const v = rows[i] ? (rows[i][0] << 14) | rows[i][1] : 0; out.push((v >> 8) & 0xff, v & 0xff); }
+  return out;
+}
+/** The reverse of encodeTally: `{ game, final, partial, ownS: {tid: seconds} }`, or null when it is not a format-1 tally. */
+export function decodeTally(bytes) {
+  const b = bytes ? Array.from(bytes, v => v & 0xff) : [];
+  if (b.length !== 6 || (b[1] >> 4) !== ADVERT_TALLY_FORMAT) return null;
+  const ownS = {};
+  for (const i of [2, 4]) { const v = (b[i] << 8) | b[i + 1], s = v & ADVERT_TALLY_SECS_MAX; if (s > 0) ownS[v >> 14] = s; }
+  return { game: b[0], final: !!(b[1] & 1), partial: !!(b[1] & 2), ownS };
+}
+/** A scan result's `manufacturerData` ({"<company id, decimal>": DataView | bytes}, the BLE plugin's shape) -> the tally
+ *  payload bytes, or null. */
+export function tallyBytes(md) {
+  const v = md && typeof md === 'object' ? md[String(ADVERT_TALLY_COMPANY)] : null;
+  if (!v) return null;
+  if (typeof DataView !== 'undefined' && v instanceof DataView) { const a = []; for (let i = 0; i < v.byteLength; i++) a.push(v.getUint8(i)); return a; }
+  if (typeof v === 'string') { const h = v.replace(/[^0-9a-f]/gi, ''); const a = []; for (let i = 0; i + 1 < h.length; i += 2) a.push(parseInt(h.slice(i, i + 2), 16)); return a; }
+  return Array.from(v);
+}
+/** A88: an ended player's byte 11, from the ms since its end: 1 + floor(seconds / ADVERT_END_AGE_STEP_S). Past what 255
+ *  can say (about 17 min) it is 0, no end info: a saturated value would name the wrong end. */
+export function endAgeCode(ageMs) {
+  if (!Number.isFinite(ageMs)) return 0;
+  const code = 1 + Math.floor(Math.max(0, ageMs) / 1000 / ADVERT_END_AGE_STEP_S);
+  return code > ADVERT_VALUE_MAX ? 0 : code;
+}
+/** The reverse: the ms since the end, the midpoint of the step (so ±ADVERT_END_AGE_STEP_S / 2), or null for 0 (no end info). */
+export function endAgeMs(code) {
+  if (!code) return null;
+  return ((code - 1) * ADVERT_END_AGE_STEP_S + ADVERT_END_AGE_STEP_S / 2) * 1000;
+}
+/** A88: does this decoded player advert carry end info? Not live, not claiming, byte 11 not 0. */
+export function playerEndCode(p) {
+  if (!p || (p.state & (PLAYER_STATE_LIVE | PLAYER_STATE_CLAIM))) return 0;
+  return p.value || 0;
 }
 
 /**

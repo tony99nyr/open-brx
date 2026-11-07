@@ -6,7 +6,7 @@
 import { BrxLink } from './brxlink.js';
 import { ScanGuard, SCAN_MODES, stationScanStep } from './scanwatch.js';   // the BLE flood guard (bench 2026-09-17)
 import { Presence, encodeUuid, KIND, PLAYER_STATE, countRevives, playerEdges, stationThreshold, applyThreshold, migrateThreshold } from './beacon.js';
-import { ControlPoint, ControlAdvertiser, HillFollower, claimable } from './control.js';   // kind 5: the control point (utility.md §5, K1)
+import { ControlPoint, ControlAdvertiser, HillFollower, claimable, tallyPayload } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { PowerupStation, PowerupFollower } from './powerup.js';   // kind 2: the powerup station decides who took its item (A56, docs/spec/powerups.md)
 import { parseStationConfig } from './stationconfig.js';   // A4: the station_config rule shared with the Stick
 import { Transport, PRIOR_UTILITY_KEY, ROLE_KEY, pubUrlKey } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
@@ -15,7 +15,7 @@ import { APP_VER, setDeviceModel } from './build.js';   // A29: the REAL build, 
 import jsQR from 'jsqr';
 import { parseMcJoin, mcDialTarget, MC_URL_KEY } from './mcurl.js';
 import { TEAM_NAMES, TEAM_ABBRS, TEAM_KEYS, PRESENCE_ALPHA, PRESENCE_DWELL_MS, STATION_TICK_MS, STATION_TEAM_ANY, ADVERT_CONTROL_STATE, HILL_CAPTURE_S, HILL_NET_CAP,
-  HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX } from './transport/contract.gen.js';
+  HILL_CAPTURE_S_MIN, HILL_CAPTURE_S_MAX, HILL_NET_CAP_MIN, HILL_NET_CAP_MAX, ADVERT_TALLY_COMPANY } from './transport/contract.gen.js';
 import { resolveTypedMc } from './transport/utility-join.js';
 import { McLink, STATION_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';   // the sweep probes the way app.js does (F311: the Wi-Fi network on Android)
@@ -166,6 +166,10 @@ const RING_KEY = 'brx.station.hillring';
 const follower = new HillFollower().restore((() => { try { return JSON.parse(localStorage.getItem(RING_KEY) || 'null'); } catch (_) { return null; } })());
 /** F658: the game byte a control point advertises and counts under: the followed game, else MC's. */
 const hillGame = () => follower.game(settings.game);
+/** A88: the tally payload this hill advertises now (a following control point), else null. */
+// A device whose advertiser refuses the bigger advert ("data too large") drops the tally for good, never the hill.
+let tallyRefused = false;
+const hillTally = now => settings.kind === 'control' && !tallyRefused ? tallyPayload(follower.tallies(point, now), now) : null;
 function saveControl() {
   try { localStorage.setItem(CONTROL_KEY, JSON.stringify({ ...point.snapshot(), seq: advert.seq })); } catch (_) { /* ignore */ }
   try { localStorage.setItem(RING_KEY, JSON.stringify(follower.snapshot())); } catch (_) { /* ignore */ }
@@ -204,7 +208,8 @@ async function startAdvert(quiet = false) {
   // Record the intent FIRST, whatever happens next: `seq` (byte 12) bumps on every change, and the
   // republish check in tick() is driven off what we last decided to publish. Doing this inside the try
   // below left the stage (no radio) asking to republish on every 250 ms tick, forever.
-  advert.published(advertFields(), stationNow());
+  const tally = hillTally(stationNow());
+  advert.published(advertFields(), stationNow(), tally);
   if (DEMO) { advertising = true; settings.live = true; save(); if (!quiet) log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
   if (!plugins.beacon) { log('no beacon plugin: this build cannot advertise (desktop?)', 'le'); render(); return; }
   // START is a deployment boundary before the native promise settles. Hide/cancel the recovery exit now,
@@ -214,7 +219,10 @@ async function startAdvert(quiet = false) {
   try {
     const uuid = stationUuid();
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
-    const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
+    // A88: a following hill's tally rides as manufacturer data (Android; iOS cannot send it). It needs the TX-power
+    // field's 3 bytes to fit the 31-byte legacy advert, and nothing reads that field.
+    const md = tally ? { manufacturerId: ADVERT_TALLY_COMPANY, manufacturerData: tally.map(v => v.toString(16).padStart(2, '0')).join('') } : {};
+    const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: !tally, ...md });
     advertising = !!(r && r.advertising);
     // `live` is the operator's intent: a reload mid-game comes back advertising (the settings stay behind the ⓘ gate).
     // F648 (game 2026-11-01 issue 7): a failed start never clears it, or the ticks' retry (gated on `live`) never runs and one
@@ -222,7 +230,10 @@ async function startAdvert(quiet = false) {
     if (advertising) settings.live = true;
     save();
     if (!quiet) log(`advertising ${name} as ${TEAM_NAME_BY_TID[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${thr()} dBm · ${uuid}`, 'lk');
-  } catch (e) { advertising = false; save(); log('advertise failed: ' + (e && e.message || e), 'le'); }
+  } catch (e) {
+    advertising = false; save(); log('advertise failed: ' + (e && e.message || e), 'le');
+    if (tally && !tallyRefused && /too large/i.test(String(e && e.message || e))) { tallyRefused = true; log('A88: advertising again without the hill tally', 'le'); return startAdvert(quiet); }
+  }
   finally { advertisingPending = Math.max(0, advertisingPending - 1); }
   render();
 }
@@ -754,7 +765,7 @@ function controlTick(now) {
     if (now - _advertRetryAt >= 1000) { _advertRetryAt = now; log('the advert is down — retrying', 'le'); startAdvert(); }
     return;
   }
-  const why = advert.due(point.advert(), now);
+  const why = advert.due(point.advert(), now, hillTally(now));
   if (why) startAdvert(why === 'progress');   // a progress-only re-key is silent in the log; a change of owner/contest is not
 }
 /** Hand the point back to nobody: between games (a `station_config` naming a new game) or from the button. */
