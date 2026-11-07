@@ -5024,13 +5024,30 @@ export class Engine {
     if (!(res > 0) || !(cap > mag)) { this.log(`charge lock on slot ${slot}: cell ${mag}, reserve ${res ?? '?'}: nothing to reload (F226)`, 'li'); this._changed(); return; }
     const give = Math.min(cap - mag, res), to = mag + give, left = res - give;
     this.log(`charge lock on slot ${slot}: cell ${mag} below a ${cost}-round charge, heat ${heat}: reloading for the player ${mag} → ${to}, reserve ${res} → ${left} (F226)`, 'li');
+    const a0 = this.am.acct[slot], until0 = a0 ? a0.echoUntil : 0;
     this.am.acctWrote(slot, to, left);
-    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player');
+    // Codex pass 2026-11-07 r3 (brx1): a write that failed before its frame left gave the gun nothing (`_chargeLockUnwrite`)
+    const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
+    let sent = false;
+    const wr = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player', { onFrameSent: () => { sent = true; } });
+    const failed = () => { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); };
+    Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it
     // F226 review (Opus): `$AMMO` ends the lock, and a full cell is no starved cell, so a lockout still on the books (or one an
     // echo at the old heat refreshes) would put the full-screen OVERHEAT word up. The next real report sets the heat again.
     if (this.am.heatLock && this.am.heatLock.slot === slot) this.am.heatLock = null;
     this.am.autoReload(slot, mag, to, cap);
+  }
+  /** Codex pass 2026-11-07 r3: the charge-lock `$AMMO` never left, so the cell is still starved. Put the account back, end
+   *  the reload the HUD shows as not taken, and free the once-per-lock latch so the next locked report writes again. A
+   *  newer write that owns the slot, or a new life, leaves everything as it is. */
+  _chargeLockUnwrite(slot, mag, res, to, life, gen, until0 = null) {
+    if (life !== this._lifeSeq || !this.am.acctUnwrite(slot, mag, res, to, gen, until0)) return;
+    const r = this.am.reloading;
+    if (r && r.auto && r.slot === slot && r.mag === to) { r.mag = mag; this.am.endReload('dropped'); }
+    if (this._chargeLockFix && this._chargeLockFix.slot === slot) this._chargeLockFix = null;
+    this.log(`charge lock on slot ${slot}: the reload write failed before it left: the cell is still ${mag} (F226)`, 'le');
+    this._changed();
   }
   /** F650: the head's `$WEAP` reload sounds for a slot (t31-t33, `ReloadPart1..3`), empty ids dropped. */
   _reloadSounds(slot) {
@@ -5064,6 +5081,7 @@ export class Engine {
     if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }
     const give = Math.max(0, Math.min(cap - mag, res)), to = mag + give, left = res - give;
     if (!give) return mag;
+    const a0 = this.am.acct[slot], until0 = a0 ? a0.echoUntil : 0;   // Codex pass r3: the echo window before this write
     this.am.acctWrote(slot, to, left);
     // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
     // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
@@ -5072,7 +5090,7 @@ export class Engine {
     // Codex pass 2026-11-07: a write that failed before its frame left (a chunk error with the link still up) gave the gun
     // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
-    const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen); };
+    const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen, until0); };
     Promise.resolve(w).then(ok => { if (ok === false) failed(); }, failed);
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
@@ -5085,12 +5103,22 @@ export class Engine {
   }
   /** Codex pass 2026-11-07: the phone's reload `$AMMO` never left. Put the slot's books back to the counts before it, unless a
    *  newer fact (a round, another write, a new life) has moved them since: the HUD and the next round then read what the gun holds. */
-  _softReloadUnwrite(slot, mag, res, to, left, life, gen) {
-    if (life !== this._lifeSeq || this.am.prevAmmo[slot] !== to || this.am.prevReserve[slot] !== left) return;
-    if (!this.am.acctUnwrite(slot, mag, res, to, gen)) return;   // r2: a newer write owns the slot, even at the same counts
-    this.am.setPrev(slot, mag, res);
-    if (this.activeSlot === slot) this.am.publish(slot, mag, res);
-    this.log(`F650: the reload write for slot ${slot} failed before it left: back to ${mag}, reserve ${res}`, 'le');
+  _softReloadUnwrite(slot, mag, res, to, left, life, gen, until0 = null) {
+    // r3: the gun's own report since may already show the reserve it still holds
+    if (life !== this._lifeSeq || (this.am.prevReserve[slot] !== left && this.am.prevReserve[slot] !== res)) return;
+    // r3: rounds the gun reported while the write was on the link were booked from the written magazine; the gun fired from
+    // `mag`. Only the gun's own rounds can have moved the count (a newer write changes the generation, checked below).
+    const cur = this.am.prevAmmo[slot], moved = cur !== to;
+    if (moved && !(cur <= mag)) return;
+    if (!this.am.acctUnwrite(slot, mag, res, to, gen, until0, moved)) return;   // r2: a newer write owns the slot, even at the same counts
+    if (moved) {
+      const over = to - mag;
+      this.shots = Math.max(0, this.shots - over);
+      if (this._life) this._life.shots = Math.max(0, (this._life.shots || 0) - over);
+    }
+    this.am.setPrev(slot, moved ? cur : mag, res);
+    if (this.activeSlot === slot) this.am.publish(slot, moved ? cur : mag, res);
+    this.log(`F650: the reload write for slot ${slot} failed before it left: back to ${moved ? cur : mag}, reserve ${res}`, 'le');
     this._changed();
   }
   _holdAccuracyWrites(why) {

@@ -462,7 +462,8 @@ def test_f650_the_lever_after_alt_is_reloaded_by_the_phone_and_the_gun_s_own_rel
 
 def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
     """ammo.js `softReloadNeeded` (Opus review H2): the stage's slot 1 is the Shotgun, a shell-by-shell chain. After ALT onto it
-    with slot 0 the slot that fired last, the lever opens the gun's own takeover, never the phone's one-shot `$AMMO`."""
+    with slot 0 the slot that fired last, the lever is never the phone's one-shot `$AMMO`. Codex pass 2026-11-07 r3: slot 0 has
+    room, so the gun's lever reloads slot 0 (F542) and no takeover opens on the Shotgun; ALT is held for slot 0's reload."""
     async def go():
         st, _gun, clock = await _live()
         _pull(st); st._on_rx("$ALCD,4,100,1,120,0,*")
@@ -474,7 +475,7 @@ def test_f650_review_h2_a_chain_weapon_in_hand_keeps_the_gun_s_reload():
         assert st.active_slot == 1
         n = len(_tx(st))
         st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
-        assert st.reloading and not st.reloading["soft"], st.reloading
+        assert st.reloading is None and st._gun_other and st._gun_other["slot"] == 0, (st.reloading, st._gun_other)
         await _tick(st, clock, 3)
         assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,1,")]
     asyncio.run(go())
@@ -623,4 +624,24 @@ def test_codex_2026_11_07_r2_alt_stays_held_after_the_phone_s_reload_lands_while
         assert st.reloading is None and clock.t < st._gun_other["until"]
         st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
         assert st.switching is None, "the gun is still reloading slot 1"
+    asyncio.run(go())
+
+
+def test_codex_2026_11_07_r3_ownership_is_taken_when_the_write_is_booked_not_when_its_send_starts():
+    """engine.js reads the echo generation beside `acctWrote`; the stage's send starts later, after a newer write could book."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        async def failed(*_a, **_k):
+            return False
+        st.write = failed   # type: ignore[method-assign]
+        tasks: list = []
+        st._spawn_task = tasks.append   # type: ignore[method-assign]  # hold the send until the test lets it run
+        clock.t += st.reloading["s"] + 0.1
+        st._reload_tick()
+        cap, left = st._prev_ammo[0], st._prev_reserve[0]
+        st._acct_wrote(0, cap, left)                                   # a newer write at the same counts books first
+        for t in tasks:
+            await t
+        assert st._prev_ammo[0] == cap and st._prev_reserve[0] == left, "the newer write stands"
     asyncio.run(go())

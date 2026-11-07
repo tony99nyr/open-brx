@@ -2120,8 +2120,8 @@ _AMMO_PAIRS = {
     "am.heatBlocksFire": "_heat_blocks_fire",
     # the reload takeover (F123)
     "am.reloadPulled": "_reload_pulled", "am.reloadDeadline": "_reload_deadline", "am.endReload": "_end_reload",
-    "am.reloadTick": "_reload_tick", "am.autoReload": "_auto_reload", "am.softReloadNeeded": "_soft_reload_needed", "am.gunReloadsOther": "_gun_reloads_other",
-    "am.noteGunOther": "_note_gun_other", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
+    "am.reloadTick": "_reload_tick", "am.autoReload": "_auto_reload", "am.softReloadNeeded": "_soft_reload_needed", "am.leverGoesElsewhere": "_lever_goes_elsewhere", "am.gunReloadsOther": "_gun_reloads_other",
+    "am.noteGunOther": "_note_gun_other", "am.gunOtherGain": "_gun_other_gain", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
     "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
