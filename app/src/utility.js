@@ -262,7 +262,10 @@ async function applyStationConfig(body) {
   // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
   // fallback, not the mechanism.
   // F658: a following hill keeps its tally ring; the live bit decides which game it counts, not this arming.
-  if (settings.game !== wasGame && !(cfg.kind === 'control' && follower.follows)) resetPoint(`MC armed game ${settings.game}`);
+  // F658 review (2026-11-06): another kind or id is another station, so its point and ring go, as the Stick's
+  // apply_station_config does. Kept, the ring reported the old station's tallies under the new id.
+  if (!sameStation) resetPoint(`MC armed ${cfg.kind} ${cfg.id}`);
+  else if (settings.game !== wasGame && !(cfg.kind === 'control' && follower.follows)) resetPoint(`MC armed game ${settings.game}`);
   if (settings.game !== wasGame) { wasAlive.clear(); revives = 0; settings.hillStartsAt = settings.hillEndsAt = null; }   // F344 review M2: a death seen last game is not one this game
   // A56: the item this powerup station grants, locked for the match (Tony: one item per station, never random).
   settings.item = cfg.item;
