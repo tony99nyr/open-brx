@@ -30,15 +30,15 @@ def test_the_socket_takes_a_hill_tally_and_refuses_one_missing_a_required_field(
 # ---------- the merge (brx1 2026-11-07, option b) ----------
 from _domination import domination_live, own_fact   # noqa: E402
 
-_SEQ = {"n": 9000}
+_TALLY_SEQ = {"n": 9000}
 
 
 def _hill_tally(s, net, clock, node, hill, own_s, final, game_byte=None, mid=None):
-    _SEQ["n"] += 1
+    _TALLY_SEQ["n"] += 1
     site = str(s.station_registry.stations[hill]["assigned"]["id"])
     net.simulate_event(node, {"type": "hill_tally", "t": clock["t"], "match_id": mid or s._m().scorer.match_id,
                               "site": site, "game_byte": s._m().scorer.game_byte if game_byte is None else game_byte,
-                              "own_s": {str(k): v for k, v in own_s.items()}, "final": final}, clock["t"], seq=_SEQ["n"])
+                              "own_s": {str(k): v for k, v in own_s.items()}, "final": final}, clock["t"], seq=_TALLY_SEQ["n"])
     return site
 
 

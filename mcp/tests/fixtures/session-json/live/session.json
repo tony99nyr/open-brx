@@ -598,6 +598,7 @@
     "evicted_nodes": [
       "node0"
     ],
+    "game_byte": 1,
     "go_live_t": 5010000,
     "joined_t": {
       "00000009": 5016001
