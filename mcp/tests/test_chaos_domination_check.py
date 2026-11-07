@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from _skip import needs
+
 try:
     from brx_mcp.chaos.registry import InvariantError
     from brx_mcp.chaos.scenarios import domination_hills as dh
@@ -43,14 +45,12 @@ def _refused(world) -> bool:
 
 
 def test_a_target_finish_below_the_target_is_refused():
-    if not HAVE_CHAOS:
-        return
+    needs(HAVE_CHAOS, "the chaos stack (server extras)")
     assert not _refused(_world(4_000)), "CONTROL: a finish at the target passes"
     assert _refused(_world(1_000)), "a finish at 1 point of 4 must fail"
 
 
 def test_a_target_finish_with_no_points_is_refused():
-    if not HAVE_CHAOS:
-        return
+    needs(HAVE_CHAOS, "the chaos stack (server extras)")
     assert not _refused(_world(0, reason="time")), "CONTROL: a clock finish with no points passes"
     assert _refused(_world(0)), "a target finish with nothing banked must fail"

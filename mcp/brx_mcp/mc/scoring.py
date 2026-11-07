@@ -289,11 +289,16 @@ class Scorer:
                 continue
             if site not in self.station_possession_ms:
                 # Review round 3: an empty in-play base (`station_possession`) received after the moved whistle was not in
-                # play after all. It never scored, so it goes, and the site is not made station-scored with nothing (that
-                # silenced the phones' readings for it).
-                self.station_seen_ms.pop(site, None)
-                self.station_pre_end.pop(site, None)
-                self.station_history.pop(site, None)
+                # play after all. It never scored, and the site is not made station-scored with nothing (that silenced the
+                # phones' readings for it). Codex pass round 2: an earlier empty base, still in play, stays the base.
+                keep = [h for h in self.station_history.get(site, ()) if h[0] <= end]
+                if keep:
+                    self.station_seen_ms[site] = keep[-1][0]
+                    self.station_pre_end[site] = {}
+                    self.station_history[site] = keep[-1:]
+                else:
+                    for table in (self.station_seen_ms, self.station_pre_end, self.station_history):
+                        table.pop(site, None)
                 continue
             hist = self.station_history.get(site)
             latest = self.station_possession_ms.get(site, {})

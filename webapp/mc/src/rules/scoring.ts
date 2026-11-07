@@ -19,6 +19,8 @@ export const isHillMode = (mode: string): boolean => GEN_OBJECTIVE_MODES.include
 export const hillModeName = (mode: string): string => (mode === 'domination' ? 'DOMINATION' : 'KING OF THE HILL');
 
 /** A hill mode that scores a point per owned-hill second, not presence (Domination). */
+/** Domination's score target when the mode catalogue cannot say (state.py's mode table: first to 1000 points). */
+export const OWNERSHIP_TARGET_DEFAULT = 1000;
 export const isOwnershipScored = (mode: string): boolean => GEN_OWNERSHIP_MODES.includes(mode);
 
 /** What the objective counts: POINTS where ownership scores (one point is one owned-hill second), TIME otherwise. */

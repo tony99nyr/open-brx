@@ -1116,6 +1116,11 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
       await click();
       expect((await api.getState()).config.scoring.hold_target_s, `a Domination record with target ${target} is first to 1000`).toBe(1000);
     }
+    // Codex pass round 2: the mode catalogue loads on its own; with it down, a Domination record with no target is still 1000
+    api.getModes = async () => [];
+    await api.pick({ match: { hold_target_s: 500 } });
+    await click();
+    expect((await api.getState()).config.scoring.hold_target_s, 'catalogue down: still first to 1000').toBe(1000);
   });
 
   // brx1 2026-11-06 (Tony's auto-fix rule): a Domination favourite saved while a mode change dropped its target loads as

@@ -4630,10 +4630,21 @@ class Session:
                               if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
                               and not isinstance(row[0], bool) and isinstance(row[1], dict)
                               and (per := {tid: ms for tid, ms in sc._hold_readings(row[1])}) is not None], key=lambda r: r[0])
+            # Codex pass 2026-11-07: an empty row is the in-play base of a hill heard with nothing banked, so it counts
+            # only before the first row with a reading (`station_possession` writes it nowhere else)
+            first = next((i for i, (_at, per) in enumerate(got_rows) if per), len(got_rows))
+            got_rows = got_rows[:first][-1:] + [r for r in got_rows[first:] if r[1]]
             if len(got_rows) > STATION_HISTORY_MAX:
                 got_rows = got_rows[:1] + got_rows[-(STATION_HISTORY_MAX - 1):]
             if got_rows:
                 sc.station_history[str(k)] = got_rows
+        for k, at in sc.station_seen_ms.items():
+            # Codex pass round 2: a snapshot from before that fix holds the empty base as a receipt time and an empty
+            # pre-END reading, with no history row; rebuild the row, or a whistle moved earlier drops the hill. An empty
+            # pre-END reading means no in-play reading ever had points, so the row goes first.
+            rows = sc.station_history.get(k, [])
+            if sc.station_pre_end.get(k) == {} and not any(r_at <= at for r_at, _per in rows):
+                sc.station_history[k] = [(at, {})] + rows
         sc.station_unverified |= {str(s) for s in (station_unverified or ()) if isinstance(s, (str, int)) and not isinstance(s, bool)}   # F586
         for nid in list(self.station_registry.stations):
             if (got := self._station_hold(nid)) is not None:

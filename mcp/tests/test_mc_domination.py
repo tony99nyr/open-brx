@@ -333,12 +333,25 @@ def test_a_late_hill_report_on_an_empty_base_survives_a_restart_in_recap():
     path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
     s._persist_path, s._persist_last, s._persist_dirty = path, 0.0, True
     s.persist_now()
-    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
-    s2._persist_path = path
-    s2.restore_snapshot()
-    assert s2.resume_match() == "recap"
-    after = (s2.last_recap["possession"]["by_team"], s2.last_recap["winner"])
-    assert after == before, (before, after)
+    import json
+    raw = path.read_text()
+
+    def strip_empty_rows(node):   # a snapshot written before the empty base became a history row
+        if isinstance(node, dict):
+            if isinstance(node.get("station_history"), dict):
+                node["station_history"] = {k: [r for r in rows if r[1]] for k, rows in node["station_history"].items()}
+            for v in node.values():
+                strip_empty_rows(v)
+    old = json.loads(raw)
+    strip_empty_rows(old)
+    for text, label in ((raw, "this MC's snapshot"), (json.dumps(old), "an older MC's snapshot (no empty history row)")):
+        path.write_text(text)
+        s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+        s2._persist_path = path
+        s2.restore_snapshot()
+        assert s2.resume_match() == "recap", label
+        after = (s2.last_recap["possession"]["by_team"], s2.last_recap["winner"])
+        assert after == before, (label, before, after)
 
 def _scorer(hold_target_s=None):
     from brx_mcp.mc.scoring import Scorer
@@ -363,6 +376,21 @@ def test_an_empty_hill_base_after_a_moved_whistle_does_not_silence_the_phones():
     assert "1" not in sc.station_possession_ms and "1" not in sc.station_seen_ms
     assert sc.winner() == {"team_id": "red"}, sc.winner()
 
+
+
+def test_an_empty_base_still_in_play_survives_a_whistle_moved_between_two_empty_beats():
+    """Codex pass round 2: empty beats at 100 s and 200 s, then the whistle moves to 150 s. The 100 s beat was in play
+    and stays the base, so a later 40 s report scores (bounded by 150 - 100 s); it was "unverified" and scored nothing."""
+    sc, now, t0 = _scorer()
+    now["t"] = t0 + 100_000
+    sc.station_possession("1", {}, seen_ms=t0 + 100_000)
+    now["t"] = t0 + 200_000
+    sc.station_possession("1", {}, seen_ms=t0 + 200_000)
+    sc.set_end(t0 + 150_000)
+    now["t"] = t0 + 210_000
+    sc.station_possession("1", {0: 40_000}, seen_ms=t0 + 210_000)
+    assert "1" not in sc.station_unverified, sc.station_unverified
+    assert sc.possession()["by_team"]["red"] == 40, (sc.possession(), sc.station_possession_ms)
 
 def test_two_teams_over_the_target_are_decided_on_raw_points_not_rounded():
     """Review round 3: red crosses 1000 and MC ends; blue's hill, out of Wi-Fi, reports 1000.3 late inside its window.
