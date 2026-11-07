@@ -596,3 +596,31 @@ def test_codex_2026_11_07_a_soft_reload_write_that_never_left_puts_the_books_bac
         await _tick(st, clock, st.reloading["s"] + 0.1)
         assert st._prev_ammo[0] == 29 and st._prev_reserve[0] == res and st.ammo == 29, (st._prev_ammo, st.ammo)
     asyncio.run(go())
+
+
+def test_codex_2026_11_07_r2_a_soft_reload_write_that_raises_puts_the_books_back():
+    """engine.js: a rejected write runs `failed` like a false one."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        async def boom(*_a, **_k):
+            raise RuntimeError("link error")
+        st.write = boom   # type: ignore[method-assign]
+        await _tick(st, clock, st.reloading["s"] + 0.1)
+        assert st._prev_ammo[0] == 29 and st.ammo == 29, (st._prev_ammo, st.ammo)
+    asyncio.run(go())
+
+
+def test_codex_2026_11_07_r2_alt_stays_held_after_the_phone_s_reload_lands_while_the_gun_reloads_the_other_slot():
+    """ammo.js `reloadPulled` sets the ALT hold for the slot the gun really reloads, which outlives the phone's reload."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        own = st._reload_s
+        st._reload_s = lambda slot=None: 2.0 if slot == 1 else own(slot)   # type: ignore[method-assign]  # slot 1 reloads longer than slot 0
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        assert st.reloading["soft"] and st._gun_other and st._gun_other["slot"] == 1
+        await _tick(st, clock, st.reloading["s"] + 0.05)
+        assert st.reloading is None and clock.t < st._gun_other["until"]
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching is None, "the gun is still reloading slot 1"
+    asyncio.run(go())
