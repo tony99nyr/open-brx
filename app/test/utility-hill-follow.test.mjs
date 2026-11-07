@@ -83,3 +83,16 @@ test('an MC arming for a new game does not wipe a following hill\'s point', asyn
   assert.equal(api.point.progress, progress, 'the ring and the live bit decide, not the arming');
   assert.equal(api.statusBody().control.follows, true);
 });
+
+test('F658 review: MC re-arms a following hill as another id: the point and the ring go, as on the Stick', async () => {
+  await api.applyStationConfig({ ...hill, game: 60 });
+  stand(4000, [{ id: 3, team: RED, game: 61, live: true }]);
+  assert.equal(api.statusBody().control.follows, true);
+  assert.ok(api.point.progress > 20, `red builds: ${api.point.progress}`);
+  await api.applyStationConfig({ ...hill, id: 10, game: 60 });
+  const c = api.statusBody().control;
+  assert.equal(c.follows, undefined, 'a new id follows nothing yet');
+  assert.equal(api.point.progress, 0);
+  assert.deepEqual(api.point.holdMs, {});
+  await api.applyStationConfig({ ...hill, game: 60 });   // back to id 9 for the tests after this one
+});
