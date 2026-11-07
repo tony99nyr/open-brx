@@ -4300,6 +4300,33 @@ for (const view of VIEWS) for (const skin of ['', '&night']) {
     must(JSON.stringify(dc) === JSON.stringify(['140', '95']), 'the DOWN chips do not show MC\'s points: ' + JSON.stringify(dc));
   });
 }
+// brx1 2026-11-07: MC holds a Domination `result` until every silent phone reports (final score pending). Between the
+// whistle and the result, nothing on the phone may name a leader: not MC's live points, not this phone's own tally.
+for (const view of VIEWS) {
+  await step(`${view.name} live-dom-mcpoints result pending: after the whistle no team, points or outcome shows until MC's result`, async () => {
+    const pg = await open(view, 'live-dom-mcpoints', '&team=blue&foe=red');
+    for (let k = 0; k < 4; k++) { await pg.evaluate(() => window.brxDemo.points([[11, 0, 1, 100, 1], [12, 1, 1, 100, 0]])); await pg.waitForTimeout(500); }
+    await pg.click('.clockplate'); await settled(pg);
+    const live = await pg.evaluate(() => Array.from(document.querySelectorAll('.bdteam .tm.pts b')).map(b => b.textContent.trim()).sort());
+    must(JSON.stringify(live) === JSON.stringify(['140', '95']), 'setup: the live board shows MC\'s points: ' + JSON.stringify(live));
+    await pg.click('.bdx'); await settled(pg);
+    await pg.evaluate(() => window.brxDemo.end()); await settled(pg);
+    await pg.evaluate(() => window.brxDemo.score(3, 1, 1, [150, 99])); await settled(pg);   // a late push after the whistle
+    const LEAD = /\b(WIN|WON|WINS|LOSE|LOST|DEFEAT|VICTORY|DRAW|LEADS?|LEADING|AHEAD|140|150|95|99)\b|\bRED\b|\bBLUE\b/;
+    const t = await text(pg);
+    must(/RESULT PENDING/.test(t), 'the whistle did not land on RESULT PENDING: ' + t.slice(0, 200));
+    must(!LEAD.test(t), 'a leader, a team score or an outcome shows while the result is pending: ' + (t.match(LEAD) || [])[0] + ' | ' + t.slice(0, 300));
+    must(await pg.evaluate(() => !document.querySelector('.tm.pts, .rteams, .rstrip.poss')), 'team point chips or a points strip on the pending screen');
+    await pg.evaluate(() => window.brxDemo.endOk()); await settled(pg);   // OK: the lobby, still without a result
+    const o = await text(pg);
+    const SCORE = /\b(WIN|WON|WINS|LOSE|LOST|DEFEAT|VICTORY|DRAW|LEADS?|LEADING|AHEAD|140|150|95|99)\b/;   // the lobby names the player's own squad
+    must(!SCORE.test(o), 'the lobby after OK names a leader while the result is pending: ' + (o.match(SCORE) || [])[0] + ' | ' + o.slice(0, 300));
+    await pg.evaluate(() => window.brxDemo.result('win')); await settled(pg);   // CONTROL: the guard can see a result
+    const r = await text(pg);
+    await pg.close();
+    must(SCORE.test(r), 'the guard cannot see an outcome even once MC sends one: ' + r.slice(0, 200));
+  });
+}
 
 // ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
 // F238 reopened (field 2026-10-17): a cell below one charge (3 of 10) reads NOT ENOUGH ENERGY in the same place, a longer word.
