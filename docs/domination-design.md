@@ -314,3 +314,9 @@ team: `hold_ms` (a living owner on the point and no rival, F554; KOTH scores it)
 contested or empty, until it drains to neutral; Domination scores it). MC picks the clock by mode
 (`OWNERSHIP_SCORED_MODES` in `types.py`). A station that sends no `own_ms` scores nothing in Domination, and the phones'
 reports cover its point.
+
+**Superseded 2026-11-07 (Tony: "a hill shouldnt be the one reporting the score right? it should be the phones").** MC
+scores Domination from the phones' `own_change` facts (contracts A87): each phone near a hill reports the owner changes
+it hears from the Stick's advert, and MC builds and sums one owner timeline per hill. The Stick still decides presence
+and ownership on the field, so every phone hears the same owner; its `own_ms` is only the cross-check on its STATIONS
+row. A Stick restart, or a hill that never reaches Wi-Fi, loses no points. KOTH still scores the Stick's `hold_ms`.

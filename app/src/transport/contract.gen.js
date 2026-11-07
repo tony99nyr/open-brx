@@ -141,6 +141,8 @@ export const STATION_PACE_REARM = 'BRING IT INTO WI-FI TO UPDATE';
 /** F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
  *  an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658. */
 export const LIVE_BIT_MIN_APP = '0.4.34';
+/** Tony 2026-11-07: the first app that sends `own_change` (brx2). An older phone's hill is scored from its possession tally. */
+export const OWN_CHANGE_MIN_APP = '0.4.36';
 export const TIMED_PROTECT_S_DEFAULT = 0;
 export const WEAPON_DELAY_MS_DEFAULT = 1500;
 export const STATION_PROTECT_S_DEFAULT = 2;
@@ -677,6 +679,7 @@ export const PERSISTED_EVENT_TYPES = new Set([
   'death',
   'hit_taken',
   'operator_result',
+  'own_change',
   'pickup',
   'possession',
   'respawn',
@@ -773,6 +776,7 @@ export const EVENT_REQUIRED = {
   respawn: [],
   team_change: ['tid'],
   possession: ['hold_ms'],
+  own_change: ['site', 'from_tid', 'owner_tid', 'at_ms'],
   operator_result: ['cmd', 'ok'],
   pickup: ['station_id', 'item_kind'],
 };

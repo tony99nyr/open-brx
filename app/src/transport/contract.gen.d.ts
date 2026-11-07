@@ -141,6 +141,8 @@ export declare const STATION_PACE_REARM: 'BRING IT INTO WI-FI TO UPDATE';
 /** F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
  *  an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658. */
 export declare const LIVE_BIT_MIN_APP: '0.4.34';
+/** Tony 2026-11-07: the first app that sends `own_change` (brx2). An older phone's hill is scored from its possession tally. */
+export declare const OWN_CHANGE_MIN_APP: '0.4.36';
 export declare const TIMED_PROTECT_S_DEFAULT: 0;
 export declare const WEAPON_DELAY_MS_DEFAULT: 1500;
 export declare const STATION_PROTECT_S_DEFAULT: 2;
@@ -698,7 +700,7 @@ export type ControlCmd = 'abort_start' | 'clock_resync' | 'end' | 'panic' | 'rec
  *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
  *  A56 (S58): a player took a powerup station's item (never scored) */
 export declare const PERSISTED_EVENT_TYPES: ReadonlySet<PersistedEventType>;
-export type PersistedEventType = 'death' | 'hit_taken' | 'operator_result' | 'pickup' | 'possession' | 'respawn' | 'team_change';
+export type PersistedEventType = 'death' | 'hit_taken' | 'operator_result' | 'own_change' | 'pickup' | 'possession' | 'respawn' | 'team_change';
 export declare const STATION_KINDS: ReadonlySet<StationKind>;
 /** The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
  *  persistent state, pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which
@@ -1176,6 +1178,10 @@ export interface GameConfigBase {
    *  (`station_config.game`) for THIS match. Set by `Session._wire_config()`; a player phone
    *  scopes presence and its own advert by it. Absent (an older MC) = 0, any game. */
   game_byte?: number;
+  /** Tony 2026-11-07: Domination only, set by `Session._wire_config()`. True = this MC
+   *  scores the hills from the phones' `own_change` facts, so the phone sends them.
+   *  Absent (an older MC, which rejects the fact) = send `possession` only. */
+  own_change?: boolean;
   /** Derived scanner fallback: teams without a station use timed AUTO respawn. */
   respawn_auto_teams?: number[];
   /** F70: what is emitting this game's objective -- `STATION_SOURCES` above
@@ -1256,6 +1262,7 @@ export interface GameConfig {
   stations?: StationRef[];
   powerups?: PowerupSlot[];
   game_byte?: number;
+  own_change?: boolean;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -1291,6 +1298,7 @@ export interface ConfigView {
   stations?: StationRef[];
   powerups?: PowerupSlot[];
   game_byte?: number;
+  own_change?: boolean;
   respawn_auto_teams?: number[];
   station_source?: string;
   presentation?: Record<string, unknown>;
@@ -1675,7 +1683,7 @@ export interface OutboxLostReport {
 }
 
 export interface Event {
-  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'operator_result' | 'pickup';
+  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'own_change' | 'operator_result' | 'pickup';
   t?: number;
   match_id?: string | null;
   node_id?: string;
@@ -1736,6 +1744,13 @@ export interface Event {
   hold_ms?: Record<string, number>;
   observed_ms?: number;
   source?: 'beacon' | 'station';
+  /** own_change (Tony 2026-11-07, Domination): the owner in a hill's advert changed, as this phone heard it (`site` as
+   *  above). `from_tid` is the owner the phone heard before; `from_tid` == `owner_tid` re-asserts what it hears (first
+   *  hearing, after a gap, every 30 s). `at_ms` is when it heard it, on MC's clock. MC builds one owner timeline per hill
+   *  from every phone's facts (`ownership.owned_ms`). */
+  from_tid?: number;
+  owner_tid?: number;
+  at_ms?: number;
   /** status */
   hp?: number;
   armor?: number;
