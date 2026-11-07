@@ -5253,9 +5253,16 @@ export class Engine {
     return now - r.lastShotAt >= this._recoilQuietMs(r);
   }
   /** The trigger's `$BUT,0,1`. F662 R2: a pull before the recovery timer runs out cancels it, so the rung and the count
-   *  carry into the new pull. */
+   *  carry into the new pull. A timer that ran out since the last tick restores crisp here first, as the tick would
+   *  have (Codex review 2026-11-07: the pull cancelled an expired timer the tick had not seen). */
   _recoilPull() {
-    const r = this._recoil; if (r && r.recovery) r.releasedAt = 0;
+    const r = this._recoil; if (!r || !r.recovery) return;
+    const now = this.now();
+    if (r.model && !r.disabled && r.state !== 'crisp' && this._recoilQuiet(r, now)) {
+      r.burst = 0; r.state = 'crisp'; r.value = r.crisp; r.dirty = true;
+      if (this.alive) this._recoilFlush(now);
+    }
+    r.releasedAt = 0;
   }
   /** The trigger's `$BUT,0,0`. S54 (every weapon): a burst still CRISP is forgotten, at no cost in writes.
    *  F663 (Tony 2026-11-02, "simply letting go of trigger immediately resets it"): a `reset_on_release` weapon

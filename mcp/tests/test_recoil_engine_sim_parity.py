@@ -125,9 +125,10 @@ function run(c) {
   const snap = () => ({ state: eng._recoil ? eng._recoil.state : 'crisp', burst: eng._recoil && eng._recoil.model ? eng._recoil.burst : 0 });
   if (!eng.alive || eng.phase !== 'live') throw new Error('the harness did not reach a live, alive gun');
   eng.feedFrame('$BUT,0,1,*'); fire(c.burst); eng.feedFrame('$BUT,0,0,*');
-  clock += c.pause; eng.tick();
+  clock += c.pause; if (c.tick !== false) eng.tick();   // tick false: the pull comes before any tick sees the rest
+  eng.feedFrame('$BUT,0,1,*');
   const after = snap();
-  eng.feedFrame('$BUT,0,1,*'); fire(c.more);
+  fire(c.more);
   return { model: !!(eng._recoil && eng._recoil.model), after, end: snap() };
 }
 console.log(JSON.stringify(cases.map(run)));
@@ -148,6 +149,23 @@ def test_the_sim_recoil_lands_where_the_engine_does_for_random_bursts_rests_and_
     got = _engine(cases)
     assert len(got) == len(cases)
     bad = [(c, e, s) for c, e, s in ((c, e, _sim(c)) for c, e in zip(cases, got)) if e != s]
+    assert not bad, f"{len(bad)} of {len(cases)} disagree; first: case {bad[0][0]}\n engine {bad[0][1]}\n sim    {bad[0][2]}"
+
+
+def test_a_pull_after_the_r2_timer_ran_out_is_crisp_even_before_a_tick():
+    """Codex review 2026-11-07: the engine restored crisp only on its tick, so a pull that came after the R2 timer ran
+    out, but before the next tick, cancelled the expired timer and kept the heavy rung. The sim resets. These cases pull
+    with no tick between the release and the pull, on R2 weapons only (the settle clock is the tick's by design)."""
+    cases = []
+    for c in _cases(2400, seed=20261107):
+        prof = B.recoil_profile({"weapon_id": "assault_rifle", "dmg": DMG, "recoil": c["recoil"]})
+        if prof is not None and prof.recovery is not None:
+            cases.append({**c, "tick": False})
+    assert len(cases) > 300, len(cases)
+    got = _engine(cases)
+    bad = [(c, e, s) for c, e, s in ((c, e, _sim(c)) for c, e in zip(cases, got)) if e != s]
+    reset = sum(1 for c in cases if _sim(c)["after"]["state"] == "crisp")
+    assert reset > 50, reset   # enough cases where the timer ran out to see the bug
     assert not bad, f"{len(bad)} of {len(cases)} disagree; first: case {bad[0][0]}\n engine {bad[0][1]}\n sim    {bad[0][2]}"
 
 
