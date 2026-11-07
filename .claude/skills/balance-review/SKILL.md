@@ -164,7 +164,10 @@ Scenario version 12 uses these models:
   heat lock, swap or dry down time (`AMMO_STRESS_DOWNTIME_ONLY`). Bolt kits, including combos with a bolt
   slot, score n/a. Their whole bolt cycle is down time, so this rule measures exposure instead of ammunition.
   Only ammo stress credits each chain-reload shell separately and lets the holder fire between shells.
-  This Shotgun behaviour is unproven on a gun. Other scenarios credit the full reload at completion.
+  A pull with a shell loaded ends the reload and keeps the loaded shells. The phone-paced chain (2cc490e63)
+  does the same. The gun's own chain is unbenched (bench SR16). Other scenarios credit the full reload at completion.
+  The phone-paced chain writes at most one shell every `PHONE_CHAIN_TICK_MS` (250 ms), so a Fast Hands Shotgun
+  shell takes 250 ms there, not 200 ms. The sim uses the compiled time.
   The next attacker arrives 1,500 ms
   after the last fight. An attacker arriving during down time starts after a normal reaction delay.
   Otherwise, it reacts 1,000 ms after the holder's first landed hit.
