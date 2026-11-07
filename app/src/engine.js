@@ -5067,7 +5067,12 @@ export class Engine {
     this.am.acctWrote(slot, to, left);
     // Review (Opus, H1): the `$AMMO` goes as a write of its own. Sent in one write with the `$PLAY`, it waited in the play
     // queue behind the start part (and could be dropped by it) while the HUD already showed the full magazine.
-    this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand');
+    let sent = false;
+    const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; } });
+    // Codex pass 2026-11-07: a write that failed before its frame left (a chunk error with the link still up) gave the gun
+    // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
+    const life = this._lifeSeq, failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life); };
+    Promise.resolve(w).then(ok => { if (ok === false) failed(); }, failed);
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
     this._holdAccuracyWrites('F650 reload');   // the `$AMMO` owns the counts until the gun answers it
@@ -5076,6 +5081,17 @@ export class Engine {
     this.am.endDrySpell();             // the weapon in hand is loaded: the RELOAD nag counts from one again
     this.log(`F650: slot ${slot} reloaded by the phone ${mag} → ${to}, reserve ${res} → ${left}`, 'li');
     return to;
+  }
+  /** Codex pass 2026-11-07: the phone's reload `$AMMO` never left. Put the slot's books back to the counts before it, unless a
+   *  newer fact (a round, another write, a new life) has moved them since: the HUD and the next round then read what the gun holds. */
+  _softReloadUnwrite(slot, mag, res, to, left, life) {
+    if (life !== this._lifeSeq || this.am.prevAmmo[slot] !== to || this.am.prevReserve[slot] !== left) return;
+    const a = this.am.acct[slot];
+    if (a && a.mag === to && !(a.fired > 0)) { a.mag = mag; a.res = res; }
+    this.am.setPrev(slot, mag, res);
+    if (this.activeSlot === slot) this.am.publish(slot, mag, res);
+    this.log(`F650: the reload write for slot ${slot} failed before it left: back to ${mag}, reserve ${res}`, 'le');
+    this._changed();
   }
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
