@@ -106,10 +106,14 @@ def _recoil_recovery(v) -> dict | None:
     0 < min_ms <= max_ms and per_round_ms >= 0, or the weapon keeps today's rule. PURE."""
     if not isinstance(v, dict):
         return None
-    vals = [_js_plus(v.get(k, _UNDEF)) for k in ("per_round_ms", "min_ms", "max_ms")]
-    if not all(math.isfinite(x) for x in vals):
+    # real numbers only, as engine.js since the 2026-11-06 review: null, true and "500" are malformed, not 0, 1, 500
+    vals = [float(x) for k in ("per_round_ms", "min_ms", "max_ms")
+            if isinstance(x := v.get(k), (int, float)) and not isinstance(x, bool)]
+    if len(vals) != 3:
         return None
     per, lo, hi = vals
+    if not all(math.isfinite(x) for x in (per, lo, hi)):
+        return None
     if per < 0 or not (lo > 0) or hi < lo:
         return None
     return {"per_round_ms": per, "min_ms": lo, "max_ms": hi}

@@ -341,3 +341,14 @@ def test_f662_r2_a_released_weapon_recovers_after_a_pause_that_grows_with_the_ho
     assert asyncio.run(go(True)) == (([], "degraded"), (["$TMP,,,,0,,,,,,,,*"], "crisp")), "100 ms after the release"
     assert asyncio.run(go(True, pull_at=0.03)) == (([], "degraded"), ([], "degraded")), "a pull cancels it"
     assert asyncio.run(go(False)) == (([], "degraded"), ([], "degraded")), "CONTROL: no block"
+
+
+def test_f662_the_stage_reads_a_recovery_block_as_the_phone_does_real_numbers_only():
+    """Desk review 2026-11-06: engine.js `recoilRecovery` takes real numbers only (null, true and "500" are malformed),
+    so the stage's copy must refuse them too, or it shows a recovery the phone never runs."""
+    from brx_mcp.stage.stage import _recoil_recovery
+    good = {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+    assert _recoil_recovery(good) == {"per_round_ms": 25, "min_ms": 100, "max_ms": 500}
+    for bad in ({**good, "per_round_ms": None}, {**good, "min_ms": True}, {**good, "max_ms": "500"},
+                {**good, "min_ms": 0}, {**good, "max_ms": 50}, {**good, "per_round_ms": -1}, {"per_round_ms": 25}):
+        assert _recoil_recovery(bad) is None, bad
