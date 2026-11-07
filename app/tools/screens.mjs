@@ -2082,6 +2082,40 @@ for (const view of VIEWS) {
     must(koth && !/\b14\b/.test(koth), 'the KOTH row still lists the kill score: ' + koth);
     must(tdm && /\b18\b/.test(tdm) && /\b25\b/.test(tdm), 'the control: a TDM row still lists its kill score: ' + tdm);
   });
+  // brx4 MC review 2026-11-06: Domination scores POINTS in the same `held_s` / `possession` fields, and the result screen
+  // read 770 points as 12:50. Every number the screen shows for it is a plain integer; KOTH (the F657 steps) stays time.
+  for (const skin of ['', '&night']) await step(`${view.name} result-dom-points${skin}: Domination team cards, strip, tile and history read points, never a clock`, async () => {
+    const txt = el => el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    let pg = await open(view, 'result-dom-points', skin);
+    const team = await pg.evaluate(() => ({ env: (document.querySelector('[data-env]') || { dataset: {} }).dataset.env || 'day',
+      cards: Array.from(document.querySelectorAll('.result .rteam')).map(t => ({ big: ((t.querySelector('.tm b') || {}).textContent || '').trim(),
+        sub: (t.querySelector('.thold') || {}).textContent.replace(/\s+/g, ' ').trim(), mine: t.classList.contains('mine') })),
+      tiles: Array.from(document.querySelectorAll('.result .cell')).filter(c => c.offsetWidth > 0).map(c => c.textContent.replace(/\s+/g, ' ').trim()),
+      cut: Array.from(document.querySelectorAll('.result .cell span')).filter(e => e.offsetWidth > 0 && e.scrollWidth > e.clientWidth + 1).map(e => e.textContent) }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-result-dom-points${skin ? '-night' : ''}.png` });
+    await pg.close();
+    must(team.env === (skin ? 'night' : 'day'), 'the skin did not apply: ' + team.env);
+    const mine = team.cards.find(t => t.mine), foe = team.cards.find(t => !t.mine);
+    must(mine && foe, 'both team cards: ' + JSON.stringify(team));
+    must(mine.big === '770' && foe.big === '412', 'a Domination card headlines a clock, not points (770 beats 412): ' + JSON.stringify(team.cards));
+    must(/^KILLS 3$/.test(mine.sub) && /^KILLS 14$/.test(foe.sub), 'the kills are not the line under each card: ' + JSON.stringify(team.cards));
+    must(team.tiles.some(t => /^770 ?TEAM POINTS$/.test(t)), 'the team tile is not 770 TEAM POINTS: ' + JSON.stringify(team.tiles));
+    must(!team.tiles.some(t => /\d:\d\d/.test(t)), 'a tile still reads a clock: ' + JSON.stringify(team.tiles));
+    must(!team.cut.length, 'a tile label is cut off: ' + JSON.stringify(team.cut));
+    pg = await open(view, 'result-dom-points-player', skin);
+    const pl = await pg.evaluate(() => ({
+      shown: (e => !!e && e.offsetWidth > 0)(document.querySelector('.result .rstrip.poss')),
+      strip: Array.from(document.querySelectorAll('.result .rstrip.poss .k, .result .rstrip.poss .ch')).map(e => e.textContent.replace(/\s+/g, ' ').trim()).join(' | ') }));
+    await pg.close();
+    must(/^POINTS\b/.test(pl.strip) && /\b770\b/.test(pl.strip) && /\b412\b/.test(pl.strip) && !/\d:\d\d/.test(pl.strip), 'the possession strip is not POINTS 770 / 412: ' + pl.strip);
+    must(pl.shown, 'the possession strip is not on screen');
+    pg = await open(view, 'history', skin);
+    const rows = await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+    await pg.close();
+    const dom = rows.find(x => /\bDOMINATION\b/.test(x)), koth = rows.find(x => /\bKOTH\b/.test(x));
+    must(dom && /\b770\b/.test(dom) && /\b412\b/.test(dom) && !/12:50|6:52/.test(dom), 'the DOMINATION history row does not list points: ' + dom);
+    must(koth && /7:04/.test(koth), 'the control: a KOTH row still lists held time: ' + koth);
+  });
   // Bench 2026-09-18 (Tony): on YOUR team's card the left edge carries the team colour, and the names sat
   // hard against it -- twice over, at 9px of padding and then at 15px. What a person reads is not the padding
   // number: it is the clear space between the INNER face of that coloured edge and the first glyph, and a

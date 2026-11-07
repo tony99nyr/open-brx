@@ -3,7 +3,12 @@ import { AWARDS, MEDALS } from '../transport/contract.gen.js';
 import { medalChip, medalIcon } from './medalicons.js';
 import { syncTrack, trackHtml } from './synctrack.js';
 import { TEAM_COLOR, TEAM_INK, TEAM_TID, teamChip, pad2, mmss, num, esc, accShown, OUTCOME_WORD, MEDAL_LABEL } from './shared.js';
+import { OWNERSHIP_SCORED_MODES } from '../transport/contract.gen.js';
 const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
+// Domination (types.py OWNERSHIP_SCORED_MODES) scores POINTS, one per owned hill per second, in the same `held_s` and
+// `possession` fields: a plain integer, never a clock (770 read 12:50). KOTH stays a held time.
+export const pointsMode = mode => OWNERSHIP_SCORED_MODES.includes(String(mode || '').toLowerCase());
+const heldText = (v, pts) => pts ? String(Math.round(Math.max(0, Number(v) || 0))) : mmssS(v);
 const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
 // Tony 2026-09-25: the RECAP (the AWARDS tab and the PLAYERS medal column) is icon-first, the name on a long press
 // (title) and in the accessible label, and a legend teaches the icons. The in-game lanes keep their words, no icons.
@@ -113,6 +118,7 @@ export function _result(st) {
     const tab = this.rtab === 'awards' && awards.length ? 'awards' : hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
     const hold = this._resultHold(R);
     const objective = !!(R && R.win_by === 'objective');   // F657: the team's number is its held time
+    const pts = pointsMode((R && R.mode) || st.mode);   // Domination: that number is points
     const my =(R && R.my && typeof R.my === 'object') ? R.my : null;
     const myId = (my && my.player_id) || (st.player && st.player.player_id) || null;
 
@@ -153,9 +159,9 @@ export function _result(st) {
         // F657 (field 2026-11-01): an objective match is won on held time, so the chip's number is the held time and the
         // kill score is the line under it. The chip read "RED 14 · BLUE 3" beside a blue win on 424 s of hill.
         const held = objective && h != null;
-        return `<div class="rteam ${mine ? 'mine' : ''}">${teamChip(t, held ? { mine, value: mmssS(h) } : { mine })}
+        return `<div class="rteam ${mine ? 'mine' : ''}">${teamChip(t, held ? { mine, value: heldText(h, pts) } : { mine })}
           ${held ? `<div class="thold">KILLS <b class="tab">${num(t.score) == null ? '—' : t.score}</b></div>`
-            : h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
+            : h != null ? `<div class="thold">${pts ? 'POINTS' : 'HELD'} <b class="tab">${heldText(h, pts)}</b></div>` : ''}
           <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab kda"><i>K</i><i>D</i><i>A</i></span></div>
           ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab kda"><i>${num(r.kills) == null ? '—' : r.kills}</i><i>${num(r.deaths) == null ? '—' : r.deaths}</i><i>${num(r.assists) == null ? '—' : r.assists}</i></span></div>`).join('')
             : '<div class="tp none">NO SCORED PLAYERS</div>'}</div></div>`;
@@ -182,9 +188,9 @@ export function _result(st) {
     }
 
     // --- strips: possession (player view), the honors roll, and the unofficial post-whistle tally ---
-    const holdStrip = (hold && tab !== 'team') ? `<div class="rstrip poss"><span class="k">HELD</span><span class="v">${Object.entries(hold).map(([tid, v]) => {
+    const holdStrip = (hold && tab !== 'team') ? `<div class="rstrip poss"><span class="k">${pts ? 'POINTS' : 'HELD'}</span><span class="v">${Object.entries(hold).map(([tid, v]) => {
       const t = teams.find(x => String(x.team_id) === String(tid));
-      return `<span class="ch">${esc(String((t && t.name) || tid).toUpperCase())} <b class="tab">${mmssS(v)}</b></span>`; }).join('')}</span></div>` : '';
+      return `<span class="ch">${esc(String((t && t.name) || tid).toUpperCase())} <b class="tab">${heldText(v, pts)}</b></span>`; }).join('')}</span></div>` : '';
     const honors = (R && Array.isArray(R.honors)) ? R.honors.filter(h => h && h.medal) : [];
     // `honors[].display` is the PLAYER's name (not the medal's). `stat` is WHAT EARNED IT, and MC writes it as
     // a descriptive STRING, not a number — `scoring.py honors()` sends "11 K · 2.8 K/D · ×5 STREAK", "8
@@ -259,7 +265,8 @@ export function _resultTiles(st, R, hold) {
     const cells = [['KILLS', v(kills)], ['DEATHS', v(deaths)], ['ASSISTS', v(assists)],
       ['ACCURACY', acc == null ? '—' : acc + '%']];
     if (streak != null) cells.push(['BEST STREAK', streak]);
-    if (myHold != null) cells.push(['YOUR TEAM HELD', mmssS(myHold)]);
+    const pts = pointsMode((R && R.mode) || st.mode);
+    if (myHold != null) cells.push([pts ? 'TEAM POINTS' : 'YOUR TEAM HELD', heldText(myHold, pts)]);
     else cells.push(['SHOTS', v(num(st.shots))]);
     // This player's medals are NOT repeated here: they already read on their own leaderboard line and in the
     // HONORS strip, and a third copy cost 24px of body height on a 390px frame.
@@ -277,7 +284,7 @@ export function _history(st) {
       const w = g.outcome ? (OUTCOME_WORD[g.outcome] || '—') : null;
       // F657: an objective match lists the held time that decided it (`held_s`, MC sends it only then), not the kills
       const scores = Array.isArray(g.team_scores) && g.team_scores.length
-        ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${g.win_by === 'objective' && num(t.held_s) != null ? mmssS(t.held_s)
+        ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${g.win_by === 'objective' && num(t.held_s) != null ? heldText(t.held_s, pointsMode(g.mode))
           : num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
       return `<div class="hr"><span class="c t tab">${clock12(g.t)}</span>
         <span class="c m">${esc(String(g.mode || '—').toUpperCase())}</span>
