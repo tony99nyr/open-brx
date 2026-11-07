@@ -1508,6 +1508,8 @@ _FW_ADDR_ALLOWED = {
     ("docs/firmware-image-research-plan.md", "0x3412"): "the updater header's fixed half: a value, not an address",
     ("docs/experiment-log/2026-08.md", "0x09090909"): "an Il2CppDumper error about the phone app, not the gun",
     ("protocol/callsign-extract/protocol-classes.md", "0x09090909"): "the same Il2CppDumper error",
+    ("docs/spec/contracts.md", "0xffff"): "A88: the Bluetooth SIG test company id of the hill tally, not an address",
+    ("docs/spec/utility.md", "0xffff"): "A88: the same company id",
 }
 
 

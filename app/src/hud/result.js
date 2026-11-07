@@ -238,6 +238,10 @@ export function _result(st) {
     const ret = R ? '' : '<div class="retmc">RETURN TO MISSION CONTROL</div>';
     // QA-14: one status line, never two saying the same thing (the MC pill steps aside on this screen, index.html). The
     // track is that line now; RETURN TO MISSION CONTROL shows only with no sync reading to draw a track from.
+    // A88 (Tony 2026-11-07): after a Domination game with hills, a hill that missed the whistle ends the game and trims
+    // its tally when an ended phone passes it, and the phone carries that tally to MC. `hillPass` is set by app.js while
+    // the phone still listens (hilltally.js `tallyListening`). A line in the footer, not a card.
+    const pass = this.hillPass ? '<div class="hillpass">PASS THE HILLS ON THE WAY BACK</div>' : '';
     const mcv = (!R && st.game && st.game.mc_verify) ? `<div class="mcvline">${esc(String(st.game.mc_verify).toUpperCase())}</div>` : '';
 
     return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
@@ -245,7 +249,7 @@ export function _result(st) {
       <div class="rbody">${body}</div>
       ${tab === 'awards' ? '' : holdStrip + honorStrip + afterStrip}
       <div class="rstats"${tilesHidden ? ' hidden' : ''} style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
-      <div class="rfoot foot"><div class="fl">${track || ret}${mcv}${sess}</div>
+      <div class="rfoot foot"><div class="fl">${track || ret}${pass}${mcv}${sess}</div>
         <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
   }
 

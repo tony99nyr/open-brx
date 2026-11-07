@@ -349,7 +349,17 @@ static AdvertView currentAdvertView(uint32_t now) {
   using brx_glue::link;
   if (!link.assignment().present) return point.view(now);
   const StationAssignment& a = link.assignment();
-  if (a.kind == "control") return link.hill().advert();
+  if (a.kind == "control") {
+    AdvertView v = link.hill().advert();
+    // A88: a following hill advertises its Domination tally beside the UUID, alternating with its last ended game
+    TallyView t[2];
+    const int n = link.follower().tallies(link.hill(), now, t);
+    if (n) {
+      encode_tally(t[n > 1 ? (now / (uint32_t)contract::HILL_TALLY_ROTATE_MS) % 2 : 0], v.tally);
+      v.has_tally = true;
+    }
+    return v;
+  }
   if (a.kind == "powerup") {
     // Review round 2 (LOW): gated on powerup_ended() (via powerup_advert_view), not the raw schedule
     // -- after MATCH OVER the schedule can still say "available", and no phone must see an item it
@@ -418,6 +428,13 @@ static void publishAdvert(const AdvertView& v, uint32_t now) {
   BLEAdvertisementData data;
   data.setFlags(0x04);  // BR/EDR not supported; general discoverable is not needed for a beacon
   data.setCompleteServices(BLEUUID(uuid.c_str()));
+  if (v.has_tally) {  // A88: flags 3 + UUID 18 + this 10 = 31, the legacy limit exactly
+    char md[8];  // the company id, little-endian, then the payload; String(ptr, len) keeps the zero bytes
+    md[0] = (char)(contract::ADVERT_TALLY_COMPANY & 0xff);
+    md[1] = (char)((contract::ADVERT_TALLY_COMPANY >> 8) & 0xff);
+    for (int i = 0; i < 6; i++) md[2 + i] = (char)v.tally[i];
+    data.setManufacturerData(String(md, sizeof md));
+  }
   applyAdvertTxPower();  // A67: the advertising power, re-applied on every restart of the advert
   bool ok = adv->setAdvertisementData(data) && adv->start();
   advertising = ok;

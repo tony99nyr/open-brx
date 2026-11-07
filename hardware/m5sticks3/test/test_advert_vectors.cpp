@@ -98,6 +98,20 @@ int main(int argc, char** argv) {
     Advert got;
     check(!decode_advert(r.get("uuid").as_string(), got), "reject: " + r.get("name").as_string());
   }
+  // A88: the hill's tally payload, and how an ended player's byte 11 reads back (the Stick never encodes an end code)
+  for (const Value& v : doc.get("tallies").arr) {
+    TallyView t;
+    t.game = (uint8_t)v.get("game").as_int();
+    t.final = v.get("final").as_bool();
+    for (const auto& kv : v.get("own_ms").obj) t.own_ms[std::stoi(kv.first)] = (uint32_t)kv.second.as_int64();
+    uint8_t got[6];
+    encode_tally(t, got);
+    bool same_bytes = v.get("bytes").arr.size() == 6;
+    for (int i = 0; i < 6 && same_bytes; i++) same_bytes = got[i] == v.get("bytes").arr[i].as_int();
+    check(same_bytes, "tally: " + v.get("name").as_string());
+  }
+  for (const Value& v : doc.get("end_reads").arr)
+    check(end_age_ms((uint8_t)v.get("code").as_int()) == (uint32_t)v.get("age_ms").as_int64(), "end read: code " + std::to_string(v.get("code").as_int()));
   if (failures) { std::printf("%d of %d checks failed\n", failures, checks); return 1; }
   std::printf("all checks passed (%d)\n", checks);
   return 0;

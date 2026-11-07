@@ -162,6 +162,8 @@ JUDGED = {
     "HILL_RING_STALE_MS": "F658 (2026-11-01): how long a following hill keeps a game's tally in its ring unheard; a byte heard\n"
                           "again after this starts fresh. It ages a stored tally, not presence or an advert, so a hill beacon\n"
                           "has nothing to keep from firing",
+    "HILL_TALLY_REFRESH_MS": "A88 (2026-11-07): the most often a hill re-keys its advert for a tally whose seconds alone changed.\n"
+                             "A rate limit on the hill's own advert, not a window a beacon could fail to refresh",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

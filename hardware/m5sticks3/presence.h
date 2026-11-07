@@ -429,6 +429,8 @@ struct HillSnap {
   int last_owner = -1;
   uint32_t hold_ms[4] = {0, 0, 0, 0};
   uint32_t own_ms[4] = {0, 0, 0, 0};  // the owned clock (Domination), control.js `ownMs`
+  bool own_ended = false;  // A88: control.js snapshot `ownEnded`: the game ended here, no more own_ms
+  bool own_final = false;  // A88: `ownFinal`: that end came from evidence, so the tally is exact
   bool contested = false;
   int dir = 0;
   uint32_t captures = 0;
@@ -450,6 +452,18 @@ class BleControlPoint {
   // with or without a body on it; stops when the point drains to neutral.
   uint32_t own_ms[4] = {0, 0, 0, 0};
   int owned_by = -1;          // control.js `ownedBy`: the owner the last update left, or -1
+  // A88 (control.js `ownSpans`, `ownEndAt`, `ownFinal`): the own_ms banking spans of the last OWN_SPAN_KEEP_MS, so an end
+  // heard late can give back what was banked after it; then no more banks. `own_end_known` false = ended, time unknown
+  // (a restored point: control.js -Infinity), which trims nothing more.
+  struct OwnSpan { int o; uint32_t t0, t1; };
+  static constexpr int OWN_SPAN_MAX = 16;
+  static constexpr uint32_t OWN_SPAN_KEEP_MS = ((uint32_t)contract::ADVERT_VALUE_MAX * contract::ADVERT_END_AGE_STEP_S + 60) * 1000;
+  OwnSpan own_spans[OWN_SPAN_MAX] = {};
+  int n_own_spans = 0;
+  bool own_ended = false;
+  bool own_end_known = false;
+  uint32_t own_end_at = 0;
+  bool own_final = false;
   bool contested = false;
   int held_by = -1;           // F554: the team counted ALONE on the point at the last update (control.js `heldBy`), or -1
   int dir = 0;                // +1 rising, -1 falling, 0 static
@@ -485,6 +499,8 @@ class BleControlPoint {
     s.last_owner = last_owner;
     for (int t = 0; t < 4; t++) s.hold_ms[t] = hold_ms[t];
     for (int t = 0; t < 4; t++) s.own_ms[t] = own_ms[t];
+    s.own_ended = own_ended;
+    s.own_final = own_ended && own_final;
     s.contested = contested;
     s.dir = dir;
     s.captures = captures;
@@ -501,6 +517,8 @@ class BleControlPoint {
     last_owner = s->last_owner >= 0 && hill_claimable(s->last_owner) ? s->last_owner : -1;
     for (int t = 0; t < 4; t++) hold_ms[t] = s->hold_ms[t];
     for (int t = 0; t < 4; t++) own_ms[t] = s->own_ms[t];
+    own_ended = s->own_ended;   // A88: no spans and no end time come back (control.js restore)
+    own_final = s->own_ended && s->own_final;
     contested = s->contested;
     dir = (s->dir == 1 || s->dir == -1) ? s->dir : 0;
     captures = s->captures;
@@ -611,7 +629,8 @@ class BleControlPoint {
     if (owner != contract::STATION_TEAM_ANY && owner < 4 && sole == owner && elapsed) hold_ms[owner] += held_by == owner ? elapsed : dt;
     held_by = sole;
     // The owned clock (control.js `ownMs`): the owner across this interval banks it, contested or empty; the same gap clamp.
-    if (owner != contract::STATION_TEAM_ANY && owner < 4 && elapsed) own_ms[owner] += owned_by == owner ? elapsed : dt;
+    // A88: an ended game banks no more (end_own).
+    if (owner != contract::STATION_TEAM_ANY && owner < 4 && elapsed && !own_ended) bank_own(owner, owned_by == owner ? elapsed : dt, now);
 
     // The two phases. A step that runs out of bar carries its remaining work into the next phase
     // (control.js: the tick that crossed zero used to render "RED STALLED AT 0%").
@@ -672,6 +691,43 @@ class BleControlPoint {
     return out;
   }
 
+  // A88: control.js _bankOwn: bank `ms` to `o`, ending at `now`, and record the span so end_own can take it back.
+  void bank_own(int o, uint32_t ms, uint32_t now) {
+    own_ms[o] += ms;
+    const uint32_t t0 = now - ms;
+    if (n_own_spans && own_spans[n_own_spans - 1].o == o && own_spans[n_own_spans - 1].t1 == t0) own_spans[n_own_spans - 1].t1 = now;
+    else {
+      if (n_own_spans == OWN_SPAN_MAX) drop_span();
+      own_spans[n_own_spans++] = {o, t0, now};
+    }
+    while (n_own_spans && (int32_t)(now - OWN_SPAN_KEEP_MS - own_spans[0].t1) > 0) drop_span();
+  }
+  // A88: control.js endOwn: the game ended here at `end_at`. Give back the own_ms banked after it (the spans kept) and
+  // bank no more. `exact`: the end came from evidence, so the tally is final. A later, earlier end trims further.
+  void end_own(uint32_t end_at, bool exact) {
+    // Codex review (control.js endOwn): a stalled station last banked before the end. Bank the owner's time up to the end
+    // first, with update()'s gap clamp, so the end does not lose it.
+    if (!own_ended && has_at_ && (int32_t)(end_at - at_) > 0 && owner != contract::STATION_TEAM_ANY && owner < 4) {
+      const uint32_t gap = end_at - at_;
+      bank_own(owner, owned_by == owner ? gap : std::min<uint32_t>(gap, contract::HILL_MAX_STEP_MS), end_at);
+    }
+    if (!own_ended || (own_end_known && (int32_t)(end_at - own_end_at) < 0)) {
+      for (int i = 0; i < n_own_spans; i++) {
+        OwnSpan& sp = own_spans[i];
+        const uint32_t from = (int32_t)(end_at - sp.t0) > 0 ? end_at : sp.t0;
+        const int32_t cut = (int32_t)(sp.t1 - from);
+        if (cut > 0) {
+          own_ms[sp.o] = own_ms[sp.o] > (uint32_t)cut ? own_ms[sp.o] - (uint32_t)cut : 0;
+          sp.t1 = from;
+        }
+      }
+      own_ended = true;
+      own_end_known = true;
+      own_end_at = end_at;
+    }
+    if (exact) own_final = true;
+  }
+
   // JS Math.round for the non-negative values used here.
   static long js_round(double x) { return (long)std::floor(x + 0.5); }
 
@@ -688,6 +744,10 @@ class BleControlPoint {
     }
   };
   Key key() const { return Key{owner, capturing, js_round(progress), contested, dir, net}; }
+  void drop_span() {
+    for (int i = 1; i < n_own_spans; i++) own_spans[i - 1] = own_spans[i];
+    if (n_own_spans) n_own_spans--;
+  }
   bool has_at_ = false;
   uint32_t at_ = 0;
 };
@@ -701,6 +761,9 @@ class BleControlPoint {
 struct FollowEnd {
   uint64_t live_ids = 0;  // bit n: player n heard live in the current game (player_num 1..63)
   bool ended = false;
+  bool has_end_at = false;  // A88 (control.js `endAt`, `endExact`): when the game ended here, from evidence
+  uint32_t end_at = 0;
+  bool end_exact = false;
   void reset() { *this = FollowEnd(); }
   void note(const PlayerEntry& p, bool has_current, uint8_t current) {
     if (!has_current || p.game != current || p.id >= 64) return;
@@ -805,7 +868,7 @@ class HillFollower {
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id))
-        end.note(p, has_current, current);
+        note_end(p, now);
     }
     auto count = [&](int g) { for (size_t k = 0; k < nh; k++) if (heard[k].game == g) return heard[k].n; return 0; };
     const HillGame* best = nullptr;
@@ -819,6 +882,9 @@ class HillFollower {
     int next = has_current ? current : -1;
     const HillGame* cur = has_current ? find(current) : nullptr;
     if (end.switch_now(has_current, best != nullptr, cur ? cur->heard_at : now, now, stale_ms)) next = best->game;
+    // A88: an ended current game banks no more own_ms and gives back what it banked after its end, BEFORE a switch below
+    // saves the point into the ring. The 10-minute silence (no evidence of when) ends it now, not exact.
+    if (end.ended && has_current) point.end_own(end.has_end_at ? end.end_at : now, end.end_exact);
     if (next >= 0 && !has_current && first && (armed_game == 0 || armed_game == next)) {
       // the first follow into MC's own game (or from a hill of any game) keeps the point it counted
       current = (uint8_t)next;
@@ -850,12 +916,59 @@ class HillFollower {
       for (size_t i = 0; i < players.capacity(); i++) {
         const PlayerEntry& p = players.slot(i);
         if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id))
-          end.note(p, has_current, current);
+          note_end(p, now);
       }
+      if (end.ended) point.end_own(end.has_end_at ? end.end_at : now, end.end_exact);
     }
     out.filter.follows = true;
     out.filter.game = current;
     return out;
+  }
+
+  // A88: control.js _noteEnd: the end rule (FollowEnd::note) plus when the game ended here. A whistle heard ends it when
+  // its advert was heard; an ended phone's end info ends it at its end time, even from a phone never heard live here,
+  // unless that time is before the game was first heard here. The earliest end wins.
+  void note_end(const PlayerEntry& p, uint32_t now) {
+    if (!has_current || p.game != current) return;
+    const uint32_t heard_at = now - p.age_ms;
+    const uint8_t code = player_end_code(p.state, p.value);
+    const HillGame* e = get(current);
+    const uint32_t t = heard_at - end_age_ms(code);
+    // Codex review: end info older than this game is another game's (a reused byte): that advert says nothing about this
+    // one, not even as a whistle
+    if (code && e && (int32_t)(t - e->since) < 0) return;
+    const bool was = end.ended;
+    end.note(p, has_current, current);
+    bool have = !was && end.ended;
+    uint32_t at = heard_at;
+    if (code) {
+      end.ended = true;
+      if (!have || (int32_t)(t - at) < 0) at = t;
+      have = true;
+    }
+    if (have) {
+      if (!end.has_end_at || (int32_t)(at - end.end_at) < 0) end.end_at = at;
+      end.has_end_at = true;
+      end.end_exact = true;
+    }
+  }
+  // A88: control.js tallies: the current game's, then the most recently heard other game with a saved state, heard within
+  // stale_ms. Returns how many (0..2).
+  int tallies(const BleControlPoint& point, uint32_t now, TallyView out[2]) const {
+    if (!follows || !has_current) return 0;
+    out[0] = TallyView();
+    out[0].game = current;
+    out[0].final = point.own_ended && point.own_final;
+    for (int k = 0; k < 4; k++) out[0].own_ms[k] = point.own_ms[k];
+    const HillGame* prev = nullptr;
+    for (const auto& e : games)
+      if (e.used && e.game != current && e.has_snap && (int32_t)(now - e.heard_at) <= (int32_t)stale_ms && (!prev || (int32_t)(e.heard_at - prev->heard_at) > 0)) prev = &e;
+    if (!prev) return 1;
+    out[1] = TallyView();
+    out[1].game = prev->game;
+    out[1].final = prev->snap.own_ended && prev->snap.own_final;
+    for (int k = 0; k < 4; k++) out[1].own_ms[k] = prev->snap.own_ms[k];
+    return 2;
   }
 
   const HillGame* get(uint8_t g) const {
@@ -895,8 +1008,9 @@ class HillFollower {
 // F658: the follower and its ring in one NVS string ("hill_ring"), so a restarted hill keeps following with every game's
 // tally (the phone saves the same in localStorage "brx.station.hillring"). Times are saved as ms AGO, since millis()
 // restarts at boot. "r2|<station id>|<follows>|<current or -1>|<ended>|<live ids, hex>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
-// <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>,<own0>,<own1>,<own2>,<own3>;..." with the current game's
-// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0. An "r1"
+// <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>,<own0>,<own1>,<own2>,<own3>,<own ended>,<own final>;..." with the
+// current game's state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with
+// own_ms 0, and one with 15 (saved before A88) restores as not ended. An "r1"
 // string (saved before the end evidence, Codex review r2) restores with no end evidence.
 inline std::string encode_hill_ring(int station_id, const HillFollower& f, const BleControlPoint& point, uint32_t now) {
   char e[40];
@@ -907,10 +1021,11 @@ inline std::string encode_hill_ring(int station_id, const HillFollower& f, const
     if (!g.used) continue;
     const HillSnap t = f.tally(g, point);
     char b[224];
-    std::snprintf(b, sizeof b, "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu;", (unsigned)g.game, (unsigned long)(now - g.heard_at),
+    std::snprintf(b, sizeof b, "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%d,%d;", (unsigned)g.game, (unsigned long)(now - g.heard_at),
                   (unsigned long)(now - g.since), t.owner, t.capturing, BleControlPoint::js_round(t.progress * 10), t.last_owner,
                   (unsigned long)t.hold_ms[0], (unsigned long)t.hold_ms[1], (unsigned long)t.hold_ms[2], (unsigned long)t.hold_ms[3],
-                  (unsigned long)t.own_ms[0], (unsigned long)t.own_ms[1], (unsigned long)t.own_ms[2], (unsigned long)t.own_ms[3]);
+                  (unsigned long)t.own_ms[0], (unsigned long)t.own_ms[1], (unsigned long)t.own_ms[2], (unsigned long)t.own_ms[3],
+                  t.own_ended ? 1 : 0, t.own_final ? 1 : 0);
     s += b;
   }
   return s;
@@ -944,11 +1059,12 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
     if (end == std::string::npos) return false;
     unsigned game = 0;
     unsigned long heard = 0, since = 0, h[4] = {0, 0, 0, 0}, o[4] = {0, 0, 0, 0};
-    int owner = 0, capturing = 0, last_owner = 0;
+    int owner = 0, capturing = 0, last_owner = 0, own_ended = 0, own_final = 0;
     long p10 = 0;
-    const int got = std::sscanf(s.substr(pos, end - pos).c_str(), "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu", &game, &heard,
-                                &since, &owner, &capturing, &p10, &last_owner, &h[0], &h[1], &h[2], &h[3], &o[0], &o[1], &o[2], &o[3]);
-    if ((got != 11 && got != 15) || game > 255 || n >= contract::HILL_RING_SIZE) return false;
+    const int got = std::sscanf(s.substr(pos, end - pos).c_str(), "%u,%lu,%lu,%d,%d,%ld,%d,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%d,%d", &game, &heard,
+                                &since, &owner, &capturing, &p10, &last_owner, &h[0], &h[1], &h[2], &h[3], &o[0], &o[1], &o[2], &o[3],
+                                &own_ended, &own_final);
+    if ((got != 11 && got != 15 && got != 17) || game > 255 || n >= contract::HILL_RING_SIZE) return false;
     HillGame& g = out.games[n++];
     g.used = true;
     g.game = (uint8_t)game;
@@ -961,6 +1077,8 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
     t.last_owner = last_owner;
     for (int k = 0; k < 4; k++) t.hold_ms[k] = (uint32_t)h[k];
     for (int k = 0; k < 4; k++) t.own_ms[k] = (uint32_t)o[k];
+    t.own_ended = own_ended != 0;   // A88: absent (an older save) = not ended
+    t.own_final = own_ended != 0 && own_final != 0;
     if ((int)game == current) { have_current = true; current_snap = t; }
     else { g.snap = t; g.has_snap = true; }
     pos = end + 1;
