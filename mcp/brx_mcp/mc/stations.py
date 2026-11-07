@@ -1282,7 +1282,8 @@ class StationRegistry:
             # `tally["hold_ms"]` LAST. The same rostered-tid filter applies to it here too.
             rostered_tally = {tid: ms for tid, ms in tally["hold_ms"].items() if _rostered_tid(tid)}
             rep["control"] = {**control, "hold_ms": {**hold, **rostered_tally}}
-            owner = hold_control.get("owner") if old_game else control.get("owner")
+            owner_src = (hold_control if old_game else control) or {}   # another game's beat: its ring entry for MC's game
+            owner = owner_src.get("owner")
             if isinstance(owner, int) and not isinstance(owner, bool) and owner in (0, 1, 2, 3, STATION_TEAM_ANY):
                 tally["owner"] = owner
         rv = rep.get("revives")

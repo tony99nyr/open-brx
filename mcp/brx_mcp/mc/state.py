@@ -3399,12 +3399,13 @@ class Session:
             # Codex review 2026-11-07: a hill now following another game; only its ring entry for MC's game is this
             # match's. Read from the decoded report, where Domination's own_ms already stands in hold_ms.
             rc = rep.get("control")
-            games = rc.get("games") if isinstance(rc, dict) else None
-            ring_game = games.get(str(self._game_byte())) if isinstance(games, dict) else None
-            rep = dict(rep)
-            if isinstance(ring_game, dict):
-                rep["control"] = {**(rep.get("control") or {}), "hold_ms": ring_game.get("hold_ms"),
-                                  "owner": ring_game.get("owner")}
+            games = rc.get("games") if rc is not None else None
+            ring_game = games.get(str(self._game_byte())) if games is not None else None
+            rep = rep.copy()
+            if rc is not None and ring_game is not None:
+                ctl = rc.copy()
+                ctl["hold_ms"], ctl["owner"] = dict(ring_game["hold_ms"]), ring_game["owner"]
+                rep["control"] = ctl
             else:
                 rep.pop("control", None)
         self._merge_station_recap_report(frozen, rep)
