@@ -306,6 +306,40 @@ def test_a_hill_captured_only_while_out_of_wifi_scores_its_late_report():
     assert poss.get("by_team", {}).get(red["team_id"]) == 50, (poss, end - heard_at)
 
 
+
+def test_a_late_hill_report_on_an_empty_base_survives_a_restart_in_recap():
+    """Codex pass 2026-11-07: the empty in-play base was not a history row, so a restart in RECAP replayed the late
+    report as in play, the whistle moved it back, no in-play row was found and the hill's points went: red 50 to 40
+    became blue 40 to 0."""
+    import pathlib
+    import tempfile
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s, net, clock = _live("domination", 1000)
+    r, b = (str(t["tid"]) for t in s.config["teams"])
+    clock["t"] += 100_000
+    _beat(s, net, clock, "util-a", 2, {}, {})
+    clock["t"] += 3_000
+    _beat(s, net, clock, "util-a", 2, {}, {})                         # heard in play, nobody owns it
+    _beat(s, net, clock, "util-b", int(b), {b: 1}, {b: 40_000})
+    clock["t"] += 60_000                                                # util-a out of Wi-Fi; red captures it
+    s.control("end")
+    clock["t"] += 20_000
+    _beat(s, net, clock, "util-a", int(r), {r: 1}, {r: 50_000})
+    clock["t"] += 3_000
+    _beat(s, net, clock, "util-a", int(r), {r: 1}, {r: 50_000})
+    before = (s.last_recap["possession"]["by_team"], s.last_recap["winner"])
+    assert before == ({"red": 50, "blue": 40}, {"team_id": "red"}), before
+    path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path, s._persist_last, s._persist_dirty = path, 0.0, True
+    s.persist_now()
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s2._persist_path = path
+    s2.restore_snapshot()
+    assert s2.resume_match() == "recap"
+    after = (s2.last_recap["possession"]["by_team"], s2.last_recap["winner"])
+    assert after == before, (before, after)
+
 def _scorer(hold_target_s=None):
     from brx_mcp.mc.scoring import Scorer
     t0, now = 1_000_000, {"t": 1_000_000}

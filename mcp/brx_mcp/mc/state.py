@@ -4625,11 +4625,11 @@ class Session:
         sc.station_pre_end = {str(k): {tid: ms for tid, ms in sc._hold_readings(v)} for k, v in (station_pre_end or {}).items()
                               if isinstance(v, dict)}
         sc.station_history = {}
-        for k, rows in (station_history or {}).items():   # Codex r4: only rows with a reading, in receipt order, capped
+        for k, rows in (station_history or {}).items():   # Codex r4: valid rows in receipt order, capped; an empty row is a base
             got_rows = sorted([(row[0], per) for row in (rows if isinstance(rows, list) else ())
                               if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int)
                               and not isinstance(row[0], bool) and isinstance(row[1], dict)
-                              and (per := {tid: ms for tid, ms in sc._hold_readings(row[1])})], key=lambda r: r[0])
+                              and (per := {tid: ms for tid, ms in sc._hold_readings(row[1])}) is not None], key=lambda r: r[0])
             if len(got_rows) > STATION_HISTORY_MAX:
                 got_rows = got_rows[:1] + got_rows[-(STATION_HISTORY_MAX - 1):]
             if got_rows:

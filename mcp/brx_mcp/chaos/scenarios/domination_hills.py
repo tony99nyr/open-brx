@@ -238,10 +238,14 @@ def domination_hills_check(world: World) -> None:
     got = ((recap.get("possession") or {}).get("by_team")) or {k: 0 for k in want}
     if {k: got.get(k, 0) for k in want} != want:
         raise InvariantError("domination_points", f"the hills banked {want} points (ms {want_ms}); the recap says {got}")
+    target = (world.session.config.get("scoring") or {}).get("hold_target_s")
+    # Codex pass 2026-11-07: `want_ms` is already ms (this was `v * 1000`, which passed a finish at 1 point of 4), and the
+    # check runs before the no-points return, so a target end with nothing banked fails too
+    if world.session.end_reason == "hold_target" and target and not any(v >= target * 1000 for v in want_ms.values()):
+        raise InvariantError("domination_points", f"MC ended on the {target}-point target; the hills banked only {want_ms} ms")
     held = {k: v for k, v in want.items() if v > 0}
     if not held:
         return
-    target = (world.session.config.get("scoring") or {}).get("hold_target_s")
     winner = recap.get("winner") or {}
     reached = {k: v for k, v in want_ms.items() if target and v >= target * 1000}
     if reached:
@@ -258,8 +262,6 @@ def domination_hills_check(world: World) -> None:
         raise InvariantError("domination_points", f"the hills say {lead[0]} won {held}; MC's winner is {winner}")
     if len(lead) > 1 and sorted(winner.get("tie") or []) != lead:
         raise InvariantError("domination_points", f"the hills say a tie {lead} {held}; MC's winner is {winner}")
-    if world.session.end_reason == "hold_target" and target and not any(v * 1000 >= target * 1000 for v in want_ms.values()):
-        raise InvariantError("domination_points", f"MC ended on the {target} s target; the hills banked only {want_ms} ms")
 
 
 HILL_MIX = {

@@ -1088,6 +1088,36 @@ describe('PLAY — F413/F415: LAST MATCH and FAVOURITES carry teams and the hold
     expect((await api.getState()).config.scoring.hold_target_s, 'CONTROL: the same mode keeps it').toBe(300);
   });
 
+  // Codex pass 2026-11-07: a LAST MATCH from an older MC names no mode and can only hold KOTH seconds; it must not set
+  // Domination's points. A Domination LAST MATCH with no target is first to 1000, whatever target is now in force.
+  it('LAST MATCH: an old record with no mode keeps Domination at 1000, and no target is first to 1000', async () => {
+    const api = new MockBackend();
+    const lmOf = async () => (await api.getState()).last_match!;
+    await api.pick({ pieces: { mode: 'builtin:mode:koth' } });
+    await api.putStation('util-a1b2c3', { kind: 'control', team: 'any', id: 9 });
+    await api.pick({ match: { hold_target_s: 300, frag_limit: null } });
+    await api.setPhase('lobby');
+    await api.pushLobby(true);
+    await api.start(45, true);
+    await api.abort();
+    const { mode: _mode, ...legacy } = await lmOf();
+    expect(legacy.hold_target_s, 'control: a 5:00 KOTH record').toBe(300);
+    const mock = api as unknown as { lastMatch: unknown };
+    mock.lastMatch = legacy;                                     // as an older MC saved it: no mode
+    await api.pick({ pieces: { mode: 'builtin:mode:domination' } });
+    await api.pick({ match: { hold_target_s: 500 } });
+    const click = async () => { const r = await renderPlay(api); await r.m.click('LAST MATCH'); r.m.unmount(); await r.settle(); };
+    await click();
+    expect((await api.getState()).config.scoring.hold_target_s, 'an old KOTH 5:00 is not 300 POINTS').toBe(500);
+    for (const target of [undefined, null]) {
+      const { hold_target_s: _t, ...rest } = legacy;
+      mock.lastMatch = { ...rest, mode: 'domination', ...(target === null ? { hold_target_s: null } : {}) };
+      await api.pick({ match: { hold_target_s: 500 } });
+      await click();
+      expect((await api.getState()).config.scoring.hold_target_s, `a Domination record with target ${target} is first to 1000`).toBe(1000);
+    }
+  });
+
   // brx1 2026-11-06 (Tony's auto-fix rule): a Domination favourite saved while a mode change dropped its target loads as
   // first to 1000, silently; the mock does as picks.py `load` does.
   it('an old Domination favourite with no target loads as first to 1000', async () => {
