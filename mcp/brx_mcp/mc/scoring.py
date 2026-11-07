@@ -287,6 +287,13 @@ class Scorer:
                         bound = [(tid, min(ms, played)) for tid, ms in bound]
                     self.station_possession_ms[site] = {**pre, **dict(bound)}
                 continue
+            if site not in self.station_possession_ms:
+                # Review round 3: an empty in-play base (`station_possession`) received after the moved whistle was not in
+                # play after all. It never scored, so it goes, and the site is not made station-scored with nothing (that
+                # silenced the phones' readings for it).
+                self.station_seen_ms.pop(site, None)
+                self.station_pre_end.pop(site, None)
+                continue
             hist = self.station_history.get(site)
             latest = self.station_possession_ms.get(site, {})
             if not hist:
@@ -1260,9 +1267,13 @@ class Scorer:
                 # wins. Rounded seconds called blue's 999.6 s against red's 1000.0 s a tie. Round 2: decided on the raw
                 # ms alone, never on `_announced`, which a rebuilt scorer (a rescore, a resume) does not carry.
                 by_ms, _neutral = self._possession_ms()
-                reached = sorted(t for t, ms in by_ms.items() if ms >= self.hold_target_s * 1000)
-                if len(reached) == 1:
-                    return {"team_id": reached[0]}
+                reached = {t: ms for t, ms in by_ms.items() if ms >= self.hold_target_s * 1000}
+                if reached:
+                    # Round 3: two teams over the target (a late hill report after the whistle) are decided on raw ms too;
+                    # only an exact raw tie is a tie. Rounded seconds would call 1000.0 against 1000.3 a tie.
+                    best = max(reached.values())
+                    tops = sorted(t for t, ms in reached.items() if ms == best)
+                    return {"team_id": tops[0]} if len(tops) == 1 else {"team_id": None, "tie": tops}
             poss = self.possession()
             held = {t: s for t, s in (poss or {}).get("by_team", {}).items() if s > 0}
             if held:

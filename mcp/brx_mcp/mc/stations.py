@@ -419,6 +419,8 @@ class StationRegistry:
                 letter = chr(ord("A") + i) if not frozen and i < 26 else next((x for x in free if x and x not in used), None)
                 r["letter"] = letter or str(r["id"])
                 used.add(r["letter"])
+                if frozen:
+                    frozen[r["id"]] = r["letter"]   # round 3: a hill added in play keeps the letter it was first given
         return rows
 
     def _active_item(self, a: dict | None) -> StationItem | None:

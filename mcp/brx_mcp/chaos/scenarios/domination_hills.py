@@ -243,11 +243,14 @@ def domination_hills_check(world: World) -> None:
         return
     target = (world.session.config.get("scoring") or {}).get("hold_target_s")
     winner = recap.get("winner") or {}
-    reached = sorted(k for k, v in want_ms.items() if target and v >= target * 1000)
-    if len(reached) == 1:
-        # the team that crossed the target wins, in raw ms, even when both round to it (scoring.py `winner()`)
-        if winner.get("team_id") != reached[0]:
-            raise InvariantError("domination_points", f"{reached[0]} crossed the {target} target ({want_ms} ms); MC's winner is {winner}")
+    reached = {k: v for k, v in want_ms.items() if target and v >= target * 1000}
+    if reached:
+        # past the target, raw ms decide, even when the totals round alike (scoring.py `winner()`)
+        best = max(reached.values())
+        tops = sorted(k for k, v in reached.items() if v == best)
+        want_w = {"team_id": tops[0]} if len(tops) == 1 else {"team_id": None, "tie": tops}
+        if {k: winner.get(k) for k in want_w} != want_w:
+            raise InvariantError("domination_points", f"over the {target} target the hills say {want_w} ({want_ms} ms); MC's winner is {winner}")
         return
     top = max(held.values())
     lead = sorted(k for k, v in held.items() if v == top)

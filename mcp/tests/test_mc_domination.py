@@ -304,3 +304,60 @@ def test_a_hill_captured_only_while_out_of_wifi_scores_its_late_report():
     _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 50_000})   # past the relock's window
     poss = (s.last_recap or {}).get("possession") or {}
     assert poss.get("by_team", {}).get(red["team_id"]) == 50, (poss, end - heard_at)
+
+
+def _scorer(hold_target_s=None):
+    from brx_mcp.mc.scoring import Scorer
+    t0, now = 1_000_000, {"t": 1_000_000}
+    teams = [{"team_id": "red", "name": "R", "color": "#f00", "tid": 0}, {"team_id": "blue", "name": "B", "color": "#00f", "tid": 1}]
+    sc = Scorer("m1", t0, 1800, "domination", {}, teams, {}, {}, now_ms=lambda: now["t"], win_by="objective",
+                hold_target_s=hold_target_s)
+    return sc, now, t0
+
+
+def test_an_empty_hill_base_after_a_moved_whistle_does_not_silence_the_phones():
+    """Review round 3: an empty in-play reading is a base for a late report, never a score. When the whistle moved
+    earlier than that reading (an operator END replayed on a resume), the rebound made the site station-scored with
+    nothing, so the phones' 100 s for it vanished and the result went undecided."""
+    sc, now, t0 = _scorer()
+    sc.possession_ms["1"] = {0: {"n1": 100_000}}           # the phones: red held hill 1 for 100 s
+    now["t"] = t0 + 400_000
+    sc.station_possession("1", {}, seen_ms=t0 + 400_000)   # the hill, heard with nothing banked
+    assert sc.possession()["by_team"]["red"] == 100, "CONTROL: an empty reading scores nothing and silences nobody"
+    sc.set_end(t0 + 300_000)                               # the whistle moves before that reading
+    assert sc.possession()["by_team"]["red"] == 100, (sc.possession(), sc.station_possession_ms)
+    assert "1" not in sc.station_possession_ms and "1" not in sc.station_seen_ms
+    assert sc.winner() == {"team_id": "red"}, sc.winner()
+
+
+def test_two_teams_over_the_target_are_decided_on_raw_points_not_rounded():
+    """Review round 3: red crosses 1000 and MC ends; blue's hill, out of Wi-Fi, reports 1000.3 late inside its window.
+    Rounded seconds called that a tie; the raw points decide it (only an exact raw tie is a tie)."""
+    sc, now, t0 = _scorer(hold_target_s=1000)
+    ends = []
+    sc.on_limit = lambda t: (ends.append(t), sc.set_end(t))
+    now["t"] = t0 + 1_100_000
+    sc.station_possession("2", {1: 950_000}, now["t"], seen_ms=now["t"])
+    now["t"] += 200_000
+    sc.station_possession("1", {0: 1_000_000}, now["t"], seen_ms=now["t"])
+    assert ends, "CONTROL: red's crossing ended the match"
+    assert sc.winner() == {"team_id": "red"}, sc.winner()
+    now["t"] += 30_000
+    sc.station_possession("2", {1: 1_000_300}, None, seen_ms=now["t"])
+    assert sc._possession_ms()[0]["blue"] == 1_000_300, sc._possession_ms()
+    assert sc.winner() == {"team_id": "blue"}, sc.winner()
+
+
+def test_hills_added_in_play_keep_the_letters_they_were_first_given():
+    """Review round 3: an unfrozen hill took the next free letter by its place among the unfrozen ones, so a lower id
+    added later took its letter (hill 5 was C, then hill 4 joined and took C)."""
+    s, net, clock = _live("domination", 1000)
+    letters = lambda: {r["id"]: r["letter"] for r in s.station_registry.station_ids() if r["kind"] == "control"}
+    reg = s.station_registry
+    reg._hill_letters = {1: "A", 2: "B"}                     # START froze two hills
+    reg.stations["util-c"]["assigned"]["id"] = 5            # a third hill, id 5, joins in play
+    assert letters()[5] == "C", letters()
+    net.simulate_utility_hello("util-d")
+    reg.stations["util-d"]["assigned"] = {**reg.stations["util-c"]["assigned"], "id": 4}   # then id 4
+    got = letters()
+    assert got[5] == "C" and got[4] == "D", got
