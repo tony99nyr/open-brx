@@ -427,8 +427,8 @@ def game_byte_matches_stations(world: World) -> None:
 def _phone_timed(world: World) -> bool:
     """Domination scored from the phones' owner timelines (Tony 2026-11-07): an owned hill scores while MC is down, so
     the points grow across a restart, and the target can be crossed on the new MC's clock."""
-    sc = match_scorer(world.session)
-    return world.session.config.get("mode") in OWNERSHIP_SCORED_MODES and bool(getattr(sc, "own_changes", None))
+    cfg = getattr(world.session, "config", None) or {}
+    return cfg.get("mode") in OWNERSHIP_SCORED_MODES and bool(getattr(match_scorer(world.session), "own_changes", None))
 
 
 def _target_ended_in_restart(world: World, c: dict) -> bool:
@@ -717,8 +717,7 @@ def state_survives_restart(world: World) -> None:
     for c in world.restart_checks:
         if "state_before" not in c:
             continue
-        if _target_ended_in_restart(world, c):
-            continue   # the match ended in the restart: the board above is held to it, a live state cannot be
+        ended = _target_ended_in_restart(world, c)   # the match ended in the restart: only config and bindings must hold
         b, a = _comparable(c["state_before"]), _comparable(c["state_after"])
         fb, fa = _flat(b), _flat(a)
         if _phone_timed(world):
@@ -732,7 +731,7 @@ def state_survives_restart(world: World) -> None:
                 fa.pop(k, None)
         gone = object()                  # a key that vanished differs from one that holds None
         in_play = c.get("phase_before") in ("armed", "live")
-        full = in_play and not c.get("crash")
+        full = in_play and not c.get("crash") and not ended
         # The config is frozen in play, so even a crash keeps it; a pre-match crash may lose an edit made in the last
         # debounce window (2 s), so only a CLEAN pre-match restart is held to it.
         config_only = not full and (in_play or not c.get("crash"))

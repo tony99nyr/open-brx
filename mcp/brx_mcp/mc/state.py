@@ -5567,12 +5567,13 @@ class Session:
         plist = self.players.values() if isinstance(self.players, dict) else self.players
         by_pid = {p["player_id"]: p for p in plist}
         rows = sc.rows()
+        board = self._score_board(sc)   # one board per push, not per player (Codex review 2026-11-07: Domination's timelines)
         for row in rows:
             pid = row["player_id"]; p = by_pid.get(pid)
             if not p or not p.get("node_id"):
                 continue
             body = dict(row); body["shots_total"] = sc.shots_total(pid)
-            body["board"] = self._score_board(sc)  # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
+            body["board"] = board  # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
             body["rows"] = rows                     # A24: EVERY player's row, all modes — the phone's mid-match leaderboard
             if self._score_pushed.get(pid) == body:
                 continue

@@ -108,9 +108,10 @@ def _own(s, net, clock, node, hill, frm, own, at=None, mid=None):
     went from `frm` to `own` at `at` (MC's clock; now by default)."""
     _SEQ["n"] += 1
     site = str(s.station_registry.stations[hill]["assigned"]["id"])
-    net.simulate_event(node, {"type": "own_change", "t": clock["t"], "match_id": mid or s._m().head["match_id"], "site": site,
-                              "from_tid": frm, "owner_tid": own, "at_ms": clock["t"] if at is None else at},
-                       clock["t"], seq=_SEQ["n"])
+    at = clock["t"] if at is None else at
+    recv = max(clock["t"], at)   # a fact reaches MC after the phone heard the step
+    net.simulate_event(node, {"type": "own_change", "t": at, "match_id": mid or s._m().head["match_id"], "site": site,
+                              "from_tid": frm, "owner_tid": own, "at_ms": at}, recv, seq=_SEQ["n"])
 
 
 def test_domination_scores_the_phones_owner_timeline_summed_across_hills_and_ends_at_the_target():
@@ -232,6 +233,62 @@ def test_a_resume_reads_each_replayed_step_at_its_own_time_not_now():
     s2.tick()
     assert s2.phase == "live", (s2.phase, s2.end_reason)
     assert s2._m().scorer.possession()["by_team"][blue["team_id"]] == 1
+
+
+def test_a_batch_from_a_phone_back_in_wifi_does_not_end_the_match_on_its_first_step():
+    """Codex review 2026-11-07: a phone out of Wi-Fi delivers four steps at once. Checked per fact, its first capture
+    alone read as owned until now (50 points on a 30 target) and ended the match; the tick checks after the batch."""
+    s, net, clock = _live("domination", 30)
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    go, mid = s._m().head["go_live_t"], s._m().head["match_id"]
+    site = str(s.station_registry.stations["util-a"]["assigned"]["id"])
+    steps = [(10_000, 2, red["tid"]), (20_000, red["tid"], 2), (30_000, 2, blue["tid"]), (40_000, blue["tid"], 2)]
+    clock["t"] = go + 60_000
+    net.simulate_batch("node0", [{"type": "own_change", "t": go + at, "match_id": mid, "site": site, "from_tid": f,
+                                  "owner_tid": o, "at_ms": go + at, "seq": 7000 + i} for i, (at, f, o) in enumerate(steps)],
+                       clock["t"])
+    s.tick()
+    assert s.phase == "live", (s.phase, s.end_reason)
+    assert s._m().scorer.possession()["by_team"] == {red["team_id"]: 10, blue["team_id"]: 10}
+
+
+def test_an_own_change_stamped_outside_the_match_is_refused():
+    """Codex review: a step stamped long before go-live fabricated points from go-live, and one stamped after MC received
+    it stood as the site's only fact and blanked the phones' tally for it."""
+    s, net, clock = _live("domination", 1000)
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    go = s._m().head["go_live_t"]
+    clock["t"] = go + 100_000
+    site_a = str(s.station_registry.stations["util-a"]["assigned"]["id"])
+    net.simulate_event("node0", {"type": "possession", "t": clock["t"], "match_id": s._m().head["match_id"],
+                                 "site": site_a, "hold_ms": {str(red["tid"]): 80_000}, "observed_ms": 90_000},
+                       clock["t"], seq=4100)
+    _own(s, net, clock, "node1", "util-b", 2, red["tid"], at=1)                         # far past
+    net.simulate_event("node1", {"type": "own_change", "t": clock["t"], "match_id": s._m().head["match_id"],
+                                 "site": site_a, "from_tid": 2, "owner_tid": blue["tid"], "at_ms": go + 10_000_000},
+                       clock["t"], seq=4101)                                            # far future
+    poss = s._m().scorer.possession()
+    assert poss["by_team"] == {red["team_id"]: 80, blue["team_id"]: 0}, poss
+
+
+def test_one_score_push_builds_each_hills_timeline_once():
+    """Codex review 2026-11-07: every player's push rebuilt every hill's timeline (1.8 s for 20 phones late in a long
+    match). The board is built once per push, and the timeline is cached by its facts and its end."""
+    from brx_mcp.mc import scoring
+    s, net, clock = _live("domination", 1000)
+    red = s.config["teams"][0]
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, red["tid"], at=go + 1_000)
+    _own(s, net, clock, "node1", "util-b", 2, red["tid"], at=go + 2_000)
+    clock["t"] = go + 50_000
+    calls = []
+    real = scoring.owned_ms
+    scoring.owned_ms = lambda *a, **k: (calls.append(1), real(*a, **k))[1]
+    try:
+        s._push_scores()
+    finally:
+        scoring.owned_ms = real
+    assert len(net.pushes("score")) >= 2 and len(calls) == 2, (len(net.pushes("score")), len(calls))
 
 def test_an_old_apk_with_no_own_change_scores_its_hill_from_the_possession_tally():
     """A phone older than OWN_CHANGE_MIN_APP sends only `possession`: that site keeps today's merge, and a site with

@@ -83,11 +83,16 @@ def _near(world: World) -> dict[int, set[str]]:
 FLIP_GAP_MS = 1200   # one hill's owner changes at most this often (a capture takes seconds; a drain to neutral too)
 
 
-def _queued(world: World) -> list[int]:
-    """When a phone out of Wi-Fi heard a step (it queues the fact until it is back)."""
+def _queued(world: World) -> list[dict]:
+    """Each fact a phone could not deliver at once: {"at": when heard, "acked": when MC acked it, or None}."""
     if not hasattr(world, "hill_queued"):
         world.hill_queued = []   # type: ignore[attr-defined]
     return world.hill_queued   # type: ignore[attr-defined]
+
+
+async def _watch_ack(node, seq: int, row: dict, world: World) -> None:
+    if await until(lambda: all(s > seq for s, _e in node.ring), 120.0):
+        row["acked"] = world.session.now_ms()
 
 
 async def _emit(world: World, i: int, nid: str, frm: int, own: int) -> None:
@@ -101,7 +106,10 @@ async def _emit(world: World, i: int, nid: str, frm: int, own: int) -> None:
     seq = node.emit({"type": "own_change", "site": site, "from_tid": frm, "owner_tid": own, "at_ms": now + _skew(i)})
     _heard(world)[(i, nid)] = own
     if not node.link_up or not await until(lambda: all(s > seq for s, _e in node.ring), 3.0):
-        _queued(world).append(now)
+        row = {"at": now, "acked": None}
+        _queued(world).append(row)
+        tasks = world.__dict__.setdefault("hill_watchers", [])
+        tasks.append(asyncio.ensure_future(_watch_ack(node, seq, row, world)))
 
 
 def _pick_hill_walk(world: World, rng: random.Random):
@@ -315,7 +323,8 @@ def domination_hills_check(world: World) -> None:
     # Known limit (docs/chaos-testing.md): MC scores the owner it knows, so when every phone that heard a drain was out of
     # Wi-Fi, the old owner scores on until that phone is back, and can reach the target first
     whistle = next((f["at_ms"] for f in world.finishes if f.get("reason") == "hold_target"), None)
-    stale = whistle is not None and any(at <= whistle for at in _queued(world))
+    stale = whistle is not None and any(q["at"] <= whistle and (q["acked"] is None or q["acked"] > whistle)
+                                        for q in _queued(world))   # a step still on a phone at the whistle
     if (world.session.end_reason == "hold_target" and target and not stale
             and not any(v >= target * 1000 - tol for v in want_ms.values())):
         raise InvariantError("domination_points", f"MC ended on the {target}-point target; the hills say only {want_ms} ms "

@@ -9,7 +9,9 @@ import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .clockwatch import ClockWatch
-from .ownership import clock_offsets, owned_ms
+from .ownership import OWN_SKEW_MS, clock_offsets, owned_ms
+
+OWN_AT_SLACK_MS = 60_000   # how long before go-live an own_change may be stamped (a phone's clock error)
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
@@ -193,7 +195,8 @@ class Scorer:
         # owner_tid, node_id). `ownership.owned_ms` builds the owner timeline and sums it; the Stick's own clock is only
         # the cross-check on its STATIONS row.
         self.own_changes: dict[str, list[tuple[int, int, int, str]]] = {}
-        self._own_offsets: dict[str, tuple[int, dict[str, int]]] = {}   # site -> (facts seen, the phones' clock offsets)
+        self._own_offsets: dict[str, tuple[int, dict[str, int]]] = {}   # site -> (steps seen, the phones' clock offsets)
+        self._own_memo: dict[str, tuple[tuple[int, int], dict[int, int]]] = {}   # site -> ((facts, ref), owned ms)
         # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
         # station reading is scored on it; the phones' readings for that site are only the cross-check.
         self.station_possession_ms: dict[str, dict[int, int]] = {}
@@ -562,10 +565,9 @@ class Scorer:
         # are deliberate (see `_possession`): it is a cumulative total, not a timestamped event, and
         # the report that matters arrives AFTER the whistle.
         if ev.get("type") == "own_change":
-            result = self._own_change(node_id, ev)
-            if result == "scored":
-                self._check_hold_target(t_recv)
-            return result
+            # Codex review 2026-11-07: no target check per fact. A phone back in Wi-Fi delivers its steps as one batch, and
+            # its first capture alone reads as owned until now; the tick checks once the whole batch is in
+            return self._own_change(node_id, ev, t_recv)
         if ev.get("type") == "possession":
             if self.mode not in OBJECTIVE_MODES:
                 return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
@@ -1113,7 +1115,7 @@ class Scorer:
             return "ignored"
         return "scored"
 
-    def _own_change(self, node_id: str, ev: Event) -> str:
+    def _own_change(self, node_id: str, ev: Event, t_recv: int) -> str:
         """One phone's report that the owner in a Domination hill's advert changed (or a re-assertion, from == owner).
         Like a possession tally it skips the player gate and the end freeze: it is a fact about the hill, and the one
         from a phone that was out of Wi-Fi arrives after the whistle. `at_ms` (MC's clock) places it; a step stamped
@@ -1124,19 +1126,30 @@ class Scorer:
         if (not (isinstance(frm, int) and isinstance(own, int) and isinstance(at, int))
                 or isinstance(frm, bool) or isinstance(own, bool) or isinstance(at, bool)):
             return "ignored"   # bools are ints in Python; a phone never sends one here
-        if not (0 <= frm <= 7 and 0 <= own <= 7 and at > 0):
+        if not (0 <= frm <= 7 and 0 <= own <= 7):
+            return "ignored"
+        # Codex review: a step heard before the match (beyond a minute of clock error) or after MC received it is a broken
+        # clock; it would fabricate points from go-live, or stand as the site's only fact and blank its tally fallback
+        if not (self.go_live_t - OWN_AT_SLACK_MS <= at <= t_recv + OWN_SKEW_MS):
             return "ignored"
         self.own_changes.setdefault(str(ev.get("site") or "A"), []).append((at, frm, own, node_id))
         return "scored"
 
     def _owned_site_ms(self, site: str, ref: int) -> dict[int, int]:
-        """The ms each tid owned `site` from go-live to `ref`, from the phones' own_change facts."""
+        """The ms each tid owned `site` from go-live to `ref`, from the phones' own_change facts. Cached by the facts and
+        `ref` (a score push reads the board once per player on one ms); the clock offsets only change with a step."""
         rows = self.own_changes[site]
+        steps = sum(1 for r in rows if r[1] != r[2])
         n, off = self._own_offsets.get(site, (-1, {}))
-        if n != len(rows):
+        if n != steps:
             off = clock_offsets(rows)
-            self._own_offsets[site] = (len(rows), off)
-        return owned_ms(rows, self.go_live_t, ref, offsets=off)
+            self._own_offsets[site] = (steps, off)
+        key = (len(rows), ref)
+        hit = self._own_memo.get(site)
+        if hit is None or hit[0] != key:
+            hit = (key, owned_ms(rows, self.go_live_t, ref, offsets=off))
+            self._own_memo[site] = hit
+        return hit[1]
 
     def _clamp_ms(self, v) -> int | None:
         """A reported ms total as an int, floored at 0 and clamped to the match length (no team holds longer)."""
