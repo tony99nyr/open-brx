@@ -1,0 +1,143 @@
+{
+  "name": "hill-domination-hills",
+  "why": "F666 (Domination's row of hills, hill.js `hillsView`): every control point the bundle lists (`config.stations`, kind control) appears sorted by id with its letter, A, B and C. A heard point is live: B held by blue at 100 and A held by red, contested and falling. When A falls silent it keeps its last owner, contest and progress, with `heard` false once its age passes CONTROL_STALE_MS (4 s) and the age growing; C, never heard, has no owner and no age. A point heard again is live once more.",
+  "source": "app/src/hill.js `noteStations`, `hillsView`; mcp/tests/test_stage_mirror.py test_f666_the_hills_list_mirrors_hill_js",
+  "runners": ["engine","stage"],
+  "setup": {
+    "config": {"mode":"domination","station_source":"phone","teams":[{"team_id":"red","name":"RED","color":"red","tid":0},{"team_id":"blue","name":"BLUE","color":"blue","tid":1}],"stations":[{"id":1,"kind":"control","letter":"A"},{"id":2,"kind":"control","letter":"B"},{"id":3,"kind":"control","letter":"C"}]},
+    "fields": ["hill","hills"],
+    "stations_age": true
+  },
+  "steps": [
+    {"advance_ms":10},
+    {"advance_ms":3000},
+    {"check":"live","preamble":true},
+    {"check":"three_hills_none_heard"},
+    {"stations":[{"id":2,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"median":-50,"present":true},{"id":1,"kind":"control","team":0,"state":11,"value":70,"threshold":-74,"median":-70,"present":false}]},
+    {"advance_ms":1000},
+    {"check":"a_and_b_heard"},
+    {"stations":[{"id":2,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"median":-50,"present":true}]},
+    {"advance_ms":2000},
+    {"check":"a_silent_2s"},
+    {"advance_ms":3000},
+    {"check":"a_silent_past_stale"},
+    {"stations":[{"id":2,"kind":"control","team":1,"state":1,"value":100,"threshold":-74,"median":-50,"present":true},{"id":1,"kind":"control","team":1,"state":5,"value":30,"threshold":-74,"median":-70,"present":false}]},
+    {"advance_ms":500},
+    {"check":"a_heard_again"}
+  ],
+  "stage_ignores": [],
+  "expect": [
+    {
+      "at": "live",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":null,"hills":[{"site":1,"letter":"A","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false},{"site":2,"letter":"B","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$STOP,*",
+        "$PHONE,*",
+        "$VERSION,*",
+        "$VOL,80,0,*",
+        "$CLEAR,*",
+        "$START,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H21,X49,U15,W71,,*",
+        "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*",
+        "$WEAP,1,2,100,0,0,19,0,,,,,,20,100,400,850,6,48,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,24,75,100,*",
+        "$WEAP,4,1,90,13,1,60,0,,,,,,,,3000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*",
+        "$SIR,0,0,,28,0,0,1,,*",
+        "$SIR,0,1,,28,0,0,1,,*",
+        "$SIR,0,3,,28,0,0,1,,*",
+        "$SIR,8,0,,28,0,0,1,,*",
+        "$SIR,9,3,,28,0,0,1,,*",
+        "$SIR,10,0,,28,0,0,1,,*",
+        "$SIR,6,0,,28,0,0,1,,*",
+        "$SIR,13,1,,28,0,0,1,,*",
+        "$SIR,13,0,,28,0,0,1,,*",
+        "$SIR,13,3,,28,0,0,1,,*",
+        "$SIR,4,0,,28,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$BMAP,0,98,,,,,*",
+        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,2,97,,,,,*",
+        "$BMAP,3,98,,,,,*",
+        "$BMAP,4,98,,,,,*",
+        "$BMAP,5,98,,,,,*",
+        "$BMAP,8,4,,,,,*",
+        "$HLED,1,0,,,10,,*",
+        "$GLED,1,1,1,0,10,,*",
+        "$TID,1,*",
+        "$PLAY,VA81,4,6,,,,,*",
+        "$GSET,0,0,1,0,1,0,0,1,*",
+        "$SIR,0,0,,1,0,0,1,,*",
+        "$SIR,0,1,,36,0,0,1,,*",
+        "$SIR,0,3,,37,0,0,1,,*",
+        "$SIR,8,0,,1,0,0,1,,*",
+        "$SIR,9,3,,1,0,0,1,,*",
+        "$SIR,10,0,X13,1,0,100,2,60,*",
+        "$SIR,6,0,H02,1,0,90,1,40,*",
+        "$SIR,13,1,H57,1,0,0,1,,*",
+        "$SIR,13,0,H50,1,0,0,1,,*",
+        "$SIR,13,3,H49,1,0,100,0,60,*",
+        "$SIR,4,0,,2,0,0,1,,*",
+        "$SIR,15,0,,28,0,0,1,,*",
+        "$PSET,7,1,45,70,0,50,,H44,JAD,VA3,,,,,VA7,H06,,H36,H21,X49,U15,W71,,*",
+        "$PLAYX,0,*",
+        "$SPAWN,,*",
+        "$TID,1,*",
+        "$AMMO,0,32,384,1,*",
+        "$AMMO,1,6,48,1,*",
+        "$BMAP,0,0,,,,,*",
+        "$SFLASH,*",
+        "$PLAY,U16,4,6,VAI,,,,*",
+        "$GLED,,,,5,,,*",
+        "$GLED,1,1,1,0,1,,*",
+        "$HLED,6,2,120,120,10,2,*",
+        "$HLED,9,0,,,10,,*",
+        "$LIFE,0,0,0,*",
+        "$QUERY,*",
+        "$LIFE,0,0,0,*"
+      ]
+    },
+    {
+      "at": "three_hills_none_heard",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":null,"hills":[{"site":1,"letter":"A","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false},{"site":2,"letter":"B","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [],
+      "reports": [],
+      "writes": []
+    },
+    {
+      "at": "a_and_b_heard",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"hills":[{"site":1,"letter":"A","heard":true,"ageMs":0,"owner":0,"contested":true,"progress":70,"holding":0,"rising":false,"falling":true,"onPoint":false},{"site":2,"letter":"B","heard":true,"ageMs":0,"owner":1,"contested":false,"progress":100,"holding":1,"rising":false,"falling":false,"onPoint":true},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [{"type":"possession","match_id":"m1","site":"1","hold_ms":{"0":250},"observed_ms":250,"source":"station"},{"type":"possession","match_id":"m1","site":"2","hold_ms":{"1":250},"observed_ms":250,"source":"station"}],
+      "reports": [],
+      "writes": [
+        "$PLAY,U100,4,6,,,,,*"
+      ]
+    },
+    {
+      "at": "a_silent_2s",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"hills":[{"site":1,"letter":"A","heard":true,"ageMs":2000,"owner":0,"contested":true,"progress":70,"holding":0,"rising":false,"falling":true,"onPoint":false},{"site":2,"letter":"B","heard":true,"ageMs":0,"owner":1,"contested":false,"progress":100,"holding":1,"rising":false,"falling":false,"onPoint":true},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [],
+      "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
+      "writes": []
+    },
+    {
+      "at": "a_silent_past_stale",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"hills":[{"site":1,"letter":"A","heard":false,"ageMs":5000,"owner":0,"contested":true,"progress":70,"holding":0,"rising":false,"falling":true,"onPoint":false},{"site":2,"letter":"B","heard":true,"ageMs":0,"owner":1,"contested":false,"progress":100,"holding":1,"rising":false,"falling":false,"onPoint":true},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,U100,4,6,,,,,*"
+      ]
+    },
+    {
+      "at": "a_heard_again",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":384,"deaths":0,"hill":{"owner":1,"contested":false,"progress":100},"hills":[{"site":1,"letter":"A","heard":true,"ageMs":0,"owner":1,"contested":false,"progress":30,"holding":1,"rising":true,"falling":false,"onPoint":false},{"site":2,"letter":"B","heard":true,"ageMs":0,"owner":1,"contested":false,"progress":100,"holding":1,"rising":false,"falling":false,"onPoint":true},{"site":3,"letter":"C","heard":false,"ageMs":null,"owner":null,"contested":false,"progress":0,"holding":null,"rising":false,"falling":false,"onPoint":false}]},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$PLAY,U100,4,6,,,,,*"
+      ]
+    }
+  ]
+}

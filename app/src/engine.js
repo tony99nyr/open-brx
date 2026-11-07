@@ -28,7 +28,7 @@ import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_ST
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
-import { Ammo, TRIGGER_NO_FIRE_MS, HEAT_LOCKOUT } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
+import { Ammo, TRIGGER_NO_FIRE_MS, HEAT_LOCKOUT, ACC_ECHO_MS } from './ammo.js';   // F259/F164: the magazine account and the counts per slot
 import { perkForHealth } from './health.js';   // the one Shields rule: the console and the server read the same three numbers
 export { TRIGGER_NO_FIRE_MS, ACC_ECHO_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, OVERHEAT_SHOWN_MS, ENERGY_REFILL_MAX_MS } from './ammo.js';
 export { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS } from './powerup-player.js';
@@ -727,7 +727,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   configQuery: 'config echo window', _configReadback: 'config echo window', ammoEcho: 'config echo window', butSinceHead: 'config echo window', _chargeLockFix: 'one F226 reload per charge lock (a pending write is not evidence after a restart)', _headWeap0: 'config echo window',
   _headGen: 'head write generation', _gunTid: 'F206: `_liveTid` falls back to the team and the head\'s `$TID`', _headTid: 'B1 guard: null raises no false divergence',
   _sirLive: 'F121: a restart re-sends the take', _sirGen: 'F121 generation', _lastSirTake: 'pool pick: any take is valid',
-  _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START',
+  _sirFnsFor: 'cache keyed on the bundle', _sirFnsMap: 'cache keyed on the bundle', _preArmed: 'pre-arm, once per match before START', _gsetArmed: 'F645: the match whose T-3 $GSET write did not fail',
   _gunRestFrame: 'F86 LED rest frame, rewritten by the next take',
   // hits, deaths and attribution windows (milliseconds to seconds long)
   latch: 'DEATH_LATCH window', _foreignDmgAt: 'F438 window', _selfGunPools: 'F438 window', _selfHitUsed: 'F438 window', _selfEcho: 'F438 echo window',
@@ -3360,7 +3360,18 @@ export class Engine {
     // (every gun on team 1) it then dropped every hit with no `$HIR` for a whole match. Nothing after the head
     // re-sent it. Send the head's own `$GSET` again here, before any trigger is mapped.
     const gset = this._headGset();
-    if (gset) this._write([gset], 'friendly-fire setting again (F645)');
+    if (gset) {
+      // Review 2026-11-06: `_preArmed` is set before this write settles, so a failed write was never sent again and the gun
+      // kept the try-out's setting for the match. A failure before T-0 lets the spawn burst carry it (`_gsetArmed`); one
+      // that settles after go-live sends it once more.
+      const mid = this.matchId; this._gsetArmed = mid;
+      Promise.resolve(this._write([gset], 'friendly-fire setting again (F645)')).then(ok => {
+        if (ok !== false || this._gsetArmed !== mid || this.matchId !== mid) return;
+        this._gsetArmed = null;
+        if (this.phase === 'live') this._write([gset], 'friendly-fire setting again after a failed T-3 write (F645)');
+        else this.log('T-3 $GSET write failed: the T-0 spawn carries it (F645)', 'le');
+      });
+    }
     if (this._sirLive) return;
     const take = this._pickTable('sir_pool');
     if (!take.length) return;
@@ -3568,7 +3579,7 @@ export class Engine {
     const late = rpSpawn && !this._sirLive ? this._pickTable('sir_pool') : [];
     // F645 (review): a start that missed T-3 (a late spawn, a hot-join) never ran `_preArmTable`, so the head's `$GSET`
     // rides in front of this burst instead.
-    const gsetLate = this._preArmed !== this.matchId ? this._headGset() : null;
+    const gsetLate = this._preArmed !== this.matchId || this._gsetArmed !== this.matchId ? this._headGset() : null;   // review 2026-11-06: or its T-3 write failed
     const gsetPre = gsetLate ? [gsetLate] : [];
     if (rpSpawn && !late.length && !this._sirLive) this.log('*** T-0 spawn: no live hit table to write (no sir_pool) ***', 'le');
     const fill = this._spawnShieldFill();   // F348: a Shields life starts at full shield
@@ -5039,6 +5050,13 @@ export class Engine {
     const slot = r.slot;
     if (this.phase !== 'live' || !this.alive || this.stunned || this.rc.disarmed || this.tutorial || this.resync || !this.bleUp) { this.log(`F650: reload of slot ${slot} dropped: the gun is not in play`, 'li'); return null; }
     if (this.activeSlot !== slot || r.life != null && r.life !== this._lifeSeq) { this.log(`F650: reload of slot ${slot} dropped: the weapon is no longer in hand`, 'li'); return null; }
+    // Review 2026-11-06 M1: a round the gun fires just before this `$AMMO` lands reads below the written count inside its
+    // echo window, and was booked from the written magazine (a whole magazine of shots and a recoil burst). While the
+    // trigger is down, or a pull is younger than ACC_ECHO_MS, wait: its round ends the reload as the player's shot
+    // (`onAmmo` 'fired'). Bounded: ACC_ECHO_MS after the reload was due, the write goes. An empty slot fires nothing.
+    { const now = this.now(), m = this.am.acctLive(slot) ?? this.am.prevAmmo[slot];
+      if (m > 0 && now - (r.at + r.ms) < ACC_ECHO_MS
+        && (this.held[BTN_TRIGGER] != null || (this._pull && now - this._pull.at < ACC_ECHO_MS))) return 'wait'; }
     const cap = this.am.ammoBySlot()[slot];
     const mag = this.am.acctLive(slot) ?? this.am.prevAmmo[slot] ?? r.mag, res = this.am.prevReserve[slot];
     if (!(cap > 0) || mag == null || !(res > 0)) { this.log(`F650: reload of slot ${slot} dropped: counts unknown (mag ${mag}, reserve ${res ?? '?'})`, 'li'); return null; }

@@ -5563,6 +5563,40 @@ test('F650: a death during the phone\'s reload writes nothing', () => {
   h.adv(5000); h.eng.tick();
   assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'no $AMMO to a dead gun');
 });
+test('F650 review 2026-11-06 M1: a round in flight when the phone\'s reload is due is one round, never a magazine', () => {
+  // The phone's `$AMMO` opens an echo window at the written count. A round the gun fired just before the write lands
+  // reads BELOW that count inside the window, so it was measured from the written magazine: 29 rounds booked as shots
+  // and a recoil burst. The write waits for a pull in flight; the round then ends the reload as the player's shot.
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // on slot 0 at 29; slot 1 fired last
+  const n = h.writes.length;
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 0');
+  const due = h.eng.am.reloading.at + h.eng.am.reloading.ms;
+  h.adv(due - h.eng.now() - 5); h.eng.tick();
+  h.frame('$BUT,0,1,*');                                           // the player fires just before the write is due
+  h.adv(10); h.eng.tick();
+  const shots = h.eng.shots;
+  h.frame('$ALCD,28,100,0,384,0,*'); h.frame('$BUT,0,0,*');        // the round lands
+  assert.equal(h.eng.shots - shots, 1, 'one round, not a magazine');
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'no $AMMO over a round in flight');
+  assert.equal(h.eng.state().ammo, 28);
+  assert.equal(h.eng.state().reloadOutcome.why, 'fired', 'the shot ended the reload');
+});
+test('F650 review 2026-11-06 M1: a pull the gun never answers delays the phone\'s reload by at most ACC_ECHO_MS', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);
+  const n = h.writes.length, cap0 = h.eng.am.ammoBySlot()[0];
+  f542Lever(h);
+  const due = h.eng.am.reloading.at + h.eng.am.reloading.ms;
+  h.adv(due - h.eng.now() - 5); h.eng.tick();
+  h.frame('$BUT,0,1,*'); h.frame('$BUT,0,0,*');                   // a pull with no round (the gun was cycling)
+  h.adv(10); h.eng.tick();
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [], 'held while the pull may still bring a round');
+  h.adv(E.ACC_ECHO_MS); h.eng.tick();
+  assert.deepEqual(ammoRows(h.writes.slice(n), 0), [`$AMMO,0,${cap0},${384 - (cap0 - 29)},1,*`], 'then written');
+  assert.equal(h.eng.state().reloadOutcome.why, 'filled');
+});
 test('F650: a shotgun chain on the last-fired slot books shell by shell while the phone reloads the weapon in hand', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);

@@ -199,6 +199,8 @@ def _reload(st):
     out["outcome"] = None if not o else {"ok": o["ok"], "filled": o["filled"], "from": o["from"], "to": o["to"], "cap": o["cap"],
                                          "gained": o["gained"], "slot": o["slot"], "ms": round(o["s"] * 1000), "why": o["why"],
                                          "at": _ms(o["at"])}
+    if o and "last_fired" in o:   # F542 (ammo.js `endReload`): the key exists only on a timeout the last-fired slot explains
+        out["outcome"]["lastFired"] = o["last_fired"]
     return out
 
 
@@ -220,6 +222,12 @@ def _heat(st):
             "shown": _NoField("heat.shown"), "ever": _NoField("heat.ever")}
 
 
+def _hills(st):
+    """hill.js `hillsView` (F666) as engine.js `state().hills` names its keys: the stage's `_hills_view` is snake_case."""
+    names = {"age_ms": "ageMs", "on_point": "onPoint"}
+    return [{names.get(k, k): v for k, v in h.items()} for h in st._hills_view(st.now())]
+
+
 FIELDS = {
     "alive": lambda st: bool(st.alive),
     "spawned": lambda st: bool(st.spawned),
@@ -230,6 +238,7 @@ FIELDS = {
     "reloading": lambda st: st._reloading_view() is not None,
     "poison": _poison,
     "hill": _hill,
+    "hills": _hills,
     "mag": _mag,
     "reload": _reload,
     "swap": _swap,
