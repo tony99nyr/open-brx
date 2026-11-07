@@ -4861,6 +4861,21 @@ test('F226: a charge from 4 rounds (heat 156, no round) gets one reload written 
   assert.equal(h.eng.state().ammo, 4 + give, 'the HUD reads the refilled cell');
 });
 
+test('F226 (Codex pass 2026-11-07 r3): a charge-lock `$AMMO` that failed before it left is no reload, and the next locked report writes again', async () => {
+  const { h, cap, res, ammo } = chargeHarness();
+  const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => fr.some(f => f.startsWith('$AMMO,0,')) ? Promise.resolve(false) : real(fr, why, o);
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  assert.equal(h.eng.state().reloading, true, 'setup: the HUD shows the phone\'s reload');
+  await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.equal(h.eng.state().reloading, false, 'the gun got nothing: no reload on the HUD');
+  assert.equal(h.eng.am.reloadOutcome?.ok, false, 'booked as a reload that did not take');
+  assert.equal(h.eng.am.acctLive(0), 4, 'the account is back at the starved cell');
+  const before = ammo().length, give = Math.min(cap - 4, res);
+  h.frame(`$ALCD,4,100,0,${res},156,*`);                     // the player presses again on the still-locked gun
+  assert.deepEqual(ammo().slice(before), [`$AMMO,0,${4 + give},${res - give},1,*`], 'the lock is written for again');
+});
 test('F226: with no echo from the gun, the phone\'s reload still ends after the weapon\'s reload time', () => {
   const { h, res } = chargeHarness();
   h.frame(`$ALCD,4,100,0,${res},156,*`);

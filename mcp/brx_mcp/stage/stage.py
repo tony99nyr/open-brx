@@ -7018,9 +7018,31 @@ class GunStage:
         give = min(cap - mag, res); to = mag + give; left = res - give
         self._log(f"charge lock on slot {slot}: cell {mag} below a {cost}-round charge, heat {heat}: reloading for the player {mag} -> {to}, reserve {res} -> {left} (F226)", "info")
         self._acct_wrote(slot, to, left)
-        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0))
+        self._spawn_task(self._charge_lock_send(slot, mag, res, to, left))
         self._hold_accuracy_writes("F226 reload")
         self._auto_reload(slot, mag, to, cap)
+
+    async def _charge_lock_send(self, slot: int, mag: int, res: int, to: int, left: int) -> None:
+        """engine.js `_chargeLock`'s send (Codex pass 2026-11-07 r3): a write that never left gave the gun nothing."""
+        life = self._life_queued
+        gen = (self._shot_acct.get(slot) or {}).get("echo_gen")
+        try:
+            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0)
+        except Exception:
+            ok = False
+        if ok is False:
+            self._charge_lock_unwrite(slot, mag, res, to, life, gen)
+
+    def _charge_lock_unwrite(self, slot: int, mag: int, res: int, to: int, life: int, gen: int | None) -> None:
+        """engine.js `_chargeLockUnwrite`: the account back, the reload ended as not taken, the once-per-lock latch freed."""
+        if life != self._life_queued or not self._acct_unwrite(slot, mag, res, to, gen):
+            return
+        r = self.reloading
+        if r and r.get("auto") and r["slot"] == slot and r["mag"] == to:
+            r["mag"] = mag; self._end_reload("dropped")
+        if self._charge_lock_fix and self._charge_lock_fix["slot"] == slot:
+            self._charge_lock_fix = None
+        self._log(f"charge lock on slot {slot}: the reload write failed before it left: the cell is still {mag} (F226)", "error")
 
     def _auto_reload(self, slot: int, frm: int, to: int, cap: int | None) -> None:
         """ammo.js `autoReload` (F226): the phone's own reload shows as a reload for the weapon's reload time, then

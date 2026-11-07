@@ -57,3 +57,24 @@ def test_the_rule_stays_narrow():
         await asyncio.sleep(0)
         assert sent == ["$AMMO,0,7,0,1,*"], "never more than the reserve holds"
     asyncio.run(go())
+
+
+def test_codex_r3_a_charge_lock_write_that_never_left_is_no_reload_and_the_next_lock_writes_again():
+    """engine.js `_chargeLockUnwrite` (Codex pass 2026-11-07 r3)."""
+    async def go():
+        clock = StageClock(); st, sent = _st(clock)
+        real = st.write
+        async def failed(*_a, **_k):
+            return False
+        st.write = failed   # type: ignore[method-assign]
+        st._charge_lock(0, 4, 4, 40, 156)
+        assert st.reloading and st.reloading.get("auto")
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert st.reloading is None and st.reload_outcome and st.reload_outcome["why"] == "dropped", st.reload_outcome
+        assert st._charge_lock_fix is None
+        st.write = real   # type: ignore[method-assign]
+        st._charge_lock(0, 4, 4, 40, 156)
+        await asyncio.sleep(0)
+        assert sent == ["$AMMO,0,40,4,1,*"], sent
+    asyncio.run(go())
