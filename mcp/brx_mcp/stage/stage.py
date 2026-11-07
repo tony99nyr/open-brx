@@ -6849,7 +6849,7 @@ class GunStage:
             return
         if not self._acct_unwrite(slot, mag, res, to, gen, until0, moved):
             return   # r2: a newer write owns the slot, even at the same counts
-        back = cur if moved else mag
+        back = cur if moved and cur is not None else mag   # `moved` implies a count (checked above)
         self._prev_ammo[slot] = back; self._prev_reserve[slot] = res
         if self.active_slot == slot:
             self._publish_ammo(slot, back, res)
