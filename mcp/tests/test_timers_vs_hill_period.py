@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "OWN_AT_SLACK_MS": "A87 (2026-11-07): how long before go-live a phone's own_change may be stamped (its clock error).\n"
+                       "A bound on a fact's own time stamp, checked once at ingest; it never fires and no beacon reaches it",
     "SEND_TIMEOUT_S": "F644 (2026-11-01): how long one `/ui-ws` send to a console tab may wait before MC drops the socket.\n"
                       "Measured per send on MC's loop; it watches a browser socket, never a node frame or a beacon",
     "HEARTBEAT_S": "F644 (2026-11-01): MC sends a console heartbeat after this long with nothing else sent on `/ui-ws`.\n"
