@@ -177,6 +177,7 @@ AMMO_STRESS_HEAL = True  # restore the holder's pool between fights, while ammo 
 AMMO_STRESS_BAND_FIT = False  # mid-range ammo comparison does not penalise a kit's preferred band
 AMMO_STRESS_ATTACKER_REACT_MS = 1000.0  # a ready holder gets the first exchange on a streak
 AMMO_STRESS_FIGHT_CAP_MS = 120_000.0  # allow slow mid-range kits to finish a fight
+PHONE_CHAIN_TICK_MS = 250  # app.js ticks the engine every 250 ms; the phone-paced chain writes at most one shell a tick
 PISTOL_FINISH_RANGE = "close"  # the chipped target is at close range
 # Mixed kits that open with the first gun's big round and finish with the second (Tony 2026-10-17).
 COMBO_KITS = (("CR+Sniper+BA", "charge_rifle", "sniper_rifle", "body_armor"),
@@ -286,7 +287,13 @@ def assumptions(haze_blind_ms: float = HAZE_BLIND_MS, heat_cool_while_firing=Tru
                         "secondary_plan": "reload or vent the primary under fire; draw the secondary after the primary has no rounds",
                         "enemy_response": "the holder wins the exchange while able to fire; incoming AR rounds land only during reload, vent, heat lock, swap or dry down time",
                         "pickup": "once, top each held slot's reserve up to its compiled spawn reserve after a pending reload ends; leave magazines alone",
-                        "chain_reload": "ammo stress only: credit each shell at its own interval; a loaded shell can interrupt the reload. Firing between shells is unproven on a gun",
+                        "chain_reload": "ammo stress only: credit each shell at its own interval; a pull with a shell loaded ends the reload and keeps the loaded shells. "
+                                        "The phone-paced chain (the lever loads the Shotgun in hand while the other slot fired last) does the same. "
+                                        "The gun's own chain is unbenched (bench SR16)",
+                        "chain_phone_pace_ms": PHONE_CHAIN_TICK_MS,
+                        "chain_phone_pace": f"the phone writes at most one shell a {PHONE_CHAIN_TICK_MS} ms tick, so a shell shorter than that "
+                                            f"(the Shotgun with Fast Hands, 200 ms) takes {PHONE_CHAIN_TICK_MS} ms on the phone-paced chain. "
+                                            "The sim uses the compiled time on both chains",
                         "bolt_na": "a bolt's whole cycle is down time, so this column measures exposure instead of ammunition; bolt kits, including combos, are n/a"},
         "pistol_finisher": {"pool_hp": B.R10_FINISH_POOL_HP, "aim": AIM,
                             "range": PISTOL_FINISH_RANGE,
@@ -3755,7 +3762,8 @@ def report_markdown(v: dict) -> str:
                 f"Plain AR attackers have {AMMO_STRESS_ATTACKER_AIM:g} aim. Their rounds land only while the holder reloads, "
                 "vents, is heat-locked, swaps or has no rounds. "
                 f"One AMMO pickup tops held reserves after {AMMO_PICKUP_AFTER_KILLS} kills. "
-                "The chain reload can be interrupted only in ammo stress; firing between shells is unproven. "
+                "The chain reload can be interrupted only in ammo stress: a pull ends it and keeps the loaded shells, as the phone-paced "
+                f"chain does. The gun's own chain is unbenched. The phone-paced chain loads at most one shell every {PHONE_CHAIN_TICK_MS} ms. "
                 "Bolt kits are n/a because their whole cycle is down time, so this column measures exposure instead of ammunition.", "",
                 f"Plain AR anchor: {matrix['ammo_stress_anchor_kills']:.2f} kills; "
                 f"attacker cap hit in {matrix['ammo_stress_anchor_cap_hits']} reps. "
