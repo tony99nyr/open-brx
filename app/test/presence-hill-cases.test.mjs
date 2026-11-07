@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Presence, PLAYER_STATE, encodeUuid } from '../src/beacon.js';
+import { Presence, PLAYER_STATE, encodeUuid, encodeTally, decodeTally } from '../src/beacon.js';
 import { ControlPoint, HillFollower } from '../src/control.js';
 import { ADVERT_CONTROL_STATE, ADVERT_SCOPE_KIND, ADVERT_SCOPE_ID_BITS } from '../src/transport/contract.gen.js';
 
@@ -32,7 +32,7 @@ export function scopeOf(c, p) {
 export function expandSightings(c) {
   const out = (c.sightings || []).map(s => ({ ...s }));
   for (const s of c.series || []) {
-    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length], ...(s.state ? { state: s.state } : {}), ...(s.game != null ? { game: s.game } : {}) });
+    for (let k = 0, t = s.from_ms; t <= s.to_ms; k++, t = s.from_ms + k * s.every_ms) out.push({ t, id: s.id, rssi: s.rssi[k % s.rssi.length], ...(s.state ? { state: s.state } : {}), ...(s.game != null ? { game: s.game } : {}), ...(s.value != null ? { value: s.value } : {}) });
   }
   return out.sort((a, b) => a.t - b.t);
 }
@@ -85,7 +85,7 @@ function runCase(c, collect = false) {
     while (next < sightings.length && sightings[next].t <= t) {
       const h = sightings[next++];
       const p = c.players[String(h.id)];
-      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state), game: h.game ?? p.game ?? 0, ...scopeOf(c, p) })], h.rssi, h.t);
+      presence.observe([encodeUuid({ role: 'player', id: h.id, team: p.team, state: stateByte(h.state || p.state), game: h.game ?? p.game ?? 0, value: h.value ?? 0, ...scopeOf(c, p) })], h.rssi, h.t);
     }
     if (stalled(c, t)) continue;
     presence.tick(t);
@@ -125,6 +125,9 @@ function runCase(c, collect = false) {
         for (const [tid, ms] of Object.entries(want.hold_ms || {})) assert.equal(got.hold_ms[tid] || 0, ms, `${at} game ${g} hold_ms of team ${tid}`);
         for (const [tid, ms] of Object.entries(want.own_ms || {})) assert.equal(got.own_ms[tid] || 0, ms, `${at} game ${g} own_ms of team ${tid}`);
       }
+      // A88: the tallies the hill advertises, through the wire codec (each one encoded, then decoded)
+      if (ex.tallies) assert.deepEqual(follower.tallies(point, t).map(x => { const d = decodeTally(encodeTally(x)); return { game: d.game, final: d.final, own_s: Object.fromEntries(Object.entries(d.ownS).map(([k, v]) => [String(k), v])) }; }),
+        ex.tallies.map(x => ({ game: x.game, final: x.final, own_s: x.own_s || {} })), `${at} hill tallies`);
     };
     if (!collect) check();
     else try { check(); } catch (e) { if (!(e instanceof assert.AssertionError)) throw e; failed.push(t); }

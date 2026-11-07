@@ -17,7 +17,8 @@ import { McLink, HUD_POLICY } from './transport/mclink.js';
 import { makeWsFactory } from './transport/netsocket.js';
 import { Presence, stationView, AdvertGate, configGameByte } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { directAdvert, settleAdvert, advertFailLog, advertSnapshotNeeded, newAdvertDirector } from './advert-director.js';   // architecture round 2 item 8: the advert decisions (pure)
-import { BeaconWatch } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
+import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
+import { HillTallyRelay, EndClock, tallyListening } from './hilltally.js';             // A88: relay the hills' tallies to MC
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { PHONE_STATION_THRESHOLD_DBM, PRESENCE_DWELL_MS, STATION_TEAM_ANY } from './transport/contract.gen.js';   // review #4
 import { APP_VER, platformName, setDeviceModel } from './build.js';                  // the REAL build id (contracts A29)
@@ -215,12 +216,26 @@ const stationWas = new Map();
 // (`configGameByte`, beacon.js); the `config.stations` allow-list is the primary scope.
 // F537 (bench C.34): while our own scan is closed (the flood guard's 5 s, a radio-quiet window, a restart), Presence pauses, so
 // a hill we stand next to does not "leave" at -60 dBm because WE stopped listening.
-const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => presence.observe(hit.uuids, hit.rssi, Date.now()),
+// A88: the hills' Domination tallies, relayed to MC as `hill_tally` facts (hilltally.js)
+const TALLY_GAMES_KEY = 'brx.hilltally.games';
+const tallyRelay = new HillTallyRelay({ emit: f => engine.emitFact(f), store: {
+  load: () => JSON.parse(localStorage.getItem(TALLY_GAMES_KEY) || 'null'), save: v => localStorage.setItem(TALLY_GAMES_KEY, JSON.stringify(v)) } });
+const endClock = new EndClock();   // A88: the effective end time, for the end info and the walk back
+const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit => {
+    presence.observe(hit.uuids, hit.rssi, Date.now());
+    tallyRelay.observe(hit, Date.now(), !!(engine.config && engine.config.hill_tally === true));
+  },
   onClose: t => presence.pause(t), onOpen: t => presence.resume(t) });
 setInterval(() => {
   const st = engine.state();
   presence.game = configGameByte(engine.config);   // scope presence to this game (best-effort; §utility)
-  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config, radioQuiet: !!st.radioQuiet });   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
+  if (engine.matchId) tallyRelay.noteMatch(configGameByte(engine.config), engine.matchId);
+  tallyRelay.tick(Date.now(), !!(engine.config && engine.config.hill_tally === true));
+  endClock.note(st, engine.endT, engine.matchId);
+  const walkBack = tallyListening(st, engine.config, endClock.ageMs(st, engine.now()));
+  beaconWatch.tick(st, { pickerOpen: scanning || link.connecting, config: engine.config, radioQuiet: !!st.radioQuiet, walkBack });
+  const pass = walkBack && stationsInPlay(engine.config);   // A88: the results footer's PASS THE HILLS line
+  if (hud.hillPass !== pass) { hud.hillPass = pass; hud.sig = null; scheduleRender(); }   // no stations: no scan (bench 2026-09-17 flood); app 0.4.2: none while a connect is in flight
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
   await beaconWatch.release();
@@ -254,7 +269,9 @@ async function syncPlayerAdvert() {
   if (!plugins.beacon || !isNative() || playerAdvertBusy) return;
   // EFF-2: no station in play and nothing on air: skip the snapshot (about 4 KB of garbage per 250 ms tick).
   if (!advertSnapshotNeeded(engine.config, playerAdvertGate)) return;
-  const d = directAdvert({ st: engine.state(), config: engine.config, tid: engine.teamTid, scanOpens: beaconWatch.opens, dir: playerAdvertDir, gate: playerAdvertGate, now: Date.now() });
+  const st = engine.state();
+  const d = directAdvert({ st, config: engine.config, tid: engine.teamTid, scanOpens: beaconWatch.opens, dir: playerAdvertDir, gate: playerAdvertGate, now: Date.now(),
+    endAgeMs: (endClock.note(st, engine.endT, engine.matchId), endClock.ageMs(st, engine.now())) });   // A88: the end info's age, on the engine's clock
   playerAdvertDir = d.dir;
   if (d.refreshGate) playerAdvertGate.refresh();
   if (!d.action) return;

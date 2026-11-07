@@ -205,12 +205,14 @@ export class BeaconWatch {
    * the radio. `config`: the game config (engine.config), which says whether stations are in play.
    * Returns the operation it started, or null.
    */
-  tick(st, { pickerOpen = false, config = null, radioQuiet = false } = {}) {
+  tick(st, { pickerOpen = false, config = null, radioQuiet = false, walkBack = false } = {}) {
     const down = !!st && st.phase === 'live' && !st.alive && st.respawnType === 'scanner';
     // F416 part 2 (bench part 1, 2026-09-26): `radioQuiet` is the engine's go-live and spawn-write window
     // (`engine.radioQuiet`). A station scan in flood starves GATT writes on Android (F342), and the spawn burst is
     // the one write a player cannot play without, so the scan gives the radio up for those few seconds.
-    const wanted = beaconNeeded(st, config) && (down || aliveNeedsBeacon(config)) && !pickerOpen && !radioQuiet && this.native();
+    // A88: `walkBack` (hilltally.js `tallyListening`): after the end, the scan stays open on the way back to MC, so the phone
+    // hears the hills' tallies and the hills hear its end.
+    const wanted = ((beaconNeeded(st, config) && (down || aliveNeedsBeacon(config))) || walkBack) && !pickerOpen && !radioQuiet && this.native();
     const justDied = this.lastAlive && down;
     if (this.busy) return null;   // before the alive edge is consumed, so a death during a restart still kicks one
     this.lastAlive = !st || st.alive !== false;
@@ -219,7 +221,7 @@ export class BeaconWatch {
       // The next GAME starts at full rate. A gun picker or a reconnect inside the same match does not: F342 (field
       // 2026-09-24, Pixel 5) reset the mode on every gun reconnect, so the scan reopened at low latency and flooded
       // again (26 results/s) while the reconcile re-armed the gun. The field the guard measured is still the same.
-      if (!beaconNeeded(st, config)) { this.modeIdx = 0; this.pausedUntil = 0; this._floorWarned = false; }
+      if (!beaconNeeded(st, config) && !walkBack) { this.modeIdx = 0; this.pausedUntil = 0; this._floorWarned = false; }
       // F416 (review r1): a `radioQuiet` close is the line below, and it does NOT bypass the restart cadence: Android
       // refuses an app that starts scans too often (about 5 per 30 s), and a revive quiet window comes with every life.
       if (this.open && !pickerOpen) return this._serial(() => this._stop());

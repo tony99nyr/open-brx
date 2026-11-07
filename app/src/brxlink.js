@@ -359,7 +359,7 @@ export class BrxLink {
           const name = d.name || res.localName || '';
           const uuids = Array.isArray(res.uuids) ? res.uuids : [];
           if (!name && !uuids.length) return;
-          const hit = { deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower };
+          const hit = { deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower, manufacturerData: res.manufacturerData };   // A88: a hill's tally rides in manufacturer data
           for (const t of this._scanTaps) { try { t(hit); } catch (_) { /* a tap must not break the scan */ } }
           onHit(hit);
         });

@@ -1,5 +1,5 @@
 {
-  "_doc": "Advert vectors shared by three decoders: app/test/beacon-vectors.test.mjs (app/src/beacon.js), mcp/tests/test_advert_vectors.py (mcp/brx_mcp/beacon.py) and hardware/m5sticks3/test/test_advert_vectors.cpp (brx_advert.h). `cases`: the fields encode to `uuid` and `uuid` decodes back to the fields (`kind` is the wire byte; the phone and MC name a station kind, see KIND_NAME in beacon.js, and read null for a player). A86: a player's byte 7 alone is its id, byte 8 is `scope_kinds` and bytes 6 and 15 are `scope`, the 16-bit map of station ids in play; a station reads both as 0. `bit`, when present, names the ADVERT_PLAYER_STATE entry whose value `state` must equal. `variants`: other spellings that must decode to the case named `decodes_as`, for the listed runners (the Stick only parses the dashed string a BLE scan returns). `reject`: every runner must refuse them.",
+  "_doc": "Advert vectors shared by three decoders: app/test/beacon-vectors.test.mjs (app/src/beacon.js), mcp/tests/test_advert_vectors.py (mcp/brx_mcp/beacon.py) and hardware/m5sticks3/test/test_advert_vectors.cpp (brx_advert.h). `cases`: the fields encode to `uuid` and `uuid` decodes back to the fields (`kind` is the wire byte; the phone and MC name a station kind, see KIND_NAME in beacon.js, and read null for a player). A86: a player's byte 7 alone is its id, byte 8 is `scope_kinds` and bytes 6 and 15 are `scope`, the 16-bit map of station ids in play; a station reads both as 0. `bit`, when present, names the ADVERT_PLAYER_STATE entry whose value `state` must equal. `variants`: other spellings that must decode to the case named `decodes_as`, for the listed runners (the Stick only parses the dashed string a BLE scan returns). `reject`: every runner must refuse them. `tallies` (A88): a hill's tally `{game, final, own_ms}` encodes to the 6 manufacturer-data `bytes` (beacon.js encodeTally, brx_advert.h encode_tally). `end_codes`: an ended player's ms since its end gives byte 11 (beacon.js endAgeCode); `end_reads`: a byte 11 reads back as the middle of its 4 s step (endAgeMs, end_age_ms).",
   "cases": [
     {"name":"respawn station, any team","uuid":"4f425258-0101-0001-01ff-000000000000","role":"station","id":1,"kind":1,"team":255,"state":0,"value":0,"seq":0,"game":0,"threshold":0,"taker":0,"scope_kinds":0,"scope":0,"kind_name":"respawn"},
     {"name":"powerup station with a taker","uuid":"4f425258-0101-0008-02ff-002a00000007","role":"station","id":8,"kind":2,"team":255,"state":0,"value":42,"seq":0,"game":0,"threshold":0,"taker":7,"scope_kinds":0,"scope":0,"kind_name":"powerup"},
@@ -52,5 +52,23 @@
     {"name":"one byte too long","uuid":"4f425258-0101-0001-05ff-0000000000000000"},
     {"name":"non-hex digits, right length","uuid":"4f425258-0101-0001-05zz-000000000000"},
     {"name":"non-hex magic, right length","uuid":"gf425258-0101-0001-05ff-000000000000"}
+  ],
+  "tallies": [
+    {"name":"final, two teams, a 5 ms team dropped","game":7,"final":true,"own_ms":{"0":61234,"1":300999,"3":5},"bytes":[7,17,65,44,0,61]},
+    {"name":"three teams: the top two, partial","game":200,"final":false,"own_ms":{"0":5000,"1":3000,"3":9000},"bytes":[200,18,192,9,0,5]},
+    {"name":"seconds capped at ADVERT_TALLY_SECS_MAX","game":9,"final":false,"own_ms":{"1":99999999},"bytes":[9,16,127,255,0,0]},
+    {"name":"nothing banked","game":4,"final":false,"own_ms":{},"bytes":[4,16,0,0,0,0]}
+  ],
+  "end_codes": [
+    {"age_ms":0,"code":1},
+    {"age_ms":3999,"code":1},
+    {"age_ms":4000,"code":2},
+    {"age_ms":1019999,"code":255},
+    {"age_ms":1020000,"code":0}
+  ],
+  "end_reads": [
+    {"code":1,"age_ms":2000},
+    {"code":8,"age_ms":30000},
+    {"code":255,"age_ms":1018000}
   ]
 }

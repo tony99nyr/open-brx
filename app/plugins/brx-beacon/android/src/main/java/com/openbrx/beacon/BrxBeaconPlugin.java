@@ -117,6 +117,15 @@ public class BrxBeaconPlugin extends Plugin {
         final String tx = call.getString("txPower", "medium");
         final String mode = call.getString("mode", "lowLatency");
         final boolean includeTx = Boolean.TRUE.equals(call.getBoolean("includeTxPower", true));
+        // A88: optional manufacturer data (a hill's Domination tally): the company id and the payload as hex.
+        final Integer mfrId = call.getInt("manufacturerId");
+        final String mfrHex = call.getString("manufacturerData");
+        final byte[] mfr;
+        if (mfrId != null && mfrHex != null) {
+            if (mfrHex.length() % 2 != 0 || !mfrHex.matches("[0-9a-fA-F]*")) { call.reject("bad manufacturerData: " + mfrHex); return; }
+            mfr = new byte[mfrHex.length() / 2];
+            for (int i = 0; i < mfr.length; i++) mfr[i] = (byte) Integer.parseInt(mfrHex.substring(2 * i, 2 * i + 2), 16);
+        } else mfr = null;
 
         getBridge().executeOnMainThread(() -> {
             stopInternal();
@@ -129,11 +138,13 @@ public class BrxBeaconPlugin extends Plugin {
                 .setTimeout(0)
                 .build();
             // flags(3) + 128-bit uuid(18) [+ tx power(3)] fits the 31-byte legacy advert; the device name would not.
-            AdvertiseData data = new AdvertiseData.Builder()
+            // A88: + manufacturer data (4 + payload) in place of the tx power field.
+            AdvertiseData.Builder b = new AdvertiseData.Builder()
                 .addServiceUuid(new ParcelUuid(parsed))
                 .setIncludeDeviceName(false)
-                .setIncludeTxPowerLevel(includeTx)
-                .build();
+                .setIncludeTxPowerLevel(includeTx);
+            if (mfr != null) b.addManufacturerData(mfrId, mfr);
+            AdvertiseData data = b.build();
             callback = new AdvertiseCallback() {
                 @Override public void onStartSuccess(AdvertiseSettings s) {
                     advertising = true; currentUuid = uuid; currentTx = tx;

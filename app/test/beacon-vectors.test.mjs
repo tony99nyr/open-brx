@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { encodeUuid, decodeUuid, PLAYER_STATE } from '../src/beacon.js';
+import { encodeUuid, decodeUuid, PLAYER_STATE, encodeTally, decodeTally, endAgeCode, endAgeMs } from '../src/beacon.js';
 import { ADVERT_PLAYER_STATE } from '../src/transport/contract.gen.js';
 
 const doc = JSON.parse(readFileSync(new URL('./fixtures/advert-vectors.json', import.meta.url), 'utf8'));
@@ -36,4 +36,17 @@ test('each PLAYER_STATE bit vector carries the generated bit, and the phone sets
     if (c.bit === 'revived') assert.equal(PLAYER_STATE.revived, undefined, 'F344: the phone never sets revived');
     else assert.equal(PLAYER_STATE[c.bit], c.state, c.name);
   }
+});
+
+// A88: the hill's tally payload and the player's end info, shared with brx_advert.h
+test('every tally vector encodes to its bytes and decodes back', () => {
+  for (const v of doc.tallies) {
+    assert.deepEqual(encodeTally({ game: v.game, final: v.final, ownMs: v.own_ms }), v.bytes, v.name);
+    const d = decodeTally(v.bytes);
+    assert.equal(d.game, v.game, v.name); assert.equal(d.final, v.final, v.name);
+  }
+});
+test('end ages: an age gives its code, and a code reads back as the middle of its step', () => {
+  for (const v of doc.end_codes) assert.equal(endAgeCode(v.age_ms), v.code, `age ${v.age_ms}`);
+  for (const v of doc.end_reads) assert.equal(endAgeMs(v.code), v.age_ms, `code ${v.code}`);
 });

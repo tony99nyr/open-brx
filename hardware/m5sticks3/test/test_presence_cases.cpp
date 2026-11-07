@@ -35,7 +35,7 @@ static void shape(const std::string& what) {
   failures++;
 }
 
-struct Heard { long t; int id; int rssi; const Value* state; int game; };  // state: the sighting's own (F554), else null; game: its own (F658), else -1
+struct Heard { long t; int id; int rssi; const Value* state; int game; int value; };  // state: the sighting's own (F554), else null; game: its own (F658), else -1; value: byte 11 (A88 end info), 0 by default
 
 // A86: a player's advert scope. Default: the scope that names this hill (the control bit and its own id bit).
 static uint8_t scope_kinds(const Value& p) {
@@ -85,14 +85,14 @@ static std::vector<Heard> expand(const Value& c) {
   std::vector<Heard> out;
   for (const Value& s : c.get("sightings").arr)
     out.push_back({s.get("t").as_int64(), (int)s.get("id").as_int(), (int)s.get("rssi").as_int(), s.has("state") ? &s.get("state") : nullptr,
-                   s.has("game") ? (int)s.get("game").as_int() : -1});
+                   s.has("game") ? (int)s.get("game").as_int() : -1, s.has("value") ? (int)s.get("value").as_int() : 0});
   for (const Value& s : c.get("series").arr) {
     const std::vector<Value>& r = s.get("rssi").arr;
     long every = s.get("every_ms").as_int();
     long k = 0;
     for (long t = s.get("from_ms").as_int64(); t <= s.get("to_ms").as_int64(); k++, t = s.get("from_ms").as_int64() + k * every)
       out.push_back({t, (int)s.get("id").as_int(), (int)r[k % r.size()].as_int(), s.has("state") ? &s.get("state") : nullptr,
-                     s.has("game") ? (int)s.get("game").as_int() : -1});
+                     s.has("game") ? (int)s.get("game").as_int() : -1, s.has("value") ? (int)s.get("value").as_int() : 0});
   }
   std::stable_sort(out.begin(), out.end(), [](const Heard& a, const Heard& b) { return a.t < b.t; });
   return out;
@@ -187,6 +187,7 @@ static void run_case(const Value& c) {
       a.game = (uint8_t)(h.game >= 0 ? h.game : (p.has("game") ? p.get("game").as_int() : 0));
       a.scope_kinds = scope_kinds(p);
       a.scope = scope_map(p, station_id);
+      a.value = (uint8_t)h.value;
       pr.observe(a, h.rssi, (uint32_t)h.t);
     }
     if (stalled(c, t)) continue;
@@ -259,6 +260,25 @@ static void run_case(const Value& c) {
           const int tid = std::stoi(h.first);
           const long got = tid >= 0 && tid < 4 ? (long)tally.own_ms[tid] : -1;
           if (got != h.second.as_int64()) fail(t, at + " game " + kv.first + " own_ms of team " + h.first + " " + std::to_string(got));
+        }
+      }
+      if (ex.has("tallies")) {  // A88: the tallies the hill advertises, through the wire codec
+        TallyView tv[2];
+        const int n = follower.tallies(cp, (uint32_t)t, tv);
+        const std::vector<Value>& want = ex.get("tallies").arr;
+        if ((size_t)n != want.size()) fail(t, at + " hill tallies: " + std::to_string(n) + ", expected " + std::to_string(want.size()));
+        for (int i = 0; i < n && (size_t)i < want.size(); i++) {
+          uint8_t b[6], game = 0;
+          bool final = false, partial = false;
+          uint32_t own_s[4];
+          encode_tally(tv[i], b);
+          if (!decode_tally(b, game, final, partial, own_s)) { fail(t, at + " hill tally does not decode"); continue; }
+          const Value& w = want[i];
+          if (game != w.get("game").as_int() || final != w.get("final").as_bool()) fail(t, at + " hill tally " + std::to_string(i) + " game " + std::to_string(game) + " final " + (final ? "true" : "false"));
+          uint32_t want_s[4] = {0, 0, 0, 0};
+          for (const auto& kv : w.get("own_s").obj) want_s[std::stoi(kv.first)] = (uint32_t)kv.second.as_int64();
+          for (int k = 0; k < 4; k++)
+            if (own_s[k] != want_s[k]) fail(t, at + " hill tally " + std::to_string(i) + " own_s of team " + std::to_string(k) + " " + std::to_string(own_s[k]) + ", expected " + std::to_string(want_s[k]));
         }
       }
       if (ex.has("hill")) {

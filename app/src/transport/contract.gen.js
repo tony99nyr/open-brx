@@ -217,6 +217,19 @@ export const ADVERT_SCOPE_KIND = Object.freeze({ control: 1, respawn: 2, powerup
 export const ADVERT_SCOPE_ID_BITS = 16;
 /** A control point's byte 10 (state), as independent bits: `rising` and `falling` together read as direction unknown. */
 export const ADVERT_CONTROL_STATE = Object.freeze({ held: 1, contested: 2, rising: 4, falling: 8 });
+/** A88 (Tony 2026-11-07): a control point's Domination tally rides beside its UUID as manufacturer data: this company id
+ *  (the SIG test id, unregistered; a reader takes it only beside a kind-5 OBRX UUID), then 6 bytes: the game byte, a
+ *  flags byte (bit 0 final, bit 1 partial, high nibble ADVERT_TALLY_FORMAT), and two big-endian u16 slots, each
+ *  `tid << 14 | seconds` with seconds capped at ADVERT_TALLY_SECS_MAX. utility.md §5d.8 item 10. */
+export const ADVERT_TALLY_COMPANY = 65535;
+export const ADVERT_TALLY_FORMAT = 1;
+export const ADVERT_TALLY_SECS_MAX = 16383;
+/** A88: an ended player phone's byte 11 (live and claim bits clear) = 1 + floor(seconds since its end / this), capped at 255. */
+export const ADVERT_END_AGE_STEP_S = 4;
+/** A88: a hill with a recently ended game alternates its tally between the two games this often, and re-keys a tally whose
+ *  seconds alone changed at most this often (a new game or flag goes out at once). */
+export const HILL_TALLY_ROTATE_MS = 4000;
+export const HILL_TALLY_REFRESH_MS = 5000;
 /** The $TID values that can OWN a control point: 4-7 are colours, 255 is "any", and 2 is refused (F82). */
 export const HILL_CLAIMABLE_TIDS = Object.freeze([0, 1, 3]);
 /** A7/D11 (architecture review #4): the presence and hill numbers the phone station (app/src/beacon.js, utility.js,

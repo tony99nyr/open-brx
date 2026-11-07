@@ -3078,6 +3078,13 @@ static void test_f658_hill_follows_the_live_game() {
   // review: an owned, empty hill banks own_ms only, and that growth must re-save the ring too (a reboot kept no Domination time)
   link.hill().own_ms[0] += 5000;
   CHECK(link.ring_save_due(5250 + HILL_CLOCK_SAVE_MS));
+  // A88 (Codex review): an end that changes no total (trimmed nothing) is saved at once, so a restart keeps it final
+  CHECK(!link.ring_save_due(5300 + HILL_CLOCK_SAVE_MS));
+  link.hill().end_own(5300 + HILL_CLOCK_SAVE_MS, true);
+  CHECK(link.ring_save_due(5300 + HILL_CLOCK_SAVE_MS));
+  CHECK(!link.ring_save_due(5301 + HILL_CLOCK_SAVE_MS));
+  link.hill().own_ended = link.hill().own_final = false;   // the rest of this test plays on
+  CHECK(link.ring_save_due(5302 + HILL_CLOCK_SAVE_MS));
   // MC arms game 42 (in range for a moment): the following hill keeps its point
   const double progress = link.hill().progress;
   StationAssignment b = a; b.game = 42; b.starts_in_ms = 5000;
@@ -3091,18 +3098,27 @@ static void test_f658_hill_follows_the_live_game() {
   CHECK(decode_hill_ring(saved, 9, back, point, 100));
   CHECK(back.follows && back.has_current && back.current == 41);
   CHECK(point.own_ms[0] == 7000u);
-  {  // a ring saved before own_ms (11 fields an entry) still restores, with own_ms 0
+  // drop the last `n` fields of every entry: an older firmware's save
+  auto older = [&](int n) {
     std::string old = saved;
     for (size_t semi = old.find(';'); semi != std::string::npos; semi = old.find(';', semi)) {
       size_t cut = semi;
-      for (int k = 0; k < 4; k++) cut = old.rfind(',', cut - 1);
+      for (int k = 0; k < n; k++) cut = old.rfind(',', cut - 1);
       old.erase(cut, semi - cut);
       semi = old.find(';', cut) + 1;
       if (semi == 0 || semi >= old.size()) break;
     }
+    return old;
+  };
+  {  // a ring saved before own_ms (11 fields an entry) still restores, with own_ms 0
     HillFollower f_old;
     BleControlPoint p_old;
-    CHECK(decode_hill_ring(old, 9, f_old, p_old, 100) && p_old.own_ms[0] == 0u && f_old.current == 41);
+    CHECK(decode_hill_ring(older(6), 9, f_old, p_old, 100) && p_old.own_ms[0] == 0u && f_old.current == 41);
+  }
+  {  // A88: a ring saved before the end flags (15 fields) restores its own_ms, not ended
+    HillFollower f_old;
+    BleControlPoint p_old;
+    CHECK(decode_hill_ring(older(2), 9, f_old, p_old, 100) && p_old.own_ms[0] == 7000u && !p_old.own_ended && f_old.current == 41);
   }
   CHECK(BleControlPoint::js_round(point.progress) == BleControlPoint::js_round(progress));
   CHECK(!decode_hill_ring(saved, 8, back, point, 100));   // another station's ring is not ours

@@ -150,6 +150,92 @@
         },
         "_doc": {
           "type": "string"
+        },
+        "tallies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "game",
+              "final",
+              "own_ms",
+              "bytes"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "game": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              },
+              "final": {
+                "type": "boolean"
+              },
+              "own_ms": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "bytes": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "end_codes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "age_ms",
+              "code"
+            ],
+            "properties": {
+              "age_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "code": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "end_reads": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "age_ms",
+              "code"
+            ],
+            "properties": {
+              "age_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "code": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            },
+            "additionalProperties": false
+          }
         }
       },
       "additionalProperties": false
@@ -1924,6 +2010,34 @@
                         "minimum": 0
                       },
                       "minProperties": 1
+                    },
+                    "tallies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "game",
+                          "final"
+                        ],
+                        "properties": {
+                          "game": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                          },
+                          "final": {
+                            "type": "boolean"
+                          },
+                          "own_s": {
+                            "type": "object",
+                            "additionalProperties": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          }
+                        },
+                        "additionalProperties": false
+                      }
                     }
                   },
                   "additionalProperties": false,
@@ -1969,6 +2083,11 @@
                     },
                     "game": {
                       "type": "integer"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
                     }
                   },
                   "additionalProperties": false
@@ -2001,6 +2120,11 @@
                     },
                     "game": {
                       "type": "integer"
+                    },
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
                     }
                   },
                   "additionalProperties": false

@@ -61,7 +61,8 @@ byte  0-3   4F 42 52 58   'OBRX'
                             bit4 claiming, bit5 claim_ready (A56, powerups.md),
                             bit6 revived: "revived at the station in `value`", read by the StickS3, post-MVP (F344),
                             bit7 live: the player's match is live, go-live to the whistle (F658, §5d.8))
-      11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id)
+      11    value          kind-specific small number (seconds left, cooldown, progress %; a claiming player: the station id;
+                            an ended player, live and claim bits clear: 1 + floor(seconds since its end / 4), 0 = none (A88, §5d.8 item 10))
       12    seq            bumps on every state change (a scanner tells fresh from stale)
       13    game           the match's game byte from MC (station_config.game = config.game_byte, A59) · 0 = any game
       14    threshold      the station's own "you are AT me" RSSI, int8 dBm · 0 = scanner default
@@ -73,6 +74,15 @@ byte  0-3   4F 42 52 58   'OBRX'
 Codec: `beacon.js encodeUuid()/decodeUuid()`, pinned by `app/test/beacon.test.mjs` (round trip, case and
 dash tolerance, foreign UUIDs rejected, version-gated). Adverts are non-connectable; the Android advert
 carries the TX-power field so a scanner can do path-loss later; 21–24 bytes, inside the legacy 31.
+
+**The hill tally (A88).** A following control point on a Stick or an Android phone adds one manufacturer-data field
+beside the UUID: company `ADVERT_TALLY_COMPANY` (0xFFFF, the SIG test id, unregistered: F667), then 6 bytes, the game byte,
+a flags byte (bit 0 `final`, bit 1 `partial`, high nibble `ADVERT_TALLY_FORMAT` 1) and two big-endian u16 slots,
+`tid << 14 | seconds` of `own_ms` for the two teams with the most (capped at `ADVERT_TALLY_SECS_MAX`; a zero-second
+slot is empty). The Android hill drops the TX-power field for it, so both make exactly 31 bytes. An iOS hill cannot
+send manufacturer data. A reader takes the field only beside a kind-5 OBRX UUID. Codec: `beacon.js
+encodeTally()/decodeTally()`, `brx_advert.h encode_tally()`, pinned by the `tallies` vectors in
+`app/test/fixtures/advert-vectors.json`.
 
 ## 3. Radius: two knobs, and what they cannot do
 
@@ -544,7 +554,7 @@ so F93's grenade-hill relay needs another home.
 | fact | where it lives |
 |---|---|
 | **who** is contributing (ids, teams, alive) | the station's own screen only (§5d.4). The station knows it from player adverts; it cannot fan a per-player list out in 16 bytes, and no player phone needs it |
-| **hold time / possession seconds** | each node's own clock (F556: a player phone counts every point it hears, each on its own clock, while its HUD reads only the one it stands on), exactly as the grenade hill does it (the archived utility-roadmap "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). Since F554 the station also banks nothing while its owner has no living player on the point; a player phone cannot see that (the advert carries no counts), so the station's tally is the one that knows (F555). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
+| **hold time / possession seconds** | each node's own clock (F556: a player phone counts every point it hears, each on its own clock, while its HUD reads only the one it stands on), exactly as the grenade hill does it (the archived utility-roadmap "presence is a heartbeat, and timing is node-side"); the station and every player phone pause the tally while contested (F382, Tony 2026-09-25). Since F554 the station also banks nothing while its owner has no living player on the point; a player phone cannot see that (the advert carries no counts), so the station's tally is the one that knows (F555). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the UUID. The owned clock (`own_ms`) rides beside it as manufacturer data since A88 (§2, §5d.8 item 10) |
 | **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (the archived utility-roadmap §8 5e) |
 
 ### 5d.4 The station screen ANIMATES the contest and the transition
@@ -749,7 +759,33 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    was not the owner at the start of the gap. It rides in `status.control` and in each `games` entry, and in the
    point snapshot and the tally ring (phone and Stick). `hold_ms` and the capture rate do not change.
 
-The rules are pinned by the `F658:`, `F658 hysteresis:`, `A86:` and `own_ms:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
+10. **The phones relay the tally, and an ended phone ends the hill (A88, Tony 2026-11-07).** Under A87 MC scores
+   Domination from the phones' `own_change` reports, so a capture no phone in Wi-Fi saw is lost. Tony's plan: the
+   players pass the hills on the way back to MC.
+   - The hill advertises its `own_ms` tally (§2, *The hill tally*) for its current game, alternating every
+     `HILL_TALLY_ROTATE_MS` (4 s) with its most recently heard other ring game (one it switched away from, so one that
+     ended here) heard within `HILL_RING_STALE_MS`. A new game or flags byte re-keys the advert at once; changed
+     seconds alone at most every `HILL_TALLY_REFRESH_MS` (5 s).
+   - An ended player phone (MC's END or its own time limit) advertises byte 11 = 1 + floor(seconds since its end /
+     `ADVERT_END_AGE_STEP_S`), live and claim bits clear, until the byte cannot say it (about 17 minutes).
+   - A hill that hears that end info in an in-scope advert of its current game ends the game, as the whistle rule of
+     item 2 does, even from a phone it never heard live. An end time before the game was first heard there is an older
+     game on a reused byte and is ignored. The end time is the middle of the 4 s step (±2 s); the earliest end heard
+     wins, and a whistle heard ends it when that advert was heard.
+   - An ended game banks no more `own_ms`, and the hill gives back what it banked after the end time: it keeps its
+     banking spans for the last `(255 × 4 + 60)` seconds (16 at most; a restart keeps none). The tally is `final` when
+     the end came from evidence (a whistle heard or end info). The 10-minute silence ends a game with no evidence of
+     when, so it stops the clock but is not final until an ended phone passes. `ownEnded` and `ownFinal` ride in the
+     point snapshot and the ring (phone and Stick NVS).
+   - The player phone keeps the beacon scan open for `HILL_TALLY_LISTEN_MS` (17 min) after its end while MC asked for
+     tallies, shows PASS THE HILLS ON THE WAY BACK in the results footer, and relays the latest tally per (site, game
+     byte) to MC as the persisted fact `hill_tally` (contracts A88; `hilltally.js`).
+   - **Known limit:** a locked iPhone neither collects tallies nor ends hills: iOS moves its UUID to the overflow area
+     in the background, and a filterless background scan returns nothing.
+   - Old peers: an older Stick or an iOS hill advertises no tally, an older APK sends no end info and ignores the
+     field, and MC keeps A87 for anything it does not get.
+
+The rules are pinned by the `F658:`, `F658 hysteresis:`, `A86:`, `own_ms:` and `A88:` cases in `app/test/fixtures/presence-hill-cases.json` (phone and Stick
 runners).
 
 ### 5d.9 The static powerup: it follows the live game too (F658)
