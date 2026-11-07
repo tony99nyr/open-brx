@@ -546,6 +546,7 @@
       }
     },
     "evicted_nodes": [],
+    "game_byte": 1,
     "go_live_t": 5010000,
     "joined_t": {},
     "live": true,

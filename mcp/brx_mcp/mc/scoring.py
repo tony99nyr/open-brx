@@ -9,9 +9,16 @@ import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .clockwatch import ClockWatch
-from .ownership import OWN_SKEW_MS, clock_offsets, owned_ms
+from .ownership import NEUTRAL_TID, OWN_SKEW_MS, clock_offsets, owned_ms
 
 OWN_AT_SLACK_MS = 60_000   # how long before go-live an own_change may be stamped (a phone's clock error)
+TALLY_STEP_MS = 1000       # A88: how far a hill's final tally may differ from the phones' timeline, per owner change
+TALLY_TRIM_MS = 3000       # A88: plus the hill's ±2 s end trim and 1 s of whole-second rounding
+
+
+def _tally_key(own_ms: dict[int, int]) -> tuple:
+    """A88: the order of two final tallies for one hill: the least banked first, then a fixed order, never arrival."""
+    return (sum(own_ms.values()), sorted(own_ms.items()))
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
                     NEVER_SEEN_MS, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
@@ -196,7 +203,12 @@ class Scorer:
         # the cross-check on its STATIONS row.
         self.own_changes: dict[str, list[tuple[int, int, int, str]]] = {}
         self._own_offsets: dict[str, tuple[int, dict[str, int]]] = {}   # site -> (steps seen, the phones' clock offsets)
-        self._own_memo: dict[str, tuple[tuple[int, int], dict[int, int]]] = {}   # site -> ((facts, ref), owned ms)
+        self._own_memo: dict[str, tuple[tuple[int, int], dict[int, int], int]] = {}   # site -> ((facts, ref), owned ms, steps)
+        # A88: site -> {"final": bool, "own_ms": {tid: ms}}, the hill's own tally for THIS match's game byte, as the phones
+        # relayed it. Only a final one can score, and only where the phones' timeline is shown incomplete (brx1 2026-11-07).
+        self.game_byte: int | None = None
+        self.hill_tallies: dict[str, dict] = {}
+        self.tally_scored: dict[str, dict[int, int]] = {}   # site -> the timeline's ms a final tally replaced (the console)
         # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
         # station reading is scored on it; the phones' readings for that site are only the cross-check.
         self.station_possession_ms: dict[str, dict[int, int]] = {}
@@ -1141,9 +1153,58 @@ class Scorer:
         return "scored"
 
     def _hill_tally(self, node_id: str, ev: Event) -> str:
-        """A88: a hill's own tally, relayed by a phone. Stored with the facts; MC does not score it yet (the merge follows
-        in its own change), and it never reaches the player gate or the end freeze."""
-        return "ignored"
+        """A88: a hill's own tally for one game, as a phone heard it in the hill's advert. Like `own_change` it skips the
+        player gate and the end freeze: a final tally arrives as players walk back, minutes after the whistle. Only the
+        tally of THIS match's game byte counts. Per site a `final` tally replaces anything earlier, even a larger one (the
+        hill trimmed what it banked after the end); before a final, MC keeps the max per team."""
+        if self.mode not in OWNERSHIP_SCORED_MODES or self.game_byte is None:
+            return "ignored"
+        gb, own_s, final = ev.get("game_byte"), ev.get("own_s"), ev.get("final")
+        if type(gb) is not int or gb != self.game_byte or not isinstance(own_s, dict) or type(final) is not bool:
+            return "ignored"
+        own_ms: dict[int, int] = {}
+        for tid_raw, secs in own_s.items():
+            try:
+                tid = int(tid_raw)
+            except (TypeError, ValueError):
+                continue
+            if type(secs) is int and secs >= 0 and 0 <= tid <= 7:
+                own_ms[tid] = self._clamp_ms(secs * 1000) or 0
+        site = str(ev.get("site") or "A")
+        cur = self.hill_tallies.get(site)
+        if final:
+            # Codex review: a hill only trims its final down (a later end age), so of two finals the one with the least
+            # banked is the newer. Keeping it, not the last to arrive, gives a replay (in `t` order) the same answer.
+            if cur is None or not cur["final"] or _tally_key(own_ms) < _tally_key(cur["own_ms"]):
+                self.hill_tallies[site] = {"final": True, "own_ms": own_ms}
+        elif cur is None or not cur["final"]:
+            merged = dict(cur["own_ms"]) if cur else {}
+            for tid, ms in own_ms.items():
+                merged[tid] = max(merged.get(tid, 0), ms)
+            self.hill_tallies[site] = {"final": False, "own_ms": merged}
+        else:
+            return "ignored"   # a live tally never follows the final for its game
+        return "scored"
+
+    def _final_tally(self, site: str) -> dict[int, int] | None:
+        t = self.hill_tallies.get(site)
+        return t["own_ms"] if t and t["final"] else None
+
+    def _site_from_tally(self, site: str, timeline: dict[int, int] | None, steps: int) -> dict[int, int] | None:
+        """brx1 2026-11-07 (option b): after the whistle, a hill's FINAL tally replaces its points when the phones'
+        timeline is missing or differs from it by more than the skew allows (1 s an owner change, plus the hill's ±2 s
+        trim and 1 s of rounding): a capture no phone in Wi-Fi reported. A complete timeline keeps the score."""
+        tally = self._final_tally(site)
+        if tally is None or self.end_t is None:
+            return None
+        if timeline is not None:
+            tol = TALLY_STEP_MS * steps + TALLY_TRIM_MS
+            teams = {t["tid"] for t in self.teams.values()}
+            if all(abs(timeline.get(tid, 0) - tally.get(tid, 0)) <= tol for tid in teams):
+                self.tally_scored.pop(site, None)
+                return None
+        self.tally_scored[site] = {tid: ms for tid, ms in (timeline or {}).items() if tid != NEUTRAL_TID}
+        return dict(tally)
 
     def _owned_site_ms(self, site: str, ref: int) -> dict[int, int]:
         """The ms each tid owned `site` from go-live to `ref`, from the phones' own_change facts. Cached by the facts and
@@ -1157,9 +1218,16 @@ class Scorer:
         key = (len(rows), ref)
         hit = self._own_memo.get(site)
         if hit is None or hit[0] != key:
-            hit = (key, owned_ms(rows, self.go_live_t, ref, offsets=off))
+            stats: dict = {}
+            ms = owned_ms(rows, self.go_live_t, ref, offsets=off, stats=stats)
+            hit = (key, ms, stats.get("steps", 0))
             self._own_memo[site] = hit
         return hit[1]
+
+    def _owned_site_steps(self, site: str) -> int:
+        """The owner changes in `site`'s timeline as last built (`_owned_site_ms`)."""
+        hit = self._own_memo.get(site)
+        return hit[2] if hit else 0
 
     def _clamp_ms(self, v) -> int | None:
         """A reported ms total as an int, floored at 0 and clamped to the match length (no team holds longer)."""
@@ -1266,10 +1334,18 @@ class Scorer:
         now = self.now_ms() if as_of is None else min(as_of, self.now_ms())
         ref = min(self.end_t, now) if self.end_t is not None else now
         timed = set(self.own_changes) if ownership and not phones_only else set()
-        for site in set(self.possession_ms) | set(stations) | timed:
+        tallied = {s for s, t in self.hill_tallies.items() if t["final"]} if ownership and not phones_only else set()
+        after_end = self.end_t is not None and ref >= self.end_t   # A88: a final tally is the hill's word on the whole game
+        for site in set(self.possession_ms) | set(stations) | timed | tallied:
             seen = self.station_seen_ms.get(site)
             if site in timed:
                 per_site = self._owned_site_ms(site, ref)
+                if site in tallied and after_end:
+                    # Codex review: an empty final ({}: nobody owned the hill) replaces too, so no `or` here
+                    from_tally = self._site_from_tally(site, per_site, self._owned_site_steps(site))
+                    per_site = per_site if from_tally is None else from_tally
+            elif site in tallied and (after_end or (site not in self.possession_ms and site not in stations)):
+                per_site = (self._site_from_tally(site, None, 0) if after_end else None) or {}
             elif site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):
                 per_site = dict(stations[site])
             elif site in stations:
@@ -1300,12 +1376,14 @@ class Scorer:
         coverage of whichever hill it saw longest, never a sum over hills (brx5, F556 review). `sites` counts the hills
         that reported, and `by_team` adds them up, so with two it can pass `of_s` (the console says so: F556).
         """
-        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms and not self.own_changes:
+        if (not self.possession_ms and not self.possession_observed and not self.station_possession_ms and not self.own_changes
+                and not self.hill_tallies):
             return None
         by_team_ms, neutral_ms = self._possession_ms()
         out: PossessionView = {"by_team": {k: round(v / 1000) for k, v in by_team_ms.items()},
                 "neutral_s": round(neutral_ms / 1000),
-                "sites": len(set(self.possession_ms) | set(self.station_possession_ms) | set(self.own_changes)),
+                "sites": len(set(self.possession_ms) | set(self.station_possession_ms) | set(self.own_changes)
+                             | {s for s, t in self.hill_tallies.items() if t["final"]}),
                 "reports": len(set(self.possession_observed) | {n for s in self.possession_ms.values()
                                                                 for p in s.values() for n in p}
                                | {r[3] for rows in self.own_changes.values() for r in rows}),
@@ -1315,6 +1393,10 @@ class Scorer:
             phones_ms, _ = self._possession_ms(phones_only=True)
             out["station_sites"] = len(self.station_possession_ms)
             out["phones_by_team"] = {k: round(v / 1000) for k, v in phones_ms.items()}
+        if self.tally_scored:   # A88: the hills a final tally scored, with what the phones' timeline said (brx1 2026-11-07)
+            tid_team = {t["tid"]: team_id for team_id, t in self.teams.items()}
+            out["from_tally"] = {site: {tid_team[tid]: round(ms / 1000) for tid, ms in per.items() if tid in tid_team}
+                                 for site, per in sorted(self.tally_scored.items())}
         return out
 
     def team_scores(self) -> dict[str, int]:

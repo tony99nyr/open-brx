@@ -350,7 +350,7 @@ export function Recap() {
           things that would name a winner (hold time, honours, stations) stay off the page. */}
       {syncRows.length > 0 && <SyncStrip rows={syncRows} phase={phase} />}
       {rc.possession && !pendingResults && <Possession p={rc.possession} label={teamLabel} mode={mode} />}
-      {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} mode={mode} />}
+      {rc.stations && rc.stations.length > 0 && !pendingResults && <Stations rows={rc.stations} mode={mode} fromTally={rc.possession?.from_tally} teamLabel={teamLabel} />}
       {rc.honors.length > 0 && !pendingResults && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -521,7 +521,8 @@ function Possession({ p, label, mode }: { p: NonNullable<RecapView['possession']
  *  §5c/§5d.6). A station never heard from still gets a row (its fields null, `heard: false`), so "no
  *  revives" and "never armed" read differently instead of both showing a bare 0 -- and, since extraction/
  *  powerup/bomb have no count of their own, `heard` is what tells them apart at all (F105, 2026-09-11). */
-function Stations({ rows, mode }: { rows: RecapStationRow[]; mode: string }) {
+function Stations({ rows, mode, fromTally, teamLabel }: { rows: RecapStationRow[]; mode: string;
+  fromTally?: Record<string, Record<string, number>>; teamLabel: (id: string) => string }) {
   return (
     <div data-testid="recap-stations" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
       <SectionRule label="STATIONS // WHAT THE FIELD ITEMS REPORTED" hint={`${rows.length} ASSIGNED`} />
@@ -543,6 +544,15 @@ function Stations({ rows, mode }: { rows: RecapStationRow[]; mode: string }) {
                     HELD BY YELLOW; Domination's count is points (one owned-hill second each), so it shows no "s" */}
                 {r.owner == null ? glyphed('amber', 'NEVER HEARD FROM: CHECK THE STATION ON SITE.') : isNeutralOwner(r.owner, mode) ? 'NOBODY HOLDS IT' : `HELD BY ${STATION_TID_NAME[r.owner] ?? r.owner}`}
                 {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}${isOwnershipScored(mode) ? '' : 's'}`).join(' · ')}
+              </span>
+            )}
+            {/* A88 (brx1 2026-11-07): the hill's final tally replaced the phones' timeline, which missed a capture. The row says
+                so, and what the phones said, so the operator sees why the result differs from what they watched. */}
+            {r.kind === 'control' && fromTally?.[String(r.id)] && (
+              <span data-testid={`tally-scored-${r.id}`} style={{ font: F.mono(700, 11), letterSpacing: '.06em', color: T.warn }}>
+                {glyphed('amber', `SCORED FROM HILL TALLY · ${Object.keys(fromTally[String(r.id)]).length
+                  ? `PHONES SAID ${Object.entries(fromTally[String(r.id)]).map(([id, s]) => `${teamLabel(id)} ${s}`).join(' · ')}`
+                  : 'NO PHONE REPORTED IT'}`)}
               </span>
             )}
             {(r.kind === 'extraction' || r.kind === 'powerup' || r.kind === 'bomb') && (

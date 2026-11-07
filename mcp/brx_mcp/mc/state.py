@@ -2930,7 +2930,8 @@ class Session:
                     cfg = {**cfg, "respawn_auto_teams": auto}
         # One game byte per match: the SAME number `_arm_station` sends as `station_config.game`, read at
         # send time on both paths, so a phone and a station can never scope one match by different bytes.
-        own = {"own_change": True} if cfg.get("mode") in OWNERSHIP_SCORED_MODES else {}   # Tony 2026-11-07 (brx2's gate)
+        # Tony 2026-11-07 (brx2's gate); A88: the phones relay each hill's own tally too
+        own = {"own_change": True, "hill_tally": True} if cfg.get("mode") in OWNERSHIP_SCORED_MODES else {}
         return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {}), "game_byte": self._game_byte(), **own})
 
     def _station_warnings(self) -> list[str]:
@@ -3268,7 +3269,9 @@ class Session:
             end = match.scorer.end_t or now
             entry = match.sync_nodes.setdefault(key, {"changed_t": end,
                                                      "changed_mono": self.mono_ms() - max(0, now - end)})
-            stage = ("received" if entry.get("status_received") else
+            # A88: in Domination a hill is in once a phone relayed its final tally, whether or not the hill reached MC
+            tallied = match.scorer._final_tally(str(station["id"])) is not None
+            stage = ("received" if entry.get("status_received") or tallied else
                      "linked" if self._sync_linked(nid) else "unlinked")
             if entry.get("stage") != stage:
                 if "stage" in entry:
@@ -4570,7 +4573,7 @@ class Session:
         """F482, written once (#3 slice 2): a possession tally skips the scorer's player gate, so an EVICTED phone's
         would score live while every replay drops it (marked at arrival). It is stored only, never scored: live, in a
         batch, or into the retired match. Every other fact scores as before."""
-        return not (ev.get("type") in ("possession", "own_change") and nid in evicted)
+        return not (ev.get("type") in ("possession", "own_change", "hill_tally") and nid in evicted)
 
     def _wire_live(self, sc: Scorer) -> None:
         """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
@@ -4596,10 +4599,12 @@ class Session:
     def _scorer_from_config(self, match_id: str, go_live_t: int, node_player: dict[str, str]) -> Scorer:
         """A Scorer for the current config and roster, with no callbacks yet (`_wire_live` adds them)."""
         scoring = self.config.get("scoring") or {}
-        return Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
-                      self.teams, node_player, self.synced_at_lobby, now_ms=self.now_ms,
-                      frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
-                      hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc = Scorer(match_id, go_live_t, self.config.get("time_limit_s"), self.config["mode"], self.players,
+                    self.teams, node_player, self.synced_at_lobby, now_ms=self.now_ms,
+                    frag_limit=scoring.get("frag_limit"), win_by=scoring.get("win_by"),
+                    hold_target_s=scoring.get("hold_target_s"), clock_watch=self.clock_watch)
+        sc.game_byte = self._game_byte()   # A88: the byte this match's hills tally under (a resume passes the saved one)
+        return sc
 
     def _scorer_like(self, old: Scorer, *, players: dict | None = None, node_player: dict[str, str] | None = None,
                      win_by=None, frag_limit=None, hold_target_s=None, same_limits: bool = True) -> Scorer:
@@ -4615,6 +4620,7 @@ class Session:
                      now_ms=self.now_ms, win_by=win_by, frag_limit=frag_limit, hold_target_s=hold_target_s,
                      clock_watch=old.clock_watch)
         new.clock_trusted = old.clock_trusted   # milestone review: an adopted match stays untrusted through a rescore
+        new.game_byte = old.game_byte           # A88: the match's own byte, never the next match's (a replay after a push)
         if same_limits:   # F555: a station's hill tally is not a stored fact, so a replay cannot rebuild it: it carries over
             new.station_possession_ms = {site: dict(per) for site, per in old.station_possession_ms.items()}
             new.station_seen_ms = dict(old.station_seen_ms)
@@ -4629,13 +4635,15 @@ class Session:
                       station_ms: dict[str, dict] | None = None, clock_trusted: bool = True,
                       station_seen: dict | None = None, station_pre_end: dict | None = None,
                       station_history: dict | None = None, saved_ms: int | None = None,
-                      station_unverified: list | None = None) -> Scorer:
+                      station_unverified: list | None = None, game_byte: int | None = None) -> Scorer:
         """A scorer for a match this process did not schedule, replayed from the stored facts.
 
         The replay runs with no callbacks (no cue re-fires at a player), and with the ARMED node map merged
         in, because the facts are keyed by node and no phone has said hello to this process yet. The
         live scorer then reads the Session's own map, as `_schedule`'s does."""
         sc = self._scorer_from_config(match_id, go_live_t, {**node_player, **self.node_player})
+        if game_byte is not None:
+            sc.game_byte = game_byte   # A88: before the replay, so the stored hill tallies match the match's own byte
         sc.clock_trusted = clock_trusted   # milestone review: before the replay, so no reading is capped by a guessed clock
         sc.joined_t = dict(joined_t or {})       # A63: the snapshot's hot joiners (not in any stored fact)
         facts = self._match_facts(match_id)
@@ -4809,6 +4817,7 @@ class Session:
                                     station_pre_end=m.get("station_pre_end") if isinstance(m.get("station_pre_end"), dict) else None,
                                     station_history=m.get("station_history") if isinstance(m.get("station_history"), dict) else None,
                                     station_unverified=m.get("station_unverified") if isinstance(m.get("station_unverified"), list) else None,
+                                    game_byte=m.get("game_byte") if type(m.get("game_byte")) is int else None,
                                     saved_ms=m.get("_saved_ms") if isinstance(m.get("_saved_ms"), int) else None)
         match = Match.begin(head, scorer, played, match_nodes, current=parsed.current_nodes,
                             evicted=parsed.evicted_nodes, unbound=parsed.unbound_nodes,
@@ -5795,7 +5804,7 @@ class Session:
         self.persist_now()
 
     # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
-    _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession", "own_change")
+    _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession", "own_change", "hill_tally")
 
     def _match_facts(self, match_id: str, *, arrival: bool = False) -> list[dict]:
         """Every persisted fact for this match, in EFFECTIVE-t order (the order it should have been

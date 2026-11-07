@@ -65,7 +65,7 @@ OwnChange = tuple[int, int, int, str]   # (at_ms, from_tid, owner_tid, node_id);
 
 
 def owned_ms(changes: Iterable[tuple], start: int, end: int, skew_ms: int = OWN_SKEW_MS,
-             offsets: dict[str, int] | None = None) -> dict[int, int]:
+             offsets: dict[str, int] | None = None, stats: dict | None = None) -> dict[int, int]:
     """Milliseconds each tid owned the hill between `start` (go-live, when every hill is neutral) and `end` (now, or
     the whistle). A change heard after `end` is not counted; one stamped before `start` counts from `start`.
 
@@ -141,4 +141,6 @@ def owned_ms(changes: Iterable[tuple], start: int, end: int, skew_ms: int = OWN_
             pending.append(ev)
     flush(float("inf"))
     owned[cur] = owned.get(cur, 0) + max(0, end - cur_t)
+    if stats is not None:
+        stats["steps"] = len(applied)   # A88: the timeline's owner changes, which set how far a hill's tally may differ
     return {tid: ms for tid, ms in owned.items() if ms > 0}

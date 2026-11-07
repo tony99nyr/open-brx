@@ -2053,6 +2053,9 @@ class PossessionView(TypedDict):
     # reading (utility.md §5d.6); `phones_by_team` is the phones' own merge, the cross-check.
     station_sites: NotRequired[int]
     phones_by_team: NotRequired[dict[str, float]]
+    # A88 (Domination): site -> what the phones' timeline gave each team (s), for each hill whose FINAL tally replaced it
+    # (a capture no phone in Wi-Fi reported). Empty for a hill with no phone reports at all. The console marks the row.
+    from_tally: NotRequired[dict[str, dict[str, float]]]
 
 
 class AfterEndPlayer(TypedDict):

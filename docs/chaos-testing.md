@@ -156,7 +156,9 @@ MC is not checked against its own bookkeeping.
   hills reach. `domination-held-drained` and `domination-held-dead` (A89) script the gap A87 leaves: a phone out of
   Wi-Fi alone hears blue drain and take the hill, MC's clock steps on, and MC ends on red's target. MC must hold the
   result (no winner, no `result`, no bound) until the phone walks back and its reports make blue the winner, or until
-  END NOW declares from what MC has and the phone's later reports set RESULT CHANGED.
+  END NOW declares from what MC has and the phone's later reports set RESULT CHANGED. `domination-tally-dead` and
+  `domination-tally-complete` (A88) relay each hill's final tally after the whistle: it must replace hill A's points
+  when only the dead phone saw the capture, and must replace nothing when the phones' timeline is complete.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the

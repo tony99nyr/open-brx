@@ -234,6 +234,8 @@ class Match:
                                     for site, rows in getattr(self.scorer, "station_history", {}).items()},
                 # F586: a hill the scorer could not verify; nothing else rebuilds the flag after a restart
                 "station_unverified": sorted(getattr(self.scorer, "station_unverified", ())),
+                # A88: the byte this match's hills tallied under; the next push moves the Session's, never this one
+                **({"game_byte": self.scorer.game_byte} if getattr(self.scorer, "game_byte", None) is not None else {}),
                 "alerts": self.scorer.match_state_alerts(),
                 "departed_stations": [dict(row) for row in sorted(
                     self.departed_stations.values(), key=lambda row: row["node_id"])],
