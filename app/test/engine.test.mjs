@@ -1272,6 +1272,7 @@ test('Domination scored from the phones: own_change on the first hearing, on eve
   assert.equal(f.length, 1, 'the first hearing re-asserts the owner');
   assert.deepEqual({ ...f[0], at_ms: 0 }, { type: 'own_change', match_id: f[0].match_id, site: '11', from_tid: 1, owner_tid: 1, at_ms: 0 });
   assert.ok(Number.isFinite(f[0].at_ms) && f[0].at_ms >= h.eng.goLiveT, 'at_ms is on MC\'s clock, in the match');
+  W.validateEvent({ ...f[0], t: 1, node_id: 'n', player_id: 'p' });   // the contract MC refuses against carries the fact
   runControl(h, 20_000, { team: 1, state: HELD, value: 100 });
   assert.equal(own().length, 1, 'nothing between changes within 30 s');
   runControl(h, 11_000, { team: 1, state: HELD, value: 100 });
