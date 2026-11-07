@@ -55,13 +55,15 @@ inline std::string build_station_action_body(int station_id, const std::string& 
 // A56 (brx5, 2026-09-24): `age_ms` is how long ago the award happened, computed when the report is SENT. It is
 // clock-free (the Stick has no synced clock, so `t` means nothing to MC); MC dates the take t_recv - age_ms and ignores
 // a report older than the current spawn, so a report queued while the link was down never takes a later spawn.
-inline std::string build_station_action_taken_body(int station_id, int player_num, int64_t t_ms, uint32_t age_ms) {
+// `game`: the byte the item was awarded in, sent when it is not 0 (any game); MC drops another game's report.
+inline std::string build_station_action_taken_body(int station_id, int player_num, int64_t t_ms, uint32_t age_ms, int game = 0) {
   std::string j = "{";
   j += "\"id\":" + std::to_string(station_id) + ",";
   j += "\"action\":\"taken\",";
   j += "\"player_num\":" + std::to_string(player_num) + ",";
   j += "\"age_ms\":" + std::to_string(age_ms) + ",";
   j += "\"t\":" + std::to_string(t_ms);
+  if (game > 0) j += ",\"game\":" + std::to_string(game);
   j += "}";
   return j;
 }
@@ -85,7 +87,7 @@ inline std::string maybe_build_taken_action(const StationLink& link, const Pendi
   if (!link.actions_enabled()) return std::string();
   // unsigned subtraction: correct across a millis() wrap, as long as the report is under ~49 days old
   uint32_t age = now_ms - (uint32_t)rep.t_ms;
-  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms + epoch_offset_ms, age);
+  return build_station_action_taken_body(rep.station_id, rep.player_num, rep.t_ms + epoch_offset_ms, age, rep.game);
 }
 
 // O10: drain the queued CLAIM reports through `send(body) -> bool` (the glue passes `ws.sendTXT`). A report

@@ -2874,6 +2874,9 @@ class Session:
     def powerup_t_match(self, now: int) -> int:
         return self._operator_t_match(now)
 
+    def powerup_game_byte(self) -> int:
+        return self._game_byte()
+
     def powerup_feed(self, entry: dict) -> None:
         self._on_feed(cast(FeedEntry, entry))
 

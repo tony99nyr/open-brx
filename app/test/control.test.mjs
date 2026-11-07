@@ -825,7 +825,8 @@ test('F658 follower: a snapshot restores the mode, the current game and every ot
   f.step(point, [lp(1, 0, 7)], 0, { expiryMs: 4000, stationId: 1 });
   for (let t = 0; t <= 10_000; t += 250) point.update([lp(1, 0, 7)], t);
   assert.equal(point.owner, 0, 'setup: red holds game 7');
-  f.step(point, [lp(2, 1, 8)], 20_000, { expiryMs: 4000, stationId: 1 });   // game 7 unheard: the hill moves to 8
+  f.step(point, [lp(1, 0, 7, { state: PLAYER_STATE.alive })], 19_000, { expiryMs: 4000, stationId: 1 });   // game 7's whistle
+  f.step(point, [lp(2, 1, 8)], 20_000, { expiryMs: 4000, stationId: 1 });   // game 7 has ended: the hill moves to 8
   assert.equal(f.current, 8);
   const back = new HillFollower().restore(JSON.parse(JSON.stringify(f.snapshot())));
   assert.equal(back.follows, true); assert.equal(back.current, 8);
@@ -838,6 +839,7 @@ test('F658 follower: a full ring never evicts the game it follows', () => {
   f.step(point, [lp(1, 0, 1)], 0, { expiryMs: 4000, stationId: 1 });
   // games 2 and 3 go live together while game 1 (current, heard longest ago) is still in the ring: game 2 is evicted, not
   // game 1, and the hill moves to game 3 without tripping over the game it just evicted
+  f.step(point, [lp(1, 0, 1, { state: PLAYER_STATE.alive })], 500, { expiryMs: 4000, stationId: 1 });   // game 1's whistle
   f.step(point, [lp(2, 0, 2), lp(3, 0, 3)], 1000, { expiryMs: 4000, stationId: 1 });
   assert.deepEqual([...f.games.keys()].sort(), [1, 3]);
   assert.equal(f.current, 3);

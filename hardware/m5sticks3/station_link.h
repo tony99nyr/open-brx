@@ -1117,7 +1117,12 @@ class ClaimGate {
   void configure(int station_id, int game) { station_id_ = station_id; game_ = game; }
   // F658: a following station takes claims only from live players of the followed game (PowerupFollower). Not
   // following: MC's game (0 = any), any player of it, as before.
-  void set_follow(int game, bool require_live) { game_ = game; require_live_ = require_live; }
+  // Codex review 2026-11-07: a claim pending from the last game never takes the next game's item.
+  void set_follow(int game, bool require_live) {
+    if (game != game_) candidate_seen_ = false;
+    game_ = game;
+    require_live_ = require_live;
+  }
   // F658 (A86, powerup.js `claimant`): one decoded player advert from the scan. Only a player whose scope names this
   // powerup station (the powerup kind bit and its id bit) may claim, so a zero scope (an older APK) never does; a
   // following station also wants the live bit. Then `observe` below decides as before.
@@ -1183,9 +1188,8 @@ class ClaimGate {
 // ---- PowerupFollower (powerup.js PowerupFollower, F658: the static powerup) ---------------------------------
 // A powerup station set up once plays every later game with no walk-out, no Wi-Fi and no re-arm, the way the hill does.
 // It FOLLOWS once it hears an in-scope player (the powerup kind bit and its own id bit, A86) with the live bit: its
-// current game is the byte of those players, at any signal strength. Another live game takes it only with MORE such
-// players heard than the current one (a tie keeps it), held for FOLLOW_SWITCH_HOLD_MS while the current game is still
-// heard (presence.h follow_hold_switch). A new game starts the item's clock at that first sighting
+// current game is the byte of those players, at any signal strength. Another live game takes it only once the current
+// game has ended here (presence.h FollowEnd), never while it is live. A new game starts the item's clock at that first sighting
 // (PowerupSchedule::start_game, first spawn `first_at_s` later); a byte heard again after more than HILL_RING_STALE_MS
 // unheard starts again. MC's own game keeps MC's schedule: the follower remembers MC's last station_update for the game
 // MC armed (note_mc), applied or not, and following into that game (the first follow, or a switch from another game,
@@ -1223,7 +1227,7 @@ class PowerupFollower {
   uint32_t seen_takes = 0;
   bool stepped = false;
   int claim_game = 0;
-  FollowLead lead;  // a challenger leading the current game (presence.h follow_hold_switch)
+  FollowEnd end;  // the current game's end at this station (presence.h FollowEnd)
 
   void note_mc(uint8_t armed_game, const StationUpdateMsg& u, uint32_t at) {
     has_mc = u.present;
@@ -1269,7 +1273,6 @@ class PowerupFollower {
     const bool first = !follows && nh > 0;
     if (nh) follows = true;
     if (follows) {
-      auto count = [&](int g) { for (size_t k = 0; k < nh; k++) if (heard[k].game == g) return heard[k].n; return 0; };
       const H* best = nullptr;
       for (size_t k = 0; k < nh; k++) {
         if (has_current && heard[k].game == current) continue;
@@ -1278,8 +1281,8 @@ class PowerupFollower {
       }
       const H* cur = nullptr;
       for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) cur = &heard[k];
-      if (follow_hold_switch(lead, has_current, cur != nullptr, best != nullptr, best ? best->game : 0,
-                             best && (!has_current || best->n > count(current)), now)) {
+      note_end(players, station_id);
+      if (end.switch_now(has_current, best != nullptr, heard_at, now, stale_ms)) {
         out.switched = true;
         out.from = has_current ? current : -1;
         out.to = best->game;
@@ -1307,6 +1310,10 @@ class PowerupFollower {
         }
         if ((int32_t)(cur->at - heard_at) > 0) heard_at = cur->at;
       }
+      if (out.switched) {  // a new current game (or the same byte started again): nothing of it heard yet
+        end.reset();
+        note_end(players, station_id);
+      }
     }
     out.claim_game = follows && has_current ? current : armed_game;
     out.claim_live = follows;
@@ -1315,6 +1322,15 @@ class PowerupFollower {
     return out;
   }
   void clear() { *this = PowerupFollower(); }
+
+ private:
+  void note_end(const PlayerPresence& players, int station_id) {
+    for (size_t i = 0; i < players.capacity(); i++) {
+      const PlayerEntry& p = players.slot(i);
+      if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_POWERUP, station_id))
+        end.note(p, has_current, current);
+    }
+  }
 };
 
 // F658: the follower and the item's state in one NVS string ("pu_follow"), so a restarted powerup keeps following its
@@ -1390,17 +1406,19 @@ struct PendingTakenReport {
   int player_num = 0;
   uint32_t spawn_instant_ms = 0;
   int64_t t_ms = 0;
+  int game = 0;  // Codex review 2026-11-07: the game byte the item was awarded in (0 = any), so MC drops another game's taker
 };
 
 class PendingActionQueue {
  public:
   static constexpr size_t CAPACITY = 8;
 
-  void push(int station_id, int player_num, uint32_t spawn_instant_ms, int64_t t_ms) {
+  void push(int station_id, int player_num, uint32_t spawn_instant_ms, int64_t t_ms, int game = 0) {
     for (auto& e : entries_) {
       if (e.station_id == station_id && e.spawn_instant_ms == spawn_instant_ms) {
         e.player_num = player_num;
         e.t_ms = t_ms;
+        e.game = game;
         return;
       }
     }
@@ -1408,7 +1426,7 @@ class PendingActionQueue {
       entries_.erase(entries_.begin());
       dropped_++;   // O10: a claim MC will now never hear of. Counted, and reported in the status heartbeat.
     }
-    entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms});
+    entries_.push_back(PendingTakenReport{station_id, player_num, spawn_instant_ms, t_ms, game});
   }
 
   bool empty() const { return entries_.empty(); }
@@ -2193,7 +2211,7 @@ class StationLink {
     }
     if (!w.won || w.player_num == 0 || !powerup_.available() || powerup_ended()) return false;
     uint32_t spawn_instant = powerup_.mark_taken(w.player_num, now_ms);
-    pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms);
+    pending_actions_.push(assignment_.id, w.player_num, spawn_instant, (int64_t)now_ms, pu_follower_.game((uint8_t)assignment_.game));
     return true;
   }
 

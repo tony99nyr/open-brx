@@ -86,7 +86,8 @@ test('an MC arming for a new game does not wipe a following hill\'s point', asyn
 
 test('F658 review: MC re-arms a following hill as another id: the point and the ring go, as on the Stick', async () => {
   await api.applyStationConfig({ ...hill, game: 60 });
-  stand(8000, [{ id: 3, team: RED, game: 61, live: true }]);   // game 42 of the test above goes unheard after 4 s
+  stand(250, [{ id: 4, team: BLUE, game: 42, live: false }]);   // the whistle of game 42 (the test above)
+  stand(8000, [{ id: 3, team: RED, game: 61, live: true }]);
   assert.equal(api.statusBody().control.follows, true);
   assert.equal(api.statusBody().control.game, 61);
   assert.ok(api.point.progress > 20, `red builds: ${api.point.progress}`);

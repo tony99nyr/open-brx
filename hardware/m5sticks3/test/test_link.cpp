@@ -3170,12 +3170,32 @@ static void test_f658_powerup_follows_the_live_game() {
   CHECK(!link.pu_follower().has_mc && !link.pu_follower().mc_anchored);   // any arming forgets MC's remembered update
   CHECK(link.pu_follower().follows && link.advert_game() == 7 && !link.powerup_ended());
   CHECK(link.powerup_advert_view(4000).value == 58);
+  for (uint32_t t = 4250; t <= 62000; t += 250) { hear(7, t); p.tick(t); link.tick_players(p, t); link.tick_powerup(t); }
+  CHECK(link.powerup().available());
+  ClaimWinner won; won.won = true; won.player_num = 3;
+  CHECK(link.award_claim(won, 62000));
+  PendingTakenReport rep;
+  CHECK(link.pop_pending_action(rep) && rep.game == 7);   // Codex review 2026-11-07: the game it went in, not MC's 6
   StationAssignment c = a; c.id = 5;   // another station id is another station: it follows nothing yet
-  link.apply_station_config(c, 5000);
+  link.apply_station_config(c, 63000);
   CHECK(!link.pu_follower().follows);
 }
 
+// Codex review 2026-11-07: a claim pending from the last game never takes the next game's item. A follow step into
+// another game drops it; the same game keeps it.
+static void test_claim_gate_drops_a_pending_claim_on_a_game_switch() {
+  ClaimGate g;
+  g.configure(/*station_id=*/8, /*game=*/7);
+  g.observe(/*player_num=*/5, /*target_station_id=*/8, /*game=*/7, false, true, true, -50);
+  g.set_follow(7, true);
+  CHECK(g.resolve_batch().won);
+  g.observe(5, 8, 7, false, true, true, -50);
+  g.set_follow(8, true);   // the station now follows game 8
+  CHECK(!g.resolve_batch().won);
+}
+
 int main(int argc, char** argv) {
+  test_claim_gate_drops_a_pending_claim_on_a_game_switch();
   test_f658_hill_follows_the_live_game();
   test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
