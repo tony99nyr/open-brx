@@ -5701,6 +5701,66 @@ test('Codex pass 2026-11-07: the gun ignores ALT until its own refill lands, up 
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true);
 });
+function failingSoftReload(h) {
+  // the phone's `$AMMO,0` write stays on the link until the test settles it
+  let settle; const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => fr.some(f => f.startsWith('$AMMO,0,')) ? new Promise(r => { settle = r; }) : real(fr, why, o);
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 0');
+  h.adv(h.eng.am.reloading.ms + 10); h.eng.tick();
+  assert.equal(h.eng.am.prevAmmo[0], h.eng.am.ammoBySlot()[0], 'setup: the write is out, the books show it');
+  return async () => { h.eng.writer = real; settle(false); await new Promise(r => setImmediate(r)); };
+}
+test('Codex pass 2026-11-07 r2: a press while the failed write was on the link is kept, and the account goes back too', async () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // on slot 0 at 29
+  const fail = failingSoftReload(h);
+  h.frame('$BUT,0,1,*');                                           // a pull while the write is still on the link
+  await fail();
+  assert.equal(h.eng.am.acctLive(0), 28, 'the account is back at 29 with the press still owed');
+  const shots = h.eng.shots;
+  h.adv(20); h.frame('$ALCD,28,100,0,384,0,*'); h.frame('$BUT,0,0,*');
+  assert.equal(h.eng.shots - shots, 1, 'one round');
+});
+test('Codex pass 2026-11-07 r2: a newer write at the same counts owns the slot, so the failed one does not roll it back', async () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);
+  const fail = failingSoftReload(h);
+  const cap = h.eng.am.ammoBySlot()[0], left = h.eng.am.prevReserve[0];
+  h.eng.am.acctWrote(0, cap, left); h.eng.am.setPrev(0, cap, left);   // e.g. a reconcile re-arm the gun did get, at the same counts
+  await fail();
+  assert.equal(h.eng.am.prevAmmo[0], cap, 'the newer write stands');
+  assert.equal(h.eng.am.acctLive(0), cap);
+});
+test('Codex pass 2026-11-07 r2: a lever inside a swap holds ALT for the swap window plus 1.3x the reload, not 1.3x of both', () => {
+  const h = liveSwapHarness();
+  f542Shot(h, '$ALCD,31,100,0,384,0,*');                          // slot 0 fired last
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');                     // ALT: the swap to slot 1 opens
+  f542Lever(h);                                                    // inside the swap: the gun reloads slot 0 once it ends
+  const r = h.eng.am.reloading, sw = h.eng.switchWindowMs();
+  assert.ok(r && r.swapTo === 1 && !r.soft, 'setup: a lever inside the swap');
+  const base = r.ms - sw, t = sw + Math.round(base * 1.3) + 80;
+  assert.ok(t < Math.round(r.ms * 1.3), 'setup: the probe falls between the two bounds');
+  h.adv(t); h.eng.tick();
+  assert.equal(h.eng.state().reloading, true, 'setup: the takeover still runs');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true, 'past the swap and the refill overrun, the gun takes ALT');
+});
+test('Codex pass 2026-11-07 r2: ALT stays held after the phone\'s reload lands while the gun still reloads the slot fired last', () => {
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // slot 1 fired last; the phone reloads slot 0
+  f542Lever(h);
+  const r = h.eng.am.reloading;
+  assert.ok(r.soft && h.eng.am.gunOther && h.eng.am.gunOther.slot === 1, 'setup: the gun reloads slot 1');
+  h.adv(r.ms + 10); h.eng.tick();
+  assert.equal(h.eng.state().reloading, false, 'setup: the phone\'s reload landed');
+  assert.ok(h.eng.now() < h.eng.am.gunOther.until, 'setup: inside slot 1\'s reload');
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun is still reloading slot 1, so it ignores ALT');
+  h.frame('$ALCD,32,100,1,88,0,*');                                // slot 1's refill lands: the hold ends
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true);
+});
 test('F650: a shotgun chain on the last-fired slot books shell by shell while the phone reloads the weapon in hand', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);

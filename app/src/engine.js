@@ -5071,7 +5071,8 @@ export class Engine {
     const w = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F650: the phone reloads the weapon in hand', { onFrameSent: () => { sent = true; } });
     // Codex pass 2026-11-07: a write that failed before its frame left (a chunk error with the link still up) gave the gun
     // nothing, so the books go back to what the gun holds (`_softReloadUnwrite`).
-    const life = this._lifeSeq, failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life); };
+    const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
+    const failed = () => { if (!sent) this._softReloadUnwrite(slot, mag, res, to, left, life, gen); };
     Promise.resolve(w).then(ok => { if (ok === false) failed(); }, failed);
     const end = this._reloadSounds(slot).slice(1);
     if (end.length) this._write([`$PLAY,,4,6,${end[end.length - 1]},,,,*`], 'F650: reload sound (end)');
@@ -5084,10 +5085,9 @@ export class Engine {
   }
   /** Codex pass 2026-11-07: the phone's reload `$AMMO` never left. Put the slot's books back to the counts before it, unless a
    *  newer fact (a round, another write, a new life) has moved them since: the HUD and the next round then read what the gun holds. */
-  _softReloadUnwrite(slot, mag, res, to, left, life) {
+  _softReloadUnwrite(slot, mag, res, to, left, life, gen) {
     if (life !== this._lifeSeq || this.am.prevAmmo[slot] !== to || this.am.prevReserve[slot] !== left) return;
-    const a = this.am.acct[slot];
-    if (a && a.mag === to && !(a.fired > 0)) { a.mag = mag; a.res = res; }
+    if (!this.am.acctUnwrite(slot, mag, res, to, gen)) return;   // r2: a newer write owns the slot, even at the same counts
     this.am.setPrev(slot, mag, res);
     if (this.activeSlot === slot) this.am.publish(slot, mag, res);
     this.log(`F650: the reload write for slot ${slot} failed before it left: back to ${mag}, reserve ${res}`, 'le');

@@ -2231,6 +2231,25 @@ class GunStage:
         a["echo_until"] = now + self.ACC_ECHO_S
         a["echo_expect"] = mag
 
+    def _acct_unwrite(self, slot: int, mag: int, res: int, to: int, gen: int | None) -> bool:
+        """ammo.js `acctUnwrite` (Codex pass 2026-11-07): the `$AMMO` booked at `to` never left. Back to `mag`, keeping any
+        press since, and that write's echo off the books. False when a newer write owns the slot."""
+        a = self._shot_acct.get(slot)
+        if a is None:
+            return True
+        if a.get("echo_gen") != gen:
+            return False
+        a["mag"] = mag; a["res"] = res
+        if a.get("echo_pending", 0) > 0 and a.get("echo_expect") == to:
+            a["echo_pending"] -= 1
+            stale = a.get("echo_stale") or []
+            if stale:
+                o = stale.pop(); a["echo_stale"] = stale
+                a["echo_expect"] = o["mag"]; a["echo_last_weap"] = o["weap"]; a["echo_last_reset"] = o["reset_at"]
+            else:
+                a["echo_expect"] = None
+        return True
+
     def _acct_wrote_rows(self, frames, skip=None, weap: bool = False):
         """ammo.js `acctWroteRows` (bug 3a, brx1's captures 2026-10-02: the gun echoes each `$AMMO` row with that row's
         slot token): `_acct_wrote` and the last counts for every `$AMMO` row of a write, and with `weap` every `$WEAP`
@@ -5820,11 +5839,12 @@ class GunStage:
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
         g = self._gun_other   # ammo.js `altPressed` (review 2026-11-06): a refused lever the gun spent on the other slot
-        if not r and g and g["life"] == self._life_queued and self.now() < g["until"]:
+        if g and g["life"] == self._life_queued and self.now() < g["until"]:   # Codex pass r2: through the phone's reload too
             self._log(f"ALT ignored by the gun while it reloads slot {g['slot']}, the slot fired last", "info")
             return
-        if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
-                and self.now() < r["at"] + self._gun_hold_s(r["s"], bool(r.get("energy")))   # Codex pass 2026-11-07 (ammo.js `gunHoldMs`)
+        sw = self._switch_window_s() if r and r.get("swap_to") is not None else 0.0   # Codex pass r2: the swap window is not scaled
+        if (r and not r.get("auto") and not r.get("soft")   # F226 `!r.auto`; a phone reload is held by `_gun_other` above (Codex pass r2)
+                and self.now() < r["at"] + sw + self._gun_hold_s(r["s"] - sw, bool(r.get("energy")))   # Codex pass 2026-11-07 (ammo.js `gunHoldMs`)
                 and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
@@ -6710,6 +6730,7 @@ class GunStage:
                           "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued}
         if self.reloading["soft"]:
             self._soft_reload_start(self.reloading)
+            self._note_gun_other("the phone reloads the weapon in hand")   # ammo.js `reloadPulled` (Codex pass r2)
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()
@@ -6729,7 +6750,7 @@ class GunStage:
         known = ls is not None and ls < 2 and self._last_shot_life == self._life_queued
         return ls != active if known else active != 0
 
-    def _note_gun_other(self) -> None:
+    def _note_gun_other(self, why: str = "lever on a full slot") -> None:
         """ammo.js `noteGunOther` (review 2026-11-06): the phone refused the lever, but the gun spends it on the slot that
         fired last when that slot has room and reserve (F542), and ignores ALT while it reloads."""
         self._gun_other = None
@@ -6745,7 +6766,7 @@ class GunStage:
         w = (ws[ls] if ls < len(ws) else None) or {}
         energy = bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id"))
         self._gun_other = {"slot": ls, "until": self.now() + self._gun_hold_s(s, energy), "life": self._life_queued}
-        self._log(f"lever on a full slot {a}: the gun reloads slot {ls}, the slot fired last", "info")
+        self._log(f"{why} {a}: the gun reloads slot {ls}, the slot fired last", "info")
 
     def _gun_hold_s(self, s: float, energy: bool) -> float:
         """ammo.js `gunHoldMs`: how long the gun's own reload can run before its refill lands (F27, pl4), so how long it
@@ -6767,18 +6788,21 @@ class GunStage:
     async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int) -> None:
         """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing."""
         life = self._life_queued
-        ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0)
+        gen = (self._shot_acct.get(slot) or {}).get("echo_gen")
+        try:
+            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0)
+        except Exception:   # Codex pass r2: a raised write failed too (engine.js: a rejected write runs `failed`)
+            ok = False
         if ok is False:
-            self._soft_reload_unwrite(slot, mag, res, to, left, life)
+            self._soft_reload_unwrite(slot, mag, res, to, left, life, gen)
 
-    def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int) -> None:
+    def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int, gen: int | None) -> None:
         """engine.js `_softReloadUnwrite` (Codex pass 2026-11-07): the books go back to the counts before the write, unless
         a newer fact has moved them."""
         if life != self._life_queued or self._prev_ammo.get(slot) != to or self._prev_reserve.get(slot) != left:
             return
-        a = self._shot_acct.get(slot)
-        if a is not None and a.get("mag") == to and not (a.get("fired") or 0) > 0:
-            a["mag"] = mag; a["res"] = res
+        if not self._acct_unwrite(slot, mag, res, to, gen):
+            return   # r2: a newer write owns the slot, even at the same counts
         self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
         if self.active_slot == slot:
             self._publish_ammo(slot, mag, res)

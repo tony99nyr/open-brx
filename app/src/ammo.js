@@ -611,7 +611,7 @@ export class Ammo {
                        bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
                        soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq };   // F650: the phone reloads the weapon in hand itself
-    if (this.reloading.soft) this.host.softReloadStart(this.reloading);
+    if (this.reloading.soft) { this.host.softReloadStart(this.reloading); this.noteGunOther('the phone reloads the weapon in hand'); }   // Codex pass r2
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this.host.changed();
@@ -645,7 +645,7 @@ export class Ammo {
    *  but the gun spends it on the slot that fired last when that slot has room and reserve (F542). Note that reload, so
    *  `altPressed` ignores ALT while it runs, as the gun does. It ends when that slot's rise lands, or after the reload
    *  time with the takeover's overrun allowance. */
-  noteGunOther() {
+  noteGunOther(why = 'lever on a full slot') {
     const ls = this.lastShot, a = this.host.activeSlot;
     this.gunOther = null;
     if (!(a === 0 || a === 1) || !(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== a)) return;
@@ -656,7 +656,7 @@ export class Ammo {
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
     const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
     this.gunOther = { slot: ls.slot, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq };
-    this.host.log(`lever on a full slot ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
+    this.host.log(`${why} ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
   }
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
    *  fired last, with room and reserve)? Only then does the gun ignore ALT. PURE. */
@@ -813,11 +813,16 @@ export class Ammo {
     const r = this.reloading;
     // F650 review (Opus, M1): a phone reload is not a gun reload; the gun ignores ALT only while it reloads the other slot.
     const g = this.gunOther;
-    if (!r && g && g.life === this.host.lifeSeq && this.host.now() < g.until) {   // review 2026-11-06: a refused lever the gun spent on the other slot
+    // Codex pass 2026-11-07 r2: also through the phone's own reload of the weapon in hand (set when it starts), timed by the slot
+    // the gun really reloads, and on after the phone's reload lands until that slot's refill does.
+    if (g && g.life === this.host.lifeSeq && this.host.now() < g.until) {   // review 2026-11-06: a refused lever the gun spent on the other slot
       this.host.log(`ALT ignored by the gun while it reloads slot ${g.slot}, the slot fired last`, 'li'); return; }
     // Codex pass 2026-11-07: the gun's refill lands up to 1.3x reload_s (F27), an energy recharge up to 3.9 s (pl4), and the
     // gun ignores ALT until it does, so the hold runs as long as `noteGunOther`'s.
-    if (r && !r.auto && (!r.soft || this.gunReloadsOther(r)) && this.host.now() < r.at + gunHoldMs(r.ms, r.energy) && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
+    // r2: a lever inside a swap waits out the swap window first, which the refill overrun does not scale. A phone reload is
+    // not a gun reload: the hold above covers the gun's reload of the other slot.
+    const sw = r && r.swapTo != null ? this.host.switchWindowMs() : 0;
+    if (r && !r.auto && !r.soft && this.host.now() < r.at + sw + gunHoldMs(r.ms - sw, r.energy) && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)
     // came from a bench of PHONE EQUIPS (F436, 0/6 vs 4/4), never of ALT; the field reports it rested on are explained by
@@ -965,6 +970,21 @@ export class Ammo {
     a.echoGen = (a.echoGen || 0) + 1;   // bug 3 r2 M2: the write that owns the window now (`restampEchoes`)
     if (weap) a.echoWeap = true;
     a.echoUntil = Math.max(now < a.echoUntil ? a.echoUntil : 0, now + ACC_ECHO_MS); a.echoExpect = mag;   // F570 review: a held window is never shortened
+  }
+  /** Codex pass 2026-11-07: an `$AMMO` this account booked at `to` (generation `gen`, read just after `acctWrote`) never
+   *  left. Put the account back at `mag`, keeping any press since, and take that write's echo off the books. False when a
+   *  newer write owns the slot, so the caller leaves everything as it is. */
+  acctUnwrite(slot, mag, res, to, gen) {
+    const a = this.acct[slot];
+    if (!a) return true;
+    if (a.echoGen !== gen) return false;
+    a.mag = mag; a.res = res;
+    if (a.echoPending > 0 && a.echoExpect === to) {
+      a.echoPending--;
+      const o = a.echoStale && a.echoStale.length ? a.echoStale.pop() : null;
+      if (o) { a.echoExpect = o.mag; a.echoLastWeap = o.weap; a.echoLastReset = o.resetAt; } else a.echoExpect = null;
+    }
+    return true;
   }
   /** Bug 3a: `acctWrote` for every `$AMMO,<slot>,<mag>,<res>` row in a write the node is about to send, so the gun's
    *  echo of each row (brx1, 2026-10-02: one `$ALCD` per row, with that row's slot token) is bookkeeping. `skip(slot)`
