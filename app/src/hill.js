@@ -18,6 +18,10 @@ const HOLD_STEP_MAX_MS = 1000;
 // (`mc/API.md` "Objective scoring"), so this is purely a wire-traffic choice; the tally at the whistle is
 // sent unconditionally, because that is the report that decides the match.
 const POSSESSION_REPORT_MS = 10000;
+// Domination scored from the phones (brx4's MC half, 2026-11-07): the `own_change` fact. A re-assertion every this long
+// while a site is heard, and on its first hearing after this long unheard.
+const OWN_REASSERT_MS = 30000;
+const OWN_GAP_MS = 10000;
 // Ids are the operator's picks, every one CONFIRMED BY EAR on hardware 2026-09-10 (rung S) — one female
 // objectives announcer with a music bed, chosen over the male "Control Point" set (VA23/VA22/VA21, also
 // confirmed). A8: MC ships all five from `presentation.EVENTS` (`mcp/brx_mcp/mc/presentation.py`), the one source;
@@ -51,7 +55,7 @@ export const HILL_TRANSIENT = Object.freeze({
   _controlSpokenOwner: 'announcer edge', _hillPendingCallout: 'announcer edge', _hillSaidAt: 'announcer spacing',
   _hillOwnerWhenSilenced: 'announcer edge', _hillSourceWarned: 'log once per game', _hillModeWarned: 'log once per game', _hillContestedAt: 'announcer edge',
   _hillContestOwed: 'announcer edge', _hillEp: 'reconnect episode window', _hillBeginsAt: 'announcer edge',
-  _holdAt: 'accrual anchor: the next advert re-anchors', _siteHold: 'F556: the per-point accrual anchors, re-anchored by the next advert', _possessionSentAt: 'report cadence',
+  _holdAt: 'accrual anchor: the next advert re-anchors', _siteHold: 'F556: the per-point accrual anchors, re-anchored by the next advert', _possessionSentAt: 'report cadence', _own: 'own_change cadence: after a restart the first hearing re-asserts each owner',
   _possessionSig: 'report change test: starts empty, so the first tally after a restart always goes out (a restarted MC whose replay failed starts at zero)',
   _possessionSaved: 'DERIVED: the tally `_save` writes; `_load` rebuilds it from the restored hold/observed through the Engine accessor',
   _hillsSeen: 'F666: the last heard state of each control point, rebuilt from the next adverts', _hillsSig: 'render cache',
@@ -76,6 +80,7 @@ export class HillListener {
     this._hillsSig = '';            // F666: what the row of hills last rendered
     this._holdAt = 0;               // when the accrual last ran
     this._siteHold = {};            // F556: per control point (site), its own accrual anchor {_holdAt}
+    this._own = {};                 // own_change: site -> { owner, heardAt, sentAt } (Domination scored from the phones)
     this._possessionSentAt = 0; this._possessionSig = ''; this._possessionSaved = '';   // restore r1 #5: the report's and the save's change tests, kept apart
   }
   get hill() { return this._hill; }
@@ -511,10 +516,32 @@ export class HillListener {
       const site = String(e.id);
       const slot = keep[site] = this._siteHold[site] || { _holdAt: 0 };
       const held = !!(e.state & ADVERT_CONTROL_STATE.held);
-      this.accrue({ owner: (held && claimable(e.team)) ? e.team : HILL_REFUSED_TID, contested: !!(e.state & ADVERT_CONTROL_STATE.contested),
-        at: Number.isFinite(e.ageMs) ? now - e.ageMs : now, site: e.id, source: 'station' }, now, slot);
+      const owner = (held && claimable(e.team)) ? e.team : HILL_REFUSED_TID, at = Number.isFinite(e.ageMs) ? now - e.ageMs : now;
+      this.accrue({ owner, contested: !!(e.state & ADVERT_CONTROL_STATE.contested), at, site: e.id, source: 'station' }, now, slot);
+      this.ownChange(site, owner, at, now);
     }
     this._siteHold = keep;
+  }
+  /** Domination scored from the phones: tell MC who owns each point this phone hears, as an `own_change` fact (persisted
+   *  and retried like `possession`). On every owner change (`from_tid` the last owner heard), as a re-assertion
+   *  (`from_tid` = `owner_tid`) on the first hearing and after OWN_GAP_MS unheard, and every OWN_REASSERT_MS while heard.
+   *  `at_ms` is when the advert was heard, on MC's clock. Live and Domination only, and only when MC's config asks for it
+   *  (`own_change: true`); KOTH and an older MC keep `possession` alone. */
+  ownChange(site, owner, at, now) {
+    if (this.host.phase !== 'live' || !this.host.matchId || !this.ownershipScored()) return;
+    // Only an MC that reads the fact asks for it: an older MC refuses an unknown fact type (bad_event)
+    if (!(this.host.config && this.host.config.own_change === true)) return;
+    const goLive = this.host.goLiveT;
+    if (Number.isFinite(goLive) && at < goLive) return;   // heard before go-live: not this match's play
+    this.holdTally();
+    const o = this._own[site];
+    let from = null;
+    if (!o || at - o.heardAt >= OWN_GAP_MS) from = owner;                  // first hearing, or back after a gap
+    else if (o.owner !== owner) from = o.owner;                            // a change
+    else if (now - o.sentAt >= OWN_REASSERT_MS) from = owner;              // the 30 s re-assertion
+    if (from == null) { o.heardAt = Math.max(o.heardAt, at); return; }
+    this._own[site] = { owner, heardAt: o ? Math.max(o.heardAt, at) : at, sentAt: now };
+    this.host.emitFact({ type: 'own_change', match_id: this.host.matchId, site, from_tid: from, owner_tid: owner, at_ms: Math.round(at) });
   }
   /** Send the tally to MC. `hold_ms` is CUMULATIVE and every report is idempotent, so this is
    *  resend-as-it-grows on a slow cadence, plus one unconditional report at the whistle. */
@@ -540,6 +567,7 @@ export class HillListener {
     if (this.host._holdMatch === this.host.matchId) return;
     if (this.host._holdMatch == null) { this.host._holdMatch = this.host.matchId; return; }
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null; this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
+    this._own = {};
     this.host._holdMatch = this.host.matchId;
   }
   /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
@@ -551,6 +579,7 @@ export class HillListener {
     this._hillEp = null; this._hillBeginsAt = {};
     this.host.hold = {}; this.host.observed = {}; this._holdAt = 0; this._siteHold = {}; this.host._holdSource = null;
     this._possessionSig = ''; this._possessionSaved = ''; this._possessionSentAt = 0;
+    this._own = {};   // own_change: site -> { owner, heardAt, sentAt }
     this._hillsSeen = {}; this._hillsSig = '';
   }
   /** F666 (Domination's row of hills, domination-design.md §2.6): remember what each control point said when we last

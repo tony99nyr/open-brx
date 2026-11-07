@@ -82,8 +82,11 @@ export const teamHold = (holdByTid, t) => {
 export const isPointsMode = mode => OWNERSHIP_SCORED_MODES.includes(String(mode || '').toLowerCase());
 /** Domination points from an ownership time in ms: a whole number, never a clock. */
 export const domPoints = ms => Math.floor((ms || 0) / 1000);
+/** Domination: MC's merged points for a board team (`points` in the live score push), or null when MC sent none (an older
+ *  MC). A phone hears only the hills near it, so MC's number is the game's score and the phone's own tally the fallback. */
+export const mcPoints = t => { const v = num(t && t.points); return v != null && v >= 0 ? Math.floor(v) : null; };
 /** THE team score chip, for the live board, the result screen and the DOWN strip. `value` is the text inside the
- *  bold number (default: the team's score, or a dash when it is not a finite number). `points` is the Domination chip: `value` is an ownership time in ms, shown as whole points (this phone's own tally, so a lower bound). `koth` is the F424 hold-time
+ *  bold number (default: the team's score, or a dash when it is not a finite number). `points` is the Domination chip: `value` is this phone's ownership time in ms; the chip shows the larger of its whole points and MC's pushed `points` (`mcPoints`). `koth` is the F424 hold-time
  *  chip: `value` is a hold in ms, and `data-tid` lets the board patch it in place every tick. `lenient` is the DOWN
  *  strip's old reading, kept as it was: a numeric string score shows, a blank team shows a blank name, a falsy team id is blank. */
 export function teamChip(t, { mine = false, value, koth = false, points = false, lenient = false } = {}) {
@@ -91,7 +94,8 @@ export function teamChip(t, { mine = false, value, koth = false, points = false,
   const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
   const name = esc(String(t.name || k || (lenient ? '' : '—')).toUpperCase());
   if (koth) return `<span class="tm koth${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${mmss(value || 0)}</b></span></span>`;
-  if (points) return `<span class="tm pts${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${domPoints(value)}</b></span></span>`;
+  if (points) { const mc = mcPoints(t);   // MC's merged score when it sent one, never below this phone's own tally
+    return `<span class="tm pts${mine ? ' mine' : ''}" data-tid="${TEAM_TID[k] != null ? TEAM_TID[k] : ''}"${mc != null ? ` data-mc="${mc}"` : ''} style="background:${bg};color:${ink}"><span class="unskew">${name} <b class="tab">${Math.max(domPoints(value), mc ?? 0)}</b></span></span>`; }
   return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${name} <b>${value !== undefined ? value : lenient ? esc(t.score != null ? t.score : '—') : num(t.score) == null ? '—' : t.score}</b></span></span>`;
 }
 export const accShown = st => (st.accuracy != null && st.hits > 0 && st.shots >= 10) ? Math.round(st.accuracy) : null;

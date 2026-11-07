@@ -353,8 +353,9 @@ export function startDemo({ engine, log }) {
       end: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'end' } }),
       panic: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'panic' } }),
       endOk: () => engine.ackEnd(),
-      score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
-        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 }, rows: RESULT_ROWS } }),   // `rows`: every player's ScoreRow, as MC's live push carries (state.py `_push_scores`)
+      // `points` [mine, foe]: Domination's merged team points, as MC's live push carries them (own_change scoring)
+      score: (kills = 3, deaths = 1, assists = 1, points = null) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
+        board: { teams: [{ team_id: teamKey, name: team.name, score: 18, ...(points ? { points: points[0] } : {}) }, { team_id: foeKey, name: foe.name, score: 21, ...(points ? { points: points[1] } : {}) }], cap: 25 }, rows: RESULT_ROWS } }),   // `rows`: every player's ScoreRow, as MC's live push carries (state.py `_push_scores`)
       // Bench 2026-09-17: the FFA shape of the same push -- no team on any row, and the board is the top three players.
       scoreFfa: () => { config.mode = 'ffa'; const rows = RESULT_ROWS.map(r => ({ ...r, team_id: null }));
         engine.onMcMessage({ kind: 'score', body: { ...rows[0], shots_total: rows[0].shots, rows,
@@ -754,6 +755,8 @@ export function startDemo({ engine, log }) {
       // tally (the KOTH board reads it as mm:ss), and MC's score push so the board has its teams
       'live-dom-scores':    [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
         }], ...live, [2300, () => ev.score(3, 1, 1)]],
+      'live-dom-mcpoints':  [[0, () => { config.mode = 'domination'; config.station_source = 'phone'; config.stations = [{ id: 11, kind: 'control', letter: 'A' }, { id: 12, kind: 'control', letter: 'B' }, { id: 13, kind: 'control', letter: 'C' }];
+        }], ...live, [2300, () => ev.score(3, 1, 1, [140, 95])]],
       'live-melee-swing':   [...live, [2300, () => ev.swing()]],
       'live-melee-down':    [...live, [2300, () => ev.swing()], [2500, 'die']],
       'live-melee-respawn': [...live, [2300, () => ev.swing()], [2500, 'die'], [4000, 'respawn']],

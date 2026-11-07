@@ -1,5 +1,5 @@
 // Score rendering for the phone HUD.
-import { num, esc, accShown, BOARD_LIVE_MAX_AGE_MS, engineNow, liveHold, teamHold, teamChip, isPointsMode } from './shared.js';
+import { num, esc, accShown, BOARD_LIVE_MAX_AGE_MS, engineNow, liveHold, teamHold, teamChip, isPointsMode, mcPoints } from './shared.js';
 
 export function _boardStale(st) { return !!st.scoreAt && (st.wsState !== 'bound' || Date.now() - st.lastMcMsgAt > BOARD_LIVE_MAX_AGE_MS); }
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
@@ -59,7 +59,7 @@ export function _board(st) {
         return `<div class="bdteam ${mine ? 'mine' : ''}">${chip}
           ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
         ${koth ? '<div class="bdcap">HOLD TIME · A LOWER BOUND · K · D · A</div>'
-          : dom ? '<div class="bdcap">POINTS · A LOWER BOUND · K · D · A</div>'
+          : dom ? `<div class="bdcap">${teams.some(t => mcPoints(t) != null) ? 'POINTS' : 'POINTS · A LOWER BOUND'} · K · D · A</div>`
           : st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
         : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
     }
