@@ -460,6 +460,10 @@ def _check_tag(raw: str) -> str:
 NEW_PHONE_NOTICE_MS = 10 * 60 * 1000   # F659: how long the host's NEW PHONE JOINED line stays up
 
 
+# Tony 2026-11-07: a Domination whistle with a phone silent this long (five missed 2 s beats) holds the result for the phones
+SCORE_SILENT_MS = 10_000
+
+
 class Session:
     def _m(self) -> Match:
         """Read current match fields; an absent match has fresh empty fields."""
@@ -3277,8 +3281,9 @@ class Session:
                                  "stage": stage, "transport": None, "end_unconfirmed": False,
                                  "idle_s": idle, "stuck": idle >= SYNC_STUCK_S and stage != "received"}
             rows.append(row)
+        # Tony 2026-11-07: a held Domination result waits for the phones only (hills are not its score)
         pending = not match.released and any(
-            row["stage"] != "received" for row in rows)
+            row["stage"] != "received" for row in rows if not match.score_pending or row["kind"] == "phone")
         changed = False
         if not pending and match.final_winner is None and winner is not None:
             match.final_winner = copy.deepcopy(dict(winner))
@@ -3303,6 +3308,8 @@ class Session:
                                "released_by": match.release_reason if match.released else None}
         if pending and match.release_due_mono is not None:
             view["release_in_s"] = max(0, -(-(match.release_due_mono - self.mono_ms()) // 1000))
+        if match.score_pending:
+            view["score_pending"] = True
         return view
 
     def _station_hold(self, nid: str) -> tuple[str, dict, int | None] | None:
@@ -4837,7 +4844,8 @@ class Session:
             reason = m.get("release_reason")
             match.release_reason = (cast(ReleaseReason, reason) if reason in _RELEASE_REASONS else
                                     "finalise" if match.finalised else "sync" if match.released else None)
-            if not match.released:
+            match.score_pending = m.get("score_pending") is True
+            if not match.released and not match.score_pending:
                 # The bounded wait resumes with the time it had left at the write, less the time MC was down, by the wall
                 # clock: a step back counts as none, a step forward as time down (it can release early, the safe way, as
                 # the sync rows' idle age does). A snapshot from before the bound is timed from end_t.
@@ -7901,6 +7909,17 @@ class Session:
                 # feedback.player_id is required by the envelope contract (contracts §5)
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
+    def _score_silent_at_whistle(self) -> bool:
+        """Tony 2026-11-07: Domination is scored from the phones' reports, so a phone out of Wi-Fi may hold a capture MC
+        has not heard. When the match ends on its target or its clock with a bound phone silent for SCORE_SILENT_MS, the
+        result is held: MC shows FINAL SCORE PENDING until every phone is in, or the operator presses END NOW. KOTH and an
+        operator's END are unchanged."""
+        if self.config.get("mode") not in OWNERSHIP_SCORED_MODES or self.end_reason not in ("hold_target", "time"):
+            return False
+        now = self.now_ms()
+        return any(now - self.nodes.get(nid, {}).get("last_seen_ms", 0) > SCORE_SILENT_MS
+                   for p in self.players.values() if (nid := p.get("node_id")) and nid not in self._m().evicted)
+
     def _finish(self, *, resuming: bool = False):
         self._resuming_recap = resuming
         try:
@@ -7931,7 +7950,9 @@ class Session:
             match.end_reason = self.end_reason
             match.whistle_mono_ms = self.mono_ms()
             match.whistle_wall_ms = self.now_ms()
-            match.release_due_mono = match.whistle_mono_ms + SYNC_STUCK_S * 1000
+            match.score_pending = self._score_silent_at_whistle()
+            # Tony 2026-11-07: a held Domination result has no bound; the phones or END NOW release it
+            match.release_due_mono = None if match.score_pending else match.whistle_mono_ms + SYNC_STUCK_S * 1000
         if not resuming:
             match.sync_nodes = {}  # F596: a new whistle starts a new receive ledger
             match.played = {pid: p.copy() for pid, p in self.players.items()}

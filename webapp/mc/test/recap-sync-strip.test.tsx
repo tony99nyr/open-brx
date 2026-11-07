@@ -462,3 +462,44 @@ describe('F596 · the mock mirrors the server', () => {
     try { await expect(b.finaliseRecap()).rejects.toMatchObject({ status: 409 }); } finally { b.dispose(); }
   });
 });
+
+describe('Tony 2026-11-07 · Domination FINAL SCORE PENDING', () => {
+  const rows = [phone('p1'), phone('p2', { stage: 'unlinked' }), phone('p3'), phone('p4'), STATION];
+  const held = () => ({ ...syncOf(rows), score_pending: true });
+
+  it('the header says FINAL SCORE PENDING, names the missing phone and hill, and has no countdown and no winner', async () => {
+    const m = await recapOf(held());
+    expect(strip(m.find('[data-testid="results-pending"]')[0].textContent ?? '')).toBe('FINAL SCORE PENDING');
+    expect(strip(m.find('[data-testid="waiting-for"]')[0].textContent ?? '')).toBe('WAITING FOR BRAVO, CONTROL POINT 1');
+    expect(m.find('[data-testid="release-in"]').length, 'no FINAL IN: a held score has no bound').toBe(0);
+    expect(strip(m.text())).not.toMatch(/WINS|LEADS/);
+    m.unmount();
+  });
+
+  it('END NOW takes two taps, names only the missing phone, and releases the result', async () => {
+    const finaliseRecap = vi.fn(async () => ({ ok: true }));
+    const m = await recapOf(held(), {}, { finaliseRecap });
+    const btn = () => m.find('[data-testid="finalise"]')[0];
+    expect(btn().textContent).toBe('END NOW');
+    await m.click('END NOW');
+    expect(btn().textContent, 'a hill does not hold a Domination score').toBe('TAP AGAIN: END NOW WITHOUT 1 PHONE');
+    expect(finaliseRecap).not.toHaveBeenCalled();
+    await m.click('TAP AGAIN');
+    expect(finaliseRecap).toHaveBeenCalledTimes(1);
+    m.unmount();
+  });
+
+  it('after END NOW the result says FINAL WITHOUT the phone only: a hill does not hold the score', async () => {
+    const m = await recapOf({ ...syncOf(rows, { pending: false, finalised: true }), score_pending: true });
+    expect(strip(m.find('[data-testid="final-without"]')[0].textContent ?? '')).toBe('FINAL WITHOUT 1 PHONE (BRAVO)');
+    m.unmount();
+  });
+
+  it('a plain wait keeps RESULTS PENDING and FINALISE', async () => {
+    expect(recapSync({ sync: syncOf(rows) } as unknown as RecapView)?.score_pending).toBeUndefined();
+    const m = await recapOf(syncOf(rows));
+    expect(strip(m.find('[data-testid="results-pending"]')[0].textContent ?? '')).toBe('RESULTS PENDING');
+    expect(m.find('[data-testid="finalise"]')[0].textContent).toBe('FINALISE');
+    m.unmount();
+  });
+});

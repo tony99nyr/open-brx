@@ -2437,13 +2437,15 @@ export interface RecapSyncRow {
 /** F596: whether the result can be shown. `pending` while any row is not received, the operator has not
  *  finalised and SYNC_STUCK_S has not passed since the whistle. `result_changed` once the winner differs from the
  *  one first shown as final. `released_by` says what ended the wait (null while pending); `release_in_s` is the
- *  whole seconds left until the timeout releases it, sent only while pending. */
+ *  whole seconds left until the timeout releases it, sent only while pending. `score_pending` (Tony 2026-11-07) marks a
+ *  Domination match that ended with a phone silent: no timeout, only the phones block, and END NOW releases it. */
 export interface RecapSyncView {
   pending: boolean;
   finalised: boolean;
   result_changed: boolean;
   released_by: ReleaseReason | null;
   release_in_s?: number;
+  score_pending?: boolean;
   rows: RecapSyncRow[];
 }
 

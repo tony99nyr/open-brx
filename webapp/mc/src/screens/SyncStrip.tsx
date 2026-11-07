@@ -239,8 +239,9 @@ export function SyncCell({ r }: { r: RecapSyncRow }) {
   );
 }
 
-/** FINALISE: an inline two-tap confirm. The first tap arms it for a few seconds; the second posts. A failure shows. */
-export function FinaliseButton({ prominent, missingPhones, missingHills, onFinalise }: { prominent: boolean; missingPhones: number; missingHills: number; onFinalise: () => Promise<void> }) {
+/** FINALISE: an inline two-tap confirm. The first tap arms it for a few seconds; the second posts. A failure shows.
+ *  `endNow` (Tony 2026-11-07): a held Domination score names the same release END NOW, for a phone that is dead or lost. */
+export function FinaliseButton({ prominent, endNow = false, missingPhones, missingHills, onFinalise }: { prominent: boolean; endNow?: boolean; missingPhones: number; missingHills: number; onFinalise: () => Promise<void> }) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -265,7 +266,7 @@ export function FinaliseButton({ prominent, missingPhones, missingHills, onFinal
         onClick={tap}
         style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '10px 18px', minHeight: 44, cursor: busy ? 'default' : 'pointer',
           background: hot ? T.warn : 'transparent', color: hot ? T.accInk : T.dim, border: `1px solid ${hot ? T.warn : T.line2}` }}>
-        {busy ? 'FINALISING…' : armed ? `TAP AGAIN: FINAL WITHOUT ${[missingPhones ? plural(missingPhones, 'PHONE') : '', missingHills ? plural(missingHills, 'HILL') : ''].filter(Boolean).join(' AND ')}` : 'FINALISE'}
+        {busy ? (endNow ? 'ENDING…' : 'FINALISING…') : armed ? `TAP AGAIN: ${endNow ? 'END NOW' : 'FINAL'} WITHOUT ${[missingPhones ? plural(missingPhones, 'PHONE') : '', missingHills ? plural(missingHills, 'HILL') : ''].filter(Boolean).join(' AND ')}` : endNow ? 'END NOW' : 'FINALISE'}
       </button>
     </span>
   );
