@@ -8,7 +8,7 @@
 // winner in byte 15 (`taker`), which is what the winning phone waits for before it applies the item. The station
 // owns taken and untaken; MC's `station_update` only re-anchors its countdown.
 import { PLAYER_STATE, inScope } from './beacon.js';
-import { noteGameEnd, followSwitch, startGameEnd } from './control.js';   // F658: the game-end rule the hill uses
+import { noteGameEnd, followSwitch, startGameEnd, restoreGameEnd } from './control.js';   // F658: the game-end rule the hill uses
 import { POWERUP_DEFAULT_EVERY_S, ADVERT_VALUE_MAX, HILL_RING_STALE_MS } from './transport/contract.gen.js';   // seams D: shared with the Stick
 
 export const CLAIM_FRESH_MS = 1500;      // a player advert older than this says nothing about who is standing here now
@@ -102,7 +102,7 @@ export class PowerupStation {
         this.available = false; this.taker = ready[0].id; this.ringAt = null; this.awardedNext = this.nextAt;
         this.takes++; this.takenAt = now;
         events.push({ type: 'taken', player_num: this.taker }); changed = true;
-        this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now, ...(this.claimGame ? { game: this.claimGame } : {}) });   // the game it went in (Codex review 2026-11-07) if (this.unsent.length > 16) this.unsent.shift();
+        this.unsent.push({ id: this.id, action: 'taken', player_num: this.taker, t: now, ...(this.claimGame ? { game: this.claimGame } : {}) }); if (this.unsent.length > 16) this.unsent.shift();   /* the game it went in (Codex review 2026-11-07) */
         this.log.push({ t: now, type: 'taken', player_num: this.taker }); if (this.log.length > 64) this.log.shift();
       } else if (mine.some(p => p.state & PLAYER_STATE.claiming)) { if (this.ringAt == null) { this.ringAt = now; changed = true; } }
       else if (this.ringAt != null) { this.ringAt = null; changed = true; }
@@ -213,10 +213,13 @@ export class PowerupFollower {
         if (b == null || h.n > b.n || (h.n === b.n && (h.at > b.at || (h.at === b.at && g > best)))) best = g;
       }
       const cur = this.current != null ? heard.get(this.current) : null;
+      // Codex review r2, as the hill: the current byte back after HILL_RING_STALE_MS is a new game on that byte, and the
+      // silence is judged with this step's adverts in
+      if (cur && this.heardAt != null && cur.at - this.heardAt > this.staleMs) startGameEnd(this);
       for (const p of players || []) {
         if (p && inScope(p, 'powerup', stationId) && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
       }
-      if (followSwitch(this, best, this.heardAt, now)) {
+      if (followSwitch(this, best, cur ? Math.max(this.heardAt ?? cur.at, cur.at) : this.heardAt, now)) {
         const from = this.current;
         this.current = best; this.heardAt = heard.get(best).at; this.since = now;
         // MC's own game keeps MC's schedule (its START reached this station): a first follow already holds it, a switch
@@ -253,12 +256,13 @@ export class PowerupFollower {
     return { [String(this.current)]: { available: v.available === true, taker: v.taker || 0, ...(v.nextInMs != null ? { next_ms: v.nextInMs } : {}),
       since_ms: Math.max(0, now - (this.since ?? now)), last_ms: Math.max(0, now - (this.heardAt ?? now)) } };
   }
-  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since, mcAnchored: this.mcAnchored }; }
+  snapshot() { return { follows: this.follows, current: this.current, heardAt: this.heardAt, since: this.since, mcAnchored: this.mcAnchored, ended: this.ended, liveIds: [...this.liveIds] }; }
   restore(s) {
     if (s && typeof s === 'object') this.mcAnchored = s.mcAnchored === true;
     if (!s || typeof s !== 'object' || !s.follows || !Number.isInteger(s.current) || s.current < 0 || s.current > 255) return this;
     this.follows = true; this.current = s.current;
     this.heardAt = Number.isFinite(s.heardAt) ? s.heardAt : null; this.since = Number.isFinite(s.since) ? s.since : null;
+    restoreGameEnd(this, s);   // the current game's end evidence (Codex review r2)
     return this;
   }
 }

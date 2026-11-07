@@ -799,7 +799,9 @@ class HillFollower {
       if ((int32_t)(heard[k].at - e->heard_at) > 0) e->heard_at = heard[k].at;
     }
     // The first follow takes the game with the most live players on the point, then the newest. Later, another live
-    // game takes the hill only once the current game has ended here (FollowEnd), never while it is live.
+    // game takes the hill only once the current game has ended here (FollowEnd), never while it is live. The current
+    // byte back after HILL_RING_STALE_MS is a new game on that byte: the last one's end does not end it (Codex review r2).
+    if (fresh_current) end.reset();
     for (size_t i = 0; i < players.capacity(); i++) {
       const PlayerEntry& p = players.slot(i);
       if (p.used && p.age_ms <= players.expiry_ms && in_scope(p.scope_kinds, p.scope, contract::ADVERT_SCOPE_KIND_CONTROL, station_id))
@@ -892,12 +894,15 @@ class HillFollower {
 
 // F658: the follower and its ring in one NVS string ("hill_ring"), so a restarted hill keeps following with every game's
 // tally (the phone saves the same in localStorage "brx.station.hillring"). Times are saved as ms AGO, since millis()
-// restarts at boot. "r1|<station id>|<follows>|<current or -1>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
+// restarts at boot. "r2|<station id>|<follows>|<current or -1>|<ended>|<live ids, hex>|<game>,<heard ago>,<since ago>,<owner>,<capturing>,
 // <progress x10>,<last owner>,<hold0>,<hold1>,<hold2>,<hold3>,<own0>,<own1>,<own2>,<own3>;..." with the current game's
-// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0.
+// state taken from the point. An entry with only the first 11 fields (saved before own_ms) restores with own_ms 0. An "r1"
+// string (saved before the end evidence, Codex review r2) restores with no end evidence.
 inline std::string encode_hill_ring(int station_id, const HillFollower& f, const BleControlPoint& point, uint32_t now) {
-  std::string s = "r1|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
-                  (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|";
+  char e[40];
+  std::snprintf(e, sizeof e, "%d|%llx|", f.end.ended ? 1 : 0, (unsigned long long)f.end.live_ids);
+  std::string s = "r2|" + std::to_string(station_id) + "|" + (f.follows ? "1" : "0") + "|" +
+                  (f.has_current ? std::to_string(f.current) : std::string("-1")) + "|" + e;
   for (const HillGame& g : f.games) {
     if (!g.used) continue;
     const HillSnap t = f.tally(g, point);
@@ -918,9 +923,15 @@ inline std::string encode_hill_ring(int station_id, const HillFollower& f, const
 // reset (brownout, watchdog, panic) keeps the ring as saved.
 inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower& f, BleControlPoint& point, uint32_t now,
                              bool power_on = false) {
-  if (s.rfind("r1|", 0) != 0) return false;
-  int id = 0, follows = 0, current = -1, used = 0;
-  if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
+  int id = 0, follows = 0, current = -1, used = 0, ended = 0;
+  unsigned long long live_ids = 0;
+  if (s.rfind("r2|", 0) == 0) {   // r2 adds the current game's end evidence; r1 (older firmware) restores none
+    if (std::sscanf(s.c_str(), "r2|%d|%d|%d|%d|%llx|%n", &id, &follows, &current, &ended, &live_ids, &used) < 5 || used <= 0) return false;
+  } else if (s.rfind("r1|", 0) == 0) {
+    if (std::sscanf(s.c_str(), "r1|%d|%d|%d|%n", &id, &follows, &current, &used) < 3 || used <= 0) return false;
+  } else {
+    return false;
+  }
   if (id != station_id || follows != 1 || current < 0 || current > 255) return false;
   HillFollower out;
   out.size = f.size;
@@ -958,6 +969,8 @@ inline bool decode_hill_ring(const std::string& s, int station_id, HillFollower&
   out.follows = true;
   out.has_current = true;
   out.current = (uint8_t)current;
+  out.end.ended = ended != 0;
+  out.end.live_ids = (uint64_t)live_ids;
   if (power_on) {
     for (HillGame& g : out.games) {
       if (!g.used) continue;

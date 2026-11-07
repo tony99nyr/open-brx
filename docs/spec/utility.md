@@ -699,8 +699,9 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes).
    Only an in-scope advert of the current game's own byte counts, so no advert of another game can end it, however
    strong. Once the current game has ended, the strongest other live game takes the station at once, so the next
-   game loses no time. The end is not saved: a restarted station has heard no one live yet, so only the 10 minutes
-   end its game until it hears a whistle. A change of kind or id needs MC: a new arming as another station starts
+   game loses no time. The end evidence is saved with the follower, so a restart keeps it; after a power-on every
+   game is stale anyway. The current byte heard again after 10 minutes unheard is a new game on that byte (a wrap, an
+   MC restart), which the last game's whistle does not end. A change of kind or id needs MC: a new arming as another station starts
    with nothing followed. The powerup (§5d.9) uses the same rule (`control.js` `noteGameEnd` and `followSwitch`,
    `presence.h` `FollowEnd`).
 3. **Who counts.** In follow mode only live-bit players of the current game count toward capture, contest and hold.

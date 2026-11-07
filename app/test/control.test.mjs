@@ -831,7 +831,22 @@ test('F658 follower: a snapshot restores the mode, the current game and every ot
   const back = new HillFollower().restore(JSON.parse(JSON.stringify(f.snapshot())));
   assert.equal(back.follows, true); assert.equal(back.current, 8);
   assert.equal(back.summary(point, 20_000)['7'].owner, 0, 'game 7 still held by red after a restart');
-  assert.deepEqual(new HillFollower().restore({ follows: true, current: 300, games: [[999, {}]] }).snapshot(), { follows: false, current: null, games: [] }, 'junk is refused');
+  assert.deepEqual(new HillFollower().restore({ follows: true, current: 300, games: [[999, {}]] }).snapshot(), { follows: false, current: null, games: [], ended: false, liveIds: [] }, 'junk is refused');
+});
+
+test('F658 follower: a restart keeps the current game\'s end, so the next game takes the hill at once (Codex review r2)', () => {
+  const f = new HillFollower(), point = new ControlPoint();
+  f.step(point, [lp(1, 0, 7)], 0, { expiryMs: 4000, stationId: 1 });
+  f.step(point, [lp(1, 0, 7, { state: PLAYER_STATE.alive })], 1000, { expiryMs: 4000, stationId: 1 });   // game 7's whistle
+  const back = new HillFollower().restore(JSON.parse(JSON.stringify(f.snapshot())));
+  assert.equal(back.ended, true, 'the end survives the restart');
+  back.step(point, [lp(2, 1, 8)], 2000, { expiryMs: 4000, stationId: 1 });
+  assert.equal(back.current, 8, 'game 8 takes the hill at once');
+  const live = new HillFollower();
+  live.step(point, [lp(1, 0, 7)], 0, { expiryMs: 4000, stationId: 1 });
+  const again = new HillFollower().restore(JSON.parse(JSON.stringify(live.snapshot())));
+  again.step(point, [lp(1, 0, 7, { state: PLAYER_STATE.alive }), lp(2, 1, 8)], 1000, { expiryMs: 4000, stationId: 1 });
+  assert.equal(again.current, 8, 'a player heard live before the restart still ends the game with its whistle');
 });
 
 test('F658 follower: a full ring never evicts the game it follows', () => {

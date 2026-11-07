@@ -358,6 +358,13 @@ export function followSwitch(f, best, heardAt, now, staleMs = HILL_RING_STALE_MS
 }
 /** A new current game: nothing heard of it yet. */
 export function startGameEnd(f) { f.liveIds = new Set(); f.ended = false; }
+/** A restart: the saved end evidence of the current game (`ended`, `liveIds`); none saved (an older save) = none. */
+export function restoreGameEnd(f, s) {
+  startGameEnd(f);
+  if (!s || typeof s !== 'object') return;
+  f.ended = s.ended === true;
+  for (const id of Array.isArray(s.liveIds) ? s.liveIds : []) if (Number.isInteger(id) && id >= 0 && id <= 255) f.liveIds.add(id);
+}
 
 export class HillFollower {
   constructor({ size = HILL_RING_SIZE, staleMs = HILL_RING_STALE_MS } = {}) {
@@ -411,6 +418,9 @@ export class HillFollower {
     }
     // The first follow takes the game with the most live players on the point (then the newest). Later, another live
     // game takes the hill only once the current game has ENDED here (noteGameEnd, followSwitch): never while it is live.
+    // The current byte back after HILL_RING_STALE_MS is a new game on that byte (a wrap, an MC restart): the last one's
+    // end does not end it (Codex review r2)
+    if (freshCurrent) startGameEnd(this);
     for (const p of players) if (p && (Number.isFinite(p.ageMs) ? p.ageMs : 0) <= expiryMs) noteGameEnd(this, p);
     const n = g => (heard.get(g) || { n: 0 }).n;
     let best = null;
@@ -474,7 +484,8 @@ export class HillFollower {
   /** What a restart needs (§5d.6): the mode, the current byte and every other game's saved point. The current game's
    *  point is saved by the caller, as before. */
   snapshot() {
-    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]) };
+    return { follows: this.follows, current: this.current, games: [...this.games].map(([g, e]) => [g, { heardAt: e.heardAt, since: e.since, snap: e.snap }]),
+      ended: this.ended, liveIds: [...this.liveIds] };   // the current game's end evidence (Codex review r2)
   }
   restore(s) {
     if (!s || typeof s !== 'object') return this;
@@ -487,6 +498,7 @@ export class HillFollower {
     }
     if (this.current != null && !this.games.has(this.current)) this.current = null;
     if (this.current == null) this.follows = this.follows && this.games.size > 0;
+    restoreGameEnd(this, this.current != null ? s : null);
     return this;
   }
 }

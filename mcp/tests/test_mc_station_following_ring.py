@@ -72,3 +72,26 @@ def test_f658_domination_recap_reads_the_ring_entry_s_owned_clock():
                          t0 + 65_000)
     row = s.recap()["stations"][0]
     assert row["hold_ms"] == {tid: 15000}, row
+
+
+def test_f658_recap_ring_entry_never_lowers_mc_tally_and_counts_as_the_station_report():
+    """Codex review r2: a late heartbeat of a hill now following another game, carrying an older ring entry for MC's game
+    (8000 ms after MC already received 12000 ms), keeps MC's max in the recap, and marks the station's report received."""
+    s = _joined(_sess("koth", station_source="phone"))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.phase = "live"
+    tid = str(s.config["teams"][0]["tid"])
+    t0 = s.now_ms()
+    s.net.simulate_status("util-1", {"node_id": "util-1", "role": "utility", "kind": "control", "station_id": 3,
+                                     "control": {"game": 1, "owner": 0, "hold_ms": {tid: 12000}}}, t0 + 60_000)
+    s.control("end")
+    s.net.simulate_status("util-1", {"node_id": "util-1", "role": "utility", "kind": "control", "station_id": 3,
+                                     "control": {"game": 2, "follows": True, "owner": 1, "hold_ms": {tid: 900},
+                                                 "games": {"1": {"hold_ms": {tid: 8000}, "owner": 0, "last_ms": 9000}}}},
+                         t0 + 65_000)
+    row = s.recap()["stations"][0]
+    assert row["hold_ms"] == {tid: 12000}, row
+    assert s.match.sync_nodes["station:util-1"].get("status_received") is True, s.match.sync_nodes

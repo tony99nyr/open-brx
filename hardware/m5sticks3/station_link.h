@@ -1281,8 +1281,12 @@ class PowerupFollower {
       }
       const H* cur = nullptr;
       for (size_t k = 0; k < nh; k++) if (has_current && heard[k].game == current) cur = &heard[k];
+      // Codex review r2, as the hill: the current byte back after HILL_RING_STALE_MS is a new game on that byte, and the
+      // silence is judged with this step's adverts in
+      if (cur && (int32_t)(cur->at - heard_at) > (int32_t)stale_ms) end.reset();
       note_end(players, station_id);
-      if (end.switch_now(has_current, best != nullptr, heard_at, now, stale_ms)) {
+      const uint32_t cur_heard = cur && (int32_t)(cur->at - heard_at) > 0 ? cur->at : heard_at;
+      if (end.switch_now(has_current, best != nullptr, cur_heard, now, stale_ms)) {
         out.switched = true;
         out.from = has_current ? current : -1;
         out.to = best->game;
@@ -1336,13 +1340,15 @@ class PowerupFollower {
 // F658: the follower and the item's state in one NVS string ("pu_follow"), so a restarted powerup keeps following its
 // game with its item, taker and spawn clock (the phone saves the same in localStorage "brx.station.pufollow" and
 // "brx.station.powerup"). Times are saved relative to now, since millis() restarts at boot:
-// "p1|<station id>|<current>|<heard ago>|<since ago>|<available>|<taker>|<has anchor>|<anchor in ms from now>".
+// "p1|<station id>|<current>|<heard ago>|<since ago>|<available>|<taker>|<has anchor>|<anchor in ms from now>|<ended>|
+// <live ids, hex>". The last two (the current game's end evidence, Codex review r2) are absent from an older save, which
+// restores with none.
 inline std::string encode_powerup_follow(int station_id, const PowerupFollower& f, const PowerupSchedule& s, uint32_t now) {
   if (!f.follows || !f.has_current) return "";
-  char b[160];
-  std::snprintf(b, sizeof b, "p1|%d|%u|%lu|%lu|%d|%u|%d|%ld", station_id, (unsigned)f.current, (unsigned long)(now - f.heard_at),
+  char b[200];
+  std::snprintf(b, sizeof b, "p1|%d|%u|%lu|%lu|%d|%u|%d|%ld|%d|%llx", station_id, (unsigned)f.current, (unsigned long)(now - f.heard_at),
                 (unsigned long)(now - f.since), s.available() ? 1 : 0, (unsigned)s.taker(), s.has_anchor() ? 1 : 0,
-                (long)(int32_t)(s.anchor_ms() - now));
+                (long)(int32_t)(s.anchor_ms() - now), f.end.ended ? 1 : 0, (unsigned long long)f.end.live_ids);
   return b;
 }
 
@@ -1356,8 +1362,11 @@ inline bool decode_powerup_follow(const std::string& s, int station_id, PowerupF
   unsigned taker = 0;
   unsigned long heard = 0, since = 0;
   long anchor = 0;
-  if (std::sscanf(s.c_str(), "p1|%d|%d|%lu|%lu|%d|%u|%d|%ld", &id, &current, &heard, &since, &available, &taker, &has_anchor, &anchor) != 8)
-    return false;
+  int ended = 0;
+  unsigned long long live_ids = 0;
+  const int got = std::sscanf(s.c_str(), "p1|%d|%d|%lu|%lu|%d|%u|%d|%ld|%d|%llx", &id, &current, &heard, &since, &available, &taker,
+                              &has_anchor, &anchor, &ended, &live_ids);
+  if (got != 8 && got != 10) return false;   // 8: saved before the end evidence
   if (id != station_id || current < 0 || current > 255 || taker > 255) return false;
   PowerupFollower out;
   out.stale_ms = f.stale_ms;
@@ -1367,6 +1376,8 @@ inline bool decode_powerup_follow(const std::string& s, int station_id, PowerupF
   out.heard_at = power_on ? now - out.stale_ms - 1 : now - (uint32_t)heard;
   out.since = power_on ? out.heard_at : now - (uint32_t)since;
   out.seen_takes = sched.take_seq();
+  out.end.ended = got == 10 && ended != 0;
+  out.end.live_ids = got == 10 ? (uint64_t)live_ids : 0;
   f = out;
   sched.restore_state(available != 0, (uint8_t)taker, has_anchor != 0 && !power_on, now + (uint32_t)(int32_t)anchor);
   return true;

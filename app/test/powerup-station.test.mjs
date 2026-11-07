@@ -168,3 +168,13 @@ test('Codex review 2026-11-07: a `taken` report names the game the item went in,
   any.tick([player(7, READY, 4)], 1000);
   assert.deepEqual(any.unsent, [{ id: 4, action: 'taken', player_num: 7, t: 1000 }]);
 });
+
+test('M1: the unsent queue keeps the newest 16 reports (Codex review r2)', () => {
+  const s = new PowerupStation({ id: 4, item: ROCKETS });
+  for (let k = 0; k < 18; k++) {
+    s.available = true;   // a fresh spawn each time
+    s.tick([player(7, READY, 4)], k * 1000 + 500);
+  }
+  assert.equal(s.unsent.length, 16);
+  assert.equal(s.unsent[0].t, 2500, 'the oldest two went');
+});

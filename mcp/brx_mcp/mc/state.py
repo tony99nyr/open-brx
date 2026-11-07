@@ -3395,25 +3395,34 @@ class Session:
         rep = self.station_registry.station_view(nid)["report"]
         control = body.get("control")
         game_claim = control.get("game") if isinstance(control, dict) else None
+        tally = live.get("tally") or {}
+        ring_game = None
         if (frozen["kind"] == "control" and type(game_claim) is int and game_claim != self._game_byte()):
             # Codex review 2026-11-07: a hill now following another game; only its ring entry for MC's game is this
-            # match's. Read from the decoded report, where Domination's own_ms already stands in hold_ms.
+            # match's. Read from the decoded report, where Domination's own_ms already stands in hold_ms, and merged by
+            # max with MC's tally for this point, rostered teams only, as the same-game path is (Codex review r2).
             rc = rep.get("control")
             games = rc.get("games") if rc is not None else None
             ring_game = games.get(str(self._game_byte())) if games is not None else None
             rep = rep.copy()
             if rc is not None and ring_game is not None:
+                rostered = {str(t["tid"]) for t in self.teams}
+                hold = {tid: ms for tid, ms in ring_game["hold_ms"].items() if tid in rostered}
+                if tally.get("key") == [self._game_byte(), "control", frozen["id"]]:
+                    for tid, ms in (tally.get("hold_ms") or {}).items():
+                        if tid in rostered and ms > hold.get(tid, -1):
+                            hold[tid] = ms
                 ctl = rc.copy()
-                ctl["hold_ms"], ctl["owner"] = dict(ring_game["hold_ms"]), ring_game["owner"]
+                ctl["hold_ms"], ctl["owner"] = hold, ring_game["owner"]
                 rep["control"] = ctl
             else:
                 rep.pop("control", None)
         self._merge_station_recap_report(frozen, rep)
         self._station_possession(nid, None)   # F555: the station's late final tally is the authority for its point
-        tally = live.get("tally") or {}
         if (frozen["kind"] == "control" and body.get("station_id") == frozen["id"]
                 and isinstance(control, dict) and isinstance(control.get("hold_ms"), dict)
-                and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte())
+                # a beat of MC's game, an older station's (no game), or another game's carrying MC's ring entry (Codex r2)
+                and (game_claim is None or type(game_claim) is int and game_claim == self._game_byte() or ring_game is not None)
                 and tally.get("key") == [self._game_byte(), "control", frozen["id"]]
                 and tally.get("at") == t_recv):
             match.sync_nodes.setdefault("station:" + nid, {"changed_t": self.now_ms()})["status_received"] = True
