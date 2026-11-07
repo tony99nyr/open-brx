@@ -141,6 +141,9 @@ const GUN_RELOAD_MAX_X = 1.3;      // ...and half the nominal reload on top, whi
  *  (Energy Rifle 3.03 s, Plasma Sniper 2.49 s, Rail Gun 3.03 s). The floor stays: it only books a failed recharge
  *  later, and pl4's 3.9 s slow end is not yet disproved. */
 export const ENERGY_REFILL_MAX_MS = 3900;
+/** How long the gun's own reload of a slot can run before its refill lands, so how long it ignores ALT: up to GUN_RELOAD_MAX_X
+ *  times the nominal reload (F27), and an energy recharge up to ENERGY_REFILL_MAX_MS plus the grace (pl4). PURE. */
+function gunHoldMs(ms, energy) { return Math.max(Math.round(ms * GUN_RELOAD_MAX_X), energy ? ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS : 0); }
 // Field 2026-10-17 (F542 cause 2): an old-slot round this long after ALT is no longer one that was in flight at the press.
 // A desk bound, not a bench figure: BLE delivers a notification well inside it (bench row in reviews-2026-10-17/bench.md).
 const ALT_LATE_ROUND_MS = 250;
@@ -652,8 +655,7 @@ export class Ammo {
     // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
     const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
-    const holdMs = Math.max(Math.round(ms * GUN_RELOAD_MAX_X), energy ? ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS : 0);
-    this.gunOther = { slot: ls.slot, until: this.host.now() + holdMs, life: this.host.lifeSeq };
+    this.gunOther = { slot: ls.slot, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq };
     this.host.log(`lever on a full slot ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
   }
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
@@ -813,7 +815,9 @@ export class Ammo {
     const g = this.gunOther;
     if (!r && g && g.life === this.host.lifeSeq && this.host.now() < g.until) {   // review 2026-11-06: a refused lever the gun spent on the other slot
       this.host.log(`ALT ignored by the gun while it reloads slot ${g.slot}, the slot fired last`, 'li'); return; }
-    if (r && !r.auto && (!r.soft || this.gunReloadsOther(r)) && this.host.now() < r.at + r.ms && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
+    // Codex pass 2026-11-07: the gun's refill lands up to 1.3x reload_s (F27), an energy recharge up to 3.9 s (pl4), and the
+    // gun ignores ALT until it does, so the hold runs as long as `noteGunOther`'s.
+    if (r && !r.auto && (!r.soft || this.gunReloadsOther(r)) && this.host.now() < r.at + gunHoldMs(r.ms, r.energy) && !(r.lastGainAt > r.at)) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)
     // came from a bench of PHONE EQUIPS (F436, 0/6 vs 4/4), never of ALT; the field reports it rested on are explained by

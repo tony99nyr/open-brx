@@ -550,3 +550,49 @@ def test_f542_review_a_lever_inside_the_swap_back_to_the_last_fired_slot_shows_n
     asyncio.run(go())
 
 
+
+
+def test_codex_2026_11_07_a_drop_before_the_soft_reload_is_due_writes_nothing():
+    """engine.js `onBleDropped` ends the phone's reload as soon as the link drops, so the poll that finds the drop after the
+    reload was due must not land it first."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        assert st.reloading and st.reloading["soft"]
+        st.mgr.is_connected = lambda _alias: False   # type: ignore[attr-defined]
+        clock.t += st.reloading["s"] + 0.1
+        st.poll(); await settle(st)
+        assert not any("reloaded by the phone" in t for t in _texts(st))
+        assert st.reloading is None and st.reload_outcome["why"] == "dropped", st.reload_outcome
+    asyncio.run(go())
+
+
+def test_codex_2026_11_07_a_round_buffered_when_the_soft_reload_is_due_is_one_round():
+    """The phone handles each frame as it lands, before its next tick: a press and a round waiting in the drain hold the
+    phone's `$AMMO` (engine.js `_softReloadWrite`), and the round ends the reload as the player's shot."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        assert st.reloading and st.reloading["soft"]
+        n = len(_tx(st))
+        clock.t += st.reloading["s"] + 0.01
+        sess = st.mgr.sessions["stage"]
+        sess.record("rx", "$BUT,0,1,*"); sess.record("rx", "$ALCD,28,100,0,182,0,*"); sess.record("rx", "$BUT,0,0,*")
+        st.poll(); await settle(st)
+        assert not [f for f in _tx(st)[n:] if f.startswith("$AMMO,0,")], _tx(st)[n:]
+        assert st.ammo == 28 and st.reload_outcome["why"] == "fired", (st.ammo, st.reload_outcome)
+    asyncio.run(go())
+
+
+def test_codex_2026_11_07_a_soft_reload_write_that_never_left_puts_the_books_back():
+    """engine.js `_softReloadUnwrite`: a failed `$AMMO` gave the gun nothing."""
+    async def go():
+        st, _gun, clock = await _tony_sequence()
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*")
+        res = st._prev_reserve[0]
+        async def failed(*_a, **_k):
+            return False
+        st.write = failed   # type: ignore[method-assign]
+        await _tick(st, clock, st.reloading["s"] + 0.1)
+        assert st._prev_ammo[0] == 29 and st._prev_reserve[0] == res and st.ammo == 29, (st._prev_ammo, st.ammo)
+    asyncio.run(go())

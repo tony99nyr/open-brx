@@ -5668,6 +5668,39 @@ test('review 2026-11-06 r2: the ALT hold ends at the gun\'s measured reload over
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true, 'past 1.3x the reload the gun takes ALT (F27)');
 });
+test('Codex pass 2026-11-07: a soft-reload `$AMMO` that failed before it left puts the books back, so the next round is one round', async () => {
+  // A chunk error with the link still up returns false and the gun never read the row. The HUD showed a full magazine the gun
+  // did not hold, and its next round read as a magazine of shots.
+  const h = liveSwapHarness();
+  f542TonySequence(h);                                             // on slot 0 at 29; slot 1 fired last: the phone reloads slot 0
+  const real = h.eng.writer;
+  h.eng.writer = (fr, why, o) => fr.some(f => f.startsWith('$AMMO,0,')) ? Promise.resolve(false) : real(fr, why, o);
+  f542Lever(h);
+  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 0');
+  h.adv(h.eng.am.reloading.ms + 10); h.eng.tick();
+  await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.equal(h.eng.am.prevAmmo[0], 29, 'the books go back to what the gun holds');
+  assert.equal(h.eng.state().ammo, 29, 'and so does the HUD');
+  const shots = h.eng.shots;
+  h.adv(ACC_ECHO_MS + 50);
+  f542Shot(h, '$ALCD,28,100,0,384,0,*');
+  assert.equal(h.eng.shots - shots, 1, 'one round, not a magazine');
+});
+test('Codex pass 2026-11-07: the gun ignores ALT until its own refill lands, up to 1.3x the reload (F27), not only to reload_s', () => {
+  const h = liveSwapHarness();
+  f542Shot(h, '$ALCD,31,100,0,384,0,*');                          // slot 0 fired last: the lever is the gun's own reload
+  f542Lever(h);
+  const r = h.eng.am.reloading;
+  assert.ok(r && !r.soft, 'setup: the gun reloads the weapon in hand');
+  h.adv(Math.round(r.ms * 1.15)); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'no refill yet, so the gun is still reloading and ignores ALT');
+  assert.equal(h.eng.state().reloading, true);
+  h.adv(Math.round(r.ms * 0.2)); h.eng.tick();                      // CONTROL: past 1.3x with no refill the gun takes ALT
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, true);
+});
 test('F650: a shotgun chain on the last-fired slot books shell by shell while the phone reloads the weapon in hand', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);
@@ -8801,14 +8834,14 @@ test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and 
 });
 
 test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer follows the gun', () => {
-  // The rifle's reload is 1.4 s; its takeover runs to 1.4 s + max(600, 700) ms. At +1.5 s with no gain the gun is no
-  // longer reloading, so it takes ALT. Ignoring it left `am.altPtr` on 0 while the gun was on 1, and the next ALT then
+  // The rifle's reload is 1.4 s; its takeover runs to 1.4 s + max(600, 700) ms. At +1.9 s with no gain the gun is no
+  // longer reloading (its refill lands by 1.3x reload_s, F27: Codex pass 2026-11-07), so it takes ALT. Ignoring it left `am.altPtr` on 0 while the gun was on 1, and the next ALT then
   // booked an assumed swap onto slot 1 while the gun went 1 -> 0.
   const h = shellHarness();
   h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
   h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true, 'setup: the takeover runs');
-  h.adv(1500);
+  h.adv(1900);
   assert.equal(h.eng.state().reloading, true, 'setup: still inside the takeover\'s stale tail');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: the gun swaps to the shotgun
   assert.equal(h.eng.state().switching, true, 'the stale-tail ALT opens the swap');

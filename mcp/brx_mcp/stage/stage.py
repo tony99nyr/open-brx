@@ -4007,11 +4007,6 @@ class GunStage:
         if link_up:
             self._expire_magazine_query(self.now())     # F542 (engine.js tick()): an unanswered `$QUERY` books its timeout first
         self._recoil_poll_tick()                   # S42 (engine.js tick()): BEFORE the reload and swap ticks, as on the phone
-        self._reload_tick()                        # ammo.js `reloadTick(now)` runs from the tick; this is ours
-        if link_up:
-            # …and the assumed swap, from the same tick. On a drop the phone's `onBleDropped` cancels the swap before its
-            # tick can assume it, so the poll that finds the drop must not book one (F542 r1 reviews)
-            self._switch_tick()
         if not link_up:
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
@@ -4051,6 +4046,11 @@ class GunStage:
             self.tele["last_rx"] = raw
             self._log(raw, "rx")
             self._on_rx(raw)
+        # ammo.js `reloadTick(now)` and the assumed swap run from the tick; these are ours. Codex pass 2026-11-07: AFTER the
+        # drain, because the phone handles each frame as it lands, before its next tick (a round or a press in this drain
+        # holds the soft reload's `$AMMO`), and never on a drop: `onBleDropped` ends the takeover and cancels the swap first.
+        self._reload_tick()
+        self._switch_tick()
         # ⚠ OUTSIDE the loop on purpose: this is the phone's `tick()` work and it must run on an EMPTY drain
         # too, or presence never expires (a player who walks off the hill sees no more frames at all, which is
         # exactly the case the expiry exists for).
@@ -5824,7 +5824,8 @@ class GunStage:
             self._log(f"ALT ignored by the gun while it reloads slot {g['slot']}, the slot fired last", "info")
             return
         if (r and not r.get("auto") and (not r.get("soft") or self._gun_reloads_other(r))   # F226 `!r.auto`; F650 review M1
-                and self.now() < r["at"] + r["s"] and not ((r.get("last_gain_at") or 0.0) > r["at"])):
+                and self.now() < r["at"] + self._gun_hold_s(r["s"], bool(r.get("energy")))   # Codex pass 2026-11-07 (ammo.js `gunHoldMs`)
+                and not ((r.get("last_gain_at") or 0.0) > r["at"])):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
             return
         # ammo.js `altPressed` (F650): ALT before the first trigger pull of a life is a swap like any other (the F445 rule
@@ -6743,9 +6744,13 @@ class GunStage:
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[ls] if ls < len(ws) else None) or {}
         energy = bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id"))
-        hold = max(s * self.GUN_RELOAD_MAX_X, self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S if energy else 0.0)
-        self._gun_other = {"slot": ls, "until": self.now() + hold, "life": self._life_queued}
+        self._gun_other = {"slot": ls, "until": self.now() + self._gun_hold_s(s, energy), "life": self._life_queued}
         self._log(f"lever on a full slot {a}: the gun reloads slot {ls}, the slot fired last", "info")
+
+    def _gun_hold_s(self, s: float, energy: bool) -> float:
+        """ammo.js `gunHoldMs`: how long the gun's own reload can run before its refill lands (F27, pl4), so how long it
+        ignores ALT."""
+        return max(s * self.GUN_RELOAD_MAX_X, self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S if energy else 0.0)
 
     def _gun_reloads_other(self, r: dict | None = None) -> bool:
         """ammo.js `gunReloadsOther` (F650 review M1): during the phone's reload, is the gun reloading the slot that fired
@@ -6758,6 +6763,26 @@ class GunStage:
             return False
         cap = self._ammo_by_slot().get(ls); mag = self._prev_ammo.get(ls); res = self._prev_reserve.get(ls)
         return not (cap and mag is not None and mag >= cap) and res != 0
+
+    async def _soft_reload_send(self, slot: int, mag: int, res: int, to: int, left: int) -> None:
+        """engine.js `_softReloadWrite`'s send (Codex pass 2026-11-07): a write that never left gave the gun nothing."""
+        life = self._life_queued
+        ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0)
+        if ok is False:
+            self._soft_reload_unwrite(slot, mag, res, to, left, life)
+
+    def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int) -> None:
+        """engine.js `_softReloadUnwrite` (Codex pass 2026-11-07): the books go back to the counts before the write, unless
+        a newer fact has moved them."""
+        if life != self._life_queued or self._prev_ammo.get(slot) != to or self._prev_reserve.get(slot) != left:
+            return
+        a = self._shot_acct.get(slot)
+        if a is not None and a.get("mag") == to and not (a.get("fired") or 0) > 0:
+            a["mag"] = mag; a["res"] = res
+        self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
+        if self.active_slot == slot:
+            self._publish_ammo(slot, mag, res)
+        self._log(f"F650: the reload write for slot {slot} failed before it left: back to {mag}, reserve {res}", "error")
 
     def _reload_sounds(self, slot: int) -> list[str]:
         """engine.js `_reloadSounds` (F650): the head's `$WEAP` reload parts for a slot (t31-t33), empty ids dropped."""
@@ -6808,7 +6833,7 @@ class GunStage:
         self._acct_wrote(slot, to, left)
         end = self._reload_sounds(slot)[1:]
         # review H1 (engine.js `_softReloadWrite`): the `$AMMO` is its own write, never behind the play queue
-        self._spawn_task(self.write([f"$AMMO,{slot},{to},{left},1,*"], "F650: the phone reloads the weapon in hand", gap_ms=0))
+        self._spawn_task(self._soft_reload_send(slot, mag, res, to, left))
         if end:
             self._spawn_task(self.write([f"$PLAY,,4,6,{end[-1]},,,,*"], "F650: reload sound (end)", gap_ms=0))
         self._hold_accuracy_writes("F650 reload")
