@@ -1,11 +1,25 @@
 """F658: a following hill retains each game's own tally in its heartbeat ring."""
 from __future__ import annotations
 
-from test_mc_stations import _joined, _sess
+from brx_mcp.mc.compile import Compiler
+from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+from brx_mcp.mc.state import Session
+
+
+def _ring_session(mode):
+    """A session in `mode` with two rostered players whose phones said hello, and a phone hill (id 3) on util-1."""
+    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s.set_config({"mode": mode, "station_source": "phone"})
+    teams = [t["team_id"] for t in s.config["teams"]]
+    for i, g in enumerate([g["gun_id"] for g in s.armory.list()][:2]):
+        s.add_player(f"P{i}", teams[i % len(teams)], g, "male")
+    for i, p in enumerate(s.players.values()):
+        s.net.simulate_hello(f"phone-{i}", p["gun_id"])
+    return s
 
 
 def test_f658_following_hill_seeds_armed_game_tally_from_its_ring():
-    s = _joined(_sess("koth", station_source="phone"))
+    s = _ring_session("koth")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
@@ -23,7 +37,7 @@ def test_f658_following_hill_seeds_armed_game_tally_from_its_ring():
 
 
 def test_f658_late_following_hill_heartbeat_without_match_ring_keeps_recap_values():
-    s = _joined(_sess("koth", station_source="phone"))
+    s = _ring_session("koth")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
@@ -56,7 +70,7 @@ def test_f658_late_following_hill_heartbeat_without_match_ring_keeps_recap_value
 def test_f658_domination_recap_reads_the_ring_entry_s_owned_clock():
     """Codex review 2026-11-07 (brx2 check): in Domination MC scores `own_ms`. A late heartbeat of a hill now following
     another game feeds the recap the ring entry's owned clock for MC's game, never its presence clock."""
-    s = _joined(_sess("domination", station_source="phone"))
+    s = _ring_session("domination")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
@@ -77,7 +91,7 @@ def test_f658_domination_recap_reads_the_ring_entry_s_owned_clock():
 def test_f658_recap_ring_entry_never_lowers_mc_tally_and_counts_as_the_station_report():
     """Codex review r2: a late heartbeat of a hill now following another game, carrying an older ring entry for MC's game
     (8000 ms after MC already received 12000 ms), keeps MC's max in the recap, and marks the station's report received."""
-    s = _joined(_sess("koth", station_source="phone"))
+    s = _ring_session("koth")
     s.net.simulate_utility_hello("util-1")
     s.set_station("util-1", {"kind": "control", "team": "any", "id": 3})
     s.push_config(force=True)
