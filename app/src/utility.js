@@ -275,7 +275,8 @@ async function applyStationConfig(body) {
   // the mark that MC anchored the schedule, may be an old match's: forget both. MC's next update sets them again.
   puFollower.onArm(); savePowerup();
   // F658: a following powerup keeps its item; the live bit decides which game it plays, not this arming
-  if (settings.game !== wasGame && !(cfg.kind === 'powerup' && puFollower.follows)) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
+  // F658 review r2: another kind or id is another station, so the last one's item state goes too, as on the Stick
+  if (!sameStation || (settings.game !== wasGame && !(cfg.kind === 'powerup' && puFollower.follows))) { pu.available = null; pu.nextAt = null; pu.taker = 0; pu.ringAt = null; pu.unsent = []; pu.awardedNext = null; savePowerup(); }
   if (cfg.kind === 'control') applyHillClock(cfg, stationNow(), sameStation);
   // F559: MC's hill pace wins on every arming that carries it; absent keeps the station's own (a +/- edit holds until then)
   if (cfg.kind === 'control' && cfg.capture_s != null) settings.captureS = cfg.capture_s;
@@ -703,9 +704,10 @@ function controlTick(now) {
   point.captureS = settings.captureS; point.netCap = settings.netCap;
   // F658: the follower first: which game the hill counts, and the players of it that may count.
   const fs = follower.step(point, presence.players(), now, { expiryMs: presence.expiryMs, armedGame: settings.game, stationId: settings.id });
-  if (fs.switched) {
-    log(fs.kept ? `F658: following game ${fs.to}: the point it counted is kept`
-      : fs.fresh ? `F658: following game ${fs.to}${fs.from != null && fs.from !== fs.to ? ` (was ${fs.from})` : ''}: a fresh point` : `F658: following game ${fs.to} (was ${fs.from}): its saved tally is back`, 'lk');
+  const sw = fs.switched;   // F658 review r2: the switch fields live on `switched`, not on the step result
+  if (sw) {
+    log(sw.kept ? `F658: following game ${sw.to}: the point it counted is kept`
+      : sw.fresh ? `F658: following game ${sw.to}${sw.from != null && sw.from !== sw.to ? ` (was ${sw.from})` : ''}: a fresh point` : `F658: following game ${sw.to} (was ${sw.from}): its saved tally is back`, 'lk');
     saveControl();
     if (settings.live) startAdvert();   // the game byte changed: republish at once
   }

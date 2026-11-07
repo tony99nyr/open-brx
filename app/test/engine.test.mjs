@@ -1197,6 +1197,17 @@ test('control point: the game`s station allow-list applies to control points too
   assert.equal(h.eng.state().hill.site, 11, 'and the point names itself');
 });
 
+test('F658 review r2: the allow-list matches the kind too: a hill whose id is this game\'s RESPAWN station is not a control point', () => {
+  const h = koth();
+  h.eng.config.stations = [{ id: 3, kind: 'respawn' }, { id: 11, kind: 'control' }];
+  control(h, { id: 3, team: 1, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill, null, 'a stray hill on respawn id 3 is not read');
+  assert.equal(h.eng._controlStations().length, 0, 'and its possession is never counted');
+  h.eng.config.stations = [3, 11];   // an older MC's bare ids still admit by id
+  control(h, { id: 3, team: 1, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill.site, 3);
+});
+
 test('control point: state() carries the whole reading a HUD needs, from one advert', () => {
   const h = koth();
   control(h, { id: 7, team: 0, state: CONTESTED | RISING, value: 63, present: true });

@@ -6097,9 +6097,11 @@ export class Engine {
   /** `config.stations`, when the bundle carries it, is the allow-list of station ids valid in this game --
    *  a stray phone from another game can neither revive anyone nor claim to be a control point. */
   _stationAllowed(e) {
-    const allow = this.config && Array.isArray(this.config.stations) && this.config.stations.length
-      ? new Set(this.config.stations.map(x => (x && typeof x === 'object') ? x.id : x)) : null;
-    return !allow || allow.has(e.id);
+    const list = this.config && Array.isArray(this.config.stations) && this.config.stations.length ? this.config.stations : null;
+    // F658 review r2: the id AND the kind. A static hill from an earlier set-up follows the live game and speaks its byte,
+    // so an id-only check let it in whenever its id matched this game's respawn or powerup station. A bare id (an older
+    // MC) or a row with no kind still admits by id alone.
+    return !list || list.some(x => (x && typeof x === 'object') ? x.id === e.id && (!x.kind || x.kind === e.kind) : x === e.id);
   }
   /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
    *  A station admits me when it is neutral or on my gun's $TID team, and only when my config enables it. */

@@ -86,9 +86,12 @@ test('an MC arming for a new game does not wipe a following hill\'s point', asyn
 
 test('F658 review: MC re-arms a following hill as another id: the point and the ring go, as on the Stick', async () => {
   await api.applyStationConfig({ ...hill, game: 60 });
-  stand(4000, [{ id: 3, team: RED, game: 61, live: true }]);
+  stand(8000, [{ id: 3, team: RED, game: 61, live: true }]);   // game 42 of the test above goes unheard after 4 s
   assert.equal(api.statusBody().control.follows, true);
+  assert.equal(api.statusBody().control.game, 61);
   assert.ok(api.point.progress > 20, `red builds: ${api.point.progress}`);
+  assert.ok(api.log.some(l => /F658: following game 61\b/.test(l)), 'the switch log names the game it follows (review r2)');
+  assert.ok(!api.log.some(l => /following game undefined/.test(l)));
   await api.applyStationConfig({ ...hill, id: 10, game: 60 });
   const c = api.statusBody().control;
   assert.equal(c.follows, undefined, 'a new id follows nothing yet');
