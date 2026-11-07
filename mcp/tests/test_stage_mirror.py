@@ -2282,6 +2282,9 @@ def test_every_powerup_pair_is_real():
 # Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
 # getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
+    # A87 own_change (2026-11-07): an MC uplink fact in Domination only. The stage has no MC and sends no facts; the
+    # possession clock it scores from is mirrored. The phone half is tested in app/test/engine.test.mjs.
+    "hl.ownChange",
     # F665 bench switch (2026-11-03): a melee not-ready sound, off by default, tried by ear at MN1. Not mirrored while it is an
     # experiment; port it if Tony keeps it (FOLLOWUPS F665)
     "setMeleeNotReady", "_meleeNotReadyCue", "_audioBusyNow",
