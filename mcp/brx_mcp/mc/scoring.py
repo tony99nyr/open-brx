@@ -564,6 +564,8 @@ class Scorer:
         # A possession tally is handled BEFORE the pid gate and BEFORE the A6.1 end freeze, and both
         # are deliberate (see `_possession`): it is a cumulative total, not a timestamped event, and
         # the report that matters arrives AFTER the whistle.
+        if ev.get("type") == "hill_tally":
+            return self._hill_tally(node_id, ev)
         if ev.get("type") == "own_change":
             # Codex review 2026-11-07: no target check per fact. A phone back in Wi-Fi delivers its steps as one batch, and
             # its first capture alone reads as owned until now; the tick checks once the whole batch is in
@@ -1137,6 +1139,11 @@ class Scorer:
             return "ignored"
         self.own_changes.setdefault(str(ev.get("site") or "A"), []).append((at, frm, own, node_id))
         return "scored"
+
+    def _hill_tally(self, node_id: str, ev: Event) -> str:
+        """A88: a hill's own tally, relayed by a phone. Stored with the facts; MC does not score it yet (the merge follows
+        in its own change), and it never reaches the player gate or the end freeze."""
+        return "ignored"
 
     def _owned_site_ms(self, site: str, ref: int) -> dict[int, int]:
         """The ms each tid owned `site` from go-live to `ref`, from the phones' own_change facts. Cached by the facts and
