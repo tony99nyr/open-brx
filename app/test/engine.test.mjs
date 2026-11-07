@@ -5622,6 +5622,15 @@ test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is no
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true, 'the ALT opens the swap');
 });
+test('review 2026-11-06 r3: an energy weapon fired last holds ALT through its late recharge (pl4: up to 3.9 s)', () => {
+  const h = liveSwapHarness();
+  h.player.loadout = { weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'smg' }] };   // no catalogue row: the id says energy
+  leverOnFull(h);
+  h.adv(3500); h.eng.tick();
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().switching, false, 'the gun is still recharging slot 0, so it ignores this ALT');
+  assert.equal(h.eng.state().activeSlot, 1);
+});
 test('review 2026-11-06 r2: the ALT hold ends at the gun\'s measured reload overrun, not the takeover\'s stale tail', () => {
   const h = liveSwapHarness();
   leverOnFull(h);

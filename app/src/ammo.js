@@ -649,7 +649,11 @@ export class Ammo {
     const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
     if ((cap && mag != null && mag >= cap) || res === 0) return;
     const ms = this.reloadMsOf(ls.slot);
-    this.gunOther = { slot: ls.slot, until: this.host.now() + Math.round(ms * GUN_RELOAD_MAX_X), life: this.host.lifeSeq };
+    // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
+    const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
+    const holdMs = Math.max(Math.round(ms * GUN_RELOAD_MAX_X), energy ? ENERGY_REFILL_MAX_MS + RELOAD_GRACE_MS : 0);
+    this.gunOther = { slot: ls.slot, until: this.host.now() + holdMs, life: this.host.lifeSeq };
     this.host.log(`lever on a full slot ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
   }
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that

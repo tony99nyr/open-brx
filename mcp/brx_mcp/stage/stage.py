@@ -6735,7 +6735,12 @@ class GunStage:
         if (cap and mag is not None and mag >= cap) or res == 0:
             return
         s = self._reload_s(ls)
-        self._gun_other = {"slot": ls, "until": self.now() + s * self.GUN_RELOAD_MAX_X, "life": self._life_queued}
+        # round 3: an energy weapon's recharge lands late (ammo.js `noteGunOther`, as `_reload_deadline`)
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[ls] if ls < len(ws) else None) or {}
+        energy = bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id"))
+        hold = max(s * self.GUN_RELOAD_MAX_X, self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S if energy else 0.0)
+        self._gun_other = {"slot": ls, "until": self.now() + hold, "life": self._life_queued}
         self._log(f"lever on a full slot {a}: the gun reloads slot {ls}, the slot fired last", "info")
 
     def _gun_reloads_other(self, r: dict | None = None) -> bool:
