@@ -2923,7 +2923,8 @@ class Session:
                     cfg = {**cfg, "respawn_auto_teams": auto}
         # One game byte per match: the SAME number `_arm_station` sends as `station_config.game`, read at
         # send time on both paths, so a phone and a station can never scope one match by different bytes.
-        return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {}), "game_byte": self._game_byte()})
+        own = {"own_change": True} if cfg.get("mode") in OWNERSHIP_SCORED_MODES else {}   # Tony 2026-11-07 (brx2's gate)
+        return cast(GameConfig, {**cfg, **({"stations": ids} if ids else {}), "game_byte": self._game_byte(), **own})
 
     def _station_warnings(self) -> list[str]:
         return self.station_registry.station_warnings()
@@ -4537,7 +4538,7 @@ class Session:
         """F482, written once (#3 slice 2): a possession tally skips the scorer's player gate, so an EVICTED phone's
         would score live while every replay drops it (marked at arrival). It is stored only, never scored: live, in a
         batch, or into the retired match. Every other fact scores as before."""
-        return not (ev.get("type") == "possession" and nid in evicted)
+        return not (ev.get("type") in ("possession", "own_change") and nid in evicted)
 
     def _wire_live(self, sc: Scorer) -> None:
         """#3 slice (2026-10-10): the LIVE callbacks (a resume, a clock-gap rescore, a reconcile's adopted scorer and a
@@ -5760,7 +5761,7 @@ class Session:
         self.persist_now()
 
     # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
-    _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession")
+    _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession", "own_change")
 
     def _match_facts(self, match_id: str, *, arrival: bool = False) -> list[dict]:
         """Every persisted fact for this match, in EFFECTIVE-t order (the order it should have been
@@ -6032,7 +6033,14 @@ class Session:
             return {"teams": [{"team_id": "ffa", "name": r["display"], "score": r["kills"]} for r in top], "cap": cap}
         totals = scorer.team_scores()
         names = {t["team_id"]: str(t.get("name") or t["team_id"]).replace(" TEAM", "") for t in self.teams}
-        return {"teams": [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()], "cap": cap}
+        teams = [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
+        if self.config.get("mode") in OWNERSHIP_SCORED_MODES:
+            # Tony 2026-11-07 (brx2): each team's hill POINTS so far, from the phones' owner timeline (whole seconds owned,
+            # summed over the hills; the result's `held_s`). The phone shows max(this, its own tally).
+            by = (scorer.possession() or {}).get("by_team") or {}
+            for row in teams:
+                row["points"] = int(by.get(row["team_id"], 0))
+        return {"teams": teams, "cap": cap}
 
     def _on_node_message(self, nid: str, kind: str, body: dict, t_recv: int):
         self._node_view(nid)["last_seen_ms"] = t_recv
@@ -7979,6 +7987,8 @@ class Session:
         self._push_due_roles(now)
         self.powerup_ledger.tick(now)                     # A56: the item spawn schedule (a no-op with the flag off)
         self._operator_no_answer(now)
+        if self.phase == "live" and (sc := self._m().scorer) is not None:
+            sc.tick_hold_target(now)   # Tony 2026-11-07: a Domination hill scores with no new report
         tl = self.config.get("time_limit_s")
         # F-2026-09-17c: an ADOPTED match has no config of its own at MC — `tl` is the operator's CURRENT
         # DRAFT, which need not match what the phones are actually running. Arming a timed end on it can

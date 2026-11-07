@@ -9,8 +9,9 @@ import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .clockwatch import ClockWatch
+from .ownership import clock_offsets, owned_ms
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, AWARDS, CLOCK_TIE_MS, FEEDBACK_MAX_AGE_MS, MEDALS, MULTI_KILL_MS,
-                    NEVER_SEEN_MS, OBJECTIVE_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
+                    NEVER_SEEN_MS, OBJECTIVE_MODES, OWNERSHIP_SCORED_MODES, STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
                     PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
 Feed = dict
@@ -188,6 +189,11 @@ class Scorer:
         # MAX per (site, tid) in `possession()`, never summed — four teammates on one hill all report it.
         self.possession_ms: dict[str, dict[int, dict[str, int]]] = {}
         self.possession_observed: dict[str, int] = {}    # node_id -> ms it was hearing the point at all
+        # Tony 2026-11-07 (Domination scored from the phones): site -> the phones' `own_change` facts, (at_ms, from_tid,
+        # owner_tid, node_id). `ownership.owned_ms` builds the owner timeline and sums it; the Stick's own clock is only
+        # the cross-check on its STATIONS row.
+        self.own_changes: dict[str, list[tuple[int, int, int, str]]] = {}
+        self._own_offsets: dict[str, tuple[int, dict[str, int]]] = {}   # site -> (facts seen, the phones' clock offsets)
         # F555: site -> team tid -> the station's OWN cumulative hold for that point (utility.md §5d.6). A site with a
         # station reading is scored on it; the phones' readings for that site are only the cross-check.
         self.station_possession_ms: dict[str, dict[int, int]] = {}
@@ -555,6 +561,11 @@ class Scorer:
         # A possession tally is handled BEFORE the pid gate and BEFORE the A6.1 end freeze, and both
         # are deliberate (see `_possession`): it is a cumulative total, not a timestamped event, and
         # the report that matters arrives AFTER the whistle.
+        if ev.get("type") == "own_change":
+            result = self._own_change(node_id, ev)
+            if result == "scored":
+                self._check_hold_target(t_recv)
+            return result
         if ev.get("type") == "possession":
             if self.mode not in OBJECTIVE_MODES:
                 return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
@@ -835,15 +846,25 @@ class Scorer:
         counts the time held across both (70 s on one plus 50 s on the other meets 120 s)."""
         if not self.hold_target_s or "hold_target" in self._announced or self.win_by != "objective":
             return
-        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:
+        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms and not self.own_changes:
             return
-        by_team_ms, _neutral_ms = self._possession_ms()
+        # Tony 2026-11-07: the phones' owner timeline grows with the clock, so Domination's points are read AS OF `t`. A
+        # replay passes each fact's receipt time; read at "now" instead, a resume's arrival-order probe saw the target
+        # crossed at the first capture and ended the match there (chaos `domination-hills-target`)
+        as_of = t if self.mode in OWNERSHIP_SCORED_MODES and self.own_changes else None
+        by_team_ms, _neutral_ms = self._possession_ms(as_of=as_of)
         target_ms = self.hold_target_s * 1000
         if not any(ms >= target_ms for ms in by_team_ms.values()):
             return
         self._announced.add("hold_target")
         self.limit_reached_t = t
         self.on_limit(t)
+
+    def tick_hold_target(self, t: int) -> None:
+        """Domination: an owned hill scores with no new report, so the target can be crossed between facts. The Session's
+        tick calls this while LIVE."""
+        if self.mode in OWNERSHIP_SCORED_MODES and self.own_changes and (self.end_t is None or t <= self.end_t):
+            self._check_hold_target(t)
 
     def recheck_limits(self, first_t: int) -> None:
         """After a rescore: end the match the way it would have live if the FINAL board is still past a cap (#3 slice 2:
@@ -1092,6 +1113,31 @@ class Scorer:
             return "ignored"
         return "scored"
 
+    def _own_change(self, node_id: str, ev: Event) -> str:
+        """One phone's report that the owner in a Domination hill's advert changed (or a re-assertion, from == owner).
+        Like a possession tally it skips the player gate and the end freeze: it is a fact about the hill, and the one
+        from a phone that was out of Wi-Fi arrives after the whistle. `at_ms` (MC's clock) places it; a step stamped
+        after the whistle is not counted (`owned_ms`)."""
+        if self.mode not in OWNERSHIP_SCORED_MODES:
+            return "ignored"
+        frm, own, at = ev.get("from_tid"), ev.get("owner_tid"), ev.get("at_ms")
+        if (not (isinstance(frm, int) and isinstance(own, int) and isinstance(at, int))
+                or isinstance(frm, bool) or isinstance(own, bool) or isinstance(at, bool)):
+            return "ignored"   # bools are ints in Python; a phone never sends one here
+        if not (0 <= frm <= 7 and 0 <= own <= 7 and at > 0):
+            return "ignored"
+        self.own_changes.setdefault(str(ev.get("site") or "A"), []).append((at, frm, own, node_id))
+        return "scored"
+
+    def _owned_site_ms(self, site: str, ref: int) -> dict[int, int]:
+        """The ms each tid owned `site` from go-live to `ref`, from the phones' own_change facts."""
+        rows = self.own_changes[site]
+        n, off = self._own_offsets.get(site, (-1, {}))
+        if n != len(rows):
+            off = clock_offsets(rows)
+            self._own_offsets[site] = (len(rows), off)
+        return owned_ms(rows, self.go_live_t, ref, offsets=off)
+
     def _clamp_ms(self, v) -> int | None:
         """A reported ms total as an int, floored at 0 and clamped to the match length (no team holds longer)."""
         try:
@@ -1123,6 +1169,8 @@ class Scorer:
         that truly restarts from 0, a reloaded phone or a Stick whose NVS failed, is undercounted, never overcounted). `t` is the
         receipt time of a LIVE reading, which may cross the hold target; the whistle's final reading passes None.
         The Session decides which readings belong to this match (`Session._station_hold`)."""
+        if self.mode in OWNERSHIP_SCORED_MODES:
+            return "ignored"   # Tony 2026-11-07: a Domination hill's own clock is the cross-check on its row, never the score
         if self.mode not in OBJECTIVE_MODES or not isinstance(hold_ms, dict):
             return "ignored"   # F535: a hill left armed from KOTH scores nothing in a mode with no hill
         readings = list(self._hold_readings(hold_ms))
@@ -1180,7 +1228,7 @@ class Scorer:
         if len(hist) > STATION_HISTORY_MAX:
             self.station_history[site] = hist[:-STATION_HISTORY_DENSE:2] + hist[-STATION_HISTORY_DENSE:]
 
-    def _possession_ms(self, phones_only: bool = False) -> tuple[dict[str, int], int]:
+    def _possession_ms(self, phones_only: bool = False, as_of: int | None = None) -> tuple[dict[str, int], int]:
         """The raw (unrounded) merge `possession()` reports in seconds, and `_check_hold_target` compares
         against the target in -- one computation, so the two can never quietly disagree on what "reached"
         means. Returns (by_team ms, neutral ms): per site, the station's own reading when it gave one (F555),
@@ -1188,12 +1236,18 @@ class Scorer:
         tid_team = {t["tid"]: tid for tid, t in self.teams.items()}
         by_team: dict[str, int] = {tid: 0 for tid in self.teams}
         neutral_ms = 0
-        stations = {} if phones_only else self.station_possession_ms
-        now = self.now_ms()
+        ownership = self.mode in OWNERSHIP_SCORED_MODES
+        # Tony 2026-11-07: Domination never scores a station's own clock; a site with own_change facts is scored from
+        # the phones' owner timeline, and one without (an old APK) from the phones' possession tallies, as before
+        stations = {} if phones_only or ownership else self.station_possession_ms
+        now = self.now_ms() if as_of is None else min(as_of, self.now_ms())
         ref = min(self.end_t, now) if self.end_t is not None else now
-        for site in set(self.possession_ms) | set(stations):
+        timed = set(self.own_changes) if ownership and not phones_only else set()
+        for site in set(self.possession_ms) | set(stations) | timed:
             seen = self.station_seen_ms.get(site)
-            if site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):
+            if site in timed:
+                per_site = self._owned_site_ms(site, ref)
+            elif site in stations and (seen is None or ref - seen <= STATION_FRESH_MS or site not in self.possession_ms):
                 per_site = dict(stations[site])
             elif site in stations:
                 # milestone review: a stale station reading (not heard near the whistle) no longer outranks phones that
@@ -1223,14 +1277,15 @@ class Scorer:
         coverage of whichever hill it saw longest, never a sum over hills (brx5, F556 review). `sites` counts the hills
         that reported, and `by_team` adds them up, so with two it can pass `of_s` (the console says so: F556).
         """
-        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms:
+        if not self.possession_ms and not self.possession_observed and not self.station_possession_ms and not self.own_changes:
             return None
         by_team_ms, neutral_ms = self._possession_ms()
         out: PossessionView = {"by_team": {k: round(v / 1000) for k, v in by_team_ms.items()},
                 "neutral_s": round(neutral_ms / 1000),
-                "sites": len(set(self.possession_ms) | set(self.station_possession_ms)),
+                "sites": len(set(self.possession_ms) | set(self.station_possession_ms) | set(self.own_changes)),
                 "reports": len(set(self.possession_observed) | {n for s in self.possession_ms.values()
-                                                                for p in s.values() for n in p}),
+                                                                for p in s.values() for n in p}
+                               | {r[3] for rows in self.own_changes.values() for r in rows}),
                 "observed_s": round(max(self.possession_observed.values(), default=0) / 1000),
                 "of_s": self.time_limit_s}
         if self.station_possession_ms:   # F555: the station decided these sites; the phones' merge is the check

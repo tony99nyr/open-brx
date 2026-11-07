@@ -146,12 +146,14 @@ MC is not checked against its own bookkeeping.
   and `setup_steps` draw seeded pre-match actions; traces keep those draws for replay. Use `checks=`
   for a rule that only this scenario sets up. `finish` may also name a terminal action of the scenario's own
   (`domination_hills.py` ends with `hill_end`, so the hills are heard before and after the whistle).
-- **Domination scoring from real hills** is `scenarios/domination_hills.py` (2026-11-06): three utility nodes send
-  their owned clock on every heartbeat, and the check holds the recap's points to the hills' own clocks. Its
-  restart and crash actions wait at field time scales: a crash comes 2 s after the last bank (MC writes its
-  snapshot at least that often on a busy field), and MC counts no hill beat within one heartbeat of an arming.
-  A hill out of Wi-Fi keeps counting and reports when it is back, in play or after the whistle.
-  `domination-hills-target` sets a target the hills can reach.
+- **Domination scoring** is `scenarios/domination_hills.py` (2026-11-06; scored from the phones since 2026-11-07,
+  contracts A87). Phones walk up to three real hills and away (`hill_walk`, a re-assertion on arrival); every phone
+  near a hill hears each flip of its owner (`hill_flip`, at most every 1.2 s per hill, as on the field) and sends an
+  `own_change` stamped on its own clock (a few hundred ms off). The check holds the recap's points to the hills' owner
+  timelines, within 0.7 s a flip. The Sticks beat on with their own clock (the cross-check) through drops, returns,
+  MC restarts and crashes; the restart invariants let a phone-timed match's points grow across a restart (an owned
+  hill scores while MC is down) and let it come back ended on its target. `domination-hills-target` sets a target the
+  hills reach.
 - **An action** is two functions in `actions.py` (or any imported module): a `pick(world, rng)` that
   returns JSON parameters, or None when the action cannot apply, and an `apply(world, **params)`
   coroutine, registered with `@action("name", pick=...)`. Parameters must be plain JSON, because the
@@ -209,6 +211,10 @@ A field bug works the same way: write the actions that the field saw as a script
 ## Known limits
 
 - The fields are MockNodes, not phones. `engine.js` is covered by the stage mirror, not here.
+- Phone-scored Domination (A87) scores the owner MC knows. When every phone that heard a hill drain is out of Wi-Fi,
+  the old owner scores on until one of them is back, and can reach the target first; the recap then counts the drain
+  from its time, but the match has ended. `domination_hills_check` accepts a target end only in that case (a step was
+  queued on a phone out of Wi-Fi at the whistle). A Stick-scored hill out of Wi-Fi had the same gap.
 - The older `possession_station` action still uses a rostered node as its reporter. `stations-mixed`
   uses real utility MockNode sockets, but it does not emulate the phone's BLE station firmware. A
   repeated `hold_ms` models a CONTESTED hold without testing the phone's pause implementation.

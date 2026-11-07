@@ -2,11 +2,16 @@
 owned hill per second, first to 1000. The one rule that differs from KOTH: OWNERSHIP scores, not presence.
 
 The station banks both clocks and knows no mode (utility.md §5d.6): `hold_ms` (a living owner on it, alone; KOTH) and
-`own_ms` (the team owns it, contested or empty; Domination). MC picks the clock by mode (`stations.ownership_clock`).
+`own_ms` (the team owns it, contested or empty; Domination). Since 2026-11-07 (Tony: "it should be the phones") MC scores
+Domination from the phones' `own_change` facts (`ownership.owned_ms`); the Stick's `own_ms` (`stations.ownership_clock`)
+is only the cross-check on its STATIONS row. KOTH still scores the stations' presence clock.
 
 Run: python3 run_tests.py mc_domination
 """
-from _session import assign_koth_hill, mc_session, mk_session, online
+import pathlib
+import tempfile
+
+from _session import assign_koth_hill, mc_session, mk_session, mk_stored_session, online, restart_session
 from brx_mcp.mc.state import default_config
 from brx_mcp.mc.stations import ownership_clock
 
@@ -71,8 +76,8 @@ def test_the_ownership_clock_takes_own_ms_and_never_the_presence_clock():
     assert ownership_clock(None) is None
 
 
-def _live(mode, target):
-    s, net, clock, ps = mk_session(2)
+def _live(mode, target, stored=False):
+    s, net, clock, ps = mk_stored_session(2) if stored else mk_session(2)
     s.set_config({"mode": mode, "time_limit_s": 1800, "scoring": {"hold_target_s": target}})
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
@@ -95,26 +100,155 @@ def _beat(s, net, clock, nid, owner, hold, own):
     net.simulate_status(nid, {"role": "utility", "kind": "control", "station_id": sid, "control": control}, clock["t"])
 
 
-def test_domination_scores_owned_time_summed_across_hills_and_ends_at_the_target():
+_SEQ = {"n": 1000}
+
+
+def _own(s, net, clock, node, hill, frm, own, at=None, mid=None):
+    """A phone's `own_change` fact (Tony 2026-11-07: Domination is scored from the phones): the owner of `hill`'s advert
+    went from `frm` to `own` at `at` (MC's clock; now by default)."""
+    _SEQ["n"] += 1
+    site = str(s.station_registry.stations[hill]["assigned"]["id"])
+    net.simulate_event(node, {"type": "own_change", "t": clock["t"], "match_id": mid or s._m().head["match_id"], "site": site,
+                              "from_tid": frm, "owner_tid": own, "at_ms": clock["t"] if at is None else at},
+                       clock["t"], seq=_SEQ["n"])
+
+
+def test_domination_scores_the_phones_owner_timeline_summed_across_hills_and_ends_at_the_target():
+    """Tony 2026-11-07: a hill's points are the time its owner held it, from the phones' own_change facts. An owned hill
+    with nobody near it keeps scoring, so the target ends the match on the tick with no new report. The Stick's own
+    clock scores nothing (it is the cross-check on its row)."""
     s, net, clock = _live("domination", 1000)
     red, blue = s.config["teams"][0], s.config["teams"][1]
-    r, b = str(red["tid"]), str(blue["tid"])
-    clock["t"] += 400_000
-    # A and B are red's, contested most of the time: the presence clock is small, the ownership clock is not
-    _beat(s, net, clock, "util-a", red["tid"], {r: 10_000}, {r: 390_000})
-    _beat(s, net, clock, "util-b", red["tid"], {r: 20_000}, {r: 380_000})
-    _beat(s, net, clock, "util-c", blue["tid"], {b: 300_000}, {b: 300_000})
-    assert s.phase == "live", "770 points: under the target"
+    r, b = red["tid"], blue["tid"]
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, r, at=go + 10_000)
+    _own(s, net, clock, "node1", "util-a", 2, r, at=go + 10_300)        # a second phone, the same step: counted once
+    _own(s, net, clock, "node0", "util-b", 2, r, at=go + 20_000)
+    _own(s, net, clock, "node1", "util-c", 2, b, at=go + 100_000)
+    clock["t"] = go + 400_000
+    _beat(s, net, clock, "util-a", r, {str(r): 1}, {str(r): 999_000})   # the Stick's clock: never the score
     poss = s._m().scorer.possession()
     assert poss["by_team"] == {red["team_id"]: 770, blue["team_id"]: 300}, poss
-    clock["t"] += 240_000
-    _beat(s, net, clock, "util-b", red["tid"], {r: 20_000}, {r: 370_000})   # a lower restarted reading never walks back
-    _beat(s, net, clock, "util-a", red["tid"], {r: 10_000}, {r: 615_000})
-    assert s.phase == "live", "995 points (615 + 380): one hill-second short"
-    _beat(s, net, clock, "util-a", red["tid"], {r: 10_000}, {r: 620_000})
-    assert s.phase == "recap", s.phase
+    assert s.phase == "live", "770 points: under the target"
+    clock["t"] = go + 400_000 + 114_000
+    s.tick()
+    assert s.phase == "live", "998 points (390 + 114 + 380 + 114): short of 1000"
+    clock["t"] += 1_000
+    s.tick()
+    assert s.phase == "recap", ("1000 points on the tick, with no new report", s.phase)
     assert s.end_reason == "hold_target", s.end_reason
 
+
+
+def test_a_late_own_change_after_the_whistle_counts_from_its_time():
+    """A phone out of Wi-Fi heard blue take hill C before the whistle; its fact arrives after it. The step counts from
+    when it was heard, and a step heard after the whistle does not count."""
+    s, net, clock = _live("domination", 1000)
+    blue = s.config["teams"][1]
+    go, mid = s._m().head["go_live_t"], s._m().head["match_id"]
+    clock["t"] = go + 300_000
+    s.control("end")
+    assert s.phase == "recap", s.phase
+    clock["t"] += 30_000
+    _own(s, net, clock, "node1", "util-c", 2, blue["tid"], at=go + 200_000, mid=mid)
+    _own(s, net, clock, "node1", "util-a", 2, blue["tid"], at=go + 310_000, mid=mid)   # after the whistle: not counted
+    poss = (s.recap() or {}).get("possession") or {}
+    assert poss.get("by_team", {}).get(blue["team_id"]) == 100, poss
+
+
+def test_an_mc_restart_mid_match_rebuilds_the_owner_timeline_from_the_stored_facts():
+    s, net, clock = _live("domination", 1000, stored=True)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, red["tid"], at=go + 10_000)
+    _own(s, net, clock, "node1", "util-a", red["tid"], 2, at=go + 70_000)
+    _own(s, net, clock, "node1", "util-a", 2, blue["tid"], at=go + 75_000)
+    clock["t"] = go + 200_000
+    before = s._m().scorer.possession()["by_team"]
+    assert before == {red["team_id"]: 60, blue["team_id"]: 125}, before
+    s2, _net2 = restart_session(s, clock)
+    assert s2.resume_match() == "live"
+    assert s2._m().scorer.possession()["by_team"] == before, s2._m().scorer.possession()
+
+
+
+def test_a_target_crossed_while_mc_was_down_ends_at_the_resume_not_at_the_first_fact():
+    """Chaos `domination-hills-target`: an owned hill scores while MC is down, so a resume can find the target crossed.
+    The resume stamped that whistle at the replay's first fact, where nobody had any points, and the recap scored
+    nothing. The points are read now, so the whistle is now."""
+    s, net, clock = _live("domination", 1000, stored=True)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    red = s.config["teams"][0]
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, red["tid"], at=go + 10_000)
+    clock["t"] = go + 20_000
+    s.tick()
+    assert s.phase == "live"
+    s._persist_last = 0.0
+    s._persist()
+    clock["t"] = go + 1_200_000                          # MC was down past red's 1000th point
+    from _session import restart_no_repersist
+    s2, _net2 = restart_no_repersist(s, clock)
+    s2.resume_match()
+    s2.tick()
+    assert s2.phase == "recap" and s2.end_reason == "hold_target", (s2.phase, s2.end_reason)
+    by = ((s2.last_recap or {}).get("possession") or {}).get("by_team") or {}
+    assert by.get(red["team_id"], 0) >= 1000, by
+
+
+def test_the_phones_are_told_to_send_own_change_and_get_each_teams_points():
+    """brx2's gate: the config a phone gets says `own_change: true` in Domination only (an older MC never says it, and
+    rejects the fact). The live score push carries each team's hill points from the owner timeline."""
+    s, net, clock = _live("domination", 1000)
+    assert s._wire_config().get("own_change") is True
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, red["tid"], at=go + 10_000)
+    clock["t"] = go + 70_000
+    s._push_scores()
+    teams = {t["team_id"]: t for t in net.pushes("score")[-1][2]["board"]["teams"]}
+    assert teams[red["team_id"]]["points"] == 60 and teams[blue["team_id"]]["points"] == 0, teams
+    k, knet, kclock = _live("koth", 1000)
+    assert "own_change" not in k._wire_config(), "CONTROL: KOTH"
+    k._push_scores()
+    assert all("points" not in t for t in knet.pushes("score")[-1][2]["board"]["teams"]), "CONTROL: KOTH has no points"
+
+
+def test_a_resume_reads_each_replayed_step_at_its_own_time_not_now():
+    """Chaos `domination-hills-target`: a resume replays the facts in arrival order to find when a target was reached.
+    Read at "now", blue's capture alone (later drained) looked like 90 points and ended the match on a 30 target."""
+    s, net, clock = _live("domination", 30, stored=True)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    blue = s.config["teams"][1]
+    go = s._m().head["go_live_t"]
+    clock["t"] = go + 10_000
+    _own(s, net, clock, "node1", "util-a", 2, blue["tid"])
+    clock["t"] = go + 11_000
+    _own(s, net, clock, "node1", "util-a", blue["tid"], 2)
+    clock["t"] = go + 100_000
+    s2, _net2 = restart_session(s, clock)
+    assert s2.resume_match() == "live", s2.end_reason
+    s2.tick()
+    assert s2.phase == "live", (s2.phase, s2.end_reason)
+    assert s2._m().scorer.possession()["by_team"][blue["team_id"]] == 1
+
+def test_an_old_apk_with_no_own_change_scores_its_hill_from_the_possession_tally():
+    """A phone older than OWN_CHANGE_MIN_APP sends only `possession`: that site keeps today's merge, and a site with
+    own_change facts uses the timeline."""
+    s, net, clock = _live("domination", 1000)
+    red, blue = s.config["teams"][0], s.config["teams"][1]
+    go = s._m().head["go_live_t"]
+    clock["t"] = go + 100_000
+    site_b = str(s.station_registry.stations["util-b"]["assigned"]["id"])
+    net.simulate_event("node0", {"type": "possession", "t": clock["t"], "match_id": s._m().head["match_id"],
+                                 "site": site_b, "hold_ms": {str(red["tid"]): 40_000}, "observed_ms": 90_000},
+                       clock["t"], seq=4000)
+    _own(s, net, clock, "node1", "util-a", 2, blue["tid"], at=go + 50_000)
+    r = str(red["tid"])
+    _beat(s, net, clock, "util-c", red["tid"], {r: 1}, {r: 90_000})   # a Stick nobody's phone reports: its clock is no score
+    poss = s._m().scorer.possession()
+    assert poss["by_team"] == {red["team_id"]: 40, blue["team_id"]: 50}, poss
 
 def test_koth_still_scores_the_presence_clock_from_the_same_station():
     """CONTROL: the same heartbeat in KOTH scores `hold_ms`, so the swap is Domination's alone."""
@@ -176,15 +310,16 @@ def test_an_unreachable_target_is_said_in_points():
 
 def test_the_team_that_crosses_the_target_wins_though_both_round_to_it():
     """Review 2026-11-06: blue at 999.6 points and red reaching 1000.0 both round to 1000, and the winner (rounded
-    seconds) said a tie although red crossed the target and ended the match. KOTH shares the rule."""
-    s, net, clock = _live("domination", 1000)
+    seconds) said a tie although red crossed the target and ended the match. The rule is shared; since Domination is
+    scored from the phones (2026-11-07) the stations' presence clocks drive it here, in KOTH."""
+    s, net, clock = _live("koth", 1000)
     red, blue = s.config["teams"][0], s.config["teams"][1]
     r, b = str(red["tid"]), str(blue["tid"])
     clock["t"] += 1_100_000
-    _beat(s, net, clock, "util-c", blue["tid"], {b: 1}, {b: 999_600})
-    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 500_000})
+    _beat(s, net, clock, "util-c", blue["tid"], {b: 999_600}, None)
+    _beat(s, net, clock, "util-a", red["tid"], {r: 500_000}, None)
     assert s.phase == "live", "CONTROL: nobody has crossed yet"
-    _beat(s, net, clock, "util-b", red["tid"], {r: 1}, {r: 500_000})
+    _beat(s, net, clock, "util-b", red["tid"], {r: 500_000}, None)
     assert s.end_reason == "hold_target", s.end_reason
     sc = s._m().scorer
     assert sc.possession()["by_team"] == {red["team_id"]: 1000, blue["team_id"]: 1000}, sc.possession()
@@ -224,9 +359,10 @@ def test_the_end_line_says_the_target_in_points():
     """Review 2026-11-06: the feed said "HOLD TARGET 16:40 REACHED" for a 1000-point Domination target."""
     s, net, clock = _live("domination", 1000)
     red = s.config["teams"][0]
-    r = str(red["tid"])
-    clock["t"] += 1_100_000
-    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 1_000_000})
+    go = s._m().head["go_live_t"]
+    _own(s, net, clock, "node0", "util-a", 2, red["tid"], at=go)
+    clock["t"] = go + 1_000_000
+    s.tick()
     assert s.end_reason == "hold_target", s.end_reason
     lines = [e.get("text", "") for e in s.feed]
     assert any("SCORE TARGET 1000 POINTS REACHED" in t for t in lines), lines[-5:]
@@ -285,23 +421,24 @@ def test_a_reschedule_in_armed_keeps_the_letters_the_phones_hold():
 def test_a_hill_captured_only_while_out_of_wifi_scores_its_late_report():
     """Review 2026-11-06 (chaos `domination-hills`): a far hill heard in play with nothing banked, captured only after it
     lost Wi-Fi, reports after the whistle. That report was "unverified" (no in-play reading) and all its points dropped.
-    The empty in-play beat is the base now; the late gain is bounded by the time from that beat to the whistle."""
-    s, net, clock = _live("domination", 1000)
+    The empty in-play beat is the base now; the late gain is bounded by the time from that beat to the whistle. Since
+    Domination is scored from the phones (2026-11-07) the station rule is KOTH's, so the test runs in KOTH."""
+    s, net, clock = _live("koth", 1000)
     red = s.config["teams"][0]
     r = str(red["tid"])
     clock["t"] += 100_000
-    _beat(s, net, clock, "util-a", 2, {}, {})                  # heard in play: nobody owns it yet
+    _beat(s, net, clock, "util-a", 2, {}, None)                  # heard in play: nobody owns it yet
     clock["t"] += 3_000
-    _beat(s, net, clock, "util-a", 2, {}, {})                  # beats on (the first may sit in the arming window)
+    _beat(s, net, clock, "util-a", 2, {}, None)                  # beats on (the first may sit in the arming window)
     heard_at = clock["t"]
     clock["t"] += 60_000                                       # out of Wi-Fi; red captures it and holds it
     s.control("end")
     end = clock["t"]
     assert s.phase == "recap", s.phase
     clock["t"] += 20_000
-    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 50_000})   # back in Wi-Fi after the whistle
+    _beat(s, net, clock, "util-a", red["tid"], {r: 50_000}, None)   # back in Wi-Fi after the whistle
     clock["t"] += 3_000
-    _beat(s, net, clock, "util-a", red["tid"], {r: 1}, {r: 50_000})   # past the relock's window
+    _beat(s, net, clock, "util-a", red["tid"], {r: 50_000}, None)   # past the relock's window
     poss = (s.last_recap or {}).get("possession") or {}
     assert poss.get("by_team", {}).get(red["team_id"]) == 50, (poss, end - heard_at)
 
@@ -310,24 +447,24 @@ def test_a_hill_captured_only_while_out_of_wifi_scores_its_late_report():
 def test_a_late_hill_report_on_an_empty_base_survives_a_restart_in_recap():
     """Codex pass 2026-11-07: the empty in-play base was not a history row, so a restart in RECAP replayed the late
     report as in play, the whistle moved it back, no in-play row was found and the hill's points went: red 50 to 40
-    became blue 40 to 0."""
+    became blue 40 to 0. KOTH since Domination is scored from the phones (2026-11-07)."""
     import pathlib
     import tempfile
     from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
     from brx_mcp.mc.state import Session
-    s, net, clock = _live("domination", 1000)
+    s, net, clock = _live("koth", 1000)
     r, b = (str(t["tid"]) for t in s.config["teams"])
     clock["t"] += 100_000
-    _beat(s, net, clock, "util-a", 2, {}, {})
+    _beat(s, net, clock, "util-a", 2, {}, None)
     clock["t"] += 3_000
-    _beat(s, net, clock, "util-a", 2, {}, {})                         # heard in play, nobody owns it
-    _beat(s, net, clock, "util-b", int(b), {b: 1}, {b: 40_000})
+    _beat(s, net, clock, "util-a", 2, {}, None)                         # heard in play, nobody owns it
+    _beat(s, net, clock, "util-b", int(b), {b: 40_000}, None)
     clock["t"] += 60_000                                                # util-a out of Wi-Fi; red captures it
     s.control("end")
     clock["t"] += 20_000
-    _beat(s, net, clock, "util-a", int(r), {r: 1}, {r: 50_000})
+    _beat(s, net, clock, "util-a", int(r), {r: 50_000}, None)
     clock["t"] += 3_000
-    _beat(s, net, clock, "util-a", int(r), {r: 1}, {r: 50_000})
+    _beat(s, net, clock, "util-a", int(r), {r: 50_000}, None)
     before = (s.last_recap["possession"]["by_team"], s.last_recap["winner"])
     assert before == ({"red": 50, "blue": 40}, {"team_id": "red"}), before
     path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
@@ -357,7 +494,7 @@ def _scorer(hold_target_s=None):
     from brx_mcp.mc.scoring import Scorer
     t0, now = 1_000_000, {"t": 1_000_000}
     teams = [{"team_id": "red", "name": "R", "color": "#f00", "tid": 0}, {"team_id": "blue", "name": "B", "color": "#00f", "tid": 1}]
-    sc = Scorer("m1", t0, 1800, "domination", {}, teams, {}, {}, now_ms=lambda: now["t"], win_by="objective",
+    sc = Scorer("m1", t0, 1800, "koth", {}, teams, {}, {}, now_ms=lambda: now["t"], win_by="objective",
                 hold_target_s=hold_target_s)
     return sc, now, t0
 

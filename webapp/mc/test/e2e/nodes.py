@@ -12,7 +12,9 @@ brx_mcp.mc` on its real node socket, and takes commands on stdin, one per line:
                                          # for a station: its report fields (station_id=4,platform=esp32). `none` removes one
     set <name> key=value [key=value ...] # the same as `status`, space separated (battery=20, assoc=muster, pool_stale=none)
     control <station> <owner> <tid>=<ms>[,...]   # a hill's clocks on its heartbeat from now on: Domination's owned clock
-                                         # (`own_ms`) and the presence clock (`hold_ms`, half of it), owner the tid
+                                         # (`own_ms`, the cross-check on its row) and the presence clock (`hold_ms`, half of it)
+    own <gun> <site> <from_tid> <owner_tid> <at_ms>   # Domination (2026-11-07): this phone heard hill <site>'s owner go
+                                         # from <from_tid> to <owner_tid> at <at_ms> (MC's clock); the fact MC scores
     drop <gun>                           # walk out of range: the socket closes and the node stays quiet
     up <gun>                             # walk back: it reconnects and heartbeats again
     die <gun> <shooter_num> <shooter_tid> [match_id]   # this gun's player is killed by that shooter (F489: once it is live in match_id)
@@ -133,6 +135,12 @@ async def main(url: str, specs: list[str]) -> None:
                         raise RuntimeError("the node has no match yet")
                     node.emit(ev)
                     await node.flush()   # T5: `ok` once the fact is on the socket, not queued
+                elif cmd == "own":
+                    if not node.match_id:
+                        raise RuntimeError("the node has no match yet")
+                    node.emit({"type": "own_change", "site": args[1], "from_tid": int(args[2]), "owner_tid": int(args[3]),
+                               "at_ms": int(args[4])})
+                    await node.flush()
                 elif cmd == "lost":
                     node.extra_status["outbox_lost"] = {"match_id": args[2] if len(args) > 2 else node.match_id, "n": int(args[1])}
                     if not node.send_status():   # T5: now, not on the next 2 s beat (two back-to-back `lost`s collapsed)

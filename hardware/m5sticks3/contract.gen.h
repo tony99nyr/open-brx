@@ -139,6 +139,8 @@ constexpr const char* STATION_PACE_REARM = "BRING IT INTO WI-FI TO UPDATE";
 // F658 review: the first app build that sets the player advert's live bit. A following hill cannot count a player on
 // an older app, so MC counts those phones on the hill's card. 0.4.33 is the build before F658.
 constexpr const char* LIVE_BIT_MIN_APP = "0.4.34";
+// Tony 2026-11-07: the first app that sends `own_change` (brx2). An older phone's hill is scored from its possession tally.
+constexpr const char* OWN_CHANGE_MIN_APP = "0.4.36";
 constexpr int32_t TIMED_PROTECT_S_DEFAULT = 0;
 constexpr int32_t WEAPON_DELAY_MS_DEFAULT = 1500;
 constexpr int32_t STATION_PROTECT_S_DEFAULT = 2;
@@ -395,8 +397,8 @@ constexpr const char* NODE_KINDS[] = {"ack_config", "bind", "event", "event_batc
 constexpr size_t NODE_KINDS_COUNT = 13;
 constexpr const char* CONTROL_CMDS[] = {"abort_start", "clock_resync", "end", "panic", "recall", "release_utility", "relink", "respawn", "resync"};
 constexpr size_t CONTROL_CMDS_COUNT = 9;
-constexpr const char* PERSISTED_EVENT_TYPES[] = {"death", "hit_taken", "operator_result", "pickup", "possession", "respawn", "team_change"};
-constexpr size_t PERSISTED_EVENT_TYPES_COUNT = 7;
+constexpr const char* PERSISTED_EVENT_TYPES[] = {"death", "hit_taken", "operator_result", "own_change", "pickup", "possession", "respawn", "team_change"};
+constexpr size_t PERSISTED_EVENT_TYPES_COUNT = 8;
 constexpr const char* STATION_KINDS[] = {"respawn", "powerup", "extraction", "bomb", "control"};
 constexpr size_t STATION_KINDS_COUNT = 5;
 constexpr const char* NODE_DENIED_COMMANDS[] = {"ASKSN", "BOOM", "BURN", "CDFU", "CLEARDEVICE", "DDFU", "DEV", "DPLAY", "DTYPE", "DUTY", "FACTORY", "FTST", "GPAIR", "GPAIRX", "HEADDFU", "INQ", "IRT", "MUZ", "PAIR", "PIN", "RESET", "SETUP", "SITE", "SOL", "TSTRNAME", "VIBTOGGLE", "ZOFF", "ZOM", "ZOMBIEKEYACTIVE", "ZON", "ZTOG"};

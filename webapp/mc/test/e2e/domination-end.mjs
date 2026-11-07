@@ -4,14 +4,17 @@
 //   node test/e2e/domination-end.mjs
 //   MC_PORT=… MC_WS_PORT=… VITE_PORT=… MC_PY=…  SHOTS_DIR=…  HEADED=1
 //
-// MC caps a hill's reading at the time played, so the suite sets a 30-point target and sends readings no larger than
-// the time played (a real match takes 1000 points over minutes). A real python MC with a real node socket; two phones and three hill stations from `nodes.py` (`control` sends a
-// hill's owned clock on its heartbeat, as a hill does every second). Steps:
-//   live      the operator board shows each team's hill points and kills, read from the server, as the hills report.
+// Domination is scored from the phones (Tony 2026-11-07): each phone near a hill sends `own_change` when the owner in
+// its advert changes, and MC sums each owner's time. The suite sets a 30-point target (a real match takes 1000 points
+// over minutes). A real python MC with a real node socket; two phones (`own` sends a phone's fact) and three hill
+// stations from `nodes.py` (`control` sends a hill's own clock on its heartbeat: the cross-check on its STATIONS row,
+// never the score). Steps:
+//   live      the operator board shows each team's hill points and kills, read from the server, as the phones report.
 //   dead-path a second tab's socket stops delivering with no close (a sleeping laptop, the Windows port proxy) while
 //             the phones keep MC busy. The tab must say MC is offline and redial by itself: F644's watchdog starts at
 //             MC's first heartbeat, and MC sent none while any phone was online (review 2026-11-06).
-//   end       hill A takes red past the target and MC ends the match on it. Both tabs, never reloaded, show RECAP:
+//   end       red takes hill A and keeps it with nobody near: MC ends the match on the target on its own clock, with no
+//             new report. Both tabs, never reloaded, show RECAP:
 //             the phase, the status, the winner, the HILL POINTS headline per team with its kills, the possession
 //             rows, and one STATIONS row per hill with its owner and its points, all equal to the server's recap.
 import path from 'node:path';
@@ -98,11 +101,20 @@ try {
   await pgB.evaluate(() => { window.__noReload = 1; });
 
   c.step = 'live';
-  console.log(`\n[${c.step}] the hills report: red owns A and B, blue owns C`);
+  console.log(`\n[${c.step}] the phones report: red held A for 8 s and B for 4 s, blue held C for 6 s, then each drained`);
   await playedAtLeast(srv, 12);
-  await nodes.cmd(`control hill-a ${tid[RED]} ${tid[RED]}=8000`);
-  await nodes.cmd(`control hill-b ${tid[RED]} ${tid[RED]}=4000`);
-  await nodes.cmd(`control hill-c ${tid[BLUE]} ${tid[BLUE]}=6000`);
+  const go = (await srv.get('/api/state')).live.go_live_t;
+  const own = (gun, hill, from, to, at) => nodes.cmd(`own ${gun} ${sid[hill]} ${from} ${to} ${go + at}`);
+  await own('GUN-A', 'hill-a', 2, tid[RED], 1000);
+  await own('GUN-B', 'hill-a', 2, tid[RED], 1100);          // a second phone, the same step: counted once
+  await own('GUN-A', 'hill-a', tid[RED], 2, 9000);
+  await own('GUN-A', 'hill-b', 2, tid[RED], 2000);
+  await own('GUN-A', 'hill-b', tid[RED], 2, 6000);
+  await own('GUN-B', 'hill-c', 2, tid[BLUE], 3000);
+  await own('GUN-B', 'hill-c', tid[BLUE], 2, 9000);
+  await nodes.cmd(`control hill-a 2 ${tid[RED]}=8000`);     // the Sticks' own clocks: their rows, not the score
+  await nodes.cmd(`control hill-b 2 ${tid[RED]}=4000`);
+  await nodes.cmd(`control hill-c 2 ${tid[BLUE]}=6000`);
   const live = await c.until(async () => {
     const st = await srv.get('/api/state'), by = st.live?.possession?.by_team;
     return by && by[RED] === 12 && by[BLUE] === 6 ? st : null;
@@ -130,10 +142,11 @@ try {
   c.expect(await pgB.evaluate(() => window.__noReload === 1), 'the second tab was never reloaded');
 
   c.step = 'end';
-  console.log(`\n[${c.step}] hill A takes red to ${TARGET}: MC ends the match on the target`);
-  await playedAtLeast(srv, 27);
-  await nodes.cmd(`control hill-a ${tid[RED]} ${tid[RED]}=26000`);
-  await c.until(async () => (await srv.get('/api/state')).phase === 'recap', 15000, 'the server in RECAP');
+  console.log(`\n[${c.step}] red takes hill A again and keeps it with nobody near: MC ends on ${TARGET} on its own clock`);
+  const back = (await srv.get('/api/state')).t - go;
+  await own('GUN-A', 'hill-a', 2, tid[RED], back);
+  await nodes.cmd(`control hill-a ${tid[RED]} ${tid[RED]}=${8000 + 18000}`);
+  await c.until(async () => (await srv.get('/api/state')).phase === 'recap', (TARGET - 12 + 20) * 1000, 'the server in RECAP');
   s = await srv.get('/api/state');
   c.expect((s.feed || []).some(e => /SCORE TARGET 30 POINTS REACHED/.test(e.text || '')), 'the feed says MC ended on the points target');
   if (s.recap?.sync && !s.recap.sync.finalised && /WAITING FOR RESULTS/.test(await H.bodyText(pg))) {
@@ -142,7 +155,8 @@ try {
   await c.until(async () => /MATCH COMPLETE/.test(await text(pg, '[data-testid="recap-status"]')), 15000, 'the open console to show the result');
   const rc = (await srv.get('/api/state')).recap;
   const by = rc?.possession?.by_team || {};
-  c.expect(by[RED] === TARGET && by[BLUE] === 6, `the server's recap: red ${TARGET}, blue 6 (${JSON.stringify(by)})`);
+  // the tick that crosses the target runs about once a second, so red ends at the target or a point past it
+  c.expect((by[RED] === TARGET || by[RED] === TARGET + 1) && by[BLUE] === 6, `the server's recap: red ${TARGET}, blue 6 (${JSON.stringify(by)})`);
   c.expect(rc?.winner?.team_id === RED, `the server's winner is red (${JSON.stringify(rc?.winner)})`);
   for (const [tab, page] of [['A', pg], ['B', pgB]]) {
     await c.until(async () => /MATCH COMPLETE/.test(await text(page, '[data-testid="recap-status"]')), 15000, `tab ${tab}: RECAP without a reload`);
@@ -163,8 +177,9 @@ try {
     c.expect(stations.includes('3 ASSIGNED'), `tab ${tab}: three hills in STATIONS`);
     c.expect(!stations.includes('NEVER HEARD FROM'), `tab ${tab}: every hill was heard`);
     for (const row of rc.stations || []) {
-      const owner = TID_NAME[row.owner];
-      c.expect(owner && stations.includes(`HELD BY ${owner}`), `tab ${tab}: hill ${row.id} held by ${owner}`);
+      const owner = row.owner === 2 ? null : TID_NAME[row.owner];   // tid 2 on a hill is neutral (brx1 2026-11-06)
+      c.expect(owner ? stations.includes(`HELD BY ${owner}`) : stations.includes('NOBODY HOLDS IT'),
+        `tab ${tab}: hill ${row.id} ${owner ? `held by ${owner}` : 'held by nobody'}`);
       for (const [t, ms] of Object.entries(row.hold_ms || {})) {
         const pts = `${TID_NAME[t]} ${Math.round(ms / 1000)}`;   // Domination: points, so no "s" (brx1 2026-11-06)
         c.expect(new RegExp(`${pts}(?!\\d|S)`).test(stations), `tab ${tab}: hill ${row.id} shows ${pts} points, not seconds`);
