@@ -467,7 +467,7 @@ export class Hud {
           for (const el of this.hudEl.querySelectorAll('.bdteam .tm.koth[data-tid], .bdteam .tm.pts[data-tid]')) {
             const tid = el.dataset.tid; if (tid === '') continue;
             const ms = (holdByTid && holdByTid[tid]) || 0;
-            const b = el.querySelector('b'); const txt = dom ? String(domPoints(ms)) : mmss(ms);
+            const b = el.querySelector('b'); const txt = dom ? String(Math.max(domPoints(ms), +(el.dataset.mc || 0))) : mmss(ms);
             if (b && b.textContent !== txt) b.textContent = txt;
           }
         }

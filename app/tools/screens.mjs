@@ -4250,7 +4250,8 @@ for (const view of VIEWS) for (const skin of ['', '&night']) {
     const t0 = await tally(); const bc = await chipNums('.bdteam .tm.pts'); const t1 = await tally();
     await checkPoints('the TEAMS board', bc, t0, t1);
     must(bc.some(c => +c.txt > 0), 'the board points are all zero, so the check proves nothing: ' + JSON.stringify(bc));
-    must(/POINTS/.test(await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || '')), 'the board caption does not say POINTS');
+    const cap0 = await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || '');
+    must(/POINTS/.test(cap0) && /A LOWER BOUND/.test(cap0), 'with no points from MC the caption says POINTS and A LOWER BOUND: ' + cap0);
     await pg.click('.bdseg .sg:nth-child(2)'); await settled(pg);
     const head = await pg.evaluate(() => Array.from(document.querySelectorAll('.bdr.bdh span')).map(e => e.textContent.trim()));
     const kv = await pg.evaluate(() => Array.from(document.querySelectorAll('.bdlist .bdr:not(.bdh)')).map(r => Array.from(r.querySelectorAll('span.tab')).map(e => e.textContent.trim())));
@@ -4269,6 +4270,34 @@ for (const view of VIEWS) for (const skin of ['', '&night']) {
     await checkPoints('the DOWN strip', dchips, d0, d1);
     must(down.chips.length >= 2, 'the DOWN screen shows no team chips: ' + JSON.stringify(down));
     must(!down.koth && !down.chips.some(t => /\d:\d\d/.test(t)), 'a Domination DOWN chip reads a clock: ' + JSON.stringify(down));
+  });
+}
+
+// brx1 2026-11-07: the board is the GAME's score. A phone hears only the hills near it, so with MC's merged points in the
+// live push (`board.teams[].points`) the chips show max(MC's points, this phone's tally) and the caption drops A LOWER BOUND.
+for (const view of VIEWS) for (const skin of ['', '&night']) {
+  await step(`${view.name} live-dom-mcpoints${skin}: Domination's board and DOWN chips show MC's points when MC sends them, never less than this phone's tally`, async () => {
+    const pg = await open(view, 'live-dom-mcpoints', '&team=blue&foe=red' + skin);
+    for (let k = 0; k < 4; k++) { await pg.evaluate(() => window.brxDemo.points([[11, 0, 1, 100, 1], [12, 1, 1, 100, 0], [13, 0, 1, 100, 0]])); await pg.waitForTimeout(500); }
+    const env = await pg.evaluate(() => (document.querySelector('[data-env]') || { dataset: {} }).dataset.env || 'day');
+    must(env === (skin ? 'night' : 'day'), 'the skin did not apply: ' + env);
+    const local = await pg.evaluate(() => { const o = {}; for (const site of Object.values((window.brx.engine.state().possession || {}).by_site || {}))
+      for (const [tid, v] of Object.entries(site || {})) o[tid] = (o[tid] || 0) + (+v || 0); return o; });
+    must(Object.values(local).every(ms => ms < 95_000), 'the stage tally must stay under MC\'s points for this check: ' + JSON.stringify(local));
+    const chips = q => pg.evaluate(sel => Array.from(document.querySelectorAll(sel)).filter(e => e.offsetWidth).map(e => e.querySelector('b').textContent.trim()).sort(), q);
+    await pg.click('.clockplate'); await settled(pg);
+    let bc = await chips('.bdteam .tm.pts');
+    must(JSON.stringify(bc) === JSON.stringify(['140', '95']), 'the TEAMS board does not show MC\'s points 140 and 95: ' + JSON.stringify(bc));
+    const cap = await pg.evaluate(() => (document.querySelector('.bdcap') || {}).textContent || '');
+    must(/POINTS/.test(cap) && !/LOWER BOUND/.test(cap), 'with MC\'s points the caption is the game score, not a lower bound: ' + cap);
+    await pg.waitForTimeout(1500); bc = await chips('.bdteam .tm.pts');   // the per-tick patch keeps MC's number
+    must(JSON.stringify(bc) === JSON.stringify(['140', '95']), 'the per-tick patch dropped MC\'s points: ' + JSON.stringify(bc));
+    await pg.screenshot({ path: `${OUT}/${view.name}-live-dom-mcpoints${skin ? '-night' : ''}.png` });
+    await pg.click('.bdx'); await settled(pg);
+    await pg.evaluate(() => window.brxDemo.die()); await pg.waitForTimeout(700);
+    const dc = await chips('.tm.pts');
+    await pg.close();
+    must(JSON.stringify(dc) === JSON.stringify(['140', '95']), 'the DOWN chips do not show MC\'s points: ' + JSON.stringify(dc));
   });
 }
 
