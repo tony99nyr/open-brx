@@ -289,10 +289,16 @@ class Scorer:
                 continue
             if site not in self.station_possession_ms:
                 # Review round 3: an empty in-play base (`station_possession`) received after the moved whistle was not in
-                # play after all. It never scored, so it goes, and the site is not made station-scored with nothing (that
-                # silenced the phones' readings for it).
-                self.station_seen_ms.pop(site, None)
-                self.station_pre_end.pop(site, None)
+                # play after all. It never scored, and the site is not made station-scored with nothing (that silenced the
+                # phones' readings for it). Codex pass round 2: an earlier empty base, still in play, stays the base.
+                keep = [h for h in self.station_history.get(site, ()) if h[0] <= end]
+                if keep:
+                    self.station_seen_ms[site] = keep[-1][0]
+                    self.station_pre_end[site] = {}
+                    self.station_history[site] = keep[-1:]
+                else:
+                    for table in (self.station_seen_ms, self.station_pre_end, self.station_history):
+                        table.pop(site, None)
                 continue
             hist = self.station_history.get(site)
             latest = self.station_possession_ms.get(site, {})
@@ -1130,6 +1136,8 @@ class Scorer:
                     and (self.end_t is None or seen_ms <= self.end_t)):
                 self.station_seen_ms[site] = max(self.station_seen_ms.get(site, seen_ms), seen_ms)
                 self.station_pre_end.setdefault(site, {})
+                # Codex pass 2026-11-07: the base is a history row too, so a whistle a resume moves earlier still finds it
+                self._remember_reading(site, self.station_seen_ms[site], {})
             return "ignored"   # an early or all-filtered beat says nothing, so it must not silence the phones
         if seen_ms is None and site in self.station_unverified:
             return "ignored"   # milestone r4: a reading with no receipt time cannot verify a site the scorer could not
