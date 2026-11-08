@@ -348,11 +348,11 @@ export class Ammo {
     // at the count slot 1 held BEFORE its own write, while slot 1's window is open; a late echo of a disarm looks the same.
     // Read as news it booked a magazine of phantom rounds. So after a disarm (`noteDisarm`), a 0 for the slot while its
     // restore's window is open is stale: it books nothing, moves nothing and spends no echo (the window closes on the
-    // restore's real echo, or on its own). A 0 written over the disarm counts only with reserve 0 against a written reserve.
+    // restore's real echo, or on its own). Only with reserve 0 against a written reserve, so a real last round still counts.
     // Never in a `$WEAP`-bearing window: a frame above the count there is the reset echo (bug 3 r1 H1).
     const sa = this.acct[slot];
-    if (!lcd && echoing && sa && !sa.echoWeap && sa.prevDisarm && mag === 0
-      && (mag !== expect || (reserve === 0 && sa.res !== 0))) {
+    // Codex 2026-11-08: the disarm's 0 always carries reserve 0 (`$AMMO,<slot>,0,0`); a real last round keeps its reserve.
+    if (!lcd && echoing && sa && !sa.echoWeap && sa.prevDisarm && mag === 0 && reserve === 0 && sa.res != null && sa.res !== 0) {
       this.host.log(`slot ${slot} reported its count from before our write (${mag}): stale, booked nothing`, 'li');
       return;
     }
@@ -1086,7 +1086,8 @@ export class Ammo {
     const now = this.host.now();
     // Bench 2026-11-08 (SR11): was the gun disarmed on this slot (`noteDisarm`, outside the account) just before this write?
     // Then a 0 for the slot while this window is open is the disarm's, not a magazine emptied (`onAmmo`).
-    a.prevDisarm = !!(this.disarmNote && this.disarmNote[slot] != null);
+    // Codex 2026-11-08: a write while the restore's echo is still pending keeps the disarm's history.
+    a.prevDisarm = !!(this.disarmNote && this.disarmNote[slot] != null) || !!(a.prevDisarm && a.echoPending > 0 && this.host.now() < a.echoUntil);
     if (this.disarmNote) delete this.disarmNote[slot];
     a.mag = mag; a.fired = 0; a.at = 0; a.heard = false;   // `heard`: a frame for this slot since this write (`onAmmo`)
     if (res != null) a.res = res;   // the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well

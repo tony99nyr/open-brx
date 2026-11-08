@@ -2215,7 +2215,8 @@ class GunStage:
         a["fired"] = 0
         a["at"] = 0.0
         a["heard"] = False          # ammo.js `heard`: a frame for this slot since this write
-        a["prev_disarm"] = self._disarm_note.pop(slot, None) is not None   # ammo.js `prevDisarm` (bench 2026-11-08, SR11)
+        a["prev_disarm"] = (self._disarm_note.pop(slot, None) is not None   # ammo.js `prevDisarm` (bench 2026-11-08, SR11)
+                            or bool(a.get("prev_disarm") and a.get("echo_pending", 0) > 0 and now < a.get("echo_until", 0.0)))
         if res is not None:
             a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
         # ⚠ Writes are COUNTED, not just timed (polish review 2026-09-18). The verify can retry while the
@@ -5661,7 +5662,7 @@ class GunStage:
         # ammo.js `onAmmo` (bench 2026-11-08, SR11): after a disarm, a 0 for the slot while its restore's window is open is
         # the disarm's (the other write's answer, or a late echo): stale, booked nothing, no echo spent
         if (not lcd and echoing and acct is not None and not acct.get("echo_weap") and acct.get("prev_disarm") and mag == 0
-                and (mag != expect or (reserve == 0 and acct.get("res") not in (None, 0)))):
+                and reserve == 0 and acct.get("res") not in (None, 0)):   # ammo.js: a real last round keeps its reserve
             self._log(f"slot {slot} reported its count from before our write ({mag}): stale, booked nothing", "info")
             return
         w = 1 if slot == 0 else 0 if slot == 1 else None

@@ -752,6 +752,32 @@ test('swap/reload: a stunned ALT just before the restore keeps its swap and book
   assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
 });
 
+// Codex review 2026-11-08 on the disarm rule: a real last round right after a restore keeps its reserve and counts; a
+// second write while the restore is pending keeps the disarm's history.
+test('swap/reload: after a restore, a real last round counts and a later write keeps the disarm guard (Codex review)', async () => {
+  const h = harness('usp', 15), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  gun.wrote = () => {};   // the gun answers nothing here: the frames are the test's
+  // (1) restored to 1 round, then fired before the restore's echo: `0/200` is a real round
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 1, 200);
+  let shots = eng.shots;
+  eng.feedFrame('$BUT,0,1,*'); eng.feedFrame('$ALCD,0,100,1,200,0,*'); eng.feedFrame('$BUT,0,0,*');
+  assert.equal(eng.shots, shots + 1, 'the last round counts');
+  // CONTROL: the disarm's own `0/0` after a restore books nothing
+  await h.advance(2000);
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 5, 200);
+  shots = eng.shots;
+  eng.feedFrame('$ALCD,0,100,1,0,0,*');
+  assert.equal(eng.shots, shots, 'CONTROL: the disarm zero books nothing');
+  // (2) a second write while the restore is pending keeps the guard
+  await h.advance(2000);
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 1, 200); eng.am.acctWrote(1, 2, 199);
+  shots = eng.shots;
+  eng.feedFrame('$ALCD,0,100,1,0,0,*');
+  assert.equal(eng.shots, shots, 'the disarm zero after two writes books nothing');
+});
+
 // Codex review 2026-11-08: a reload begun before the stun is cut by the disarm, so it holds no ALT inside the stun.
 test('swap/reload: a reload begun before a stun does not hold ALT inside the stun (Codex review, F465)', async () => {
   const h = harness('usp', 11), { eng, gun } = h;
