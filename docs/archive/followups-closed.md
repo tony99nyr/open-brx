@@ -1018,3 +1018,5 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-11-02 **F646** fixed (brx3; Tony 2026-11-02 via brx1, option A): the Charge Rifle's charge 70 to 60 (tap 16) with the bench heat fit, `heat.per_tap` 14 to 2. `balance-decisions.md` 2026-11-02; Log 2026-11-02.
 - 2026-11-02 **F654** decided (brx3; Tony 2026-11-02 via brx1): no Sniper buff. Balance assumes a Sniper player always carries 2 weapons. `balance-decisions.md` 2026-11-02; Log 2026-11-02.
 - 2026-11-02 **F652** decided (brx3; Tony 2026-11-02 via brx1): no change. Body Armor and AP stay off under Shields, and the line that says so already shipped. `balance-decisions.md` 2026-11-02; Log 2026-11-02.
+- 2026-11-08 **F647** decided (brx3 recording; Tony at bench SR14): keep `X49` as the crit sound (`H21` is the shield hit). The sound the player heard on 2026-11-01 was probably the crit. Log 2026-11-08.
+- 2026-11-08 **F645** fixed (brx4's re-send; bench SR9 and SR10 on 0.4.37, brx3 recording): a `$GSET` re-send on a live gun keeps its pools, weapons and trigger, and an FFA after four try-outs takes hits both ways. Log 2026-11-08.

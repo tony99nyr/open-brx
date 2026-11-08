@@ -30,19 +30,15 @@ The local gate splits Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
 brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised; flashing needs a decision first.
 **Blocked:** nothing.
 ## Lane: brx3, releases and Mission Control
-**State (2026-10-27):** everything is landed or in the land queue:
-- **Balance 0.4.31:** `11107dbdf`.
-- **A83 and its gaps:** `a0eb2fe47` and `91bc983af`.
-- **F631 and F630:** `0ce0f4d70`. Both are closed on brx4's end-to-end runs.
-- **F633:** `3b2e20b2d`.
-- **Cloudflared:** `4021de4a5`.
-- **The NEXT bench sheet.**
-- **F634, both halves (A84):** MC names the held match on every assign, and the phone keeps its results only for
-  the match it ended.
+**State (2026-11-08):**
+- **The Codex pass on compile and balance wiring (2026-11-07):** `935b8f213`. An R2 pull after the timer is crisp, the
+  sim's burst rest runs from the release, and a kill on a burst's last round releases once. R2 stays off (Tony's call
+  after the HE bench).
+- **The Shotgun chain on the balance sheet:** `e1c0f937c` (wording only; no verdict moved).
+- **The 2026-11-08 bench close:** recorded (log 2026-11-08). F647 and F645 are closed. The ALT lockout, ALT ignored
+  while the trigger is held, the `$AMMO` write's answer and the refused melee swing are in `protocol/` and the manual.
 
-The doc-rot pass (spec and protocol lane) is in the land queue: the design briefs, API.md, the protocol references,
-and contracts.md folded into its body with §10 compacted to one line per older row.
-**Next:** none open in this lane. Wait for brx1.
+**Next:** the next sitting starts from `bench-plan.md` → NEXT GAME PREP → *Start here*. Otherwise wait for brx1.
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
