@@ -555,7 +555,8 @@ for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { nam
     gun.lever(); await h.settle(4000);
     assert.ok(h.logs.slice(mark).some(l => /the gun answered the slot 1 write with slot 0 at the same count/.test(l.m)),
       `the answer to the phone's slot 1 write is booked as its echo: ${h.logs.slice(mark).map(l => l.m).join(' | ')}`);
-    assert.equal(gun.slot(1).mag, Math.min(12, gun.slot(1).mag), 'setup: the phone reloaded the USP-S');
+    assert.equal(gun.slot(1).mag, 12, 'setup: the phone reloaded the USP-S to a full magazine');
+    assert.equal(eng.state().ammo, 12, 'the HUD shows the written magazine');
     eng.feedFrame(`$ALCD,${gun.slot(0).mag},100,0,362,0,*`); await h.advance(200);   // the bench frame again, no write open
     assert.ok(h.logs.slice(mark).some(l => /slot 0 reported at the same count/.test(l.m)), 'with no write open it is booked and moves nothing');
     assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
@@ -563,12 +564,44 @@ for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { nam
     assert.equal(eng.am.altPtr, 1, 'the ALT pointer stays on the USP-S');
     h.render();
     assert.equal(h.text('.wn .slot'), 'SECONDARY', 'the HUD names the weapon in hand');
-    const before = gun.slot(1).mag;
+    const before = gun.slot(1).mag, shots = eng.shots;
     assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.settle(300);
     assert.equal(eng.state().ammo, before - 1, 'the round is counted from the written magazine');
+    assert.equal(eng.shots, shots + 1, 'one round, one shot');
     assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
   });
 }
+
+// Codex review 2026-11-08 (SR5 layer 1): the answer books the written count only while no frame for the written slot has
+// come since the write. Two writes pending, a round reported on the written slot, then the late answer: the round stands.
+test('swap/reload: SR5, a late answer to our write never overwrites a newer count on the written slot (Codex review)', async () => {
+  const h = harness('usp', 5), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  const a0 = [eng.am.prevAmmo[0], eng.am.prevReserve[0]];
+  eng.am.acctWrote(1, 12, 200); eng.am.acctWrote(1, 12, 200);   // two writes in the air
+  eng.feedFrame('$ALCD,11,100,1,200,0,*');                       // a round on the written slot
+  assert.equal(eng.am.prevAmmo[1], 11, 'setup: the round is booked');
+  eng.feedFrame(`$ALCD,${a0[0]},100,0,${a0[1]},0,*`);             // the late answer, named for slot 0
+  assert.equal(eng.am.prevAmmo[1], 11, 'the round stands');
+  const shots = eng.shots;
+  eng.feedFrame('$ALCD,10,100,1,200,0,*');
+  assert.equal(eng.shots, shots + 1, 'the next round is one shot, not two');
+  assert.equal(eng.activeSlot, 1);
+});
+
+// Codex review 2026-11-08 (SR5 layer 2): an unchanged report is no reload progress, so it never stretches the ALT hold.
+test('swap/reload: SR5, a same-count report from the other slot leaves the ALT hold alone (Codex review)', async () => {
+  const h = harness('usp', 6), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  const until = h.now() + 100;
+  eng.am.gunOther = { slot: 0, until, life: eng._lifeSeq, energy: false };
+  eng.feedFrame(`$ALCD,${eng.am.prevAmmo[0]},100,0,${eng.am.prevReserve[0]},0,*`);
+  assert.ok(h.logs.some(l => /slot 0 reported at the same count/.test(l.m)), 'setup: the report took the same-count path');
+  assert.equal(eng.am.gunOther && eng.am.gunOther.until, until, 'the hold is not stretched');
+});
 
 // Codex review 2026-11-08: a round from the old slot proves the gun refused the press ("ALT not taken"). A refused press
 // starts no lockout on the gun, so the next press is a swap.

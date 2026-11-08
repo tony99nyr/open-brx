@@ -2210,6 +2210,7 @@ class GunStage:
         a["mag"] = mag
         a["fired"] = 0
         a["at"] = 0.0
+        a["heard"] = False          # ammo.js `heard`: a frame for this slot since this write
         if res is not None:
             a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
         # ⚠ Writes are COUNTED, not just timed (polish review 2026-09-18). The verify can retry while the
@@ -5606,6 +5607,8 @@ class GunStage:
         """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (ammo.js `onAmmo`): the
         mag coming BACK UP on the reloading slot ends the reload; the slot a ROUND came out of is the live one.
         `lcd`: the magazine on an `$LCD`, a report that books on its own slot and moves nothing (bug 3a)."""
+        if slot in self._shot_acct:
+            self._shot_acct[slot]["heard"] = True   # ammo.js `onAmmo`: a frame for this slot since its last write
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
         # locked reading can sit unrefreshed (see HEAT_STALE_S / `_heat_blocks_fire`).
@@ -5648,7 +5651,7 @@ class GunStage:
                 and not (self.switching and slot == self.switching.get("to"))):
             if reserve is not None:
                 self._prev_reserve[slot] = reserve
-            if wa.get("echo_expect") is not None:
+            if wa.get("echo_expect") is not None and wa.get("heard") is False:   # ammo.js: a newer count on that slot stands
                 self._prev_ammo[w] = wa["echo_expect"]
             wa["echo_pending"] -= 1
             if not wa["echo_pending"] > 0:
@@ -5758,8 +5761,7 @@ class GunStage:
         if (not own_echo and not lcd and prev is not None and mag == prev and slot < 2 and self.active_slot < 2
                 and slot != self.active_slot and not (self.switching and slot == self.switching.get("to"))):
             if reserve is not None:
-                self._prev_reserve[slot] = reserve
-            self._gun_other_gain(slot, mag, reserve)
+                self._prev_reserve[slot] = reserve   # no progress: the ALT hold stays as it is (ammo.js)
             self._log(f"slot {slot} reported at the same count; the trigger stays on slot {self.active_slot}", "info")
             return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer

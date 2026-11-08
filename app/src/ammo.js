@@ -280,6 +280,7 @@ export class Ammo {
    *  or the `$SPAWN` answered with, never a round, so it books the counts on its own slot and moves nothing (bug 3a). */
   onAmmo(mag, reserve, slot = 0, heat = null, lcd = false) {
     slot = Number.isFinite(slot) ? slot : 0;
+    if (this.acct[slot]) this.acct[slot].heard = true;
     this._meleeSwing(slot, lcd);   // F665: before the stun return below, because a stunned player can still swing
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
@@ -336,7 +337,8 @@ export class Ammo {
       && this.acct[w].echoPending > 0 && !(this.switching && slot === this.switching.to)) {
       const a = this.acct[w];
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
-      if (a.echoExpect != null) this.prevAmmo[w] = a.echoExpect;
+      // Codex 2026-11-08: only while no frame for the written slot has come since the write; a newer count there stands.
+      if (a.echoExpect != null && a.heard === false) this.prevAmmo[w] = a.echoExpect;
       a.echoPending--;
       if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; a.echoStale = null; }
       this.host.log(`the gun answered the slot ${w} write with slot ${slot} at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
@@ -458,8 +460,7 @@ export class Ammo {
     // that slot's counts and moves neither the trigger nor the ALT pointer. A swap's own target is left to the code below.
     if (!ownEcho && !lcd && prev != null && mag === prev && slot < 2 && this.host.activeSlot < 2 && slot !== this.host.activeSlot
       && !(this.switching && slot === this.switching.to)) {
-      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
-      this.gunOtherGain(slot, mag, reserve);
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;   // no progress: the ALT hold stays as it is (Codex 2026-11-08)
       this.host.log(`slot ${slot} reported at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
       return;
     }
@@ -1025,7 +1026,7 @@ export class Ammo {
   acctWrote(slot, mag, res, weap = false, resetMag = null) {
     const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0, echoWeap: false });
     const now = this.host.now();
-    a.mag = mag; a.fired = 0; a.at = 0;
+    a.mag = mag; a.fired = 0; a.at = 0; a.heard = false;   // `heard`: a frame for this slot since this write (`onAmmo`)
     if (res != null) a.res = res;   // the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
     // ⚠ Polish review 2026-09-18: writes are COUNTED, not just timed. The verify can retry while the first
     // write's frames are still in the air, and then there are two `$WEAP` resets coming back for one window.
