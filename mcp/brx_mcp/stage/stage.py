@@ -1149,6 +1149,9 @@ class GunStage:
         self._alt_evidence_pending = None
         self._alt_at: float | None = None   # ammo.js `altAt`/`altLock`: when the gun last TOOK an ALT, and its lockout (s)
         self._alt_lock = 0.0
+        self._dry_run: dict | None = None    # ammo.js `dryRun`: {slot, n} unanswered loaded pulls in a row on one slot
+        self._inferred: dict | None = None   # ammo.js `inferred`: {slot, life} a slot `_unanswered_pulls` moved to
+        self._shot_due_slot: int | None = None   # engine.js `_shotDueSlot`
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._charge_lock_fix: dict | None = None  # F226: engine.js `_chargeLockFix`, one phone reload per charge lock
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
@@ -2453,7 +2456,7 @@ class GunStage:
                      "echo_last_reset": a.get("echo_last_reset")}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
-        self._alt_ptr = 0; self._alt_evidence_pending = None; self._alt_at = None; self._alt_lock = 0.0
+        self._alt_ptr = 0; self._alt_evidence_pending = None; self._alt_at = None; self._alt_lock = 0.0; self._dry_run = None; self._inferred = None
 
     def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
         """ammo.js `publish`: the magazine and reserve the HUD shows. Split out so the echo path can
@@ -2588,11 +2591,14 @@ class GunStage:
         mag = seen if seen is not None else self._ammo_by_slot().get(self.active_slot)
         if not (mag and mag > 0):
             self._dry_pull()
+            # engine.js `_awaitShot` (Codex review 2026-11-08): a slot the dry-pull rule inferred stays owed
+            if self._inferred_slot(self.active_slot) and self._shot_due_at is None:
+                self._shot_due_at = self.now(); self._shot_due_slot = self.active_slot
             return                               # an empty magazine dry-fires: no shot is owed
         self._dry_pulls = 0                      # the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
         self._acct_press()   # F259: the earliest evidence a round is leaving -- the gun has not fired yet
         if self._shot_due_at is None:
-            self._shot_due_at = self.now()
+            self._shot_due_at = self.now(); self._shot_due_slot = self.active_slot
 
     def _fire_first_shown(self) -> bool:
         """ammo.js `fireFirstShown` (F542): PULL THE TRIGGER, THEN RELOAD while alive, in the life it was set, on another slot
@@ -2627,9 +2633,8 @@ class GunStage:
         if self._stand_down(("alive", "switching", "reloading", "stunned", "heat")):
             return   # the reason changed while it was due -- overheat is a real cause too
         self._no_fire_pulls += 1
-        if self._unanswered_pulls(self._no_fire_pulls):   # ammo.js `unansweredPulls` (bench 2026-11-08, SR5r)
-            self._no_fire_pulls = 0
-            return
+        if not self._stand_down(("ble",)) and self._shot_due_slot is not None:   # engine.js: evidence still in context; the count goes on
+            self._unanswered_pulls(self._shot_due_slot)   # ammo.js `unansweredPulls` (bench 2026-11-08, SR5r)
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
             self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
 
@@ -5612,6 +5617,8 @@ class GunStage:
         `lcd`: the magazine on an `$LCD`, a report that books on its own slot and moves nothing (bug 3a)."""
         if slot in self._shot_acct:
             self._shot_acct[slot]["heard"] = True   # ammo.js `onAmmo`: a frame for this slot since its last write
+        if not lcd and slot in (0, 1):   # ammo.js `onAmmo`: the gun spoke, so no dry-pull inference stands
+            self._dry_run = None; self._inferred = None
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
         # locked reading can sit unrefreshed (see HEAT_STALE_S / `_heat_blocks_fire`).
@@ -5913,7 +5920,7 @@ class GunStage:
         self._alt_ptr = target
         self._alt_evidence_pending = target
         self.switching = {"at": self.now(), "from": source, "to": target, "undo": (self._alt_at, self._alt_lock)}   # ammo.js `undo`
-        self._alt_at = self.switching["at"]; self._alt_lock = self._alt_lock_s(target)
+        self._alt_at = self.switching["at"]; self._alt_lock = self._alt_lock_s(target); self._dry_run = None; self._inferred = None
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
 
     def _alt_lock_s(self, to: int) -> float:
@@ -5923,12 +5930,23 @@ class GunStage:
         tok = row.split(",")[16] if row and len(row.split(",")) > 16 else ""
         return int(tok) / 1000 if tok.isdigit() and int(tok) > 0 else self._switch_window_s()
 
-    def _unanswered_pulls(self, n: int) -> bool:
+    def _inferred_slot(self, slot: int) -> bool:
+        """ammo.js `inferredSlot`. PURE."""
+        i = self._inferred
+        return bool(i and i["slot"] == slot and i["life"] == self._life_queued)
+
+    def _unanswered_pulls(self, slot: int) -> bool:
         """ammo.js `unansweredPulls` (bench 2026-11-08, SR5r): unanswered loaded pulls in a row while the other loadout slot
         is empty, with no swap, reload or gun reload of the other slot open, mean the gun holds that slot: the trigger and
         the ALT pointer move there (the HUD's GUN WAS ON card is `am.gunWasOn`, unmodelled here)."""
         a = self.active_slot
-        if n < self.DRY_PULLS_GUN_WAS or a not in (0, 1) or self._slot_count() < 2 or self.switching or self.reloading:
+        if slot != a:   # ammo.js: the evidence belongs to the slot the pulls were judged on
+            self._dry_run = None
+            return False
+        run = self._dry_run if self._dry_run and self._dry_run["slot"] == slot else {"slot": slot, "n": 0}
+        self._dry_run = run
+        run["n"] += 1
+        if run["n"] < self.DRY_PULLS_GUN_WAS or a not in (0, 1) or self._slot_count() < 2 or self.switching or self.reloading:
             return False
         g = self._gun_other
         if g and g["life"] == self._life_queued and self.now() < g["until"]:
@@ -5941,6 +5959,8 @@ class GunStage:
         self._log(f"gun was on slot {o} (dry pulls): the HUD showed slot {a}", "info")
         self.active_slot = o
         self._alt_ptr = o; self._alt_evidence_pending = None
+        self._dry_run = None
+        self._inferred = {"slot": o, "life": self._life_queued}   # ammo.js: an inference, so pulls on it stay owed
         self._recoil_arm("gun was on (dry pulls)")
         self._show_slot_ammo(o)
         return True

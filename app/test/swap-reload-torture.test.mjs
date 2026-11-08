@@ -651,6 +651,24 @@ test('swap/reload: two unanswered pulls on a loaded HUD slot, with the other slo
   h.render();
   assert.equal(h.text('.wn .slot'), 'SECONDARY');
   assert.equal(h.text('#mag'), '00', 'the empty magazine is on screen');
+  // Codex review: the slot is an inference, so a pull on it stays owed, and a gun that really is broken still reaches no_fire
+  assert.equal(gun.trigger(), false, 'setup: a third dry pull'); await h.advance(1700);
+  assert.ok(h.logs.some(l => /gun not firing: 3 trigger pulls/.test(l.m)), 'the stale-pool check is still reachable, and the cure reads the gun');
+});
+
+// Codex review 2026-11-08: dry-pull evidence belongs to the slot the pulls were judged on. One unanswered pull on slot 0,
+// then the HUD moves to slot 1 with no word from the gun: one more unanswered pull there is not two in a row.
+test('swap/reload: SR5r, an unanswered pull on another slot does not add to the run (Codex review)', async () => {
+  const h = harness('usp', 10), { eng } = h;
+  await h.start();
+  eng.am.prevAmmo[0] = 0; eng.am.prevAmmo[1] = 5; delete eng.am.acct[0]; delete eng.am.acct[1];   // slot 0 empty, by the gun's last word
+  eng.activeSlot = 0;
+  assert.equal(eng.am.unansweredPulls(0), false, 'one pull on slot 0');
+  eng.activeSlot = 1;   // a swap the gun never reported
+  assert.equal(eng.am.unansweredPulls(1), false, 'one pull on slot 1 is the start of a new run');
+  assert.equal(eng.activeSlot, 1);
+  assert.equal(eng.am.unansweredPulls(1), true, 'CONTROL: a second pull on slot 1 is the run');
+  assert.equal(eng.activeSlot, 0);
 });
 
 // CONTROL for SR5r: the other slot has rounds, so unanswered pulls prove nothing about the slot (a stale pool, F208).
