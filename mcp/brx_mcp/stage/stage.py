@@ -2627,6 +2627,9 @@ class GunStage:
         if self._stand_down(("alive", "switching", "reloading", "stunned", "heat")):
             return   # the reason changed while it was due -- overheat is a real cause too
         self._no_fire_pulls += 1
+        if self._unanswered_pulls(self._no_fire_pulls):   # ammo.js `unansweredPulls` (bench 2026-11-08, SR5r)
+            self._no_fire_pulls = 0
+            return
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
             self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
 
@@ -5879,6 +5882,11 @@ class GunStage:
         if self._alt_at is not None and self.now() - self._alt_at < self._alt_lock:
             self._log(f"ALT ignored by the gun: inside the swap lockout ({round((self.now() - self._alt_at) * 1000)} ms after the swap it took)", "info")
             return
+        # ammo.js `altPressed` (bench 2026-11-08, B2): ALT pressed while the trigger is held is refused by the gun
+        td = self.held.get(0)
+        if td is not None and self.now() - td < self.TRIGGER_HELD_MAX_S:
+            self._log("ALT ignored by the gun: trigger held", "info")
+            return
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
@@ -5914,6 +5922,28 @@ class GunStage:
         row = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{to},")), None)
         tok = row.split(",")[16] if row and len(row.split(",")) > 16 else ""
         return int(tok) / 1000 if tok.isdigit() and int(tok) > 0 else self._switch_window_s()
+
+    def _unanswered_pulls(self, n: int) -> bool:
+        """ammo.js `unansweredPulls` (bench 2026-11-08, SR5r): unanswered loaded pulls in a row while the other loadout slot
+        is empty, with no swap, reload or gun reload of the other slot open, mean the gun holds that slot: the trigger and
+        the ALT pointer move there (the HUD's GUN WAS ON card is `am.gunWasOn`, unmodelled here)."""
+        a = self.active_slot
+        if n < self.DRY_PULLS_GUN_WAS or a not in (0, 1) or self._slot_count() < 2 or self.switching or self.reloading:
+            return False
+        g = self._gun_other
+        if g and g["life"] == self._life_queued and self.now() < g["until"]:
+            return False
+        o = 0 if a else 1
+        live = self._acct_live(o)
+        om = live if live is not None else self._prev_ammo.get(o)
+        if om != 0:
+            return False
+        self._log(f"gun was on slot {o} (dry pulls): the HUD showed slot {a}", "info")
+        self.active_slot = o
+        self._alt_ptr = o; self._alt_evidence_pending = None
+        self._recoil_arm("gun was on (dry pulls)")
+        self._show_slot_ammo(o)
+        return True
 
     def _alt_cycle(self) -> list[int]:
         """ammo.js `altCycle`: pickup slots stay outside the loadout ALT cycle."""
@@ -7032,6 +7062,8 @@ class GunStage:
 
     # F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs ~1.22-1.29x the catalog reload_ms (AR 1701 vs
     # 1400, burst 2160 vs 1700, charge 3220 vs 2500), so the ceiling is flat-OR-proportional, whichever is larger.
+    TRIGGER_HELD_MAX_S = 15.0   # ammo.js TRIGGER_HELD_MAX_MS: a lost trigger release must not block ALT for ever
+    DRY_PULLS_GUN_WAS = 2       # ammo.js DRY_PULLS_GUN_WAS (bench 2026-11-08, SR5r)
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
     FIRE_FIRST_SHOW_S = 3.0  # ammo.js FIRE_FIRST_SHOW_MS: how long the ammo block says PULL THE TRIGGER, THEN RELOAD
     GUN_WAS_LEVER_S = 6.0  # ammo.js GUN_WAS_LEVER_MS: a rise this soon after a lever is that lever's reload

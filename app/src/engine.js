@@ -630,6 +630,7 @@ function ammoHost(e) {
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id), perkEffects: id => e.perkEffects(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
+    get triggerDownAt() { return e.held[BTN_TRIGGER] != null ? e.held[BTN_TRIGGER] : null; },   // bench 2026-11-08 (B2): ALT with the trigger held
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
@@ -6247,6 +6248,7 @@ export class Engine {
     this._shotDueAt = null;
     if (this._standDown(['alive', 'switching', 'reloading', 'stunned', 'heat'], now)) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
     this._noFirePulls++;
+    if (this.am.unansweredPulls(this._noFirePulls)) { this._noFirePulls = 0; return; }   // bench 2026-11-08 (SR5r): the gun held the other, empty slot
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
   /** F264: ASK the gun where it stands. ONE `$LIFE,0,0,0,*`, 13 bytes, answered immediately with `$HP` whether
