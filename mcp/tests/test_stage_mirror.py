@@ -1635,7 +1635,9 @@ def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
         st.alcd(mag=6, reserve=12, slot=1)
         assert st.switching is None and st.last_switch_s == 0.2, (st.switching, st.last_switch_s)
         assert st.active_slot == 1 and st._alt_ptr == 1
-        # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever
+        # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever (pressed after the
+        # gun's ALT lockout from the last swap, `_alt_lock_s`: bench 2026-11-08)
+        clock.advance(st._alt_lock_s(1))
         st._on_rx("$BUT,1,1,*")
         assert st.switching
         clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
@@ -1782,6 +1784,9 @@ def test_f379_the_confirming_round_moves_the_alt_pointer_after_an_old_slot_repor
         st._prev_ammo[1] = 6
         st.alcd(mag=5, reserve=24, slot=1)    # the confirming round
         assert (st.active_slot, st._alt_ptr) == (1, 1), (st.active_slot, st._alt_ptr)
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching is None, "inside the gun's ALT lockout (bench 2026-11-08): the gun ignores this press"
+        clock.advance(st._alt_lock_s(1))
         st._on_rx("$BUT,1,1,*")
         assert st.switching and st.switching["to"] == 0, st.switching
     asyncio.run(go())
@@ -2124,7 +2129,7 @@ _AMMO_PAIRS = {
     "am.noteGunOther": "_note_gun_other", "am.gunOtherGain": "_gun_other_gain", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull", "am.fireFirstShown": "_fire_first_shown",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one

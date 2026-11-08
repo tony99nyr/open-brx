@@ -5,8 +5,9 @@
 // This is a seeded random torture run. It drives the REAL engine (src/engine.js) and a real Hud (on the fake DOM) on a
 // mocked clock, against a two-slot gun MODEL written here. The model follows the bench facts the engine is built on:
 //   - ALT toggles slot 0 and slot 1, and the gun ignores ALT while it is itself reloading (bench 2026-10-02, F650 M1).
-//   - The gun ignores ALT for 0.78 x swap_ms after an ALT it took, and an ignored press does not restart that lockout
-//     (bench 2026-11-08, SR1 on 0.4.37, ammo.js `altLockMs`). The trigger stays refused for the whole swap_ms.
+//   - After an ALT it took, the gun ignores ALT for the `$WEAP` tok15 of the slot it moved to, and an ignored press does not
+//     restart that lockout (bench 2026-11-08, SR1 on 0.4.37, ammo.js `altLockMs`). The trigger stays refused for the larger
+//     tok15 of the two slots (bench 2026-09-04).
 //   - The lever reloads the LAST-FIRED slot, not the slot in hand (F542, bench 2026-11-01); after a spawn that is slot 0.
 //     The reload takes the weapon's `$WEAP` reload time (token 18) times 1.2 (F27: hardware runs 1.22x to 1.29x slower).
 //   - `$AMMO` sets a slot's magazine and reserve and the gun echoes it as `$ALCD` 40 ms later (fake.py, fakegun.js).
@@ -66,7 +67,7 @@ class GunModel {
     this.slots = {};                 // slot -> {mag, res, clip, carried, t40, fireMs, swapMs, reloadMs}
     this.active = 0; this.latch = 0; this.spawned = false;
     this.hp = 0; this.armor = 0; this.shield = 0; this.max = [45, 70, 0];
-    this.triggerLive = false; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
+    this.triggerLive = false; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.altLock = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
     this.rounds = 0;                 // rounds fired while alive in the match: `eng.shots` must equal this
     this.pending = 0;                // replies still in flight
     this.chain = new Set();          // slots whose lever loads one shell per reload time (the Shotgun)
@@ -132,8 +133,8 @@ class GunModel {
   alt() {
     this.feed('$BUT,1,1,*');
     let took = false;
-    if (this.live && !this.reload && this.now() - this.altTookAt >= Math.round(0.78 * Math.max(this.slot(0).swapMs, this.slot(1).swapMs))) {
-      took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now();
+    if (this.live && !this.reload && this.now() - this.altTookAt >= this.altLock) {
+      took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now(); this.altLock = this.slot(this.active).swapMs;
       this.swapUntil = this.now() + Math.max(this.slot(0).swapMs, this.slot(1).swapMs);   // bench 2026-09-04: the larger slot wins
     }
     this.later(80, () => this.feed('$BUT,1,0,*'));
@@ -449,34 +450,98 @@ test('swap/reload: lever on a full weapon in hand, ALT while the gun reloads the
   assert.deepEqual(h.logs.filter(l => l.m.startsWith('gun was on slot')).map(l => l.m), [], 'no desync on the next round');
 });
 
-// Bench 2026-11-08 (SR1, 0.4.37, Tactix-E20D, assault rifle + USP-S, swap_ms 850): every ALT sequence of the capture, at its
-// exact press times, then the trigger at its exact time. `end` is the slot the gun's next `$ALCD` named. The phone used to
+// Bench 2026-11-08 (SR1, 0.4.37, Tactix-E20D, assault rifle + USP-S, swap_ms 850): every ALT run of the SR1b and SR1c
+// captures, at the exact press times, then the trigger. `end` is the slot the gun's next `$ALCD` named. The phone used to
 // toggle on every press: ten presses about 2 a second showed slot 1 while the gun fired slot 0, and a double press restarted
-// the swap clock, so the shot 832 ms after the ignored press read as "ALT not taken by the gun".
+// the swap clock, so the shot 832 ms after the ignored press read as "ALT not taken by the gun". The gun ignores ALT for the
+// tok15 of the slot it moved to (AR 850, USP-S 500; ammo.js `altLockMs`). The `jitter` run is the one press the rule
+// misses: the gun took a press 457 ms after a swap to the USP-S, 43 ms inside the lockout, while 466 and 488 were ignored.
 const SR1 = [
-  { presses: [0], shot: 1845, end: 1 },
-  { presses: [0, 400, 1010, 1522, 2090, 2702, 3256, 3724, 4338, 4848], shot: 7363, end: 0 },
-  { presses: [0, 129, 323, 507, 719, 908, 1119, 1319, 1509], shot: 4050, end: 1 },
-  { presses: [0], shot: 1515, end: 0 }, { presses: [0], shot: 1145, end: 1 }, { presses: [0], shot: 1302, end: 0 },
-  { presses: [0], shot: 1454, end: 1 }, { presses: [0], shot: 1483, end: 0 }, { presses: [0], shot: 1351, end: 1 },
-  { presses: [0, 140], shot: 972, end: 0 }, { presses: [0, 147, 177], shot: 971, end: 1 },
-  { presses: [0, 173], shot: 1189, end: 0 }, { presses: [0, 163], shot: 926, end: 1 }, { presses: [0, 193], shot: 1062, end: 0 },
+  { start: 0, presses: [0], shot: 1845, end: 1 },
+  { start: 1, presses: [0, 400, 1010, 1522, 2090, 2702, 3256, 3724, 4338, 4848], shot: 7363, end: 0 },
+  { start: 0, presses: [0, 129, 323, 507, 719, 908, 1119, 1319, 1509], shot: 4050, end: 1 },
+  { start: 1, presses: [0], shot: 1515, end: 0 }, { start: 0, presses: [0], shot: 1145, end: 1 },
+  { start: 1, presses: [0], shot: 1302, end: 0 }, { start: 0, presses: [0], shot: 1454, end: 1 },
+  { start: 1, presses: [0], shot: 1483, end: 0 }, { start: 0, presses: [0], shot: 1351, end: 1 },
+  { start: 1, presses: [0, 140], shot: 972, end: 0 }, { start: 0, presses: [0, 147, 177], shot: 971, end: 1 },
+  { start: 1, presses: [0, 173], shot: 1189, end: 0 }, { start: 0, presses: [0, 163], shot: 926, end: 1 },
+  { start: 1, presses: [0, 193], shot: 1062, end: 0 },
+  // SR1c: double presses at varied spacing, each followed by a shot
+  { start: 1, presses: [0, 652], shot: 1506, end: 0 },
+  { start: 0, presses: [0, 729], shot: 1507, end: 0 },
+  { start: 0, presses: [0, 183], shot: 969, end: 1 },
+  { start: 1, presses: [0, 422], shot: 1368, end: 0 },
+  { start: 0, presses: [0, 420], shot: 1194, end: 1 },
+  { start: 1, presses: [0, 599], shot: 1475, end: 0 },
+  { start: 0, presses: [0, 733], shot: 1553, end: 0 },
+  { start: 0, presses: [0, 685], shot: 1509, end: 0 },
+  { start: 0, presses: [0, 217], shot: 978, end: 1 },
+  { start: 1, presses: [0, 671], shot: 1480, end: 0 },
+  { start: 0, presses: [0, 575], shot: 1539, end: 0 },
+  { start: 0, presses: [0, 713], shot: 1420, end: 0 },
+  { start: 0, presses: [0, 457], shot: 1250, end: 0, jitter: true },
+  { start: 0, presses: [0, 242], shot: 1026, end: 1 },
+  { start: 1, presses: [0, 497], shot: 1307, end: 0 },
+  { start: 0, presses: [0, 537], shot: 1109, end: 0 },
+  { start: 0, presses: [0, 657], shot: 1255, end: 0 },
+  { start: 0, presses: [0, 357], shot: 1386, end: 1 },
+  { start: 1, presses: [0], shot: 1499, end: 0 },
+  { start: 0, presses: [0, 258], shot: 2338, end: 1 },
+  { start: 1, presses: [0, 278], shot: 1490, end: 0 },
+  { start: 0, presses: [0, 284], shot: 1074, end: 1 },
+  { start: 1, presses: [0, 320], shot: 1377, end: 0 },
+  { start: 0, presses: [0, 488], shot: 1264, end: 1 },
+  { start: 1, presses: [0, 591], shot: 1394, end: 0 },
+  { start: 0, presses: [0, 733], shot: 1272, end: 0 },
+  { start: 0, presses: [0, 503], shot: 1476, end: 0 },
+  { start: 0, presses: [0, 466], shot: 1259, end: 1 },
+  { start: 1, presses: [0, 435], shot: 1464, end: 0 },
+  { start: 0, presses: [0, 215], shot: 1149, end: 1 },
+  { start: 1, presses: [0, 590], shot: 1203, end: 0 },
+  { start: 0, presses: [0, 377], shot: 1002, end: 1 },
+  { start: 1, presses: [0, 827], shot: 1670, end: 0 },
+  { start: 0, presses: [0, 811], shot: 1800, end: 0 },
 ];
 test('swap/reload: the SR1 bench presses replayed, the gun ignores ALT inside the swap lockout (bench 2026-11-08)', async () => {
   const h = harness('usp', 1), { eng, gun } = h;
   await h.start();
+  let ignored = 0;
   for (const [k, run] of SR1.entries()) {
+    if (run.jitter) continue;
+    if (gun.active !== run.start) { gun.alt(); await h.advance(1500); gun.trigger(); await h.settle(300); }
+    if (gun.slot(gun.active).mag <= 2) { gun.lever(); await h.settle(4000); }   // the slot in hand fired last: the lever reloads it
+    assert.equal(eng.activeSlot, run.start, `setup: run ${k} starts on slot ${run.start}`);
     let t = 0;
-    for (const p of run.presses) { await h.advance(p - t); t = p; gun.alt(); }
+    for (const p of run.presses) { await h.advance(p - t); t = p; if (!gun.alt()) ignored++; }
     await h.advance(run.shot - t);
+    while (h.now() < gun.swapUntil) await h.advance(20);   // the AR fires once its draw ends (the trigger was held)
     assert.equal(gun.active, run.end, `setup: run ${k}, the model gun ends where the bench gun did`);
-    assert.equal(eng.activeSlot, run.end, `run ${k} (${run.presses.length} presses): the HUD shows the slot the gun is on`);
     assert.ok(gun.trigger(), `setup: run ${k}, the gun fires`);
     await h.settle(300);
+    assert.equal(eng.activeSlot, run.end, `run ${k} (${run.presses.join('/')} ms): the HUD shows the slot the gun fired`);
   }
   const bad = h.logs.filter(l => /^gun was on slot|ALT not taken by the gun/.test(l.m)).map(l => l.m);
   assert.deepEqual(bad, [], 'no desync and no "ALT not taken" verdict');
-  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, 5 + 6 + 1 + 2 + 1 + 1 + 1, 'every press the gun ignored is logged (5 of 10, 6 of 9, then the doubles and the triple)');
+  assert.ok(ignored >= 30, `setup: the runs hold presses the gun ignored: ${ignored}`);
+  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, ignored, 'the phone ignores exactly the presses the gun ignored');
+});
+
+// Codex review 2026-11-08: a round from the old slot proves the gun refused the press ("ALT not taken"). A refused press
+// starts no lockout on the gun, so the next press is a swap.
+test('swap/reload: a press the gun refused starts no ALT lockout (Codex review 2026-11-08)', async () => {
+  const h = harness('usp', 2), { eng, gun } = h;
+  await h.start();
+  gun.trigger(); await h.settle(300);
+  eng.feedFrame('$BUT,1,1,*'); eng.feedFrame('$BUT,1,0,*');   // the gun misses this press (no swap on the gun)
+  assert.ok(eng.am.switching, 'setup: the phone opened a swap');
+  await h.advance(300);   // past ALT_LATE_ROUND_MS (250), inside the USP-S lockout (500)
+  assert.ok(gun.trigger(), 'setup: the gun fires the old slot');
+  await h.advance(50);
+  assert.ok(h.logs.some(l => /ALT not taken by the gun/.test(l.m)), 'setup: the round proved the press was refused');
+  assert.ok(gun.alt(), 'setup: the gun takes the next press');
+  assert.ok(!h.logs.some(l => /inside the swap lockout/.test(l.m)), 'the phone takes it too');
+  await h.settle(900);
+  assert.equal(eng.activeSlot, 1);
 });
 
 test('swap/reload torture: ALT pressed while the lever reload runs, both loadouts', async () => {

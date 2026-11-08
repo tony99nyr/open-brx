@@ -1,6 +1,6 @@
 {
   "name": "ammo-alt-old-slot-report",
-  "why": "F379: a delayed report from the slot ALT is leaving (a round that left before the swap) neither confirms the swap nor moves it; it is evidence for the gun's ALT pointer. A same-count report from the old slot is no evidence. Then the new slot's shot confirms the swap, and the next ALT goes where the pointer says.",
+  "why": "F379: a delayed report from the slot ALT is leaving (a round that left before the swap) neither confirms the swap nor moves it; it is evidence for the gun's ALT pointer. A same-count report from the old slot is no evidence. Then the new slot's shot confirms the swap, and the next ALT goes where the pointer says. A second ALT 200 ms after a swap the gun took is inside its lockout, so the gun and the phone ignore it (bench 2026-11-08).",
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
   "runners": ["engine","stage"],
   "setup": {
@@ -145,14 +145,14 @@
     },
     {
       "at": "second_alt_inside_window",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":0,"window":850,"from":1,"to":0,"last":400},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":200,"window":850,"from":0,"to":1,"last":400},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "settled",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":400},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":400},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":3410,"ms":400,"leftMs":0}},
       "facts": [],
       "reports": [],
       "writes": []
