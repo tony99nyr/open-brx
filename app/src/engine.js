@@ -630,6 +630,7 @@ function ammoHost(e) {
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id), perkEffects: id => e.perkEffects(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
+    get triggerDownAt() { return e.held[BTN_TRIGGER] != null ? e.held[BTN_TRIGGER] : null; },   // bench 2026-11-08 (B2): ALT with the trigger held
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
@@ -715,7 +716,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _shotDueSlot: 'pool watchdog (the slot of the owed pull)', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -6236,10 +6237,15 @@ export class Engine {
     // answer.
     const seen = this.am.acctLive(this.activeSlot);
     const mag = seen != null ? seen : this.am.ammoBySlot()[this.activeSlot];
-    if (!(mag > 0)) { this.am.dryPull(); return; }
+    if (!(mag > 0)) {
+      this.am.dryPull();
+      // Codex review 2026-11-08: a slot the dry-pull rule inferred stays owed, so a broken gun still reaches `no_fire` and the cure
+      if (this.am.inferredSlot(this.activeSlot) && this._shotDueAt == null) { this._shotDueAt = this.now(); this._shotDueSlot = this.activeSlot; }
+      return;
+    }
     this.am.endDrySpell();   // the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
     this.am.acctPress();   // F259: the earliest evidence a round is leaving -- the gun has not fired yet
-    if (this._shotDueAt == null) this._shotDueAt = this.now();
+    if (this._shotDueAt == null) { this._shotDueAt = this.now(); this._shotDueSlot = this.activeSlot; }
   }
   /** F208: called from tick(). A press with no pool report TRIGGER_NO_FIRE_MS later counts as unanswered. */
   _noFireTick(now) {
@@ -6247,6 +6253,9 @@ export class Engine {
     this._shotDueAt = null;
     if (this._standDown(['alive', 'switching', 'reloading', 'stunned', 'heat'], now)) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
     this._noFirePulls++;
+    // bench 2026-11-08 (SR5r): the gun may hold the other, empty slot. Codex review: only on evidence still in context (the
+    // link up, no resync or reconcile), and the stale-pool count goes on, so a broken gun still reaches the cure.
+    if (this.bleUp && !this.resync && !this.rc.active) this.am.unansweredPulls(this._shotDueSlot);
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
   /** F264: ASK the gun where it stands. ONE `$LIFE,0,0,0,*`, 13 bytes, answered immediately with `$HP` whether

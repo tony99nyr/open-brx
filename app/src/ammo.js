@@ -52,6 +52,11 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 /** F208: a trigger press on a live, loaded gun gets its `$ALCD` inside ~5 ms (2026-08-26 burst rifle capture).
  *  With no pool report 1500 ms after the press, the pull went unanswered (the same window resync uses). */
 export const TRIGGER_NO_FIRE_MS = 1500;
+// Bench 2026-11-08 (B2): the gun refuses ALT pressed while the trigger is held. A release lost on the link (F663: 7 of
+// 1068) must not block ALT for ever, so a press held longer than this no longer counts as held.
+export const TRIGGER_HELD_MAX_MS = 15000;
+// Bench 2026-11-08 (SR5r): unanswered loaded pulls in a row that prove the gun holds the other, empty loadout slot.
+export const DRY_PULLS_GUN_WAS = 2;
 // F259 (bench 2026-09-18): how long the node owns a slot's magazine after it writes one, when the gun has
 // not yet echoed the number back. A `$WEAP` + `$AMMO` pair makes the gun send `$ALCD <clip>` then
 // `$ALCD <n>`, and that second frame is a decrement of `clip - n` that is NOT fire. The window normally
@@ -190,6 +195,8 @@ export class Ammo {
     this.altEvidencePending = null;    // the ALT target awaiting gun evidence (0 is a real slot: test != null)
     this.altAt = null;                 // when the gun last TOOK an ALT, and for how long it then ignores ALT (`altLockMs`, bench 2026-11-08)
     this.altLock = 0;
+    this.dryRun = null;                // {slot, n}: unanswered loaded pulls in a row on one slot (`unansweredPulls`)
+    this.inferred = null;              // {slot, life}: a slot `unansweredPulls` moved to, until the gun speaks
     this.dryPulls = 0;              // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms, life}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
@@ -212,7 +219,7 @@ export class Ammo {
     for (const [slot, a] of Object.entries(this.acct)) {
       if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap, echoLastReset: a.echoLastReset != null ? a.echoLastReset : null };
     }
-    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null; this.altAt = null; this.altLock = 0;
+    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null; this.altAt = null; this.altLock = 0; this.dryRun = null; this.inferred = null;
   }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
@@ -285,6 +292,7 @@ export class Ammo {
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
     // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
+    if (!lcd && (slot === 0 || slot === 1)) { this.dryRun = null; this.inferred = null; }   // the gun spoke: no inference stands
     this.noteHeat(slot, heat);
     this.heatLockFrame(slot, heat, this.host.stunned || this.host.rc.disarmed ? null : this.prevAmmo[slot], mag);   // F164: a disarm echo's drop is not "it fired", so it must not end a lockout
     // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
@@ -812,9 +820,9 @@ export class Ammo {
   cancelSwap() { this.switching = null; }
   /** The gun's own slot report moved the trigger off the slot the phone believed (field 2026-10-17, report E10): the
    *  ACTIVE card says GUN WAS ON, so the weapon does not change on the HUD with no reason given. */
-  gunWasOn(slot) {
+  gunWasOn(slot, why = null) {
     // F650: the one line that says the HUD and the gun disagreed. The game 2026-11-01 logs could not count these.
-    this.host.log(`gun was on slot ${slot}: the HUD showed slot ${this.host.activeSlot}`, 'li');
+    this.host.log(`gun was on slot ${slot}${why ? ` (${why})` : ''}: the HUD showed slot ${this.host.activeSlot}`, 'li');
     this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot, gunWas: true } });
   }
   /** A phone equip put `slot` on the trigger (powerup-player.js): it ends a reload, closes a swap, moves the trigger
@@ -865,6 +873,10 @@ export class Ammo {
     // while a phone that counted 10 showed slot 1. Only a press the gun takes (the end of this method) moves `altAt`.
     if (this.altAt != null && this.host.now() - this.altAt < this.altLock) {
       this.host.log(`ALT ignored by the gun: inside the swap lockout (${this.host.now() - this.altAt} ms after the swap it took)`, 'li'); return; }
+    // Bench 2026-11-08 (B2): ALT pressed while the trigger is held (`$BUT,0,1` with no `$BUT,0,0` yet) is refused: the gun
+    // stayed on the empty USP-S while a phone that took the press showed the AR.
+    const td = this.host.triggerDownAt;
+    if (td != null && this.host.now() - td < TRIGGER_HELD_MAX_MS) { this.host.log('ALT ignored by the gun: trigger held', 'li'); return; }
     // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
@@ -900,10 +912,40 @@ export class Ammo {
     this.altEvidencePending = to;
     // `undo`: a round that proves the gun did not take this press (`onAmmo`) puts the gun's lockout back as it was.
     this.switching = { at: this.host.now(), from, to, undo: { at: this.altAt, lock: this.altLock } };
-    this.altAt = this.switching.at; this.altLock = this.altLockMs(to);
+    this.altAt = this.switching.at; this.altLock = this.altLockMs(to); this.dryRun = null; this.inferred = null;
     this.host.changed();
   }
 
+  /** Bench 2026-11-08 (SR5r): `n` loaded pulls in a row that the gun did not answer (engine.js `_noFireTick`, which has
+   *  already stood down for a swap, a reload, a stun and heat). If the other loadout slot is empty and no gun reload of it is
+   *  running, the gun holds that slot: an ALT it refused for a reason not modelled here left the HUD on a loaded weapon
+   *  while every pull clicked empty, and no round would ever come to correct it. Moves the trigger and the ALT pointer, with
+   *  GUN WAS ON. `slot`: the slot the unanswered pull was judged on. Returns true when it moved them. */
+  unansweredPulls(slot) {
+    const a = this.host.activeSlot;
+    // Codex review 2026-11-08: the evidence belongs to the slot the pulls were judged on; a swap or an equip since starts over
+    if (slot !== a) { this.dryRun = null; return false; }
+    const run = this.dryRun = this.dryRun && this.dryRun.slot === slot ? this.dryRun : { slot, n: 0 };
+    run.n++;
+    if (run.n < DRY_PULLS_GUN_WAS || !(a === 0 || a === 1) || this.host.slotCount() < 2 || this.switching || this.reloading) return false;
+    const g = this.gunOther;
+    if (g && g.life === this.host.lifeSeq && this.host.now() < g.until) return false;   // the gun refuses the trigger while it reloads the other slot
+    const o = a ? 0 : 1, live = this.acctLive(o), om = live != null ? live : this.prevAmmo[o];
+    if (om !== 0) return false;
+    this.gunWasOn(o, 'dry pulls');
+    this.host.setActiveSlot(o);
+    this.altPtr = o; this.altEvidencePending = null;
+    this.dryRun = null;
+    // Codex review 2026-11-08: an inference, not the gun's word. Pulls on it stay owed (engine.js `_awaitShot`), so a gun that
+    // is really broken still reaches the stale-pool check and the cure.
+    this.inferred = { slot: o, life: this.host.lifeSeq };
+    this.host.recoilArm('gun was on (dry pulls)');
+    this.showSlot(o);
+    this.host.changed();
+    return true;
+  }
+  /** Is `slot` a slot `unansweredPulls` moved to this life, with no word from the gun since? PURE. */
+  inferredSlot(slot) { const i = this.inferred; return !!(i && i.slot === slot && i.life === this.host.lifeSeq); }
   /** The ALT cycle as the gun runs it right now (for an ASSUMED swap and the HUD's SWITCHING target). A heavy is never in
    *  it: the phone puts the heavy on the trigger with its `$WEAP` and never rewrites ALT (Tony, 2026-09-24). */
   altCycle() { return this.host.slotCount() >= 2 ? [0, 1] : [0]; }
