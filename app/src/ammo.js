@@ -499,7 +499,7 @@ export class Ammo {
     // at the ALT press (F379) is the old binding's, and books quietly.
     const bound = this.host.activeSlot, sw = this.switching;
     const inFlight = !!(sw && !sw.pu && slot === sw.from && this.host.now() - sw.at < ALT_LATE_ROUND_MS);
-    if (moves && prev != null && mag < prev && slot !== bound && (slot < 2 || this.host.pu.isHeldSlot(slot)) && !inFlight && puBack == null) {
+    if (moves && prev != null && mag < prev && slot !== bound && (slot < 2 || this.host.pu.isHeldSlot(slot)) && !inFlight && puBack == null && !lostPuEquip) {   // a lost heavy equip is the pickup's own repair (F436)
       this.host.log(`gun fired slot ${slot}, bound ${bound}`, 'le');
       if (this.host.now() - this.rebindAt >= REBIND_MIN_GAP_MS) { this.rebindAt = this.host.now(); this.host.rebind(`gun fired slot ${slot}, bound ${bound}`); }
     }
@@ -511,7 +511,11 @@ export class Ammo {
     }
     // Tony 2026-11-08: the trigger stays where the phone bound it. Another slot's report books its counts and stays off the
     // ammo block (F394).
-    if (slot !== this.host.activeSlot) { if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve; return; }
+    if (slot !== this.host.activeSlot) {
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      this.host.pu.repairLostEquip(lostPuEquip, slot, mag);   // F436: the heavy's equip re-sent, while the same item is held
+      return;
+    }
     // S42/F259: recoil is stepped by `_acctSpent`, off the ACCOUNT above, never off this raw decrement.
     // The node's own `$WEAP` reset and `$AMMO` restore arrive here as a 26-round drop that no player fired
     // (bench 2026-09-18), and reading the frame delta booked it as a burst -- see the echo-window note.
@@ -685,17 +689,21 @@ export class Ammo {
   noteGunOther(why = 'lever on a full slot') {
     const ls = this.lastShot, a = this.host.activeSlot;
     this.gunOther = null;
-    if (!(a === 0 || a === 1) || !(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== a)) return;
-    const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
+    if (!(a === 0 || a === 1) || this.host.slotCount() < 2) return;
+    // The slot the gun's lever goes to: the slot fired last, or slot 0 when that is unknown (after a spawn the gun is on
+    // slot 0), as `leverGoesElsewhere` reads it.
+    const known = !!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2), other = known ? ls.slot : 0;
+    if (other === a) return;
+    const cap = this.ammoBySlot()[other], mag = this.prevAmmo[other], res = this.prevReserve[other];
     if ((cap && mag != null && mag >= cap) || res === 0) return;
-    const ms = this.reloadMsOf(ls.slot);
+    const ms = this.reloadMsOf(other);
     // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
-    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[other];
     const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
     // Bench 2026-11-08 (lv1-8): the lever cannot be unbound, and it refills the LAST-FIRED slot whatever the trigger is bound
     // to. That refill is free ammo for a weapon the player is not holding, so the phone writes it back (`gunOtherGain`).
-    this.gunOther = { slot: ls.slot, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy, mag, res };
-    this.host.log(`${why} ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
+    this.gunOther = { slot: other, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy, mag, res };
+    this.host.log(`${why} ${a}: the gun reloads slot ${other}, the slot fired last`, 'li');
   }
   /** Codex pass 2026-11-07 r3: a rise on the slot the gun reloads under the ALT hold. A full slot or an empty reserve ends
    *  the hold; a chain's shell (a shotgun) keeps it for one more shell, since the gun ignores ALT until the chain ends. */
@@ -833,6 +841,8 @@ export class Ammo {
     if (this.lastShot) this.lastShot = { ...this.lastShot, afterEquip: true };
     this.switching = null; this.bindDue = null; this.host.setActiveSlot(slot); this.host.clearPull();
     if (slot === 0 || slot === 1) this.lastLoadout = slot;
+    // A pickup's `$WEAP` puts the slot on the trigger by itself (bench 2026-09-24, with `$BMAP,0,0` in the head), so no `$BMAP`
+    // is written here; a later cure or relink binds this slot (engine.js `_bindRows`).
     this.publish(slot, mag, res);
   }
   /** F542: is PULL THE TRIGGER, THEN RELOAD on the ammo block? The lever reloaded the slot that fired last, not the weapon

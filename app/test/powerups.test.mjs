@@ -595,18 +595,17 @@ test('F381: a zero-magazine loadout is saved at its real count for the switch-ba
   assert.deepEqual(h.eng.pu.held.back, { slot: 0, mag: 0, res: 48 });
 });
 
-test('F379: after ALT to the secondary and a rocket switch-back, the next ALT follows the gun pointer', () => {
+test('F379: after ALT to the secondary and a rocket switch-back, the next ALT goes to the other loadout slot', () => {
   const h = armed();
-  h.eng.switchWindowMs = () => 10_000;
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng.activeSlot, 0, 'setup: the phone waits for an assumed swap');
-  assert.equal(h.eng.am.altPtr, 1, 'the accepted ALT press moves the gun pointer');
-  assert.equal(h.eng.state().switchTo, 1, 'SWITCHING shows the pointer target');
+  assert.equal(h.eng.activeSlot, 1, 'Tony 2026-11-08: the phone swaps at the press');
+  assert.equal(h.eng.am.lastLoadout, 1);
+  h.adv(1000);   // past the swap's window: the trigger is bound to slot 1
   h.take(4); h.away(); h.eng.pu.held.left = 1; h.fire(2, 0);
-  h.adv(h.eng.switchWindowMs());
-  assert.equal(h.eng.activeSlot, 0, 'the empty rocket switched the trigger back to the primary');
+  h.adv(h.eng.switchWindowMs() + 100);
+  assert.equal(h.eng.activeSlot, 1, 'the empty rocket switched the trigger back to the secondary it came from');
   h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().switchTo, 0, 'BMAP advanced from slot 1 to slot 0 despite the trigger switch-back');
+  assert.equal(h.eng.state().switchTo, 0, 'the next ALT goes to the AR');
 });
 
 test('F381: a repeat pickup of the same weapon adds charges without a replacement card', () => {
@@ -705,38 +704,13 @@ test('F394: an echo of a slot that is not on the trigger never changes the numbe
   assert.deepEqual(shown(h), { slot: 1, ammo: 6, reserve: 48, mag: 6 });
 });
 
-test('F394 r2: a real shot on the ALT target confirms the swap, even inside the echo window a relink opened', () => {
-  const h = armed();
-  h.eng.am.acctWrote(1, 6, 24);   // `rc.end()` re-arms both loadout slots and opens both echo windows
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.fire(1, 5, 24);
-  assert.equal(h.eng.switching, null, 'the shot confirmed the swap');
-  assert.ok(h.eng.am.lastSwitchMs != null, 'and timed it');
-  assert.deepEqual(shown(h), { slot: 1, ammo: 5, reserve: 24, mag: 6 });
-});
 
-test('F379: a delayed old-slot report cannot settle ALT evidence, and reconcile keeps the pointer', () => {
-  const h = armed();
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng.am.altPtr, 1);
-  assert.notEqual(h.eng.am.altEvidencePending, null);
-  h.eng.reconciling = { since: h.eng.now(), ammo: h.eng.am.liveAmmo() };   // a relink's window, then its end
-  h.eng.rc.end();
-  assert.equal(h.eng.am.altPtr, 1);
-});
 
 test('F379: ALT pointer persists across an app restart', () => {
-  const h = armed(); h.eng.am.altPtr = 1; h.eng._save(); h.restart();
-  assert.equal(h.eng.am.altPtr, 1);
+  const h = armed(); h.eng.am.lastLoadout = 1; h.eng._save(); h.restart();
+  assert.equal(h.eng.am.lastLoadout, 1);
 });
 
-test('head rewrite resets ALT pointer and pending evidence', () => {
-  const h = armed(); h.eng.am.altPtr = 1; h.eng.am.altEvidencePending = 1;
-  h.eng._writeHead('test head');
-  assert.equal(h.eng.am.altPtr, 0);
-  assert.equal(h.eng.am.altEvidencePending, null);
-});
 
 test('a weapon grant clears a pending switch-back retry', () => {
   const h = armed(); h.take(4); h.away(); h.eng.pu.end('empty');
@@ -846,9 +820,9 @@ test('F400: the trigger grant sets the switch card (SWITCHING, ALT\'s own from/t
   h.adv(h.eng.switchWindowMs() + 50);
   assert.equal(h.eng.switching, null, 'ALT\'s own window has passed with no echo');
   assert.equal(h.eng.moment && h.eng.moment.kind, 'switched');
-  assert.deepEqual(h.eng.moment.data, { slot: 2, assumed: true, pu: true });
+  assert.deepEqual(h.eng.moment.data, { slot: 2, pu: true });
   assert.equal(h.eng.activeSlot, 2, 'the equip itself was never in doubt -- only the CARD waited');
-  assert.equal(h.eng.am.altPtr, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
+  assert.equal(h.eng.am.lastLoadout, 0, 'F400: a pickup slot (2) never becomes the gun\'s own ALT cycle pointer');
 });
 
 test('F400 r1: the gun\'s echo of the equip does not cut the pickup card short: it runs ALT\'s full window', () => {
@@ -874,11 +848,11 @@ test('F400 r1: SELECT acts while a pickup card is up (the gun can already fire)'
   assert.ok(h.since(n).some(f => f === WEAP0), 'SELECT put the player\'s own weapon back');
 });
 
-test('F400 r1: a pickup card closing never moves the gun\'s ALT pointer', () => {
-  const h = armed(); h.eng.am.altPtr = 1; h.take(4); h.adv(500); h.select();
+test('F400 r1: a pickup card closing leaves ALT starting from the slot it went back to', () => {
+  const h = armed(); h.eng.am.lastLoadout = 1; h.take(4); h.adv(500); h.select();
   h.adv(h.eng.switchWindowMs() + 100);
   assert.equal(h.eng.activeSlot, 0, 'setup: SELECT went back to slot 0');
-  assert.equal(h.eng.am.altPtr, 1, 'a phone equip moves the trigger, not ALT');
+  assert.equal(h.eng.am.lastLoadout, 0, 'Tony 2026-11-08: the phone owns ALT, so the switch-back to slot 0 is where the next ALT starts');
 });
 test('F400: a same-weapon stack re-equip shows the card too, from and to the same slot', () => {
   const h = armed(); h.take(4); h.eng.pu.held.left = 1;
@@ -1004,7 +978,7 @@ test('ALT off the heavy keeps its charges, and SELECT brings it back with them',
   let s = h.eng.state();
   assert.ok(s.powerup.held, 'ALT does not end the item'); assert.equal(s.powerup.held.left, 1); assert.equal(s.powerup.held.active, false);
   assert.equal(s.activeSlot, 1);
-  const n = h.mark(); h.adv(500); h.select();
+  h.adv(700); const n = h.mark(); h.select();   // past the swap's window (and its bind): SELECT waits for a pending swap
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*']);
   s = h.eng.state();
   assert.deepEqual(s.powerup.held.back, { slot: 1, mag: 5, res: 24 }, 'the switch-back target is now the secondary the trigger was on');
@@ -1250,7 +1224,7 @@ test('r2 M2: ALT off the heavy then a reload $ALCD (no shot) moves the trigger: 
   assert.equal(s.activeSlot, 1, 'setup: the ALT swap is confirmed on slot 1');
   assert.equal(s.powerup.held.active, false, 'the trigger is on the secondary now');
   assert.notEqual(s.weapon, 'ROCKETS');
-  const n = h.mark(); h.adv(500); h.select();
+  h.adv(700); const n = h.mark(); h.select();   // past the swap's window (and its bind): SELECT waits for a pending swap
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*'], 'SELECT equips the heavy, it does not "switch back"');
 });
 
@@ -1300,22 +1274,7 @@ test('r3 low: a round from slot 1 clears a pending switch-back', () => {
   assert.equal(h.eng.pu.backPending, null);
 });
 
-test('F379 r2 M: an ALT target of slot 0 is settled by the gun (0 is a real slot, not "nothing pending")', () => {
-  const h = armed(); h.eng.am.altPtr = 1;
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng.am.altEvidencePending, 0, 'setup: the pointer went 1 -> 0');
-  h.frame('$ALCD,30,190,0,0,0,*');
-  assert.equal(h.eng.am.altEvidencePending, null);
-  assert.equal(h.eng.am.altPtr, 0);
-});
 
-test('F379 r2 M: a phone equip ends the ALT evidence window', () => {
-  const h = armed();
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  assert.equal(h.eng.am.altEvidencePending, 1, 'setup: ALT pressed');
-  h.take(4);
-  assert.equal(h.eng.am.altEvidencePending, null, 'the heavy on the trigger is no ALT answer');
-});
 
 test('r3 M2: a protection-off that failed every retry books the life as write-lost, so MC offers RESYNC GUN', async () => {
   const h = harness({ stations: [{ id: 6, kind: 'powerup', item: OVERSHIELD }] });
@@ -1979,7 +1938,7 @@ test('polish 2026-10-03: a self-kill while holding a heavy keeps the heavy on th
 // sent `$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`, `$ALCD,2,100,2,1,0` (slot 0, then 4, then 2). A healthy spawned gun's
 // `$QUERY` reads slot 0 (`$LCD,45,0,105,0,52,360`). The echo of the node's own write is bookkeeping: it must never move
 // the trigger, the ALT pointer or an ALT swap. ----
-const ptr = h => ({ slot: h.eng.activeSlot, ptr: h.eng.am.altPtr });
+const ptr = h => ({ slot: h.eng.activeSlot, ptr: h.eng.am.lastLoadout });
 
 test('bug 3a: the gun\'s echo of the spawn burst\'s own `$AMMO` rows leaves the trigger and the ALT pointer on slot 0', () => {
   const h = harness({ ...ROCKET_GAME, echo: true });   // the spawn writes slot 0, slot 1 and the empty pickup slot 2
@@ -2019,31 +1978,7 @@ test('bug 3a: `$LCD` books its magazine and reserve on its OWN slot token, and n
   assert.deepEqual(shown(h), { slot: 0, ammo: 29, reserve: 190, mag: 32 }, 'a slot-0 `$LCD` still books on the AR');
 });
 
-test('bug 3b: the echo of the node\'s own write never confirms an ALT swap; the next real shot does', () => {
-  const h = armed();
-  h.eng.am.acctWrote(1, 6, 24);   // a re-arm has just written slot 1
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.adv(50); h.frame('$ALCD,6,100,1,24,0,*');   // ...and its echo lands inside the ALT window
-  assert.ok(h.eng.am.switching, 'the swap is still open: an echo is not a shot');
-  assert.equal(h.eng.am.lastSwitchMs, null, 'and nothing was timed');
-  assert.equal(h.eng.activeSlot, 0, 'the trigger has not moved yet');
-  h.adv(100); h.fire(1, 5, 24);
-  assert.equal(h.eng.am.switching, null, 'the shot confirmed it');
-  assert.equal(h.eng.am.lastSwitchMs, 150, 'timed from ALT to the shot');
-  assert.deepEqual(ptr(h), { slot: 1, ptr: 1 });
-});
 
-test('F379: the confirming shot on the ALT target moves the pointer, even after an old-slot report cleared the evidence', () => {
-  const h = armed();
-  h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
-  h.fire(0, 29, 190);   // an old-slot round inside the swap
-  h.adv(200); h.fire(1, 5, 24);   // the confirming slot-1 round
-  assert.deepEqual(ptr(h), { slot: 1, ptr: 1 }, 'the pointer follows the confirmed swap');
-  h.adv(700); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');   // 900 ms after the swap: past the gun's ALT lockout (850, ammo.js `altLockMs`)
-  assert.equal(h.eng.am.switching.to, 0, 'the next ALT goes back to the AR, as the gun does');
-  h.adv(3000);
-  assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the assumed swap lands on the AR');
-});
 
 // ---- Bug 3 echo family r1 (polish round 1, 2026-10-04) ----
 test('bug 3 r1 H1: a lost restore echo cannot eat a refill and the rounds after it (an `$AMMO`-only window)', () => {
@@ -2089,7 +2024,7 @@ test('bug 3 r1 M1: the echo window runs from when the write LANDS, so a slow rev
   return Promise.resolve().then(() => {
     h.adv(50);
     h.frame('$ALCD,32,100,0,192,0,*').frame('$ALCD,6,100,1,24,0,*').frame('$ALCD,0,100,2,0,0,*');
-    assert.deepEqual({ slot: h.eng.activeSlot, ptr: h.eng.am.altPtr }, { slot: 0, ptr: 0 });
+    assert.deepEqual({ slot: h.eng.activeSlot, ptr: h.eng.am.lastLoadout }, { slot: 0, ptr: 0 });
     assert.equal(h.eng.state().ammo, 32);
   });
 });
@@ -2137,20 +2072,21 @@ test('bug 3 r2 M2: a write that no longer owns the window cannot restart it (the
   assert.ok(h.eng.am.acct[0].echoUntil > until, 'CONTROL: the owner restarts it');
 });
 
-test('bench C.23 B: ALT then lever at 0.7 s settles the gun reload on slot 0, and the swap still ends on slot 1', () => {
+test('bench C.23 B under the phone swap: ALT then lever at 0.7 s reloads slot 1, and the gun\'s refill of slot 0 is put back', () => {
   const h = harness();
   h.frame('$ALCD,3,100,1,24,0,*');
   h.frame('$ALCD,8,100,0,192,0,*');
   h.frame('$BUT,1,1,*').frame('$BUT,1,0,*'); h.adv(700); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 1, 'Tony 2026-11-08: the phone swapped at the press');
+  const n = h.writes.length;
   h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true);
-  h.adv(200); h.eng.tick();                         // the 850 ms window closes: the swap is assumed
+  assert.equal(h.eng.am.reloading.slot, 1, 'the lever reloads the weapon in hand');
+  h.adv(200); h.eng.tick();
+  h.frame('$ALCD,32,100,0,155,0,*');                // the gun's lever refilled slot 0, its latch after the spawn
+  assert.ok(h.writes.slice(n).includes('$AMMO,0,8,192,1,*'), 'bench lv1-8: the free refill of slot 0 is put back');
+  assert.equal(h.eng.am.prevAmmo[0], 8);
   assert.equal(h.eng.state().activeSlot, 1);
-  h.frame('$ALCD,32,100,0,155,0,*');
-  assert.equal(h.eng.state().reloading, false);
-  assert.equal(h.eng.state().reloadOutcome.slot, 0);
-  assert.equal(h.eng.state().reloadOutcome.ok, true);
-  assert.equal(h.eng.state().activeSlot, 1, 'bench 2026-10-17: the old slot reloads AND the swap completes');
 });
 
 test('bench C.23: a round on another slot ends the reload screen', () => {
