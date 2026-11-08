@@ -5865,13 +5865,8 @@ class GunStage:
         sit there to its deadline and book a verdict about a weapon the player is no longer holding."""
         if not (self.spawned and self.alive):
             return
-        # A20/F15, the same reason `_reload_pulled` refuses (ammo.js `altPressed`): a STUNNED gun is
-        # disarmed and `_on_ammo` drops every $ALCD in the window, so a swap started here can never be
-        # confirmed -- it runs to the switch window and then books an ASSUMED swap, leaving `active_slot`
-        # on a weapon the player is not holding for the rest of the life.
-        if self.stunned:
-            self._log("ALT ignored -- the gun is stunned", "info")
-            return
+        # ammo.js `altPressed` (F465, by design): a stunned gun still swaps on ALT (the stun disarms both slots), and the
+        # swap is assumed at the window's end since no round can confirm it inside the stun
         if self._slot_count() < 2:
             # Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98
             # (inert) UNLESS the player runs easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose

@@ -681,6 +681,27 @@ test('swap/reload: unanswered pulls with rounds in both slots move nothing (SR5r
   assert.ok(!h.logs.some(l => /dry pulls/.test(l.m)), 'no correction');
 });
 
+// F465 (bench 2026-10-16, Tony: by design): a stunned gun still swaps on ALT, under the same lockout. The phone ignored the
+// press, so after the stun the HUD named the old weapon and the next round logged `gun was on slot`.
+test('swap/reload: ALT while stunned swaps, as the gun does, under the same lockout (F465)', async () => {
+  const h = harness('usp', 4), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
+  eng._stun(3000); await h.advance(200);
+  assert.ok(eng.stunned, 'setup: stunned');
+  assert.ok(gun.alt(), 'setup: the stunned gun takes ALT');
+  await h.advance(200);
+  assert.equal(gun.alt(), false, 'setup: the gun ignores a press inside the lockout');
+  await h.settle(4000);
+  assert.ok(!eng.stunned, 'setup: the stun is over');
+  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
+  assert.equal(eng.activeSlot, 1, 'the HUD follows the swap made while stunned');
+  assert.equal(eng.am.altPtr, 1, 'the ALT pointer follows it too');
+  assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.settle(300);
+  assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
+  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, 1, 'the second press is ignored, as the gun does');
+});
+
 // Codex review 2026-11-08: a round from the old slot proves the gun refused the press ("ALT not taken"). A refused press
 // starts no lockout on the gun, so the next press is a swap.
 test('swap/reload: a press the gun refused starts no ALT lockout (Codex review 2026-11-08)', async () => {

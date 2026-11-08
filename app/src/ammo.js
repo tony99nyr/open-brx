@@ -850,11 +850,10 @@ export class Ammo {
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
   altPressed() {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial) return;
-    // A20/F15, the same reason ammo.js `reloadPulled` refuses: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and
-    // `onAmmo` drops every $ALCD for the whole window, so a SWITCHING takeover opened here has nothing
-    // that can confirm it — it runs to `switchWindowMs()` and then books an ASSUMED swap, leaving
-    // `activeSlot` on a weapon the player is not holding for the rest of the life (review 2026-09-12).
-    if (this.host.stunned) { this.host.log('ALT ignored — the gun is stunned', 'li'); return; }
+    // F465 (bench 2026-10-16, by design): a STUNNED gun still swaps on ALT. The stun disarms both slots, so the swap does not
+    // escape it. No round can confirm the swap inside the stun (`onAmmo` drops every frame there), so `switchTick` assumes it
+    // at the window's end, under the same lockout as any ALT. Ignoring the press here (A20/F15) left the HUD and the ALT
+    // pointer on the old slot while the gun held the other one.
     if (this.host.slotCount() < 2) {
       // Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98 (inert)
       // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose

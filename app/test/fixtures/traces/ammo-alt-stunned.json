@@ -1,6 +1,6 @@
 {
   "name": "ammo-alt-stunned",
-  "why": "F15: a stunned gun ignores ALT and the reload lever (no takeover the gun could never confirm); an `$ALCD` inside the stun is not fire, though its heat token is kept; at the expiry the live counts are restored and ALT works again.",
+  "why": "F15: a stunned gun ignores the reload lever (no takeover the gun could never confirm), but it swaps on ALT (F465, by design), so the phone assumes that swap at the window's end and the first round after the stun confirms it; an `$ALCD` inside the stun is not fire, though its heat token is kept; at the expiry the live counts are restored and ALT works again.",
   "source": "app/src/engine.js ammo, reload and ALT (engine split (b) coverage)",
   "runners": ["engine","stage"],
   "setup": {
@@ -24,7 +24,6 @@
     {"check":"stun_echo_dropped"},
     {"advance_ms":2250},
     {"check":"restored"},
-    {"frames":["$BUT,1,1,*","$BUT,1,0,*"]},
     {"advance_ms":300},
     {"frames":["$BUT,0,1,*","$ALCD,5,100,1,24,0,*","$BUT,0,0,*"]},
     {"check":"alt_after_stun"}
@@ -115,21 +114,21 @@
     },
     {
       "at": "alt_and_reload_ignored",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "stun_echo_dropped",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":7,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":7,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "restored",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":7,"overheating":false,"shown":false,"ever":true},"shotCooldown":null},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
@@ -139,7 +138,7 @@
     },
     {
       "at": "alt_after_stun",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":300},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":5560,"ms":400,"leftMs":400}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":5560,"ms":400,"leftMs":400}},
       "facts": [],
       "reports": [],
       "writes": []

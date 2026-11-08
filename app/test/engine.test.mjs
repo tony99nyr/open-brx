@@ -7847,24 +7847,24 @@ test('review: reloading / reloadTotalMs / reloadGained / reloadOverrun are alway
 
 // ── 2026-09-12 round-2 review of the same diff ───────────────────────────────────────────────────
 
-test('A20: an ALT press while the gun is STUNNED raises no swap — nothing could ever confirm one', () => {
-  // `am.reloadPulled` refused a stunned gun; `am.altPressed` did not, and it is the same hole. `am.onAmmo` drops
-  // every $ALCD in the window, so a SWITCHING takeover opened here runs to `switchWindowMs()` and then books
-  // an ASSUMED swap — leaving `activeSlot` on a weapon the player never drew for the rest of the life.
+test('F465: an ALT press while the gun is STUNNED is a swap, as the gun makes it (A20 reversed)', () => {
+  // A20 ignored the press, on the belief that a disarmed gun does not swap. The bench (F465, 2026-10-16, by design) showed
+  // it does: the stun disarms both slots, so the swap does not escape it. No round can confirm it inside the stun, so the
+  // phone assumes it at the window's end, and the HUD names the weapon the player now holds.
   const h = twoWeapons(stunHarness());
   h.frame('$ALCD,10,100,0,150,0,*');
   h.frame('$HIR,4,8,19,2,15,0,0,*');            // the EMP word — every live slot disarmed
   assert.ok(h.eng.stunned, 'stunned');
-  h.frame('$BUT,1,1,*');                        // the player thumbs ALT at a gun that cannot fire
-  assert.equal(h.eng.state().switching, false, 'no SWITCHING takeover over a disarmed gun');
-  assert.equal(h.eng.switching, null);
+  h.frame('$BUT,1,1,*');                        // the player thumbs ALT at a disarmed gun, which swaps
+  assert.equal(h.eng.state().switching, true, 'the swap opens over a disarmed gun');
   h.adv(h.eng.switchWindowMs() + 100); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 0, 'and no assumed swap books a weapon the player is not holding');
-  // CONTROL: the same press, once the stun is over, switches
+  assert.equal(h.eng.state().activeSlot, 1, 'and is assumed at the window\'s end');
+  // and after the stun, the next press swaps back
   h.adv(10100); h.eng.tick();
   assert.equal(h.eng.stunned, null, 'stun over');
   h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().switching, true, 'CONTROL: the same press switches once the gun is re-armed');
+  assert.equal(h.eng.state().switching, true, 'the next press swaps');
+  assert.equal(h.eng.am.switching.to, 0, 'back to slot 0');
 });
 
 test('a BLE drop also forgets the LAST button edge — no link, no completing it', () => {

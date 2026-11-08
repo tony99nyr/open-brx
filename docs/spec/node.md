@@ -163,7 +163,8 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   earlier one can be in flight from before the press, so it closes nothing. The gun ignores ALT during a reload, so the
   node does too. After `$SPAWN` the node also ignores ALT until the first trigger pull after the life's burst reached
   the gun: the gun ignores a phone equip there (F436 bench), and ALT there is unbenched (field report bench #2).
-  A stunned gun ignores ALT. After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap
+  A stunned gun still swaps on ALT (F465, by design), so the node opens the swap and assumes it at the window's end.
+  After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap
   moved to, and an ignored press does not restart that lockout (bench 2026-11-08): the node ignores those presses too
   (`altLockMs`). The gun answers an `$AMMO` write to one loadout slot with an `$ALCD` naming the slot fired last at its own
   counts (bench 2026-11-08): the node books it as that write's echo, and a report of the other slot at an unchanged count
