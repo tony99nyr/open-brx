@@ -88,7 +88,7 @@
         "$SIR,4,0,,28,0,0,1,,*",
         "$SIR,15,0,,28,0,0,1,,*",
         "$BMAP,0,98,,,,,*",
-        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,1,98,,,,,*",
         "$BMAP,2,97,,,,,*",
         "$BMAP,3,98,,,,,*",
         "$BMAP,4,98,,,,,*",
@@ -157,35 +157,40 @@
     },
     {
       "at": "heavy_round",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":1,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":2,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123100,"ms":1000,"leftMs":1000},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":1,"charges":2,"active":true,"back":{"slot":0,"mag":30,"res":192},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":null,"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":1,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":2,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123100,"ms":1000,"leftMs":1000},"moment":{"kind":"switched","data":{"slot":2,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":1,"charges":2,"active":true,"back":{"slot":0,"mag":30,"res":192},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "heavy_dry",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"switching":true,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":2,"to":0,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":1000},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":{"tries":0,"equipped":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"switching":true,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":2,"to":0,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":1000},"moment":{"kind":"switched","data":{"slot":2,"pu":true}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":120050},"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":{"tries":0,"equipped":false}}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "alt_cancels_switch_back",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"switching":true,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":900},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":true,"reloading":false,"mag":6,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":2,"to":1,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":2,"pu":true}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*"
+      ]
     },
     {
       "at": "alt_assumed_no_switch_back",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":1,"pu":false}},"held":null,"powerup":{"hint":{"kind":"switched_back","name":"ROCKETS","to":"AR","color":null},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":{"name":"ROCKETS","to":"AR","at":123400},"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,1,,,,,*"
+      ]
     },
     {
       "at": "second_heavy",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":0},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"switching":false,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":0},"moment":{"kind":"switched","data":{"slot":2,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
       "facts": [{"type":"pickup","match_id":"m1","station_id":4,"item_kind":"weapon","weapon_id":"rocket_launcher","next_spawn_in_s":111}],
       "reports": [],
       "writes": [
@@ -209,24 +214,33 @@
     },
     {
       "at": "alt_with_heavy",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"switching":true,"reloading":false,"mag":2,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":1,"to":0,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":{"at":123400,"ms":1000,"leftMs":0},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":2,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":0,"window":850,"from":2,"to":0,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":2,"pu":true}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":false,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":0,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D02,,,,*"
+      ]
     },
     {
       "at": "assumed_off_heavy",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":false,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":0,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":30,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":0,"pu":false}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":false,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":0,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":{"name":"ROCKETS","color":"#ff7a1a","station":4,"at":240000},"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,0,,,,,*"
+      ]
     },
     {
       "at": "assumed_back",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":false,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":1,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":4,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":1100,"why":"swapped","at":122100}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":null,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"switched","data":{"slot":1,"pu":false}},"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":false,"back":{"slot":1,"mag":6,"res":48},"base":2,"trig":1,"suspect":false,"unconfirmed":false},"powerup":{"hint":{"kind":"granted","name":"ROCKETS","color":"#ff7a1a","itemKind":"weapon","charges":2},"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":241100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*",
+        "$BMAP,0,1,,,,,*"
+      ]
     }
   ]
 }

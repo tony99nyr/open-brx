@@ -70,7 +70,7 @@
         "$SIR,4,0,,28,0,0,1,,*",
         "$SIR,15,0,,28,0,0,1,,*",
         "$BMAP,0,98,,,,,*",
-        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,1,98,,,,,*",
         "$BMAP,2,97,,,,,*",
         "$BMAP,3,98,,,,,*",
         "$BMAP,4,98,,,,,*",
@@ -113,31 +113,45 @@
     },
     {
       "at": "on slot 1, full",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":1,"pu":false}}},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*",
+        "$BMAP,0,1,,,,,*"
+      ]
     },
     {
       "at": "ALT ignored while the gun reloads slot 0",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":0,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D02,,,,*",
+        "$BMAP,0,0,,,,,*"
+      ]
     },
     {
       "at": "slot 0 refilled, trigger still on slot 1",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":0,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$AMMO,0,29,192,1,*"
+      ]
     },
     {
       "at": "ALT swaps again",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":189,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":1,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*",
+        "$BMAP,0,1,,,,,*"
+      ]
     }
   ]
 }
