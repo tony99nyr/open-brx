@@ -272,10 +272,10 @@ Proven on v4.32 (Tactix-9498, Tactix-E20D). The same facts, with context, are in
 - The `$LCD` token 4 is the slot of the last shot; an ALT with no shot does not change it (bench 2026-10-17). The `$QUERY` reply's `$LCD` token 3 is the live shield.
 - `$GLED` token 6 has no native blink.
 - The gun swaps on ALT while disarmed and emits the melee word (protocol 13) while disarmed. It ignores ALT during a reload, and sometimes ignores the first slot change after `$SPAWN`.
-- After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap moved to (AR 850 ms, USP-S 500 ms), and an ignored press does not restart that lockout (bench 2026-11-08, Tactix-E20D: 47 of 48 press runs). This window is apart from the fire delay after a swap, which takes the larger of the two slots' tok15 (2026-09-04).
-- The gun ignores ALT while the trigger is held (bench 2026-11-08). ALT 100 ms after a shot's release is taken.
-- The gun answers an `$AMMO` write to one loadout slot with an `$ALCD` that names the slot fired last, at that slot's counts (bench 2026-11-08). The `$ALCD` is the write's answer, not a swap.
-- A melee swing inside the slot-4 t14 cooldown is refused: the gun reports `$BUT,8,1` and no slot-4 `$ALCD`, and the refused press does not restart the cooldown (bench 2026-11-08).
+- After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap moved to (AR 850 ms, USP-S 500 ms), and an ignored press does not restart that lockout (bench 2026-11-08, Tactix-E20D: fits 47 of 48 press runs; a press within about 45 ms of the edge can go either way). This window is apart from the fire delay after a swap, which takes the larger of the two slots' tok15 (2026-09-04).
+- The gun ignores ALT while the trigger is held (bench 2026-11-08, one case in the frames). ALT 100 ms after a shot's release is taken.
+- The gun answers an `$AMMO` write to one loadout slot with an `$ALCD` that names the slot fired last, at that slot's counts (bench 2026-11-08, one sequence in which slot 0 fired last). The `$ALCD` is the write's answer, not a swap.
+- A melee swing inside the slot-4 t14 cooldown is refused: the gun reports `$BUT,8,1` and no slot-4 `$ALCD`, and the refused press does not restart the cooldown (bench 2026-11-08, one refused press).
 - A same-team word is dropped by the gun with no `$HIR` when friendly fire is off.
 - `$SIR` protocol 11 function 24 gives a hit with zero damage.
 
