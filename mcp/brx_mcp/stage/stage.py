@@ -5639,6 +5639,22 @@ class GunStage:
         # it is only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
         off_slot_echo = slot != self.active_slot and (lcd or own_echo or (
             echoing and expect is not None and mag < expect and not (self.switching and slot == self.switching.get("to"))))
+        # ammo.js `onAmmo` (bench 2026-11-08, SR5b/SR5c): the gun answers our write to one loadout slot with the slot fired
+        # last at its own unchanged count; that frame is the write's echo and moves nothing
+        w = 1 if slot == 0 else 0 if slot == 1 else None
+        wa = self._shot_acct.get(w) if w is not None else None
+        if (w is not None and wa is not None and not lcd and not echoing and self._prev_ammo.get(slot) is not None
+                and mag == self._prev_ammo.get(slot) and self._acct_echoing(w) and wa.get("echo_pending", 0) > 0
+                and not (self.switching and slot == self.switching.get("to"))):
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            if wa.get("echo_expect") is not None:
+                self._prev_ammo[w] = wa["echo_expect"]
+            wa["echo_pending"] -= 1
+            if not wa["echo_pending"] > 0:
+                wa["echo_pending"] = 0; wa["echo_until"] = 0.0; wa["echo_expect"] = None; wa["echo_weap"] = False; wa["echo_stale"] = None
+            self._log(f"the gun answered the slot {w} write with slot {slot} at the same count; the trigger stays on slot {self.active_slot}", "info")
+            return
         seen = self._acct_ammo(slot, mag, self._prev_ammo.get(slot))
         if isinstance(seen, _Ignore):
             a = self._shot_acct.get(slot)
@@ -5736,6 +5752,15 @@ class GunStage:
                 self._fire_first = {"slot": slot, "at": self.now(), "life": self._life_queued}
             self._log(f"the gun's lever also reloaded slot {slot}, the slot fired last; the phone reloads slot {self.active_slot}" if soft
                       else f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
+            return
+        # ammo.js `onAmmo` (bench 2026-11-08, SR5): another loadout slot's report at the same count is no news about the
+        # trigger; it books that slot's reserve and moves neither the trigger nor the ALT pointer
+        if (not own_echo and not lcd and prev is not None and mag == prev and slot < 2 and self.active_slot < 2
+                and slot != self.active_slot and not (self.switching and slot == self.switching.get("to"))):
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            self._gun_other_gain(slot, mag, reserve)
+            self._log(f"slot {slot} reported at the same count; the trigger stays on slot {self.active_slot}", "info")
             return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
         if moves and self.switching and slot != self.switching["from"] and slot < 2:

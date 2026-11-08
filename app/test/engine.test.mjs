@@ -2145,6 +2145,8 @@ test('infection: death writes team_flip and emits team_change', () => {
 test('shots counter is per weapon slot: a weapon swap is not a shot', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick(); spawnEchoes(h);
   h.frame('$ALCD,32,100,0,384,0,*');
+  h.player.loadout.weapons.push({ weapon_id: 'shotgun' });   // the bundle's slot 1, so ALT swaps
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: a same-count report from another slot alone is no swap (bench 2026-11-08)
   h.frame('$ALCD,6,100,1,24,0,*');     // swap to the shotgun (slot 1) — NOT 26 shots
   assert.equal(h.eng.shots, 0);
   assert.equal(h.eng.ammo, 6); assert.equal(h.eng.mag, 6);
@@ -2339,6 +2341,7 @@ test('local panic does not retire the running match_id', () => {
 test('weaponName follows the active slot', () => {
   const h = goLive(harness());
   h.player.loadout.weapons.push({ weapon_id: 'shotgun' });
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT first: a same-count report from another slot alone is no swap (bench 2026-11-08)
   h.frame('$ALCD,6,100,1,24,0,*');
   assert.equal(h.eng.weaponName, 'SHOTGUN');
 });
@@ -2558,6 +2561,8 @@ test('config-echo $ALCD cannot poison the mag denominator (real-gun reload/pips 
   h.start(0); h.eng.tick();                     // spawn
   spawnEchoes(h, { head: false });              // bug 3a: the gun reads back the spawn rows; that is not a switch
   assert.equal(h.eng.activeSlot, 0, 'the echo of the spawn rows leaves the trigger on slot 0');
+  h.player.loadout.weapons.push({ weapon_id: 'shotgun' });   // the bundle's slot 1, so ALT swaps
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // bench 2026-11-08: the gun sends no $ALCD on ALT; the press opens the swap
   h.frame('$ALCD,6,100,1,24,0,*');              // player switches to slot 1: real mag is 6
   const st = h.eng.state();
   assert.equal(st.mag, 6, 'denominator comes from the bundle $AMMO, not the config echo (got ' + st.mag + ')');
@@ -8989,7 +8994,7 @@ test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.frame('$ALCD,8,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   assert.ok(h.eng.state().shotCooldown, 'pre-condition: the shotgun cue is up');
-  h.frame('$ALCD,32,100,0,384,0,*');   // the gun reports slot 0 active: the shotgun cue is not this gauge's
+  h.frame('$ALCD,31,100,0,384,0,*');   // a round from slot 0: the shotgun cue is not this gauge's (a same-count report moves nothing, bench 2026-11-08)
   assert.equal(h.eng.state().shotCooldown, null, 'a cue for a slot that is not active must not show');
   h.eng.frames.head = h.eng.frames.head.map(f => f.startsWith('$WEAP,1,') ? '$WEAP,1,shotgun,*' : f);
   assert.equal(h.eng._fireIntervalMs(1), null, 'a stub frame has no interval');

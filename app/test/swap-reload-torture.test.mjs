@@ -72,6 +72,7 @@ class GunModel {
     this.pending = 0;                // replies still in flight
     this.chain = new Set();          // slots whose lever loads one shell per reload time (the Shotgun)
     this.failed = 0;                 // phone writes that failed before they left (Codex pass r3: `failAmmo`)
+    this.crossEcho = true;           // bench 2026-11-08: an `$AMMO` write to a loadout slot is answered as the slot fired last (`wrote`)
   }
   slot(s) { return this.slots[s] || (this.slots[s] = { mag: 0, res: 0, clip: 0, carried: 0, t40: 0, fireMs: 0, swapMs: 0, reloadMs: 0 }); }
   later(ms, fn) { this.pending++; this.at(ms, () => { this.pending--; fn(); }); }
@@ -93,7 +94,10 @@ class GunModel {
         const x = this.slot(s);
         if (n(2) != null) x.mag = n(2);
         if (n(3) != null) x.res = n(3);
-        this.later(40, () => this.feed(this.alcd(s)));
+        // bench 2026-11-08 (SR5b, SR5c): a write to the other loadout slot than the one fired last is answered with the slot
+        // fired last, at its own counts
+        const e = this.crossEcho && s < 2 && this.latch !== s ? this.latch : s;
+        this.later(40, () => this.feed(this.alcd(e)));
       } else if (cmd === '$BMAP' && t[1] === '0') this.triggerLive = t[2] !== '98';
       else if (cmd === '$SPAWN') {
         this.spawned = true; [this.hp, this.armor] = this.max; this.shield = 0;
@@ -525,6 +529,46 @@ test('swap/reload: the SR1 bench presses replayed, the gun ignores ALT inside th
   assert.ok(ignored >= 30, `setup: the runs hold presses the gun ignored: ${ignored}`);
   assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, ignored, 'the phone ignores exactly the presses the gun ignored');
 });
+
+// Bench 2026-11-08 (SR5, Tactix-E20D on 0.4.37; sr4b 14:38, sr5b 14:40, sr5c 14:42): the AR (slot 0) fired last, ALT went
+// to the USP-S, and the lever made the phone reload the USP-S (`$AMMO,1,12,229`). The gun answered that write with
+// `$ALCD,32,100,0,362,0`: the slot fired last, at its own unchanged count, 51 to 137 ms after the write (every `$AMMO,1`
+// write in the day's captures got this answer). The HUD jumped to the AR while the gun held the USP-S. In sr5c the AR was
+// part-used, so the gun's own lever refilled it first (a real gain) and the same answer followed our write. The gun model
+// answers writes the same way (`crossEcho`). Each run also gets the literal bench frame once the write has been answered.
+for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { name: 'the AR full, the USP-S empty', usp: 12, arFull: true },
+  { name: 'sr5c, the AR part-used', usp: 2, arFull: false }]) {
+  test(`swap/reload: SR5 (${v.name}), the gun's answer to our slot 1 write leaves the trigger on slot 1 (bench 2026-11-08)`, async () => {
+    const h = harness('usp', 3), { eng, gun } = h;
+    await h.start();
+    assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+    for (let i = 0; i < v.usp; i++) { assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.advance(gun.slot(1).fireMs + 10); }
+    await h.settle(300);
+    assert.ok(gun.alt(), 'setup: ALT back to the AR'); await h.settle(1500);
+    for (let i = 0; i < 3; i++) { assert.ok(gun.trigger(), 'setup: the AR fires, so it fired last'); await h.advance(gun.slot(0).fireMs + 10); }
+    await h.settle(300);
+    if (v.arFull) { assert.equal(gun.lever(), 0, 'setup: the lever refills the AR'); await h.settle(3000); }
+    assert.equal(gun.slot(0).mag === gun.slot(0).clip, v.arFull, 'setup: the AR is full or part-used as the variant says');
+    assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+    assert.equal(eng.activeSlot, 1, 'setup: the HUD is on the USP-S');
+    const mark = h.logs.length;
+    gun.lever(); await h.settle(4000);
+    assert.ok(h.logs.slice(mark).some(l => /the gun answered the slot 1 write with slot 0 at the same count/.test(l.m)),
+      `the answer to the phone's slot 1 write is booked as its echo: ${h.logs.slice(mark).map(l => l.m).join(' | ')}`);
+    assert.equal(gun.slot(1).mag, Math.min(12, gun.slot(1).mag), 'setup: the phone reloaded the USP-S');
+    eng.feedFrame(`$ALCD,${gun.slot(0).mag},100,0,362,0,*`); await h.advance(200);   // the bench frame again, no write open
+    assert.ok(h.logs.slice(mark).some(l => /slot 0 reported at the same count/.test(l.m)), 'with no write open it is booked and moves nothing');
+    assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
+    assert.equal(eng.activeSlot, 1, 'the trigger stays on the USP-S');
+    assert.equal(eng.am.altPtr, 1, 'the ALT pointer stays on the USP-S');
+    h.render();
+    assert.equal(h.text('.wn .slot'), 'SECONDARY', 'the HUD names the weapon in hand');
+    const before = gun.slot(1).mag;
+    assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.settle(300);
+    assert.equal(eng.state().ammo, before - 1, 'the round is counted from the written magazine');
+    assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
+  });
+}
 
 // Codex review 2026-11-08: a round from the old slot proves the gun refused the press ("ALT not taken"). A refused press
 // starts no lockout on the gun, so the next press is a swap.

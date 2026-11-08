@@ -326,6 +326,22 @@ export class Ammo {
     // only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
     const offSlotEcho = slot !== this.host.activeSlot && (lcd || ownEcho
       || (echoing && mag < expect && !(this.switching && slot === this.switching.to)));
+    // Bench 2026-11-08 (SR5b, SR5c, Tactix-E20D on v4.32): the gun answers our `$AMMO,1` write with an `$ALCD` that names
+    // the slot fired LAST (slot 0) at that slot's own counts, 51 to 137 ms after the write, and no slot-1 echo follows. In
+    // every capture of the day each `$AMMO,1` write got this answer. So a loadout frame at an unchanged count while the OTHER
+    // loadout slot's echo window is open is that write's echo: it answers the write (the gun now holds the written count)
+    // and moves nothing. It fell through to `setActiveSlot` and put the AR on the HUD while the gun held the USP-S.
+    const w = slot === 0 ? 1 : slot === 1 ? 0 : null;
+    if (w != null && !lcd && !echoing && this.prevAmmo[slot] != null && mag === this.prevAmmo[slot] && this.acctEchoing(w)
+      && this.acct[w].echoPending > 0 && !(this.switching && slot === this.switching.to)) {
+      const a = this.acct[w];
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      if (a.echoExpect != null) this.prevAmmo[w] = a.echoExpect;
+      a.echoPending--;
+      if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; a.echoStale = null; }
+      this.host.log(`the gun answered the slot ${w} write with slot ${slot} at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
+      return;
+    }
     const expectedBefore = slot < 2 && this.host.pu.isHeldSlot(this.host.activeSlot)
       ? this.liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
     let prev = this.acctAmmo(slot, mag, this.prevAmmo[slot]);
@@ -434,6 +450,17 @@ export class Ammo {
       this.host.log(soft ? `the gun's lever also reloaded slot ${slot}, the slot fired last; the phone reloads slot ${this.host.activeSlot}`
         : `reload landed on slot ${slot}, the slot fired last; the trigger stays on slot ${this.host.activeSlot} until it fires`, 'li');
       this.host.changed();
+      return;
+    }
+    // Bench 2026-11-08 (SR5, slot A full): the AR fired last and was full, ALT went to the USP-S, and the lever answered
+    // `$ALCD,32,100,0,362`: slot 0 at the same count. It fell through to the end and put the AR on the HUD while the gun
+    // held the USP-S. A report from the other loadout slot with no round and no gain is no news about the trigger: it books
+    // that slot's counts and moves neither the trigger nor the ALT pointer. A swap's own target is left to the code below.
+    if (!ownEcho && !lcd && prev != null && mag === prev && slot < 2 && this.host.activeSlot < 2 && slot !== this.host.activeSlot
+      && !(this.switching && slot === this.switching.to)) {
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      this.gunOtherGain(slot, mag, reserve);
+      this.host.log(`slot ${slot} reported at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
       return;
     }
     // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
