@@ -188,6 +188,8 @@ export class Ammo {
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this.altPtr = 0;                  // the gun's BMAP position is separate from the trigger slot
     this.altEvidencePending = null;    // the ALT target awaiting gun evidence (0 is a real slot: test != null)
+    this.altAt = null;                 // when the gun last TOOK an ALT, and for how long it then ignores ALT (`altLockMs`, bench 2026-11-08)
+    this.altLock = 0;
     this.dryPulls = 0;              // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms, life}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
@@ -210,7 +212,7 @@ export class Ammo {
     for (const [slot, a] of Object.entries(this.acct)) {
       if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap, echoLastReset: a.echoLastReset != null ? a.echoLastReset : null };
     }
-    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
+    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null; this.altAt = null; this.altLock = 0;
   }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
@@ -278,6 +280,7 @@ export class Ammo {
    *  or the `$SPAWN` answered with, never a round, so it books the counts on its own slot and moves nothing (bug 3a). */
   onAmmo(mag, reserve, slot = 0, heat = null, lcd = false) {
     slot = Number.isFinite(slot) ? slot : 0;
+    if (this.acct[slot]) this.acct[slot].heard = true;
     this._meleeSwing(slot, lcd);   // F665: before the stun return below, because a stunned player can still swing
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
@@ -324,6 +327,23 @@ export class Ammo {
     // only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
     const offSlotEcho = slot !== this.host.activeSlot && (lcd || ownEcho
       || (echoing && mag < expect && !(this.switching && slot === this.switching.to)));
+    // Bench 2026-11-08 (SR5b, SR5c, Tactix-E20D on v4.32): the gun answers our `$AMMO,1` write with an `$ALCD` that names
+    // the slot fired LAST (slot 0) at that slot's own counts, 51 to 137 ms after the write, and no slot-1 echo follows. In
+    // every capture of the day each `$AMMO,1` write got this answer. So a loadout frame at an unchanged count while the OTHER
+    // loadout slot's echo window is open is that write's echo: it answers the write (the gun now holds the written count)
+    // and moves nothing. It fell through to `setActiveSlot` and put the AR on the HUD while the gun held the USP-S.
+    const w = slot === 0 ? 1 : slot === 1 ? 0 : null;
+    if (w != null && !lcd && !echoing && this.prevAmmo[slot] != null && mag === this.prevAmmo[slot] && this.acctEchoing(w)
+      && this.acct[w].echoPending > 0 && !(this.switching && slot === this.switching.to)) {
+      const a = this.acct[w];
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      // Codex 2026-11-08: only while no frame for the written slot has come since the write; a newer count there stands.
+      if (a.echoExpect != null && a.heard === false) this.prevAmmo[w] = a.echoExpect;
+      a.echoPending--;
+      if (!(a.echoPending > 0)) { a.echoPending = 0; a.echoUntil = 0; a.echoExpect = null; a.echoWeap = false; a.echoStale = null; }
+      this.host.log(`the gun answered the slot ${w} write with slot ${slot} at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
+      return;
+    }
     const expectedBefore = slot < 2 && this.host.pu.isHeldSlot(this.host.activeSlot)
       ? this.liveAmmo()[slot]?.[0] : null;   // a first $ALCD can still prove a shot against the spawn count
     let prev = this.acctAmmo(slot, mag, this.prevAmmo[slot]);
@@ -434,6 +454,16 @@ export class Ammo {
       this.host.changed();
       return;
     }
+    // Bench 2026-11-08 (SR5, slot A full): the AR fired last and was full, ALT went to the USP-S, and the lever answered
+    // `$ALCD,32,100,0,362`: slot 0 at the same count. It fell through to the end and put the AR on the HUD while the gun
+    // held the USP-S. A report from the other loadout slot with no round and no gain is no news about the trigger: it books
+    // that slot's counts and moves neither the trigger nor the ALT pointer. A swap's own target is left to the code below.
+    if (!ownEcho && !lcd && prev != null && mag === prev && slot < 2 && this.host.activeSlot < 2 && slot !== this.host.activeSlot
+      && !(this.switching && slot === this.switching.to)) {
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;   // no progress: the ALT hold stays as it is (Codex 2026-11-08)
+      this.host.log(`slot ${slot} reported at the same count; the trigger stays on slot ${this.host.activeSlot}`, 'li');
+      return;
+    }
     // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
     // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
     const lostPuEquip = this.host.pu.lostEquip(slot, mag, prev, expectedBefore, this.altEvidencePending);
@@ -467,6 +497,7 @@ export class Ammo {
       // that lands soon after the press can be in flight from before it (F379), so it proves nothing. The time of the last
       // pull is no help: a pull the swapping gun refuses can sit between the press and that round (Codex review).
       this.host.log(`ALT not taken by the gun: a round left slot ${slot} inside the swap`, 'li');
+      if (this.switching.undo) { this.altAt = this.switching.undo.at; this.altLock = this.switching.undo.lock; }   // Codex 2026-11-08: no lockout from a press the gun refused
       this.switching = null;
       if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
       this.gunWasOn(slot);
@@ -829,6 +860,11 @@ export class Ammo {
       if (this.host.easyReload()) this.reloadPulled();
       return;
     }
+    // Bench 2026-11-08 (SR1, 0.4.37): the gun IGNORES an ALT inside the lockout (`altLockMs`) of the last ALT it TOOK,
+    // and an ignored press does not restart it. Ten presses about 2 a second took 7 (odd), so the gun ended on slot 0
+    // while a phone that counted 10 showed slot 1. Only a press the gun takes (the end of this method) moves `altAt`.
+    if (this.altAt != null && this.host.now() - this.altAt < this.altLock) {
+      this.host.log(`ALT ignored by the gun: inside the swap lockout (${this.host.now() - this.altAt} ms after the swap it took)`, 'li'); return; }
     // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
@@ -862,7 +898,9 @@ export class Ammo {
     const from = this.altPtr, to = this.nextAltSlot();
     this.altPtr = to;
     this.altEvidencePending = to;
-    this.switching = { at: this.host.now(), from, to };
+    // `undo`: a round that proves the gun did not take this press (`onAmmo`) puts the gun's lockout back as it was.
+    this.switching = { at: this.host.now(), from, to, undo: { at: this.altAt, lock: this.altLock } };
+    this.altAt = this.switching.at; this.altLock = this.altLockMs(to);
     this.host.changed();
   }
 
@@ -885,6 +923,16 @@ export class Ammo {
     const fx = this.host.player && this.host.player.loadout && this.host.player.loadout.perk ? this.host.perkEffects(this.host.player.loadout.perk) : null;
     const sm = fx && fx.switch_mult ? +fx.switch_mult : 1;
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
+  }
+  /** How long the gun ignores ALT after an ALT it took that moved to slot `to`: that slot's own `$WEAP` tok15 (the head row
+   *  carries it with perks applied), else the swap window. Bench 2026-11-08 (SR1, SR1b, SR1c: 48 press runs, AR 850 and
+   *  USP-S 500): to the AR a press 827 ms after was ignored and 908 ms taken; to the USP-S 466 and 488 ms ignored, 503 taken.
+   *  This rule fits 47 of 48 runs (the miss is a press 43 ms early, inside the radio's timing jitter); no fixed or
+   *  scaled-swap_ms window fits more than 46. PURE. */
+  altLockMs(to) {
+    const row = ((this.host.frames && this.host.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${to},`));
+    const ms = row ? Number(row.split(',')[16]) : NaN;
+    return ms > 0 ? ms : this.host.switchWindowMs();
   }
   /** tick(): an ALT swap the gun never confirmed with a shot. Past the window the swap is TAKEN as done; the next shot's
    *  `$ALCD` corrects the trigger slot if the gun disagrees. Never ask `$QUERY`: its `$LCD` slot is the slot of the LAST
@@ -978,7 +1026,7 @@ export class Ammo {
   acctWrote(slot, mag, res, weap = false, resetMag = null) {
     const a = this.acct[slot] || (this.acct[slot] = { mag, fired: 0, at: 0, res: null, echoUntil: 0, echoExpect: null, echoPending: 0, echoWeap: false });
     const now = this.host.now();
-    a.mag = mag; a.fired = 0; a.at = 0;
+    a.mag = mag; a.fired = 0; a.at = 0; a.heard = false;   // `heard`: a frame for this slot since this write (`onAmmo`)
     if (res != null) a.res = res;   // the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
     // ⚠ Polish review 2026-09-18: writes are COUNTED, not just timed. The verify can retry while the first
     // write's frames are still in the air, and then there are two `$WEAP` resets coming back for one window.

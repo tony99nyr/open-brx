@@ -1147,6 +1147,8 @@ class GunStage:
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
+        self._alt_at: float | None = None   # ammo.js `altAt`/`altLock`: when the gun last TOOK an ALT, and its lockout (s)
+        self._alt_lock = 0.0
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._charge_lock_fix: dict | None = None  # F226: engine.js `_chargeLockFix`, one phone reload per charge lock
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
@@ -2208,6 +2210,7 @@ class GunStage:
         a["mag"] = mag
         a["fired"] = 0
         a["at"] = 0.0
+        a["heard"] = False          # ammo.js `heard`: a frame for this slot since this write
         if res is not None:
             a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
         # ⚠ Writes are COUNTED, not just timed (polish review 2026-09-18). The verify can retry while the
@@ -2450,7 +2453,7 @@ class GunStage:
                      "echo_last_reset": a.get("echo_last_reset")}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
-        self._alt_ptr = 0; self._alt_evidence_pending = None
+        self._alt_ptr = 0; self._alt_evidence_pending = None; self._alt_at = None; self._alt_lock = 0.0
 
     def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
         """ammo.js `publish`: the magazine and reserve the HUD shows. Split out so the echo path can
@@ -5604,6 +5607,8 @@ class GunStage:
         """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (ammo.js `onAmmo`): the
         mag coming BACK UP on the reloading slot ends the reload; the slot a ROUND came out of is the live one.
         `lcd`: the magazine on an `$LCD`, a report that books on its own slot and moves nothing (bug 3a)."""
+        if slot in self._shot_acct:
+            self._shot_acct[slot]["heard"] = True   # ammo.js `onAmmo`: a frame for this slot since its last write
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
         # locked reading can sit unrefreshed (see HEAT_STALE_S / `_heat_blocks_fire`).
@@ -5637,6 +5642,22 @@ class GunStage:
         # it is only the echo (bug 3b). An `$LCD` for another slot is a report, booked and nothing more (bug 3a).
         off_slot_echo = slot != self.active_slot and (lcd or own_echo or (
             echoing and expect is not None and mag < expect and not (self.switching and slot == self.switching.get("to"))))
+        # ammo.js `onAmmo` (bench 2026-11-08, SR5b/SR5c): the gun answers our write to one loadout slot with the slot fired
+        # last at its own unchanged count; that frame is the write's echo and moves nothing
+        w = 1 if slot == 0 else 0 if slot == 1 else None
+        wa = self._shot_acct.get(w) if w is not None else None
+        if (w is not None and wa is not None and not lcd and not echoing and self._prev_ammo.get(slot) is not None
+                and mag == self._prev_ammo.get(slot) and self._acct_echoing(w) and wa.get("echo_pending", 0) > 0
+                and not (self.switching and slot == self.switching.get("to"))):
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve
+            if wa.get("echo_expect") is not None and wa.get("heard") is False:   # ammo.js: a newer count on that slot stands
+                self._prev_ammo[w] = wa["echo_expect"]
+            wa["echo_pending"] -= 1
+            if not wa["echo_pending"] > 0:
+                wa["echo_pending"] = 0; wa["echo_until"] = 0.0; wa["echo_expect"] = None; wa["echo_weap"] = False; wa["echo_stale"] = None
+            self._log(f"the gun answered the slot {w} write with slot {slot} at the same count; the trigger stays on slot {self.active_slot}", "info")
+            return
         seen = self._acct_ammo(slot, mag, self._prev_ammo.get(slot))
         if isinstance(seen, _Ignore):
             a = self._shot_acct.get(slot)
@@ -5735,6 +5756,14 @@ class GunStage:
             self._log(f"the gun's lever also reloaded slot {slot}, the slot fired last; the phone reloads slot {self.active_slot}" if soft
                       else f"reload landed on slot {slot}, the slot fired last; the trigger stays on slot {self.active_slot} until it fires", "info")
             return
+        # ammo.js `onAmmo` (bench 2026-11-08, SR5): another loadout slot's report at the same count is no news about the
+        # trigger; it books that slot's reserve and moves neither the trigger nor the ALT pointer
+        if (not own_echo and not lcd and prev is not None and mag == prev and slot < 2 and self.active_slot < 2
+                and slot != self.active_slot and not (self.switching and slot == self.switching.get("to"))):
+            if reserve is not None:
+                self._prev_reserve[slot] = reserve   # no progress: the ALT hold stays as it is (ammo.js)
+            self._log(f"slot {slot} reported at the same count; the trigger stays on slot {self.active_slot}", "info")
+            return
         moves = not own_echo and not lcd   # bug 3b: only a real round confirms a swap or moves the pointer
         if moves and self.switching and slot != self.switching["from"] and slot < 2:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
@@ -5752,6 +5781,8 @@ class GunStage:
             # did not take the press. Close the swap with none, or `_switch_tick` assumes it over the proof. Sooner, the
             # round can be in flight from before the press (F379). (The GUN WAS ON card is HUD only: `am.gunWasOn`.)
             self._log(f"ALT not taken by the gun: a round left slot {slot} inside the swap", "info")
+            if self.switching.get("undo"):   # ammo.js: no lockout from a press the gun refused
+                self._alt_at, self._alt_lock = self.switching["undo"]
             self.switching = None
             if slot < 2:
                 self._alt_ptr = slot; self._alt_evidence_pending = None
@@ -5843,6 +5874,11 @@ class GunStage:
             if self._easy_reload():
                 self._reload_pulled()
             return
+        # ammo.js `altPressed` (bench 2026-11-08, SR1): the gun ignores ALT inside the lockout of the last ALT it took
+        # (ammo.js `altLockMs`), and an ignored press does not restart it
+        if self._alt_at is not None and self.now() - self._alt_at < self._alt_lock:
+            self._log(f"ALT ignored by the gun: inside the swap lockout ({round((self.now() - self._alt_at) * 1000)} ms after the swap it took)", "info")
+            return
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
@@ -5868,8 +5904,16 @@ class GunStage:
         target = self._next_alt_slot()
         self._alt_ptr = target
         self._alt_evidence_pending = target
-        self.switching = {"at": self.now(), "from": source, "to": target}
+        self.switching = {"at": self.now(), "from": source, "to": target, "undo": (self._alt_at, self._alt_lock)}   # ammo.js `undo`
+        self._alt_at = self.switching["at"]; self._alt_lock = self._alt_lock_s(target)
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
+
+    def _alt_lock_s(self, to: int) -> float:
+        """ammo.js `altLockMs`, in SECONDS: the gun ignores ALT for the tok15 of the slot the ALT moved to (bench 2026-11-08),
+        else the swap window."""
+        row = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{to},")), None)
+        tok = row.split(",")[16] if row and len(row.split(",")) > 16 else ""
+        return int(tok) / 1000 if tok.isdigit() and int(tok) > 0 else self._switch_window_s()
 
     def _alt_cycle(self) -> list[int]:
         """ammo.js `altCycle`: pickup slots stay outside the loadout ALT cycle."""

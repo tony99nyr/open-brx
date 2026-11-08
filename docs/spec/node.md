@@ -163,7 +163,11 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   earlier one can be in flight from before the press, so it closes nothing. The gun ignores ALT during a reload, so the
   node does too. After `$SPAWN` the node also ignores ALT until the first trigger pull after the life's burst reached
   the gun: the gun ignores a phone equip there (F436 bench), and ALT there is unbenched (field report bench #2).
-  A stunned gun ignores ALT.
+  A stunned gun ignores ALT. After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap
+  moved to, and an ignored press does not restart that lockout (bench 2026-11-08): the node ignores those presses too
+  (`altLockMs`). The gun answers an `$AMMO` write to one loadout slot with an `$ALCD` naming the slot fired last at its own
+  counts (bench 2026-11-08): the node books it as that write's echo, and a report of the other slot at an unchanged count
+  never moves the trigger.
 - **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A lever pulled inside an ALT swap reloads the old slot, and the swap still completes, so that rise books on the old slot and leaves the trigger on the new one (bench 2026-10-17). A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
   `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
