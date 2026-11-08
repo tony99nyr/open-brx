@@ -5901,7 +5901,7 @@ class GunStage:
         chaining = bool(r and (r.get("last_gain_at") or 0.0) > r["at"] and r.get("cap") is not None and r.get("mag") is not None
                         and r["mag"] < r["cap"] and self._prev_reserve.get(r["slot"]) != 0)
         hold = self._gun_hold_s(r["s"] - sw, bool(r.get("energy"))) if r else 0.0
-        if (r and not r.get("auto") and not r.get("soft")   # F226 `!r.auto`; a phone reload is held by `_gun_other` above (Codex pass r2)
+        if (r and not r.get("auto") and not r.get("soft") and not self.stunned   # F226 `!r.auto`; ammo.js: a stun's disarm cuts the reload
                 and (self.now() < r["last_gain_at"] + hold if chaining
                      else self.now() < r["at"] + sw + hold and not ((r.get("last_gain_at") or 0.0) > r["at"]))):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")

@@ -92,6 +92,7 @@ class GunModel {
       } else if (cmd === '$AMMO') {
         const s = n(1); if (s == null) continue;
         const x = this.slot(s);
+        if (n(2) === 0 && n(3) === 0 && this.reload) this.reload = null;   // a disarm cuts the gun's reload (engine.js `_stun`)
         if (n(2) != null) x.mag = n(2);
         if (n(3) != null) x.res = n(3);
         // bench 2026-11-08 (SR5b, SR5c): a write to the other loadout slot than the one fired last is answered with the slot
@@ -679,6 +680,24 @@ test('swap/reload: unanswered pulls with rounds in both slots move nothing (SR5r
   for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(1700); }
   assert.equal(eng.activeSlot, 0);
   assert.ok(!h.logs.some(l => /dry pulls/.test(l.m)), 'no correction');
+});
+
+// Codex review 2026-11-08: a reload begun before the stun is cut by the disarm, so it holds no ALT inside the stun.
+test('swap/reload: a reload begun before a stun does not hold ALT inside the stun (Codex review, F465)', async () => {
+  const h = harness('usp', 11), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
+  await h.settle(300);
+  assert.equal(gun.lever(), 0, 'setup: the gun reloads the AR');
+  await h.advance(100);
+  assert.ok(eng.am.reloading, 'setup: the phone shows the reload');
+  eng._stun(3000); await h.advance(200);
+  assert.ok(eng.stunned, 'setup: stunned');
+  assert.ok(gun.alt(), 'setup: the disarmed gun swaps');
+  assert.ok(!h.logs.some(l => /ALT ignored by the gun mid-reload/.test(l.m)), 'the phone does not hold ALT for a reload the stun cut');
+  await h.settle(4000);
+  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
+  assert.equal(eng.activeSlot, 1, 'the HUD follows');
 });
 
 // F465 (bench 2026-10-16, Tony: by design): a stunned gun still swaps on ALT, under the same lockout. The phone ignored the
