@@ -2039,7 +2039,7 @@ test('F379: the confirming shot on the ALT target moves the pointer, even after 
   h.fire(0, 29, 190);   // an old-slot round inside the swap
   h.adv(200); h.fire(1, 5, 24);   // the confirming slot-1 round
   assert.deepEqual(ptr(h), { slot: 1, ptr: 1 }, 'the pointer follows the confirmed swap');
-  h.adv(500); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+  h.adv(700); h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');   // 900 ms after the swap: past the gun's ALT lockout (850, ammo.js `altLockMs`)
   assert.equal(h.eng.am.switching.to, 0, 'the next ALT goes back to the AR, as the gun does');
   h.adv(3000);
   assert.deepEqual(ptr(h), { slot: 0, ptr: 0 }, 'the assumed swap lands on the AR');
