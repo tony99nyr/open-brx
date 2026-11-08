@@ -164,6 +164,9 @@ JUDGED = {
                           "has nothing to keep from firing",
     "HILL_TALLY_REFRESH_MS": "A88 (2026-11-07): the most often a hill re-keys its advert for a tally whose seconds alone changed.\n"
                              "A rate limit on the hill's own advert, not a window a beacon could fail to refresh",
+    "TRIGGER_HELD_MAX_S": "bench 2026-11-08 (B2, ammo.js TRIGGER_HELD_MAX_MS): how long a trigger press with no release still\n"
+                          "counts as held, so the gun's refusal of ALT is mirrored. A cap for a lost release, about buttons, not\n"
+                          "presence or an advert",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)
