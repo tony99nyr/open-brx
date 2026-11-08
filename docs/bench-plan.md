@@ -14,14 +14,14 @@ Do not copy a procedure into this file. When a sitting ends, strike its steps he
 The order Tony works in before the next game. Each step links the sheet or row that holds its procedure; this list
 does not repeat it. **Before a game** means a game cannot run well without it. **Can wait** means a later bench sitting.
 Build everything from current main: the F645 and F650 fixes are merged, so one APK from main serves the SR sheet too.
-About 3 h 59 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
+About 4 h 4 min for the before-a-game part with the Mac, Domination and phone-hill steps (the rest of the SR sheet is
 39 min of it, the A88 sheet 70); about 3 h 30 min more for the rest.
 
-**Start here (bench 2026-11-08 stopped before SR16).** Done on 2026-11-08: P4, MN1 (partial), and SR1-SR5 parts 1-2,
+**Start here (bench 2026-11-08 stopped before SR16).** Done on 2026-11-08: P4 parts 1 and 2, MN1 (partial), and SR1-SR5 parts 1-2,
 SR9-SR12, SR14 and SR15 (results: [`experiment-log/2026-11.md`](experiment-log/2026-11.md), 2026-11-08). Next sitting, in
 this order:
 1. P3: rebuild the APK from main after brx5's ALT follow-up lands (ALT ignored while the trigger is held, the dry-pull
-   evidence rule), and install it on every phone.
+   evidence rule), and install it on every phone. Then P4 parts 3 and 4 (NEW PHONE JOINED, the lobby before READY).
 2. P8, the rest of the SR sheet: SR16, SR6, SR7, SR8, SR13, then SR5 part 3 (slot B empty) on the new build.
 3. KOTH on a phone hill: P9, then a short KOTH match.
 4. The Sticks: P1, P2, P6, P7, P15.
@@ -31,10 +31,10 @@ before any step that uses the rig emitter.
 
 | # | when | minutes | step | procedure |
 |---|---|---|---|---|
-| P1 | before a game | 40 | Reflash all 6 Sticks over USB from main (about 6 min a Stick; MC has seen 3 of them, and the other 3 have never joined, so they likely need the first-flash download mode and their Wi-Fi set), one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6, so powerup claims go to nobody, and it advertises no A88 hill tally (P15). Reflash all 6 Sticks before any phone gets the new APK (P3). Commands and the post-flash check: [P1 in detail](#p1-in-detail-the-stick-reflash) below. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
+| P1 | before a game | 40 | Reflash all 6 Sticks over USB from main (about 6 min a Stick; MC has seen 3 of them, and the other 3 have never joined, so they likely need the first-flash download mode and their Wi-Fi set), one Stick on USB at a time (auto-detect refuses two). Old firmware has no F642 self-discovery and no F658 scope check, live-bit follow or `own_ms`, so P6 and P7 fail without it; it also misreads advert byte 6, so powerup claims go to nobody, and it advertises no A88 hill tally (P15). Phones may get the new APK (P3) before this step; the Stick steps P2, P6, P7 and P15 must follow it. Until the reflash, do not use a Stick as a station in a match: an old Stick misreads byte 6 of a new phone's advert, so its powerup claims go to nobody. Commands and the post-flash check: [P1 in detail](#p1-in-detail-the-stick-reflash) below. | [NEXT step 63](#next-the-bench-after-0430-2026-10-26) (the control and the pass); [`hardware/m5sticks3/README.md`](../hardware/m5sticks3/README.md) → *The fast loop* (`stick.py flash`) |
 | P2 | before a game | 15 | F642 on one Stick: (1) a typed address that is absent, then the log shows typed, (2) mDNS, (3) the subnet scan, (4) a welcome and "last good saved"; (5) a reboot rejoins through the last good MC. A moved MC is found again (one Stick is enough). Then power the other two and see each one join MC. | FOLLOWUPS F642 |
-| P3 | before a game | 20 | Build the APK from a main checkout and install it on every phone, one phone at a time, after P1. The iPhone build needs the MacBook. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
-| P4 | done 2026-11-08 | 0 | **PASS 2026-11-08** (parts 1 and 2: all three phones joined by themselves; parts 3 and 4 were not noted). F659. (1) The black phone, with its stale `:8765` address, joins MC by itself. (2) Each other phone joins by itself. (3) A phone this MC has never seen (or any phone on a fresh MC home) shows NEW PHONE JOINED on the console; a phone it already knows does not. (4) Every phone shows in the LOBBY before READY. | FOLLOWUPS F659 |
+| P3 | before a game | 20 | Build the APK from a main checkout and install it on every phone, one phone at a time. It need not wait for P1 (see P1). The iPhone build needs the MacBook. | [`app/README.md`](../app/README.md) (`npm run android:install`); the iPhone: `.claude/skills/iphone-build` |
+| P4 | before a game | 5 | Parts 1 and 2 PASS 2026-11-08 (all three phones joined by themselves); parts 3 and 4 are still open. F659. (1) The black phone, with its stale `:8765` address, joins MC by itself. (2) Each other phone joins by itself. (3) A phone this MC has never seen (or any phone on a fresh MC home) shows NEW PHONE JOINED on the console; a phone it already knows does not. (4) Every phone shows in the LOBBY before READY. | FOLLOWUPS F659 |
 | P5 | before a game on the Mac | 10 | The Mac 5-step check, with the phone that could not ping on 2026-11-01 (F643). Skip it when MC runs on the PC. | [`mac-dev-runbook.md`](mac-dev-runbook.md) §1b, *5-step check* |
 | P6 | before a game | 5 | Hill off: an FFA with hills turned off, with a Stick hill powered in the field. | FOLLOWUPS F658 (its hill-off bench line) |
 | P7 | before a Domination game | 20 | F666: three Stick hills, a Domination game, two players. Check the target reads 1000 before START (a KOTH game before it can carry its hold target over, F666 item 6). Capture each hill once; an owned hill keeps scoring while contested; the console shows the score. The phone HUD shows one hill only for now (F666 item 2). | FOLLOWUPS F666 (open item 5), [`domination-design.md`](domination-design.md) §2 |
