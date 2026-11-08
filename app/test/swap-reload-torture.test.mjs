@@ -686,7 +686,7 @@ test('swap/reload torture: a third of the phone\'s reload writes fail before the
   assert.ok(failed >= 5, `the run failed enough writes to mean something: ${failed}`);
 });
 
-// Tony 2026-11-08: the PHONE owns the weapon swap (bench 2026-11-08, bm1-3 and swp1, R0BQT on 0.4.39). ALT is unbound on the
+// Tony 2026-11-08: the PHONE owns the weapon swap (bench 2026-11-08, bm1-3 and swp1, on 0.4.39). ALT is unbound on the
 // gun (`$BMAP,1,98`); on ALT the phone holds the trigger (`$BMAP,0,98`), then binds it to the target (`$BMAP,0,<slot>`) after
 // that slot's tok15. Each of these was a desync under the gun's own ALT (SR17, SR18, B2).
 const bindRows = h => h.gun.writes.filter(f => f.startsWith('$BMAP,0,') || f.startsWith('$BMAP,1,'));
