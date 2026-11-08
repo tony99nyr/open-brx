@@ -1147,6 +1147,7 @@ class GunStage:
         self.active_slot = 0
         self._alt_ptr = 0                 # the gun's BMAP position is separate from the trigger slot
         self._alt_evidence_pending = None
+        self._alt_at: float | None = None   # ammo.js `altAt`: when the gun last TOOK an ALT (bench 2026-11-08)
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._charge_lock_fix: dict | None = None  # F226: engine.js `_chargeLockFix`, one phone reload per charge lock
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
@@ -2450,7 +2451,7 @@ class GunStage:
                      "echo_last_reset": a.get("echo_last_reset")}
                 for sl, a in self._shot_acct.items() if a.get("echo_pending") and now < a["echo_until"]}
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = keep
-        self._alt_ptr = 0; self._alt_evidence_pending = None
+        self._alt_ptr = 0; self._alt_evidence_pending = None; self._alt_at = None
 
     def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
         """ammo.js `publish`: the magazine and reserve the HUD shows. Split out so the echo path can
@@ -5843,6 +5844,11 @@ class GunStage:
             if self._easy_reload():
                 self._reload_pulled()
             return
+        # ammo.js `altPressed` (bench 2026-11-08, SR1): the gun ignores ALT inside the lockout of the last ALT it took
+        # (ammo.js `altLockMs`), and an ignored press does not restart it
+        if self._alt_at is not None and self.now() - self._alt_at < round(self._switch_window_s() * 1000 * self.ALT_LOCK_FRAC) / 1000:
+            self._log(f"ALT ignored by the gun: inside the swap lockout ({round((self.now() - self._alt_at) * 1000)} ms after the swap it took)", "info")
+            return
         # ammo.js `altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading. ALT r4: only
         # inside reload_s with no gain yet; in the takeover's stale tail the gun takes ALT, so it is a swap and ends it.
         r = self.reloading
@@ -5869,6 +5875,7 @@ class GunStage:
         self._alt_ptr = target
         self._alt_evidence_pending = target
         self.switching = {"at": self.now(), "from": source, "to": target}
+        self._alt_at = self.switching["at"]
         self._log(f"swap: ALT pressed on slot {self.active_slot}", "info")
 
     def _alt_cycle(self) -> list[int]:
@@ -6988,6 +6995,7 @@ class GunStage:
 
     # F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs ~1.22-1.29x the catalog reload_ms (AR 1701 vs
     # 1400, burst 2160 vs 1700, charge 3220 vs 2500), so the ceiling is flat-OR-proportional, whichever is larger.
+    ALT_LOCK_FRAC = 0.78    # ammo.js ALT_LOCK_FRAC: the gun's ALT lockout as a share of swap_ms (bench 2026-11-08)
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
     FIRE_FIRST_SHOW_S = 3.0  # ammo.js FIRE_FIRST_SHOW_MS: how long the ammo block says PULL THE TRIGGER, THEN RELOAD
     GUN_WAS_LEVER_S = 6.0  # ammo.js GUN_WAS_LEVER_MS: a rise this soon after a lever is that lever's reload

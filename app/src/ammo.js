@@ -151,6 +151,10 @@ const ALT_LATE_ROUND_MS = 250;
 const GUN_WAS_LEVER_MS = 6000;
 const FIRE_FIRST_SHOW_MS = 3000;   // F542: how long the ammo block says PULL THE TRIGGER, THEN RELOAD (as RELOAD DID NOT TAKE)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
+// Bench 2026-11-08 (SR1, 0.4.37, swap_ms 850): after an ALT it takes, the gun ignores ALT for less than swap_ms. Fourteen
+// press sequences fit a lockout of 613 to 719 ms and no longer one (850 fails a run of nine presses). 0.78 x swap_ms is 663,
+// the middle of that range; scaling with swap_ms for a fast-hands perk is an assumption until the boundary bench.
+const ALT_LOCK_FRAC = 0.78;
 
 export class Ammo {
   /** @param {any} host the engine's side (engine.js `ammoHost`) */
@@ -188,6 +192,7 @@ export class Ammo {
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this.altPtr = 0;                  // the gun's BMAP position is separate from the trigger slot
     this.altEvidencePending = null;    // the ALT target awaiting gun evidence (0 is a real slot: test != null)
+    this.altAt = null;                 // when the gun last TOOK an ALT: it ignores ALT for its swap window from there (bench 2026-11-08)
     this.dryPulls = 0;              // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms, life}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
@@ -210,7 +215,7 @@ export class Ammo {
     for (const [slot, a] of Object.entries(this.acct)) {
       if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap, echoLastReset: a.echoLastReset != null ? a.echoLastReset : null };
     }
-    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null;
+    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null; this.altAt = null;
   }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
@@ -829,6 +834,11 @@ export class Ammo {
       if (this.host.easyReload()) this.reloadPulled();
       return;
     }
+    // Bench 2026-11-08 (SR1, 0.4.37): the gun IGNORES an ALT inside the lockout (`altLockMs`) of the last ALT it TOOK,
+    // and an ignored press does not restart that window. Ten presses about 2 a second took 7 (odd), so the gun ended on slot 0
+    // while a phone that counted 10 showed slot 1. Only a press the gun takes (the end of this method) moves `altAt`.
+    if (this.altAt != null && this.host.now() - this.altAt < this.altLockMs()) {
+      this.host.log(`ALT ignored by the gun: inside the swap lockout (${this.host.now() - this.altAt} ms after the swap it took)`, 'li'); return; }
     // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
     // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
     // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
@@ -863,6 +873,7 @@ export class Ammo {
     this.altPtr = to;
     this.altEvidencePending = to;
     this.switching = { at: this.host.now(), from, to };
+    this.altAt = this.switching.at;
     this.host.changed();
   }
 
@@ -886,6 +897,8 @@ export class Ammo {
     const sm = fx && fx.switch_mult ? +fx.switch_mult : 1;
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
+  /** How long the gun ignores ALT after an ALT it took (ALT_LOCK_FRAC, bench 2026-11-08). Through the host's window. PURE. */
+  altLockMs() { return Math.round(this.host.switchWindowMs() * ALT_LOCK_FRAC); }
   /** tick(): an ALT swap the gun never confirmed with a shot. Past the window the swap is TAKEN as done; the next shot's
    *  `$ALCD` corrects the trigger slot if the gun disagrees. Never ask `$QUERY`: its `$LCD` slot is the slot of the LAST
    *  SHOT, not the selected one, so a read-back before a shot reads the old slot (bench 2026-10-17, Tactix-FE30 on 0.4.24). */

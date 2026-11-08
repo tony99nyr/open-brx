@@ -5,6 +5,8 @@
 // This is a seeded random torture run. It drives the REAL engine (src/engine.js) and a real Hud (on the fake DOM) on a
 // mocked clock, against a two-slot gun MODEL written here. The model follows the bench facts the engine is built on:
 //   - ALT toggles slot 0 and slot 1, and the gun ignores ALT while it is itself reloading (bench 2026-10-02, F650 M1).
+//   - The gun ignores ALT for 0.78 x swap_ms after an ALT it took, and an ignored press does not restart that lockout
+//     (bench 2026-11-08, SR1 on 0.4.37, ammo.js `altLockMs`). The trigger stays refused for the whole swap_ms.
 //   - The lever reloads the LAST-FIRED slot, not the slot in hand (F542, bench 2026-11-01); after a spawn that is slot 0.
 //     The reload takes the weapon's `$WEAP` reload time (token 18) times 1.2 (F27: hardware runs 1.22x to 1.29x slower).
 //   - `$AMMO` sets a slot's magazine and reserve and the gun echoes it as `$ALCD` 40 ms later (fake.py, fakegun.js).
@@ -64,7 +66,7 @@ class GunModel {
     this.slots = {};                 // slot -> {mag, res, clip, carried, t40, fireMs, swapMs, reloadMs}
     this.active = 0; this.latch = 0; this.spawned = false;
     this.hp = 0; this.armor = 0; this.shield = 0; this.max = [45, 70, 0];
-    this.triggerLive = false; this.reload = null; this.swapUntil = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
+    this.triggerLive = false; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
     this.rounds = 0;                 // rounds fired while alive in the match: `eng.shots` must equal this
     this.pending = 0;                // replies still in flight
     this.chain = new Set();          // slots whose lever loads one shell per reload time (the Shotgun)
@@ -130,8 +132,8 @@ class GunModel {
   alt() {
     this.feed('$BUT,1,1,*');
     let took = false;
-    if (this.live && !this.reload) {
-      took = true; this.active = this.active ? 0 : 1;
+    if (this.live && !this.reload && this.now() - this.altTookAt >= Math.round(0.78 * Math.max(this.slot(0).swapMs, this.slot(1).swapMs))) {
+      took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now();
       this.swapUntil = this.now() + Math.max(this.slot(0).swapMs, this.slot(1).swapMs);   // bench 2026-09-04: the larger slot wins
     }
     this.later(80, () => this.feed('$BUT,1,0,*'));
@@ -284,7 +286,7 @@ const pad2 = n => String(n).padStart(2, '0');
 async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
   const h = harness(sec, seed, { failAmmo }), { eng, gun, rng } = h;
   await h.start();
-  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, idle: 0, swings: 0, rounds: 0, chainHold: 0, phoneChain: 0 };
+  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, altSpam: 0, altSpamIgnored: 0, idle: 0, swings: 0, rounds: 0, chainHold: 0, phoneChain: 0 };
   let logMark = 0, lastSwingAtEng = null;
   const pick = () => {
     const r = rng() * 100;
@@ -296,6 +298,7 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
     if (r < 89) return 'die';
     if (r < 91) return 'relink';
     if (combos && r < 97) return 'leverAlt';
+    if (combos && r < 99.5) return 'altSpam';
     return 'idle';
   };
   const fail = (i, what) => fails.push(`seed ${seed} (${sec}) action #${i} ${done[done.length - 1]}: ${what}\n  gun: active ${gun.active} latch ${gun.latch} slots ${JSON.stringify([0, 1].map(k => [gun.slot(k).mag, gun.slot(k).res]))}; engine prev ${JSON.stringify([eng.am.prevAmmo, eng.am.prevReserve])} lastShot ${JSON.stringify(eng.am.lastShot)}\n  last actions: ${done.slice(-20).join(' | ')}\n  last log: ${h.logs.slice(-12).map(l => `${l.at - 1_000_000} ${l.m}`).join('\n            ')}`);
@@ -311,7 +314,13 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
       for (let j = 0; j < k; j++) { gun.trigger(); await h.advance(gun.slot(gun.active).fireMs + 10); }
       note = `${k} pulls`; counts.fire += k; await h.settle(120);
     } else if (kind === 'alt') { tookAlt = gun.alt(); note = tookAlt ? `to ${gun.active}` : 'ignored'; counts.alt++; await h.settle(900); }
-    else if (kind === 'lever' || kind === 'leverAlt') {
+    else if (kind === 'altSpam') {   // bench 2026-11-08: 2 to 10 presses, 100 to 1200 ms apart, no settle between them
+      const k = 2 + Math.floor(rng() * 9);
+      let took = 0;
+      for (let j = 0; j < k; j++) { if (j) await h.advance(100 + Math.floor(rng() * 1100)); if (gun.alt()) took++; }
+      note = `${k} presses, the gun took ${took}`; counts.altSpam++; counts.altSpamIgnored += k - took;
+      await h.settle(900);
+    } else if (kind === 'lever' || kind === 'leverAlt') {
       const held = gun.active, x = gun.slot(held);
       if (gun.live && x.mag < x.clip && x.res > 0) leverExpect = { slot: held, mag: Math.min(x.clip, x.mag + x.res) };
       const s = gun.lever(); note = `gun reloads ${s == null ? 'nothing' : 'slot ' + s}, held ${held}`;
@@ -342,7 +351,12 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
     const altIgnored = fresh.filter(l => /ALT ignored/.test(l.m));
     if (fresh.some(l => /itself a shell every/.test(l.m))) counts.phoneChain++;   // Tony 2026-11-07: the phone loads a chain in hand
     if (altIgnored.length && tookAlt === false && gun.chain.size && fresh.some(l => /the gun reloads slot 1, the slot fired last/.test(l.m))) counts.chainHold++;
-    if (altIgnored.length && tookAlt !== false) fail(i, `the gun took ALT but the engine logged: ${altIgnored.map(l => l.m).join('; ')}`);
+    if (kind === 'altSpam') {
+      const spam = /the gun took (\d+)/.exec(note), presses = +/^(\d+)/.exec(note)[1];
+      const windowIgnored = altIgnored.filter(l => /inside the swap lockout/.test(l.m)).length;
+      if (windowIgnored > presses - +spam[1]) fail(i, `the engine ignored ${windowIgnored} presses inside the swap lockout, the gun ${presses - +spam[1]}`);
+    }
+    if (altIgnored.length && tookAlt !== false && kind !== 'altSpam') fail(i, `the gun took ALT but the engine logged: ${altIgnored.map(l => l.m).join('; ')}`);
     if (tookAlt === false && !altIgnored.length && eng.am.altEvidencePending != null) fail(i, 'the gun ignored ALT but the engine opened a swap');
     const timeouts = fresh.filter(l => /reload did NOT take \(timeout\)/.test(l.m));
     if (timeouts.length || (eng.am.reloadOutcome !== before.outcome && eng.am.reloadOutcome && eng.am.reloadOutcome.why === 'timeout')) fail(i, `a reload ended by timeout: ${JSON.stringify(eng.am.reloadOutcome)}`);
@@ -435,6 +449,36 @@ test('swap/reload: lever on a full weapon in hand, ALT while the gun reloads the
   assert.deepEqual(h.logs.filter(l => l.m.startsWith('gun was on slot')).map(l => l.m), [], 'no desync on the next round');
 });
 
+// Bench 2026-11-08 (SR1, 0.4.37, Tactix-E20D, assault rifle + USP-S, swap_ms 850): every ALT sequence of the capture, at its
+// exact press times, then the trigger at its exact time. `end` is the slot the gun's next `$ALCD` named. The phone used to
+// toggle on every press: ten presses about 2 a second showed slot 1 while the gun fired slot 0, and a double press restarted
+// the swap clock, so the shot 832 ms after the ignored press read as "ALT not taken by the gun".
+const SR1 = [
+  { presses: [0], shot: 1845, end: 1 },
+  { presses: [0, 400, 1010, 1522, 2090, 2702, 3256, 3724, 4338, 4848], shot: 7363, end: 0 },
+  { presses: [0, 129, 323, 507, 719, 908, 1119, 1319, 1509], shot: 4050, end: 1 },
+  { presses: [0], shot: 1515, end: 0 }, { presses: [0], shot: 1145, end: 1 }, { presses: [0], shot: 1302, end: 0 },
+  { presses: [0], shot: 1454, end: 1 }, { presses: [0], shot: 1483, end: 0 }, { presses: [0], shot: 1351, end: 1 },
+  { presses: [0, 140], shot: 972, end: 0 }, { presses: [0, 147, 177], shot: 971, end: 1 },
+  { presses: [0, 173], shot: 1189, end: 0 }, { presses: [0, 163], shot: 926, end: 1 }, { presses: [0, 193], shot: 1062, end: 0 },
+];
+test('swap/reload: the SR1 bench presses replayed, the gun ignores ALT inside the swap lockout (bench 2026-11-08)', async () => {
+  const h = harness('usp', 1), { eng, gun } = h;
+  await h.start();
+  for (const [k, run] of SR1.entries()) {
+    let t = 0;
+    for (const p of run.presses) { await h.advance(p - t); t = p; gun.alt(); }
+    await h.advance(run.shot - t);
+    assert.equal(gun.active, run.end, `setup: run ${k}, the model gun ends where the bench gun did`);
+    assert.equal(eng.activeSlot, run.end, `run ${k} (${run.presses.length} presses): the HUD shows the slot the gun is on`);
+    assert.ok(gun.trigger(), `setup: run ${k}, the gun fires`);
+    await h.settle(300);
+  }
+  const bad = h.logs.filter(l => /^gun was on slot|ALT not taken by the gun/.test(l.m)).map(l => l.m);
+  assert.deepEqual(bad, [], 'no desync and no "ALT not taken" verdict');
+  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, 5 + 6 + 1 + 2 + 1 + 1 + 1, 'every press the gun ignored is logged (5 of 10, 6 of 9, then the doubles and the triple)');
+});
+
 test('swap/reload torture: ALT pressed while the lever reload runs, both loadouts', async () => {
   for (const sec of ['suppressor', 'usp']) {
     for (const seed of [201, 202, 203, 204]) {
@@ -448,13 +492,14 @@ test('swap/reload torture: ALT pressed while the lever reload runs, both loadout
 // The Shotgun's chain on the slot fired last while the phone reloads the rifle (the ALT hold must last the whole chain), and
 // the phone's own reload writes failing before they leave (the books must stay with the gun).
 test('swap/reload torture: assault rifle + shotgun (a chain on the slot fired last), zero desync', async () => {
-  let chainHold = 0, phoneChain = 0;
+  let chainHold = 0, phoneChain = 0, altSpam = 0, altSpamIgnored = 0;
   for (const seed of [301, 302, 303, 304, 305, 306]) {
     const { counts, fails } = await torture('shotgun', seed, ACTIONS, { combos: true });
     assert.deepEqual(fails, [], fails.join('\n\n'));
     assert.ok(counts.lever > 20 && counts.alt > 20, `seed ${seed} exercised the lever and ALT: ${JSON.stringify(counts)}`);
-    chainHold += counts.chainHold; phoneChain += counts.phoneChain;
+    chainHold += counts.chainHold; phoneChain += counts.phoneChain; altSpam += counts.altSpam; altSpamIgnored += counts.altSpamIgnored;
   }
+  assert.ok(altSpam >= 5 && altSpamIgnored >= 5, `the run pressed ALT in quick runs the gun partly ignored: ${altSpam} runs, ${altSpamIgnored} ignored`);
   assert.ok(chainHold >= 3, `the run held ALT through a chain on the slot fired last: ${chainHold}`);
   assert.ok(phoneChain >= 10, `the run had the phone load the chain in hand shell by shell: ${phoneChain}`);
 });
