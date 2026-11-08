@@ -9300,3 +9300,17 @@ test('F668: the lever undo follows the slot the refill names, never the last liv
     }
   }
 });
+
+// Codex review 2026-11-08 (phone swap, H5): a station revive writes its burst at once. The burst's `$BMAP,0` binds the slot
+// the phone holds (`_bindRows`), so the new life's slot 0 must be set before it, or the gun is bound to the old life's slot.
+test('phone swap: a station revive after a death on slot 1 binds slot 0 in its burst', () => {
+  const h = scannerHarness();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  h.eng.activeSlot = 1;                     // the player died on the secondary
+  const n = h.writes.length;
+  h.eng._revive(false, 5);
+  const binds = h.writes.slice(n).filter(f => /^\$BMAP,0,\d+,/.test(f) && f !== '$BMAP,0,98,,,,,*');
+  assert.ok(binds.length > 0, `setup: the burst binds the trigger: ${JSON.stringify(h.writes.slice(n).filter(f => f.startsWith('$BMAP')))}`);
+  assert.deepEqual([...new Set(binds)], ['$BMAP,0,0,,,,,*'], 'only slot 0');
+  assert.equal(h.eng.activeSlot, 0);
+});

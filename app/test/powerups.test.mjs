@@ -925,7 +925,8 @@ test('an app restart mid-item still switches back with the saved counts', () => 
   assert.deepEqual(h.eng.state().powerup.held.back, { slot: 0, mag: 30, res: 190 });
   const n = h.mark(); h.fire(2, 0);
   h.adv(h.eng.switchWindowMs());
-  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*']);
+  // Tony 2026-11-08: a restart forgets the gun's trigger binding, so the phone binds the slot it holds once more (`_bindTick`)
+  assert.deepEqual(puw(h.since(n)), [WEAP0, '$AMMO,0,30,190,1,*', '$BMAP,0,0,,,,,*']);
   assert.equal(h.eng.state().powerup.held, null);
 });
 
@@ -2246,4 +2247,21 @@ test('AMMO review: with slot 1 on the trigger the hint names slot 1\'s own gain'
   h.take(8);
   assert.equal(h.eng.state().presented.hint.added, 38, 'slot 1: 10 -> 48');
   assert.equal(h.eng.state().reserve, 48);
+});
+
+// Codex review 2026-11-08 (phone swap, H3): a heavy equipped while the phone's reload holds the trigger (`$BMAP,0,98`) must not
+// leave it held: the `$WEAP` equip is benched only with the trigger bound, so the phone binds the heavy's slot (`_bindTick`).
+// (A grant during an ALT swap waits for the swap's bind, so its `$WEAP` follows a bound trigger, as benched.)
+test('phone swap: a heavy equipped during the phone\'s reload binds the heavy\'s slot, so the trigger is not left held', () => {
+  const h = armed();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };
+  h.eng.am.lastShot = { slot: 1, at: h.eng.now(), ms: 100, life: h.eng._lifeSeq };   // slot 1 fired last: the lever goes there
+  h.frame('$BUT,2,1,*').frame('$BUT,2,0,*');
+  assert.ok(h.eng.am.reloading && h.eng.am.reloading.soft, 'setup: the phone reloads the AR');
+  assert.ok(h.writes.includes('$BMAP,0,98,,,,,*'), 'setup: the trigger is held');
+  h.adv(100);
+  const n = h.mark(); h.take(4);
+  h.adv(1000);
+  assert.equal(h.eng.activeSlot, 2, 'setup: the heavy is on the trigger');
+  assert.ok(h.since(n).includes('$BMAP,0,2,,,,,*'), `the heavy's slot is bound: ${JSON.stringify(h.since(n).filter(f => f.startsWith('$BMAP')))}`);
 });

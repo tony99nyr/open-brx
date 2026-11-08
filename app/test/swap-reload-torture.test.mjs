@@ -228,7 +228,9 @@ function harness(sec, seed, { failAmmo = 0, easyOne = false } = {}) {
   // of a seed stay the same.
   const failRng = mulberry32(seed * 7919 + 1);
   const writer = (fr, why) => {
-    if (failAmmo > 0 && /^(F650|F226)/.test(String(why)) && fr.some(f => f.startsWith('$AMMO,')) && failRng() < failAmmo) {
+    // Codex 2026-11-08: the phone swap's own writes fail too (the hold, the bind, the undo, the repair), as a chunk error would
+    const bind = /^(ALT:|undo |trigger binding repair|re-bind)/.test(String(why));
+    if (failAmmo > 0 && (bind || (/^(F650|F226)/.test(String(why)) && fr.some(f => f.startsWith('$AMMO,')))) && failRng() < failAmmo) {
       gun.failed++;
       return new Promise(r => at(30, () => r(false)));
     }
@@ -293,7 +295,7 @@ function harness(sec, seed, { failAmmo = 0, easyOne = false } = {}) {
     quiet() {
       const am = eng.am;
       return gun.pending === 0 && !gun.reload && !am.reloading && !am.switching && clock >= gun.swapUntil
-        && !am.acctEchoing(0) && !am.acctEchoing(1) && !eng.rc.active && !eng.stunned && (!eng.alive || gun.triggerLive);
+        && !am.acctEchoing(0) && !am.acctEchoing(1) && !eng.rc.active && !eng.stunned && (!eng.alive || (gun.triggerLive && gun.active === eng.activeSlot));   // Codex 2026-11-08: a lost bind heals (`_bindTick`)
     },
     async settle(min = 0, cap = 9000) {
       const t0 = clock;
@@ -794,4 +796,38 @@ test('phone swap: a one-weapon Easy Reload kit keeps ALT on reload (fn 97), neve
   assert.equal(gun.active, 0);
   // the rewrite itself: a swap kit's ALT row is unbound, Easy Reload's 97 passes as written
   assert.deepEqual(eng._bindRows(['$BMAP,1,97,,,,,*', '$BMAP,1,100,0,1,99,99,*']), ['$BMAP,1,97,,,,,*', '$BMAP,1,98,,,,,*']);
+});
+
+// Codex review 2026-11-08 of the phone swap: the trigger must never be left held (98) or bound to a slot the phone does not
+// show. `_bindTick` repairs the binding from what was really sent (`_noteBindSent`).
+test('phone swap (Codex H1): a stun that cancels the phone\'s reload does not leave the trigger held', async () => {
+  const h = harness('usp', 21), { eng, gun } = h;
+  await h.start();
+  gun.trigger(); await h.settle(150);                                    // the AR fired last
+  assert.ok(h.swap()); await h.settle(1500);
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
+  await h.settle(300);
+  assert.ok(h.swap()); await h.settle(1500);                             // back on the AR, the USP-S fired last
+  for (let i = 0; i < 2; i++) { gun.trigger(); await h.settle(150); }
+  assert.ok(h.swap()); await h.settle(1500);                             // on the USP-S at 9; the AR fired last
+  gun.lever(); await h.advance(100);
+  assert.ok(eng.am.reloading && eng.am.reloading.soft, 'setup: the phone reloads the USP-S');
+  assert.equal(gun.triggerLive, false, 'setup: the trigger is held for the reload');
+  eng._stun(4000); await h.settle(6000);
+  assert.ok(!eng.stunned && !eng.am.reloading, 'setup: the stun is over and the reload was cut');
+  assert.equal(gun.triggerLive, true, 'the trigger is bound again');
+  assert.equal(gun.active, 1);
+  assert.ok(gun.trigger(), 'the USP-S fires');
+});
+test('phone swap (Codex H5): a respawn after a death on the secondary binds slot 0, never the old life\'s slot', async () => {
+  const h = harness('usp', 22), { eng, gun } = h;
+  await h.start();
+  assert.ok(h.swap()); await h.settle(1500);
+  assert.equal(gun.active, 1, 'setup: on the USP-S');
+  gun.die(); await h.advance(2000);
+  gun.writes.length = 0;
+  h.operatorRespawn(); await h.settle(2500, 12000);
+  assert.ok(eng.alive && gun.live, 'setup: respawned');
+  assert.deepEqual(gun.writes.filter(f => /^\$BMAP,0,\d+,/.test(f) && f !== '$BMAP,0,98,,,,,*'), ['$BMAP,0,0,,,,,*'], 'only slot 0 is ever bound');
+  assert.equal(gun.active, 0); assert.equal(eng.activeSlot, 0);
 });
