@@ -167,11 +167,13 @@ export class Reconcile {
       // the life. `!triggerPending` means the weapon delay is already over (or was never running): the
       // trigger should already be mapped, so re-send it as a repair. A delay still due is left alone -- `tick()`
       // fires it when it is due, and forcing it early would let the player fire while still protected.
+      // Tony 2026-11-08: the phone owns the swap, so the relink always re-binds the trigger: a drop inside a swap leaves the
+      // gun held (`$BMAP,0,98`). engine.js `_bindRows` writes the slot the phone holds now, whatever the row says.
       const rp = h.respawnProfile();
-      if (rp && !h.triggerPending) {
-        const r = h.write([rp.trigger_live], 'reconcile: weapon systems live');
+      if (!h.triggerPending) {
+        const r = h.write([rp ? rp.trigger_live : '$BMAP,0,0,,,,,*'], 'reconcile: weapon systems live');
         Promise.resolve(r).then(ok => {
-          if (ok !== false || h.phase !== 'live' || h.ended || !h.alive || h.triggerPending) return;
+          if (!rp || ok !== false || h.phase !== 'live' || h.ended || !h.alive || h.triggerPending) return;
           h.setTriggerPending({ at: h.now(), due: h.now(), flip: false });   // as `_armLife` re-arms its own lost take, not `_writeMust`'s one-shot retry
         });
       }
