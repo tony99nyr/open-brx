@@ -26,6 +26,7 @@ on the scenario list in its `SCENARIO_VERSION`; Tony's decisions are in `docs/ba
 bench and the evening game are recorded in [`bench-plan.md`](bench-plan.md) and the log; the game's issues are
 F642 to F656. F643, F644 and F657 have desk fixes; F651's proposal waits on Tony. MC holds every laptop awake (F660). The HUD's melee-ready fist (F665) and Domination's row of hills (F666) are built.
 The local gate splits Python into `mcp-core`, `mcp-docs` and `mcp-sim` (F626).
+The gun model `app/src/gunmodel.js` replays the 2026-11-08 captures; `gun-model-phone.test.mjs` holds the engine to it, with SR17 and SR18 known red until brx5's dry-pull fix lands (F668 lists the rules to bench).
 **Next:** F660 on the MacBook and a Windows-native start; then NEXT in `bench-plan.md`, and the balance review when
 brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised; flashing needs a decision first.
 **Blocked:** nothing.
