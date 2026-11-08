@@ -83,6 +83,7 @@ export class Reconcile {
     h.clearGunOther();                                    // the disarm below cuts the gun's own reload (ammo.js `gunOther`)
     // F15, r1 S2: a running stun is NOT ended here. Its deadline survives the relink: `end` re-arms nothing before it, and the
     // stun's own expiry restore (or this window's end, once the deadline has passed) re-arms with the live counts snapshotted above.
+    h.noteDisarm([0, 1]);
     h.write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*', ...h.pu.disarmRows()], 'reconcile: disarm');   // no shots count while we reconcile; A56: nor a held heavy's
     // F264 (Tony, 2026-09-18): ...and ASK. §3.10's rule is that the node must never INFER inside this window, and
     // the gun may well have died while the app was away (the S7 gap-death limitation, which inference cannot see).

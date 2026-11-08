@@ -600,6 +600,7 @@ function reconcileHost(e) {
     // the clock, the log, the gun writes and reads
     now: () => e.now(), log: (line, cls) => e.log(line, cls), changed: () => e._changed(),
     write: (frames, why) => e._write(frames, why), delay: (ms, fn) => e.delay(ms, fn), askGun: why => e._askGun(why),
+    noteDisarm: slots => e.am.noteDisarm(slots),   // the re-arm's answers can still carry the disarm's zeros (bench 2026-11-08, SR11)
     // the engine state the module reads (never writes)
     get alive() { return e.alive; }, get hp() { return e.hp; }, get phase() { return e.phase; }, get ended() { return e.ended; },
     get bleUp() { return e.bleUp; }, get stunned() { return e.stunned; },
@@ -4361,6 +4362,7 @@ export class Engine {
     this.stunned = { at: now, until: now + ms, ammo: live };
     // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
     // never repeated on an extend above, and never per tick (F274).
+    this.am.noteDisarm(Object.keys(live));   // the restore's answers can still carry these zeros (bench 2026-11-08, SR11)
     this._write([...Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), STUN_PLAY], `stun: disarm ${ms} ms`);
     this._holdAccuracyWrites('stun disarm');   // a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
     this.moment = { kind: 'stunned', at: now, data: { ms } };
