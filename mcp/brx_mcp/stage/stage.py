@@ -1149,6 +1149,7 @@ class GunStage:
         self._alt_evidence_pending = None
         self._alt_at: float | None = None   # ammo.js `altAt`/`altLock`: when the gun last TOOK an ALT, and its lockout (s)
         self._alt_lock = 0.0
+        self._disarm_note: dict[int, int] = {}   # ammo.js `disarmNote`: slots a disarm left at 0, outside the account
         self._dry_run: dict | None = None    # ammo.js `dryRun`: {slot, n} unanswered loaded pulls in a row on one slot
         self._inferred: dict | None = None   # ammo.js `inferred`: {slot, life} a slot `_unanswered_pulls` moved to
         self._shot_due_slot: int | None = None   # engine.js `_shotDueSlot`
@@ -2214,6 +2215,8 @@ class GunStage:
         a["fired"] = 0
         a["at"] = 0.0
         a["heard"] = False          # ammo.js `heard`: a frame for this slot since this write
+        a["prev_disarm"] = (self._disarm_note.pop(slot, None) is not None   # ammo.js `prevDisarm` (bench 2026-11-08, SR11)
+                            or bool(a.get("prev_disarm") and a.get("echo_pending", 0) > 0 and now < a.get("echo_until", 0.0)))
         if res is not None:
             a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
         # ⚠ Writes are COUNTED, not just timed (polish review 2026-09-18). The verify can retry while the
@@ -5630,6 +5633,8 @@ class GunStage:
         if self.stunned:
             self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
             return
+        if not lcd and slot in self._disarm_note and not self._acct_echoing(slot):
+            del self._disarm_note[slot]   # ammo.js `onAmmo`: the gun's own word after the disarm replaces its note
         # F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside
         # the ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- not a shot, not
         # a reload, not resync proof, and not a magazine worth showing. Book NOTHING, leave `_prev_ammo`
@@ -5654,6 +5659,12 @@ class GunStage:
             echoing and expect is not None and mag < expect and not (self.switching and slot == self.switching.get("to"))))
         # ammo.js `onAmmo` (bench 2026-11-08, SR5b/SR5c): the gun answers our write to one loadout slot with the slot fired
         # last at its own unchanged count; that frame is the write's echo and moves nothing
+        # ammo.js `onAmmo` (bench 2026-11-08, SR11): after a disarm, a 0 for the slot while its restore's window is open is
+        # the disarm's (the other write's answer, or a late echo): stale, booked nothing, no echo spent
+        if (not lcd and echoing and acct is not None and not acct.get("echo_weap") and acct.get("prev_disarm") and mag == 0
+                and reserve == 0 and acct.get("res") not in (None, 0)):   # ammo.js: a real last round keeps its reserve
+            self._log(f"slot {slot} reported its count from before our write ({mag}): stale, booked nothing", "info")
+            return
         w = 1 if slot == 0 else 0 if slot == 1 else None
         wa = self._shot_acct.get(w) if w is not None else None
         if (w is not None and wa is not None and not lcd and not echoing and self._prev_ammo.get(slot) is not None
@@ -5924,6 +5935,11 @@ class GunStage:
         row = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{to},")), None)
         tok = row.split(",")[16] if row and len(row.split(",")) > 16 else ""
         return int(tok) / 1000 if tok.isdigit() and int(tok) > 0 else self._switch_window_s()
+
+    def _note_disarm(self, slots) -> None:
+        """ammo.js `noteDisarm`: a disarm left these slots at 0 on the gun, outside the account."""
+        for sl in slots:
+            self._disarm_note[int(sl)] = 0
 
     def _inferred_slot(self, slot: int) -> bool:
         """ammo.js `inferredSlot`. PURE."""
@@ -6200,6 +6216,7 @@ class GunStage:
         if self.reloading:
             self.reloading["cut"] = True   # engine.js `_stun` (Codex 2026-11-08): the takeover of a cut reload holds no ALT
         self.stunned = {"at": now, "until": now + s, "ammo": live}
+        self._note_disarm(list(live))   # engine.js `_stun`: the restore's answers can still carry these zeros
         self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60))
         self._hold_accuracy_writes("stun disarm")   # engine.js `_stun`: a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
         self._moment = ("stunned", now)

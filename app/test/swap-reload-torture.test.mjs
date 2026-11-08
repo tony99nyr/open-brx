@@ -79,6 +79,7 @@ class GunModel {
   alcd(s) { const x = this.slot(s); return `$ALCD,${x.mag},100,${s},${x.res},0,*`; }
   /** One write from the engine. */
   wrote(frames) {
+    const answers = [];
     for (const f of frames) {
       const t = f.replace(/,?\*$/, '').split(','), cmd = t[0], n = i => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
       if (cmd === '$PSET') { for (let i = 0; i < 3; i++) if (n(i + 3) != null) this.max[i] = n(i + 3); }
@@ -98,7 +99,10 @@ class GunModel {
         // bench 2026-11-08 (SR5b, SR5c): a write to the other loadout slot than the one fired last is answered with the slot
         // fired last, at its own counts
         const e = this.crossEcho && s < 2 && this.latch !== s ? this.latch : s;
-        this.later(40, () => this.feed(this.alcd(e)));
+        // bench 2026-11-08 (SR11): the answer carries the counts as this write left them (a later row of the burst may still
+        // be to come for that slot). The gun answers as it processes the write, so anything the gun did to that slot after
+        // the burst (a shell, a round) is newer than the answer: then the current counts go out.
+        answers.push({ e, line: this.alcd(e) });
       } else if (cmd === '$BMAP' && t[1] === '0') this.triggerLive = t[2] !== '98';
       else if (cmd === '$SPAWN') {
         this.spawned = true; [this.hp, this.armor] = this.max; this.shield = 0;
@@ -120,6 +124,10 @@ class GunModel {
       }
     }
     if (frames.includes('$CLEAR,*') && frames.some(f => f.startsWith('$SP,99'))) this.spawned = false;
+    for (const a of answers) {   // bench 2026-11-08 (SR11): see `$AMMO` below
+      a.end = this.alcd(a.e);
+      this.later(40, () => { const now = this.alcd(a.e); this.feed(now !== a.end ? now : a.line); });
+    }
   }
   get live() { return this.spawned && this.hp > 0; }
   // ---- the player's hands ----
@@ -680,6 +688,94 @@ test('swap/reload: unanswered pulls with rounds in both slots move nothing (SR5r
   for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(1700); }
   assert.equal(eng.activeSlot, 0);
   assert.ok(!h.logs.some(l => /dry pulls/.test(l.m)), 'no correction');
+});
+
+// Bench 2026-11-08 (SR11, Tactix-E20D on v4.32, the USP-S fired last at 9/224): a relink's reconcile, replayed. Each
+// `$AMMO` write is answered as the slot fired last at its count at that moment. The disarm pair answered `slot 1 at 9`
+// (slot 1 before its own disarm) then `slot 1 at 0`. The re-arm pair answered `slot 1 at 0` (the slot-0 write, slot 1
+// still disarmed) then `slot 1 at 9`, and a late `slot 1 at 9` followed. Read as news, `slot 1 at 0` booked nine phantom
+// rounds. The model gun is muted here; the answers are the capture's, at its offsets from the phone's own writes.
+test('swap/reload: SR11 reconcile replayed, the answers to a two-slot re-arm book no rounds (bench 2026-11-08)', async () => {
+  const h = harness('usp', 12), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 5; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
+  await h.settle(300);
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
+  await h.settle(300);
+  assert.deepEqual([gun.slot(0).mag, gun.slot(1).mag], [27, 9], 'setup: the AR at 27, the USP-S at 9, fired last');
+  const res1 = gun.slot(1).res, shots = eng.shots, writes = [];
+  gun.wrote = fr => {   // the capture's answers, not the model's
+    writes.push(...fr);
+    const a0 = fr.find(f => f.startsWith('$AMMO,0,')), a1 = fr.find(f => f.startsWith('$AMMO,1,'));
+    if (!a0 || !a1) return;
+    if (a0.startsWith('$AMMO,0,0,0,')) {
+      gun.later(84, () => gun.feed(`$ALCD,9,100,1,${res1},0,*`)); gun.later(176, () => gun.feed('$ALCD,0,100,1,0,0,*'));
+    } else {
+      gun.later(100, () => gun.feed('$ALCD,0,100,1,0,0,*')); gun.later(103, () => gun.feed(`$ALCD,9,100,1,${res1},0,*`));
+      gun.later(1107, () => gun.feed(`$ALCD,9,100,1,${res1},0,*`));
+    }
+  };
+  eng.onBleDropped(); await h.advance(1000);
+  eng.onBleConnected(GUN); await h.advance(5000);
+  assert.ok(writes.some(f => f.startsWith('$AMMO,0,0,0,')) && writes.some(f => /^\$AMMO,1,9,/.test(f)), `setup: a disarm and a re-arm went out: ${writes.filter(f => f.startsWith('$AMMO')).join(' ')}`);
+  assert.equal(eng.shots, shots, 'no phantom rounds');
+  assert.equal(eng.activeSlot, 1, 'the trigger stays on the USP-S');
+  assert.equal(eng.am.prevAmmo[1], 9, 'the USP-S at 9');
+  h.render();
+  assert.equal(h.text('#mag'), '09', 'the HUD shows 9');
+  assert.equal(h.text('#res'), `/${res1}`, 'and the reserve');
+  assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
+});
+
+// Codex review 2026-11-08 (Medium 1 on F465): slot 1 fired last, a stun, ALT about 400 ms before it ends. The restore's
+// slot-0 write is answered as slot 1 at its disarmed 0 while slot 1's restore is in the air. Read as news it booked a
+// magazine of rounds and cancelled the swap as "ALT not taken".
+test('swap/reload: a stunned ALT just before the restore keeps its swap and books no rounds (Codex review, F465)', async () => {
+  const h = harness('usp', 14), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  for (let i = 0; i < 2; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
+  await h.settle(300);
+  assert.equal(gun.latch, 1, 'setup: the USP-S fired last');
+  const shots = eng.shots;
+  eng._stun(3000); await h.advance(2600);
+  assert.ok(eng.stunned, 'setup: still stunned');
+  assert.ok(gun.alt(), 'setup: the stunned gun swaps to the AR');
+  await h.settle(4000);
+  assert.ok(!eng.stunned, 'setup: the stun is over');
+  assert.equal(eng.shots, shots, 'no phantom rounds');
+  assert.ok(!h.logs.some(l => /ALT not taken by the gun/.test(l.m)), 'the swap is not cancelled');
+  assert.equal(gun.active, 0, 'setup: the gun holds the AR');
+  assert.equal(eng.activeSlot, 0, 'the HUD follows');
+  assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
+  assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
+});
+
+// Codex review 2026-11-08 on the disarm rule: a real last round right after a restore keeps its reserve and counts; a
+// second write while the restore is pending keeps the disarm's history.
+test('swap/reload: after a restore, a real last round counts and a later write keeps the disarm guard (Codex review)', async () => {
+  const h = harness('usp', 15), { eng, gun } = h;
+  await h.start();
+  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  gun.wrote = () => {};   // the gun answers nothing here: the frames are the test's
+  // (1) restored to 1 round, then fired before the restore's echo: `0/200` is a real round
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 1, 200);
+  let shots = eng.shots;
+  eng.feedFrame('$BUT,0,1,*'); eng.feedFrame('$ALCD,0,100,1,200,0,*'); eng.feedFrame('$BUT,0,0,*');
+  assert.equal(eng.shots, shots + 1, 'the last round counts');
+  // CONTROL: the disarm's own `0/0` after a restore books nothing
+  await h.advance(2000);
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 5, 200);
+  shots = eng.shots;
+  eng.feedFrame('$ALCD,0,100,1,0,0,*');
+  assert.equal(eng.shots, shots, 'CONTROL: the disarm zero books nothing');
+  // (2) a second write while the restore is pending keeps the guard
+  await h.advance(2000);
+  eng.am.noteDisarm([1]); eng.am.acctWrote(1, 1, 200); eng.am.acctWrote(1, 2, 199);
+  shots = eng.shots;
+  eng.feedFrame('$ALCD,0,100,1,0,0,*');
+  assert.equal(eng.shots, shots, 'the disarm zero after two writes books nothing');
 });
 
 // Codex review 2026-11-08: a reload begun before the stun is cut by the disarm, so it holds no ALT inside the stun.
