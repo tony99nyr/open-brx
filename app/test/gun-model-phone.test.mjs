@@ -9,15 +9,8 @@ import assert from 'node:assert/strict';
 import { fixtureNames, loadFixture, runPhone } from './bench-gun-drive.mjs';
 
 // Steps red on main, each with the change that turns it green. The test fails when one goes green, so drop it here then.
-// Tony chose the phone-owned swap (2026-11-08): ALT is bound to 98 and the phone binds the trigger itself.
-const SR17_FIX = 'brx5-phone-swap (not landed): the phone owns the swap, so the gun has no ALT pointer to fall out of step with';
-const KNOWN = {
-  sr17c: SR17_FIX, sr17b: SR17_FIX, sr17cc: SR17_FIX, sr17d: SR17_FIX, sr17e: SR17_FIX, sr17e2: SR17_FIX, sr17f: SR17_FIX,
-  b2: SR17_FIX, sr5r: SR17_FIX,
-  // SR18: after a missed ALT the cure re-asserts `$BMAP,0,0` while the gun's ALT pointer is on slot 1, and the next ALT
-  // moves the pointer, not the trigger.
-  sr18t: SR17_FIX, swp1: SR17_FIX,
-};
+// Empty since the phone-owned swap (Tony 2026-11-08): every bench step runs with no desync.
+const KNOWN = {};
 
 /** Every step as {name, fx, from, to}: from the end of the step before (or the session's first spawn) to its own end. */
 function steps() {
