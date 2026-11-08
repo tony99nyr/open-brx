@@ -1949,11 +1949,9 @@ def test_the_published_takeover_goes_null_all_at_once_past_the_deadline():
     asyncio.run(go())
 
 
-def test_a_stunned_gun_raises_no_swap_on_alt_and_takes_it_again_once_the_stun_is_over():
-    """engine.js `_altPressed`, the mirror of the guard `_reloadPulled` already had: a stunned gun is
-    disarmed and `_on_ammo` drops every $ALCD in the window, so a swap opened there can never be confirmed
-    -- it runs to the switch window and then books an ASSUMED swap, leaving `active_slot` on a weapon the
-    player never drew for the rest of the life. CONTROL: the same press swaps once the stun expires."""
+def test_alt_on_a_stunned_gun_is_a_swap_and_the_next_press_after_the_stun_swaps_back():
+    """ammo.js `altPressed` (F465, bench 2026-10-16, by design): a stunned gun still swaps on ALT (the stun disarms both
+    slots). No round can confirm it inside the stun, so the swap is assumed at the window's end."""
     async def go():
         st, mgr, clock = mk_reload()
         st.load_config({**st.config, "stun": {"duration_s": 2}}, source="test")
@@ -1963,14 +1961,13 @@ def test_a_stunned_gun_raises_no_swap_on_alt_and_takes_it_again_once_the_stun_is
         await st.ir("emp"); st.poll(); await settle(st)
         assert st.stunned, "fixture: the EMP word must actually stun this game"
         st._on_rx("$BUT,1,1,*")
-        assert st.switching is None, "a stunned gun raises no swap"
-        assert any("ALT ignored" in l["text"] for l in st.log)
+        assert st.switching and st.switching["to"] == 1, "a stunned gun swaps"
         clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
-        assert st.active_slot == 0, "and no assumed swap books a weapon the player is not holding"
+        assert st.active_slot == 1, "the swap is assumed at the window's end"
         clock.advance(2.5); st.poll(); await settle(st)
         assert not st.stunned, "fixture: the stun expired"
         st._on_rx("$BUT,1,1,*")
-        assert st.switching, "CONTROL: the same press swaps once the gun is back"
+        assert st.switching and st.switching["to"] == 0, "the next press swaps back"
     asyncio.run(go())
 
 
