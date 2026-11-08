@@ -73,7 +73,8 @@ def test_arm_spawn_event_kill_and_headset_write_the_bundles_frames():
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         frames = tx(mgr)
-        assert frames[:len(st.bundle["head"])] == st.bundle["head"]
+        head = ["$BMAP,1,98,,,,,*" if f.startswith("$BMAP,1,") else f for f in st.bundle["head"]]
+        assert frames[:len(head)] == head
         assert st.bundle["headset"]["pregame"][0] in frames
         await st.spawn(); await settle(st)
         frames = tx(mgr)

@@ -202,7 +202,7 @@ export class Ammo {
     this.lastSwing = null;
     this.leverAt = null;            // E10: the last lever pull while live and alive, refused or not
     this.fireFirst = null;          // F542: {slot, at, life} of the last lever the gun spent on the LAST-FIRED slot (the HUD hint)
-    this.gunOther = null;           // review 2026-11-06: {slot, until, life} of a lever the phone refused that the gun spends on the last-fired slot
+    this.gunOther = null;           // Tony 2026-11-08: {bound, snap, until, life} the counts at a lever, so a gun refill of a slot not in hand is put back
   }
 
   // ---- state resets ----
@@ -405,10 +405,10 @@ export class Ammo {
     // Tony 2026-11-08 (bench lv1-8): a refill of the slot a lever went to although the trigger was bound elsewhere is undone,
     // even if a swap has since bound the trigger to it (`gunOtherGain`).
     { const g = this.gunOther;
-      if (g && g.slot === slot && !ownEcho && !lcd && prev != null && mag > prev && slot === this.host.activeSlot && g.life === this.host.lifeSeq) {
+      if (g && slot < 2 && slot !== g.bound && g.snap[slot] && !ownEcho && !lcd && prev != null && mag > prev && g.life === this.host.lifeSeq && this.host.now() < g.until) {
         this.prevAmmo[slot] = mag; if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
         this.gunOtherGain(slot, mag, reserve);
-        this.publish(slot, this.prevAmmo[slot], this.prevReserve[slot]);
+        if (slot === this.host.activeSlot) this.publish(slot, this.prevAmmo[slot], this.prevReserve[slot]);
         this.host.changed();
         return;
       } }
@@ -610,16 +610,16 @@ export class Ammo {
   reloadPulled() {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial || this.host.resync || this.host.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
-    if (this.gunOther && !(this.host.now() < this.gunOther.until)) this.gunOther = null;   // an expired undo goes; a pending one waits for its refill
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
+    this.noteGunOther();   // Tony 2026-11-08: note the counts, so a gun refill of a slot not in hand is put back
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     // Review 2026-11-06 (the swap torture run): a lever the phone refuses still reloads the slot that fired last on the gun
     // (F542), and the gun ignores ALT while that runs (`altPressed`).
-    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) { this.noteGunOther(); return; }   // nothing to reload — the gun ignores the pull
-    if (!(this.host.reserve > 0)) { this.noteGunOther(); return; }                  // dry reserve: no reload happens (whatever is in the mag)
+    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;   // nothing to reload — the gun ignores the pull
+    if (!(this.host.reserve > 0)) return;                  // dry reserve: no reload happens (whatever is in the mag)
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && (ws[this.host.activeSlot] || ws[0]);
     const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
     // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
@@ -646,7 +646,7 @@ export class Ammo {
                        chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
     if (this.reloading.soft) {   // Codex pass r2
       this.host.holdTrigger('the phone reloads the weapon in hand');   // brx1 2026-11-08: no round lands mid-reload
-      this.host.softReloadStart(this.reloading); this.noteGunOther('the phone reloads the weapon in hand');
+      this.host.softReloadStart(this.reloading);
     }
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
@@ -682,47 +682,44 @@ export class Ammo {
     if (rm > 0 && rm !== 1 && slot === 0 && !(row && row.reload_type === 'bolt')) secs *= rm;
     return Math.max(300, Math.round(secs * 1000));
   }
-  /** Review 2026-11-06 (the swap torture run): the phone refused a lever (the weapon in hand is full, or has no reserve),
-   *  but the gun spends it on the slot that fired last when that slot has room and reserve (F542). Note that reload, so
-   *  `altPressed` ignores ALT while it runs, as the gun does. It ends when that slot's rise lands, or after the reload
-   *  time with the takeover's overrun allowance. */
-  noteGunOther(why = 'lever on a full slot') {
-    const ls = this.lastShot, a = this.host.activeSlot;
+  /** Tony 2026-11-08 (bench lv1-8, brx1): the lever cannot be unbound, and the gun's own reload may refill a slot the trigger
+   *  is not bound to (the slot fired last, or an empty bound slot: F668 has two readings). So at every lever pull the phone
+   *  notes both loadout slots' counts and the slot in hand, and any refill of ANOTHER slot that lands in the reload's time
+   *  is put back (`gunOtherGain`). The slot is the one the refill's `$ALCD` names, never a guess from the last round. A
+   *  refill of the slot in hand is the gun's own right reload and stays. A lever while one is pending keeps it. */
+  noteGunOther(why = 'lever') {
+    const a = this.host.activeSlot, now = this.host.now();
+    if (this.gunOther && this.gunOther.life === this.host.lifeSeq && now < this.gunOther.until) return;
     this.gunOther = null;
     if (!(a === 0 || a === 1) || this.host.slotCount() < 2) return;
-    // The slot the gun's lever goes to: the slot fired last, or slot 0 when that is unknown (after a spawn the gun is on
-    // slot 0), as `leverGoesElsewhere` reads it.
-    const known = !!(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2), other = known ? ls.slot : 0;
-    if (other === a) return;
-    const cap = this.ammoBySlot()[other], mag = this.prevAmmo[other], res = this.prevReserve[other];
-    if ((cap && mag != null && mag >= cap) || res === 0) return;
-    const ms = this.reloadMsOf(other);
-    // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
-    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[other];
-    const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
-    // Bench 2026-11-08 (lv1-8): the lever cannot be unbound, and it refills the LAST-FIRED slot whatever the trigger is bound
-    // to. That refill is free ammo for a weapon the player is not holding, so the phone writes it back (`gunOtherGain`).
-    this.gunOther = { slot: other, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy, mag, res };
-    this.host.log(`${why} ${a}: the gun reloads slot ${other}, the slot fired last`, 'li');
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons;
+    const snap = {}; let ms = 0, energy = false;
+    for (const k of [0, 1]) {
+      if (k === a || this.prevAmmo[k] == null || this.prevReserve[k] == null) continue;
+      snap[k] = { mag: this.prevAmmo[k], res: this.prevReserve[k] };
+      const w = ws && ws[k], row = w && this.host.weaponRow(w.weapon_id);
+      ms = Math.max(ms, this.reloadMsOf(k));
+      // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload)
+      energy = energy || !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
+    }
+    if (!Object.keys(snap).length) return;
+    this.gunOther = { bound: a, snap, until: now + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy };
+    this.host.log(`${why} on slot ${a}: a gun refill of slot ${Object.keys(snap).join(', ')} is put back`, 'li');
   }
-  /** Codex pass 2026-11-07 r3: a rise on the slot the gun reloads under the ALT hold. A full slot or an empty reserve ends
-   *  the hold; a chain's shell (a shotgun) keeps it for one more shell, since the gun ignores ALT until the chain ends. */
+  /** A rise the gun reported on `slot` while a lever's note is open: a slot other than the one in hand at the lever gets
+   *  its noted counts back, one `$AMMO` per refill (a chain's every shell). PURE of the gun: it writes only through the host. */
   gunOtherGain(slot, mag, reserve) {
     const g = this.gunOther;
-    if (!g || g.slot !== slot) return;
-    // Tony 2026-11-08 (bench lv1-8): the gun refilled a slot the trigger was not bound to at the lever. Put back what it held,
-    // with one `$AMMO` per refill (a chain's every shell). The gun's own reload of the bound slot is never undone.
-    if (g.life === this.host.lifeSeq && g.mag != null && g.res != null && mag > g.mag) {   // decided at the lever (brx1): a swap since changes nothing
-      this.host.undoGunReload(slot, g.mag, g.res);
-      // A magazine refills once, so the undo is done; a chain (the Shotgun) loads shell by shell, so it stays for the next one
-      const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
-      if (!(row && row.reload_type === 'chain')) this.gunOther = null;
-      return;
-    }
-    const cap = this.ammoBySlot()[slot];
-    if (!(cap > 0) || mag >= cap || reserve === 0) { this.gunOther = null; return; }
-    g.until = Math.max(g.until, this.host.now() + gunHoldMs(this.reloadMsOf(slot), !!g.energy));
+    if (!g || g.life !== this.host.lifeSeq || slot === g.bound || !g.snap[slot]) return;
+    const n = g.snap[slot];
+    if (!(mag > n.mag)) return;
+    this.host.undoGunReload(slot, n.mag, n.res);
+    // A magazine refills once, so its undo is done; a chain (the Shotgun) loads shell by shell, so its note stays
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
+    if (!(row && row.reload_type === 'chain')) { delete g.snap[slot]; if (!Object.keys(g.snap).length) this.gunOther = null; }
+    void reserve;
   }
+
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
    *  fired last, with room and reserve)? Only then does the gun ignore ALT. PURE. */
   gunReloadsOther(r = this.reloading) {

@@ -1148,8 +1148,9 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         assert st.reloading is None, "the release is not a pull"
         st._on_rx("$BUT,1,1,*")
         assert st.reloading is None and st._slot_count() == 2, "ALT on two slots is a swap, not a reload"
+        st._on_rx("$ALCD,5,100,1,20,0,*")
         st._on_rx("$BUT,2,1,*")
-        assert st.reloading and st.reloading["slot"] == 0
+        assert st.reloading and st.reloading["slot"] == 1
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
         await st.revive(); await settle(st)
@@ -1611,78 +1612,65 @@ def test_a_chain_that_loaded_then_fired_books_what_it_LOADED():
     asyncio.run(go())
 
 
-def test_alt_mid_reload_is_ignored_and_a_stale_tail_alt_is_a_swap():
-    """engine.js `_altPressed` (bench 2026-10-02, USP-S): the gun IGNORES ALT while it is really reloading (inside
-    reload_s, no gain yet), so no swap opens and the reload runs on. ALT r4: in the takeover's stale tail (past reload_s,
-    before its deadline) the gun takes ALT, so the press is a swap and ends the takeover. CONTROL: the confirming $ALCD
-    on the other slot clears `switching` and times it."""
+def test_alt_during_reload_swaps_at_once_and_ends_the_takeover():
+    """The phone owns ALT even while the gun reloads."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading and st._slot_count() == 2
-        st._on_rx("$BUT,1,1,*")                                      # ALT inside reload_s
-        assert st.reloading and st.switching is None, (st.reloading, st.switching)
-        assert any("ALT ignored" in l["text"] for l in st.log)
-        assert st._alt_ptr == 0
-        clock.advance(st.reloading["s"] * 1.3 + 0.05)                # the stale tail: past the gun's refill (F27), before the deadline
-        assert st.reloading
-        st._on_rx("$BUT,1,1,*")                                      # ALT: the gun swaps
-        assert st.reloading is None and st.switching, (st.reloading, st.switching)
-        assert st.reload_outcome["why"] == "swapped", st.reload_outcome
+        st._on_rx("$BUT,1,1,*")
+        assert st.reloading is None and st.switching
+        assert st.reload_outcome["why"] == "swapped"
+        assert st.active_slot == 1 and st._last_loadout == 1
         clock.advance(0.2)
         st.alcd(mag=6, reserve=12, slot=1)
-        assert st.switching is None and st.last_switch_s == 0.2, (st.switching, st.last_switch_s)
-        assert st.active_slot == 1 and st._alt_ptr == 1
-        # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever (pressed after the
-        # gun's ALT lockout from the last swap, `_alt_lock_s`: bench 2026-11-08)
-        clock.advance(st._alt_lock_s(1))
+        assert st.switching and st.last_switch_s is None
         st._on_rx("$BUT,1,1,*")
-        assert st.switching
-        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
-        assert st.switching is None and st.active_slot == 0, st.active_slot
+        assert st.switching["to"] == 0 and st.active_slot == 0
+        clock.advance(st._swap_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.switching is None and st.active_slot == 0
     asyncio.run(go())
 
 
-def test_alt_r4_a_loadout_alcd_that_moves_the_trigger_heals_the_alt_pointer():
-    """engine.js `_onAmmo` (ALT r4): a loadout $ALCD that moves the trigger with no swap open is a swap the node missed,
-    so `_alt_ptr` follows the gun and the next ALT goes back the right way."""
+def test_an_unbound_slot_round_keeps_the_bound_slot_and_next_alt_target():
+    """A mismatched round books its slot and never chooses the next ALT target."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
-        await flush_fake_ammo(st, mgr)   # bug 3a: the spawn rows' echoes land first (inside the window a slot-1 frame is our own write)
+        await flush_fake_ammo(st, mgr)
         st.alcd(mag=10, reserve=20); await settle(st)
-        assert st.active_slot == 0 and st._alt_ptr == 0 and st.switching is None
         st._prev_ammo[1] = 6
-        st._on_rx("$ALCD,5,100,1,12,0,*")                            # the gun fires slot 1
-        assert st.active_slot == 1 and st._alt_ptr == 1, (st.active_slot, st._alt_ptr)
+        st._on_rx("$ALCD,5,100,1,12,0,*")
+        assert st.active_slot == 0 and st._last_loadout == 0
+        assert st._prev_ammo[1] == 5 and st._prev_reserve[1] == 12
+        assert any("gun fired slot 1, bound 0" in row["text"] for row in st.log)
         st._on_rx("$BUT,1,1,*")
-        assert st.switching and st.switching["to"] == 0, st.switching
+        assert st.switching and st.switching["to"] == 1
     asyncio.run(go())
 
 
-def test_f379_alt_target_uses_the_gun_pointer_after_a_trigger_only_equip():
-    """engine.js `_nextAltSlot`: a pickup moves the trigger slot, not the gun's BMAP pointer."""
+def test_alt_from_a_heavy_uses_the_last_loadout_slot():
+    """ALT leaves a heavy for the other loadout slot."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
-        st._alt_ptr = 1
-        st.active_slot = 2  # A `$WEAP` pickup equips slot 2 without changing the gun's ALT pointer.
-        st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
+        st._last_loadout = 1
+        st.active_slot = 2
         st._on_rx("$BUT,1,1,*")
-        assert st.switching["from"] == 1 and st.switching["to"] == 0
+        assert st.switching["from"] == 2 and st.switching["to"] == 0
+        assert st.active_slot == 0 and st._last_loadout == 0
         st._prev_ammo[1] = 10
-        st._on_rx("$ALCD,10,20,1,0,0,*")  # delayed old-slot report, no round left
-        assert st._alt_ptr == 0 and st._alt_evidence_pending == 0   # still waiting on slot 0's evidence
-        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
-        assert st.active_slot == 0 and st._alt_ptr == 0, (st.active_slot, st._alt_ptr)
+        st._on_rx("$ALCD,10,20,1,0,0,*")
+        assert st.active_slot == 0 and st._last_loadout == 0
+        clock.advance(st._swap_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.active_slot == 0 and st._last_loadout == 0
     asyncio.run(go())
 
 
-def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
-    """engine.js `_showSlotAmmo`: the gun sends no $ALCD on ALT, so the assumed swap puts the new slot's counts on
-    the screen. Before it, the number kept the old slot's count until the next shot (sitting B, 2026-09-25)."""
+def test_f394_an_immediate_swap_shows_the_new_slots_own_counts():
+    """ALT immediately shows the target slot's own counts without a gun report."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
@@ -1691,15 +1679,13 @@ def test_f394_an_assumed_swap_shows_the_new_slots_own_counts():
         want = list(st._live_ammo()[1])
         assert want != [10, 20], want   # CONTROL: the two slots differ, or the check proves nothing
         st._on_rx("$BUT,1,1,*")
-        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
         assert st.active_slot == 1 and [st.ammo, st.reserve] == want, (st.active_slot, st.ammo, st.reserve, want)
     asyncio.run(go())
 
 
 def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
     """engine.js `_onAmmo`: the node's write to the other slot (a switch-back resend, a restore) comes back as that
-    slot's $ALCD. It is bookkeeping: it must not change the number or move `active_slot`. A real shot on the slot
-    ALT is switching TO still confirms the swap inside the same window."""
+    slot's $ALCD. It is bookkeeping: it must not change the number or move `active_slot`. A real shot on the bound slot updates its counts while the swap window remains open."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
@@ -1710,7 +1696,7 @@ def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
         st._acct_wrote(1, 5, 9)
         st._on_rx("$BUT,1,1,*")               # ALT to slot 1, then a real round out of it inside the window
         st._on_rx("$ALCD,4,100,1,9,0,*")
-        assert st.switching is None and st.active_slot == 1 and st.ammo == 4, (st.switching, st.active_slot, st.ammo)
+        assert st.switching and st.active_slot == 1 and st.ammo == 4, (st.switching, st.active_slot, st.ammo)
     asyncio.run(go())
 
 
@@ -1718,14 +1704,14 @@ def test_f394_the_echo_of_a_slot_not_on_the_trigger_never_reaches_the_screen():
 # of a head or spawn burst as its own `$ALCD`, with that row's slot token (`$ALCD,8,100,0,24,0`, `$ALCD,1,100,4,0,0`,
 # `$ALCD,2,100,2,1,0` after a spawn). ammo.js `onAmmo`: the echo of the node's own write moves nothing. ----
 
-def test_bug3a_the_spawn_rows_echo_leaves_the_trigger_and_the_alt_pointer_on_slot_0():
+def test_bug3a_spawn_echoes_leave_the_trigger_and_last_loadout_on_slot_0():
     """ammo.js `onAmmo` (bug 3a): the fake gun echoes each spawn `$AMMO` row, as brx1's capture shows a real gun does.
-    The echo is bookkeeping, so the trigger and the ALT pointer stay on slot 0 and the first ALT goes to slot 1."""
+    The echo leaves the trigger and last loadout on slot 0. The first ALT goes to slot 1."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         await flush_fake_ammo(st, mgr)
-        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        assert (st.active_slot, st._last_loadout) == (0, 0), (st.active_slot, st._last_loadout)
         st._on_rx("$BUT,0,1,*"); st._on_rx("$BUT,0,0,*")   # F445 (3d07b60f): the gun takes ALT only after a pull this life
         st._on_rx("$BUT,1,1,*")
         assert st.switching and st.switching["to"] == 1, st.switching
@@ -1749,9 +1735,8 @@ def test_bug3a_an_lcd_books_its_own_slot_token_and_never_moves_the_trigger():
     asyncio.run(go())
 
 
-def test_bug3b_the_echo_of_the_nodes_own_write_never_confirms_an_alt_swap():
-    """ammo.js `onAmmo` (bug 3b): ALT pressed while a re-arm's echo window is open. The echo on the ALT target is the
-    node's own write read back, so the swap stays open and untimed; the next real round confirms it."""
+def test_echoes_and_rounds_leave_the_swap_window_open_until_its_deadline():
+    """Only the swap clock closes SWITCHING, regardless of ammo reports."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
@@ -1761,34 +1746,29 @@ def test_bug3b_the_echo_of_the_nodes_own_write_never_confirms_an_alt_swap():
         st._on_rx("$BUT,1,1,*")
         clock.advance(0.05)
         st._on_rx("$ALCD,6,100,1,24,0,*")
-        assert st.switching and st.last_switch_s is None and st.active_slot == 0, (st.switching, st.last_switch_s, st.active_slot)
+        assert st.switching and st.last_switch_s is None and st.active_slot == 1
         clock.advance(0.1)
         st._on_rx("$ALCD,5,100,1,24,0,*")
-        assert st.switching is None and st.last_switch_s == 0.15 and st.active_slot == 1, (st.switching, st.last_switch_s)
-        assert st._alt_ptr == 1
+        assert st.switching and st.last_switch_s is None and st.active_slot == 1
+        clock.advance(st._swap_window_s()); st.poll(); await settle(st)
+        assert st.switching is None and st.last_switch_s is not None
     asyncio.run(go())
 
 
-def test_f379_the_confirming_round_moves_the_alt_pointer_after_an_old_slot_report():
-    """ammo.js `onAmmo` (F379): ALT, then an old-slot round (it clears the pointer evidence and leaves the pointer on
-    slot 0), then the confirming slot-1 round. The pointer must follow the confirmed swap, or the next ALT shows
-    SWITCHING to the slot the player is already on."""
+def test_an_old_slot_round_does_not_prevent_a_second_alt():
+    """A second ALT retargets the pending bind after an in-flight round."""
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         await flush_fake_ammo(st, mgr)
         st.alcd(mag=10, reserve=20); await settle(st)
         st._on_rx("$BUT,1,1,*")
-        st.alcd(mag=9, reserve=20)            # an old-slot round inside the swap
+        st.alcd(mag=9, reserve=20, slot=0)
+        assert st.active_slot == 1 and st._last_loadout == 1
         clock.advance(0.2)
-        st._prev_ammo[1] = 6
-        st.alcd(mag=5, reserve=24, slot=1)    # the confirming round
-        assert (st.active_slot, st._alt_ptr) == (1, 1), (st.active_slot, st._alt_ptr)
         st._on_rx("$BUT,1,1,*")
-        assert st.switching is None, "inside the gun's ALT lockout (bench 2026-11-08): the gun ignores this press"
-        clock.advance(st._alt_lock_s(1))
-        st._on_rx("$BUT,1,1,*")
-        assert st.switching and st.switching["to"] == 0, st.switching
+        assert st.switching and st.switching["to"] == 0
+        assert st.active_slot == 0 and st._bind_due["slot"] == 0
     asyncio.run(go())
 
 
@@ -1832,12 +1812,12 @@ def test_bug3_r1_m2_echoes_that_land_during_the_revive_write_are_bookkeeping():
                     t = f.split(",")
                     if t[0] == "$AMMO":
                         st._on_rx(f"$ALCD,{t[2]},100,{t[1]},{t[3]},0,*")   # the echo, inside the await
-                seen.append((st.active_slot, st._alt_ptr))
+                seen.append((st.active_slot, st._last_loadout))
         seen = []
         st.write = write
         await st.revive(); await settle(st)
         assert seen == [(0, 0)], f"an echo inside the await moved the trigger: {seen}"
-        assert (st.active_slot, st._alt_ptr) == (0, 0), (st.active_slot, st._alt_ptr)
+        assert (st.active_slot, st._last_loadout) == (0, 0), (st.active_slot, st._last_loadout)
         assert not st._acct_echoing(0) and not st._acct_echoing(1), "the echoes that landed answered the windows"
         assert st._prev_ammo.get(0) != 10, st._prev_ammo
     asyncio.run(go())
@@ -1950,8 +1930,7 @@ def test_the_published_takeover_goes_null_all_at_once_past_the_deadline():
 
 
 def test_alt_on_a_stunned_gun_is_a_swap_and_the_next_press_after_the_stun_swaps_back():
-    """ammo.js `altPressed` (F465, bench 2026-10-16, by design): a stunned gun still swaps on ALT (the stun disarms both
-    slots). No round can confirm it inside the stun, so the swap is assumed at the window's end."""
+    """ALT changes the slot while a stun keeps both magazines disarmed."""
     async def go():
         st, mgr, clock = mk_reload()
         st.load_config({**st.config, "stun": {"duration_s": 2}}, source="test")
@@ -1963,7 +1942,7 @@ def test_alt_on_a_stunned_gun_is_a_swap_and_the_next_press_after_the_stun_swaps_
         st._on_rx("$BUT,1,1,*")
         assert st.switching and st.switching["to"] == 1, "a stunned gun swaps"
         clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
-        assert st.active_slot == 1, "the swap is assumed at the window's end"
+        assert st.active_slot == 1, "the phone keeps the selected slot"
         clock.advance(2.5); st.poll(); await settle(st)
         assert not st.stunned, "fixture: the stun expired"
         st._on_rx("$BUT,1,1,*")
@@ -2126,7 +2105,7 @@ _AMMO_PAIRS = {
     "am.noteGunOther": "_note_gun_other", "am.gunOtherGain": "_gun_other_gain", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.unansweredPulls": "_unanswered_pulls", "am.inferredSlot": "_inferred_slot", "am.noteDisarm": "_note_disarm",
+    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.swapWindowMs": "_swap_window_s", "am.noteDisarm": "_note_disarm",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull", "am.fireFirstShown": "_fire_first_shown",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
@@ -2298,8 +2277,6 @@ KNOWN_UNMIRRORED = {
     "pu._inRangeOf",
     # F550: `preflight.headset_ok` reads BrxLink's headset probe; the stage has no BrxLink and no status heartbeat
     "headsetOk",
-    # F542 E10: the GUN WAS ON card is a HUD moment only; the stage does not model `state.moment` (stage/unmodelled.json)
-    "am.gunWasOn",
     # F529: the stage writes the whole head on every arm (`GunStage.arm`), so it has no cleared-head state to restore
     "_headBack",
     # F535: the stage inlines the mode check in `_hill_source_allowed`; it has no KOTH hill left over to drop (`tick`)
@@ -2551,15 +2528,17 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     # an orphan, because `$TID` is a KNOWN command the deny filter has no reason to take. The gun would read
     # a team byte for a `$PSET` that never arrived. Both `_write` bodies must therefore DENY FIRST, then
     # restore the team, and this guard reads both bodies rather than trusting either comment.
-    for label, body, deny, tid in (
+    for label, body, deny, tid, bind in (
             ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {", "\n  }"),
-             "deniedCommand(f)", "frames = this._tidAfterPset(frames);"),
+             "deniedCommand(f)", "frames = this._tidAfterPset(frames);", "frames = this._bindRows(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
                                           "    async def write(self, frames: list[str], why: str", "\n    async def _send_job"),
-             "protocol.is_denied(f)", "self._tid_after_pset(frames)")):
+             "protocol.is_denied(f)", "self._tid_after_pset(frames)", "self._bind_rows(frames)")):
         assert deny in body and tid in body, \
             (f"{label}: the deny filter and the $TID restore are not both in this function's CODE (stage.py: `write` alone, which ends where `_send_job` starts). A "
              "comment mentioning either one does not count -- `_fn_body` strips comments on purpose.")
+        assert bind in body and body.index(tid) < body.index(bind), \
+            f"{label}: normalise button bindings after restoring the team"
         assert body.index(deny) < body.index(tid), \
             (f"{label} restores the team BEFORE it drops denied frames. A denied $PSET would then leave an "
              "orphan $TID on the gun. Deny first, then $TID -- and keep the two sources in the same order, "
@@ -3521,3 +3500,84 @@ def test_no_gunstage_method_is_defined_twice():
             seen[n.name] = seen.get(n.name, 0) + 1
     dup = sorted(k for k, v in seen.items() if v > 1)
     assert not dup, f"defined more than once in GunStage: {dup}"
+
+
+def test_button_bindings_follow_the_selected_slot_and_preserve_holds():
+    """Every write preserves phone ownership, including old compiled trigger rows."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.active_slot = 1
+        rows = ["$BMAP,0,0,,,,,*", "$BMAP,1,99,,,,,*", "$BMAP,1,97,,,,,*",
+                "$BMAP,0,98,,,,,*", "$BMAP,2,1,,,,,*"]
+        n = mark(mgr)
+        await st.write(rows, "binding test")
+        assert since(mgr, n) == ["$BMAP,0,1,,,,,*", "$BMAP,1,98,,,,,*", "$BMAP,1,97,,,,,*",
+                                "$BMAP,0,98,,,,,*", "$BMAP,2,1,,,,,*"]
+        for owner in ("weapon", "swap", "reload"):
+            st._trigger_pending = {"at": clock.t, "due": clock.t + 1} if owner == "weapon" else None
+            st._bind_due = {"slot": 1, "at": clock.t + 1, "life": st._life_queued} if owner == "swap" else None
+            st.reloading = {"soft": True} if owner == "reload" else None
+            n = mark(mgr)
+            await st.write(["$BMAP,0,0,,,,,*"], "binding hold test")
+            assert since(mgr, n) == ["$BMAP,0,98,,,,,*"], owner
+        st._trigger_pending = None; st._bind_due = None; st.reloading = None
+    asyncio.run(go())
+
+
+def test_relink_restores_the_selected_trigger_with_or_without_a_respawn_profile():
+    """A drop during a swap cannot leave the trigger held after relink."""
+    async def go():
+        for profile in (True, False):
+            st, mgr, clock = mk_reload()
+            await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+            st._on_rx("$BUT,1,1,*")
+            await settle(st)
+            assert st.active_slot == 1 and st._bind_due
+            await st.disconnect()
+            assert st._bind_due is None
+            if not profile:
+                st.bundle.pop("respawn_profile", None)
+            await st.connect(GUN)
+            assert "$BMAP,0,1,,,,,*" in tx(mgr), profile
+    asyncio.run(go())
+
+
+def test_a_new_life_clears_the_soft_reload_before_writing_its_trigger():
+    """An old phone reload must not rewrite a new life's live trigger as held."""
+    async def go():
+        for revive in (False, True):
+            st, mgr, clock = mk_reload()
+            await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+            await flush_fake_ammo(st, mgr)
+            st.active_slot = 1
+            st._publish_ammo(1, 2, 20)
+            st._reload_pulled(); await settle(st)
+            assert st.reloading and st.reloading["soft"]
+            n = mark(mgr)
+            if revive:
+                await st.revive(station=1)
+            else:
+                await st.spawn()
+            await settle(st)
+            bindings = [f for f in since(mgr, n) if f.startswith("$BMAP,0,")]
+            assert bindings and bindings[-1] == "$BMAP,0,0,,,,,*", bindings
+            assert st.reloading is None and st._gun_other is None
+    asyncio.run(go())
+
+
+def test_a_disconnect_ends_the_soft_reload_before_relink_binds_the_trigger():
+    """The phone's dropped reload cannot hold the trigger after reconnecting."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        st.active_slot = 1
+        st._publish_ammo(1, 2, 20)
+        st._reload_pulled(); await settle(st)
+        assert st.reloading and st.reloading["soft"]
+        await st.disconnect()
+        assert st.reloading is None and st.reload_outcome["why"] == "dropped"
+        await st.connect(GUN)
+        assert "$BMAP,0,1,,,,,*" in tx(mgr)
+    asyncio.run(go())

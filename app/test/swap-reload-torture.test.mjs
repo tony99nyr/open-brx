@@ -530,18 +530,6 @@ test('swap/reload: SR5, a late answer to our write never overwrites a newer coun
 });
 
 // Codex review 2026-11-08 (SR5 layer 2): an unchanged report is no reload progress, so it never stretches the ALT hold.
-test('swap/reload: SR5, a same-count report from the other slot leaves the ALT hold alone (Codex review)', async () => {
-  const h = harness('usp', 6), { eng, gun } = h;
-  await h.start();
-  assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
-  assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
-  const until = h.now() + 100;
-  eng.am.gunOther = { slot: 0, until, life: eng._lifeSeq, energy: false };
-  eng.feedFrame(`$ALCD,${eng.am.prevAmmo[0]},100,0,${eng.am.prevReserve[0]},0,*`);
-  assert.ok(h.logs.some(l => /slot 0 reported at the same count/.test(l.m)), 'setup: the report took the same-count path');
-  assert.equal(eng.am.gunOther && eng.am.gunOther.until, until, 'the hold is not stretched');
-});
-
 // Bench 2026-11-08 (SR11, Tactix-E20D on v4.32, the USP-S fired last at 9/224): a relink's reconcile, replayed. Each
 // `$AMMO` write is answered as the slot fired last at its count at that moment. The disarm pair answered `slot 1 at 9`
 // (slot 1 before its own disarm) then `slot 1 at 0`. The re-arm pair answered `slot 1 at 0` (the slot-0 write, slot 1

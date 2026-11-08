@@ -5430,18 +5430,22 @@ test('F542 cause 2 review: a round in flight past a refused pull inside the swap
 });
 // F542 last-fired (Tony, 0.4.32): this test used to expect GUN WAS ON. Slot 0 fired last, so the gun reloads slot 0 while it
 // holds slot 1: the rise is the lever's reload of the last-fired slot, and the trigger stays where ALT put it.
-test('F542 E10 review: a lever the phone refuses (a full slot) and a rise on the slot fired last keeps the trigger', () => {
+test('F542 E10 review: a lever the phone refuses (a full slot) keeps the trigger, and the gun\'s refill of the slot fired last is put back', () => {
   const h = liveSwapHarness();
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
   h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to the full slot 1');
   h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, false, 'setup: a full slot opens no reload');
+  const n = h.writes.length;
   h.adv(1500); h.frame('$ALCD,32,100,0,383,0,*');
   const s = h.eng.state();
   assert.equal(s.activeSlot, 1);
   assert.notEqual(s.moment && s.moment.data && s.moment.data.gunWas, true);
-  assert.equal(s.fireFirst, true);
+  // Tony 2026-11-08 (bench lv1-8): the gun's refill of slot 0, which the trigger was not bound to, is put back
+  assert.ok(h.writes.slice(n).includes('$AMMO,0,31,384,1,*'), 'the free refill of slot 0 is put back');
+  assert.equal(h.eng.am.prevAmmo[0], 31);
+  assert.equal(s.fireFirst, false, 'no hint: the weapon in hand is full and nothing went elsewhere');
 });
 // Bench 2026-11-01 (Tony, 0.4.32): ALT does swap, but until the new weapon fires once the lever reloads the slot that FIRED
 // LAST, and its `$ALCD` names that slot. AR (slot 0) and SMG (slot 1) stand in for the Shotgun and the USP.
@@ -9272,3 +9276,27 @@ test('F665: a melee swing never moves the trigger, never takes the ammo block an
   assert.deepEqual(gunWas, [], 'the F650 desync line (gun was on slot) never fires: the HUD and the gun agree throughout');
 });
 
+
+// brx1 2026-11-08 (F668, sr1c): the lever refilled the EMPTY bound slot, not the slot that fired the last live round. Two
+// readings fit (a dry pull moves the gun's latch, or the lever reloads an empty bound slot), so the undo follows the slot the
+// refill's `$ALCD` names: a refill of the bound slot stays, a refill of any other slot is put back.
+test('F668: the lever undo follows the slot the refill names, never the last live round', () => {
+  for (const which of ['bound', 'other']) {
+    const h = liveSwapHarness();
+    h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');   // the AR's last live round
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+    h.frame('$ALCD,0,100,1,240,0,*');                                                          // the USP-S in hand, empty
+    assert.equal(h.eng.activeSlot, 1, 'setup: bound to the empty USP-S');
+    const n = h.writes.length;
+    h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500);
+    if (which === 'bound') {
+      h.frame('$ALCD,12,100,1,228,0,*');                                                       // sr1c: the gun refilled the USP-S
+      assert.ok(!h.writes.slice(n).some(f => f.startsWith('$AMMO,1,') && f !== '$AMMO,1,12,228,1,*' && /^\$AMMO,1,0,/.test(f)), 'the bound slot\'s refill is never put back');
+      assert.equal(h.eng.am.prevAmmo[1], 12);
+    } else {
+      h.frame('$ALCD,32,100,0,383,0,*');                                                       // the other reading: the AR refilled
+      assert.ok(h.writes.slice(n).includes('$AMMO,0,31,384,1,*'), 'the AR\'s refill is put back');
+      assert.equal(h.eng.am.prevAmmo[0], 31);
+    }
+  }
+});
