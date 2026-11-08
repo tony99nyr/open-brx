@@ -896,8 +896,9 @@ export class Ammo {
     // Codex pass r3 (the torture run): a chain (the Shotgun) that has loaded a shell and is not full is still loading, and the
     // gun ignores ALT until it ends: the hold runs one shell past the last shell. A magazine's gain ends its reload ('filled').
     const now = this.host.now(), chaining = !!(r && r.lastGainAt > r.at && r.cap != null && r.mag < r.cap && this.prevReserve[r.slot] !== 0);
-    // Codex 2026-11-08: a stun's disarm cuts the gun's reload, so a reload begun before the stun holds no ALT inside it.
-    if (r && !r.auto && !r.soft && !this.host.stunned && (chaining ? now < r.lastGainAt + gunHoldMs(r.ms - sw, r.energy)
+    // Codex 2026-11-08: a stun's disarm cuts the gun's reload (`cut`, engine.js `_stun`), so a reload begun before the stun
+    // holds no ALT, inside the stun or after it.
+    if (r && !r.auto && !r.soft && !r.cut && (chaining ? now < r.lastGainAt + gunHoldMs(r.ms - sw, r.energy)
       : now < r.at + sw + gunHoldMs(r.ms - sw, r.energy) && !(r.lastGainAt > r.at))) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
       this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
     // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)

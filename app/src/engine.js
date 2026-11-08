@@ -4358,6 +4358,7 @@ export class Engine {
     }
     const live = this.am.liveAmmo();
     this.am.gunOther = null;   // review 2026-11-06 r2: the disarm cuts the gun's own reload, so ALT is no longer held
+    if (this.am.reloading) this.am.reloading.cut = true;   // Codex 2026-11-08: and the phone's takeover of it holds no ALT, in the stun or after
     this.stunned = { at: now, until: now + ms, ammo: live };
     // F15 (Tony, 2026-09-18): one cue on the gun that just went dark, in the same write as the disarm --
     // never repeated on an extend above, and never per tick (F274).

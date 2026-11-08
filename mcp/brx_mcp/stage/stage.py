@@ -5901,7 +5901,7 @@ class GunStage:
         chaining = bool(r and (r.get("last_gain_at") or 0.0) > r["at"] and r.get("cap") is not None and r.get("mag") is not None
                         and r["mag"] < r["cap"] and self._prev_reserve.get(r["slot"]) != 0)
         hold = self._gun_hold_s(r["s"] - sw, bool(r.get("energy"))) if r else 0.0
-        if (r and not r.get("auto") and not r.get("soft") and not self.stunned   # F226 `!r.auto`; ammo.js: a stun's disarm cuts the reload
+        if (r and not r.get("auto") and not r.get("soft") and not r.get("cut")   # F226 `!r.auto`; ammo.js `cut`: a stun's disarm cut the reload
                 and (self.now() < r["last_gain_at"] + hold if chaining
                      else self.now() < r["at"] + sw + hold and not ((r.get("last_gain_at") or 0.0) > r["at"]))):
             self._log(f"ALT ignored by the gun mid-reload (slot {self.active_slot})", "info")
@@ -6197,6 +6197,8 @@ class GunStage:
             return
         live = self._live_ammo()
         self._gun_other = None   # engine.js `_stun` (review 2026-11-06 r2): the disarm cuts the gun's own reload
+        if self.reloading:
+            self.reloading["cut"] = True   # engine.js `_stun` (Codex 2026-11-08): the takeover of a cut reload holds no ALT
         self.stunned = {"at": now, "until": now + s, "ammo": live}
         self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live] + [STUN_PLAY], f"stun: disarm {s:g} s", gap_ms=60))
         self._hold_accuracy_writes("stun disarm")   # engine.js `_stun`: a `$WEAP` + `$AMMO` restore would re-arm the gun mid-stun
