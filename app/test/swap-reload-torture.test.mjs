@@ -770,6 +770,23 @@ test('swap/reload: a reload begun before a stun does not hold ALT inside the stu
   assert.equal(eng.activeSlot, 1, 'the HUD follows');
 });
 
+// Codex review 2026-11-08: and after a short stun, before the cut reload's own hold would have ended.
+test('swap/reload: a reload cut by a short stun holds no ALT after the stun either (Codex review, F465)', async () => {
+  const h = harness('usp', 13), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
+  await h.settle(300);
+  assert.equal(gun.lever(), 0, 'setup: the gun reloads the AR');
+  await h.advance(100);
+  eng._stun(300); await h.advance(500);
+  assert.ok(!eng.stunned, 'setup: the stun is over');
+  assert.ok(eng.am.reloading, 'setup: the phone still shows the cut reload');
+  assert.ok(gun.alt(), 'setup: the gun, its reload cut, swaps');
+  assert.ok(!h.logs.some(l => /ALT ignored by the gun mid-reload/.test(l.m)), 'the phone takes the press');
+  await h.settle(4000);
+  assert.equal(eng.activeSlot, 1, 'the HUD follows');
+});
+
 // F465 (bench 2026-10-16, Tony: by design): a stunned gun still swaps on ALT, under the same lockout. The phone ignored the
 // press, so after the stun the HUD named the old weapon and the next round logged `gun was on slot`.
 test('swap/reload: ALT while stunned swaps, as the gun does, under the same lockout (F465)', async () => {
