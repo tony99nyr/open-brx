@@ -2075,7 +2075,9 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} F657 history: a KOTH row lists the hill time that decided it, not the kills`, async () => {
     const pg = await open(view, 'history');
-    const rows = await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+    // Each row starts with its own local time ("6:52AM"). Drop it, or a clock check fails or passes on the wall clock.
+    const rows = (await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim())))
+      .map(x => x.replace(/^\d{1,2}:\d\d\s*(AM|PM)?\s*/i, ''));
     await pg.close();
     const koth = rows.find(x => /\bKOTH\b/.test(x)), tdm = rows.find(x => /\bTDM\b/.test(x));
     must(koth && /7:04/.test(koth) && /3:31/.test(koth), 'the KOTH row does not list held time: ' + koth);
@@ -2110,7 +2112,9 @@ for (const view of VIEWS) {
     must(/^POINTS\b/.test(pl.strip) && /\b770\b/.test(pl.strip) && /\b412\b/.test(pl.strip) && !/\d:\d\d/.test(pl.strip), 'the possession strip is not POINTS 770 / 412: ' + pl.strip);
     must(pl.shown, 'the possession strip is not on screen');
     pg = await open(view, 'history', skin);
-    const rows = await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim()));
+    // Each row starts with its own local time ("6:52AM"). Drop it, or a clock check fails or passes on the wall clock.
+    const rows = (await pg.evaluate(() => Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim())))
+      .map(x => x.replace(/^\d{1,2}:\d\d\s*(AM|PM)?\s*/i, ''));
     await pg.close();
     const dom = rows.find(x => /\bDOMINATION\b/.test(x)), koth = rows.find(x => /\bKOTH\b/.test(x));
     must(dom && /\b770\b/.test(dom) && /\b412\b/.test(dom) && !/12:50|6:52/.test(dom), 'the DOMINATION history row does not list points: ' + dom);
