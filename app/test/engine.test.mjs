@@ -2363,6 +2363,7 @@ test('MC-first late joiner: welcome carries a running start, gun links from LOBB
 test('head re-write with slot 1 active: echo + refill book 0 shots (activeSlot reset to 0)', () => {
   const h = goLive(harness());
   h.player.loadout.weapons.push({ weapon_id: 'shotgun' });
+  h.eng.activeSlot = 1;                                    // Tony 2026-11-08: the phone swapped to the shotgun
   h.frame('$ALCD,6,100,1,24,0,*'); h.frame('$ALCD,5,100,1,24,0,*');   // shotgun fired once
   assert.equal(h.eng.activeSlot, 1); assert.equal(h.eng.shots, 1);
   h.config_();                                             // MC re-pushes config on a LIVE gun → head re-write
@@ -2989,20 +2990,6 @@ test('ALT raises the swap indicator only with a real second weapon', () => {
   assert.equal(h.eng.state().switching, true);
 });
 
-test('the indicator EXPIRES without inventing a slot the gun never reported', () => {
-  // $BUT,1 is "alt-fire" — it is also the native 3s indoor/outdoor toggle and easy_reload remaps it to
-  // RELOAD, so a press is not proof a weapon changed. Guessing a slot showed the WRONG gun and the
-  // wrong magazine until the next trigger pull (review 2026-08-31).
-  const h = twoWeapons(goLive(harness()));
-  h.frame('$ALCD,32,100,0,192,0,*');
-  h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().switching, true);
-  h.adv(5000);
-  const st = h.eng.state();
-  assert.equal(st.switching, false, 'indicator cleared');
-  assert.equal(st.activeSlot, 0, 'slot still what the GUN last reported — never guessed');
-  assert.equal(st.ammo, 32, 'ammo still the slot the gun reported');
-});
 
 test('switchingMs() is pure — reading state never mutates it', () => {
   const h = twoWeapons(goLive(harness()));
@@ -3013,18 +3000,20 @@ test('switchingMs() is pure — reading state never mutates it', () => {
   assert.equal(h.eng.activeSlot, before, 'snapshot() must not move the slot');
 });
 
-test('an $ALCD on a new weapon slot confirms the swap; melee (slot 4) does not', () => {
+test('a swap moves neither on melee (slot 4) nor on a frame; the new slot\'s counts follow the phone', () => {
   const h = twoWeapons(goLive(harness()));
   h.frame('$ALCD,32,100,0,192,0,*');
   h.frame('$BUT,1,1,*');
   h.adv(300); h.frame('$ALCD,1,100,4,0,0,*');            // melee reports on its own $ALCD
-  assert.equal(h.eng.state().switching, true, 'slot 4 is melee, not the swap we awaited');
-  h.adv(200); h.frame('$ALCD,6,100,1,24,0,*');           // the real secondary
+  assert.equal(h.eng.state().switching, true, 'slot 4 is melee: the swap goes on');
+  assert.equal(h.eng.state().activeSlot, 1);
+  h.adv(200); h.frame('$ALCD,6,100,1,24,0,*');           // the secondary reports
+  h.adv(400); h.eng.tick();
   const st = h.eng.state();
   assert.equal(st.switching, false);
   assert.equal(st.activeSlot, 1);
-  assert.equal(st.ammo, 6, 'ammo follows the confirmed slot');
-  assert.ok(h.eng.am.lastSwitchMs >= 500, 'records ALT -> confirming shot (includes reaction time)');
+  assert.equal(st.ammo, 6, 'ammo follows the slot in hand');
+  assert.ok(h.eng.am.lastSwitchMs >= 850, 'the swap ran its whole window');
 });
 
 test('death clears the swap indicator', () => {
@@ -4026,10 +4015,12 @@ test('F259: a confirmed swap arms the NEW slot, and the new weapon rounds count 
   // weapon's profile under the old slot, which is the opposite of what its own comment claims.
   const h = armRecoil(RECOIL_PROFILE);
   h.frame('$ALCD,36,100,0,216,0,*');
-  h.eng.switching = { from: 0, at: h.eng.now(), to: 1 };
-  h.frame('$ALCD,6,100,1,24,0,*');                    // the swap lands on slot 1
-  assert.equal(h.eng.switching, null, 'setup: the swap is confirmed');
+  h.eng.player = { ...h.eng.player, loadout: { ...h.eng.player.loadout, weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'assault_rifle' }] } };   // the one catalogue row, in both slots
+  h.eng.am.altPressed();                              // Tony 2026-11-08: the phone swaps at the press
+  assert.equal(h.eng.activeSlot, 1, 'setup: the swap is the phone\'s');
   assert.equal(h.eng._recoil.slot, 1, 'the model must be armed for the slot the player is now holding');
+  h.adv(900); h.eng.tick();                           // the trigger is bound to slot 1
+  h.frame('$ALCD,6,100,1,24,0,*');
   h.frame('$ALCD,5,100,1,24,0,*');                    // its first round
   assert.equal(h.eng._recoil.burst, 1, 'and that slot rounds must reach it');
 });
@@ -5096,6 +5087,7 @@ function shellHarness() {
   h.eng.catalog = { weapons: [{ weapon_id: 'assault_rifle', name: 'AR', reload_s: 1.4 },
                               { weapon_id: 'shotgun', name: 'Shotgun', reload_s: 0.4 }], perks: [] };
   h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }] } };
+  h.eng.activeSlot = 1; h.eng.am.lastLoadout = 1;   // Tony 2026-11-08: the phone owns the swap; it has bound the shotgun
   h.frame('$ALCD,1,100,1,24,0,*');    // on the shotgun, one shell left
   return h;
 }
@@ -5129,6 +5121,7 @@ test('F518: a solicited LCD magazine gain counts during a reload takeover', () =
 
 test('F123: a release NEVER cancels a reload — a magazine weapon is let go instantly and still loads', () => {
   const h = shellHarness();
+  h.eng.activeSlot = 0;                         // the phone swapped back to the rifle (Tony 2026-11-08)
   h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
   h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); // tap the handle and let go, as you do on a magazine weapon
   assert.equal(h.eng.state().reloading, true, 'the takeover survives the release');
@@ -5368,12 +5361,15 @@ test('no reload opens during a rejoin reconcile; a match end clears one in fligh
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
   assert.equal(h.eng.reloading, null, 'end clears the reload');
 });
-test('ALT with two weapons: switching exposes from/to; the next shot on the new slot confirms with a switched moment', () => {
+test('ALT with two weapons: the phone swaps at once, switching exposes from/to, and the window ends with a switched moment', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   let s = h.eng.state(); assert.equal(s.switching, true); assert.equal(s.switchFrom, 0); assert.equal(s.switchTo, 1); assert.equal(s.reloading, false);
+  assert.equal(s.activeSlot, 1, 'Tony 2026-11-08: the phone owns the swap, so the trigger slot moves at the press');
   h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
+  assert.equal(h.eng.state().switching, true, 'the window runs its time; a frame does not close it');
+  h.adv(500); h.eng.tick();
   s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
 });
 test('ALT assumes the swap after its window; a link drop cancels one', () => {
@@ -5381,7 +5377,8 @@ test('ALT assumes the swap after its window; a link drop cancels one', () => {
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   h.adv(851); h.eng.tick();
-  let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+  let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched');
+  assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'Tony 2026-11-08: the phone binds the trigger at the window\'s end');
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
   h.eng.onBleDropped(); assert.equal(h.eng.state().switching, false);
 });
@@ -5407,7 +5404,7 @@ test('F542 hardware: ALT past its window assumes the swap and writes no $QUERY',
   assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0, 'no slot query');
   const s = h.eng.state();
   assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.assumed, true);
+  assert.equal(s.moment.kind, 'switched');
 });
 test('F542 hardware: an $LCD that still reads the last shot\'s slot after ALT does not undo the swap', () => {
   const h = liveSwapHarness();
@@ -5419,36 +5416,7 @@ test('F542 hardware: an $LCD that still reads the last shot\'s slot after ALT do
   h.frame('$LCD,45,70,0,0,30,188,*');               // after the window: the same stale slot
   assert.equal(h.eng.state().activeSlot, 1, 'an $LCD is not evidence of the selected slot');
 });
-test('F542 hardware: the next shot\'s $ALCD slot snaps the HUD when the gun did not swap', () => {
-  const h = liveSwapHarness();
-  h.frame('$ALCD,30,100,0,384,0,*');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap');
-  h.frame('$ALCD,29,100,0,384,0,*');
-  assert.equal(h.eng.state().activeSlot, 0, 'a round from slot 0 puts the HUD back on slot 0');
-  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'and the next ALT targets slot 1 again');
-});
 
-// Field 2026-10-17 (report §3.2 cause 2): a round from the OLD slot inside the swap window proves the gun did not swap.
-// `switchTick` used to assume the swap anyway, so the HUD sat on a weapon the gun was not holding.
-test('F542 cause 2: a round on the old slot inside the swap closes it with no swap, and the window never assumes one', () => {
-  const h = liveSwapHarness();
-  const logs = []; h.eng.log = m => logs.push(String(m));
-  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
-  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true, 'setup: SWITCHING');
-  h.adv(300); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
-  let s = h.eng.state();
-  assert.equal(s.switching, false, 'the round on slot 0 closes the card');
-  assert.equal(s.activeSlot, 0, 'the trigger stays on slot 0');
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
-  h.adv(900); h.eng.tick();
-  s = h.eng.state();
-  assert.equal(s.activeSlot, 0, 'the window does not assume the swap over the round');
-  assert.ok(!logs.some(l => /swap to slot 1 assumed/.test(l)), 'no assumed swap is logged');
-  h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switchTo, 1, 'the next ALT targets slot 1 again');
-});
 test('F542 cause 2 review: a round in flight past a refused pull inside the swap does not close it', () => {
   const h = liveSwapHarness();
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
@@ -5460,67 +5428,24 @@ test('F542 cause 2 review: a round in flight past a refused pull inside the swap
   h.adv(900); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'the window assumes the swap');
 });
-// F650 (game 2026-11-01): the F445 rule (no ALT before the first pull) came from a phone-equip bench and silently ignored 12
-// presses in the game, one of them while the gun fired from the new slot. ALT before the first pull is now a swap.
-test('F650: ALT before the first trigger pull of a life opens the swap, and an old-slot round still corrects it', () => {
-  const h = liveSwapHarness();
-  const logs = []; h.eng.log = m => logs.push(String(m));
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true, 'SWITCHING at once, no silent ignore');
-  assert.ok(!logs.some(l => /no trigger pull since the spawn/.test(l)));
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'the window assumes the swap');
-  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
-  const s = h.eng.state();
-  assert.equal(s.activeSlot, 0, 'if the gun refused it, the first round from slot 0 puts the HUD back');
-  assert.equal(s.moment.data.gunWas, true, 'with GUN WAS ON');
-  assert.ok(logs.includes('gun was on slot 0: the HUD showed slot 1'));
-});
-// Field 2026-10-17 (report E10): the gun's slot correcting the HUD is the player's "ALT switched back"; say so.
-test('F542 E10: a shot that corrects an assumed swap shows GUN WAS ON, and a reload on the other slot does too', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,0,0,*');
-  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap');
-  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,29,100,0,384,0,*'); h.frame('$BUT,0,0,*');
-  let s = h.eng.state();
-  assert.equal(s.activeSlot, 0);
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
-  h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap again');
-  h.adv(2000); h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,5,100,1,288,0,*'); h.frame('$BUT,0,0,*');   // the phone sees slot 1 spent... (a missed swap back)
-  assert.equal(h.eng.state().activeSlot, 1);
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 0, 'setup: assumed swap to slot 0');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to slot 1, which is not full');
-  h.adv(2000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
-  assert.equal(h.eng.state().reloading, true, 'the phone opens the reload on slot 1');
-  h.adv(1500); h.frame('$ALCD,30,100,0,383,0,*');
-  s = h.eng.state();
-  assert.equal(s.activeSlot, 0, 'the reload on slot 0 moves the trigger');
-  assert.notEqual(s.moment.data && s.moment.data.gunWas, true, 'no card under the RELOAD takeover');
-  h.frame('$ALCD,32,100,0,381,0,*');
-  s = h.eng.state();
-  assert.equal(s.reloading, false);
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 0); assert.equal(s.moment.data.gunWas, true);
-});
 // F542 last-fired (Tony, 0.4.32): this test used to expect GUN WAS ON. Slot 0 fired last, so the gun reloads slot 0 while it
 // holds slot 1: the rise is the lever's reload of the last-fired slot, and the trigger stays where ALT put it.
-test('F542 E10 review: a lever the phone refuses (a full slot) and a rise on the slot fired last keeps the trigger', () => {
+test('F542 E10 review: a lever the phone refuses (a full slot) keeps the trigger, and the gun\'s refill of the slot fired last is put back', () => {
   const h = liveSwapHarness();
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');
   h.adv(500); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
   assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed swap to the full slot 1');
   h.adv(1000); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, false, 'setup: a full slot opens no reload');
+  const n = h.writes.length;
   h.adv(1500); h.frame('$ALCD,32,100,0,383,0,*');
   const s = h.eng.state();
   assert.equal(s.activeSlot, 1);
   assert.notEqual(s.moment && s.moment.data && s.moment.data.gunWas, true);
-  assert.equal(s.fireFirst, true);
+  // Tony 2026-11-08 (bench lv1-8): the gun's refill of slot 0, which the trigger was not bound to, is put back
+  assert.ok(h.writes.slice(n).includes('$AMMO,0,31,384,1,*'), 'the free refill of slot 0 is put back');
+  assert.equal(h.eng.am.prevAmmo[0], 31);
+  assert.equal(s.fireFirst, false, 'no hint: the weapon in hand is full and nothing went elsewhere');
 });
 // Bench 2026-11-01 (Tony, 0.4.32): ALT does swap, but until the new weapon fires once the lever reloads the slot that FIRED
 // LAST, and its `$ALCD` names that slot. AR (slot 0) and SMG (slot 1) stand in for the Shotgun and the USP.
@@ -5538,7 +5463,7 @@ function f542TonySequence(h) {
 // F650 (Tony, game 2026-11-01): the lever always reloads the weapon in hand. Until that weapon fires, the gun's own lever
 // goes to the slot that fired LAST (F542), so the phone reloads the weapon in hand itself with `$AMMO` at its reload time.
 const ammoRows = (w, slot) => w.filter(f => f.startsWith(`$AMMO,${slot},`));
-test('F650: Tony\'s sequence, the lever reloads slot 0 by the phone; the gun\'s own reload of slot 1 books there', () => {
+test('F650: Tony\'s sequence, the lever reloads slot 0 by the phone; the gun\'s free refill of slot 1 is put back (bench lv1-8)', () => {
   const h = liveSwapHarness();
   const logs = []; h.eng.log = m => logs.push(String(m));
   f542TonySequence(h);                                             // slot 1 fired last; back on slot 0 at 29
@@ -5550,7 +5475,8 @@ test('F650: Tony\'s sequence, the lever reloads slot 0 by the phone; the gun\'s 
   assert.ok(logs.some(l => /the phone reloads slot 0 itself/.test(l)));
   h.adv(500); h.frame('$ALCD,6,100,1,284,0,*');                     // the gun's own lever refills slot 1, the slot fired last
   s = h.eng.state();
-  assert.equal(h.eng.am.prevAmmo[1], 6, 'slot 1 books its reload');
+  assert.equal(h.eng.am.prevAmmo[1], 2, 'Tony 2026-11-08: slot 1 keeps its 2, the trigger was not bound to it');
+  assert.deepEqual(ammoRows(h.writes.slice(n), 1), ['$AMMO,1,2,288,1,*'], 'the gun\'s refill of slot 1 is put back');
   assert.equal(s.activeSlot, 0, 'the trigger stays'); assert.equal(s.ammo, 29, 'the ammo block keeps slot 0');
   assert.equal(s.reloading, true, 'the phone\'s reload of slot 0 goes on'); assert.equal(s.fireFirst, false, 'no hint');
   h.adv(5000); h.eng.tick();
@@ -5736,27 +5662,6 @@ test('chain review (Codex): a chain\'s shell time has no 300 ms floor (Fast Hand
   f542Lever(h);
   assert.equal(h.eng.am.reloading.ms, 200);
 });
-test('F650 review M1: ALT during the phone\'s reload, the last-fired slot full, is a swap and the reload is dropped', () => {
-  const h = liveSwapHarness();
-  morningOnSlot1(h);
-  const n = h.writes.length;
-  f542Lever(h);
-  assert.equal(h.eng.am.reloading.soft, true, 'setup: the phone reloads slot 1');
-  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  const s = h.eng.state();
-  assert.equal(s.switching, true, 'the gun takes the ALT: it is not reloading anything');
-  assert.equal(s.reloading, false); assert.equal(s.reloadOutcome.why, 'swapped');
-  h.adv(5000); h.eng.tick();
-  assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,')), [], 'no $AMMO to the weapon swapped away from');
-});
-test('F650 review M1: ALT during the phone\'s reload while the gun reloads the other slot is still ignored, as on the gun', () => {
-  const h = liveSwapHarness();
-  f542TonySequence(h);                                             // slot 1 fired last at 2 rounds: the gun's lever reloads it
-  f542Lever(h);
-  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, false, 'the gun ignores ALT mid-reload');
-  assert.equal(h.eng.state().reloading, true);
-});
 test('F650: the lever right after the weapon in hand fired is the gun\'s own reload, not the phone\'s', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);
@@ -5837,33 +5742,6 @@ test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is no
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true, 'the ALT opens the swap');
 });
-test('review 2026-11-06 (brx1): if the gun DOES take the held ALT, the first round from the other slot corrects the HUD', () => {
-  // The hold rests on an unproven gun fact (bench-plan SR15). If it is wrong, the cost must be one wrong label until the
-  // next round, never a stuck HUD: a round ends the hold, and a round from another slot moves the trigger (GUN WAS ON).
-  const h = liveSwapHarness();
-  const logs = []; h.eng.log = m => logs.push(String(m));
-  leverOnFull(h);                                                  // slot 0 fired last (29); on slot 1, full
-  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: the phone held the ALT');
-  assert.ok(h.eng.am.gunOther, 'setup: still inside the hold');
-  f542Shot(h, '$ALCD,28,100,0,384,0,*');                          // the gun had taken the ALT: the round comes from slot 0
-  const s = h.eng.state();
-  assert.equal(s.activeSlot, 0, 'the first round from slot 0 moves the HUD there');
-  assert.equal(s.ammo, 28);
-  assert.ok(logs.some(l => /gun was on slot 0/.test(l)), 'the one desync line, then right');
-  assert.equal(h.eng.am.gunOther, null, 'the round ended the hold');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true, 'and the next ALT is a swap again');
-});
-test('review 2026-11-06 r3: an energy weapon fired last holds ALT through its late recharge (pl4: up to 3.9 s)', () => {
-  const h = liveSwapHarness();
-  h.player.loadout = { weapons: [{ weapon_id: 'energy_rifle' }, { weapon_id: 'smg' }] };   // no catalogue row: the id says energy
-  leverOnFull(h);
-  h.adv(3500); h.eng.tick();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, false, 'the gun is still recharging slot 0, so it ignores this ALT');
-  assert.equal(h.eng.state().activeSlot, 1);
-});
 test('review 2026-11-06 r2: the ALT hold ends at the gun\'s measured reload overrun, not the takeover\'s stale tail', () => {
   const h = liveSwapHarness();
   leverOnFull(h);
@@ -5890,20 +5768,6 @@ test('Codex pass 2026-11-07: a soft-reload `$AMMO` that failed before it left pu
   h.adv(ACC_ECHO_MS + 50);
   f542Shot(h, '$ALCD,28,100,0,384,0,*');
   assert.equal(h.eng.shots - shots, 1, 'one round, not a magazine');
-});
-test('Codex pass 2026-11-07: the gun ignores ALT until its own refill lands, up to 1.3x the reload (F27), not only to reload_s', () => {
-  const h = liveSwapHarness();
-  f542Shot(h, '$ALCD,31,100,0,384,0,*');                          // slot 0 fired last: the lever is the gun's own reload
-  f542Lever(h);
-  const r = h.eng.am.reloading;
-  assert.ok(r && !r.soft, 'setup: the gun reloads the weapon in hand');
-  h.adv(Math.round(r.ms * 1.15)); h.eng.tick();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, false, 'no refill yet, so the gun is still reloading and ignores ALT');
-  assert.equal(h.eng.state().reloading, true);
-  h.adv(Math.round(r.ms * 0.2)); h.eng.tick();                      // CONTROL: past 1.3x with no refill the gun takes ALT
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true);
 });
 function failingSoftReload(h) {
   // the phone's `$AMMO,0` write stays on the link until the test settles it
@@ -5936,35 +5800,6 @@ test('Codex pass 2026-11-07 r2: a newer write at the same counts owns the slot, 
   assert.equal(h.eng.am.prevAmmo[0], cap, 'the newer write stands');
   assert.equal(h.eng.am.acctLive(0), cap);
 });
-test('Codex pass 2026-11-07 r2: a lever inside a swap holds ALT for the swap window plus 1.3x the reload, not 1.3x of both', () => {
-  const h = liveSwapHarness();
-  f542Shot(h, '$ALCD,31,100,0,384,0,*');                          // slot 0 fired last
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');                     // ALT: the swap to slot 1 opens
-  f542Lever(h);                                                    // inside the swap: the gun reloads slot 0 once it ends
-  const r = h.eng.am.reloading, sw = h.eng.switchWindowMs();
-  assert.ok(r && r.swapTo === 1 && !r.soft, 'setup: a lever inside the swap');
-  const base = r.ms - sw, t = sw + Math.round(base * 1.3) + 80;
-  assert.ok(t < Math.round(r.ms * 1.3), 'setup: the probe falls between the two bounds');
-  h.adv(t); h.eng.tick();
-  assert.equal(h.eng.state().reloading, true, 'setup: the takeover still runs');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true, 'past the swap and the refill overrun, the gun takes ALT');
-});
-test('Codex pass 2026-11-07 r2: ALT stays held after the phone\'s reload lands while the gun still reloads the slot fired last', () => {
-  const h = liveSwapHarness();
-  f542TonySequence(h);                                             // slot 1 fired last; the phone reloads slot 0
-  f542Lever(h);
-  const r = h.eng.am.reloading;
-  assert.ok(r.soft && h.eng.am.gunOther && h.eng.am.gunOther.slot === 1, 'setup: the gun reloads slot 1');
-  h.adv(r.ms + 10); h.eng.tick();
-  assert.equal(h.eng.state().reloading, false, 'setup: the phone\'s reload landed');
-  assert.ok(h.eng.now() < h.eng.am.gunOther.until, 'setup: inside slot 1\'s reload');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, false, 'the gun is still reloading slot 1, so it ignores ALT');
-  h.frame('$ALCD,32,100,1,88,0,*');                                // slot 1's refill lands: the hold ends
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, true);
-});
 test('Codex pass 2026-11-07 r3: the other slot\'s refill landing during the phone\'s reload ends the ALT hold', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);                                             // slot 1 fired last; the phone reloads slot 0
@@ -5975,18 +5810,6 @@ test('Codex pass 2026-11-07 r3: the other slot\'s refill landing during the phon
   assert.equal(h.eng.am.gunOther, null, 'the gun is no longer reloading: no hold');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().switching, true, 'ALT is a swap again');
-});
-test('Codex pass 2026-11-07 r3: a chain\'s shell on the held-back slot keeps the ALT hold for one more shell', () => {
-  const h = liveSwapHarness();
-  f542TonySequence(h);                                             // slot 1 at 2
-  f542Lever(h);
-  const g = h.eng.am.gunOther; assert.ok(g, 'setup: the hold runs');
-  h.adv(300); h.frame('$ALCD,3,100,1,286,0,*');                    // one shell of a chain: slot 1 not full
-  assert.ok(h.eng.am.gunOther, 'the chain goes on, and so does the hold');
-  assert.ok(h.eng.am.gunOther.until >= h.eng.now() + h.eng.am.reloadMsOf(1), 'for one more shell from now');
-  h.adv(h.eng.am.reloadMsOf(1)); h.eng.tick();
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.state().switching, false, 'the gun still chains, so it ignores ALT');
 });
 test('Codex pass 2026-11-07 r3: a failed write puts back the echo window as it stood, not stretched', async () => {
   const h = liveSwapHarness();
@@ -6053,16 +5876,6 @@ test('F542 last-fired: after ALT, one shot on the new weapon, then the lever rel
   assert.equal(s.reloadOutcome.why, 'filled'); assert.equal(s.reloadOutcome.slot, 0);
   assert.equal(s.fireFirst, false);
 });
-test('F542 last-fired: a fired round on the other slot still snaps the trigger back with GUN WAS ON', () => {
-  const h = liveSwapHarness();
-  const logs = []; h.eng.log = m => logs.push(String(m));
-  f542TonySequence(h);
-  f542Shot(h, '$ALCD,1,100,1,288,0,*');
-  assert.ok(logs.includes('gun was on slot 1: the HUD showed slot 0'), 'F650: the disagreement is logged');
-  const s = h.eng.state();
-  assert.equal(s.activeSlot, 1, 'a shot proves the slot');
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
-});
 test('F650: the lever after ALT still opens a reload when the last-fired slot has room (the gun reloads that slot)', () => {
   const h = liveSwapHarness();
   f542TonySequence(h);                                             // slot 1 fired last at 2 rounds: room to reload
@@ -6088,19 +5901,6 @@ test('F542 last-fired review: a lever inside the swap back to the last-fired slo
   assert.equal(s.activeSlot, 0, 'the swap lands on slot 0');
   assert.equal(s.ammo, 32, 'with its reloaded count');
   assert.equal(s.fireFirst, false, 'no hint over the weapon the lever reloaded');
-});
-test('F542 last-fired review: after a phone equip, a lever rise on the old slot snaps back with GUN WAS ON again', () => {
-  const h = liveSwapHarness();
-  f542Shot(h, '$ALCD,30,100,0,384,0,*');                         // slot 0 fired last
-  h.eng.am.equipped(0, 30, 384);                                 // the switch-back from a heavy: a phone equip of slot 0
-  f542Alt(h);                                                    // the gun ignores it (F436); the phone assumes slot 1
-  assert.equal(h.eng.state().activeSlot, 1, 'setup: assumed slot 1');
-  h.adv(1000); f542Lever(h);
-  h.adv(1500); h.frame('$ALCD,32,100,0,382,0,*');
-  const s = h.eng.state();
-  assert.equal(s.activeSlot, 0, 'the gun proved slot 0');
-  assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.gunWas, true);
-  assert.equal(s.fireFirst, false);
 });
 test('M5: a busy magazine query does not delay the spawn read-back', () => {
   const h = liveSwapHarness();
@@ -6341,56 +6141,35 @@ test('a reload-speed perk shortens the RELOADING takeover to match the gun', () 
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloadTotalMs, 700, '1.4 s × 0.5');
 });
-// Bench 2026-10-17 trace (Tactix-FE30, 0.4.24, AR slot 0 + USP slot 1): the lever 450 ms after ALT reloads the OLD slot,
-// and the swap still completes. The AR's rising `$ALCD` books on the AR and must not pull the trigger back to slot 0.
-test('F542 hardware: a lever inside the swap reloads the old slot, and the swap still ends on the new slot', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,28,100,0,186,0,*'); h.frame('$BUT,0,0,*');
-  h.adv(1436); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');                  // 42143 ALT
-  assert.equal(h.eng.state().switching, true, 'SWITCHING after the ALT');
-  h.adv(452); h.eng.tick(); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');     // 42595 the lever
-  for (let t = 0; t < 1825; t += 100) { h.adv(100); h.eng.tick(); }
-  h.frame('$ALCD,32,100,0,182,0,*');                                            // 44420 the AR reloads to 32
-  h.eng.tick();
-  const s = h.eng.state();
-  assert.equal(s.ammo.liveAmmo?.[0]?.[0] ?? h.eng.am.liveAmmo()[0][0], 32, 'the reload books on the AR');
-  assert.equal(s.activeSlot, 1, 'the trigger stays on the USP');
-  assert.equal(s.reloading, false, 'no reload screen over the USP');
-  h.adv(707); h.frame('$BUT,0,1,*'); h.adv(9); h.frame('$ALCD,11,100,1,115,0,*'); h.frame('$BUT,0,0,*');   // 45127 the USP fires
-  assert.equal(h.eng.state().activeSlot, 1, 'the USP shot agrees');
-});
-test('F542 review: a lever 100 ms after ALT keeps its old-slot reload alive until the gun reloads after the swap', () => {
-  const h = liveSwapHarness();
-  h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,28,100,0,186,0,*'); h.frame('$BUT,0,0,*');
-  h.adv(1000); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(100); h.eng.tick(); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
-  for (let t = 0; t < 2300; t += 100) { h.adv(100); h.eng.tick(); }
-  h.frame('$ALCD,32,100,0,182,0,*');
-  assert.equal(h.eng.state().activeSlot, 1, 'the late old-slot reload does not pull the trigger back');
-  assert.equal(h.eng.state().reloadOutcome?.slot, 0); assert.equal(h.eng.state().reloadOutcome?.ok, true);
-});
-test('the Fast Hands perk assumes the swap after 425 ms', () => {
+test('the Fast Hands perk: the swap holds the trigger for the target\'s tok15 as MC compiled it (425 ms)', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { switch_mult: 0.5 } }] } } });
-  delete h.eng.frames.swap_ms;                       // an older MC: no enforced value in the bundle → the node applies the perk itself
+  // MC applies switch_mult to every slot's `$WEAP` tok15 (compile.py `swap_ms`); the phone's swap reads the target's row
+  h.eng.frames = { ...h.eng.frames, head: h.eng.frames.head.map(f => (f.startsWith('$WEAP,1,') ? f.split(',').map((t, i) => (i === 16 ? '425' : t)).join(',') : f)) };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().switchWindowMs, 425);   // 850 stock × 0.5
+  assert.equal(h.eng.state().activeSlot, 1, 'the phone swaps at the press');
   h.adv(424); h.eng.tick();
   assert.equal(h.eng.state().switching, true, 'still inside the window');
+  assert.ok(!h.writes.includes('$BMAP,0,1,,,,,*'), 'the trigger is still held');
   h.adv(2); h.eng.tick();
-  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.data.assumed, true);
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
+  assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'bound after 425 ms');
 });
-test('the bundle\'s swap_ms is the SWITCHING window before the assumed swap', () => {
+test('the SWITCHING window is the target slot\'s tok15, not the bundle\'s swap_ms (Tony 2026-11-08)', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   assert.equal(h.eng.state().switchWindowMs, 850, 'no swap_ms in the golden bundle → stock 850');
   h.eng.frames = { ...h.eng.frames, swap_ms: 425 };
   assert.equal(h.eng.state().switchWindowMs, 425, 'MC said 425');
-  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*'); h.adv(424); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 0, 'the slot stays put inside the window');
+  const tok15 = +h.eng.frames.head.find(f => f.startsWith('$WEAP,1,')).split(',')[16];
+  h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().activeSlot, 1, 'the phone swaps at the press');
+  h.adv(tok15 - 1); h.eng.tick();
+  assert.equal(h.eng.state().switching, true, `held for the target's own tok15 (${tok15} ms)`);
   h.adv(2); h.eng.tick();
-  assert.equal(h.eng.state().activeSlot, 1, 'the swap is assumed after the real delay');
+  assert.equal(h.eng.state().switching, false);
+  assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'then bound');
 });
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------
@@ -7801,24 +7580,6 @@ test('F123: a chain that fed shells and then FIRED books what the RELOAD gained,
                    { ok: true, gained: 2, from: 1, to: 3, why: 'fired' });
 });
 
-test('ALT mid-reload is ignored by the gun (bench 2026-10-02): no assumed swap, the reload still completes on its slot', () => {
-  // Captured wire: the lever at mag 8, ALT 1.16 s later, then `$ALCD,12,100,1,88` on slot 1 -- the reload took and the
-  // trigger never moved. (F123's old reading, that ALT ends the reload and draws the other weapon, was an assumption.)
-  const h = shellHarness();
-  h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
-  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
-  assert.equal(h.eng.state().reloading, true);
-  h.adv(300); h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT with two weapons loaded, mid-reload
-  let st = h.eng.state();
-  assert.equal(st.switching, false, 'no SWITCHING takeover: the gun ignores ALT while reloading');
-  assert.equal(st.reloading, true, 'the reload is still running');
-  h.adv(h.eng.switchWindowMs() + 200);          // past the window that used to book an assumed swap
-  assert.equal(h.eng.activeSlot, 0, 'no assumed swap to the other slot');
-  h.frame('$ALCD,32,100,0,170,0,*');            // the reload lands on the same slot: a full magazine (the capture: 8 -> 12)
-  st = h.eng.state();
-  assert.equal(st.reloading, false);
-  assert.notEqual(st.reloadOutcome && st.reloadOutcome.why, 'swapped', 'never "reload did NOT take (swapped)"');
-});
 
 test('F123: a BLE drop clears the held-button map — a press whose release never arrived cannot read as held forever', () => {
   const h = goLive(harness());
@@ -8970,6 +8731,7 @@ test('shot cue: a slow weapon (golden slot 1 shotgun, t14 400) reports a cooldow
   // see docs/weapon-design.md's Balance rules table rows 6 and 14), read from the regenerated golden bundle.
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
   assert.equal(h.eng.phase, 'live');
+  h.eng.activeSlot = 1;                                    // Tony 2026-11-08: the phone swapped to the shotgun
   h.frame('$ALCD,8,100,1,40,0,*');
   assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
   const at = h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
@@ -8992,6 +8754,7 @@ test('shot cue CONTROL: an automatic weapon (golden slot 0 AR, t14 100) gets no 
 
 test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick(); spawnEchoes(h);   // bug 3a: the spawn rows echo first
+  h.eng.activeSlot = 1;                                    // Tony 2026-11-08: the phone swapped to the shotgun
   h.frame('$ALCD,8,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
   assert.ok(h.eng.state().shotCooldown, 'pre-condition: the shotgun cue is up');
   h.frame('$ALCD,31,100,0,384,0,*');   // a round from slot 0: the shotgun cue is not this gauge's (a same-count report moves nothing, bench 2026-11-08)
@@ -9147,40 +8910,7 @@ test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and 
   assert.ok(pset.length >= 1 && pset.every(f => f.split(',')[2] === '1'), 'every $PSET written carries the $TID team: ' + pset);
 });
 
-test('ALT r4: an ALT in a reload\'s stale tail is a real swap, so the pointer follows the gun', () => {
-  // The rifle's reload is 1.4 s; its takeover runs to 1.4 s + max(600, 700) ms. At +1.9 s with no gain the gun is no
-  // longer reloading (its refill lands by 1.3x reload_s, F27: Codex pass 2026-11-07), so it takes ALT. Ignoring it left `am.altPtr` on 0 while the gun was on 1, and the next ALT then
-  // booked an assumed swap onto slot 1 while the gun went 1 -> 0.
-  const h = shellHarness();
-  h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
-  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
-  assert.equal(h.eng.state().reloading, true, 'setup: the takeover runs');
-  h.adv(1900);
-  assert.equal(h.eng.state().reloading, true, 'setup: still inside the takeover\'s stale tail');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: the gun swaps to the shotgun
-  assert.equal(h.eng.state().switching, true, 'the stale-tail ALT opens the swap');
-  assert.equal(h.eng.state().reloading, false, 'and ends the takeover');
-  h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // a shell out of slot 1
-  assert.equal(h.eng.activeSlot, 1);
-  h.adv(700); h.eng.tick();                     // the takeover's deadline passes (a shot on another slot never ends it)
-  assert.equal(h.eng.reloading, null, 'setup: the takeover is over');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');   // ALT: the gun goes back to the rifle
-  h.frame('$BUT,0,1,*'); h.frame('$ALCD,9,100,0,192,0,*'); h.frame('$BUT,0,0,*');   // a rifle round
-  h.adv(h.eng.switchWindowMs() + 200); h.eng.tick();
-  assert.equal(h.eng.activeSlot, 0, 'the node is on the rifle, as the gun is');
-  assert.equal(h.eng.am.altPtr, 0, 'and so is the ALT pointer');
-});
 
-test('ALT r4: a loadout $ALCD that moves the trigger with no swap open heals the ALT pointer', () => {
-  const h = shellHarness();
-  h.frame('$ALCD,10,100,0,192,0,*');            // the node on the rifle
-  h.eng.am.altPtr = 0; h.eng.switching = null;
-  h.frame('$BUT,0,1,*'); h.frame('$ALCD,0,100,1,24,0,*'); h.frame('$BUT,0,0,*');   // the gun fires slot 1: an ALT the node missed
-  assert.equal(h.eng.activeSlot, 1);
-  assert.equal(h.eng.am.altPtr, 1, 'the pointer follows the slot the gun fired');
-  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  assert.equal(h.eng.switching && h.eng.switching.to, 0, 'the next ALT goes back to the rifle');
-});
 
 test('O9: a failing save logs once per streak, and again after a good save', () => {
   let broken = true; const logs = [];
@@ -9403,16 +9133,6 @@ test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', 
   const s = h.eng.state();
   assert.equal(s.bolt, false); assert.equal(s.presented.takeover.kind, 'reload');
 });
-test('BOLT review: a bolt pull that the gun lands on a non-bolt slot shows that slot\'s RELOADING, not BOLT', () => {
-  const h = boltHarness();
-  h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
-  assert.equal(h.eng.state().bolt, true, 'setup: BOLT on slot 0');
-  h.eng.am.prevAmmo[1] = 1;                              // setup: the SMG nearly empty from an earlier life of fire
-  h.adv(500); h.frame('$ALCD,4,100,1,20,0,*');           // the gun was on slot 1 (the SMG): its magazine rises, short of its 6
-  const s = h.eng.state();
-  assert.equal(s.activeSlot, 1); assert.equal(s.bolt, false, 'no BOLT under the SMG');
-  assert.equal(s.presented.takeover && s.presented.takeover.kind, 'reload', 'the SMG reload shows RELOADING');
-});
 
 // ---------- F665: the melee-ready icon ----------
 // Game 2026-11-01 logs: every melee press is `$BUT,8,1` (the gyro, which the head binds to melee: `$BMAP,8,4`) and then,
@@ -9556,3 +9276,41 @@ test('F665: a melee swing never moves the trigger, never takes the ammo block an
   assert.deepEqual(gunWas, [], 'the F650 desync line (gun was on slot) never fires: the HUD and the gun agree throughout');
 });
 
+
+// brx1 2026-11-08 (F668, sr1c): the lever refilled the EMPTY bound slot, not the slot that fired the last live round. Two
+// readings fit (a dry pull moves the gun's latch, or the lever reloads an empty bound slot), so the undo follows the slot the
+// refill's `$ALCD` names: a refill of the bound slot stays, a refill of any other slot is put back.
+test('F668: the lever undo follows the slot the refill names, never the last live round', () => {
+  for (const which of ['bound', 'other']) {
+    const h = liveSwapHarness();
+    h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');   // the AR's last live round
+    h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
+    h.frame('$ALCD,0,100,1,240,0,*');                                                          // the USP-S in hand, empty
+    assert.equal(h.eng.activeSlot, 1, 'setup: bound to the empty USP-S');
+    const n = h.writes.length;
+    h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); h.adv(1500);
+    if (which === 'bound') {
+      h.frame('$ALCD,12,100,1,228,0,*');                                                       // sr1c: the gun refilled the USP-S
+      assert.ok(!h.writes.slice(n).some(f => f.startsWith('$AMMO,1,') && f !== '$AMMO,1,12,228,1,*' && /^\$AMMO,1,0,/.test(f)), 'the bound slot\'s refill is never put back');
+      assert.equal(h.eng.am.prevAmmo[1], 12);
+    } else {
+      h.frame('$ALCD,32,100,0,383,0,*');                                                       // the other reading: the AR refilled
+      assert.ok(h.writes.slice(n).includes('$AMMO,0,31,384,1,*'), 'the AR\'s refill is put back');
+      assert.equal(h.eng.am.prevAmmo[0], 31);
+    }
+  }
+});
+
+// Codex review 2026-11-08 (phone swap, H5): a station revive writes its burst at once. The burst's `$BMAP,0` binds the slot
+// the phone holds (`_bindRows`), so the new life's slot 0 must be set before it, or the gun is bound to the old life's slot.
+test('phone swap: a station revive after a death on slot 1 binds slot 0 in its burst', () => {
+  const h = scannerHarness();
+  h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
+  h.eng.activeSlot = 1;                     // the player died on the secondary
+  const n = h.writes.length;
+  h.eng._revive(false, 5);
+  const binds = h.writes.slice(n).filter(f => /^\$BMAP,0,\d+,/.test(f) && f !== '$BMAP,0,98,,,,,*');
+  assert.ok(binds.length > 0, `setup: the burst binds the trigger: ${JSON.stringify(h.writes.slice(n).filter(f => f.startsWith('$BMAP')))}`);
+  assert.deepEqual([...new Set(binds)], ['$BMAP,0,0,,,,,*'], 'only slot 0');
+  assert.equal(h.eng.activeSlot, 0);
+});

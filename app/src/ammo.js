@@ -23,10 +23,10 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
-//                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · gunWasOn(slot) ·
+//                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · swapWindowMs() ·
 //                 equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
-//                 reloadOutcome · switching · altPtr · altEvidencePending · lastSwitchMs · dryPulls · lastShot · lastSwing (read them;
+//                 reloadOutcome · switching · lastLoadout · bindDue · lastSwitchMs · dryPulls · lastShot · lastSwing (read them;
 //                 change them through the methods above)
 //
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
@@ -52,11 +52,10 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 /** F208: a trigger press on a live, loaded gun gets its `$ALCD` inside ~5 ms (2026-08-26 burst rifle capture).
  *  With no pool report 1500 ms after the press, the pull went unanswered (the same window resync uses). */
 export const TRIGGER_NO_FIRE_MS = 1500;
-// Bench 2026-11-08 (B2): the gun refuses ALT pressed while the trigger is held. A release lost on the link (F663: 7 of
-// 1068) must not block ALT for ever, so a press held longer than this no longer counts as held.
-export const TRIGGER_HELD_MAX_MS = 15000;
-// Bench 2026-11-08 (SR5r): unanswered loaded pulls in a row that prove the gun holds the other, empty loadout slot.
-export const DRY_PULLS_GUN_WAS = 2;
+// Tony 2026-11-08: the phone owns the weapon swap. ALT is unbound on the gun (`$BMAP,1,98`), and the phone binds the trigger
+// to a slot with `$BMAP,0,<slot>` (bench 2026-11-08, bm1-3: 0 fired the AR, 1 the USP-S, with no ALT). A round from a slot the
+// phone did not bind is re-bound at most this often, so a full-auto burst does not flood the link.
+export const REBIND_MIN_GAP_MS = 500;
 // F259 (bench 2026-09-18): how long the node owns a slot's magazine after it writes one, when the gun has
 // not yet echoed the number back. A `$WEAP` + `$AMMO` pair makes the gun send `$ALCD <clip>` then
 // `$ALCD <n>`, and that second frame is a decrement of `clip - n` that is NOT fire. The window normally
@@ -152,7 +151,7 @@ function gunHoldMs(ms, energy) { return Math.max(Math.round(ms * GUN_RELOAD_MAX_
 // Field 2026-10-17 (F542 cause 2): an old-slot round this long after ALT is no longer one that was in flight at the press.
 // A desk bound, not a bench figure: BLE delivers a notification well inside it (bench row in reviews-2026-10-17/bench.md).
 const ALT_LATE_ROUND_MS = 250;
-// E10 review: a rise on the other slot this soon after a lever pull is that pull's reload, so it is news about the slot.
+// E10 review: a rise on the other slot this soon after a lever pull is that pull's reload (the F542 hint below).
 const GUN_WAS_LEVER_MS = 6000;
 const FIRE_FIRST_SHOW_MS = 3000;   // F542: how long the ammo block says PULL THE TRIGGER, THEN RELOAD (as RELOAD DID NOT TAKE)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
@@ -189,14 +188,11 @@ export class Ammo {
     // $ALCD says the mag came back (review 2026-09-03 #15; reconciled against real ammo for F123).
     this.reloading = null;
     this.reloadOutcome = null;     // F123: how the LAST takeover ended — {ok, filled, from, to, cap, gained, slot, ms, why, at}; null before the first reload of a life
-    this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
+    this.switching = null;          // {at, from, to, ms} while an ALT swap shows SWITCHING (field 2026-08-30), or a pickup's card
     this.lastSwitchMs = null;       // measured duration of the last completed swap
-    this.altPtr = 0;                  // the gun's BMAP position is separate from the trigger slot
-    this.altEvidencePending = null;    // the ALT target awaiting gun evidence (0 is a real slot: test != null)
-    this.altAt = null;                 // when the gun last TOOK an ALT, and for how long it then ignores ALT (`altLockMs`, bench 2026-11-08)
-    this.altLock = 0;
-    this.dryRun = null;                // {slot, n}: unanswered loaded pulls in a row on one slot (`unansweredPulls`)
-    this.inferred = null;              // {slot, life}: a slot `unansweredPulls` moved to, until the gun speaks
+    this.lastLoadout = 0;             // the loadout slot (0 or 1) the phone last put on the trigger: ALT from a heavy goes to the other
+    this.bindDue = null;              // {slot, at, life}: the trigger is held (`$BMAP,0,98`) until `switchTick` binds `slot` at `at`
+    this.rebindAt = 0;                // when the phone last re-bound the trigger after a round from an unbound slot
     this.dryPulls = 0;              // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
     // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms, life}, where `ms` is that slot's
     // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
@@ -206,11 +202,11 @@ export class Ammo {
     this.lastSwing = null;
     this.leverAt = null;            // E10: the last lever pull while live and alive, refused or not
     this.fireFirst = null;          // F542: {slot, at, life} of the last lever the gun spent on the LAST-FIRED slot (the HUD hint)
-    this.gunOther = null;           // review 2026-11-06: {slot, until, life} of a lever the phone refused that the gun spends on the last-fired slot
+    this.gunOther = null;           // Tony 2026-11-08: {bound, snap, until, life} the counts at a lever, so a gun refill of a slot not in hand is put back
   }
 
   // ---- state resets ----
-  /** A new life or a new head: no slot has reported yet, and the gun's ALT position is back on slot 0.
+  /** A new life or a new head: no slot has reported yet, and the trigger is back on slot 0 (engine.js sets `activeSlot`).
    *  Bug 3a: an echo window still open is KEPT (its count and expected number only). The gun is still reading back a
    *  write the node made before this point, such as the head's `$WEAP` rows when the start follows the config at once,
    *  and that echo landing after the spawn must be bookkeeping too, or it moves the trigger. */
@@ -219,7 +215,7 @@ export class Ammo {
     for (const [slot, a] of Object.entries(this.acct)) {
       if (a && a.echoPending > 0 && now < a.echoUntil) open[slot] = { mag: a.mag, fired: 0, at: 0, res: a.res, echoUntil: a.echoUntil, echoExpect: a.echoExpect, echoPending: a.echoPending, echoWeap: !!a.echoWeap, echoStale: a.echoStale ? a.echoStale.map(e => ({ ...e })) : null, echoLastWeap: !!a.echoLastWeap, echoLastReset: a.echoLastReset != null ? a.echoLastReset : null };
     }
-    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.altPtr = 0; this.altEvidencePending = null; this.altAt = null; this.altLock = 0; this.dryRun = null; this.inferred = null;
+    this.prevAmmo = {}; this.prevReserve = {}; this.acct = open; this.lastLoadout = 0; this.bindDue = null;
   }
   /** A new match: config echoes carry `$WEAP` clip caps, not spawn mags, so no old denominator survives, and no old
    *  shot-ready cue. */
@@ -294,7 +290,6 @@ export class Ammo {
     // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
     // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
     // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
-    if (!lcd && (slot === 0 || slot === 1)) { this.dryRun = null; this.inferred = null; }   // the gun spoke: no inference stands
     this.noteHeat(slot, heat);
     this.heatLockFrame(slot, heat, this.host.stunned || this.host.rc.disarmed ? null : this.prevAmmo[slot], mag);   // F164: a disarm echo's drop is not "it fired", so it must not end a lockout
     // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
@@ -407,6 +402,16 @@ export class Ammo {
     // clearing on shell #1); reaching the spawn cap finishes it; a round leaving the mag ends it, because
     // the player has started shooting again. It is no longer cleared by "the mag went up" alone.
     // The old slot's reload landing after an ALT swap books on that slot and moves nothing (see `reloadPulled` `swapTo`).
+    // Tony 2026-11-08 (bench lv1-8): a refill of the slot a lever went to although the trigger was bound elsewhere is undone,
+    // even if a swap has since bound the trigger to it (`gunOtherGain`).
+    { const g = this.gunOther;
+      if (g && slot < 2 && slot !== g.bound && g.snap[slot] && !ownEcho && !lcd && prev != null && mag > prev && g.life === this.host.lifeSeq && this.host.now() < g.until) {
+        this.prevAmmo[slot] = mag; if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+        this.gunOtherGain(slot, mag, reserve);
+        if (slot === this.host.activeSlot) this.publish(slot, this.prevAmmo[slot], this.prevReserve[slot]);
+        this.host.changed();
+        return;
+      } }
     const r0 = this.reloading;
     const oldSlotReload = !!r0 && r0.swapTo != null && slot === r0.slot && slot !== r0.swapTo && prev != null && mag > prev && !ownEcho && !lcd;
     // F542 (bench 2026-11-01, Tony on 0.4.32): ALT does swap, but until the new weapon fires once the lever reloads the
@@ -441,10 +446,7 @@ export class Ammo {
           // BOLT review: the slot the gun really reloads decides the cue, not the slot the pull was judged on
           { const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
             r.bolt = !!(row && row.reload_type === 'bolt'); if (r.bolt) r.cap = prev + 1; }
-          this.host.setActiveSlot(slot);
-          if (slot < 2) this.altPtr = slot;
-          this.switching = null; this.altEvidencePending = null;
-          r.gunWas = true;   // field 2026-10-17 (report E10): "ALT switched back after reload"; the card waits for the reload's end
+          // Tony 2026-11-08: the phone owns the swap, so the gun's reload of another slot never moves the trigger.
         }
         this.reloading.mag = mag; this.reloading.lastGainAt = this.host.now();
         if (this.reloading.cap != null && mag >= this.reloading.cap) this.endReload('filled');
@@ -467,9 +469,9 @@ export class Ammo {
       return;
     }
     if (lastFiredReload) {
-      this.gunOtherGain(slot, mag, reserve);   // review 2026-11-06: the gun's reload of it landed (Codex pass r3: or a chain's shell)
       this.prevAmmo[slot] = mag;
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      this.gunOtherGain(slot, mag, reserve);   // review 2026-11-06: the gun's reload of it landed (Codex pass r3: or a chain's shell); after the books, so an undo (Tony 2026-11-08) wins
       const soft = !!(this.reloading && this.reloading.soft);   // F650: the phone is reloading the weapon in hand; no hint
       if (!soft && this.leverAt != null && this.host.now() - this.leverAt < GUN_WAS_LEVER_MS) this.fireFirst = { slot, at: this.host.now(), life: this.host.lifeSeq };
       this.host.log(soft ? `the gun's lever also reloaded slot ${slot}, the slot fired last; the phone reloads slot ${this.host.activeSlot}`
@@ -489,60 +491,31 @@ export class Ammo {
     }
     // A loadout shot without ALT or SELECT proves that a recent phone equip did not put the held weapon on the trigger.
     // A read-back with no count drop could be an old echo, so only a shot warrants another equip.
-    const lostPuEquip = this.host.pu.lostEquip(slot, mag, prev, expectedBefore, this.altEvidencePending);
+    const lostPuEquip = this.host.pu.lostEquip(slot, mag, prev, expectedBefore, null);
     const puBack = this.host.pu.onAmmo(slot, mag, prev);   // A56: the held item's magazine; empty ends the item and switches back
-    // Bug 3b: only a real round confirms (or the assumed timeout in `switchTick`), never the echo of our own write.
-    const moves = !ownEcho && !lcd;
-    if (moves && this.switching && !this.switching.pu && slot !== this.switching.from && (slot < 2 || this.host.pu.isHeldSlot(slot))) {
-      // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
-      // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
-      // lower bound on "the swap had finished by", NOT a measurement of the swap itself (FOLLOWUPS F4).
-      this.lastSwitchMs = this.host.now() - this.switching.at;
-      this.host.log(`slot ${this.switching.from}->${slot} confirmed ${this.lastSwitchMs}ms after ALT (incl. reaction)`, 'li');
-      this.switching = null;
-      this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot } });   // the HUD flips SWITCHING → ACTIVE
-      // ⚠ The slot moves BEFORE the re-arm (polish review 2026-09-18). `_recoilArm` reads `this.host.activeSlot`
-      // for both the weapon it looks up (`_activeWeaponId`) and the slot it records, and the assignment used
-      // to sit below this block -- so a confirmed swap armed the OLD weapon's profile and filed it under the
-      // OLD slot, which is the opposite of what the line below says it does. The assignment after the block
-      // is now a no-op on this path and still does the work on every other.
-      this.host.setActiveSlot(slot);
-      // F379: the confirming round on the ALT target puts the gun's ALT pointer there. An old-slot round inside the swap
-      // has already cleared the evidence below and left the pointer on the old slot, so without this the pointer lagged:
-      // the next ALT showed SWITCHING to the slot the player was on while the gun went to the other one.
-      if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
-      this.host.pu.onConfirmedSwap(slot);   // A56 r2 M2: ALT took the trigger off the heavy, as the assumed-swap path says; r3: it supersedes a pending switch-back
-      this.host.recoilArm('swap (confirmed)');   // S42: the new slot's weapon gets its own profile, at its ceiling
-    } else if (moves && this.switching && !this.switching.pu && slot === this.switching.from && prev != null && mag < prev
-      && this.host.now() - this.switching.at >= ALT_LATE_ROUND_MS) {
-      // Field 2026-10-17 (report §3.2 cause 2): a round from the OLD slot inside the window proves the gun did not take the
-      // ALT press. Close the card with no swap, or `switchTick` assumes the swap over this proof at the window's end. A round
-      // that lands soon after the press can be in flight from before it (F379), so it proves nothing. The time of the last
-      // pull is no help: a pull the swapping gun refuses can sit between the press and that round (Codex review).
-      this.host.log(`ALT not taken by the gun: a round left slot ${slot} inside the swap`, 'li');
-      if (this.switching.undo) { this.altAt = this.switching.undo.at; this.altLock = this.switching.undo.lock; }   // Codex 2026-11-08: no lockout from a press the gun refused
-      this.switching = null;
-      if (slot < 2) { this.altPtr = slot; this.altEvidencePending = null; }
-      this.gunWasOn(slot);
-    } else if (moves && slot < 2 && slot !== this.host.activeSlot && this.host.activeSlot < 2 && !this.switching && prev != null
-      && (mag < prev || (mag > prev && this.leverAt != null && this.host.now() - this.leverAt < GUN_WAS_LEVER_MS))) {
-      // E10: a round, or a reload the lever just started, from the other slot corrects an assumed swap; the HUD says why the
-      // weapon changed. A rise with no recent lever (a refill, a regen tick) is no news about the gun's slot.
-      this.gunWasOn(slot);
+    const moves = !ownEcho && !lcd;   // bug 3b: never the echo of our own write
+    // Tony 2026-11-08: the phone owns the swap. The trigger is where the phone bound it (`$BMAP,0,<slot>`), so a round from
+    // another slot is an alarm and a re-bind, never a reason to move the HUD. A round from the old slot that was in flight
+    // at the ALT press (F379) is the old binding's, and books quietly.
+    const bound = this.host.activeSlot, sw = this.switching;
+    const inFlight = !!(sw && !sw.pu && slot === sw.from && this.host.now() - sw.at < ALT_LATE_ROUND_MS);
+    if (moves && prev != null && mag < prev && slot !== bound && (slot < 2 || this.host.pu.isHeldSlot(slot)) && !inFlight && puBack == null && !lostPuEquip) {   // a lost heavy equip is the pickup's own repair (F436)
+      this.host.log(`gun fired slot ${slot}, bound ${bound}`, 'le');
+      if (this.host.now() - this.rebindAt >= REBIND_MIN_GAP_MS) { this.rebindAt = this.host.now(); this.host.rebind(`gun fired slot ${slot}, bound ${bound}`); }
     }
     this.prevAmmo[slot] = mag;
-    if (moves && slot < 2 && this.altEvidencePending != null && ((prev != null && mag < prev) || slot === this.altEvidencePending)) {
-      this.altPtr = slot; this.altEvidencePending = null;
-    }
-    if (moves && slot < 2 && slot !== this.host.activeSlot && this.host.activeSlot < 2 && !this.switching && this.altEvidencePending == null) this.altPtr = slot;   // ALT r4: a swap the node missed; the pointer follows the gun
     if (puBack != null) {   // A56: the heavy ran dry; keep its empty count until the delayed switch-back
       if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
       this.publish(puBack, this.prevAmmo[puBack], this.prevReserve[puBack]);
       return;
     }
-    // The trigger follows the slot a round came out of. Bug 3a: an echo of our own write and an `$LCD` report never
-    // reach here for another slot (`offSlotEcho` above), so on this line `slot` is already the trigger's for both.
-    this.host.setActiveSlot(slot);
+    // Tony 2026-11-08: the trigger stays where the phone bound it. Another slot's report books its counts and stays off the
+    // ammo block (F394).
+    if (slot !== this.host.activeSlot) {
+      if (reserve != null && !Number.isNaN(reserve)) this.prevReserve[slot] = reserve;
+      this.host.pu.repairLostEquip(lostPuEquip, slot, mag);   // F436: the heavy's equip re-sent, while the same item is held
+      return;
+    }
     // S42/F259: recoil is stepped by `_acctSpent`, off the ACCOUNT above, never off this raw decrement.
     // The node's own `$WEAP` reset and `$AMMO` restore arrive here as a 26-round drop that no player fired
     // (bench 2026-09-18), and reading the frame delta booked it as a burst -- see the echo-window note.
@@ -641,11 +614,12 @@ export class Ammo {
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
     // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
     if (this.host.stunned) { this.host.log('reload pull ignored — the gun is stunned', 'li'); return; }
+    this.noteGunOther();   // Tony 2026-11-08: note the counts, so a gun refill of a slot not in hand is put back
     const cap = this.ammoBySlot()[this.host.activeSlot] ?? this.host.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     // Review 2026-11-06 (the swap torture run): a lever the phone refuses still reloads the slot that fired last on the gun
     // (F542), and the gun ignores ALT while that runs (`altPressed`).
-    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) { this.noteGunOther(); return; }   // nothing to reload — the gun ignores the pull
-    if (!(this.host.reserve > 0)) { this.noteGunOther(); return; }                  // dry reserve: no reload happens (whatever is in the mag)
+    if (cap && this.host.ammo >= cap && (this.host.reserve || 0) > 0) return;   // nothing to reload — the gun ignores the pull
+    if (!(this.host.reserve > 0)) return;                  // dry reserve: no reload happens (whatever is in the mag)
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons; const w = ws && (ws[this.host.activeSlot] || ws[0]);
     const row = w && this.host.weaponRow(w.weapon_id); let secs = row && row.reload_s != null ? +row.reload_s : 1.5;
     // The perk's reload multiplier is applied to the gun's $WEAP reload token by MC (compile.py apply_perks), so the
@@ -658,7 +632,9 @@ export class Ammo {
     // `from`/`cap`/`mag` are what make this a RECONCILIATION and not an animation: `ms` is only the
     // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
     // Bench 2026-10-17: inside an ALT swap the gun reloads the old slot only once the swap ends, so the deadline waits out the window.
-    const swapTo = this.switching && !this.switching.pu ? this.switching.to : null;
+    // Tony 2026-11-08: the phone owns the swap, so the trigger is already on the swap's target; the lever reloads it like any
+    // weapon in hand (the phone's reload when the gun's lever goes to the slot fired last, `softReloadNeeded`).
+    const swapTo = null;
     const chain = !!(row && row.reload_type === 'chain');   // Codex (chain review): a shell's time is the perk-adjusted reload_s, no 300 ms floor
     this.reloading = { at: now, ms: Math.max(chain ? 1 : 300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
                        // BOLT: one lever chambers one round, so the bolt is done at the magazine plus one, whatever the spawn cap
@@ -668,7 +644,10 @@ export class Ammo {
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
                        soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
                        chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
-    if (this.reloading.soft) { this.host.softReloadStart(this.reloading); this.noteGunOther('the phone reloads the weapon in hand'); }   // Codex pass r2
+    if (this.reloading.soft) {   // Codex pass r2
+      this.host.holdTrigger('the phone reloads the weapon in hand');   // brx1 2026-11-08: no round lands mid-reload
+      this.host.softReloadStart(this.reloading);
+    }
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this.host.changed();
@@ -703,32 +682,44 @@ export class Ammo {
     if (rm > 0 && rm !== 1 && slot === 0 && !(row && row.reload_type === 'bolt')) secs *= rm;
     return Math.max(300, Math.round(secs * 1000));
   }
-  /** Review 2026-11-06 (the swap torture run): the phone refused a lever (the weapon in hand is full, or has no reserve),
-   *  but the gun spends it on the slot that fired last when that slot has room and reserve (F542). Note that reload, so
-   *  `altPressed` ignores ALT while it runs, as the gun does. It ends when that slot's rise lands, or after the reload
-   *  time with the takeover's overrun allowance. */
-  noteGunOther(why = 'lever on a full slot') {
-    const ls = this.lastShot, a = this.host.activeSlot;
+  /** Tony 2026-11-08 (bench lv1-8, brx1): the lever cannot be unbound, and the gun's own reload may refill a slot the trigger
+   *  is not bound to (the slot fired last, or an empty bound slot: F668 has two readings). So at every lever pull the phone
+   *  notes both loadout slots' counts and the slot in hand, and any refill of ANOTHER slot that lands in the reload's time
+   *  is put back (`gunOtherGain`). The slot is the one the refill's `$ALCD` names, never a guess from the last round. A
+   *  refill of the slot in hand is the gun's own right reload and stays. A lever while one is pending keeps it. */
+  noteGunOther(why = 'lever') {
+    const a = this.host.activeSlot, now = this.host.now();
+    if (this.gunOther && this.gunOther.life === this.host.lifeSeq && now < this.gunOther.until) return;
     this.gunOther = null;
-    if (!(a === 0 || a === 1) || !(ls && !ls.afterEquip && ls.life === this.host.lifeSeq && ls.slot < 2 && ls.slot !== a)) return;
-    const cap = this.ammoBySlot()[ls.slot], mag = this.prevAmmo[ls.slot], res = this.prevReserve[ls.slot];
-    if ((cap && mag != null && mag >= cap) || res === 0) return;
-    const ms = this.reloadMsOf(ls.slot);
-    // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload), as `reloadDeadline` allows
-    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[ls.slot];
-    const row = w && this.host.weaponRow(w.weapon_id), energy = !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
-    this.gunOther = { slot: ls.slot, until: this.host.now() + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy };
-    this.host.log(`${why} ${a}: the gun reloads slot ${ls.slot}, the slot fired last`, 'li');
+    if (!(a === 0 || a === 1) || this.host.slotCount() < 2) return;
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons;
+    const snap = {}; let ms = 0, energy = false;
+    for (const k of [0, 1]) {
+      if (k === a || this.prevAmmo[k] == null || this.prevReserve[k] == null) continue;
+      snap[k] = { mag: this.prevAmmo[k], res: this.prevReserve[k] };
+      const w = ws && ws[k], row = w && this.host.weaponRow(w.weapon_id);
+      ms = Math.max(ms, this.reloadMsOf(k));
+      // Round 3: an energy weapon's recharge lands late (pl4: 3.5 to 3.9 s against a 2.4 s catalogue reload)
+      energy = energy || !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
+    }
+    if (!Object.keys(snap).length) return;
+    this.gunOther = { bound: a, snap, until: now + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy };
+    this.host.log(`${why} on slot ${a}: a gun refill of slot ${Object.keys(snap).join(', ')} is put back`, 'li');
   }
-  /** Codex pass 2026-11-07 r3: a rise on the slot the gun reloads under the ALT hold. A full slot or an empty reserve ends
-   *  the hold; a chain's shell (a shotgun) keeps it for one more shell, since the gun ignores ALT until the chain ends. */
+  /** A rise the gun reported on `slot` while a lever's note is open: a slot other than the one in hand at the lever gets
+   *  its noted counts back, one `$AMMO` per refill (a chain's every shell). PURE of the gun: it writes only through the host. */
   gunOtherGain(slot, mag, reserve) {
     const g = this.gunOther;
-    if (!g || g.slot !== slot) return;
-    const cap = this.ammoBySlot()[slot];
-    if (!(cap > 0) || mag >= cap || reserve === 0) { this.gunOther = null; return; }
-    g.until = Math.max(g.until, this.host.now() + gunHoldMs(this.reloadMsOf(slot), !!g.energy));
+    if (!g || g.life !== this.host.lifeSeq || slot === g.bound || !g.snap[slot]) return;
+    const n = g.snap[slot];
+    if (!(mag > n.mag)) return;
+    this.host.undoGunReload(slot, n.mag, n.res);
+    // A magazine refills once, so its undo is done; a chain (the Shotgun) loads shell by shell, so its note stays
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
+    if (!(row && row.reload_type === 'chain')) { delete g.snap[slot]; if (!Object.keys(g.snap).length) this.gunOther = null; }
+    void reserve;
   }
+
   /** F650 review (Opus, M1): during the phone's own reload, is the gun really reloading the other slot (the slot that
    *  fired last, with room and reserve)? Only then does the gun ignore ALT. PURE. */
   gunReloadsOther(r = this.reloading) {
@@ -760,6 +751,9 @@ export class Ammo {
   endReload(why) {
     const r = this.reloading; if (!r) return;
     this.reloading = null;
+    // Tony 2026-11-08: the phone's reload held the trigger (engine.js `_boundSlot`); it binds the slot in hand again. A swap
+    // that ends it holds the trigger itself and binds when its own time is up.
+    if (r.soft && why !== 'swapped' && why !== 'dropped') this.host.bindTrigger(this.host.activeSlot, 'the phone reload ended');
     if (r.chain && why !== 'filled') r.stopped = true;   // Codex (chain review): a shell still queued for the link is not sent
     const gained = Math.max(0, (r.mag ?? r.from) - r.from);
     this.reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
@@ -771,7 +765,6 @@ export class Ammo {
     else if (!gained) this.host.log(`reload did NOT take (${why}) — mag still ${r.mag}`, 'le');
     else if (!this.reloadOutcome.filled) this.host.log(`reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
     // E10 review: GUN WAS ON under the RELOAD takeover is never seen and holds the lanes, so a moved reload shows it at its end
-    if (r.gunWas && why !== 'dropped' && why !== 'swapped' && why !== 'last_fired') this.gunWasOn(r.slot);
     // F542: a lever the gun spent on the full LAST-FIRED slot is silent, so the takeover on the weapon in hand times out.
     // That is no failed reload: the hint says why, in place of RELOAD DID NOT TAKE (engine.js `state().reloadFailed`).
     const ls = this.lastShot;
@@ -832,14 +825,7 @@ export class Ammo {
   /** F400: a pickup's switch card is this same `switching`, opened by the powerup module. */
   setSwitching(card) { this.switching = card; }
   /** A death, a revive or a lost link: no swap indicator outlives the life or the link. */
-  cancelSwap() { this.switching = null; }
-  /** The gun's own slot report moved the trigger off the slot the phone believed (field 2026-10-17, report E10): the
-   *  ACTIVE card says GUN WAS ON, so the weapon does not change on the HUD with no reason given. */
-  gunWasOn(slot, why = null) {
-    // F650: the one line that says the HUD and the gun disagreed. The game 2026-11-01 logs could not count these.
-    this.host.log(`gun was on slot ${slot}${why ? ` (${why})` : ''}: the HUD showed slot ${this.host.activeSlot}`, 'li');
-    this.host.setMoment({ kind: 'switched', at: this.host.now(), data: { slot, gunWas: true } });
-  }
+  cancelSwap() { this.switching = null; this.bindDue = null; }   // the next spawn burst or relink binds the trigger (engine.js `_bindRows`)
   /** A phone equip put `slot` on the trigger (powerup-player.js): it ends a reload, closes a swap, moves the trigger
    *  and shows the new counts before the gun's first `$ALCD`. A pull before it cannot prove the new count was spent,
    *  and a later loadout round is no ALT evidence (F379 r2): a phone equip moves the trigger, not ALT. */
@@ -850,8 +836,10 @@ export class Ammo {
     // round. A switch-back from a heavy then an ALT the gun ignores (F436) must still snap back with GUN WAS ON on the lever.
     // The round itself stays: the shot-ready cue and the ALT gate still read it (golden trace `ammo-heavy-alt`).
     if (this.lastShot) this.lastShot = { ...this.lastShot, afterEquip: true };
-    this.switching = null; this.host.setActiveSlot(slot); this.host.clearPull();
-    this.altEvidencePending = null;
+    this.switching = null; this.bindDue = null; this.host.setActiveSlot(slot); this.host.clearPull();
+    if (slot === 0 || slot === 1) this.lastLoadout = slot;
+    // A pickup's `$WEAP` puts the slot on the trigger by itself (bench 2026-09-24, with `$BMAP,0,0` in the head), so no `$BMAP`
+    // is written here; a later cure or relink binds this slot (engine.js `_bindRows`).
     this.publish(slot, mag, res);
   }
   /** F542: is PULL THE TRIGGER, THEN RELOAD on the ammo block? The lever reloaded the slot that fired last, not the weapon
@@ -862,13 +850,16 @@ export class Ammo {
     return !!(o && this.host.alive && o.life === this.host.lifeSeq && o.slot !== this.host.activeSlot && !this.reloading
       && now - o.at < FIRE_FIRST_SHOW_MS && !(this.lastShot && this.lastShot.at > o.at));
   }
-  /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
+  /** ALT pressed. Tony 2026-11-08: the PHONE owns the weapon swap. The gun's ALT is unbound (`$BMAP,1,98`, engine.js
+   *  `_bindRows`), so it never swaps by itself: the phone moves the trigger at once, holds it (`$BMAP,0,98`) for the target
+   *  slot's `$WEAP` tok15 and then binds it there (`$BMAP,0,<slot>`, `switchTick`). Bench 2026-11-08 (a prototype over CDP):
+   *  13 swaps, 32 of 32 rounds from the bound slot, through a held trigger, double ALT and dry pulls on an empty slot.
+   *  Every guess the old code made about whether the gun took a press (the lockout, the held trigger, the reload refusal,
+   *  the write answer, the dry pulls) is gone with the gun's own ALT. */
   altPressed() {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial) return;
-    // F465 (bench 2026-10-16, by design): a STUNNED gun still swaps on ALT. The stun disarms both slots, so the swap does not
-    // escape it. No round can confirm the swap inside the stun (`onAmmo` drops every frame there), so `switchTick` assumes it
-    // at the window's end, under the same lockout as any ALT. Ignoring the press here (A20/F15) left the HUD and the ALT
-    // pointer on the old slot while the gun held the other one.
+    // F465 (bench 2026-10-16, by design): ALT on a STUNNED gun is a swap. The stun disarms both slots, so the trigger stays
+    // blocked until the stun's restore whatever slot it is bound to.
     if (this.host.slotCount() < 2) {
       // Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98 (inert)
       // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
@@ -882,97 +873,38 @@ export class Ammo {
       if (this.host.easyReload()) this.reloadPulled();
       return;
     }
-    // Bench 2026-11-08 (SR1, 0.4.37): the gun IGNORES an ALT inside the lockout (`altLockMs`) of the last ALT it TOOK,
-    // and an ignored press does not restart it. Ten presses about 2 a second took 7 (odd), so the gun ended on slot 0
-    // while a phone that counted 10 showed slot 1. Only a press the gun takes (the end of this method) moves `altAt`.
-    if (this.altAt != null && this.host.now() - this.altAt < this.altLock) {
-      this.host.log(`ALT ignored by the gun: inside the swap lockout (${this.host.now() - this.altAt} ms after the swap it took)`, 'li'); return; }
-    // Bench 2026-11-08 (B2): ALT pressed while the trigger is held (`$BUT,0,1` with no `$BUT,0,0` yet) is refused: the gun
-    // stayed on the empty USP-S while a phone that took the press showed the AR.
-    const td = this.host.triggerDownAt;
-    if (td != null && this.host.now() - td < TRIGGER_HELD_MAX_MS) { this.host.log('ALT ignored by the gun: trigger held', 'li'); return; }
-    // Bench 2026-10-02 (captured wire, USP-S): the gun IGNORES ALT while a reload runs. The lever at mag 8, ALT 1.16 s
-    // later, then `$ALCD,12,100,1,88` on slot 1: the reload took and the trigger never moved. Opening an assumed swap
-    // here booked "reload did NOT take (swapped)" and a swap to slot 0 that never happened, so the press is only noted.
-    // ALT r4: only while the gun is really reloading (inside reload_s, no gain yet). In the takeover's stale tail the gun
-    // takes ALT, so ignoring it left `am.altPtr` behind the gun; there the press is a swap and ends the takeover.
-    const r = this.reloading;
-    // F650 review (Opus, M1): a phone reload is not a gun reload; the gun ignores ALT only while it reloads the other slot.
-    const g = this.gunOther;
-    // Codex pass 2026-11-07 r2: also through the phone's own reload of the weapon in hand (set when it starts), timed by the slot
-    // the gun really reloads, and on after the phone's reload lands until that slot's refill does.
-    if (g && g.life === this.host.lifeSeq && this.host.now() < g.until) {   // review 2026-11-06: a refused lever the gun spent on the other slot
-      this.host.log(`ALT ignored by the gun while it reloads slot ${g.slot}, the slot fired last`, 'li'); return; }
-    // Codex pass 2026-11-07: the gun's refill lands up to 1.3x reload_s (F27), an energy recharge up to 3.9 s (pl4), and the
-    // gun ignores ALT until it does, so the hold runs as long as `noteGunOther`'s.
-    // r2: a lever inside a swap waits out the swap window first, which the refill overrun does not scale. A phone reload is
-    // not a gun reload: the hold above covers the gun's reload of the other slot.
-    const sw = r && r.swapTo != null ? this.host.switchWindowMs() : 0;
-    // Codex pass r3 (the torture run): a chain (the Shotgun) that has loaded a shell and is not full is still loading, and the
-    // gun ignores ALT until it ends: the hold runs one shell past the last shell. A magazine's gain ends its reload ('filled').
-    const now = this.host.now(), chaining = !!(r && r.lastGainAt > r.at && r.cap != null && r.mag < r.cap && this.prevReserve[r.slot] !== 0);
-    // Codex 2026-11-08: a stun's disarm cuts the gun's reload (`cut`, engine.js `_stun`), so a reload begun before the stun
-    // holds no ALT, inside the stun or after it.
-    if (r && !r.auto && !r.soft && !r.cut && (chaining ? now < r.lastGainAt + gunHoldMs(r.ms - sw, r.energy)
-      : now < r.at + sw + gunHoldMs(r.ms - sw, r.energy) && !(r.lastGainAt > r.at))) {   // F226 review: the phone's own `$AMMO` reload is instant on the gun, which takes ALT
-      this.host.log(`ALT ignored by the gun mid-reload (slot ${this.host.activeSlot})`, 'li'); return; }
-    // F650 (game 2026-11-01): ALT before the first trigger pull of a life is a swap like any other. The old rule here (F445)
-    // came from a bench of PHONE EQUIPS (F436, 0/6 vs 4/4), never of ALT; the field reports it rested on are explained by
-    // the last-fired lever (F542). In the game it silently ignored 12 presses, and on one of them the gun fired six rounds
-    // from the slot the press moved to while the HUD still showed the old one. If the gun does refuse such a press, the
-    // first round from the old slot corrects the HUD (`onAmmo`), as for any ALT it did not take.
-    if (r) this.endReload('swapped');
+    // A reload of the weapon in hand ends with the swap (the gun's own lever reload of the last-fired slot goes on, F542).
+    if (this.reloading) this.endReload('swapped');
     this.host.pu.onAltPressed();
-    const from = this.altPtr, to = this.nextAltSlot();
-    this.altPtr = to;
-    this.altEvidencePending = to;
-    // `undo`: a round that proves the gun did not take this press (`onAmmo`) puts the gun's lockout back as it was.
-    this.switching = { at: this.host.now(), from, to, undo: { at: this.altAt, lock: this.altLock } };
-    this.altAt = this.switching.at; this.altLock = this.altLockMs(to); this.dryRun = null; this.inferred = null;
+    const now = this.host.now(), from = this.host.activeSlot, to = this.nextAltSlot(), ms = this.altLockMs(to);
+    // A second ALT inside the window retargets: only the last target is bound, `ms` after the last press.
+    const held = !!this.bindDue;
+    this.switching = { at: now, from, to, ms };
+    this.bindDue = { slot: to, at: now + ms, life: this.host.lifeSeq };
+    this.lastLoadout = to;
+    this.host.setActiveSlot(to); this.host.clearPull();
+    this.host.pu.onAssumedSwap(to);   // A56: ALT takes the trigger off a held heavy (the heavy keeps its charges)
+    this.host.recoilArm('swap');   // S42: the new slot's weapon gets its own profile
+    this.showSlot(to);   // F394: the new slot's counts come from the node
+    if (!held) this.host.holdTrigger(`ALT: swap to slot ${to}`);
+    this.host.swapSound(to);
+    this.host.log(`ALT: swap from slot ${from} to slot ${to}; the trigger binds in ${ms} ms`, 'li');
     this.host.changed();
   }
-
-  /** Bench 2026-11-08 (SR5r): `n` loaded pulls in a row that the gun did not answer (engine.js `_noFireTick`, which has
-   *  already stood down for a swap, a reload, a stun and heat). If the other loadout slot is empty and no gun reload of it is
-   *  running, the gun holds that slot: an ALT it refused for a reason not modelled here left the HUD on a loaded weapon
-   *  while every pull clicked empty, and no round would ever come to correct it. Moves the trigger and the ALT pointer, with
-   *  GUN WAS ON. `slot`: the slot the unanswered pull was judged on. Returns true when it moved them. */
-  unansweredPulls(slot) {
-    const a = this.host.activeSlot;
-    // Codex review 2026-11-08: the evidence belongs to the slot the pulls were judged on; a swap or an equip since starts over
-    if (slot !== a) { this.dryRun = null; return false; }
-    const run = this.dryRun = this.dryRun && this.dryRun.slot === slot ? this.dryRun : { slot, n: 0 };
-    run.n++;
-    if (run.n < DRY_PULLS_GUN_WAS || !(a === 0 || a === 1) || this.host.slotCount() < 2 || this.switching || this.reloading) return false;
-    const g = this.gunOther;
-    if (g && g.life === this.host.lifeSeq && this.host.now() < g.until) return false;   // the gun refuses the trigger while it reloads the other slot
-    const o = a ? 0 : 1, live = this.acctLive(o), om = live != null ? live : this.prevAmmo[o];
-    if (om !== 0) return false;
-    this.gunWasOn(o, 'dry pulls');
-    this.host.setActiveSlot(o);
-    this.altPtr = o; this.altEvidencePending = null;
-    this.dryRun = null;
-    // Codex review 2026-11-08: an inference, not the gun's word. Pulls on it stay owed (engine.js `_awaitShot`), so a gun that
-    // is really broken still reaches the stale-pool check and the cure.
-    this.inferred = { slot: o, life: this.host.lifeSeq };
-    this.host.recoilArm('gun was on (dry pulls)');
-    this.showSlot(o);
-    this.host.changed();
-    return true;
-  }
-  /** Is `slot` a slot `unansweredPulls` moved to this life, with no word from the gun since? PURE. */
-  inferredSlot(slot) { const i = this.inferred; return !!(i && i.slot === slot && i.life === this.host.lifeSeq); }
-  /** The ALT cycle as the gun runs it right now (for an ASSUMED swap and the HUD's SWITCHING target). A heavy is never in
-   *  it: the phone puts the heavy on the trigger with its `$WEAP` and never rewrites ALT (Tony, 2026-09-24). */
+  /** The ALT cycle: the two loadout slots. A heavy is never in it (Tony, 2026-09-24): ALT from a heavy goes to the loadout
+   *  slot other than the one the phone last put on the trigger, as the gun's own ALT did. */
   altCycle() { return this.host.slotCount() >= 2 ? [0, 1] : [0]; }
-  nextAltSlot() { const c = this.altCycle(), i = c.indexOf(this.altPtr); return i < 0 ? c[0] : c[(i + 1) % c.length]; }
+  nextAltSlot() {
+    const c = this.altCycle(), a = this.host.activeSlot, cur = c.includes(a) ? a : this.lastLoadout, i = c.indexOf(cur);
+    return i < 0 ? c[0] : c[(i + 1) % c.length];
+  }
   /** How long the ALT indicator has been up, or null once it has expired.
    *  PURE — it is read from state() on every render and must never mutate engine state. */
   switchingMs() {
     // Through the host, not `this.switchWindowMs()`: the engine's `switchWindowMs` is the one door (tests stub it there).
     if (!this.switching) return null;
     const ms = this.host.now() - this.switching.at;
-    return ms > this.host.switchWindowMs() ? null : ms;
+    return ms > this.swapWindowMs() ? null : ms;
   }
   /** The swap window: MC's `frames.swap_ms` (the tok15 the gun was actually given, perks applied — bench 2026-09-04);
    *  an older MC without it falls back to the stock 850 scaled by an equipped `switch_mult` perk. */
@@ -982,35 +914,29 @@ export class Ammo {
     const sm = fx && fx.switch_mult ? +fx.switch_mult : 1;
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
-  /** How long the gun ignores ALT after an ALT it took that moved to slot `to`: that slot's own `$WEAP` tok15 (the head row
-   *  carries it with perks applied), else the swap window. Bench 2026-11-08 (SR1, SR1b, SR1c: 48 press runs, AR 850 and
-   *  USP-S 500): to the AR a press 827 ms after was ignored and 908 ms taken; to the USP-S 466 and 488 ms ignored, 503 taken.
-   *  This rule fits 47 of 48 runs (the miss is a press 43 ms early, inside the radio's timing jitter); no fixed or
-   *  scaled-swap_ms window fits more than 46. PURE. */
+  /** How long a swap to slot `to` holds the trigger: that slot's own `$WEAP` tok15 (the head row carries it with perks
+   *  applied), else the swap window. The gun's own ALT locked out for exactly this (bench 2026-11-08, SR1: 47 of 48 runs, AR
+   *  850, USP-S 500), so the phone's swap takes as long as the gun's did. PURE. */
   altLockMs(to) {
     const row = ((this.host.frames && this.host.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${to},`));
     const ms = row ? Number(row.split(',')[16]) : NaN;
     return ms > 0 ? ms : this.host.switchWindowMs();
   }
-  /** tick(): an ALT swap the gun never confirmed with a shot. Past the window the swap is TAKEN as done; the next shot's
-   *  `$ALCD` corrects the trigger slot if the gun disagrees. Never ask `$QUERY`: its `$LCD` slot is the slot of the LAST
-   *  SHOT, not the selected one, so a read-back before a shot reads the old slot (bench 2026-10-17, Tactix-FE30 on 0.4.24). */
+  /** The SWITCHING display's window: an ALT swap's own (`ms`), else the host's swap window (a pickup's card). PURE. */
+  swapWindowMs() { const sw = this.switching; return sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs(); }
+  /** tick(): bind the trigger to the swap's target once its time is up (`bindDue`), and close the SWITCHING display when its
+   *  window ends. A pickup's card (`switching.pu`) only closes: the powerup equip already moved the trigger. */
   switchTick(now) {
-    // Through the host, as in `switchingMs`: never call `this.switchWindowMs()` here, or an engine-side stub stops applying.
-    if (this.switching && now - this.switching.at > this.host.switchWindowMs()) {
-      const to = this.switching.to != null ? this.switching.to : this.nextAltSlot();
-      const pu = !!this.switching.pu; this.switching = null;
-      if (!pu) this.host.setActiveSlot(to);   // F400 r2: the powerup equip already moved a pickup card's trigger; a shot since may have moved it again
-      if (!pu) this.altPtr = to;   // F400 r1: a pickup card is a phone equip, which moves the trigger and never the gun's ALT pointer
-      if (!pu) this.host.pu.onAssumedSwap(to);   // A56: ALT took the trigger off the heavy (the heavy keeps its charges)
-      if (!pu) this.host.recoilArm('swap (assumed)');   // S42: the new slot's weapon gets its own profile (the powerup equip already armed a pickup card's)
-      if (!pu) this.showSlot(to);   // F394: the gun sends no `$ALCD` on ALT, so the new slot's counts come from the node
-      // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md
-      // "The switch card"): a pickup switch is never "assumed" the way an unconfirmed ALT swap is -- it is
-      // display-only for `onAmmo`'s confirm-by-shot code (powerup-player.js `_switchCard`), so it always closes here, on its
-      // own timer, with the equip already a settled fact.
-      this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, assumed: true, pu } });
-      this.host.log(pu ? `pickup switch card to slot ${to} closed after ${this.host.switchWindowMs()}ms` : `swap to slot ${to} assumed after ${this.host.switchWindowMs()}ms (no shot yet)`, 'li');
+    const b = this.bindDue;
+    if (b && now >= b.at) { this.bindDue = null; if (b.life === this.host.lifeSeq) this.host.bindTrigger(b.slot, `ALT: swap to slot ${b.slot}`); }
+    if (this.switching && now - this.switching.at > this.swapWindowMs()) {
+      const sw = this.switching, pu = !!sw.pu, to = sw.to;
+      this.switching = null;
+      if (!pu) this.lastSwitchMs = now - sw.at;
+      if (!pu && to === this.host.activeSlot) this.showSlot(to);   // a press booked at the swap has settled since (F259 account)
+      // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md "The switch card").
+      this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, assumed: true, pu } });   // `assumed`: the HUD's READY (no gun report confirms a swap the phone owns)
+      this.host.log(pu ? `pickup switch card to slot ${to} closed after ${this.swapWindowMs()}ms` : `swap to slot ${to} done`, 'li');
     }
   }
   // ---------- F259: the node's own magazine account ----------

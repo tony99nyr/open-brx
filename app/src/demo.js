@@ -434,7 +434,7 @@ export function startDemo({ engine, log }) {
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
       fullKit: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'usp' }], perk: 'fast_hands' }; ev.assign(); },   // A14: AR + pistol + Fast Hands
       empPerk: () => { player.loadout = { ...player.loadout, perk: 'emp' }; bundle.emp = { cooldown_s: 45, duration_s: 3 }; ev.assign(); },   // the hidden EMP perk; MC ships `emp` on every bundle of a match with a holder
-      fastHands: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'suppressor' }], perk: 'fast_hands' }; bundle.swap_ms = 425; ev.assign(); },   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
+      fastHands: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'suppressor' }], perk: 'fast_hands' }; bundle.swap_ms = 425; if (Array.isArray(bundle.head)) bundle.head = bundle.head.map(f => (/^\$WEAP,[01],/.test(f) ? f.split(',').map((t, i) => (i === 16 ? '425' : t)).join(',') : f)); ev.assign(); },   // Tony 2026-11-08: the phone's swap reads each slot's tok15, as MC compiles it with the perk   // two weapons AND the perk; MC compiles tok15 = 425 into the bundle (bench 2026-09-04)
       // Bench 2026-09-17 (brx-weapons item 6): charge_rifle's cell reads "ammo left" but a full charge
       // costs 10 -- the first $ALCD sets the 40-cell cap, the second lands the test value.
       chargeRifle: () => { player.loadout = { weapons: [{ weapon_id: 'charge_rifle' }] }; },

@@ -122,10 +122,11 @@ def test_a_swap_onto_a_flat_weapon_clears_the_modifier_it_inherited_once():
         assert st._recoil["model"] and st._recoil["state"] == "degraded"
         st._inject_rx("$BUT,1,1,*"); st._inject_rx("$BUT,1,0,*")
         n = mark(mgr)
-        _shoot(st, gun, 1, slot=1); await settle(st)   # the round that confirms the swap, out of the shotgun
-        assert st.active_slot == 1 and not st.switching
+        _shoot(st, gun, 1, slot=1); await settle(st)   # The target reports while its swap window stays open.
+        assert st.active_slot == 1 and st.switching
         assert st._recoil is not None and st._recoil["model"] is False and st._recoil["dirty"], st._recoil
-        await _tick(st, mgr, clock)
+        await _tick(st, mgr, clock, st._swap_window_s() + 0.01)
+        await _tick(st, mgr, clock, 0)
         assert _tmp(mgr, n) == ["$TMP,,,,0,,,,,,,,*"], "the inherited -30 must be written back to the base, once"
         for _ in range(4):
             _shoot(st, gun, 1, slot=1); await settle(st)

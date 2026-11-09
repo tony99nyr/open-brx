@@ -55,3 +55,27 @@ def test_model_false_keeps_a_stop_out_of_the_gun_audio_model():
         await st.write(TWO_CUES, "two cues the caller books itself", gap_ms=0, model=False)
         assert booked == []
     asyncio.run(run())
+
+
+def test_a_play_queue_wait_rechecks_the_trigger_binding():
+    """The phone resolves binding rows when the play queue sends them."""
+    async def run():
+        st, mgr = await _linked()
+        await st._play_lock.acquire()
+        task = asyncio.create_task(st.write([TWO_CUES[0], "$BMAP,0,0,,,,,*"], "queued binding"))
+        await asyncio.sleep(0)
+        assert not task.done()
+        st.active_slot = 1
+        st._play_lock.release()
+        await task
+        assert tx(mgr)[-1] == "$BMAP,0,1,,,,,*"
+        st._bind_due = {"slot": 1, "at": st.now() + 1, "life": st._life_queued}
+        await st._play_lock.acquire()
+        task = asyncio.create_task(st.write([TWO_CUES[1], "$BMAP,0,0,,,,,*"], "queued hold"))
+        await asyncio.sleep(0)
+        assert not task.done()
+        st._bind_due = None
+        st._play_lock.release()
+        await task
+        assert tx(mgr)[-1] == "$BMAP,0,1,,,,,*", "a completed swap binds the slot at dispatch"
+    asyncio.run(run())
