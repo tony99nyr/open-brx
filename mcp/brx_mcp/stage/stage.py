@@ -384,6 +384,8 @@ CONTROL_LATCH_HEARD_S = PRESENCE_SIGHT_WINDOW_MS / 1000   # engine.js `_controlS
 CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
+GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_constants pins the pair
+GUN_SPAWN_AIR_S = 0.06   # engine.js GUN_SPAWN_AIR_MS: the `$SPAWN` frame's air time after its send (late is safe, early is the bug)
 RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
 # S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
@@ -1153,6 +1155,7 @@ class GunStage:
         self._bmap_sent: int | None = None  # engine.js `_bmapSent`: unknown until a binding write
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
         self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
+        self._gun_spawn_at: float | None = None   # engine.js `_gunSpawnAt`: the last `$SPAWN` write
         self._weap_out: int | None = None   # engine.js `_weapOut`: a `$WEAP` sent since the bound slot last fired (emulator 2026-11-09)
         self._gun_sel: int | None = None    # engine.js `_gunSel`: the slot the gun last fired while bound
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
@@ -2076,6 +2079,8 @@ class GunStage:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
             result = self._send(frames, gap_ms, on_start=on_start)
+            if any(f.startswith("$SPAWN,") for f in frames):
+                self._gun_spawn_at = self.now() + GUN_SPAWN_AIR_S   # engine.js `_write`: the gun reads `$SPAWN` after its air time
             await self._note_bind_sent(frames, result)
             if play_indexes:
                 self._last_play_sent_at = self.now()
@@ -2095,6 +2100,8 @@ class GunStage:
                     return False   # The drop cleared the write's reason, so only repair the trigger.
                 frames = self._bind_rows(frames)
                 result = self._send(frames, gap_ms, on_start=on_start)
+                if any(f.startswith("$SPAWN,") for f in frames):
+                    self._gun_spawn_at = self.now() + GUN_SPAWN_AIR_S   # engine.js `_write`: the gun reads `$SPAWN` after its air time
                 await self._note_bind_sent(frames, result)
                 if why != "reconcile: weapon systems live":
                     await self._relink_trigger()   # Repair after retry, so an old hold cannot replace the live binding.
@@ -2646,13 +2653,45 @@ class GunStage:
 
     def _weapon_arming_ms(self, now: float) -> float | None:
         """engine.js `_weaponArmingMs` (in SECONDS here): the time until a timed life's trigger goes live, or None. While
-        the burst waits in the play queue the whole delay is to come, and so is the rest of the planned wait (F497)."""
-        tp = self._trigger_pending
-        if not tp or not self.alive:
+        the burst waits in the play queue the whole delay is to come, and so is the rest of the planned wait (F497).
+        Emulator 2026-11-09: never before the gun's own spawn wait ends (`_gun_ready_at`)."""
+        if not self.alive:
             return None
-        if self._life_burst_waiting(now):
-            return tp["due"] - tp["at"] + self._life_burst_send_in(now)
-        return max(0.0, tp["due"] - now)
+        tp = self._trigger_pending
+        waiting = self._life_burst_waiting(now)
+        send_in = self._life_burst_send_in(now) if waiting else 0.0
+        gun = self._gun_ready_at(now + send_in + GUN_SPAWN_AIR_S) - now if waiting else self._gun_spawn_wait(now)
+        design = 0.0 if not tp else (tp["due"] - tp["at"] + send_in if waiting else max(0.0, tp["due"] - now))
+        s = max(design, gun)
+        return s if tp or s > 0 else None
+
+    def _gun_ready_at(self, spawn_at: float) -> float:
+        """engine.js `_gunReadyAt` (emulator 2026-11-09, bench SR23): the gun ignores the trigger and ALT for
+        GUN_SPAWN_WAIT_S after `$SPAWN`, and a full-auto slot's first round comes one t14 later (gunmodel.js
+        `spawnFireEdge`, `weapTiming`: t14 is split index 15, semi auto is index 21 non-zero). The one place the rule lives. PURE."""
+        row = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{self.active_slot},")), None)
+        extra = 0.0
+        if row is not None:
+            k = row.rstrip("*").rstrip(",").split(",")
+            num = lambda i: int(k[i]) if len(k) > i and re.fullmatch(r"-?\d+", k[i] or "") else None
+            t14, semi = num(15), num(21)
+            if not semi:
+                extra = (t14 if t14 is not None else 100) / 1000
+        return self._gun_wait_end(spawn_at) + extra
+
+    def _gun_buttons_wait(self, now: float) -> float:
+        """engine.js `_gunButtonsWaitMs` (in seconds): what is left of the gun's spawn wait for the lever and ALT."""
+        t = self._gun_spawn_at
+        return 0.0 if t is None else max(0.0, self._gun_wait_end(t) - now)
+
+    def _gun_wait_end(self, spawn_at: float) -> float:
+        """engine.js `_gunWaitEnd`: when the gun reads the trigger, ALT and the lever again after a `$SPAWN`. PURE."""
+        return spawn_at + GUN_SPAWN_WAIT_S
+
+    def _gun_spawn_wait(self, now: float) -> float:
+        """engine.js `_gunSpawnWaitMs` (in seconds): what is left of the gun's spawn wait after the last `$SPAWN`."""
+        t = self._gun_spawn_at
+        return 0.0 if t is None else max(0.0, self._gun_ready_at(t) - now)
 
     def _life_burst_waiting(self, now: float) -> bool:
         """engine.js `_lifeBurstWaiting`: a queued burst holds both timers, up to LIFE_BURST_HOLD_MAX_S."""
@@ -6968,6 +7007,11 @@ class GunStage:
         # A20/F15 (ammo.js `reloadPulled`): a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_on_ammo`
         # drops every $ALCD for the whole window, so a takeover started here could never be reconciled --
         # it would run to its deadline and book `ok:false` on a reload the player never asked the gun for.
+        # ammo.js `reloadPulled` (emulator 2026-11-09, SR23): the gun reads no lever in its spawn wait and reloads nothing
+        wait = self._gun_buttons_wait(self.now())
+        if wait > 0:
+            self._log(f"reload pull ignored: the gun's spawn wait ({math.ceil(wait * 1000)} ms left)", "info")
+            return
         self._lever_at = self.now()   # ammo.js `reloadPulled`: a refused pull still makes the gun reload a slot
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")

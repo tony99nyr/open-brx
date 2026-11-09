@@ -25,6 +25,13 @@ import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 // A56 (S58): the player's side of the powerups (docs/spec/powerups.md) lives in powerup-player.js; its constants are
 // re-exported here so every existing `from './engine.js'` import keeps working.
 import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld, PlayerPowerups } from './powerup-player.js';
+import { SPAWN_WAIT_MS as GUN_SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from './gunmodel.js';
+/** Emulator 2026-11-09 (brx2; to be confirmed at bench SR23): the gun's own wait after `$SPAWN`. False turns off every use of
+ *  it (the ready cue and the dead lever), if the bench refutes it. */
+const GUN_SPAWN_WAIT = true;
+/** brx1 2026-11-09: the gun's wait starts when IT reads `$SPAWN`, after the link sends the frame, so the stamp is the frame's
+ *  send plus this much air time (one BLE connection interval and the gun's parse, generous). Late is safe; early is the bug. */
+export const GUN_SPAWN_AIR_MS = 60;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
@@ -645,7 +652,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -729,7 +736,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1447,7 +1454,15 @@ export class Engine {
       // F590 (brx3 review): what the windows were before the hold, and whether any frame left, as stage.py `write` keeps them
       const before = ammoRows ? this.am.echoUntils(frames, gens) : null;
       let sentAny = false;
-      const sendOptions = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
+      const sendOptions0 = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
+      // the gun's spawn wait (`_gunSpawnWaitMs`) runs from when the gun reads `$SPAWN`: stamped at the hand-off, and again, later,
+      // when the link reports the frame sent (a write can queue behind others), plus the air time. It only ever moves later.
+      const spawnRow = frames.find(f => typeof f === 'string' && f.startsWith('$SPAWN,'));
+      if (spawnRow) this._gunSpawnAt = this.now() + GUN_SPAWN_AIR_MS;
+      const sendOptions = spawnRow ? { ...(sendOptions0 || {}), onFrameSent: frame => {
+        if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
+        if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
+      } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);
       this._noteBindSent(frames, result);   // Tony 2026-11-08: what the gun's trigger is bound to, for `_bindTick`
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
@@ -1810,9 +1825,35 @@ export class Engine {
    *  counts down smoothly across the send. The HUD reads it for the ACTIVATING line only (ARCH-2: REDEPLOYED's END is
    *  `_redeployUntil`, from live facts); the bench stage mirrors the number (`weapon_arming_s`). PURE. */
   _weaponArmingMs(now = this.now()) {
-    const tp = this._triggerPending;
-    if (!tp || !this.alive) return null;
-    return this._lifeBurstWaiting(now) ? (tp.due - tp.at) + this._lifeBurstSendIn(now) : Math.max(0, tp.due - now);
+    if (!this.alive) return null;
+    const tp = this._triggerPending, waiting = this._lifeBurstWaiting(now), sendIn = waiting ? this._lifeBurstSendIn(now) : 0;
+    // emulator 2026-11-09: the gun itself fires nothing until its spawn wait ends, so neither does the HUD say it can
+    const gun = waiting ? this._gunReadyAt(now + sendIn + GUN_SPAWN_AIR_MS) - now : this._gunSpawnWaitMs(now);
+    const design = !tp ? 0 : waiting ? (tp.due - tp.at) + sendIn : Math.max(0, tp.due - now);
+    const ms = Math.max(design, gun);
+    return tp || ms > 0 ? ms : null;
+  }
+  /** Emulator 2026-11-09 (brx2; to be confirmed at bench SR23): after `$SPAWN` the gun ignores the trigger and ALT for
+   *  GUN_SPAWN_WAIT_MS, whatever the weapon delay; each `$SPAWN` restarts it, and a full-auto slot's first round comes one
+   *  t14 later (gunmodel.js `spawnFireEdge`). When a gun that spawned at `spawnAt` can fire the slot in hand. The one place
+   *  this rule lives: if the bench refutes it, return `spawnAt` here. Display only; no write. PURE. */
+  _gunReadyAt(spawnAt) {
+    if (!GUN_SPAWN_WAIT) return spawnAt;
+    const row = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${this.activeSlot},`));
+    return spawnFireEdge(this._gunWaitEnd(spawnAt), row ? weapTiming(row) : null);
+  }
+  /** When the gun's spawn wait ends for a `$SPAWN` at `spawnAt`: from then the gun reads the trigger, ALT and the lever. PURE. */
+  _gunWaitEnd(spawnAt) { return GUN_SPAWN_WAIT ? spawnAt + GUN_SPAWN_WAIT_MS : spawnAt; }
+  /** brx2 2026-11-09 (emulator; SR23): the ms left before the gun reads the lever and ALT again after the last `$SPAWN`
+   *  (ammo.js `reloadPulled` refuses a press inside it: the gun reloads nothing). PURE. */
+  _gunButtonsWaitMs(now = this.now()) {
+    const t = this._gunSpawnAt;
+    return t == null ? 0 : Math.max(0, this._gunWaitEnd(t) - now);
+  }
+  /** The ms left of the gun's spawn wait (`_gunReadyAt`) after the last `$SPAWN` write, else 0. PURE. */
+  _gunSpawnWaitMs(now = this.now()) {
+    const t = this._gunSpawnAt;
+    return t == null ? 0 : Math.max(0, this._gunReadyAt(t) - now);
   }
   /** F493: true while a queued spawn/revive burst holds the weapon delay and the protection release. PURE. */
   _lifeBurstWaiting(now = this.now()) {
@@ -5010,7 +5051,11 @@ export class Engine {
    *  it sooner (`_takeover`). PURE. */
   _redeployUntil(rd, now = this.now()) {
     const br = this._burstReached, reached = br && br.life === rd.life ? Math.max(rd.at, br.at) : null;
-    const liveAt = rd.timed ? rd.liveAt : reached;
+    // emulator 2026-11-09: the gun's spawn wait, from when the gun read this burst's `$SPAWN` (`_gunSpawnAt`: the frame's send
+    // plus its air time), never earlier than the burst's reach plus that air time
+    const sa = this._gunSpawnAt, spawnAt = reached == null ? null : Math.max(reached + GUN_SPAWN_AIR_MS, sa != null && sa >= reached ? sa : -Infinity);
+    const gunAt = spawnAt != null ? this._gunReadyAt(spawnAt) : null;
+    const liveAt0 = rd.timed ? rd.liveAt : reached, liveAt = liveAt0 != null && gunAt != null ? Math.max(liveAt0, gunAt) : liveAt0;
     const cap = (reached != null ? reached : rd.at) + LIFE_BURST_HOLD_MAX_MS + redeployOutMs(rd.trigMs);
     if (liveAt == null) return now < cap ? null : cap;
     return Math.min(cap, rd.at + redeployOutMs(liveAt - rd.at));

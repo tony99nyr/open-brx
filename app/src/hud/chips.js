@@ -44,7 +44,7 @@ export function _chips(st) {
     else if (st.phase !== 'idle' && st.gunFlapping) pills.push(say(WARN.flap, 'pill warn', ` data-flap="${st.gunFlapping.count}"`) + `<button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
     // QA-02: on the live HUD this is a solid, steady bar (16 px, no blink): the frozen numbers below depend on it.
     else if (st.phase !== 'idle' && !st.bleUp) { full.push(warnFull(WARN.gun_lost)); pills.push(`<button class="pill bad${st.phase === 'live' && !down ? ' gunlost' : ''}" data-act="onReconnectGun"><span class="unskew" data-short="${WARN.gun_lost.short}">${WARN.gun_lost.full}</span></button>`); }
-    if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
+    if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp && st.weaponArming == null) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     // S57 / QA-05: the IR callouts and the hill transitions are never a pill here: they are lanes (`_lanes`).
     // review r2 M2: two or more warnings in the rail show headlines only (the full sentences stay in the ⓘ panel)

@@ -10,10 +10,14 @@ import * as E from '../src/engine.js';
 import { Hud } from '../src/hud/hud.js';
 import { FakeDocument } from './hud-fake-dom.mjs';
 import { LANE_HERO_MS } from '../src/lanes.js';
+import { SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from '../src/gunmodel.js';
 import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const RP = golden.respawn_profile;
+// emulator 2026-11-09 (bench SR23): after `$SPAWN` the gun fires the AR (full auto) no sooner than its spawn wait plus one t14
+// (gunmodel.js `spawnFireEdge`); REDEPLOYED ends 400 ms after the later of that and the trigger going live
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,')))) + E.GUN_SPAWN_AIR_MS;   // + the frame's air time
 const HELD = '$BMAP,0,98,,,,,*', LIVE = '$BMAP,0,0,,,,,*';
 const TICK = 50;
 // The Rockets pickup slot's head `$WEAP` (powerups.test.mjs WEAP[2]; the grant re-sends it verbatim).
@@ -131,7 +135,7 @@ test('ARCH-2: a revive burst sent LATER than planned: REDEPLOYED is up when the 
   const ends = seen.filter(([t, , tk]) => t >= liveAt && tk && tk.kind === 'redeploy').map(([, , tk]) => tk.until);
   assert.ok(ends.length && ends.every(u => u === ends[0]), `one end once the trigger is live: ${JSON.stringify(ends)}`);
   const until = ends[0];
-  assert.equal(until, Math.max(t0 + 1700, liveAt + 400), 'the end: 400 ms after the trigger went live, at least 1.7 s after the revive');
+  assert.equal(until, Math.max(t0 + 1700, Math.max(liveAt, heldAt + GUN_READY) + 400), 'the end: 400 ms after the gun can fire, at least 1.7 s after the revive');
   // the HUD's card fades exactly then (the first render at or after `until`), and the takeover is gone with it
   for (const [t, card, tk] of seen) {
     if (t < until) assert.equal(card, 'up', `up at ${t - t0} ms (end ${until - t0})`);
@@ -147,7 +151,7 @@ test('ARCH-2 control: a revive long after the scream: REDEPLOYED ends at the wea
   assert.equal(h.card(), 'up');
   await h.adv(RP.trigger_ms);
   const tk = h.takeover();
-  assert.deepEqual(tk, { kind: 'redeploy', at: t0, until: t0 + Math.max(1700, RP.trigger_ms + 400) }, 'then the end is known');
+  assert.deepEqual(tk, { kind: 'redeploy', at: t0, until: t0 + Math.max(1700, Math.max(RP.trigger_ms, GUN_READY) + 400) }, 'then the end is known');
   await h.adv(tk.until - h.now() - TICK);
   assert.equal(h.card(), 'up', 'up until the end');
   await h.adv(TICK);
@@ -239,7 +243,8 @@ test('ARCH-2 r1: a burst held past LIFE_BURST_HOLD_MAX_MS: REDEPLOYED is up when
   assert.ok(liveAt - spawnAt >= RP.trigger_ms, 'setup: the trigger went live after the burst');
   for (const [t, card] of seen) if (t <= liveAt) assert.equal(card, 'up', `REDEPLOYED is up at ${t - t0} ms (burst ${spawnAt - t0}, live ${liveAt - t0})`);
   // (the window stops short of the F272 lock verdict this silent fake gun earns later)
-  const after = seen.filter(([t]) => t >= liveAt + 400 && t < liveAt + 1000);
+  const end = Math.max(liveAt, spawnAt + GUN_READY) + 400;   // the gun's spawn wait (SR23)
+  const after = seen.filter(([t]) => t >= end && t < end + 600);
   assert.ok(after.length > 0, 'review r2: the window after the end holds samples');
   for (const [t, card, tk] of after) { assert.notEqual(card, 'up', `ended at ${t - t0} ms`); assert.equal(tk, null); }
 });

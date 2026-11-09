@@ -609,6 +609,10 @@ export class Ammo {
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
   reloadPulled() {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial || this.host.resync || this.host.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
+    // brx2 2026-11-09 (emulator; SR23): after `$SPAWN` the gun reads no lever (nor ALT, so no Easy Reload) for its spawn wait,
+    // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
+    const wait = this.host.gunButtonsWaitMs ? this.host.gunButtonsWaitMs() : 0;
+    if (wait > 0) { this.host.log(`reload pull ignored: the gun's spawn wait (${Math.ceil(wait)} ms left)`, 'li'); return; }
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book

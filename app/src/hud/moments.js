@@ -345,6 +345,8 @@ export function _switchedEnd(st) {
   /** The REDEPLOYED sub-line (2026-09-19): arming while a timed respawn holds the trigger, the shield on a station
    *  respawn, else WEAPONS HOT. */
 export function _redeployLine(st) {
+    // emulator 2026-11-09 (bench SR23): a station life is shielded while the gun still waits out its spawn wait; name both
+    if (st.weaponArming != null && st.shielded) return '<span class="h shield">SHIELD UP · ACTIVATING…</span>';
     if (st.weaponArming != null) return '<span class="h arming">ACTIVATING WEAPON SYSTEMS…</span>';
     if (st.shielded) return '<span class="h shield">SHIELD UP · WEAPONS HOT ▸▸▸</span>';
     return '<span class="h">WEAPONS HOT ▸▸▸</span>';

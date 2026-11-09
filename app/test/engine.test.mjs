@@ -1,6 +1,7 @@
 // Engine tests — node --test (no framework). Covers node.md §3 (A6): arm from a FrameBundle,
 // echo→ack_config, start→spawn, hit/death attribution, DEATH_LATCH, respawn, shots counter,
 // feedback freshness, timed end→KITTED, the §3.10 resync table, resumeSchedule across T-0.
+import { SPAWN_WAIT_MS } from '../src/gunmodel.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -5043,6 +5044,7 @@ test('F229: a trigger press keeps OVERHEAT up while the player is still trying, 
 
 test('reload handle pull opens a reload for the weapon\'s reload_s; the mag coming back closes it', () => {
   const h = harness().kit().config_().echo().start(0);
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [] } } });
   h.eng.tick();
   assert.equal(h.eng.phase, 'live');
@@ -5057,6 +5059,7 @@ test('reload handle pull opens a reload for the weapon\'s reload_s; the mag comi
 });
 test('a reload the gun never echoes still clears after reload_s plus grace; no reload while dead or with a full mag', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.frame('$ALCD,32,100,0,384,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloading, false, 'a full mag has nothing to reload');
   h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,2,1,*');
@@ -5342,6 +5345,7 @@ test('with one weapon loaded and no easy_reload, ALT does nothing (compile.py ma
 test('with one weapon loaded AND easy_reload, ALT falls back to reload and opens the same takeover', () => {
   // easy_reload keeps ALT -> fn 97 (RELOAD) on purpose (loadout.md §2 `alt_reload`; compile.py).
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.eng.catalog = { weapons: [], perks: [{ perk_id: 'easy_reload', name: 'Easy Reload', effects: { alt_reload: true } }] };
   h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' } };
   h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,1,1,*');
@@ -5728,6 +5732,7 @@ function leverOnFull(h) {
 }
 test('review 2026-11-06 r2: a stun cuts the gun\'s reload, so ALT after it is a swap again', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   leverOnFull(h);
   h.adv(200); h.eng._stun(3000);   // an EMP perk word: its own length, with stun off in the config
   assert.ok(h.eng.stunned, 'setup: stunned');
@@ -5737,6 +5742,7 @@ test('review 2026-11-06 r2: a stun cuts the gun\'s reload, so ALT after it is a 
 });
 test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is not reloading, so ALT is a swap', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   leverOnFull(h);
   h.adv(200); f542Shot(h, '$ALCD,5,100,1,48,0,*');
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
@@ -5744,6 +5750,7 @@ test('review 2026-11-06 r2: a round from the weapon in hand proves the gun is no
 });
 test('review 2026-11-06 r2: the ALT hold ends at the gun\'s measured reload overrun, not the takeover\'s stale tail', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   leverOnFull(h);
   const ms = h.eng.am.reloadMsOf(0);
   h.adv(Math.round(ms * 1.3) + 10); h.eng.tick();
@@ -6136,6 +6143,7 @@ test('an infection survivor plays survivors_win itself at time-expiry; a turned 
 });
 test('a reload-speed perk shortens the RELOADING takeover to match the gun', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4 }], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { reload_mult: 0.5 } }] } } });
   h.frame('$ALCD,20,100,0,384,0,*'); h.frame('$BUT,2,1,*');
@@ -9058,6 +9066,7 @@ test('F590: a failed write that sent nothing puts its echo windows back; one tha
 // now says so for RELOAD_FAILED_SHOW_MS, so a player on a slot the gun is not on finds out (a shot then shows GUN WAS ON).
 test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a few seconds; a landed one does not', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
   h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   h.adv(6000); h.eng.tick();
@@ -9071,6 +9080,7 @@ test('F277: a reload that times out with no gain shows RELOAD DID NOT TAKE for a
 });
 test('F277 review: a shot after the failed reload retires the prompt; a failed reload on another slot does not show it', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
   h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   h.adv(6000); h.eng.tick();
@@ -9090,6 +9100,7 @@ function boltHarness() {
 }
 test('BOLT: a lever pull on a bolt weapon shows the BOLT cue, never the RELOADING takeover, and the chambered round ends it', () => {
   const h = boltHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   let s = h.eng.state();
   assert.equal(s.bolt, true, 'the BOLT cue is up');
@@ -9101,6 +9112,7 @@ test('BOLT: a lever pull on a bolt weapon shows the BOLT cue, never the RELOADIN
 });
 test('BOLT: with no chambered round by the deadline the cue ends as a failed reload, never left up', () => {
   const h = boltHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().bolt, true);
   h.adv(6000); h.eng.tick();
@@ -9110,6 +9122,7 @@ test('BOLT: with no chambered round by the deadline the cue ends as a failed rel
 });
 test('F573 review: Fast Hands leaves the bolt alone on the phone, as compile does on the gun', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Sniper Rifle', clip: 1, reserve: 48, reload_s: 2.2, reload_type: 'bolt' }], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { reload_mult: 0.5 } }] } } });
   h.frame('$ALCD,0,100,0,48,0,*'); h.frame('$BUT,2,1,*');
@@ -9128,6 +9141,7 @@ test('F573 review: a bolt round gets no shot-ready cue (the BOLT cue covers it);
 });
 test('BOLT control: a weapon with no reload_type keeps the RELOADING takeover', () => {
   const h = liveSwapHarness();
+  h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
   h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,10,100,0,190,0,*'); h.frame('$BUT,0,0,*');
   h.adv(300); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
   const s = h.eng.state();
@@ -9283,6 +9297,7 @@ test('F665: a melee swing never moves the trigger, never takes the ammo block an
 test('F668: the lever undo follows the slot the refill names, never the last live round', () => {
   for (const which of ['bound', 'other']) {
     const h = liveSwapHarness();
+    h.adv(SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS);   // emulator 2026-11-09 (SR23): past the gun's spawn wait (and the frame's air time), when the lever works
     h.frame('$BUT,0,1,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$BUT,0,0,*');   // the AR's last live round
     h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick();
     h.frame('$ALCD,0,100,1,240,0,*');                                                          // the USP-S in hand, empty

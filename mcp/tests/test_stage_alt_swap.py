@@ -11,6 +11,7 @@ import asyncio
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
 from _stage import GUN, StageClock, _nosleep, settle
+from brx_mcp.stage import stage as S
 
 
 class _MuteQueryTagger(FakeTagger):
@@ -31,6 +32,7 @@ async def _live(tagger_cls=FakeTagger):
     st.poll(); await settle(st)
     for _ in range(3):
         clock.t += 0.5; mgr.pump(); st.poll(); await settle(st)
+    clock.t += S.GUN_SPAWN_AIR_S; st.poll(); await settle(st)   # past the gun's spawn wait and the frame's air time (SR23)
     assert st._slot_count() == 2 and st.active_slot == 0
     return st, gun, clock
 

@@ -5,6 +5,7 @@
 // protects): the player could not fire, or stayed protected, for the whole life. The timers now run from the moment the
 // burst reaches the gun. Mirrors: mcp/tests/test_stage_respawn_profile.py (the stage twin), golden trace
 // `respawn-operator-in-scream`.
+import { SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from '../src/gunmodel.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,6 +16,10 @@ import { mkStorage } from './_helpers.mjs';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const RP = golden.respawn_profile;
+// emulator 2026-11-09 (bench SR23): after the burst's `$SPAWN` the gun fires the AR (full auto) no sooner than its spawn
+// wait plus one t14 (gunmodel.js `spawnFireEdge`), so the HUD's ready point is the later of that and the trigger going live
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,')))) + E.GUN_SPAWN_AIR_MS;   // + the frame's air time
+const readyAt = (liveAt, burstAt) => Math.max(liveAt, burstAt + GUN_READY);
 const ON = '$TMP,,,,,,,,-100,,,,*', OFF = '$TMP,,,,,,,,0,,,,*';
 const HELD = '$BMAP,0,98,,,,,*', LIVE = '$BMAP,0,0,,,,,*';
 const TICK = 50;
@@ -343,13 +348,13 @@ test('F496/F497: an operator respawn inside the scream: REDEPLOYED is open while
   const heldAt = at(w, HELD), liveAt = at(w, LIVE);
   assert.ok(heldAt - t0 > 500, `setup: the burst waited behind the scream (${heldAt - t0} ms)`);
   assert.ok(liveAt - heldAt >= RP.trigger_ms, 'setup: the weapon delay ran from the burst');
-  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
-  assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait: the trigger went live ${liveAt - t0} ms in`);
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, readyAt(liveAt, heldAt) + 400));
+  assert.ok(Math.abs(arming0 - (readyAt(liveAt, heldAt) - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait: the trigger went live ${liveAt - t0} ms in`);
   const nums = seen.map(([, a]) => a).filter(v => v != null);
   for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
 });
 
-test('F496/F497: a station revive inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after it lands', async () => {
+test('F496/F497: a station revive inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after the gun can fire', async () => {
   const bundle = { ...golden, respawn_profile: { ...RP, station_protect_ms: 500 } };
   const h = harness(bundle);
   await h.adv(4000);
@@ -357,8 +362,10 @@ test('F496/F497: a station revive inside the scream: REDEPLOYED is open while th
   const { w, t0, arming0, seen } = await scream(h, 'station');
   const onAt = at(w, ON);
   assert.ok(onAt - t0 > 500, 'setup: the burst waited behind the scream');
-  assert.equal(arming0, null, 'a station life holds no trigger');
-  endsAt(seen, t0, onAt, Math.max(t0 + 1700, onAt + 400));
+  // emulator 2026-11-09 (bench SR23): a station life holds no trigger, but the gun itself fires nothing for SPAWN_WAIT_MS
+  // after the `$SPAWN`, so ACTIVATING counts the planned wait and the gun's, and REDEPLOYED ends 400 ms after the gun can fire
+  assert.ok(Math.abs(arming0 - (onAt - t0 + GUN_READY)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait and the gun's spawn wait`);
+  endsAt(seen, t0, onAt, Math.max(t0 + 1700, onAt + GUN_READY + 400));
 });
 
 test('F497: a burst sent LATER than planned: REDEPLOYED ends 400 ms after the trigger goes live, with no plan to correct', async () => {
@@ -374,7 +381,7 @@ test('F497: a burst sent LATER than planned: REDEPLOYED ends 400 ms after the tr
   for (let k = 0; k < 4000 / TICK; k++) { await h.adv(TICK); seen.push([h.now(), null, h.eng.state().presented.takeover]); }
   const heldAt = at(h.timed, HELD), liveAt = at(h.timed, LIVE);
   assert.ok(heldAt >= job.sendAt + 300, 'setup: the burst went late');
-  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, readyAt(liveAt, heldAt) + 400));
 });
 
 test('F496 control: a respawn long after the scream: REDEPLOYED ends at the weapon delay plus 400 ms, from the revive', async () => {
@@ -382,9 +389,9 @@ test('F496 control: a respawn long after the scream: REDEPLOYED ends at the weap
   await h.adv(3000);
   const t0 = h.now(); h.operatorRespawn();
   assert.deepEqual(h.eng.state().presented.takeover, { kind: 'redeploy', at: t0, until: null }, 'open until the trigger goes live');
-  await h.adv(RP.trigger_ms);
+  await h.adv(Math.max(RP.trigger_ms, GUN_READY));
   assert.ok(at(h.timed, LIVE) === t0 + RP.trigger_ms, 'setup: the trigger went live on time');
-  assert.deepEqual(h.eng.state().presented.takeover, { kind: 'redeploy', at: t0, until: t0 + redeployOutMs(RP.trigger_ms) });
+  assert.deepEqual(h.eng.state().presented.takeover, { kind: 'redeploy', at: t0, until: t0 + redeployOutMs(Math.max(RP.trigger_ms, GUN_READY)) });
 });
 
 test('F496 / F289: a station revive inside the scream tells MC at once, with the full protection window', async () => {
@@ -408,8 +415,8 @@ test('F498: a queue-slot cue waiting ahead of the burst: REDEPLOYED waits for it
   const { w, t0, arming0, seen } = await scream(h, 'timed');
   const heldAt = at(w, HELD), liveAt = at(w, LIVE);
   assert.ok(liveAt != null && liveAt > heldAt, 'setup: the trigger went live after the burst');
-  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, liveAt + 400));
-  assert.ok(Math.abs(arming0 - (liveAt - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the cue ahead: the trigger went live ${liveAt - t0} ms in`);
+  endsAt(seen, t0, liveAt, Math.max(t0 + 1700, readyAt(liveAt, heldAt) + 400));
+  assert.ok(Math.abs(arming0 - (readyAt(liveAt, heldAt) - t0)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the cue ahead: the trigger went live ${liveAt - t0} ms in`);
   const nums = seen.map(([, a]) => a).filter(v => v != null);
   for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
 });
