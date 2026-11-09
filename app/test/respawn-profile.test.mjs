@@ -436,3 +436,10 @@ test('spawn wait: the go-live WEAPONS HOT pill waits for the gun as well', async
   h.adv(t0 + SPAWN_WAIT_MS - h.now());
   assert.equal(pill(), true, 'once the gun can fire');
 });
+
+test('spawn wait: a shielded station life inside the gun\'s wait names the shield and that the weapon is still arming', async () => {
+  const { _redeployLine } = await import('../src/hud/moments.js');
+  assert.match(_redeployLine({ weaponArming: 900, shielded: true }), /SHIELD UP · ACTIVATING/);
+  assert.match(_redeployLine({ weaponArming: null, shielded: true }), /SHIELD UP · WEAPONS HOT/, 'CONTROL: once the gun can fire');
+  assert.match(_redeployLine({ weaponArming: 900, shielded: false }), /ACTIVATING WEAPON SYSTEMS/);
+});

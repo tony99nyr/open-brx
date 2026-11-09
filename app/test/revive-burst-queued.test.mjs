@@ -5,6 +5,7 @@
 // protects): the player could not fire, or stayed protected, for the whole life. The timers now run from the moment the
 // burst reaches the gun. Mirrors: mcp/tests/test_stage_respawn_profile.py (the stage twin), golden trace
 // `respawn-operator-in-scream`.
+import { SPAWN_WAIT_MS } from '../src/gunmodel.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -349,7 +350,7 @@ test('F496/F497: an operator respawn inside the scream: REDEPLOYED is open while
   for (let k = 1; k < nums.length; k++) assert.ok(nums[k] <= nums[k - 1], `weaponArming never jumps up: ${JSON.stringify(nums)}`);
 });
 
-test('F496/F497: a station revive inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after it lands', async () => {
+test('F496/F497: a station revive inside the scream: REDEPLOYED is open while the burst waits, and ends 400 ms after the gun can fire', async () => {
   const bundle = { ...golden, respawn_profile: { ...RP, station_protect_ms: 500 } };
   const h = harness(bundle);
   await h.adv(4000);
@@ -357,8 +358,10 @@ test('F496/F497: a station revive inside the scream: REDEPLOYED is open while th
   const { w, t0, arming0, seen } = await scream(h, 'station');
   const onAt = at(w, ON);
   assert.ok(onAt - t0 > 500, 'setup: the burst waited behind the scream');
-  assert.equal(arming0, null, 'a station life holds no trigger');
-  endsAt(seen, t0, onAt, Math.max(t0 + 1700, onAt + 400));
+  // emulator 2026-11-09 (bench SR23): a station life holds no trigger, but the gun itself fires nothing for SPAWN_WAIT_MS
+  // after the `$SPAWN`, so ACTIVATING counts the planned wait and the gun's, and REDEPLOYED ends 400 ms after the gun can fire
+  assert.ok(Math.abs(arming0 - (onAt - t0 + SPAWN_WAIT_MS)) <= 2 * TICK, `weaponArming at the revive (${arming0}) counts the wait and the gun's spawn wait`);
+  endsAt(seen, t0, onAt, Math.max(t0 + 1700, onAt + SPAWN_WAIT_MS + 400));
 });
 
 test('F497: a burst sent LATER than planned: REDEPLOYED ends 400 ms after the trigger goes live, with no plan to correct', async () => {
