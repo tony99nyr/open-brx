@@ -2265,3 +2265,13 @@ test('phone swap: a heavy equipped during the phone\'s reload binds the heavy\'s
   assert.equal(h.eng.activeSlot, 2, 'setup: the heavy is on the trigger');
   assert.ok(h.since(n).includes('$BMAP,0,2,,,,,*'), `the heavy's slot is bound: ${JSON.stringify(h.since(n).filter(f => f.startsWith('$BMAP')))}`);
 });
+
+// Codex review r2 2026-11-08 (phone swap): a heavy's `$WEAP` equip that never left must not be trusted as the trigger's binding.
+test('phone swap: a heavy equip whose write fails is bound with `$BMAP,0,<slot>` by the repair', async () => {
+  const h = armed();
+  h.failNext(f => f.startsWith('$WEAP,2,'), 99);
+  const n = h.mark(); h.take(4);
+  for (let i = 0; i < 8; i++) { h.adv(250); await settle(); }
+  assert.equal(h.eng.activeSlot, 2, 'setup: the phone shows the heavy');
+  assert.ok(h.since(n).includes('$BMAP,0,2,,,,,*'), `the repair binds the heavy's slot: ${JSON.stringify(h.since(n).filter(f => f.startsWith('$BMAP')))}`);
+});

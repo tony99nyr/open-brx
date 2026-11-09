@@ -729,7 +729,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _bindTickAt: 'binding repair rate limit', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1487,6 +1487,15 @@ export class Engine {
    *  writes the binding again. Codex 2026-11-08: a lost bind, a stale hold from the play queue or a cancelled reload's
    *  hold all heal there. */
   _noteBindSent(frames, result) {
+    // Codex r2: a pickup equip (one `$WEAP` for a pickup slot) puts that slot on the trigger by itself; `_bindTick` trusts it
+    // only once the write really went
+    const weaps = frames.filter(f => typeof f === 'string' && f.startsWith('$WEAP,'));
+    if (weaps.length === 1 && +weaps[0].split(',')[1] >= 2) {
+      const es = +weaps[0].split(',')[1], gone = () => { if (this._equipSent === es) this._equipSent = null; };
+      this._equipSent = es;
+      if (result === false || result === null) gone();
+      else if (result && typeof result.then === 'function') result.then(ok => { if (ok === false || ok === null) gone(); }, gone);
+    }
     const bm = frames.filter(f => typeof f === 'string' && /^\$BMAP,0,\d+,/.test(f)).pop();
     if (!bm) return;
     const fn = +bm.split(',')[2], lost = () => { if (this._bmapSent === fn) this._bmapSent = null; };
@@ -1501,7 +1510,7 @@ export class Engine {
     if (!this.bleUp || this.phase !== 'live' || !this.alive || !this.spawned || this.tutorial || this.rc.active || this.resync) return;
     if (this._lifeBurst && this._lifeBurst.life === this._lifeSeq) return;
     const want = this._boundSlot(), sent = this._bmapSent;
-    if (sent === want || (want !== 98 && want >= 2 && sent != null && sent !== 98)) return;
+    if (sent === want || (want !== 98 && want >= 2 && sent != null && sent !== 98 && this._equipSent === want)) return;
     if (now - (this._bindTickAt || 0) < BIND_RETRY_MS) return;
     this._bindTickAt = now;
     this._write([want === 98 ? TRIGGER_HOLD : `$BMAP,0,${want},,,,,*`], `trigger binding repair (${sent == null ? 'unknown' : sent} -> ${want})`);
@@ -1537,7 +1546,11 @@ export class Engine {
       let sent = false;
       const failed = () => {
         if (sent || this._lifeSeq !== life) return;
-        if (tries > 0 && this.bleUp) { this.log(`undo of slot ${slot} failed before it left: once more`, 'li'); send(tries - 1); return; }
+        // Codex r2: only while nothing has moved since: the books still at the undo, the same write owning the account, and
+        // no stun or reconcile disarm queued behind it. A gun report since is the truth, so the books keep it.
+        const a = this.am.acct[slot], still = this.am.prevAmmo[slot] === mag && this.am.prevReserve[slot] === res && (!a || a.echoGen === gen);
+        if (!still) return;
+        if (tries > 0 && this.bleUp && !this.stunned && !this.rc.active && !this.rc.disarmed) { this.log(`undo of slot ${slot} failed before it left: once more`, 'li'); send(tries - 1); return; }
         if (had[0] == null || had[1] == null || !this.am.acctUnwrite(slot, had[0], had[1], mag, gen, until0)) return;
         this.am.setPrev(slot, had[0], had[1]);
         if (this.activeSlot === slot) this.am.publish(slot, had[0], had[1]);
@@ -2246,7 +2259,7 @@ export class Engine {
     if (this._rebootQ) { if (this._rebootQ.down) this._rebootDownProven(this._rebootQ); this._rebootQ = null; this.rc.clear(); this._rcAgain = true; }   // F532 down review: the next relink's check decides again
     this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._magQuery = null; this._operatorResyncPending = null; this.configQuery = null; this._configReadback = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
-    this.am.endReload('dropped'); this.am.gunOther = null; this.am.cancelSwap(); this._bmapSent = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
+    this.am.endReload('dropped'); this.am.gunOther = null; this.am.cancelSwap(); this._bmapSent = null; this._equipSent = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
   }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; if (s !== 'bound' && this._life) this._life.wsEverDown = true; this._changed(); }   // S56: dealtPartial reads this for the running life
 
