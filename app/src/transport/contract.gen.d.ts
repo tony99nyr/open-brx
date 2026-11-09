@@ -1376,7 +1376,7 @@ export interface FrameBundle {
   gun?: Record<string, unknown>;
   /** A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}} */
   headset?: Record<string, unknown>;
-  /** the LONGEST swap the gun enforces (max tok15 of slots 0/1, after perks); no swap waits longer (node.md §3.2a) */
+  /** max tok15 of slots 0/1, after perks: the longest the swap's own edge can be after ALT; a burst held through ALT can end later (node.md §3.2a) */
   swap_ms?: number;
   /** A15.1: event -> frames; the node picks ONE at random per event; `cues[ev]` is the deterministic first */
   cue_pools?: Record<string, string[]>;
