@@ -228,10 +228,6 @@ const stageSettled = pg => pg.waitForFunction(() => {
 // waited for it, unless the step passed an explicit `ms` to sample the stage part way through, and then waiting for
 // the end would skip the very state the step reads. A page with no stage (utility.html) has no replies to wait for.
 // A change that needs an engine timer is not covered here: such a step waits on its own condition with `until`.
-/** Emulator 2026-11-09 (bench SR23): the gun fires nothing for SPAWN_WAIT_MS after `$SPAWN`, and the go-live WEAPONS HOT
- *  pill waits for it, so a check that measures the pill waits until it is up (the check itself then fails if it never is). */
-const weaponsHotUp = pg => pg.waitForFunction(() => Array.from(document.querySelectorAll('.chipbar .pill')).some(p => /WEAPONS HOT/.test(p.textContent)),
-  null, { timeout: 4000 }).catch(() => {});
 const settled = async pg => {
   await pg.waitForFunction(() => !(window.brxDemo && window.brxDemo.replies), null, { timeout: 10000 });
   await pg.evaluate(async () => {
@@ -320,7 +316,6 @@ for (const view of VIEWS) {
     await pg.waitForFunction(() => document.querySelector('.gunwarn.status, .gunwarn.warn')?.textContent.includes('NOT REPORTING SHOTS')); const noFire = await read();
     await pg.evaluate(() => window.brxDemo.gunHealthy());
     await pg.waitForFunction(() => !document.querySelector('.gunwarn') && !document.getElementById('frame').hasAttribute('data-gun-health'));
-    await weaponsHotUp(pg);
     const cleared = await pg.evaluate(() => ({ warning: !!document.querySelector('.gunwarn'), flagged: document.getElementById('frame').hasAttribute('data-gun-health'), chips: getComputedStyle(document.getElementById('chips')).display, weaponsHot: document.getElementById('chips').textContent.includes('WEAPONS HOT') }));
     await pg.close();
     must(unanswered && unanswered.danger && unanswered.role === 'alert', JSON.stringify(unanswered));
@@ -4341,7 +4336,6 @@ for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
     await step(`${tag} ${word} ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
       const pg = await open(view, 'live', night ? '&night' : '');
       await setAmmo(pg, 'charge_rifle', 0, 40, 80, cell, 108);
-      await weaponsHotUp(pg);
       const r = await pg.evaluate(() => {
         const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
         const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
@@ -5947,7 +5941,6 @@ const RAIL_WARN = [['GUN LINK LOST', () => window.brxDemo.dropGun(), /GUN LINK L
 for (const view of VIEWS) for (const night of [false, true]) for (const [what, act, want] of RAIL_WARN) for (const kc of [false, true]) {
   await step(`${view.name} layering clash rail ${night ? 'night' : 'day'}: the powerup hint and ${what}${kc ? ' under a kill card' : ''} never overlap; nothing covers the ammo or vitals`, async () => {
     const pg = await open(view, 'live-pu-rockets', night ? '&night' : '', 3000);
-    await weaponsHotUp(pg);   // the rail settles once the go-live pill is up (it waits for the gun's spawn wait)
     await lnWait(pg, r => r.env.hint.length, 2500);
     await pg.evaluate(act); if (kc) await pg.evaluate(() => window.brxDemo.killMedals(['first_blood'], 'VIPER'));
     await settled(pg);

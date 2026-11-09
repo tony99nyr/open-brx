@@ -473,6 +473,7 @@ export function startDemo({ engine, log }) {
       fire: n => fire(n == null ? 1 : n), holdFire, reload, hit: d => hit(d == null ? 9 : d),
       // F665: a melee swing as a real gun reports it (game 2026-11-01 logs): the gyro press, then the slot-4 row.
       swing: () => { engine.feedFrame('$BUT,8,1,*'); engine.feedFrame('$ALCD,1,100,4,0,0,*'); engine.feedFrame('$BUT,8,0,*'); },
+      gunWaitOver: () => { if (engine._gunSpawnAt != null) engine._gunSpawnAt = engine.now() - 60000; engine._changed(); },   // the stage jumps past the gun's spawn wait
       spawnEcho: () => { gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; mag = 32; reserve = 384; lcd(); },
       die: () => { armor = 0; hp = 0; shield = 0; engine.feedFrame(`$HIR,4,0,19,${foe.tid},9,0,3,*`); engine.feedFrame('$HP,0,0,0,*'); },
       respawn: () => { if (engine.alive) return; engine._revive(false); gunSpawn(); hp = engine.maxHp; armor = engine.maxArmor; reply(lcd, 250); },
@@ -617,7 +618,9 @@ export function startDemo({ engine, log }) {
     const kit = [[0, 'linkGun'], [50, () => ev.battery(82)], [150, 'assign'], [200, 'mcBound']];
     const kitted = [...kit, [300, 'briefDone']];
     const lobby = [...kitted, [500, 'config']];
-    const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
+    // emulator 2026-11-09 (bench SR23): a real gun fires nothing for its spawn wait after `$SPAWN`; the stage's `live` is a
+    // life past it (the jump is the stage's point), so a screen reads the settled HUD and the lever works
+    const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho'], [1800, 'gunWaitOver']];
     const STAGES = {
       'idle':              [[0, 'scan']],
       // F258: the bench's room. The taggers are the only rows; the rest waits behind the fold.

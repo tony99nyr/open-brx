@@ -76,8 +76,10 @@ export const SPAWN_WAIT_MS = 1500;
 
 const toks = f => f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');
 const int = (t, i) => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
-/** The timing a slot's `$WEAP` row gives the spawn wait: t14 (split index 15) and semi auto (t20, index 21, non-zero). PURE. */
-export function weapTiming(row) { const k = String(row || '').replace(/,?\*$/, '').split(','); return { t14: int(k, 15) ?? 100, semi: (int(k, 21) ?? 0) !== 0 }; }
+/** The timing in a slot's `$WEAP` row: t14 (the time between rounds, split index 15, 100 when blank) and semi auto (t20,
+ *  index 21, non-zero). `row` is the RAW frame (`$WEAP,<slot>,…,*`), split as `toks` splits it, so the indexes are the
+ *  model's own. The one parse of these two tokens: the model's `$WEAP` branch and the engine's ready cue both read it. PURE. */
+export function weapTiming(row) { const k = toks(String(row || '')); return { t14: int(k, 15) ?? 100, semi: (int(k, 21) ?? 0) !== 0 }; }
 /** The first time a pull fires slot `w` once the spawn wait ends at `waitEnd`: then, or one t14 later on a full-auto slot
  *  (emulator 2026-11-09, SR23). The engine's ready cue reads this too (engine.js `_gunReadyAt`). PURE. */
 export function spawnFireEdge(waitEnd, w) { return waitEnd + (w && !w.semi ? w.t14 : 0); }
@@ -141,8 +143,9 @@ export class GunModel {
     else if (cmd === 'WEAP' && s != null) {
       const clip = int(k, 17), carried = int(k, 18);
       const reserve = int(k, 41) ?? (carried == null ? 0 : Math.floor(carried / 2));
-      this.w[s] = { t14: int(k, 15) ?? 100, t15: int(k, 16) ?? 0, clip: clip ?? 0, carried: carried ?? reserve, reserve,
-        t18: int(k, 19) ?? 0, semi: (int(k, 21) ?? 0) !== 0 };
+      const wt = weapTiming(f);
+      this.w[s] = { t14: wt.t14, t15: int(k, 16) ?? 0, clip: clip ?? 0, carried: carried ?? reserve, reserve,
+        t18: int(k, 19) ?? 0, semi: wt.semi };
       this.mag[s] = clip ?? 0; this.res[s] = reserve;
       this.lastFired = s;    // the `$LCD` after a head reports the last slot loaded (`$LCD,0,0,0,4,1,0` after slot 4)
       this.sel = s; this._rebound();   // emulator: once the bound slot has fired, the trigger fires the slot loaded last

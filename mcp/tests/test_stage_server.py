@@ -67,7 +67,8 @@ def test_action_json_boundary_rejects_non_objects_and_bad_tags():
 def test_the_control_point_reload_and_ammo_actions_through_the_api():
     """F102 / F54: the injectors are whitelisted actions with the validator's message on a bad value."""
     needs(HAVE, "starlette + httpx")
-    with _client(now=lambda: 1000.0) as c:
+    t = [1000.0]
+    with _client(now=lambda: t[0]) as c:
         c.post("/api/do", json={"action": "connect", "address": "FA:KE:00:00:00:01"})
         r = c.post("/api/do", json={"action": "set_profile", "mode": "koth"}).json()
         assert r["station_source"] == "phone" and "grenade" in r["station_sources"], "koth's own source is a station"
@@ -98,6 +99,7 @@ def test_the_control_point_reload_and_ammo_actions_through_the_api():
         # here the fake gun's `$ALCD` replies to the spawn's `$AMMO` land during the F347 play gap.
         r = c.post("/api/do", json={"action": "alcd", "mag": 10, "reserve": 20}).json()
         assert r["model"]["reserve"] == 20 and any(l["why"] == "injected by the page" for l in r["log"])
+        t[0] += 1.5   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         r = c.post("/api/do", json={"action": "reload"}).json()
         assert r["model"]["reloading"] and r["model"]["reloading"]["slot"] == 0
         assert c.post("/api/do", json={"action": "alcd", "mag": "x"}).status_code == 400
