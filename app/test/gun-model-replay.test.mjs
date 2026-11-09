@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { GunModel, HELD_SWAP_RELEASE_MS } from '../src/gunmodel.js';
+import { GunModel } from '../src/gunmodel.js';
 import { fixtureNames, loadFixture, replayGun, FIXTURE_DIR } from './bench-gun-drive.mjs';
 import { extract, KEEP } from '../tools/bench-gun-fixture.mjs';
 
@@ -13,8 +13,8 @@ import { extract, KEEP } from '../tools/bench-gun-fixture.mjs';
 const PINNED = {
   '2026-11-08-sr1-sr5': [183, 2],
   '2026-11-08-sr11-sr15': [27, 0],
-  '2026-11-08-sr5r-sr12': [115, 4],
-  '2026-11-08-sr17-swp1': [142, 3],
+  '2026-11-08-sr5r-sr12': [118, 2],
+  '2026-11-08-sr17-swp1': [142, 7],
 };
 
 test('every bench session replays through the model, with differences only at a timing edge', () => {
@@ -107,10 +107,13 @@ test('SR17 E: a dry full-auto hold blocks ALT until tok15 after the release', ()
   assert.equal(run([...held, ...tap(4900, 1)]).g.bound, 1);
 });
 
-test('sr17e2: ALT taken in a held burst stops it, and a full-auto hold through a swap fires as it ends', () => {
+test('sr17e2, sr17c: ALT in a held trigger; a pull held through a swap fires as it ends', () => {
   const burst = run([[1000, 'b', 0, 1], ...tap(1250, 1), [1600, 'b', 0, 0]], { auto: 'timed' });
   assert.deepEqual(burst.out, ['$ALCD,31,0,384', '$ALCD,30,0,384', '$ALCD,29,0,384']);
-  assert.equal(burst.g.fireLockUntil, Math.max(1250 + 500, 1600 + HELD_SWAP_RELEASE_MS));
+  assert.equal(burst.g.fireLockUntil, 1250 + 850);   // a live hold: the larger tok15 of the two slots, from the press
+  // a dry USP-S hold from 1400, ALT to the AR 700 ms in (past the dry block), release at 3000: the release plus the USP-S's 500
+  const dry = run([[500, 'w', '$AMMO,1,0,240,1,*'], ...tap(800, 1), [1400, 'b', 0, 1], ...tap(2100, 1), [3000, 'b', 0, 0]]);
+  assert.deepEqual([dry.g.bound, dry.g.fireLockUntil], [0, 3500]);
   // a pull at 2300 inside the swap back to the AR (850 from 2000), held: the first round leaves as the swap ends
   const g = new GunModel({ auto: 'timed' });
   for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
@@ -140,4 +143,40 @@ test('MN1: a melee button swings once per the slot-4 t14', () => {
   g.take();
   for (const t of [1000, 2500, 3900, 4100]) g.button(8, 1, t);
   assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1000, '$ALCD,1,100,4,0,0,*'], [4100, '$ALCD,1,100,4,0,0,*']]);
+});
+
+test('emulator: a spawn moves neither the trigger binding nor the ALT pointer', () => {
+  const { out, g } = run([...tap(1000, 1), [2500, 'w', '$SPAWN,,*'], ...tap(4500, 0), ...tap(5500, 1), ...tap(7000, 0)]);
+  // the spawn answers `$LCD` and slot 0; the trigger still fires the USP-S, and the next ALT goes to the AR
+  assert.deepEqual(out.filter(f => f.startsWith('$ALCD')).slice(-2), ['$ALCD,11,1,240', '$ALCD,31,0,384']);
+  assert.deepEqual([g.altPtr, g.bound], [0, 0]);
+});
+
+test('emulator: a $BMAP,0 bind that lands with the trigger held fires at once', () => {
+  const g = new GunModel({ auto: 'timed' });
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,98,,,,,*']) g.write(f, 0);
+  g.take();
+  g.button(0, 1, 1000);
+  g.write('$BMAP,0,1,,,,,*', 1300);   // semi: one round
+  g.advance(1600);
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1300, '$ALCD,11,100,1,240,0,*']]);
+  g.button(0, 0, 1650);
+  g.write('$BMAP,0,98,,,,,*', 1700);
+  g.button(0, 1, 1750);
+  g.write('$BMAP,0,0,,,,,*', 1800);   // full auto, held: a burst until the release
+  g.button(0, 0, 2050);
+  assert.deepEqual(g.take().map(o => o.t), [1800, 1900, 2000]);
+});
+
+test('swp1: a bind that lands in a dry hold waits for the release plus the dry slot\'s tok15', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$AMMO,1,0,240,1,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  g.take();
+  g.button(0, 1, 1000);                 // a dry pull on the empty USP-S, held
+  g.write('$BMAP,0,98,,,,,*', 1700);
+  g.write('$BMAP,0,0,,,,,*', 2500);     // the AR, still held: no round
+  g.button(0, 0, 3000);
+  g.button(0, 1, 3300); g.button(0, 0, 3340);   // 300 ms after the release: refused
+  g.button(0, 1, 3700); g.button(0, 0, 3740);   // 700 ms after: fires
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[3700, '$ALCD,31,100,0,384,0,*']]);
 });
