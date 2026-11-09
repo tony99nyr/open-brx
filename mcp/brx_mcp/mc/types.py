@@ -1086,7 +1086,7 @@ class FrameBundle(TypedDict):
     presentation: NotRequired[PresentationSummary]  # A11: presentation.summary() -- preset + switches, for the UI/HUD
     gun: NotRequired[dict]               # A11.7: {in_play team|dark|health, blank, rest, bands?[[frac,f]]} -- absent for native
     headset: NotRequired[dict]           # A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}}
-    swap_ms: NotRequired[int]            # the LONGEST swap the gun enforces (max tok15 of slots 0/1, after perks); no swap waits longer (node.md §3.2a)
+    swap_ms: NotRequired[int]            # max tok15 of slots 0/1, after perks: the longest the swap's own edge can be after ALT; a burst held through ALT can end later (node.md §3.2a)
     cue_pools: NotRequired[dict[str, list[str]]]   # A15.1: event -> frames; the node picks ONE at random per event; `cues[ev]` is the deterministic first
     voice: NotRequired[dict]             # A15: {id, family, pset{role: id}, kill, rolled{role: id} (A15.1: this push's draws), pools{role: [ids]},
     #                                        spawn: [ids] (A15.2: the spawn pool; `pset.respawn_cry` is "" unless picked),
