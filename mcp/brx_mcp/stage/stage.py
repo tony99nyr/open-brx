@@ -1153,6 +1153,7 @@ class GunStage:
         self._bmap_sent: int | None = None  # engine.js `_bmapSent`: unknown until a binding write
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
         self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
+        self._weap_out: int | None = None   # engine.js `_weapOut`: a `$WEAP` sent since the bound slot last fired (emulator 2026-11-09)
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
         self._disarm_note: dict[int, int] = {}   # ammo.js `disarmNote`: disarmed slots outside the account
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
@@ -1712,11 +1713,19 @@ class GunStage:
         es = int(weaps[0].split(",")[1]) if len(weaps) == 1 and weaps[0].split(",")[1].isdigit() and int(weaps[0].split(",")[1]) >= 2 else None
         if es is not None:
             self._equip_sent = es
+        # engine.js `_noteBindSent`: a `$WEAP` moves the gun's current weapon; a `$CLEAR` head resets the selection
+        ws: int | None = None
+        prev_out = self._weap_out
+        if "$CLEAR,*" in frames:
+            self._weap_out = None
+        elif weaps and weaps[-1].split(",")[1].isdigit():
+            ws = int(weaps[-1].split(",")[1])
+            self._weap_out = ws
         bm = next((f for f in reversed(frames) if re.match(r"^\$BMAP,0,\d+,", f)), None)
         fn = int(bm.split(",")[2]) if bm is not None else None
         if fn is not None:
             self._bmap_sent = fn
-        if es is None and fn is None:
+        if es is None and fn is None and ws is None:
             return result
 
         async def settled() -> None:
@@ -1727,6 +1736,8 @@ class GunStage:
                     self._bmap_sent = None
                 if es is not None and self._equip_sent == es:
                     self._equip_sent = None
+                if ws is not None and self._weap_out == ws:
+                    self._weap_out = prev_out
                 raise
 
         return settled()
@@ -1749,8 +1760,11 @@ class GunStage:
             if now - self._bind_tick_at < self.BIND_RETRY_S:
                 return
             self._bind_tick_at = now
-            await self.write([TRIGGER_HOLD if want == 98 else f"$BMAP,0,{want},,,,,*"],
-                             f"trigger binding repair ({'unknown' if sent is None else sent} -> {want})")
+            why = f"trigger binding repair ({'unknown' if sent is None else sent} -> {want})"
+            if want == 98:
+                await self.write([TRIGGER_HOLD], why)
+            else:
+                await self._bind_write(want, why, sent)
 
         self._spawn_task(repair())
 
@@ -1772,7 +1786,29 @@ class GunStage:
             return
         if not self.connected:
             return
-        self._spawn_task(self.write([f"$BMAP,0,{slot},,,,,*"], f"{why}: bind the trigger"))
+        self._spawn_task(self._bind_write(slot, f"{why}: bind the trigger", self._bmap_sent))
+
+    async def _bind_write(self, slot: int, why: str, sent: int | None) -> None:
+        """engine.js `_bindWrite` (emulator 2026-11-09): while a `$WEAP` for another slot is out, a bind re-equips its slot
+        (head `$WEAP`, `$AMMO` with the live counts, then the `$BMAP`), only while the trigger is held (98)."""
+        out, bind = self._weap_out, f"$BMAP,0,{slot},,,,,*"
+        if out is None or out == slot:
+            await self.write([bind], why)
+            return
+        weap = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None) if sent == 98 else None
+        if weap is None:
+            self._log(f"{why}: the gun's weapon is slot {out}, not {slot}, but "
+                      f"{'the head has no $WEAP for slot ' + str(slot) if sent == 98 else 'the trigger is not held'}: $BMAP only", "error")
+            await self.write([bind], why)
+            return
+        live = self._live_ammo().get(slot) or [0, 0]
+        mag, res = int(live[0] or 0), int(live[1] or 0)
+        t = weap.split(",")
+        reset = int(t[17]) if len(t) > 17 and t[17].lstrip("-").isdigit() else None
+        self._acct_wrote(slot, mag, res, weap=True, reset=reset)
+        self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
+        self._log(f"{why}: the gun's weapon is slot {out} (a $WEAP since the bound slot last fired): re-equip slot {slot} at {mag}/{res}", "info")
+        await self.write([weap, f"$AMMO,{slot},{mag},{res},1,*", bind], f"{why} (re-equip)")
 
     def _undo_gun_reload(self, slot: int, mag: int, res: int) -> None:
         """engine.js `_undoGunReload`: restore the last-fired slot's counts from the lever press."""
@@ -5878,6 +5914,8 @@ class GunStage:
             # phone also counts a held pickup's slot, which the stage never has (`pu.*` is KNOWN_UNMIRRORED).
             self._last_shot_life = self._life_queued
             self._last_shot_slot = slot
+            if slot == self._bmap_sent:
+                self._weap_out = None   # engine.js `_roundsLeft`: the bound slot fired, so the gun's weapon is the bound one
             self._gun_other = None    # ammo.js `onAmmo`: a round ends the pending lever undo
             self._fire_first = None   # engine.js `state().fireFirst`: a shot retires the hint
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
