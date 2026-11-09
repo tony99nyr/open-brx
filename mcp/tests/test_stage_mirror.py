@@ -2171,7 +2171,7 @@ _HILL_PAIRS = {
 _PU_PAIRS = {"pu._ammoShort": "_ammo_short", "pu.grantAmmo": "grant_ammo"}
 
 # 2026-11-08 phone-owned binding repair: make the two new Engine methods' stage twins explicit.
-_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick"}
+_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick", "_bindWrite": "_bind_write"}
 
 
 def _hill_methods() -> set[str]:

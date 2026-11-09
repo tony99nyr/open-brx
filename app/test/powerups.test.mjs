@@ -2275,3 +2275,76 @@ test('phone swap: a heavy equip whose write fails is bound with `$BMAP,0,<slot>`
   assert.equal(h.eng.activeSlot, 2, 'setup: the phone shows the heavy');
   assert.ok(h.since(n).includes('$BMAP,0,2,,,,,*'), `the repair binds the heavy's slot: ${JSON.stringify(h.since(n).filter(f => f.startsWith('$BMAP')))}`);
 });
+
+// ---- emulator 2026-11-09 (brx5; to be confirmed at bench SR22): a `$WEAP` for another slot moves the gun's CURRENT weapon, and a trigger bound to
+// the slot it last fired then fires that current weapon, whatever `$BMAP,0` says. A `$BMAP` re-send cannot undo it; only the
+// bound slot's own `$WEAP` + `$AMMO` can. Reachable: a heavy granted on slot 1, then ALT to 0 and ALT back to 1 with no pull
+// fired the heavy. The phone now sends the target's `$WEAP` + `$AMMO` at the bind, while the trigger is still held. ----
+const WEAP1 = golden.head.find(f => f.startsWith('$WEAP,1,'));
+const swapRows = w => w.filter(f => /^\$(WEAP|AMMO|BMAP),[0-9]/.test(f) && !f.startsWith('$BMAP,1,'));
+const altPress = h => h.frame('$BUT,1,1,*').frame('$BUT,1,0,*');
+
+test('WEAP cache: a heavy granted on slot 1, then ALT to 0 and ALT back to 1 with no pull: the bind back to slot 1 re-equips it, $WEAP + $AMMO before $BMAP', () => {
+  const h = alt(armed());
+  h.fire(1, 5, 48); h.adv(300);   // the secondary fired: the gun's selection is slot 1
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);   // the heavy fires
+  let n = h.mark(); altPress(h); h.adv(1500);
+  assert.equal(h.eng.activeSlot, 0);
+  assert.deepEqual(swapRows(h.since(n)), ['$BMAP,0,98,,,,,*', '$BMAP,0,0,,,,,*'],
+    'off the heavy to the AR: the gun re-selects at the next pull (emulator: the AR fired), so $BMAP only');
+  n = h.mark(); altPress(h); h.adv(1500);
+  assert.equal(h.eng.activeSlot, 1);
+  assert.deepEqual(swapRows(h.since(n)), ['$BMAP,0,98,,,,,*', WEAP1, '$AMMO,1,5,48,1,*', '$BMAP,0,1,,,,,*'],
+    'back to slot 1, the slot the gun last fired while bound, with the heavy still its weapon: re-equip slot 1, then bind');
+});
+
+test('WEAP cache: a double ALT that retargets inside the hold re-equips only the final target, once', () => {
+  const h = alt(armed());
+  h.fire(1, 5, 48); h.adv(300);
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  const n = h.mark(); altPress(h); h.adv(200); altPress(h); h.adv(2000);
+  assert.equal(h.eng.activeSlot, 1, 'the second ALT retargeted slot 1');
+  assert.deepEqual(swapRows(h.since(n)), ['$BMAP,0,98,,,,,*', WEAP1, '$AMMO,1,5,48,1,*', '$BMAP,0,1,,,,,*'], 'one hold, one re-equip of the final target, one bind');
+});
+
+test('WEAP cache: once the bound slot fires, a later swap sends no $WEAP', () => {
+  const h = alt(armed());
+  h.fire(1, 5, 48); h.adv(300);
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  altPress(h); h.adv(1500);   // re-equips the AR
+  h.fire(0, 29, 190); h.adv(300);   // the bound AR fires: the gun's selection matches it now
+  const n = h.mark(); altPress(h); h.adv(1500); altPress(h); h.adv(1500);
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'two normal swaps, no extra write');
+});
+
+test('WEAP cache: a heavy-free life sends zero $WEAP writes across swaps, shots and a lever', () => {
+  const h = armed(); const n = h.mark();
+  for (let i = 0; i < 4; i++) { altPress(h); h.adv(1500); h.fire(h.eng.activeSlot, h.eng.activeSlot ? 5 - i : 29 - i, h.eng.activeSlot ? 48 : 190); h.adv(400); }
+  altPress(h); h.adv(200); altPress(h); h.adv(1500);   // a double ALT with no heavy
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no heavy: the phone swap is $BMAP only');
+});
+
+test('WEAP cache: the gun\'s answers to the re-equip (the $WEAP reset, the $AMMO echo, and an answer naming the heavy) book no round, no refill and no undo', () => {
+  const h = alt(armed({ echo: true }));
+  h.fire(1, 5, 48); h.adv(300);
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  const shots = h.eng.shots, left = h.eng.pu.held.left;
+  altPress(h); h.adv(1500);   // to the AR: $BMAP only
+  const n = h.mark(); altPress(h); h.tickOnly(900);   // back to slot 1 (tok15 850): the re-equip goes out; its echoes are still on the wire
+  // bench 2026-11-08: the gun may answer an `$AMMO` write as the slot it fired LAST, which is the heavy, at its own counts
+  h.frame('$ALCD,1,100,2,0,0,*'); h.flush(); h.adv(1500);
+  assert.equal(h.eng.shots, shots, 'no round booked');
+  assert.equal(h.eng.pu.held.left, left, 'the heavy keeps its charge');
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,2,')), [], 'no undo or repair write to the heavy');
+  assert.deepEqual(h.logs.filter(l => /^gun fired slot|refilled slot/.test(l)), [], 'no wrong-slot alarm, no lever undo');
+  assert.equal(h.eng.state().ammo, 5, 'the secondary shows its own magazine');
+  assert.ok(h.since(n).includes(WEAP1), 'setup: the re-equip went out');
+});
+
+test('WEAP cache: a heavy granted on the AR, then ALT to slot 1: a slot the gun did not last fire re-selects at the pull, so $BMAP only', () => {
+  const h = armed();   // the AR fired last, bound
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1); h.adv(300);
+  const n = h.mark(); altPress(h); h.adv(1500);
+  assert.equal(h.eng.activeSlot, 1);
+  assert.deepEqual(swapRows(h.since(n)), ['$BMAP,0,98,,,,,*', '$BMAP,0,1,,,,,*'], 'emulator 2026-11-09 (cur_grant_alt): this bind fires slot 1 as it is');
+});

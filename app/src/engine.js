@@ -729,7 +729,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1496,6 +1496,14 @@ export class Engine {
       if (result === false || result === null) gone();
       else if (result && typeof result.then === 'function') result.then(ok => { if (ok === false || ok === null) gone(); }, gone);
     }
+    // emulator 2026-11-09 (brx5): a `$WEAP` moves the gun's CURRENT weapon; a `$CLEAR` head resets the selection, so it is safe
+    if (frames.includes('$CLEAR,*')) { this._weapOut = null; this._gunSel = null; }
+    else if (weaps.length) {
+      const ws = +weaps[weaps.length - 1].split(',')[1], prevOut = this._weapOut, undo = () => { if (this._weapOut === ws) this._weapOut = prevOut; };
+      this._weapOut = ws;
+      if (result === false || result === null) undo();
+      else if (result && typeof result.then === 'function') result.then(ok => { if (ok === false || ok === null) undo(); }, undo);
+    }
     const bm = frames.filter(f => typeof f === 'string' && /^\$BMAP,0,\d+,/.test(f)).pop();
     if (!bm) return;
     const fn = +bm.split(',')[2], lost = () => { if (this._bmapSent === fn) this._bmapSent = null; };
@@ -1513,7 +1521,8 @@ export class Engine {
     if (sent === want || (want !== 98 && want >= 2 && sent != null && sent !== 98 && this._equipSent === want)) return;
     if (now - (this._bindTickAt || 0) < BIND_RETRY_MS) return;
     this._bindTickAt = now;
-    this._write([want === 98 ? TRIGGER_HOLD : `$BMAP,0,${want},,,,,*`], `trigger binding repair (${sent == null ? 'unknown' : sent} -> ${want})`);
+    const why = `trigger binding repair (${sent == null ? 'unknown' : sent} -> ${want})`;
+    if (want === 98) this._write([TRIGGER_HOLD], why); else this._bindWrite(want, why, sent);
   }
   /** What the trigger should be bound to now: held (98) while a weapon delay or a swap holds it, else the slot in hand. PURE. */
   _boundSlot() {
@@ -1527,7 +1536,27 @@ export class Engine {
   _bindTrigger(slot, why) {
     if (this._triggerPending) { this.log(`${why}: the weapon delay holds the trigger; it binds slot ${this.activeSlot} when it ends`, 'li'); return; }
     if (!this.bleUp) return;   // the relink's reconcile binds the slot in hand
-    this._write([`$BMAP,0,${slot},,,,,*`], `${why}: bind the trigger`);
+    this._bindWrite(slot, `${why}: bind the trigger`, this._bmapSent);
+  }
+  /** Emulator 2026-11-09 (brx5; to be confirmed at bench SR22): a `$WEAP` for another slot (a heavy's equip) moves the gun's current weapon. A
+   *  trigger bound to the slot the gun last fired while bound (`_gunSel`) then fires that current weapon, whatever `$BMAP,0`
+   *  says, and a `$BMAP` re-send does not undo it; a binding to any other slot makes the gun re-select at the next pull. So
+   *  while such a `$WEAP` is out (`_weapOut`, cleared when the bound slot fires), a bind to `_gunSel` (or to an unknown one)
+   *  re-equips its slot: its head `$WEAP`, then `$AMMO` with the phone's counts, then the `$BMAP`, in one write. Only while
+   *  the trigger is held (98): no round can leave between reading the counts and the gun taking them. */
+  _bindWrite(slot, why, sent) {
+    const out = this._weapOut, sel = this._gunSel, bind = `$BMAP,0,${slot},,,,,*`;
+    if (out == null || out === slot || (sel != null && sel !== slot)) { this._write([bind], why); return; }
+    const weap = sent === 98 ? this.pu._weapFor(slot, this.pu._counts(slot)[0]) : null;
+    if (!weap) {
+      this.log(`${why}: the gun's weapon is slot ${out}, not ${slot}, but ${sent === 98 ? `the head has no $WEAP for slot ${slot}` : 'the trigger is not held'}: $BMAP only`, 'le');
+      this._write([bind], why); return;
+    }
+    const [mag, res] = this.pu._counts(slot), resetMag = +weap.split(',')[17];
+    this.am.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // the `$WEAP` reset and the `$AMMO` echo are bookkeeping
+    this.am.setPrev(slot, mag, res);
+    this.log(`${why}: the gun's weapon is slot ${out} (a $WEAP since the bound slot last fired): re-equip slot ${slot} at ${mag}/${res}`, 'li');
+    this._write([weap, `$AMMO,${slot},${mag},${res},1,*`, bind], `${why} (re-equip)`);
   }
   /** Tony 2026-11-08 (bench lv1-8): the gun's lever refilled the last-fired slot, which the trigger is not bound to. Write
    *  back the counts it held at the lever (ammo.js `gunOtherGain`); the echo is bookkeeping (`acctWrote`). */
@@ -6920,6 +6949,7 @@ export class Engine {
    *  `_writeMust` act counter (pl4), and the rounds the gun reports count into the match's and the life's `shots`. */
   _roundsLeft(slot, prev, mag) {
     if (this._armPending && this._armPending.shotEnds !== false && (slot === 0 || slot === 1 || this.pu.isHeldSlot(slot)) && prev != null && mag < prev) this._armLife('first shot');   // A56: a heavy's round proves it too   // 2026-09-19: a profile life never ends on a shot
+    if (prev != null && mag < prev && slot === this._bmapSent) { this._weapOut = null; this._gunSel = slot; }   // brx5 2026-11-09: the bound slot fired: the gun's weapon and its selection are that slot
     if (prev != null && mag < prev) this._actSeq++;   // pl4: `_writeMust` never repeats counts past a shot
     if (prev != null && mag < prev && this.phase === 'live') { this.shots += (prev - mag); if (this._life && this.alive) this._life.shots += (prev - mag); }   // death screen: this life's rounds too
   }
