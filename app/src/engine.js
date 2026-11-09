@@ -1538,7 +1538,7 @@ export class Engine {
     if (!this.bleUp) return;   // the relink's reconcile binds the slot in hand
     this._bindWrite(slot, `${why}: bind the trigger`, this._bmapSent);
   }
-  /** Emulator 2026-11-09 (brx5, FROZEN.md): a `$WEAP` for another slot (a heavy's equip) moves the gun's current weapon. A
+  /** Emulator 2026-11-09 (brx5; to be confirmed at bench SR22): a `$WEAP` for another slot (a heavy's equip) moves the gun's current weapon. A
    *  trigger bound to the slot the gun last fired while bound (`_gunSel`) then fires that current weapon, whatever `$BMAP,0`
    *  says, and a `$BMAP` re-send does not undo it; a binding to any other slot makes the gun re-select at the next pull. So
    *  while such a `$WEAP` is out (`_weapOut`, cleared when the bound slot fires), a bind to `_gunSel` (or to an unknown one)

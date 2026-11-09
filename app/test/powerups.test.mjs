@@ -2276,7 +2276,7 @@ test('phone swap: a heavy equip whose write fails is bound with `$BMAP,0,<slot>`
   assert.ok(h.since(n).includes('$BMAP,0,2,,,,,*'), `the repair binds the heavy's slot: ${JSON.stringify(h.since(n).filter(f => f.startsWith('$BMAP')))}`);
 });
 
-// ---- emulator 2026-11-09 (FROZEN.md, brx5): a `$WEAP` for another slot moves the gun's CURRENT weapon, and a trigger bound to
+// ---- emulator 2026-11-09 (brx5; to be confirmed at bench SR22): a `$WEAP` for another slot moves the gun's CURRENT weapon, and a trigger bound to
 // the slot it last fired then fires that current weapon, whatever `$BMAP,0` says. A `$BMAP` re-send cannot undo it; only the
 // bound slot's own `$WEAP` + `$AMMO` can. Reachable: a heavy granted on slot 1, then ALT to 0 and ALT back to 1 with no pull
 // fired the heavy. The phone now sends the target's `$WEAP` + `$AMMO` at the bind, while the trigger is still held. ----
