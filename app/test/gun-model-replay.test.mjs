@@ -14,7 +14,7 @@ const PINNED = {
   '2026-11-08-sr1-sr5': [183, 2],
   '2026-11-08-sr11-sr15': [27, 0],
   '2026-11-08-sr5r-sr12': [118, 2],
-  '2026-11-08-sr17-swp1': [143, 2],
+  '2026-11-08-sr17-swp1': [142, 7],
 };
 
 test('every bench session replays through the model, with differences only at a timing edge', () => {
@@ -150,4 +150,33 @@ test('emulator: a spawn moves neither the trigger binding nor the ALT pointer', 
   // the spawn answers `$LCD` and slot 0; the trigger still fires the USP-S, and the next ALT goes to the AR
   assert.deepEqual(out.filter(f => f.startsWith('$ALCD')).slice(-2), ['$ALCD,11,1,240', '$ALCD,31,0,384']);
   assert.deepEqual([g.altPtr, g.bound], [0, 0]);
+});
+
+test('emulator: a $BMAP,0 bind that lands with the trigger held fires at once', () => {
+  const g = new GunModel({ auto: 'timed' });
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,98,,,,,*']) g.write(f, 0);
+  g.take();
+  g.button(0, 1, 1000);
+  g.write('$BMAP,0,1,,,,,*', 1300);   // semi: one round
+  g.advance(1600);
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1300, '$ALCD,11,100,1,240,0,*']]);
+  g.button(0, 0, 1650);
+  g.write('$BMAP,0,98,,,,,*', 1700);
+  g.button(0, 1, 1750);
+  g.write('$BMAP,0,0,,,,,*', 1800);   // full auto, held: a burst until the release
+  g.button(0, 0, 2050);
+  assert.deepEqual(g.take().map(o => o.t), [1800, 1900, 2000]);
+});
+
+test('swp1: a bind that lands in a dry hold waits for the release plus the dry slot\'s tok15', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$AMMO,1,0,240,1,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  g.take();
+  g.button(0, 1, 1000);                 // a dry pull on the empty USP-S, held
+  g.write('$BMAP,0,98,,,,,*', 1700);
+  g.write('$BMAP,0,0,,,,,*', 2500);     // the AR, still held: no round
+  g.button(0, 0, 3000);
+  g.button(0, 1, 3300); g.button(0, 0, 3340);   // 300 ms after the release: refused
+  g.button(0, 1, 3700); g.button(0, 0, 3740);   // 700 ms after: fires
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[3700, '$ALCD,31,100,0,384,0,*']]);
 });

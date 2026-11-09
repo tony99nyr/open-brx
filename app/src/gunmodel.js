@@ -30,6 +30,8 @@
 //   AR edge is tok15 by assumption: one after-release press is decidable in the captures). Live fire blocks nothing.
 // - A melee button (`$BMAP,<id>,4`) swings slot 4 once per its t14 (MN1: 3 s); the swing spends nothing.
 //
+// - A `$BMAP,0,<slot>` that lands while the trigger is held fires that slot at once: one round on a semi-auto slot, a
+//   burst on a full-auto one (emulator, for the phone-owned swap). In a dry hold it waits as after an ALT (swp1).
 // - `$SPAWN` moves neither the trigger binding nor the ALT pointer (emulator: after ALT to the USP-S and a spawn, the
 //   trigger fired the USP-S and the next ALT went to the AR). So a spawn and the phone's `$BMAP,0,0` leave the pointer
 //   where the last life left it, the SR18 shape.
@@ -90,7 +92,14 @@ export class GunModel {
     this.advance(t);
     const k = toks(f), cmd = k[0], s = int(k, 1);
     if (cmd === 'START') { this._newLife(); this.altPtr = 0; if (this.bound != null) this.bound = 0; }
-    else if (cmd === 'BMAP' && s === BTN_TRIGGER) { this.lastBindAt = t; this._bmap(s, k.slice(2).map(x => (/^\d+$/.test(x) ? +x : null))); }
+    else if (cmd === 'BMAP' && s === BTN_TRIGGER) {
+      this.lastBindAt = t; this._bmap(s, k.slice(2).map(x => (/^\d+$/.test(x) ? +x : null)));
+      // emulator: a bind that lands while the trigger is held fires at once (one round semi, a burst full auto). swp1: in
+      // a DRY hold it does not; the trigger waits for the release plus the dry slot's tok15, as after an ALT (F668 d).
+      const held = this.trigger && !this.trigger.live && this.bound != null && !this.dead && !this.reload;
+      if (held && this.dry && this.dry.upAt == null) { this.fireLockUntil = Infinity; this.swapOnRelease = { until: -Infinity, dryMs: this.dry.ms }; }
+      else if (held && t >= this.fireLockUntil) { this._heldFire(t); this._decide(t, 'a bind landed on a held trigger', 0); }   // margin 0: when the write reached the gun is not in a capture
+    }
     else if (cmd === 'PSET') this.pools = [int(k, 3) ?? 0, int(k, 4) ?? 0, 0];
     else if (cmd === 'WEAP' && s != null) {
       const clip = int(k, 17), carried = int(k, 18);
