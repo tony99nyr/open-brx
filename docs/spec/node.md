@@ -161,7 +161,7 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   `$WEAP` tok15, then binds it (`$BMAP,0,<slot>`, `switchTick`). A second ALT inside the window retargets, and only the
   last target is bound. The gun itself adds a second edge (Tony 2026-11-09 keeps it, no extra writes): the first round
   comes at the later of the bind and the end of live fire plus the tok15 of the slot that fired, so after an AR round
-  the USP-S fires 850 ms after the AR release, not 500 ms after ALT (a private emulator of the stock image, 2026-11-09; bench SR21 owed, F668). The node plays the target weapon's ReloadPart3 sound (t33) as the swap sound. ALT on a stunned
+  just before ALT the USP-S fires 850 ms after the AR release, not 500 ms after ALT (a private emulator of the stock image, 2026-11-09; bench SR21 owed, F668). The node plays the target weapon's ReloadPart3 sound (t33) as the swap sound. ALT on a stunned
   gun is a swap (F465); the stun's disarm keeps the trigger dead until its restore. From a held heavy, ALT goes to the
   loadout slot other than the one last on the trigger (`lastLoadout`). Every `$BMAP,0,<n>` the node writes (the head,
   the spawn and revive bursts, `trigger_live`, the cure, the operator resync, the relink) binds the slot the node holds,
