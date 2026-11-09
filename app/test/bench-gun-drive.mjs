@@ -71,7 +71,9 @@ export function replayGun(fx, opts = {}) {
     if (j >= 0) {
       for (const x of q.splice(0, j)) diffs.push({ t: x.t, gun: null, model: key(x) });
       q.shift(); agree++;
-      if (!q.length && g.kind === 'A') { m.mag[g.s] = g.m; m.res[g.s] = g.r; }   // nothing in flight: take the gun's count
+      // the gun's count is the truth once nothing newer is in flight for that slot (a round the model fired and the gun
+      // did not would otherwise leave every later count one off)
+      if (g.kind === 'A' && !q.some(x => x.kind === 'A' && x.s === g.s)) { m.mag[g.s] = g.m; m.res[g.s] = g.r; }
       continue;
     }
     // the gun said something the model did not: record it, then follow the gun
@@ -83,9 +85,12 @@ export function replayGun(fx, opts = {}) {
       m.heldFireAt = null; m.fireLockUntil = Math.min(m.fireLockUntil, t); m.swapOnRelease = null;
       if (g.s !== m.bound) { m.bound = g.s; m.altPtr = g.s; }
       m.mag[g.s] = g.m; m.res[g.s] = g.r; m.lastFired = g.s;
+      for (let i = q.length - 1; i >= 0; i--) if (q[i].kind === 'A' && q[i].s === g.s && q[i].t <= t) diffs.push({ t: q[i].t, gun: null, model: key(q.splice(i, 1)[0]) });
       continue;
     }
-    if (q.length && q[0].kind === g.kind) q.shift();
+    if (q.length && q[0].kind === g.kind) diffs.push({ t: q[0].t, gun: null, model: key(q.shift()) });
+    // the model's older answers for this slot are rounds the gun did not fire: drop them, and take the gun's count
+    for (let i = q.length - 1; i >= 0; i--) if (g.kind === 'A' && q[i].kind === 'A' && q[i].s === g.s && q[i].t <= t) diffs.push({ t: q[i].t, gun: null, model: key(q.splice(i, 1)[0]) });
     if (g.kind === 'A') { m.mag[g.s] = g.m; m.res[g.s] = g.r; }
   }
   m.advance(Infinity); drain();

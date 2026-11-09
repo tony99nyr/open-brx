@@ -12,9 +12,11 @@
 //   the pointer to 0 with no visible change). `$BMAP,1,99` and `$BMAP,1,98`: ALT is still reported and swaps nothing.
 // - After an ALT swap the gun ignores ALT for the tok15 of the slot it swapped TO (SR1), and the trigger and the lever do
 //   nothing for the same time (sr17b: a pull 65 ms after ALT fired nothing, pulls from about tok15 on fire; sr5a: a
-//   lever 14 ms after ALT reloaded nothing). An ALT taken with the trigger held (a live burst, or a dry hold) stops a
-//   burst, and the trigger then waits for the release too (HELD_SWAP_RELEASE_MS, a fit). A full-auto trigger held
-//   through the swap fires as the swap ends (sr17e2).
+//   lever 14 ms after ALT reloaded nothing). A pull held across the end of the swap fires as it ends. An ALT taken
+//   with the trigger held stops a burst. After a live hold the trigger then waits for the press plus the larger tok15
+//   of the two slots (sr17e2: AR to USP-S, refused 729 ms after ALT, fired at 938); after a dry hold it waits for the
+//   release plus the dry slot's tok15 (sr17c: refused 351 ms after the release, fired at 808).
+//   The emulator (below) confirmed each of these.
 // - A trigger pull fires the bound slot if its magazine has a round. Full auto (t20 = 0) keeps firing while held.
 // - `$AMMO,<slot>,<mag>,<reserve>` sets that slot outright, and the gun answers with an `$ALCD` that names the slot that
 //   FIRED LAST, at that slot's own count (SR5). `$WEAP` loads a slot and answers for it; `$SPAWN` refills every slot
@@ -28,8 +30,15 @@
 //   AR edge is tok15 by assumption: one after-release press is decidable in the captures). Live fire blocks nothing.
 // - A melee button (`$BMAP,<id>,4`) swings slot 4 once per its t14 (MN1: 3 s); the swing spends nothing.
 //
-// Assumed, not seen: `$SPAWN` and `$START` put the ALT pointer on slot 0 and a bound trigger on slot 0 (the phone
-// rewrites `$BMAP,0,<slot>` after every spawn, so the captures cannot tell). A melee swing does not move the
+// - A `$BMAP,0,<slot>` that lands while the trigger is held fires that slot at once: one round on a semi-auto slot, a
+//   burst on a full-auto one (emulator, for the phone-owned swap). In a dry hold it waits as after an ALT (swp1).
+// - `$SPAWN` moves neither the trigger binding nor the ALT pointer (emulator: after ALT to the USP-S and a spawn, the
+//   trigger fired the USP-S and the next ALT went to the AR). So a spawn and the phone's `$BMAP,0,0` leave the pointer
+//   where the last life left it, the SR18 shape.
+//
+// The rules above marked "emulator" were run on a private emulator of the stock image (2026-11-08, F668); the bench
+// still owes their confirmation.
+// Assumed, not seen: `$START` puts the ALT pointer and a bound trigger on slot 0. A melee swing does not move the
 // last-fired slot. A `$BMAP,0` rebind starts no swap delay.
 // Not encoded (each needs a bench): a Shotgun's shell chain; ALT on 97 (Easy Reload); hits, deaths and the pools (the
 // `$LCD` and `$HP` pools are the last `$PSET`'s); the trigger floor between pulls (t14).
@@ -42,10 +51,6 @@
 export const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_LEVER = 2;
 /** The refill lands this many times t18 after the lever (bench 2026-11-08: USP-S 2200 -> 2752 ms, AR 1400 -> 1735 ms). */
 export const RELOAD_SCALE = 1.25;
-/** An ALT taken with the trigger held: the trigger fires again from the later of the press + tok15 and the release + this.
- *  A FIT, not understood: sr17c refused a pull 351 ms after the release, sr17a fired 486 ms after, sr17e2 refused 273
- *  and fired 482. One token-based rule (tok15 of either slot, from the release) fails one of the three. */
-export const HELD_SWAP_RELEASE_MS = 420;
 /** `$BMAP` functions: no action, and the "disabled" chirp; both leave ALT reported and swap nothing. */
 export const FN_INERT = 98, FN_CHIRP = 99, FN_ALT_CYCLE = 100, FN_MELEE = 4;
 
@@ -69,7 +74,7 @@ export class GunModel {
     this.lastSwing = null;
     this.altLockUntil = -Infinity;   // ALT is ignored until then (the tok15 of the slot swapped to, from the press)
     this.fireLockUntil = -Infinity;  // the trigger fires nothing until then (the same tok15, from the release if held)
-    this.swapOnRelease = null;       // an ALT taken with the trigger held: {until}, the press + tok15, finished at the release
+    this.swapOnRelease = null;       // an ALT taken in a dry hold: {until, dryMs}, finished at the release
     this.heldFireAt = null;          // a full-auto trigger held through the swap fires when the swap ends
     this.lastBindAt = -Infinity;     // the last `$BMAP,0` write, for the margin of a pull just after it
     this.trigger = null;     // {at, live} while held: live = the pull fired
@@ -86,8 +91,15 @@ export class GunModel {
   write(f, t) {
     this.advance(t);
     const k = toks(f), cmd = k[0], s = int(k, 1);
-    if (cmd === 'START') this._newLife();
-    else if (cmd === 'BMAP' && s === BTN_TRIGGER) { this.lastBindAt = t; this._bmap(s, k.slice(2).map(x => (/^\d+$/.test(x) ? +x : null))); }
+    if (cmd === 'START') { this._newLife(); this.altPtr = 0; if (this.bound != null) this.bound = 0; }
+    else if (cmd === 'BMAP' && s === BTN_TRIGGER) {
+      this.lastBindAt = t; this._bmap(s, k.slice(2).map(x => (/^\d+$/.test(x) ? +x : null)));
+      // emulator: a bind that lands while the trigger is held fires at once (one round semi, a burst full auto). swp1: in
+      // a DRY hold it does not; the trigger waits for the release plus the dry slot's tok15, as after an ALT (F668 d).
+      const held = this.trigger && !this.trigger.live && this.bound != null && !this.dead && !this.reload;
+      if (held && this.dry && this.dry.upAt == null) { this.fireLockUntil = Infinity; this.swapOnRelease = { until: -Infinity, dryMs: this.dry.ms }; }
+      else if (held && t >= this.fireLockUntil) { this._heldFire(t); this._decide(t, 'a bind landed on a held trigger', 0); }   // margin 0: when the write reached the gun is not in a capture
+    }
     else if (cmd === 'PSET') this.pools = [int(k, 3) ?? 0, int(k, 4) ?? 0, 0];
     else if (cmd === 'WEAP' && s != null) {
       const clip = int(k, 17), carried = int(k, 18);
@@ -180,7 +192,6 @@ export class GunModel {
   // ---------- the rules ----------
   _newLife() {
     this.dead = false;
-    this.altPtr = 0; if (this.bound != null) this.bound = 0;
     this.lastFired = 0; this.altLockUntil = -Infinity; this.fireLockUntil = -Infinity; this.swapOnRelease = null;
     this.heldFireAt = null; this.dry = null; this.reload = null; this.lastSwing = null;
   }
@@ -200,8 +211,8 @@ export class GunModel {
     const bindMargin = t - this.lastBindAt;   // swp1: a pull 13 ms after `$BMAP,0,1` met the old binding
     if (t < this.fireLockUntil) {
       live(false);
-      // sr17e2: a full-auto trigger held through the swap fires as the swap ends
-      if (s != null && w && !w.semi && this.mag[s] > 0) this.heldFireAt = this.fireLockUntil;
+      // sr17e2, and the emulator for a semi-auto slot: a pull held through the end of the swap fires as it ends
+      if (s != null && w && this.mag[s] > 0 && this.fireLockUntil < Infinity) this.heldFireAt = this.fireLockUntil;
       return this._decide(t, 'pull refused: swapping', Math.min(this.fireLockUntil - t, bindMargin));
     }
     if (s != null && w && this.mag[s] > 0) {
@@ -220,20 +231,25 @@ export class GunModel {
     if (this.dry && this.dry.upAt == null) this.dry.upAt = t;
     this.lastPull = this.trigger;
     this.trigger = null; this.nextAuto = null; this.heldFireAt = null;
-    if (this.swapOnRelease) { this.fireLockUntil = Math.max(this.swapOnRelease.until, t + HELD_SWAP_RELEASE_MS); this.swapOnRelease = null; }
+    if (this.swapOnRelease) { this.fireLockUntil = Math.max(this.swapOnRelease.until, t + this.swapOnRelease.dryMs); this.swapOnRelease = null; }
   }
   _alt(t) {
     if (this.dead) return this._decide(t, 'ALT: dead', Infinity);
     const [why, margin] = this.altBlock(t);
     if (why) return this._decide(t, `ALT refused: ${why}`, margin);
-    const c = this.altCycle, i = c.indexOf(this.altPtr);
+    const c = this.altCycle, i = c.indexOf(this.altPtr), t15 = s => (this.w[s] ? this.w[s].t15 : 0);
+    const from = this.bound;
     this.altPtr = c[(i + 1) % c.length];
     this.bound = this.altPtr;
-    const ms = this.w[this.altPtr] ? this.w[this.altPtr].t15 : 0;
+    const ms = t15(this.altPtr);
     this.altLockUntil = t + ms;
-    // sr17c, sr17e2: with the trigger held (a burst, or a dry hold) the swap delay runs from the release, and a burst stops
-    if (this.trigger) { this.fireLockUntil = Infinity; this.swapOnRelease = { until: t + ms }; this.nextAuto = null; this.trigger.live = false; }
-    else this.fireLockUntil = t + ms;
+    if (this.trigger && this.trigger.live) {
+      // a live hold: the burst stops, and the trigger waits for the larger tok15 of the two slots (sr17e2, emulator)
+      this.fireLockUntil = t + Math.max(ms, t15(from)); this.nextAuto = null; this.trigger.live = false;
+    } else if (this.trigger && this.dry) {
+      // a dry hold: the trigger waits for the release plus the dry slot's tok15 (sr17c, emulator)
+      this.fireLockUntil = Infinity; this.swapOnRelease = { until: t + ms, dryMs: this.dry.ms };
+    } else this.fireLockUntil = t + ms;
     this.dry = null;
     this._decide(t, `ALT to slot ${this.altPtr}`, margin);
   }
