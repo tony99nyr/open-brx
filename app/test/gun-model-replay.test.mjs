@@ -330,11 +330,22 @@ test('readyAt: the earliest time the next pull can fire, for a HUD "ready" cue',
   const g = new GunModel();
   for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$BMAP,0,0,,,,,*']) g.write(f, -5000);
   g.write('$SPAWN,,*', 1000);
-  assert.equal(g.readyAt(1100), 2500);                     // the spawn wait
+  assert.equal(g.readyAt(1100), 2600);                     // the spawn wait, plus one t14 on a full-auto slot
   g.button(0, 1, 3000); g.button(0, 0, 3030);              // an AR round
   assert.equal(g.readyAt(3050), 3100);                     // the AR's t14
   g.write('$BMAP,0,98,,,,,*', 3100);
   assert.equal(g.readyAt(3100), Infinity);                 // bound to 98
   g.write('$BMAP,0,1,,,,,*', 3300);
   assert.equal(g.readyAt(3300), 3880);                     // the rebind delay: 3030 + 850
+});
+
+test('emulator: after $SPAWN a full-auto slot waits one more t14, and the lever does nothing in the wait', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$BMAP,0,0,,,,,*']) g.write(f, -5000);
+  g.write('$SPAWN,,*', 1000); g.write('$AMMO,0,20,384,1,*', 1060); g.take();
+  g.button(2, 1, 1300); g.button(2, 0, 1400);              // the lever inside the wait: no reload
+  g.button(0, 1, 1600); g.advance(2650); g.button(0, 0, 2650);   // held: the AR fires at 1000 + 1500 + 100
+  g.advance(6000);
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[2600, '$ALCD,19,100,0,384,0,*']]);
+  assert.equal(g.decisions.find(([t]) => t === 1300)[1], 'lever refused: spawn wait');
 });
