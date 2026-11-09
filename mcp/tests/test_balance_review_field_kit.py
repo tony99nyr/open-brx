@@ -320,3 +320,19 @@ def test_a_spent_secondary_returns_to_a_primary_that_can_still_fire():
     p.stash[0] = (1, 0) + tuple(p.stash[0][2:])
     assert match._finish_ms(p, 0, 0.0, q.health + q.armour + q.shield) == math.inf
     assert match._choose_slot(p, 0.0) == 0
+
+
+def test_a_combo_kill_swaps_back_after_the_killing_rounds_edge():
+    # F668 (Codex review): the kill's tactical reload swaps back inside the base shot, before `_shot` returns; the
+    # draw must still count the killing round. With the finisher's tok15 the larger, the opener waits for it.
+    world = R.shipped_world()
+    kit = replace(R.field_kit(world, "combo", "charge_rifle", "sniper_rifle", combo=True), t15=(850.0, 1200.0))
+    match, p, q = _match(kit)
+    match._swap_to(p, 1, 0.0)
+    p.phase = "finish"
+    q.health, q.armour, q.shield = 1, 0, 0
+    q.attackers = 1                          # as `_seek` sets it, so the death runs the tactical reload
+    t = 5000.0
+    match._shot(p, t, p.engage_id)
+    assert not q.alive and p.active == 0
+    assert p.swap_until == t + 1200.0, p.swap_until

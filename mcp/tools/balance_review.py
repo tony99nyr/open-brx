@@ -847,11 +847,13 @@ class Fighter:
         """Fire one round at t (or start a reload). (dmg, hit_p, alpha) or None for no round. `dmg` is the gun word;
         a headset word waits in `pending_head` for the loop to queue once the gun word lands (F602)."""
         self.pending_head = 0
+        slot = self.active
         r = self._act(t)
         if r is not None:
             self.last_shot_t = t
             self.shots += 1
-            if not self.melee_in_hand:          # assumed: a melee swing does not move the last-fired slot
+            # assumed: a melee swing does not move the last-fired slot; a swap inside the round recorded it already
+            if not self.melee_in_hand and self.active == slot:
                 self.live = (self.active, t)
         return r
 
@@ -1116,6 +1118,7 @@ class Fighter:
                                                                              self.next_t - t, g.fire_ms)
         self._add_heat(g, s, t, False)
         if self.kit.plan == "haze" and g.sir_fn == 23:
+            self.live = (self.active, t)         # F668: this round's edge counts in the draw it starts
             self._swap(0, t)
         return dmg, hit_p, (g.mode in ("bolt", "semi") and g.gun_dmg >= 50)
 
@@ -1931,7 +1934,7 @@ def pickup_utility(world: World, wid: str, scale: float,
 
 class KitPlayer(B.Player):
     __slots__ = ("kit", "models", "stash", "active", "phase", "swap_until", "kpool", "dist", "combo", "ap", "committed",
-                 "live")
+                 "live", "live_n")
 
 
 @dataclass(frozen=True)
@@ -2021,8 +2024,16 @@ class KitMatch(B.Match):
             edge = max(edge, p.live[1] + p.kit.t15[p.live[0]])
         return edge
 
+    @staticmethod
+    def _sync_live(p):
+        """F668: record the round the base shot fired last (it sets last_pull and counts shots before the hit, so a
+        kill's tactical reload can swap before `_shot` returns)."""
+        if p.shots != p.live_n:
+            p.live, p.live_n = (p.active, p.last_pull), p.shots
+
     def _swap_to(self, p, idx, alt):
         # A lever or reload stops when its gun leaves the hand. Keep heat and shot clocks per slot.
+        self._sync_live(p)
         t_end = self._draw_end(p, idx, alt)
         p.live = None
         self._finish_reload(p, alt)
@@ -2136,8 +2147,7 @@ class KitMatch(B.Match):
         if not p.combo:
             fired = p.shots
             super()._shot(p, t, gen)
-            if p.shots > fired:
-                p.live = (p.active, t)
+            self._sync_live(p)
             # reconsider only after a round left the gun: a reload or a heat-lock reschedule is the slot's action,
             # and swapping away from it cancelled it, so two dry slots could still ping-pong (F601, Opus review)
             if p.shots > fired and p.alive and p.engage_id == gen and p.target is not None and \
@@ -2159,10 +2169,8 @@ class KitMatch(B.Match):
         alpha_ready = p.active == 0 and p.phase == "open" and p.ammo > 0 and t >= p.reload_until and finisher_left and (
             not w.charge_and_tap or (p.ammo >= w.rounds_per_charge and t - p.last_pull >= w.fire_ms))
         target = self.players[p.target]
-        fired = p.shots
         super()._shot(p, t, gen)
-        if p.shots > fired:
-            p.live = (p.active, t)
+        self._sync_live(p)
         if p.alive and p.engage_id == gen and p.target is not None and target.alive and \
                 self._leave_spent_finisher(p, t, gen):
             return                  # the finisher's last round: the base shot queued nothing after it
@@ -2207,7 +2215,7 @@ class KitMatch(B.Match):
         p.reload_until = -1.0
         p.reload_amount = 0
         p.next_ready = t + SPAWN_WAIT_MS + p.kit.spawn_fire_ms     # F668: the gun reads nothing in the spawn wait
-        p.live = None
+        p.live, p.live_n = None, p.shots
         p.heat, p.last_heat_ms, p.heat_lock_until = 0.0, t, -1.0
         p.heat_has_locked = False
         p.poison_gen += 1
@@ -2221,7 +2229,7 @@ def _kit_player(pid, team, fk: FieldKit):
     p.kit, p.models, p.kpool, p.combo, p.ap = fk, fk.models, fk.pool, fk.combo, fk.ap
     p.stash = [(m.mag, m.reserve, -1.0, 0.0, 0.0, -1.0, 0.0, -1e9, 0, 0, False) for m in fk.models]
     p.active, p.phase, p.swap_until, p.dist, p.committed = 0, "open", 0.0, 1, False
-    p.live = None
+    p.live, p.live_n = None, 0
     p.regen_delay_ms = fk.shield_regen_delay_ms     # F605 (shield_max comes from the pool in Player.__init__)
     return p
 

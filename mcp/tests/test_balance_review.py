@@ -2706,3 +2706,17 @@ def test_the_spawn_wait_matches_the_gun_model():
     assert ar.spawn_fire_ms == ar.models[0].fire_ms > 0
     assert R.field_kit(world, "sniper", "sniper_rifle", "usp").spawn_fire_ms == 0.0
     assert "spawn wait" in R.assumptions()["spawn_wait"] and R.assumptions()["spawn_wait_ms"] == R.SPAWN_WAIT_MS
+
+
+def test_the_haze_round_counts_in_the_draw_it_starts():
+    # F668 (Codex review): the Haze opener swaps back inside its own round; that round's edge counts in the draw, and
+    # the primary is not recorded as the slot that fired it
+    kit = R.make_kit(R.shipped_world(), "AR + Haze", R.ANCHOR, "smoke_gun", plan="haze")
+    kit = R.replace(kit, t15=(kit.t15[0], kit.t15[0] + 350.0))
+    rng = random.Random(1)
+    f = R.Fighter(kit, (45, 70, 0), 1, R.DIST["close"], rng, pull_ms=0)
+    f.targets = [R.Fighter(kit, (500, 0, 0), 0, R.DIST["close"], random.Random(2))]
+    assert f.active == 1
+    assert f.act(0.0) is not None and f.active == 0
+    assert f.swap_until == kit.t15[1], (f.swap_until, kit.t15)
+    assert f.live is None
