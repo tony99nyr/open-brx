@@ -31,7 +31,10 @@ import { SPAWN_WAIT_MS as GUN_SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from '.
 const GUN_SPAWN_WAIT = true;
 /** brx1 2026-11-09: the gun's wait starts when IT reads `$SPAWN`, after the link sends the frame, so the stamp is the frame's
  *  send plus this much air time (one BLE connection interval and the gun's parse, generous). Late is safe; early is the bug. */
-export const GUN_SPAWN_AIR_MS = 60;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
+export const GUN_SPAWN_AIR_MS = 60;
+/** The swap timer (`_gunSwapReadyAt`) counts a live pull still held as ending now, but no later than this after its last
+ *  round: the link loses a few `$BUT,0,0` releases (7 of 1068 on 2026-11-01), and one must not hold SWITCHING up for ever. */
+export const SWAP_HELD_MAX_MS = 5000;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
@@ -652,7 +655,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -736,7 +739,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _gunSpawnAt: 'the last `$SPAWN` write (the gun\'s spawn wait); a restart reads the gun as ready', _gunBindAt: 'when the gun reads the last trigger bind (the swap timer); a restart closes SWITCHING on the phone\'s own hold', _gunLiveEnd: 'the release of the last pull that fired (the swap timer); a restart counts no rebind delay', _weapOut: 'the slot of a `$WEAP` sent since the bound slot last fired (brx5 2026-11-09); unknown after a restart', _gunSel: 'the slot the gun last fired while bound (brx5 2026-11-09); unknown after a restart', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1455,15 +1458,26 @@ export class Engine {
       const before = ammoRows ? this.am.echoUntils(frames, gens) : null;
       let sentAny = false;
       const sendOptions0 = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
-      // the gun's spawn wait (`_gunSpawnWaitMs`) runs from when the gun reads `$SPAWN`: stamped at the hand-off, and again, later,
-      // when the link reports the frame sent (a write can queue behind others), plus the air time. It only ever moves later.
+      // the gun's spawn wait (`_gunSpawnWaitMs`) runs from when the gun reads `$SPAWN`, and a swap ends when it reads the trigger
+      // bind (`_gunSwapReadyAt`): each stamped at the hand-off, and again, later, when the link reports the frame sent (a write
+      // can queue behind others), plus the air time. Each only ever moves later.
       const spawnRow = frames.find(f => typeof f === 'string' && f.startsWith('$SPAWN,'));
       if (spawnRow) this._gunSpawnAt = this.now() + GUN_SPAWN_AIR_MS;
-      const sendOptions = spawnRow ? { ...(sendOptions0 || {}), onFrameSent: frame => {
+      const bindRow = frames.filter(f => typeof f === 'string' && /^\$BMAP,0,\d+,/.test(f)).pop(), bindFn = bindRow ? +bindRow.split(',')[2] : null;
+      // `pending` while a link that answers later has not sent the frame yet: the swap timer reads it as leaving now
+      const bindAt = bindRow && bindFn < 98 ? { slot: bindFn, at: this.now() + GUN_SPAWN_AIR_MS, pending: false, sent: false } : null;
+      if (bindAt) this._gunBindAt = bindAt;
+      const sendOptions = spawnRow || bindAt ? { ...(sendOptions0 || {}), onFrameSent: frame => {
         if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
+        if (frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
         if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
       } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);
+      if (bindAt && !bindAt.sent && result && typeof result.then === 'function') {
+        bindAt.pending = true;   // a write the link settles with no frame report (refused, or a writer that never reports) stops waiting then
+        const done = () => { if (bindAt.pending) { bindAt.pending = false; bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); } };
+        result.then(done, done);
+      }
       this._noteBindSent(frames, result);   // Tony 2026-11-08: what the gun's trigger is bound to, for `_bindTick`
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
       if (ammoRows && result && typeof result.then === 'function') {
@@ -1560,9 +1574,9 @@ export class Engine {
    *  re-equips its slot: its head `$WEAP`, then `$AMMO` with the phone's counts, then the `$BMAP`, in one write. Only while
    *  the trigger is held (98): no round can leave between reading the counts and the gun taking them. */
   _bindWrite(slot, why, sent) {
-    const out = this._weapOut, sel = this._gunSel, bind = `$BMAP,0,${slot},,,,,*`;
-    if (out == null || out === slot || (sel != null && sel !== slot)) { this._write([bind], why); return; }
-    const weap = sent === 98 ? this.pu._weapFor(slot, this.pu._counts(slot)[0]) : null;
+    const out = this._weapOut, bind = `$BMAP,0,${slot},,,,,*`;
+    if (!this._reequipWanted(slot)) { this._write([bind], why); return; }
+    const weap = this._reequipRow(slot, sent);
     if (!weap) {
       this.log(`${why}: the gun's weapon is slot ${out}, not ${slot}, but ${sent === 98 ? `the head has no $WEAP for slot ${slot}` : 'the trigger is not held'}: $BMAP only`, 'le');
       this._write([bind], why); return;
@@ -1573,6 +1587,12 @@ export class Engine {
     this.log(`${why}: the gun's weapon is slot ${out} (a $WEAP since the bound slot last fired): re-equip slot ${slot} at ${mag}/${res}`, 'li');
     this._write([weap, `$AMMO,${slot},${mag},${res},1,*`, bind], `${why} (re-equip)`);
   }
+  /** Does a bind to `slot` need its re-equip (`_bindWrite`): a `$WEAP` for another slot is out, and `slot` is the slot the gun
+   *  last fired while bound, or that slot is unknown. PURE. */
+  _reequipWanted(slot) { const out = this._weapOut, sel = this._gunSel; return out != null && out !== slot && (sel == null || sel === slot); }
+  /** The `$WEAP` row a bind to `slot` re-equips with (`_bindWrite`), or null when it writes `$BMAP` only: only while the trigger
+   *  is held (`sent` 98) and the head has the slot's row. The swap timer asks it too (`_gunSwapReadyAt`). PURE. */
+  _reequipRow(slot, sent) { return this._reequipWanted(slot) && sent === 98 ? this.pu._weapFor(slot, this.pu._counts(slot)[0]) || null : null; }
   /** Tony 2026-11-08 (bench lv1-8): the gun's lever refilled the last-fired slot, which the trigger is not bound to. Write
    *  back the counts it held at the lever (ammo.js `gunOtherGain`); the echo is bookkeeping (`acctWrote`). */
   _undoGunReload(slot, mag, res) {
@@ -1841,6 +1861,32 @@ export class Engine {
     if (!GUN_SPAWN_WAIT) return spawnAt;
     const row = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${this.activeSlot},`));
     return spawnFireEdge(this._gunWaitEnd(spawnAt), row ? weapTiming(row) : null);
+  }
+  /** Tony 2026-11-09 (option 1: keep the gun's rule, no extra swap write): when the gun can fire the target of the ALT swap `sw`,
+   *  for the SWITCHING display (ammo.js `swapWindowMs`). gunmodel.js `readyAt` (emulator 2026-11-08, brx2), the later of:
+   *  - the bind: the gun reading the swap's `$BMAP,0,<to>` (its send plus the air time, `_write`). Before it is written, its
+   *    due time plus the air time; while the link still holds it, now plus the air time. The phone holds the trigger until
+   *    then: ALT plus the target's tok15 (ammo.js `altLockMs`).
+   *  - the rebind delay: the release of the last pull that fired, plus the tok15 of the gun's selected slot: the slot that
+   *    fired, or a `$WEAP` sent since (the re-equip's own `$WEAP` selects the target: the shorter edge). None when the target
+   *    is the slot the gun last fired while bound (`_gunSel`), or the target has fired since the ALT. A live pull still held
+   *    has not ended: it counts from now, so the window grows until the release (the `$BMAP,0,98` hold stops the burst, not
+   *    the pull: gunmodel.js `_release`). The phone hears the release after the gun, so this edge needs no air time.
+   *  The spawn wait is not here: the arming line shows it (`_weaponArmingMs`), so a swap at the spawn does not read 1.5 s long.
+   *  Display only; no write. PURE. */
+  _gunSwapReadyAt(sw, now = this.now()) {
+    const to = sw.to, due = this.am.bindDue, b = this._gunBindAt;
+    let at = due && due.slot === to ? due.at + GUN_SPAWN_AIR_MS
+      : b && b.slot === to && b.at >= sw.at ? (b.pending ? Math.max(b.at, now + GUN_SPAWN_AIR_MS) : b.at) : sw.at + (sw.ms || 0) + GUN_SPAWN_AIR_MS;
+    const s = this.am.lastShot;
+    if (s && s.life === this._lifeSeq && this._gunSel !== to && !(s.slot === to && s.at >= sw.at)) {   // a round from the target proves it
+      const r = this._gunLiveEnd, down = this.held[BTN_TRIGGER];
+      // the pull that fired the last round: still held, released (the `$BUT,0,0` after it), or its round (a lost release)
+      const end = down != null && down <= s.at ? Math.min(now, s.at + SWAP_HELD_MAX_MS) : r && r.life === this._lifeSeq && r.shotAt >= s.at ? r.at : s.at;
+      const sel = this._reequipRow(to, this._bmapSent) ? to : this._weapOut != null ? this._weapOut : s.slot;
+      at = Math.max(at, end + this.am.altLockMs(sel));
+    }
+    return at;
   }
   /** When the gun's spawn wait ends for a `$SPAWN` at `spawnAt`: from then the gun reads the trigger, ALT and the lever. PURE. */
   _gunWaitEnd(spawnAt) { return GUN_SPAWN_WAIT ? spawnAt + GUN_SPAWN_WAIT_MS : spawnAt; }
@@ -6942,7 +6988,12 @@ export class Engine {
     // trigger is direct evidence this pull is over. A weapon without `reset_on_release` still recovers from DEGRADED or
     // HEAVY only on the settle clock; one with it recovers here. Bench 2026-09-24 (F308): no release was lost and each
     // came after its burst's last `$ALCD`. The 2026-11-01 frame tails lost 7 of 1068: `_recoilQuietMs` is the fallback.
-    if (id === BTN_TRIGGER) this._recoilRelease();   // S54 + F663: see `_recoilRelease`
+    if (id === BTN_TRIGGER) {
+      // the release of a pull that fired (a round booked since its press): the gun's rebind delay counts from it (`_gunSwapReadyAt`)
+      const s = this.am.lastShot;
+      if (s && s.life === this._lifeSeq && since != null && s.at >= since) this._gunLiveEnd = { at: now, shotAt: s.at, life: this._lifeSeq };
+      this._recoilRelease();   // S54 + F663: see `_recoilRelease`
+    }
   }
   /** How long each still-down button has been held, in ms. PURE — read from `state()` on every render. */
   heldMs() {
@@ -8208,6 +8259,7 @@ export class Engine {
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.am.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.am.lastSwitchMs, activeSlot: this.activeSlot,
+      swapWindowMs: this.am.switching ? this.am.swapWindowMs() : null,   // the open swap's own window: the SWITCHING bar fills over it
       switchFrom: this.am.swapFrom, switchTo: this.am.swapTo,
       // F123: `reloading` is no longer a timer's opinion — it runs until the GUN's ammo says the reload is
       // done (or stopped). `reloadOverrun` is true once the nominal time has passed and the magazine still

@@ -1643,6 +1643,7 @@ def test_alt_during_reload_swaps_at_once_and_ends_the_takeover():
         st._on_rx("$BUT,1,1,*")
         assert st.switching["to"] == 0 and st.active_slot == 0
         clock.advance(st._swap_window_s() + 0.1); st.poll(); await settle(st)
+        clock.advance(S.GUN_SPAWN_AIR_S + 0.01); st.poll(); await settle(st)   # Tony 2026-11-09: the gun reads the bind one air time after it leaves
         assert st.switching is None and st.active_slot == 0
     asyncio.run(go())
 
@@ -1748,6 +1749,32 @@ def test_bug3a_an_lcd_books_its_own_slot_token_and_never_moves_the_trigger():
     asyncio.run(go())
 
 
+def test_swap_timer_waits_for_the_release_of_a_live_pull_plus_the_fired_slots_tok15():
+    """engine.js `_gunSwapReadyAt` (Tony 2026-11-09, option 1: the gun's rule): SWITCHING stays up until the gun can fire the
+    target, so a burst held through ALT counts the gun's rebind delay from its release (swap-timer.test.mjs, held burst)."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        tok15 = st._alt_lock_s(0)
+        st._on_rx("$BUT,0,1,*"); clock.advance(0.05)
+        st._on_rx("$ALCD,9,100,0,20,0,*")          # a round: the pull is live
+        clock.advance(0.15); st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching and st.switching["to"] == 1
+        clock.advance(0.5); st.poll(); await settle(st)
+        assert abs(st._swap_window_s() - (0.5 + tok15)) < 1e-6, "held: the delay counts from now"
+        st._on_rx("$BUT,0,0,*")                      # the release, 0.5 s after the ALT
+        clock.advance(st._alt_lock_s(1) - 0.5 + 0.01); st.poll(); await settle(st)   # the bind goes out at its due time
+        clock.advance(tok15 - st._alt_lock_s(1) + 0.5 - 0.02); st.poll(); await settle(st)
+        assert st.switching, "the release plus the AR's tok15 has not passed"
+        clock.advance(0.02); st.poll(); await settle(st)
+        assert st.switching is None
+        assert abs(st.last_switch_s - (0.5 + tok15 + 0.01)) < 0.002, st.last_switch_s
+    asyncio.run(go())
+
+
 def test_echoes_and_rounds_leave_the_swap_window_open_until_its_deadline():
     """Only the swap clock closes SWITCHING, regardless of ammo reports."""
     async def go():
@@ -1764,6 +1791,7 @@ def test_echoes_and_rounds_leave_the_swap_window_open_until_its_deadline():
         st._on_rx("$ALCD,5,100,1,24,0,*")
         assert st.switching and st.last_switch_s is None and st.active_slot == 1
         clock.advance(st._swap_window_s()); st.poll(); await settle(st)
+        clock.advance(S.GUN_SPAWN_AIR_S + 0.01); st.poll(); await settle(st)   # Tony 2026-11-09: the gun reads the bind one air time after it leaves
         assert st.switching is None and st.last_switch_s is not None
     asyncio.run(go())
 

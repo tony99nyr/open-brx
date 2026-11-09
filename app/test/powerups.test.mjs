@@ -979,7 +979,7 @@ test('ALT off the heavy keeps its charges, and SELECT brings it back with them',
   let s = h.eng.state();
   assert.ok(s.powerup.held, 'ALT does not end the item'); assert.equal(s.powerup.held.left, 1); assert.equal(s.powerup.held.active, false);
   assert.equal(s.activeSlot, 1);
-  h.adv(700); const n = h.mark(); h.select();   // past the swap's window (and its bind): SELECT waits for a pending swap
+  h.adv(700); h.adv(E.GUN_SPAWN_AIR_MS + 10); const n = h.mark(); h.select();   // past the swap's window, and the gun reading its bind: SELECT waits for a pending swap
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*']);
   s = h.eng.state();
   assert.deepEqual(s.powerup.held.back, { slot: 1, mag: 5, res: 24 }, 'the switch-back target is now the secondary the trigger was on');
@@ -1225,7 +1225,7 @@ test('r2 M2: ALT off the heavy then a reload $ALCD (no shot) moves the trigger: 
   assert.equal(s.activeSlot, 1, 'setup: the ALT swap is confirmed on slot 1');
   assert.equal(s.powerup.held.active, false, 'the trigger is on the secondary now');
   assert.notEqual(s.weapon, 'ROCKETS');
-  h.adv(700); const n = h.mark(); h.select();   // past the swap's window (and its bind): SELECT waits for a pending swap
+  h.adv(700); h.adv(E.GUN_SPAWN_AIR_MS + 10); const n = h.mark(); h.select();   // past the swap's window, and the gun reading its bind: SELECT waits for a pending swap
   assert.deepEqual(puw(h.since(n)), [WEAP[2], '$AMMO,2,1,0,1,*'], 'SELECT equips the heavy, it does not "switch back"');
 });
 
@@ -2347,4 +2347,25 @@ test('WEAP cache: a heavy granted on the AR, then ALT to slot 1: a slot the gun 
   const n = h.mark(); altPress(h); h.adv(1500);
   assert.equal(h.eng.activeSlot, 1);
   assert.deepEqual(swapRows(h.since(n)), ['$BMAP,0,98,,,,,*', '$BMAP,0,1,,,,,*'], 'emulator 2026-11-09 (cur_grant_alt): this bind fires slot 1 as it is');
+});
+
+// Tony 2026-11-09 (option 1): SWITCHING lasts until the gun can fire the target (swap-timer.test.mjs). On the re-equip path the
+// target's own `$WEAP` selects it, and it is the slot the gun last fired while bound, so the gun has no rebind delay: the
+// display waits for the bind only, not the heavy's release plus its tok15.
+test('swap timer: the heavy re-equip path keeps its shorter edge: the bind back to slot 1 only, not the heavy\'s rebind delay', () => {
+  const h = alt(armed());
+  // slot 1 at the bench USP-S's 500, so the heavy's 850 (no head row: the swap window) would show if it counted
+  h.eng.frames.head = h.eng.frames.head.map(f => (f.startsWith('$WEAP,1,') ? (t => { t[16] = '500'; return t.join(','); })(f.split(',')) : f));
+  h.fire(1, 5, 48); h.adv(300);
+  h.take(4); h.away(); h.adv(800); h.fire(2, 1);   // the heavy fires: a pull, its round, the release
+  altPress(h); h.adv(40);
+  assert.ok(h.eng.state().swapWindowMs >= 850 - 40, `off the heavy to the AR: the heavy's release plus its tok15: ${h.eng.state().swapWindowMs}`);
+  const n = h.mark(); altPress(h);   // back to slot 1 inside the hold
+  assert.equal(h.eng.am.switching.to, 1);
+  assert.equal(h.eng.state().swapWindowMs, 500 + E.GUN_SPAWN_AIR_MS, 'slot 1\'s tok15 from the second ALT, plus the air time');
+  h.adv(500 + E.GUN_SPAWN_AIR_MS - 5);
+  assert.equal(h.eng.state().switching, true, 'still SWITCHING before the gun has read the bind');
+  h.adv(10);
+  assert.equal(h.eng.state().switching, false, 'closed once the gun can fire slot 1');
+  assert.ok(swapRows(h.since(n)).some(f => f.startsWith('$WEAP,1,')), `the bind re-equipped slot 1: ${JSON.stringify(swapRows(h.since(n)))}`);
 });

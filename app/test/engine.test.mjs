@@ -46,6 +46,10 @@ test('F202: forgetting a tagger clears only the local gun ownership and persists
   assert.equal(JSON.parse(storage.getItem('brx.engine')).gun, null, 'the remembered gun is gone after restart');
 });
 
+/** Tony 2026-11-09: SWITCHING closes once the gun has read the swap's bind, one air time after it leaves. This harness ticks
+ *  only when told, so the bind goes out at this tick: then step past its air time. */
+function pastBind(h) { h.eng.tick(); h.adv(E.GUN_SPAWN_AIR_MS + 1); h.eng.tick(); }
+
 function harness({ mode = 'tdm', respawn = 'auto', timeLimit = 600, synced = true, delay = null } = {}) {
   const writes = []; const facts = []; const reports = []; const delays = [];
   let clock = 1_000_000;
@@ -3009,7 +3013,7 @@ test('a swap moves neither on melee (slot 4) nor on a frame; the new slot\'s cou
   assert.equal(h.eng.state().switching, true, 'slot 4 is melee: the swap goes on');
   assert.equal(h.eng.state().activeSlot, 1);
   h.adv(200); h.frame('$ALCD,6,100,1,24,0,*');           // the secondary reports
-  h.adv(400); h.eng.tick();
+  h.adv(400); pastBind(h);
   const st = h.eng.state();
   assert.equal(st.switching, false);
   assert.equal(st.activeSlot, 1);
@@ -5373,14 +5377,14 @@ test('ALT with two weapons: the phone swaps at once, switching exposes from/to, 
   assert.equal(s.activeSlot, 1, 'Tony 2026-11-08: the phone owns the swap, so the trigger slot moves at the press');
   h.adv(400); h.frame('$ALCD,71,100,1,288,0,*');
   assert.equal(h.eng.state().switching, true, 'the window runs its time; a frame does not close it');
-  h.adv(500); h.eng.tick();
+  h.adv(500); pastBind(h);
   s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched'); assert.equal(s.moment.data.slot, 1);
 });
 test('ALT assumes the swap after its window; a link drop cancels one', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
-  h.adv(851); h.eng.tick();
+  h.adv(851); pastBind(h);
   let s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1); assert.equal(s.moment.kind, 'switched');
   assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'Tony 2026-11-08: the phone binds the trigger at the window\'s end');
   h.frame('$BUT,1,1,*'); assert.equal(h.eng.state().switching, true);
@@ -5404,7 +5408,7 @@ test('F542 hardware: ALT past its window assumes the swap and writes no $QUERY',
   h.frame('$ALCD,30,100,0,384,0,*');
   const mark = h.writes.length;
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
-  h.adv(900); h.eng.tick();
+  h.adv(900); pastBind(h);
   assert.equal(h.writes.slice(mark).filter(f => f === '$QUERY,*').length, 0, 'no slot query');
   const s = h.eng.state();
   assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
@@ -5454,7 +5458,7 @@ test('F542 E10 review: a lever the phone refuses (a full slot) keeps the trigger
 // Bench 2026-11-01 (Tony, 0.4.32): ALT does swap, but until the new weapon fires once the lever reloads the slot that FIRED
 // LAST, and its `$ALCD` names that slot. AR (slot 0) and SMG (slot 1) stand in for the Shotgun and the USP.
 const f542Shot = (h, frame) => { h.frame('$BUT,0,1,*'); h.adv(10); h.frame(frame); h.frame('$BUT,0,0,*'); h.adv(200); };
-const f542Alt = h => { h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); h.eng.tick(); };
+const f542Alt = h => { h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); h.adv(900); pastBind(h); };
 const f542Lever = h => { h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); };
 function f542TonySequence(h) {
   f542Shot(h, '$ALCD,31,100,0,384,0,*'); f542Shot(h, '$ALCD,30,100,0,384,0,*'); f542Shot(h, '$ALCD,29,100,0,384,0,*');
@@ -6154,15 +6158,17 @@ test('the Fast Hands perk: the swap holds the trigger for the target\'s tok15 as
   h.eng.onMcMessage({ kind: 'assign', body: { player: { ...h.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: 'fast_hands' } }, team: h.team, roster: h.roster,
     catalog: { weapons: [], perks: [{ perk_id: 'fast_hands', name: 'Fast Hands', effects: { switch_mult: 0.5 } }] } } });
   // MC applies switch_mult to every slot's `$WEAP` tok15 (compile.py `swap_ms`); the phone's swap reads the target's row
-  h.eng.frames = { ...h.eng.frames, head: h.eng.frames.head.map(f => (f.startsWith('$WEAP,1,') ? f.split(',').map((t, i) => (i === 16 ? '425' : t)).join(',') : f)) };
+  h.eng.frames = { ...h.eng.frames, head: h.eng.frames.head.map(f => (/^\$WEAP,[01],/.test(f) ? f.split(',').map((t, i) => (i === 16 ? '425' : t)).join(',') : f)) };
   h.frame('$ALCD,30,100,0,384,0,*'); h.frame('$BUT,1,1,*');
   assert.equal(h.eng.state().activeSlot, 1, 'the phone swaps at the press');
   h.adv(424); h.eng.tick();
   assert.equal(h.eng.state().switching, true, 'still inside the window');
   assert.ok(!h.writes.includes('$BMAP,0,1,,,,,*'), 'the trigger is still held');
   h.adv(2); h.eng.tick();
-  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
   assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'bound after 425 ms');
+  assert.equal(h.eng.state().switching, true, 'Tony 2026-11-09: SWITCHING until the gun has read the bind');
+  h.adv(E.GUN_SPAWN_AIR_MS + 1); h.eng.tick();
+  const s = h.eng.state(); assert.equal(s.switching, false); assert.equal(s.activeSlot, 1);
 });
 test('the SWITCHING window is the target slot\'s tok15, not the bundle\'s swap_ms (Tony 2026-11-08)', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
@@ -6176,8 +6182,10 @@ test('the SWITCHING window is the target slot\'s tok15, not the bundle\'s swap_m
   h.adv(tok15 - 1); h.eng.tick();
   assert.equal(h.eng.state().switching, true, `held for the target's own tok15 (${tok15} ms)`);
   h.adv(2); h.eng.tick();
-  assert.equal(h.eng.state().switching, false);
   assert.ok(h.writes.includes('$BMAP,0,1,,,,,*'), 'then bound');
+  assert.equal(h.eng.state().switching, true, 'Tony 2026-11-09: SWITCHING until the gun has read the bind');
+  h.adv(E.GUN_SPAWN_AIR_MS + 1); h.eng.tick();
+  assert.equal(h.eng.state().switching, false);
 });
 
 // ---------- utility items: scanner respawn at a station (docs/spec/utility.md §4) ----------

@@ -926,8 +926,12 @@ export class Ammo {
     const ms = row ? Number(row.split(',')[16]) : NaN;
     return ms > 0 ? ms : this.host.switchWindowMs();
   }
-  /** The SWITCHING display's window: an ALT swap's own (`ms`), else the host's swap window (a pickup's card). PURE. */
-  swapWindowMs() { const sw = this.switching; return sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs(); }
+  /** The SWITCHING display's window: an ALT swap's own (`ms`), else the host's swap window (a pickup's card). Tony 2026-11-09
+   *  (option 1): an ALT swap stays up until the gun can fire its target (engine.js `_gunSwapReadyAt`), never before. PURE. */
+  swapWindowMs() {
+    const sw = this.switching, own = sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs();
+    return sw && !sw.pu && this.host.gunSwapReadyAt ? Math.max(own, this.host.gunSwapReadyAt(sw) - sw.at) : own;
+  }
   /** tick(): bind the trigger to the swap's target once its time is up (`bindDue`), and close the SWITCHING display when its
    *  window ends. A pickup's card (`switching.pu`) only closes: the powerup equip already moved the trigger. */
   switchTick(now) {

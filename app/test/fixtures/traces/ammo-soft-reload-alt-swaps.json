@@ -118,7 +118,7 @@
     },
     {
       "at": "on_slot_1_slot_0_fired_last_and_full",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":false,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":30,"to":32,"cap":32,"gained":2,"slot":0,"ms":1200,"why":"filled","at":6640}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":true,"reloading":false,"mag":6,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":true,"filled":true,"from":30,"to":32,"cap":32,"gained":2,"slot":0,"ms":1200,"why":"filled","at":6640}},"swap":{"ms":900,"window":850,"from":0,"to":1,"last":1110},"moment":null},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
@@ -135,7 +135,7 @@
     },
     {
       "at": "phone_reload_of_slot_1",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":false,"reloading":true,"mag":6,"reload":{"ms":0,"total":400,"at":12840,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":48,"deaths":0,"switching":true,"reloading":true,"mag":6,"reload":{"ms":0,"total":400,"at":12840,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":900,"window":850,"from":0,"to":1,"last":1110},"moment":null},
       "facts": [],
       "reports": [],
       "writes": [
@@ -145,7 +145,7 @@
     },
     {
       "at": "alt_mid_phone_reload_swaps",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":190,"deaths":0,"switching":true,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":5,"to":5,"cap":6,"gained":0,"slot":1,"ms":300,"why":"swapped","at":13140}},"swap":{"ms":0,"window":850,"from":1,"to":0,"last":900},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":190,"deaths":0,"switching":true,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":5,"to":5,"cap":6,"gained":0,"slot":1,"ms":300,"why":"swapped","at":13140}},"swap":{"ms":0,"window":850,"from":1,"to":0,"last":1150},"moment":{"kind":"switched","data":{"slot":1,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -155,7 +155,7 @@
     },
     {
       "at": "no_ammo_to_slot_1",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":190,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":5,"to":5,"cap":6,"gained":0,"slot":1,"ms":300,"why":"swapped","at":13140}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":190,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":5,"to":5,"cap":6,"gained":0,"slot":1,"ms":300,"why":"swapped","at":13140}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1250},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
       "writes": [
