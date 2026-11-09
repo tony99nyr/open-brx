@@ -117,7 +117,7 @@ def test_pistols_draw_in_500ms_in_their_tok15():
 
 def test_each_swap_direction_takes_the_tok15_of_the_slot_it_moves_to():
     """Bench 2026-11-08 SR1 (and a private emulator of the stock image): AR to USP-S 500 ms, USP-S to AR 850 ms.
-    The 2026-09-04 "the larger slot wins" reading held the trigger through the swap; a perk scales both ways."""
+    The 2026-09-04 "the larger slot wins" reading held the trigger through the swap while firing; a perk scales both ways."""
     assert CAT.swap_to_ms("assault_rifle", "usp") == {0: 850, 1: 500}
     assert CAT.swap_to_ms("usp", "assault_rifle") == {0: 500, 1: 850}
     assert CAT.swap_to_ms("assault_rifle", "usp", {"switch_mult": 0.5}) == {0: 425, 1: 250}
