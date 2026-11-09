@@ -1987,8 +1987,9 @@ export class Engine {
       || (sw && (gs === sw.from || gs === sw.to)) || this.stunned;
     if (motion) {
       c.gen = (c.gen || 0) + 1; c.heardAt = 0; c.asks = 0;   // retire the older ask and query timers: one chain only
-      const wait = sw ? Math.max(SPAWN_CHECK_MS, sw.at + this.switchWindowMs() + 1 - this.now()) : SPAWN_CHECK_MS;
-      this.delay(wait, () => this._spawnAsk(c));
+      // brx1 2026-11-09: the swap's end is the gun's own (`_gunSwapReadyAt`, the edge SWITCHING uses), not ALT + swap_ms
+      const wait = sw ? Math.max(SPAWN_CHECK_MS, this._gunSwapReadyAt(sw) + 1 - this.now()) : SPAWN_CHECK_MS, g = c.gen;
+      this.delay(wait, () => { if (c.gen === g) this._spawnAsk(c); });   // a later deferral retires this one: one chain only
       return;
     }
     // F416 r4: a held heavy before the first pull (F436) may read its own slot or the switch-back slot; both match.

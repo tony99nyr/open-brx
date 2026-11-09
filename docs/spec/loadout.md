@@ -101,7 +101,7 @@ PerkView {
                                     // 12→18, Deagle 7→10. `mc/compile.py` `WeaponCatalog._ammo` is the one place this is applied.
     reload_mult?: number,          // fast_hands: ×0.5 reload_ms on the PRIMARY (t18), except the Sniper Rifle bolt; body_armor: ×1.25
     alt_reload?: boolean,          // unused by any current row (S50: moved to `overrides.easy_reload`, §2) — kept for a future ALT-button perk
-    switch_mult?: number,          // fast_hands: ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the first round after a swap waits for the later of the swap plus the target's tok15 and the end of live fire plus the fired slot's tok15, node.md §3.2a; linear, no floor). MC puts the longest resolved swap, the larger of slots 0/1, in FrameBundle.swap_ms. extended_mags: ×1.3 (a bulkier magazine draws slower)
+    switch_mult?: number,          // fast_hands: ×0.5 the gun's weapon-swap delay — $WEAP tok15 on EVERY slot (the first round after a swap waits for the later of the swap plus the target's tok15 and the end of live fire plus the fired slot's tok15, node.md §3.2a; linear, no floor). MC puts the larger resolved tok15 of slots 0/1 (the longest the swap's own edge can be) in FrameBundle.swap_ms. extended_mags: ×1.3 (a bulkier magazine draws slower)
     armor_piercing?: boolean       // S50 NEW (armor_piercing perk): the PRIMARY's $SIR key is swapped, compile-time, to
                                     // a fixed cell (mc/compile.py `_AP_CELL`, `(4,0)`) permanently wired in
                                     // `gameconfig._SIR_TABLE` to fn 2 (bench-proven to bypass armour AND

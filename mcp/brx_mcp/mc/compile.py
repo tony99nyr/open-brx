@@ -2260,7 +2260,7 @@ class Compiler:
         shields = is_shields_preset(config)
         base_mag, base_reserve, base_reload = self.catalog._ammo(w0, None)
         res_mag, res_reserve, res_reload = self.catalog._ammo(w0, fx)   # ammo/reload knobs act on the PRIMARY only
-        # `swap_ms` is the LONGEST swap: the larger of the two directions' edges (`swap_to_ms`).
+        # `swap_ms` is the larger of the two directions' own edges (`swap_to_ms`), not the longest possible wait.
         base_swap = max(self.catalog.swap_to_ms(w0, w1, None).values())
         res_swap = max(self.catalog.swap_to_ms(w0, w1, fx).values())
 
@@ -2936,9 +2936,9 @@ class Compiler:
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
             "cues": base_cues(build.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
-            # the LONGEST swap between slots 0 and 1: the larger tok15 of the two. A swap's first round comes at the later
-            # of the swap plus the target's tok15 and the end of live fire plus the fired slot's tok15 (docs/spec/node.md
-            # §3.2a), so no swap waits longer than this. A phone reads each slot's tok15 from `head`.
+            # the larger tok15 of slots 0/1: the longest the swap's own edge can be after the ALT. A burst held through the
+            # ALT can end later still, at its release plus the fired slot's tok15 (docs/spec/node.md §3.2a). A phone reads
+            # each slot's tok15 from `head`.
             "swap_ms": max([int(f.split(",")[16]) for f in ctx.head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
             "callout_team": self._callout_team(build.teams),   # S57: the IR callout bus's own team id, or None
         }
