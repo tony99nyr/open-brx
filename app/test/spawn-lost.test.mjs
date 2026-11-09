@@ -411,3 +411,30 @@ test('F416 r3: a positive $HP after the whistle sends no $QUERY, and a panic or 
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'panic' } });
   assert.equal(h.eng._spawnCheck, null, 'a panic retires the check');
 });
+
+// brx1 2026-11-09 (brx4's swap_ms trace): the F416 deferral inside an ALT swap re-asked at the ALT plus the bundle's swap_ms.
+// On a burst held through the ALT the gun is mid-swap until the release plus the AR's tok15 (engine.js `_gunSwapReadyAt`,
+// the edge SWITCHING uses), so that re-ask came while the swap was still open: an extra ask, and the verdict waited anyway.
+test('F416 x swap timer: a burst held through ALT defers the weapon check to the gun\'s swap edge, with no early re-ask', async () => {
+  let failed = false;
+  const h = harness({ fail: fr => fr.some(f => f.startsWith('$SPAWN')) && !failed && (failed = true, Object.assign(h.gun, { spawned: true, hp: 45, armor: 70, slot: 0, mag: 32, reserve: 192 }), true) }).live();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } };
+  await h.adv(4000 + 50);
+  h.eng._pulledLife = h.eng._lifeSeq;
+  const asks = [], log = h.eng.log.bind(h.eng);
+  h.eng.log = (m, k) => { if (/^write F416 spawn check /.test(String(m))) asks.push(h.now()); return log(m, k); };
+  h.eng.feedFrame('$BUT,0,1,*'); await h.adv(20);
+  h.gun.mag = 31; h.eng.feedFrame('$ALCD,31,100,0,192,0,*');   // the AR fires: the pull is live
+  await h.adv(20);
+  const altAt = h.now();
+  h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');   // ALT with the trigger still held
+  await h.adv(2000);
+  h.eng.feedFrame('$BUT,0,0,*');                                  // the release, 2 s after the ALT: the gun's edge is 850 later
+  await h.adv(4000);
+  const closeAt = altAt + h.eng.am.lastSwitchMs, open = asks.filter(t => t > altAt && t < closeAt).map(t => t - altAt);
+  assert.equal(h.eng.am.lastSwitchMs, 2000 + 850 + 50, 'setup: SWITCHING ran to the release plus the AR\'s tok15 (one 50 ms step late)');
+  assert.ok(open.length <= 3, `inside the swap the check asks once per deferral to the gun's edge, not every ${E.SPAWN_CHECK_MS} ms: ${JSON.stringify(open)}`);
+  assert.equal(new Set(asks).size, asks.length, `one ask chain: no two asks at once: ${JSON.stringify(asks.map(t => t - altAt))}`);
+  assert.equal(h.spawns(), 1, 'no second $SPAWN over the swap');
+  assert.ok(h.logs.some(l => /F416: the gun's weapon state matches .*landed, no re-send/.test(l)), 'the check closes as landed once the swap is over');
+});
