@@ -1328,8 +1328,9 @@ class WeaponCatalog:
     # `python -m brx_mcp.weapmap`). doc tokN == frame.split(",")[N+1] — `put()` adds the +1.
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
-    # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
-    # perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`).
+    # A swap takes the tok15 of the slot it moves TO (bench 2026-11-08 SR1, and a private emulator of the stock
+    # image), so a swap perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`). Only a swap made
+    # with the trigger held and firing waits for the larger tok15 of the two slots (the 2026-09-04 runs held it; sr17e2).
     # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
     # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
@@ -1363,14 +1364,24 @@ class WeaponCatalog:
         w = self._by_id[weapon_id]
         frame = (w.get("capture") or {}).get("frame")
         base = 850
-        if (w.get("wire") or {}).get("swap_ms") is not None:          # a per-weapon draw time (sidearms); NB the gun enforces
-            base = int(w["wire"]["swap_ms"])                          # the LARGER of slots 0/1, so it only bites when both are quick
+        if (w.get("wire") or {}).get("swap_ms") is not None:          # a per-weapon draw time (sidearms): the time a swap
+            base = int(w["wire"]["swap_ms"])                          # TO this weapon takes (`swap_to_ms`)
         elif frame:
             tok = frame.split(",")
             if len(tok) > 16 and tok[16].strip().isdigit():
                 base = int(tok[16])
         sm = float((mods or {}).get("switch_mult") or 1)
         return max(0, int(round(base * sm)))
+
+    def swap_to_ms(self, w0: str, w1: str | None, mods: dict | None = None) -> dict[int, int]:
+        """The swap delay in each direction: {slot: ms} for a swap TO slot 0 and TO slot 1 (no key 1 with no
+        secondary). Each is that slot's own tok15 as written (bench 2026-11-08 SR1: 850 ms to the AR, 500 ms to
+        the USP-S; a private emulator of the stock image agrees). Only a swap made with the trigger held and firing waits
+        for the larger of the two: the 2026-09-04 runs held it, which is why they read "the larger slot wins"."""
+        out = {0: self.swap_ms(w0, mods)}
+        if w1:
+            out[1] = self.swap_ms(w1, mods)
+        return out
 
     @staticmethod
     def _is_pistol(w: dict) -> bool:
@@ -2249,8 +2260,9 @@ class Compiler:
         shields = is_shields_preset(config)
         base_mag, base_reserve, base_reload = self.catalog._ammo(w0, None)
         res_mag, res_reserve, res_reload = self.catalog._ammo(w0, fx)   # ammo/reload knobs act on the PRIMARY only
-        base_swap = max(self.catalog.swap_ms(w0, None), self.catalog.swap_ms(w1, None) if w1 else 0)
-        res_swap = max(self.catalog.swap_ms(w0, fx), self.catalog.swap_ms(w1, fx) if w1 else 0)   # the gun takes the larger of slots 0/1
+        # `swap_ms` is the SLOWER direction: a swap takes the tok15 of the slot it moves to (`swap_to_ms`).
+        base_swap = max(self.catalog.swap_to_ms(w0, w1, None).values())
+        res_swap = max(self.catalog.swap_to_ms(w0, w1, fx).values())
 
         def pair(base: int, resolved: int) -> ValuePair | None:
             return {"base": int(base), "resolved": int(resolved)} if int(base) != int(resolved) else None
@@ -2738,7 +2750,7 @@ class Compiler:
         w0, w1 = self._weapon_ids(player)
         fx = self._perk_effects_for(config, player)      # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "ammo_mult_pistol", "reload_mult", "switch_mult") if fx.get(k)}
-        swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
+        swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay scales on EVERY slot (a swap takes its target's)
         if prof.get("silent_weapons"):
             # F282: EVERY compiled weapon (primary, secondary, melee, any pickup), not just the primary
             # `mods` slot -- `resolve()` applies it last, see its docstring.
@@ -2924,8 +2936,9 @@ class Compiler:
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
             "cues": base_cues(build.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
-            # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
-            # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
+            # the LONGEST swap between slots 0 and 1: the larger tok15 of the two. A swap takes the tok15 of the slot it
+            # moves to (bench 2026-11-08 SR1), so this is the slower direction, and every swap made with the trigger
+            # held and firing (2026-09-04, sr17e2). A phone that times each direction reads each slot's tok15 from `head`.
             "swap_ms": max([int(f.split(",")[16]) for f in ctx.head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
             "callout_team": self._callout_team(build.teams),   # S57: the IR callout bus's own team id, or None
         }

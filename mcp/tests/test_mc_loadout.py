@@ -304,7 +304,7 @@ def test_compile_perk_effects():
     base = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}]}), TEAMS)
     w0 = [f for f in base["head"] if f.startswith("$WEAP,0")][0]
     # extended_mags: ×2 mag on $AMMO,0 AND the frame (the AR's reserve stays 384, the 2026-10-17 ceiling), PLUS its S50 cost -- ×1.3 swap delay
-    # (t15) on EVERY slot (the gun takes the larger of slots 0/1).
+    # (t15) on EVERY slot (a swap takes the tok15 of the slot it moves to, bench 2026-11-08).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "extended_mags"}), TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     # The AR's reserve is 384 and RESERVE_PROVEN_MAX is 384, so x2 would be 768 and the ceiling holds it:
@@ -1195,7 +1195,8 @@ def test_settling_is_advisory_and_never_wedges_the_recap():
 
 def test_swap_delay_token_and_fast_hands():
     """tok15 is the weapon-swap delay (bench 2026-09-04). Stock 850 on both slots; fast_hands halves it on
-    EVERY slot because the gun enforces the larger of the two; the bundle reports the enforced value."""
+    EVERY slot because a swap takes the tok15 of the slot it moves to (bench 2026-11-08); the bundle reports the
+    longest swap, the larger of the two."""
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}), TEAMS)
     f0 = [x for x in b["head"] if x.startswith("$WEAP,0")][0]; f1 = [x for x in b["head"] if x.startswith("$WEAP,1")][0]
     assert _tok(f0, 15) == "850" and _tok(f1, 15) == "850" and b["swap_ms"] == 850
