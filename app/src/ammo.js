@@ -935,7 +935,7 @@ export class Ammo {
       if (!pu) this.lastSwitchMs = now - sw.at;
       if (!pu && to === this.host.activeSlot) this.showSlot(to);   // a press booked at the swap has settled since (F259 account)
       // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md "The switch card").
-      this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, pu } });
+      this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, assumed: true, pu } });   // `assumed`: the HUD's READY (no gun report confirms a swap the phone owns)
       this.host.log(pu ? `pickup switch card to slot ${to} closed after ${this.swapWindowMs()}ms` : `swap to slot ${to} done`, 'li');
     }
   }

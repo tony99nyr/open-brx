@@ -133,7 +133,7 @@
     },
     {
       "at": "stunned",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":32,"res":384},"base":2,"trig":2,"suspect":false,"unconfirmed":true},"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"moment":{"kind":"switched","data":{"slot":2,"pu":true}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":2,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":32,"res":384},"base":2,"trig":2,"suspect":false,"unconfirmed":true},"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -145,7 +145,7 @@
     },
     {
       "at": "self_kill_revive_lost",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":32,"res":384},"base":2,"trig":2,"suspect":false,"unconfirmed":true},"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"moment":{"kind":"switched","data":{"slot":2,"pu":true}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":2,"ammo":0,"reserve":0,"deaths":0,"held":{"weapon_id":"rocket_launcher","slot":2,"left":2,"charges":2,"active":true,"back":{"slot":0,"mag":32,"res":384},"base":2,"trig":2,"suspect":false,"unconfirmed":true},"claim":null,"switching":false,"powerup":{"hint":null,"overshield":null,"grant":{"kind":"weapon","name":"ROCKETS","color":"#ff7a1a","charges":2,"at":122100},"swap":null,"spawn":null,"lost":null,"back":null,"backPending":null},"moment":{"kind":"switched","data":{"slot":2,"assumed":true,"pu":true}}},
       "facts": [],
       "reports": [],
       "writes": [
