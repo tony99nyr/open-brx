@@ -35,13 +35,20 @@
 // - `$SPAWN` moves neither the trigger binding nor the ALT pointer (emulator: after ALT to the USP-S and a spawn, the
 //   trigger fired the USP-S and the next ALT went to the AR). So a spawn and the phone's `$BMAP,0,0` leave the pointer
 //   where the last life left it, the SR18 shape.
+// - The trigger floor: a pull on the slot that fired last waits for that round plus its t14 (USP-S 190, AR 100). A pull
+//   released before then fires nothing; one still held fires as the floor ends (emulator; sr5r and b2's fast taps).
+// - The rebind delay: after a pull that fired slot A, a `$BMAP,0` to another slot fires nothing until that pull's
+//   release plus A's tok15, so the slot moved FROM sets it (AR 850, USP-S 500). A held pull, or a bind on a held
+//   trigger, fires as it ends. A rebind to the same slot, a pull at 98 and a spawn add nothing, and it does not stack on
+//   an ALT swap's own delay (emulator; swp1's refusal 117 ms after a pull at 98 came from the AR fire before it).
 //
-// The rules above marked "emulator" were run on a private emulator of the stock image (2026-11-08, F668); the bench
-// still owes their confirmation.
+// The rules above marked "emulator" were run on a private emulator of the stock image (2026-11-08, F668; the floor and
+// the rebind delay on its frozen build); the bench still owes their confirmation.
 // Assumed, not seen: `$START` puts the ALT pointer and a bound trigger on slot 0. A melee swing does not move the
 // last-fired slot. A `$BMAP,0` rebind starts no swap delay.
 // Not encoded (each needs a bench): a Shotgun's shell chain; ALT on 97 (Easy Reload); hits, deaths and the pools (the
-// `$LCD` and `$HP` pools are the last `$PSET`'s); the trigger floor between pulls (t14).
+// `$LCD` and `$HP` pools are the last `$PSET`'s); a `$WEAP` for another slot moving what the trigger fires (seen on
+// the emulator, not yet bracketed).
 //
 // Time is the caller's: every input carries `t` in ms, and `advance(t)` runs what falls due (a timed auto round, a
 // refill). Answers queue in `take()` as `{t, f}`. `decisions` records every timed call with its distance from the edge
@@ -77,6 +84,8 @@ export class GunModel {
     this.swapOnRelease = null;       // an ALT taken in a dry hold: {until, dryMs}, finished at the release
     this.heldFireAt = null;          // a full-auto trigger held through the swap fires when the swap ends
     this.lastBindAt = -Infinity;     // the last `$BMAP,0` write, for the margin of a pull just after it
+    this.lastShot = null;            // {slot, t} of the last round: the next pull on that slot waits its t14
+    this.lastLive = null;            // {slot, t}: the release of the last pull that fired, for the rebind delay
     this.trigger = null;     // {at, live} while held: live = the pull fired
     this.lastPull = null;
     this.dry = null;         // {slot, at, semi, ms, upAt}: the last dry pull, for the ALT block
@@ -98,7 +107,11 @@ export class GunModel {
       // a DRY hold it does not; the trigger waits for the release plus the dry slot's tok15, as after an ALT (F668 d).
       const held = this.trigger && !this.trigger.live && this.bound != null && !this.dead && !this.reload;
       if (held && this.dry && this.dry.upAt == null) { this.fireLockUntil = Infinity; this.swapOnRelease = { until: -Infinity, dryMs: this.dry.ms }; }
-      else if (held && t >= this.fireLockUntil) { this._heldFire(t); this._decide(t, 'a bind landed on a held trigger', 0); }   // margin 0: when the write reached the gun is not in a capture
+      else if (held && t >= this.fireLockUntil) {
+        const [edge, why] = this._fireEdge(this.bound);
+        if (t < edge) { if (this.mag[this.bound] > 0) this.heldFireAt = edge; this._decide(t, `a bind landed on a held trigger: ${why}`, 0); }
+        else { this._heldFire(t); this._decide(t, 'a bind landed on a held trigger', 0); }
+      }   // margin 0: when the write reached the gun is not in a capture
     }
     else if (cmd === 'PSET') this.pools = [int(k, 3) ?? 0, int(k, 4) ?? 0, 0];
     else if (cmd === 'WEAP' && s != null) {
@@ -193,7 +206,7 @@ export class GunModel {
   _newLife() {
     this.dead = false;
     this.lastFired = 0; this.altLockUntil = -Infinity; this.fireLockUntil = -Infinity; this.swapOnRelease = null;
-    this.heldFireAt = null; this.dry = null; this.reload = null; this.lastSwing = null;
+    this.heldFireAt = null; this.dry = null; this.reload = null; this.lastSwing = null; this.lastShot = null; this.lastLive = null;
   }
   _bmap(id, fn) {
     if (id === BTN_TRIGGER) { this.bound = fn[0] != null && fn[0] < FN_INERT ? fn[0] : null; return; }
@@ -215,11 +228,16 @@ export class GunModel {
       if (s != null && w && this.mag[s] > 0 && this.fireLockUntil < Infinity) this.heldFireAt = this.fireLockUntil;
       return this._decide(t, 'pull refused: swapping', Math.min(this.fireLockUntil - t, bindMargin));
     }
+    const [edge, why] = this._fireEdge(s);
+    if (t < edge && s != null && w && this.mag[s] > 0) {
+      live(false); this.heldFireAt = edge;
+      return this._decide(t, `pull refused: ${why}`, Math.min(edge - t, bindMargin));
+    }
     if (s != null && w && this.mag[s] > 0) {
       live(true); this.dry = null;
       this._shot(s, t);
       if (this.auto === 'timed' && !w.semi) this.nextAuto = t + w.t14;
-      return this._decide(t, `fired slot ${s}`, Math.min(t - this.fireLockUntil, bindMargin));
+      return this._decide(t, `fired slot ${s}`, Math.min(t - Math.max(this.fireLockUntil, edge), bindMargin));
     }
     live(false);
     if (s == null) return this._decide(t, 'pull: trigger unbound', bindMargin);
@@ -229,6 +247,7 @@ export class GunModel {
   }
   _release(t) {
     if (this.dry && this.dry.upAt == null) this.dry.upAt = t;
+    if (this.trigger && this.trigger.live) this.lastLive = { slot: this.trigger.slot, t };
     this.lastPull = this.trigger;
     this.trigger = null; this.nextAuto = null; this.heldFireAt = null;
     if (this.swapOnRelease) { this.fireLockUntil = Math.max(this.swapOnRelease.until, t + this.swapOnRelease.dryMs); this.swapOnRelease = null; }
@@ -250,7 +269,7 @@ export class GunModel {
       // a dry hold: the trigger waits for the release plus the dry slot's tok15 (sr17c, emulator)
       this.fireLockUntil = Infinity; this.swapOnRelease = { until: t + ms, dryMs: this.dry.ms };
     } else this.fireLockUntil = t + ms;
-    this.dry = null;
+    this.dry = null; this.lastLive = null;   // an ALT swap keeps its own delay; the rebind delay does not stack on it (e2-430)
     this._decide(t, `ALT to slot ${this.altPtr}`, margin);
   }
   _lever(t) {
@@ -284,7 +303,19 @@ export class GunModel {
     if (this.auto === 'timed') this.nextAuto = t + w.t14;
     this._decide(t, `fired slot ${s} as the swap ended, trigger held`, Infinity);
   }
-  _shot(s, t) { this.mag[s]--; this.lastFired = s; this._alcd(s, t); }
+  /** When the trigger may next fire slot `s`, and why not before: [edge, why]. Emulator (2026-11-08, frozen build):
+   *  - t14 floor: a pull on the slot that fired last waits for that round plus its t14 (USP-S 190, AR 100);
+   *  - rebind delay: after a pull that fired slot A, a `$BMAP,0` to slot B != A waits for that pull's release plus A's
+   *    tok15 (AR 850: a tap released at 30 fired the USP-S from 880; USP-S to AR, 500). The same slot, a pull at 98 and
+   *    a spawn add nothing. This is the swp1 refusal 117 ms after a pull at 98: the AR had fired before it. */
+  _fireEdge(s) {
+    let edge = -Infinity, why = null;
+    const w = this.w[s], a = this.lastLive, sh = this.lastShot;
+    if (sh && sh.slot === s && w && sh.t + w.t14 > edge) { edge = sh.t + w.t14; why = 'trigger floor'; }
+    if (a && a.slot !== s && this.w[a.slot] && a.t + this.w[a.slot].t15 > edge) { edge = a.t + this.w[a.slot].t15; why = 'rebind delay'; }
+    return [edge, why];
+  }
+  _shot(s, t) { this.mag[s]--; this.lastFired = s; this.lastShot = { slot: s, t }; this._alcd(s, t); }
   _alcd(s, t) { this._emit(t, `$ALCD,${this.mag[s] ?? 0},100,${s},${this.res[s] ?? 0},0,*`); }
   _emit(t, f) { this.out.push({ t, f }); }
   _decide(t, what, margin) { this.decisions.push([t, what, margin]); }

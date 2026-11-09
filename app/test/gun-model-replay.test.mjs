@@ -14,7 +14,7 @@ const PINNED = {
   '2026-11-08-sr1-sr5': [183, 2],
   '2026-11-08-sr11-sr15': [27, 0],
   '2026-11-08-sr5r-sr12': [118, 2],
-  '2026-11-08-sr17-swp1': [142, 7],
+  '2026-11-08-sr17-swp1': [143, 4],
 };
 
 test('every bench session replays through the model, with differences only at a timing edge', () => {
@@ -162,10 +162,10 @@ test('emulator: a $BMAP,0 bind that lands with the trigger held fires at once', 
   assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1300, '$ALCD,11,100,1,240,0,*']]);
   g.button(0, 0, 1650);
   g.write('$BMAP,0,98,,,,,*', 1700);
-  g.button(0, 1, 1750);
-  g.write('$BMAP,0,0,,,,,*', 1800);   // full auto, held: a burst until the release
-  g.button(0, 0, 2050);
-  assert.deepEqual(g.take().map(o => o.t), [1800, 1900, 2000]);
+  g.button(0, 1, 2250);
+  g.write('$BMAP,0,0,,,,,*', 2300);   // full auto, held, after the USP-S's 500 from 1650: a burst until the release
+  g.button(0, 0, 2550);
+  assert.deepEqual(g.take().map(o => o.t), [2300, 2400, 2500]);
 });
 
 test('swp1: a bind that lands in a dry hold waits for the release plus the dry slot\'s tok15', () => {
@@ -179,4 +179,56 @@ test('swp1: a bind that lands in a dry hold waits for the release plus the dry s
   g.button(0, 1, 3300); g.button(0, 0, 3340);   // 300 ms after the release: refused
   g.button(0, 1, 3700); g.button(0, 0, 3740);   // 700 ms after: fires
   assert.deepEqual(g.take().map(o => [o.t, o.f]), [[3700, '$ALCD,31,100,0,384,0,*']]);
+});
+
+test('emulator: a pull inside t14 of the last round fires nothing, and fires as the floor ends if still held', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  g.take();
+  const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
+  pull(1000, 40);   // a round
+  pull(1100, 40);   // released before 1000 + 190: nothing
+  pull(1170, 40);   // still held at 1190: fires then
+  pull(1500, 40);   // the AR's floor is 100: the same shape on slot 0
+  g.write('$BMAP,0,0,,,,,*', 3000);
+  pull(3000, 30); pull(3050, 30); pull(3090, 30);
+  g.advance(1e9);
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1000, '$ALCD,11,100,1,240,0,*'], [1190, '$ALCD,10,100,1,240,0,*'],
+    [1500, '$ALCD,9,100,1,240,0,*'], [3000, '$ALCD,31,100,0,384,0,*'], [3100, '$ALCD,30,100,0,384,0,*']]);
+});
+
+test('emulator: after live fire, a $BMAP,0 to another slot fires from the release plus the old slot\'s tok15', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  g.take();
+  const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
+  pull(1000, 30);                                                     // an AR round, released at 1030
+  g.write('$BMAP,0,98,,,,,*', 1100); g.write('$BMAP,0,1,,,,,*', 1300);
+  pull(1830, 40);                                                     // released before 1030 + 850: nothing
+  pull(1870, 40);                                                     // still held at 1880: fires then
+  g.write('$BMAP,0,98,,,,,*', 2000); g.write('$BMAP,0,0,,,,,*', 2100);
+  pull(2350, 40);                                                     // the USP-S's 500 from 1910: nothing
+  pull(2395, 55);                                                     // held at 2410: fires then
+  g.write('$BMAP,0,98,,,,,*', 2600); g.write('$BMAP,0,0,,,,,*', 2700);
+  pull(2750, 30);                                                     // back to the same slot: no delay
+  g.write('$BMAP,0,98,,,,,*', 2800); g.button(0, 1, 2850);
+  g.write('$BMAP,0,1,,,,,*', 2900);                                   // a bind on the held trigger waits for 2780 + 850
+  g.advance(3700); g.button(0, 0, 3700);
+  assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1000, '$ALCD,31,100,0,384,0,*'], [1880, '$ALCD,11,100,1,240,0,*'],
+    [2410, '$ALCD,30,100,0,384,0,*'], [2750, '$ALCD,29,100,0,384,0,*'], [3630, '$ALCD,10,100,1,240,0,*']]);
+});
+
+test('emulator review L3: the first pull after a bare $BMAP,0,1 fires, unless another slot fired just before', () => {
+  const fire = (shotFirst) => {
+    const g = new GunModel();
+    for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+    g.take();
+    const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
+    if (shotFirst) pull(1000, 30);                      // an AR round, released at 1030
+    g.write('$BMAP,0,1,,,,,*', 1100);
+    pull(1120, 40); pull(1700, 40); pull(1900, 40);
+    return g.take().filter(o => o.f.includes(',100,1,')).map(o => o.t);
+  };
+  assert.deepEqual(fire(false), [1120, 1700, 1900]);   // no separate first-pull drop
+  assert.deepEqual(fire(true), [1900]);                // the rebind delay: 1030 + 850
 });
