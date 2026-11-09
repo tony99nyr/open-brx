@@ -1154,6 +1154,7 @@ class GunStage:
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
         self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
         self._weap_out: int | None = None   # engine.js `_weapOut`: a `$WEAP` sent since the bound slot last fired (emulator 2026-11-09)
+        self._gun_sel: int | None = None    # engine.js `_gunSel`: the slot the gun last fired while bound
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
         self._disarm_note: dict[int, int] = {}   # ammo.js `disarmNote`: disarmed slots outside the account
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
@@ -1718,6 +1719,7 @@ class GunStage:
         prev_out = self._weap_out
         if "$CLEAR,*" in frames:
             self._weap_out = None
+            self._gun_sel = None
         elif weaps and weaps[-1].split(",")[1].isdigit():
             ws = int(weaps[-1].split(",")[1])
             self._weap_out = ws
@@ -1790,9 +1792,10 @@ class GunStage:
 
     async def _bind_write(self, slot: int, why: str, sent: int | None) -> None:
         """engine.js `_bindWrite` (emulator 2026-11-09): while a `$WEAP` for another slot is out, a bind re-equips its slot
-        (head `$WEAP`, `$AMMO` with the live counts, then the `$BMAP`), only while the trigger is held (98)."""
-        out, bind = self._weap_out, f"$BMAP,0,{slot},,,,,*"
-        if out is None or out == slot:
+        (head `$WEAP`, `$AMMO` with the live counts, then the `$BMAP`) when it binds the slot the gun last fired while bound
+        (`_gun_sel`, or an unknown one), only while the trigger is held (98)."""
+        out, sel, bind = self._weap_out, self._gun_sel, f"$BMAP,0,{slot},,,,,*"
+        if out is None or out == slot or (sel is not None and sel != slot):
             await self.write([bind], why)
             return
         weap = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None) if sent == 98 else None
@@ -5915,7 +5918,8 @@ class GunStage:
             self._last_shot_life = self._life_queued
             self._last_shot_slot = slot
             if slot == self._bmap_sent:
-                self._weap_out = None   # engine.js `_roundsLeft`: the bound slot fired, so the gun's weapon is the bound one
+                self._weap_out = None   # engine.js `_roundsLeft`: the bound slot fired: the gun's weapon and selection are that slot
+                self._gun_sel = slot
             self._gun_other = None    # ammo.js `onAmmo`: a round ends the pending lever undo
             self._fire_first = None   # engine.js `state().fireFirst`: a shot retires the hint
         if self._arm_pending is not None and self._arm_pending["shot_ends"] and slot in (0, 1) and prev is not None and mag < prev:
