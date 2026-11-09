@@ -1152,6 +1152,7 @@ class GunStage:
         self._bind_due: dict | None = None  # ammo.js `bindDue`: {slot, at, life}, with `at` in seconds
         self._bmap_sent: int | None = None  # engine.js `_bmapSent`: unknown until a binding write
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
+        self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
         self._disarm_note: dict[int, int] = {}   # ammo.js `disarmNote`: disarmed slots outside the account
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
@@ -1650,7 +1651,7 @@ class GunStage:
             except Exception as e:   # the link may already be gone
                 self._log(f"disconnect: {e}", "warn")
         self.connected = False
-        self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None
+        self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None; self._equip_sent = None
         self._operator_resync_pending = None
         self._mag_query = None; self.switching = None; self._bind_due = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
         self._log("disconnected", "info")
@@ -1705,19 +1706,27 @@ class GunStage:
         return out
 
     def _note_bind_sent(self, frames: list[str], result: Awaitable[None]) -> Awaitable[None]:
-        """engine.js `_noteBindSent`: remember the last trigger row and forget it if its write fails."""
+        """engine.js `_noteBindSent`: remember the last trigger row (and a pickup's lone `$WEAP` equip, Codex r2) and forget
+        either if its write fails."""
+        weaps = [f for f in frames if f.startswith("$WEAP,")]
+        es = int(weaps[0].split(",")[1]) if len(weaps) == 1 and weaps[0].split(",")[1].isdigit() and int(weaps[0].split(",")[1]) >= 2 else None
+        if es is not None:
+            self._equip_sent = es
         bm = next((f for f in reversed(frames) if re.match(r"^\$BMAP,0,\d+,", f)), None)
-        if bm is None:
+        fn = int(bm.split(",")[2]) if bm is not None else None
+        if fn is not None:
+            self._bmap_sent = fn
+        if es is None and fn is None:
             return result
-        fn = int(bm.split(",")[2])
-        self._bmap_sent = fn
 
         async def settled() -> None:
             try:
                 await result
             except BaseException:
-                if self._bmap_sent == fn:
+                if fn is not None and self._bmap_sent == fn:
                     self._bmap_sent = None
+                if es is not None and self._equip_sent == es:
+                    self._equip_sent = None
                 raise
 
         return settled()
@@ -1735,7 +1744,7 @@ class GunStage:
             if self._life_burst is not None:
                 return
             want, sent = self._bound_slot(), self._bmap_sent
-            if sent == want or (want != 98 and want >= 2 and sent is not None and sent != 98):
+            if sent == want or (want != 98 and want >= 2 and sent is not None and sent != 98 and self._equip_sent == want):
                 return
             if now - self._bind_tick_at < self.BIND_RETRY_S:
                 return
@@ -1794,7 +1803,11 @@ class GunStage:
                 ok = False
             if ok is not False or sent or self._life_queued != life:
                 return
-            if tries > 0 and self.connected:
+            # engine.js (Codex r2): only while nothing has moved since; a gun report since is the truth
+            acct = self._shot_acct.get(slot)
+            if not (self._prev_ammo.get(slot) == mag and self._prev_reserve.get(slot) == res and (not acct or acct.get("echo_gen") == gen)):
+                return
+            if tries > 0 and self.connected and not self.stunned:
                 self._log(f"undo of slot {slot} failed before it left: once more", "info")
                 await send(tries - 1)
                 return
@@ -2034,7 +2047,7 @@ class GunStage:
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
-            self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None
+            self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None; self._equip_sent = None
             self._mag_query = None; self.switching = None; self._bind_due = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
             try:
                 await self._reconnect()
