@@ -6226,8 +6226,8 @@ class GunStage:
         else:
             at = sw["at"] + (sw.get("s") or 0) + GUN_SPAWN_AIR_S
         st, ss = self._last_shot_at, self._last_shot_slot
-        if (st is not None and ss is not None and self._last_shot_life == self._life_queued and self._gun_sel != to
-                and not (ss == to and st >= sw["at"])):
+        if (to is not None and st is not None and ss is not None and self._last_shot_life == self._life_queued
+                and self._gun_sel != to and not (ss == to and st >= sw["at"])):
             r, down = self._gun_live_end, self.held.get(0)
             if down is not None and down <= st:
                 end = min(now, st + SWAP_HELD_MAX_S)   # a live pull still held: it has not ended (a lost release ends it)
