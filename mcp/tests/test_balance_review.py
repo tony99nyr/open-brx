@@ -223,11 +223,12 @@ def test_the_matrix_has_todays_kits_and_columns_and_one_seed_gives_one_answer():
 def test_field_score_is_zero_when_one_team_size_gets_no_kills():
     shipped = R.shipped_world()
     # F601: at 3 the fixed swap let its Deagle finish in every team size. F617: whole-hit estimates moved the seed-7
-    # draws, so at 1 it now scores in every size; 2 keeps one size with no kills
-    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=2)
+    # draws. F668: the faster draw lets its secondary score in every size, so the weak AR carries none; at 1 it keeps
+    # one size with no kills
+    row = _copy("assault_rifle", "weak_ar", "Weak AR", dmg=1)
     world = R.World(WeaponCatalog(shipped.cat._rows + [row]), shipped.perks)
     specs = [R.KitSpec("AR", R.ANCHOR, R.SECONDARY, None, False),
-             R.KitSpec("Weak AR", "weak_ar", R.SECONDARY, None, False)]
+             R.KitSpec("Weak AR", "weak_ar", None, None, False)]
     matrix = R.dominance_matrix(world, specs, 0.001, 1, anchor_world=shipped)
     counts = matrix["field_counts"]["Weak AR"]
     assert any(kills == 0 and anchor > 0 for kills, anchor in counts), counts
@@ -377,10 +378,11 @@ def test_report_scenario_copy_uses_the_current_assumptions():
 
 def test_a_dominant_candidate_fails_no_domination():
     """An Assault Rifle copy at about four and a half times the damage (40) is near the top everywhere (at three times, 27, the 75-damage
-    bolt Sniper still out-peeks it at range: F573). Break it once (every margin -1) and watch it pass."""
+    bolt Sniper still out-peeks it at range: F573). F668's draw rule lets the CR+Sniper+FH combo out-shoot it at 1v1 long,
+    so it is caught by the priority columns, not by every column. Break it once (every margin -1) and watch it pass."""
     code, v = _review_cli({"title": "dominant", "row": _copy("assault_rifle", "test_ar_heavy", "Test AR heavy", dmg=40)})
     t = v["tests"]["no_domination"]
-    assert t["status"] == "fail" and "Test AR heavy" in t["numbers"]["near_top_everywhere"], t
+    assert t["status"] == "fail" and "Test AR heavy" in t["numbers"]["priority_near_top"], t
     assert code == 1 and v["pass"] is False and v["reps_scale"] == DOMINANCE_REPS_SCALE
 
 
@@ -1271,7 +1273,7 @@ def test_ammo_stress_anchor_and_isolation_assumptions():
     anchor = R.make_kit(world, "AR anchor", R.ANCHOR, R.SECONDARY)
     plain = R.make_kit(world, "AR plain", R.ANCHOR, R.SECONDARY)
     enemy = R.make_kit(world, "AR enemy", R.ANCHOR, R.SECONDARY)
-    assert R.SCENARIO_VERSION == 27
+    assert R.SCENARIO_VERSION == 28
     assert R.AMMO_STRESS_RANGE == "mid"
     assert R.AMMO_STRESS_BAND_FIT is False
     assert R.AMMO_STRESS_HEAL is True
@@ -1537,7 +1539,7 @@ def test_pistol_finisher_bar_uses_sampled_r10a_median():
     sampled = B.finish_time_batch(model, "usp", reps, R.SEED).median_ms
     kit = R.make_kit(world, "AR+USP", R.ANCHOR, "usp")
     expected = R.pistol_finish_ms(kit.guns[1], kit.swap_ms)
-    sampled += kit.swap_ms
+    sampled += max(kit.t15[1], kit.t15[0] - (kit.guns[0].fire_ms + R.REACTION_MEAN_MS))   # F668's draw from the dry click
     assert sampled != expected, (sampled, expected)
     bar = (sampled + expected) / 2
     with mock.patch.object(B, "R10_FINISH_BAR_MS", bar):
@@ -1718,11 +1720,12 @@ def test_a_dry_primary_draws_a_lethal_secondary_and_pays_both_swaps():
     assert f.act(0) is not None
     assert f.act(f.next_t) is None and f.active == 1
     out_t = f.next_t
-    assert out_t >= primary.fire_ms + kit.swap_ms
+    # F668: the AR's last live round was at 0, so the Deagle waits for 0 + the AR's tok15, later than ALT + its own
+    assert out_t == kit.t15[0] and out_t >= primary.fire_ms + kit.t15[1]
     assert f.act(out_t) is not None
     back_start = f.next_t
     assert f.act(back_start) is None and f.active == 0
-    assert f.next_t >= back_start + kit.swap_ms
+    assert f.next_t >= back_start + kit.t15[0]
     solo = R.Fighter(R.replace(kit, guns=(primary,), swap_ms=0), 115, 1, 0, random.Random(2), pull_ms=0)
     solo.targets = f.targets
     solo.act(0)
@@ -2103,7 +2106,7 @@ def test_respawn_clears_pending_reload_and_ready_clock():
     p.ammo, p.reserve, p.reload_amount, p.reload_until, p.next_ready = 0, 5, 4, 999, 999
     match._respawn(p, 100)
     assert (p.ammo, p.reserve, p.reload_amount) == (fk.models[0].mag, fk.models[0].reserve, 0)
-    assert p.reload_until == -1 and p.next_ready <= 100
+    assert p.reload_until == -1 and p.next_ready == 100 + R.SPAWN_WAIT_MS + fk.spawn_fire_ms   # F668: the spawn wait
 
 
 def test_heat_flag_reaches_perk_and_rush_cells():
@@ -2135,7 +2138,7 @@ def test_mirror_primary_only_field_anchor_and_shields_perk_label():
     w = R.shipped_world()
     fk = R.field_kit(w, "candidate", R.ANCHOR)
     anchor = R.field_kit(w, "anchor", R.ANCHOR)
-    assert 0.8 <= R.field_ratio(fk, anchor, 2, 12) <= 1.2
+    assert 0.8 <= R.field_ratio(fk, anchor, 2, 24) <= 1.2      # F668: 12 reps fell to 0.76 on seed noise (1000 reps: 1.00)
     matrix = {"kits": ["AR"], "specs": {"AR": {"primary": R.ANCHOR, "secondary": R.SECONDARY,
                "perk": "quick_hands", "shields_perk": "body_armor", "combo": False}},
               "columns": {"AR": {c: 0.5 for c in R.COLUMNS}}, "near_top": {"AR": []}}
@@ -2670,3 +2673,50 @@ def test_the_phone_chain_pace_matches_the_app_tick():
     stress = R.assumptions()["ammo_stress"]
     assert stress["chain_phone_pace_ms"] == R.PHONE_CHAIN_TICK_MS
     assert "phone-paced chain" in stress["chain_reload"] and "unproven" not in stress["chain_reload"]
+
+
+def test_the_swap_draw_waits_for_the_live_fire_edge():
+    # F668 (emulator, app/src/gunmodel.js): the drawn slot's first round waits for the LATER of the ALT plus its own
+    # tok15 and the last live round plus the tok15 of the slot that fired it; a swap clears that edge
+    kit = R.make_kit(R.shipped_world(), "plain", "assault_rifle", "usp")
+    ar, usp = kit.t15
+    assert ar > usp, kit.t15
+    rng = random.Random(1)
+    f = R.Fighter(kit, (45, 70, 0), R.REAL_AIM, R.DIST["mid"], rng)
+    assert f.draw_ms(1, 1000.0) == usp                      # nothing fired: the target's own tok15
+    f.live = (0, 1000.0)
+    assert f.draw_ms(1, 1100.0) == ar - 100.0               # the AR fired 100 ms before the ALT: its edge is later
+    assert f.draw_ms(1, 1000.0 + ar) == usp                 # long after: the target's own tok15 again
+    f.live = (1, 1000.0)
+    assert f.draw_ms(0, 1100.0) == ar                       # back to the AR: its own tok15 is the later edge
+    f.targets = [R.Fighter(kit, (45, 70, 0), 0, R.DIST["mid"], rng)]
+    f.live = (0, 1000.0)
+    f._swap(1, 1100.0)
+    assert f.swap_until == 1000.0 + ar and f.live is None
+
+
+def test_the_spawn_wait_matches_the_gun_model():
+    # F668: after $SPAWN the gun reads nothing for SPAWN_WAIT_MS; a full-auto opener waits one more t14
+    model = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "gunmodel.js").read_text()
+    wait = re.search(r"export const SPAWN_WAIT_MS = (\d+);", model)
+    assert wait, "gunmodel.js no longer exports a literal SPAWN_WAIT_MS"
+    assert float(wait.group(1)) == R.SPAWN_WAIT_MS, (wait.group(1), R.SPAWN_WAIT_MS)
+    world = R.shipped_world()
+    ar = R.field_kit(world, "ar", "assault_rifle", "usp")
+    assert ar.spawn_fire_ms == ar.models[0].fire_ms > 0
+    assert R.field_kit(world, "sniper", "sniper_rifle", "usp").spawn_fire_ms == 0.0
+    assert "spawn wait" in R.assumptions()["spawn_wait"] and R.assumptions()["spawn_wait_ms"] == R.SPAWN_WAIT_MS
+
+
+def test_the_haze_round_counts_in_the_draw_it_starts():
+    # F668 (Codex review): the Haze opener swaps back inside its own round; that round's edge counts in the draw, and
+    # the primary is not recorded as the slot that fired it
+    kit = R.make_kit(R.shipped_world(), "AR + Haze", R.ANCHOR, "smoke_gun", plan="haze")
+    kit = R.replace(kit, t15=(kit.t15[0], kit.t15[0] + 350.0))
+    rng = random.Random(1)
+    f = R.Fighter(kit, (45, 70, 0), 1, R.DIST["close"], rng, pull_ms=0)
+    f.targets = [R.Fighter(kit, (500, 0, 0), 0, R.DIST["close"], random.Random(2))]
+    assert f.active == 1
+    assert f.act(0.0) is not None and f.active == 0
+    assert f.swap_until == kit.t15[1], (f.swap_until, kit.t15)
+    assert f.live is None

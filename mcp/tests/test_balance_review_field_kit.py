@@ -27,7 +27,7 @@ def test_field_kit_draws_a_lethal_secondary_when_primary_runs_dry():
     match, p, q = _match(R.field_kit(world, "backup", "assault_rifle", "glock"))
     p.ammo = p.reserve = 0
     match._shot(p, 0.0, p.engage_id)
-    assert p.active == 1 and p.swap_until == p.kit.swap_ms
+    assert p.active == 1 and p.swap_until == p.kit.t15[1]    # F668: no live round before the ALT: the Glock's own tok15
     assert p.ammo == p.models[1].mag
     before = p.shots
     match._shot(p, p.swap_until, p.engage_id)
@@ -52,7 +52,7 @@ def test_field_kit_draws_a_secondary_that_finishes_before_the_heat_lock_ends():
     heat = dict(p.w.heat)
     p.heat = float(heat["lock_at"] - heat["per_shot"])
     match._shot(p, 0.0, p.engage_id)
-    assert p.active == 1 and p.swap_until == p.kit.swap_ms
+    assert p.active == 1 and p.shots == 0 and p.swap_until == p.kit.t15[1]   # F668: drawn before a live round
 
 
 def test_field_kit_does_not_cancel_a_reload_to_swap_between_two_dry_slots():
@@ -71,7 +71,7 @@ def test_field_kit_does_not_cancel_a_reload_to_swap_between_two_dry_slots():
     p.stash[0] = (0, 12, *p.stash[0][2:])
     swaps = []
     orig = match._swap_to
-    match._swap_to = lambda pp, idx, t_end: (swaps.append(idx), orig(pp, idx, t_end))
+    match._swap_to = lambda pp, idx, alt: (swaps.append(idx), orig(pp, idx, alt))
     match.heap = []
     match.push(0.0, match.SHOT, 0, p.engage_id)
     for _ in range(80):
@@ -121,9 +121,10 @@ def test_field_reload_cancels_on_swap_and_charge_waits_from_draw():
     p.ammo = 0
     match._start_reload(p, 0)
     assert p.reload_amount > 0 and p.ammo == 0
-    match._swap_to(p, 1, 100)
+    match._swap_to(p, 1, 100)                # F668: the third argument is the ALT; the draw ends at swap_until
     assert p.stash[0][0] == 0 and p.stash[0][9] == 0
-    assert p.last_pull == 100 and p.next_ready >= 100 + p.w.fire_ms
+    assert p.swap_until == 100 + p.kit.t15[1]
+    assert p.last_pull == p.swap_until and p.next_ready >= p.swap_until + p.w.fire_ms
     match._swap_to(p, 0, 200)
     assert p.ammo == 0 and p.reload_amount == 0
 
@@ -149,8 +150,8 @@ def test_field_lever_vent_restarts_after_swap():
     assert p.stash[0][5] == float("inf") and p.stash[0][9] == 0
     p.ammo = p.reserve = 0
     match._swap_to(p, 0, 200)
-    match._shot(p, 200, p.engage_id)
-    assert p.heat_lock_until > 200 and p.reload_amount > 0 and p.ammo == 0
+    match._shot(p, p.swap_until, p.engage_id)
+    assert p.heat_lock_until > p.swap_until and p.reload_amount > 0 and p.ammo == 0
 
 
 def test_finish_estimate_steps_a_single_shot_at_the_published_cycle():
@@ -319,3 +320,19 @@ def test_a_spent_secondary_returns_to_a_primary_that_can_still_fire():
     p.stash[0] = (1, 0) + tuple(p.stash[0][2:])
     assert match._finish_ms(p, 0, 0.0, q.health + q.armour + q.shield) == math.inf
     assert match._choose_slot(p, 0.0) == 0
+
+
+def test_a_combo_kill_swaps_back_after_the_killing_rounds_edge():
+    # F668 (Codex review): the kill's tactical reload swaps back inside the base shot, before `_shot` returns; the
+    # draw must still count the killing round. With the finisher's tok15 the larger, the opener waits for it.
+    world = R.shipped_world()
+    kit = replace(R.field_kit(world, "combo", "charge_rifle", "sniper_rifle", combo=True), t15=(850.0, 1200.0))
+    match, p, q = _match(kit)
+    match._swap_to(p, 1, 0.0)
+    p.phase = "finish"
+    q.health, q.armour, q.shield = 1, 0, 0
+    q.attackers = 1                          # as `_seek` sets it, so the death runs the tactical reload
+    t = 5000.0
+    match._shot(p, t, p.engage_id)
+    assert not q.alive and p.active == 0
+    assert p.swap_until == t + 1200.0, p.swap_until
