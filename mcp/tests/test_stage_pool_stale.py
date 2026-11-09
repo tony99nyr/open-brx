@@ -89,11 +89,13 @@ def test_three_unanswered_pulls_are_stale_and_a_pool_report_clears_it():
         st, mgr, clock = _mk()
         await _live(st, clock)
         _adv(st, clock, 30, step=1)
+        st._inject_rx("$ALCD,0,100,1,0,0,*")
         _dry_pull(st, clock); st._inject_rx(VOLTS); _dry_pull(st, clock)
         assert st.pool_stale() is None, "two are not yet a claim"
+        assert st.active_slot == 0, "unanswered pulls never select the other empty slot"
         _dry_pull(st, clock)
         s = st.pool_stale()
-        assert s and s["why"] == "no_fire" and s["s"] >= 35, s
+        assert s and s["why"] == "no_fire" and s["s"] >= 5, s
         assert st.state()["model"]["pool_stale"]["why"] == "no_fire"
         st._inject_rx("$HP,0,0,0,*"); await settle(st)
         assert st.pool_stale() is None

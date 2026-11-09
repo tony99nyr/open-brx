@@ -235,7 +235,7 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
 # ---- 4: death mid-weapon-swap --------------------------------------------------------------------------
 
 
-def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
+def test_death_mid_swap_cancels_the_bind_and_revive_starts_on_slot_zero():
     async def go():
         clock = StageClock()
         st, mgr = _mk(clock)
@@ -254,7 +254,7 @@ def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
         await _settle_all(st)
         assert not st.alive
         assert st.switching is None, "death cancels the swap"
-        assert st.active_slot == 0, "the swap never confirmed, so the active slot never moved"
+        assert st.active_slot == 1 and st._bind_due is None, "death cancels the delayed bind after the immediate slot change"
 
         await st.revive()
         await _settle_all(st)
@@ -262,9 +262,12 @@ def test_death_mid_swap_blocks_the_confirm_and_revive_starts_on_slot_zero():
 
         st._inject_rx("$BUT,0,1,*"); st._inject_rx("$BUT,0,0,*")   # a pull in the new life
         st._inject_rx("$BUT,1,1,*")
-        st.alcd(mag=5, reserve=50, slot=1)           # the gun's own report of the new slot confirms the swap
+        st.alcd(mag=5, reserve=50, slot=1)
         await _settle_all(st)
-        assert st.switching is None and st.active_slot == 1, "a swap can start and complete again after the revive"
+        assert st.switching and st.active_slot == 1
+        clock.advance(st._swap_window_s() + 0.01); st.poll()
+        await _settle_all(st)
+        assert st.switching is None and st.active_slot == 1, "the swap clock runs in the new life"
     asyncio.run(go())
 
 

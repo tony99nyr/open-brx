@@ -263,7 +263,10 @@ test('F416 weapon review: a landed spawn, then ALT and three rounds on slot 1, s
   h.eng.feedFrame('$BUT,1,1,*'); h.eng.feedFrame('$BUT,1,0,*');
   for (const m of [5, 4, 3]) { h.eng.feedFrame('$BUT,0,1,*'); h.eng.feedFrame(`$ALCD,${m},100,1,24,0,*`); h.eng.feedFrame('$BUT,0,0,*'); }
   await h.adv(3000);
-  assert.equal(h.eng.activeSlot, 1);
+  // Tony 2026-11-08: the phone owns the swap. This ALT came before the phone knew the spawn landed, so it opened nothing, and
+  // the gun (ALT on 98) cannot swap by itself: the slot-1 rounds are an alarm and a re-bind, never a reason to move the HUD.
+  assert.equal(h.eng.activeSlot, 0);
+  assert.ok(h.logs.some(l => /^gun fired slot 1, bound 0/.test(l)), 'the alarm line');
   assert.ok(h.logs.some(l => /weapon state matches/.test(l)), `landed: ${JSON.stringify(h.logs.filter(l => l.includes('F416')))}`);
   assert.equal(h.eng.state().spawnLost, false);
 });

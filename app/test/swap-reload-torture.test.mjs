@@ -4,14 +4,14 @@
 //
 // This is a seeded random torture run. It drives the REAL engine (src/engine.js) and a real Hud (on the fake DOM) on a
 // mocked clock, against a two-slot gun MODEL written here. The model follows the bench facts the engine is built on:
-//   - ALT toggles slot 0 and slot 1, and the gun ignores ALT while it is itself reloading (bench 2026-10-02, F650 M1).
-//   - After an ALT it took, the gun ignores ALT for the `$WEAP` tok15 of the slot it moved to, and an ignored press does not
-//     restart that lockout (bench 2026-11-08, SR1 on 0.4.37, ammo.js `altLockMs`). The trigger stays refused for the larger
-//     tok15 of the two slots (bench 2026-09-04). The gun refuses ALT while the trigger is held (bench 2026-11-08, B2).
+//   - The trigger fires the slot `$BMAP,0,<n>` binds (n of 11 or less), and `$BMAP,0,98` holds it (bench 2026-11-08, bm1-3).
+//     With `$BMAP,1,98` ALT does nothing on the gun: the phone owns the swap (Tony 2026-11-08). The gun's own ALT (fn 100) is
+//     modelled for an old head: it toggles slot 0 and 1, never while the gun reloads or the trigger is held.
 //   - The lever reloads the LAST-FIRED slot, not the slot in hand (F542, bench 2026-11-01); after a spawn that is slot 0.
 //     The reload takes the weapon's `$WEAP` reload time (token 18) times 1.2 (F27: hardware runs 1.22x to 1.29x slower).
 //   - `$AMMO` sets a slot's magazine and reserve and the gun echoes it as `$ALCD` 40 ms later (fake.py, fakegun.js).
-//   - A `$WEAP` write resets the slot to its clip and t40 reserve; `$SPAWN` refills every slot and puts the gun on slot 0.
+//   - A `$WEAP` write resets the slot to its clip and t40 reserve; `$SPAWN` refills every slot and keeps the trigger binding
+//     (F668(f), the firmware emulator 2026-11-08), so the phone's spawn burst binds slot 0 itself.
 //   - Melee is button 8 (`$BMAP,8,4`): `$ALCD,1,100,4,0,0` 3 to 18 ms after the press (F665), at most one swing per
 //     melee `$WEAP` token 14.
 //   - `$QUERY` answers `$LCD` with the slot of the LAST SHOT (bench 2026-10-17, ammo.js `switchTick`).
@@ -67,11 +67,12 @@ class GunModel {
     this.slots = {};                 // slot -> {mag, res, clip, carried, t40, fireMs, swapMs, reloadMs}
     this.active = 0; this.latch = 0; this.spawned = false;
     this.hp = 0; this.armor = 0; this.shield = 0; this.max = [45, 70, 0];
-    this.triggerLive = false; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.altLock = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
+    this.triggerLive = false; this.altFn = 100; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.altLock = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
     this.rounds = 0;                 // rounds fired while alive in the match: `eng.shots` must equal this
     this.pending = 0;                // replies still in flight
     this.chain = new Set();          // slots whose lever loads one shell per reload time (the Shotgun)
     this.failed = 0;                 // phone writes that failed before they left (Codex pass r3: `failAmmo`)
+    this.writes = [];                // every frame the phone wrote, in order
     this.crossEcho = true;           // bench 2026-11-08: an `$AMMO` write to a loadout slot is answered as the slot fired last (`wrote`)
   }
   slot(s) { return this.slots[s] || (this.slots[s] = { mag: 0, res: 0, clip: 0, carried: 0, t40: 0, fireMs: 0, swapMs: 0, reloadMs: 0 }); }
@@ -79,6 +80,7 @@ class GunModel {
   alcd(s) { const x = this.slot(s); return `$ALCD,${x.mag},100,${s},${x.res},0,*`; }
   /** One write from the engine. */
   wrote(frames) {
+    this.writes.push(...frames);
     const answers = [];
     for (const f of frames) {
       const t = f.replace(/,?\*$/, '').split(','), cmd = t[0], n = i => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
@@ -94,6 +96,9 @@ class GunModel {
         const s = n(1); if (s == null) continue;
         const x = this.slot(s);
         if (n(2) === 0 && n(3) === 0 && this.reload) this.reload = null;   // a disarm cuts the gun's reload (engine.js `_stun`)
+        // ASSUMED, not benched (Tony 2026-11-08 undo): an `$AMMO` write to the slot a CHAIN is loading ends the chain. The bench
+        // (lv1-8) undid a magazine reload, which is one refill; a shotgun chain under an undo is still to bench.
+        if (this.reload && this.reload.slot === s && this.chain.has(s) && n(2) != null && n(2) < x.mag) this.reload = null;
         if (n(2) != null) x.mag = n(2);
         if (n(3) != null) x.res = n(3);
         // bench 2026-11-08 (SR5b, SR5c): a write to the other loadout slot than the one fired last is answered with the slot
@@ -103,10 +108,13 @@ class GunModel {
         // be to come for that slot). The gun answers as it processes the write, so anything the gun did to that slot after
         // the burst (a shell, a round) is newer than the answer: then the current counts go out.
         answers.push({ e, line: this.alcd(e) });
-      } else if (cmd === '$BMAP' && t[1] === '0') this.triggerLive = t[2] !== '98';
+      } else if (cmd === '$BMAP' && t[1] === '0') {   // bench 2026-11-08 (bm1-3): fn 11 or less binds the trigger to that slot
+        const fn = n(2);
+        if (fn === 98) this.triggerLive = false; else if (fn != null && fn <= 11) { this.triggerLive = true; this.active = fn; }
+      } else if (cmd === '$BMAP' && t[1] === '1') this.altFn = n(2);
       else if (cmd === '$SPAWN') {
         this.spawned = true; [this.hp, this.armor] = this.max; this.shield = 0;
-        this.active = 0; this.latch = 0; this.reload = null; this.swapUntil = 0;
+        this.latch = 0; this.reload = null; this.swapUntil = 0;   // F668(f), emulator 2026-11-08: $SPAWN keeps the trigger binding
         for (const s of Object.keys(this.slots)) { const x = this.slots[s]; if (+s < 2) { x.mag = x.clip; x.res = x.carried; } }
         const x = this.slot(0);
         this.later(0, () => this.feed(`$LCD,${this.hp},${this.armor},0,0,${x.mag},${x.res},*`));
@@ -147,7 +155,7 @@ class GunModel {
   alt() {
     this.feed('$BUT,1,1,*');
     let took = false;
-    if (this.live && !this.reload && !this.triggerDown && this.now() - this.altTookAt >= this.altLock) {   // B2: not while the trigger is held
+    if (this.altFn === 100 && this.live && !this.reload && !this.triggerDown && this.now() - this.altTookAt >= this.altLock) {   // the gun's own ALT
       took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now(); this.altLock = this.slot(this.active).swapMs;
       this.swapUntil = this.now() + Math.max(this.slot(0).swapMs, this.slot(1).swapMs);   // bench 2026-09-04: the larger slot wins
     }
@@ -203,8 +211,13 @@ class GunModel {
   }
 }
 
-function harness(sec, seed, { failAmmo = 0 } = {}) {
+function harness(sec, seed, { failAmmo = 0, easyOne = false } = {}) {
   const bundle = bundleFor(sec);
+  if (easyOne) {   // a one-weapon kit with Easy Reload: compile.py keeps ALT on fn 97 (RELOAD), bench SR6
+    const one = list => list.filter(f => !f.startsWith('$WEAP,1,') && !f.startsWith('$AMMO,1,')).map(f => (f.startsWith('$BMAP,1,') ? '$BMAP,1,97,,,,,*' : f));
+    bundle.head = one(bundle.head); bundle.spawn = one(bundle.spawn); bundle.revive = one(bundle.revive);
+    for (const k of ['spawn', 'revive', 'revive_station']) bundle.respawn_profile[k] = one(bundle.respawn_profile[k]);
+  }
   let clock = 1_000_000, lastTick = clock;
   const timers = [], hudTimers = [], logs = [];
   const at = (ms, fn) => timers.push({ at: clock + ms, fn, seq: timers.length ? timers[timers.length - 1].seq + 1 : 0 });
@@ -216,7 +229,9 @@ function harness(sec, seed, { failAmmo = 0 } = {}) {
   // of a seed stay the same.
   const failRng = mulberry32(seed * 7919 + 1);
   const writer = (fr, why) => {
-    if (failAmmo > 0 && /^(F650|F226)/.test(String(why)) && fr.some(f => f.startsWith('$AMMO,')) && failRng() < failAmmo) {
+    // Codex 2026-11-08: the phone swap's own writes fail too (the hold, the bind, the undo, the repair), as a chunk error would
+    const bind = /^(ALT:|undo |trigger binding repair|re-bind)/.test(String(why));
+    if (failAmmo > 0 && (bind || (/^(F650|F226)/.test(String(why)) && fr.some(f => f.startsWith('$AMMO,')))) && failRng() < failAmmo) {
       gun.failed++;
       return new Promise(r => at(30, () => r(false)));
     }
@@ -229,7 +244,7 @@ function harness(sec, seed, { failAmmo = 0 } = {}) {
   const config = { config_id: bundle.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 3600,
     respawn: { type: 'manual' }, scoring: { frag_limit: 0, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
   const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', voice: 'male',
-    loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: sec }] } };
+    loadout: easyOne ? { weapons: [{ weapon_id: 'assault_rifle' }], overrides: { easy_reload: true } } : { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: sec }] } };
   const runDue = () => {
     for (;;) {
       let i = -1;
@@ -281,7 +296,7 @@ function harness(sec, seed, { failAmmo = 0 } = {}) {
     quiet() {
       const am = eng.am;
       return gun.pending === 0 && !gun.reload && !am.reloading && !am.switching && clock >= gun.swapUntil
-        && !am.acctEchoing(0) && !am.acctEchoing(1) && !eng.rc.active && !eng.stunned && (!eng.alive || gun.triggerLive);
+        && !am.acctEchoing(0) && !am.acctEchoing(1) && !eng.rc.active && !eng.stunned && (!eng.alive || (gun.triggerLive && gun.active === eng.activeSlot));   // Codex 2026-11-08: a lost bind heals (`_bindTick`)
     },
     async settle(min = 0, cap = 9000) {
       const t0 = clock;
@@ -290,6 +305,8 @@ function harness(sec, seed, { failAmmo = 0 } = {}) {
       await advance(200);   // a margin past the last reply
     },
     operatorRespawn() { eng.onMcMessage({ kind: 'control', body: { cmd: 'respawn', match_id: 'm1' } }); },
+    /** ALT: the gun does nothing with it (`$BMAP,1,98`); true when the phone opened its swap (Tony 2026-11-08). */
+    swap() { gun.alt(); return !!(eng.am.switching && !eng.am.switching.pu); },
   };
   return h;
 }
@@ -301,7 +318,7 @@ const pad2 = n => String(n).padStart(2, '0');
 async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
   const h = harness(sec, seed, { failAmmo }), { eng, gun, rng } = h;
   await h.start();
-  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, altSpam: 0, altSpamIgnored: 0, idle: 0, swings: 0, rounds: 0, chainHold: 0, phoneChain: 0 };
+  const done = [], fails = [], counts = { fire: 0, alt: 0, lever: 0, melee: 0, die: 0, relink: 0, leverAlt: 0, altSpam: 0, idle: 0, swings: 0, rounds: 0, undo: 0, phoneChain: 0 };
   let logMark = 0, lastSwingAtEng = null;
   const pick = () => {
     const r = rng() * 100;
@@ -328,12 +345,11 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
       const k = 2 + Math.floor(rng() * 5);
       for (let j = 0; j < k; j++) { gun.trigger(); await h.advance(gun.slot(gun.active).fireMs + 10); }
       note = `${k} pulls`; counts.fire += k; await h.settle(120);
-    } else if (kind === 'alt') { tookAlt = gun.alt(); note = tookAlt ? `to ${gun.active}` : 'ignored'; counts.alt++; await h.settle(900); }
+    } else if (kind === 'alt') { gun.alt(); note = eng.am.switching ? `phone to ${eng.am.switching.to}` : 'no swap'; counts.alt++; await h.settle(900); }
     else if (kind === 'altSpam') {   // bench 2026-11-08: 2 to 10 presses, 100 to 1200 ms apart, no settle between them
       const k = 2 + Math.floor(rng() * 9);
-      let took = 0;
-      for (let j = 0; j < k; j++) { if (j) await h.advance(100 + Math.floor(rng() * 1100)); if (gun.alt()) took++; }
-      note = `${k} presses, the gun took ${took}`; counts.altSpam++; counts.altSpamIgnored += k - took;
+      for (let j = 0; j < k; j++) { if (j) await h.advance(100 + Math.floor(rng() * 1100)); gun.alt(); }
+      note = `${k} presses`; counts.altSpam++;
       await h.settle(900);
     } else if (kind === 'lever' || kind === 'leverAlt') {
       const held = gun.active, x = gun.slot(held);
@@ -341,7 +357,7 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
       const s = gun.lever(); note = `gun reloads ${s == null ? 'nothing' : 'slot ' + s}, held ${held}`;
       if (kind === 'leverAlt') {
         await h.advance(150 + Math.floor(rng() * 500));
-        tookAlt = gun.alt(); note += tookAlt ? `, ALT to ${gun.active}` : ', ALT ignored by the gun';
+        gun.alt(); tookAlt = !!eng.am.switching; note += tookAlt ? `, ALT to ${eng.am.switching.to}` : ', no swap';
         if (tookAlt) leverExpect = null;   // the player swapped away: the reload of the old weapon may be cut short
         counts.leverAlt++;
       } else counts.lever++;
@@ -361,18 +377,13 @@ async function torture(sec, seed, n, { combos = false, failAmmo = 0 } = {}) {
 
     // ---- the invariants ----
     const fresh = h.logs.slice(logMark); logMark = h.logs.length;
-    const desync = fresh.filter(l => l.m.startsWith('gun was on slot'));
+    // Tony 2026-11-08: the desync line is now `gun fired slot N, bound M` (ammo.js `onAmmo`); the old one must never come back
+    const desync = fresh.filter(l => l.m.startsWith('gun was on slot') || l.m.startsWith('gun fired slot'));
     if (desync.length) fail(i, `desync: ${desync.map(l => l.m).join('; ')}`);
-    const altIgnored = fresh.filter(l => /ALT ignored/.test(l.m));
     if (fresh.some(l => /itself a shell every/.test(l.m))) counts.phoneChain++;   // Tony 2026-11-07: the phone loads a chain in hand
-    if (altIgnored.length && tookAlt === false && gun.chain.size && fresh.some(l => /the gun reloads slot 1, the slot fired last/.test(l.m))) counts.chainHold++;
-    if (kind === 'altSpam') {
-      const spam = /the gun took (\d+)/.exec(note), presses = +/^(\d+)/.exec(note)[1];
-      const windowIgnored = altIgnored.filter(l => /inside the swap lockout/.test(l.m)).length;
-      if (windowIgnored > presses - +spam[1]) fail(i, `the engine ignored ${windowIgnored} presses inside the swap lockout, the gun ${presses - +spam[1]}`);
-    }
-    if (altIgnored.length && tookAlt !== false && kind !== 'altSpam') fail(i, `the gun took ALT but the engine logged: ${altIgnored.map(l => l.m).join('; ')}`);
-    if (tookAlt === false && !altIgnored.length && eng.am.altEvidencePending != null) fail(i, 'the gun ignored ALT but the engine opened a swap');
+    if (fresh.some(l => /which the trigger is not bound to: put back/.test(l.m))) counts.undo++;   // bench lv1-8: a free refill undone
+    if (fresh.some(l => /ALT ignored/.test(l.m))) fail(i, 'the phone ignored an ALT: it owns the swap');
+    if (gun.altFn !== 98) fail(i, `the gun's ALT is bound to ${gun.altFn}, not 98`);
     const timeouts = fresh.filter(l => /reload did NOT take \(timeout\)/.test(l.m));
     if (timeouts.length || (eng.am.reloadOutcome !== before.outcome && eng.am.reloadOutcome && eng.am.reloadOutcome.why === 'timeout')) fail(i, `a reload ended by timeout: ${JSON.stringify(eng.am.reloadOutcome)}`);
     if (!(eng.alive && gun.live && eng.phase === 'live')) continue;
@@ -439,105 +450,27 @@ test('swap/reload torture: a new MATCH clears the melee cooldown (ammo.js forget
   assert.deepEqual(h.eng.state().melee, { at: null, ms: 3000, leftMs: 0 }, 'no swing carried into the new match');
 });
 
-// ENGINE BUG (found by this file, 2026-11-06). The lever on a FULL weapon in hand: the phone refuses the pull (ammo.js
-// `reloadPulled`: `ammo >= cap`), but the gun still spends it on the LAST-FIRED slot (F542) and ignores ALT while that
-// reload runs. The phone takes the ALT, assumes the swap after the window, and the HUD names the weapon the gun left.
-// The next round from the held weapon logs `gun was on slot N`. ammo.js `altPressed` asks `gunReloadsOther` only of an
-// open soft reload; with no takeover open (`this.reloading` null) nothing checks `leverAt` against the last-fired slot.
-// Review 2026-11-06: this run found that a lever on a full weapon in hand, which the phone refuses and the gun spends on the
-// slot that fired last, left ALT open on the phone while the gun ignored it (ammo.js `noteGunOther`, `altPressed`).
-
-test('swap/reload: lever on a full weapon in hand, ALT while the gun reloads the last-fired slot (minimal repro)', async () => {
+// Bench 2026-11-08 (lv1-8, brx1): the lever cannot be unbound, and it refills the LAST-FIRED slot whatever the trigger is bound
+// to. A lever on a full weapon in hand gave the AR (fired last) a free refill. The phone puts the AR's counts back once that
+// refill lands, decided at the lever, so a swap to the AR before it lands still gets no free rounds.
+test('swap/reload: lever on a full weapon in hand refills nothing, even with ALT back to the slot fired last (bench lv1-8)', async () => {
   const h = harness('suppressor', 1), { eng, gun } = h;
   await h.start();
   for (let i = 0; i < 3; i++) { gun.trigger(); await h.settle(200); }   // slot 0 fires: 29 left, the gun's latch is slot 0
-  assert.ok(gun.alt(), 'setup: the gun takes ALT');
+  assert.ok(h.swap(), 'setup: ALT to the secondary');
   await h.settle(900);
   assert.equal(eng.activeSlot, 1, 'setup: on the secondary, which is full');
   assert.equal(gun.lever(), 0, 'setup: the gun spends the lever on slot 0, the slot that fired last');
   await h.advance(300);
-  assert.equal(gun.alt(), false, 'setup: the gun ignores ALT while it reloads');
-  await h.settle(900);
-  assert.equal(gun.active, 1, 'setup: the gun is still on the secondary');
-  assert.equal(eng.activeSlot, 1, 'the HUD stays on the secondary, the weapon the gun holds');
+  assert.ok(h.swap(), 'ALT back to the AR while the gun reloads it');
+  await h.settle(4000);
+  assert.equal(gun.active, 0, 'the trigger is bound to the AR');
+  assert.equal(gun.slot(0).mag, 29, 'the AR keeps its 29: the gun\'s free refill was put back');
+  assert.equal(eng.activeSlot, 0);
+  assert.equal(h.text('#mag') ?? (h.render(), h.text('#mag')), '29');
+  assert.ok(h.logs.some(l => /refilled slot 0, which the trigger is not bound to: put back 29/.test(l.m)), 'the undo is logged');
   gun.trigger(); await h.settle(200);
-  assert.deepEqual(h.logs.filter(l => l.m.startsWith('gun was on slot')).map(l => l.m), [], 'no desync on the next round');
-});
-
-// Bench 2026-11-08 (SR1, 0.4.37, Tactix-E20D, assault rifle + USP-S, swap_ms 850): every ALT run of the SR1b and SR1c
-// captures, at the exact press times, then the trigger. `end` is the slot the gun's next `$ALCD` named. The phone used to
-// toggle on every press: ten presses about 2 a second showed slot 1 while the gun fired slot 0, and a double press restarted
-// the swap clock, so the shot 832 ms after the ignored press read as "ALT not taken by the gun". The gun ignores ALT for the
-// tok15 of the slot it moved to (AR 850, USP-S 500; ammo.js `altLockMs`). The `jitter` run is the one press the rule
-// misses: the gun took a press 457 ms after a swap to the USP-S, 43 ms inside the lockout, while 466 and 488 were ignored.
-const SR1 = [
-  { start: 0, presses: [0], shot: 1845, end: 1 },
-  { start: 1, presses: [0, 400, 1010, 1522, 2090, 2702, 3256, 3724, 4338, 4848], shot: 7363, end: 0 },
-  { start: 0, presses: [0, 129, 323, 507, 719, 908, 1119, 1319, 1509], shot: 4050, end: 1 },
-  { start: 1, presses: [0], shot: 1515, end: 0 }, { start: 0, presses: [0], shot: 1145, end: 1 },
-  { start: 1, presses: [0], shot: 1302, end: 0 }, { start: 0, presses: [0], shot: 1454, end: 1 },
-  { start: 1, presses: [0], shot: 1483, end: 0 }, { start: 0, presses: [0], shot: 1351, end: 1 },
-  { start: 1, presses: [0, 140], shot: 972, end: 0 }, { start: 0, presses: [0, 147, 177], shot: 971, end: 1 },
-  { start: 1, presses: [0, 173], shot: 1189, end: 0 }, { start: 0, presses: [0, 163], shot: 926, end: 1 },
-  { start: 1, presses: [0, 193], shot: 1062, end: 0 },
-  // SR1c: double presses at varied spacing, each followed by a shot
-  { start: 1, presses: [0, 652], shot: 1506, end: 0 },
-  { start: 0, presses: [0, 729], shot: 1507, end: 0 },
-  { start: 0, presses: [0, 183], shot: 969, end: 1 },
-  { start: 1, presses: [0, 422], shot: 1368, end: 0 },
-  { start: 0, presses: [0, 420], shot: 1194, end: 1 },
-  { start: 1, presses: [0, 599], shot: 1475, end: 0 },
-  { start: 0, presses: [0, 733], shot: 1553, end: 0 },
-  { start: 0, presses: [0, 685], shot: 1509, end: 0 },
-  { start: 0, presses: [0, 217], shot: 978, end: 1 },
-  { start: 1, presses: [0, 671], shot: 1480, end: 0 },
-  { start: 0, presses: [0, 575], shot: 1539, end: 0 },
-  { start: 0, presses: [0, 713], shot: 1420, end: 0 },
-  { start: 0, presses: [0, 457], shot: 1250, end: 0, jitter: true },
-  { start: 0, presses: [0, 242], shot: 1026, end: 1 },
-  { start: 1, presses: [0, 497], shot: 1307, end: 0 },
-  { start: 0, presses: [0, 537], shot: 1109, end: 0 },
-  { start: 0, presses: [0, 657], shot: 1255, end: 0 },
-  { start: 0, presses: [0, 357], shot: 1386, end: 1 },
-  { start: 1, presses: [0], shot: 1499, end: 0 },
-  { start: 0, presses: [0, 258], shot: 2338, end: 1 },
-  { start: 1, presses: [0, 278], shot: 1490, end: 0 },
-  { start: 0, presses: [0, 284], shot: 1074, end: 1 },
-  { start: 1, presses: [0, 320], shot: 1377, end: 0 },
-  { start: 0, presses: [0, 488], shot: 1264, end: 1 },
-  { start: 1, presses: [0, 591], shot: 1394, end: 0 },
-  { start: 0, presses: [0, 733], shot: 1272, end: 0 },
-  { start: 0, presses: [0, 503], shot: 1476, end: 0 },
-  { start: 0, presses: [0, 466], shot: 1259, end: 1 },
-  { start: 1, presses: [0, 435], shot: 1464, end: 0 },
-  { start: 0, presses: [0, 215], shot: 1149, end: 1 },
-  { start: 1, presses: [0, 590], shot: 1203, end: 0 },
-  { start: 0, presses: [0, 377], shot: 1002, end: 1 },
-  { start: 1, presses: [0, 827], shot: 1670, end: 0 },
-  { start: 0, presses: [0, 811], shot: 1800, end: 0 },
-];
-test('swap/reload: the SR1 bench presses replayed, the gun ignores ALT inside the swap lockout (bench 2026-11-08)', async () => {
-  const h = harness('usp', 1), { eng, gun } = h;
-  await h.start();
-  let ignored = 0;
-  for (const [k, run] of SR1.entries()) {
-    if (run.jitter) continue;
-    if (gun.active !== run.start) { gun.alt(); await h.advance(1500); gun.trigger(); await h.settle(300); }
-    if (gun.slot(gun.active).mag <= 2) { gun.lever(); await h.settle(4000); }   // the slot in hand fired last: the lever reloads it
-    assert.equal(eng.activeSlot, run.start, `setup: run ${k} starts on slot ${run.start}`);
-    let t = 0;
-    for (const p of run.presses) { await h.advance(p - t); t = p; if (!gun.alt()) ignored++; }
-    await h.advance(run.shot - t);
-    while (h.now() < gun.swapUntil) await h.advance(20);   // the AR fires once its draw ends (the trigger was held)
-    assert.equal(gun.active, run.end, `setup: run ${k}, the model gun ends where the bench gun did`);
-    assert.ok(gun.trigger(), `setup: run ${k}, the gun fires`);
-    await h.settle(300);
-    assert.equal(eng.activeSlot, run.end, `run ${k} (${run.presses.join('/')} ms): the HUD shows the slot the gun fired`);
-  }
-  const bad = h.logs.filter(l => /^gun was on slot|ALT not taken by the gun/.test(l.m)).map(l => l.m);
-  assert.deepEqual(bad, [], 'no desync and no "ALT not taken" verdict');
-  assert.ok(ignored >= 30, `setup: the runs hold presses the gun ignored: ${ignored}`);
-  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, ignored, 'the phone ignores exactly the presses the gun ignored');
+  assert.deepEqual(h.logs.filter(l => /^gun (was on|fired) slot/.test(l.m)).map(l => l.m), [], 'no desync on the next round');
 });
 
 // Bench 2026-11-08 (SR5, Tactix-E20D on 0.4.37; sr4b 14:38, sr5b 14:40, sr5c 14:42): the AR (slot 0) fired last, ALT went
@@ -551,15 +484,15 @@ for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { nam
   test(`swap/reload: SR5 (${v.name}), the gun's answer to our slot 1 write leaves the trigger on slot 1 (bench 2026-11-08)`, async () => {
     const h = harness('usp', 3), { eng, gun } = h;
     await h.start();
-    assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+    assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
     for (let i = 0; i < v.usp; i++) { assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.advance(gun.slot(1).fireMs + 10); }
     await h.settle(300);
-    assert.ok(gun.alt(), 'setup: ALT back to the AR'); await h.settle(1500);
+    assert.ok(h.swap(), 'setup: ALT back to the AR'); await h.settle(1500);
     for (let i = 0; i < 3; i++) { assert.ok(gun.trigger(), 'setup: the AR fires, so it fired last'); await h.advance(gun.slot(0).fireMs + 10); }
     await h.settle(300);
     if (v.arFull) { assert.equal(gun.lever(), 0, 'setup: the lever refills the AR'); await h.settle(3000); }
     assert.equal(gun.slot(0).mag === gun.slot(0).clip, v.arFull, 'setup: the AR is full or part-used as the variant says');
-    assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+    assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
     assert.equal(eng.activeSlot, 1, 'setup: the HUD is on the USP-S');
     const mark = h.logs.length;
     gun.lever(); await h.settle(4000);
@@ -571,7 +504,6 @@ for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { nam
     assert.ok(h.logs.slice(mark).some(l => /slot 0 reported at the same count/.test(l.m)), 'with no write open it is booked and moves nothing');
     assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
     assert.equal(eng.activeSlot, 1, 'the trigger stays on the USP-S');
-    assert.equal(eng.am.altPtr, 1, 'the ALT pointer stays on the USP-S');
     h.render();
     assert.equal(h.text('.wn .slot'), 'SECONDARY', 'the HUD names the weapon in hand');
     const before = gun.slot(1).mag, shots = eng.shots;
@@ -587,7 +519,7 @@ for (const v of [{ name: 'sr4b/sr5b, the AR full', usp: 5, arFull: true }, { nam
 test('swap/reload: SR5, a late answer to our write never overwrites a newer count on the written slot (Codex review)', async () => {
   const h = harness('usp', 5), { eng, gun } = h;
   await h.start();
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
   const a0 = [eng.am.prevAmmo[0], eng.am.prevReserve[0]];
   eng.am.acctWrote(1, 12, 200); eng.am.acctWrote(1, 12, 200);   // two writes in the air
   eng.feedFrame('$ALCD,11,100,1,200,0,*');                       // a round on the written slot
@@ -601,95 +533,6 @@ test('swap/reload: SR5, a late answer to our write never overwrites a newer coun
 });
 
 // Codex review 2026-11-08 (SR5 layer 2): an unchanged report is no reload progress, so it never stretches the ALT hold.
-test('swap/reload: SR5, a same-count report from the other slot leaves the ALT hold alone (Codex review)', async () => {
-  const h = harness('usp', 6), { eng, gun } = h;
-  await h.start();
-  assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
-  const until = h.now() + 100;
-  eng.am.gunOther = { slot: 0, until, life: eng._lifeSeq, energy: false };
-  eng.feedFrame(`$ALCD,${eng.am.prevAmmo[0]},100,0,${eng.am.prevReserve[0]},0,*`);
-  assert.ok(h.logs.some(l => /slot 0 reported at the same count/.test(l.m)), 'setup: the report took the same-count path');
-  assert.equal(eng.am.gunOther && eng.am.gunOther.until, until, 'the hold is not stretched');
-});
-
-// Bench 2026-11-08 (B2): ALT pressed while the trigger is held (`$BUT,0,1` 15:07:39.616, ALT 39.669, release 39.674) is
-// refused. The gun stayed on the empty USP-S while the HUD showed the AR.
-test('swap/reload: ALT with the trigger held is refused by the gun, and by the phone (bench 2026-11-08 B2)', async () => {
-  const h = harness('usp', 7), { eng, gun } = h;
-  await h.start();
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
-  for (let i = 0; i < 12; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
-  await h.settle(300);
-  assert.equal(gun.slot(1).mag, 0, 'setup: the USP-S is empty');
-  gun.trigger(); await h.advance(53);
-  assert.equal(gun.alt(), false, 'setup: the gun refuses ALT with the trigger held');
-  await h.settle(1500);
-  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
-  assert.ok(h.logs.some(l => /ALT ignored by the gun: trigger held/.test(l.m)), 'the phone logs the refusal');
-  assert.equal(eng.activeSlot, 1, 'the HUD stays on the USP-S');
-  assert.equal(eng.am.altPtr, 1);
-  // CONTROL: the same press after the release swaps
-  await h.advance(100);
-  assert.ok(gun.alt(), 'setup: ALT after the release is taken'); await h.settle(1500);
-  assert.equal(eng.activeSlot, 0, 'CONTROL: the press after the release swaps');
-});
-
-// Bench 2026-11-08 (SR5r): the USP-S fired dry, then an ALT the gun refused for a reason not modelled. The phone assumed the
-// AR, and every pull after it clicked empty with no `$ALCD`, so no round ever came to correct it. Two unanswered loaded
-// pulls while the other slot is empty move the HUD there (ammo.js `unansweredPulls`).
-test('swap/reload: two unanswered pulls on a loaded HUD slot, with the other slot empty, put the HUD on the gun\'s slot (SR5r)', async () => {
-  const h = harness('usp', 8), { eng, gun } = h;
-  await h.start();
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
-  for (let i = 0; i < 12; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
-  await h.settle(300);
-  assert.equal(gun.slot(1).mag, 0, 'setup: the USP-S is empty');
-  eng.feedFrame('$BUT,1,1,*'); eng.feedFrame('$BUT,1,0,*');   // an ALT the gun refused: the model does not swap
-  await h.settle(1500);
-  assert.equal(eng.activeSlot, 0, 'setup: the phone assumed the swap to the AR');
-  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
-  const mark = h.logs.length;
-  assert.equal(gun.trigger(), false, 'setup: a dry pull'); await h.advance(1700);
-  assert.equal(eng.activeSlot, 0, 'one unanswered pull is not proof');
-  assert.equal(gun.trigger(), false, 'setup: a second dry pull'); await h.advance(1700);
-  const fresh = h.logs.slice(mark).map(l => l.m);
-  assert.ok(fresh.some(m => m.startsWith('gun was on slot 1 (dry pulls)')), `the correction is logged as a desync: ${fresh.join(' | ')}`);
-  assert.equal(eng.activeSlot, 1, 'the HUD follows the gun');
-  assert.equal(eng.am.altPtr, 1, 'and so does the ALT pointer');
-  h.render();
-  assert.equal(h.text('.wn .slot'), 'SECONDARY');
-  assert.equal(h.text('#mag'), '00', 'the empty magazine is on screen');
-  // Codex review: the slot is an inference, so a pull on it stays owed, and a gun that really is broken still reaches no_fire
-  assert.equal(gun.trigger(), false, 'setup: a third dry pull'); await h.advance(1700);
-  assert.ok(h.logs.some(l => /gun not firing: 3 trigger pulls/.test(l.m)), 'the stale-pool check is still reachable, and the cure reads the gun');
-});
-
-// Codex review 2026-11-08: dry-pull evidence belongs to the slot the pulls were judged on. One unanswered pull on slot 0,
-// then the HUD moves to slot 1 with no word from the gun: one more unanswered pull there is not two in a row.
-test('swap/reload: SR5r, an unanswered pull on another slot does not add to the run (Codex review)', async () => {
-  const h = harness('usp', 10), { eng } = h;
-  await h.start();
-  eng.am.prevAmmo[0] = 0; eng.am.prevAmmo[1] = 5; delete eng.am.acct[0]; delete eng.am.acct[1];   // slot 0 empty, by the gun's last word
-  eng.activeSlot = 0;
-  assert.equal(eng.am.unansweredPulls(0), false, 'one pull on slot 0');
-  eng.activeSlot = 1;   // a swap the gun never reported
-  assert.equal(eng.am.unansweredPulls(1), false, 'one pull on slot 1 is the start of a new run');
-  assert.equal(eng.activeSlot, 1);
-  assert.equal(eng.am.unansweredPulls(1), true, 'CONTROL: a second pull on slot 1 is the run');
-  assert.equal(eng.activeSlot, 0);
-});
-
-// CONTROL for SR5r: the other slot has rounds, so unanswered pulls prove nothing about the slot (a stale pool, F208).
-test('swap/reload: unanswered pulls with rounds in both slots move nothing (SR5r control)', async () => {
-  const h = harness('usp', 9), { eng, gun } = h;
-  await h.start();
-  gun.triggerLive = false;   // the gun stops answering the trigger
-  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(1700); }
-  assert.equal(eng.activeSlot, 0);
-  assert.ok(!h.logs.some(l => /dry pulls/.test(l.m)), 'no correction');
-});
-
 // Bench 2026-11-08 (SR11, Tactix-E20D on v4.32, the USP-S fired last at 9/224): a relink's reconcile, replayed. Each
 // `$AMMO` write is answered as the slot fired last at its count at that moment. The disarm pair answered `slot 1 at 9`
 // (slot 1 before its own disarm) then `slot 1 at 0`. The re-arm pair answered `slot 1 at 0` (the slot-0 write, slot 1
@@ -700,7 +543,7 @@ test('swap/reload: SR11 reconcile replayed, the answers to a two-slot re-arm boo
   await h.start();
   for (let i = 0; i < 5; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
   await h.settle(300);
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
   for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
   await h.settle(300);
   assert.deepEqual([gun.slot(0).mag, gun.slot(1).mag], [27, 9], 'setup: the AR at 27, the USP-S at 9, fired last');
@@ -734,14 +577,14 @@ test('swap/reload: SR11 reconcile replayed, the answers to a two-slot re-arm boo
 test('swap/reload: a stunned ALT just before the restore keeps its swap and books no rounds (Codex review, F465)', async () => {
   const h = harness('usp', 14), { eng, gun } = h;
   await h.start();
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
   for (let i = 0; i < 2; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
   await h.settle(300);
   assert.equal(gun.latch, 1, 'setup: the USP-S fired last');
   const shots = eng.shots;
   eng._stun(3000); await h.advance(2600);
   assert.ok(eng.stunned, 'setup: still stunned');
-  assert.ok(gun.alt(), 'setup: the stunned gun swaps to the AR');
+  assert.ok(h.swap(), 'setup: the stunned gun swaps to the AR');
   await h.settle(4000);
   assert.ok(!eng.stunned, 'setup: the stun is over');
   assert.equal(eng.shots, shots, 'no phantom rounds');
@@ -757,7 +600,7 @@ test('swap/reload: a stunned ALT just before the restore keeps its swap and book
 test('swap/reload: after a restore, a real last round counts and a later write keeps the disarm guard (Codex review)', async () => {
   const h = harness('usp', 15), { eng, gun } = h;
   await h.start();
-  assert.ok(gun.alt(), 'setup: ALT to the USP-S'); await h.settle(1500);
+  assert.ok(h.swap(), 'setup: ALT to the USP-S'); await h.settle(1500);
   gun.wrote = () => {};   // the gun answers nothing here: the frames are the test's
   // (1) restored to 1 round, then fired before the restore's echo: `0/200` is a real round
   eng.am.noteDisarm([1]); eng.am.acctWrote(1, 1, 200);
@@ -778,78 +621,23 @@ test('swap/reload: after a restore, a real last round counts and a later write k
   assert.equal(eng.shots, shots, 'the disarm zero after two writes books nothing');
 });
 
-// Codex review 2026-11-08: a reload begun before the stun is cut by the disarm, so it holds no ALT inside the stun.
-test('swap/reload: a reload begun before a stun does not hold ALT inside the stun (Codex review, F465)', async () => {
-  const h = harness('usp', 11), { eng, gun } = h;
-  await h.start();
-  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
-  await h.settle(300);
-  assert.equal(gun.lever(), 0, 'setup: the gun reloads the AR');
-  await h.advance(100);
-  assert.ok(eng.am.reloading, 'setup: the phone shows the reload');
-  eng._stun(3000); await h.advance(200);
-  assert.ok(eng.stunned, 'setup: stunned');
-  assert.ok(gun.alt(), 'setup: the disarmed gun swaps');
-  assert.ok(!h.logs.some(l => /ALT ignored by the gun mid-reload/.test(l.m)), 'the phone does not hold ALT for a reload the stun cut');
-  await h.settle(4000);
-  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
-  assert.equal(eng.activeSlot, 1, 'the HUD follows');
-});
-
-// Codex review 2026-11-08: and after a short stun, before the cut reload's own hold would have ended.
-test('swap/reload: a reload cut by a short stun holds no ALT after the stun either (Codex review, F465)', async () => {
-  const h = harness('usp', 13), { eng, gun } = h;
-  await h.start();
-  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(0).fireMs + 10); }
-  await h.settle(300);
-  assert.equal(gun.lever(), 0, 'setup: the gun reloads the AR');
-  await h.advance(100);
-  eng._stun(300); await h.advance(500);
-  assert.ok(!eng.stunned, 'setup: the stun is over');
-  assert.ok(eng.am.reloading, 'setup: the phone still shows the cut reload');
-  assert.ok(gun.alt(), 'setup: the gun, its reload cut, swaps');
-  assert.ok(!h.logs.some(l => /ALT ignored by the gun mid-reload/.test(l.m)), 'the phone takes the press');
-  await h.settle(4000);
-  assert.equal(eng.activeSlot, 1, 'the HUD follows');
-});
-
 // F465 (bench 2026-10-16, Tony: by design): a stunned gun still swaps on ALT, under the same lockout. The phone ignored the
 // press, so after the stun the HUD named the old weapon and the next round logged `gun was on slot`.
-test('swap/reload: ALT while stunned swaps, as the gun does, under the same lockout (F465)', async () => {
+test('swap/reload: ALT while stunned is a swap, and the trigger stays blocked until the stun ends (F465)', async () => {
   const h = harness('usp', 4), { eng, gun } = h;
   await h.start();
   assert.ok(gun.trigger(), 'setup: the AR fires'); await h.settle(300);
   eng._stun(3000); await h.advance(200);
   assert.ok(eng.stunned, 'setup: stunned');
-  assert.ok(gun.alt(), 'setup: the stunned gun takes ALT');
-  await h.advance(200);
-  assert.equal(gun.alt(), false, 'setup: the gun ignores a press inside the lockout');
+  assert.ok(h.swap(), 'ALT while stunned swaps');
+  await h.advance(1000);
+  assert.equal(gun.active, 1, 'the trigger is bound to the USP-S inside the stun');
+  assert.equal(gun.trigger(), false, 'the trigger is still blocked: the stun disarmed the gun');
   await h.settle(4000);
   assert.ok(!eng.stunned, 'setup: the stun is over');
-  assert.equal(gun.active, 1, 'setup: the gun holds the USP-S');
-  assert.equal(eng.activeSlot, 1, 'the HUD follows the swap made while stunned');
-  assert.equal(eng.am.altPtr, 1, 'the ALT pointer follows it too');
-  assert.ok(gun.trigger(), 'setup: the USP-S fires'); await h.settle(300);
-  assert.deepEqual(h.logs.filter(l => /^gun was on slot/.test(l.m)).map(l => l.m), [], 'no desync');
-  assert.equal(h.logs.filter(l => /inside the swap lockout/.test(l.m)).length, 1, 'the second press is ignored, as the gun does');
-});
-
-// Codex review 2026-11-08: a round from the old slot proves the gun refused the press ("ALT not taken"). A refused press
-// starts no lockout on the gun, so the next press is a swap.
-test('swap/reload: a press the gun refused starts no ALT lockout (Codex review 2026-11-08)', async () => {
-  const h = harness('usp', 2), { eng, gun } = h;
-  await h.start();
-  gun.trigger(); await h.settle(300);
-  eng.feedFrame('$BUT,1,1,*'); eng.feedFrame('$BUT,1,0,*');   // the gun misses this press (no swap on the gun)
-  assert.ok(eng.am.switching, 'setup: the phone opened a swap');
-  await h.advance(300);   // past ALT_LATE_ROUND_MS (250), inside the USP-S lockout (500)
-  assert.ok(gun.trigger(), 'setup: the gun fires the old slot');
-  await h.advance(100);   // after the trigger's release (B2), still inside the lockout
-  assert.ok(h.logs.some(l => /ALT not taken by the gun/.test(l.m)), 'setup: the round proved the press was refused');
-  assert.ok(gun.alt(), 'setup: the gun takes the next press');
-  assert.ok(!h.logs.some(l => /inside the swap lockout/.test(l.m)), 'the phone takes it too');
-  await h.settle(900);
-  assert.equal(eng.activeSlot, 1);
+  assert.equal(eng.activeSlot, 1, 'the HUD is on the USP-S');
+  assert.ok(gun.trigger(), 'the USP-S fires after the stun'); await h.settle(300);
+  assert.deepEqual(h.logs.filter(l => /^gun (was on|fired) slot/.test(l.m)).map(l => l.m), [], 'no desync');
 });
 
 test('swap/reload torture: ALT pressed while the lever reload runs, both loadouts', async () => {
@@ -862,18 +650,19 @@ test('swap/reload torture: ALT pressed while the lever reload runs, both loadout
 });
 
 // Codex pass 2026-11-07 r3 (brx1, P0 swap/reload): the cases the third review found, in the run the bench SR steps lean on.
-// The Shotgun's chain on the slot fired last while the phone reloads the rifle (the ALT hold must last the whole chain), and
-// the phone's own reload writes failing before they leave (the books must stay with the gun).
+// The Shotgun's chain on the slot fired last while the phone reloads the rifle (Tony 2026-11-08: the phone undoes the gun's
+// free refill of the slot the trigger is not bound to), and the phone's own reload writes failing before they leave (the
+// books must stay with the gun).
 test('swap/reload torture: assault rifle + shotgun (a chain on the slot fired last), zero desync', async () => {
-  let chainHold = 0, phoneChain = 0, altSpam = 0, altSpamIgnored = 0;
+  let undo = 0, phoneChain = 0, altSpam = 0;
   for (const seed of [301, 302, 303, 304, 305, 306]) {
     const { counts, fails } = await torture('shotgun', seed, ACTIONS, { combos: true });
     assert.deepEqual(fails, [], fails.join('\n\n'));
     assert.ok(counts.lever > 20 && counts.alt > 20, `seed ${seed} exercised the lever and ALT: ${JSON.stringify(counts)}`);
-    chainHold += counts.chainHold; phoneChain += counts.phoneChain; altSpam += counts.altSpam; altSpamIgnored += counts.altSpamIgnored;
+    undo += counts.undo; phoneChain += counts.phoneChain; altSpam += counts.altSpam;
   }
-  assert.ok(altSpam >= 5 && altSpamIgnored >= 5, `the run pressed ALT in quick runs the gun partly ignored: ${altSpam} runs, ${altSpamIgnored} ignored`);
-  assert.ok(chainHold >= 3, `the run held ALT through a chain on the slot fired last: ${chainHold}`);
+  assert.ok(altSpam >= 5, `the run pressed ALT in quick runs: ${altSpam}`);
+  assert.ok(undo >= 3, `the run undid the gun's free refill of the slot the trigger is not bound to: ${undo}`);
   assert.ok(phoneChain >= 10, `the run had the phone load the chain in hand shell by shell: ${phoneChain}`);
 });
 test('swap/reload torture: a third of the phone\'s reload writes fail before they leave, zero desync', async () => {
@@ -886,4 +675,179 @@ test('swap/reload torture: a third of the phone\'s reload writes fail before the
   }
   assert.ok(phoneChain >= 5, `the phone loaded a chain shell by shell with failing writes: ${phoneChain}`);
   assert.ok(failed >= 5, `the run failed enough writes to mean something: ${failed}`);
+});
+
+// Tony 2026-11-08: the PHONE owns the weapon swap (bench 2026-11-08, bm1-3 and swp1, on 0.4.39). ALT is unbound on the
+// gun (`$BMAP,1,98`); on ALT the phone holds the trigger (`$BMAP,0,98`), then binds it to the target (`$BMAP,0,<slot>`) after
+// that slot's tok15. Each of these was a desync under the gun's own ALT (SR17, SR18, B2).
+const bindRows = h => h.gun.writes.filter(f => f.startsWith('$BMAP,0,') || f.startsWith('$BMAP,1,'));
+test('phone swap: the head goes out with ALT unbound (98), and ALT binds the trigger only after the target\'s tok15', async () => {
+  const h = harness('usp', 11), { eng, gun } = h;
+  await h.start();
+  assert.equal(gun.altFn, 98, 'the gun\'s ALT is unbound');
+  gun.writes.length = 0;
+  assert.ok(h.swap(), 'ALT swaps on the phone');
+  assert.equal(eng.activeSlot, 1, 'the trigger slot moves at once');
+  assert.ok(eng.am.switchingMs() != null, 'the HUD shows SWITCHING');
+  await h.advance(20);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,98,,,,,*'], 'the trigger is held at once');
+  assert.ok(gun.writes.some(f => f === '$PLAY,,4,6,D06,,,,*'), 'the USP-S rack plays');
+  await h.advance(460);
+  assert.equal(gun.triggerLive, false, 'still held inside the USP-S tok15 (500 ms)');
+  await h.advance(100);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,98,,,,,*', '$BMAP,0,1,,,,,*'], 'bound to the USP-S after 500 ms');
+  assert.equal(gun.active, 1);
+});
+test('phone swap: ALT with the trigger held, during a burst and after a dry pull is a swap (B2, SR17)', async () => {
+  const h = harness('usp', 12), { eng, gun } = h;
+  await h.start();
+  gun.trigger(); await h.advance(20);   // the trigger is down (released at 60 ms)
+  assert.ok(h.swap(), 'ALT with the trigger held');
+  await h.settle(1500);
+  assert.equal(gun.active, 1); assert.equal(eng.activeSlot, 1);
+  for (let i = 0; i < 12; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }   // empty the USP-S
+  await h.settle(300);
+  assert.equal(gun.slot(1).mag, 0, 'setup: the USP-S is empty');
+  gun.trigger(); await h.advance(53);   // a dry pull
+  assert.ok(h.swap(), 'ALT 53 ms after a dry pull');
+  await h.settle(1500);
+  assert.equal(gun.active, 0); assert.equal(eng.activeSlot, 0);
+  assert.ok(gun.trigger(), 'the AR fires'); await h.advance(30);
+  assert.ok(h.swap(), 'ALT during the AR\'s fire');
+  await h.settle(1500);
+  assert.equal(gun.active, 1); assert.equal(eng.activeSlot, 1);
+  assert.deepEqual(h.logs.filter(l => /^gun (was on|fired) slot|ALT ignored/.test(l.m)).map(l => l.m), [], 'no desync, no refused ALT');
+});
+test('phone swap: a double ALT retargets; only the last target is bound', async () => {
+  const h = harness('usp', 13), { eng, gun } = h;
+  await h.start();
+  gun.writes.length = 0;
+  assert.ok(h.swap()); await h.advance(200);
+  assert.ok(h.swap(), 'a second ALT inside the window');
+  assert.equal(eng.activeSlot, 0, 'back to the AR');
+  await h.settle(1500);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,98,,,,,*', '$BMAP,0,0,,,,,*'], 'one hold, then the AR bound; the USP-S never bound');
+  assert.equal(gun.active, 0);
+});
+test('phone swap: a cure inside a swap keeps the trigger held, and RESYNC on slot 1 binds slot 1 (SR18)', async () => {
+  const h = harness('usp', 14), { eng, gun } = h;
+  await h.start();
+  assert.ok(h.swap()); await h.advance(100);
+  gun.writes.length = 0;
+  eng._cureReassert(null, null);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,98,,,,,*'], 'the cure\'s `$BMAP,0,0` holds the trigger while the swap runs');
+  await h.settle(1500);
+  assert.equal(gun.active, 1, 'the swap still binds the USP-S');
+  gun.writes.length = 0;
+  eng._cureReassert(null, null);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,1,,,,,*'], 'the cure binds the slot in hand, never a literal 0');
+  gun.writes.length = 0;
+  eng.onMcMessage({ kind: 'control', body: { cmd: 'resync', match_id: 'm1' } });
+  await h.settle(1500);
+  assert.ok(bindRows(h).length > 0 && bindRows(h).every(f => f === '$BMAP,0,1,,,,,*'), `RESYNC binds slot 1: ${JSON.stringify(bindRows(h))}`);
+  assert.equal(gun.active, 1);
+  assert.ok(gun.trigger(), 'the USP-S fires'); await h.settle(300);
+  assert.equal(eng.activeSlot, 1);
+});
+test('phone swap: a swap then a lever with no shot between gives no free refill of the old slot (bench lv1-8)', async () => {
+  const h = harness('usp', 15), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 4; i++) { gun.trigger(); await h.settle(150); }   // the AR fires 4: 28 left, the gun's latch is the AR
+  for (let i = 0; i < 3; i++) { assert.ok(h.swap()); await h.settle(1500); }   // ends on the USP-S
+  assert.equal(gun.slot(1).mag, 12, 'setup: the USP-S is full');
+  assert.equal(gun.lever(), 0, 'setup: the gun spends the lever on the AR, the slot fired last');
+  await h.settle(5000);
+  assert.equal(gun.slot(0).mag, 28, 'the AR keeps 28: no free refill');
+  assert.equal(eng.am.prevAmmo[0], 28);
+  assert.equal(gun.active, 1); assert.equal(eng.activeSlot, 1);
+});
+test('phone swap: a lever on the USP-S after a swap reloads the USP-S, with the trigger held through the reload (bench lv1-8)', async () => {
+  const h = harness('usp', 16), { eng, gun } = h;
+  await h.start();
+  gun.trigger(); await h.settle(150);   // the AR fired last
+  assert.ok(h.swap()); await h.settle(1500);
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
+  await h.settle(300);
+  assert.equal(gun.slot(1).mag, 9, 'setup: the USP-S at 9');
+  // the USP-S fired last now, so the gun's own lever reloads it: the phone books it and writes nothing
+  gun.writes.length = 0;
+  assert.equal(gun.lever(), 1);
+  await h.settle(5000);
+  assert.equal(gun.slot(1).mag, 12, 'the USP-S reloaded');
+  assert.ok(!gun.writes.some(f => f.startsWith('$AMMO,')), 'no write: the gun\'s reload of the bound slot is right');
+  // swap to the AR (fired 1) and back: the lever goes to the USP-S, fired last, while the AR is bound
+  assert.ok(h.swap()); await h.settle(1500);
+  gun.writes.length = 0;
+  assert.equal(gun.lever(), null, 'setup: the USP-S is full, so the gun reloads nothing');
+  await h.advance(100);
+  assert.deepEqual(bindRows(h), ['$BMAP,0,98,,,,,*'], 'the phone holds the trigger for its reload of the AR');
+  await h.settle(5000);
+  assert.equal(gun.slot(0).mag, 32, 'the phone reloaded the AR');
+  assert.equal(gun.active, 0); assert.ok(gun.triggerLive, 'the trigger is bound again after the reload');
+});
+test('phone swap: a one-weapon Easy Reload kit keeps ALT on reload (fn 97), never 98 (accessibility)', async () => {
+  const h = harness('usp', 17, { easyOne: true }), { eng, gun } = h;
+  await h.start();
+  assert.equal(eng._slotCount(), 1, 'setup: one weapon');
+  assert.equal(gun.altFn, 97, 'the gun\'s ALT stays on reload');
+  assert.ok(!gun.writes.includes('$BMAP,1,98,,,,,*'), 'ALT was never unbound');
+  for (let i = 0; i < 5; i++) { gun.trigger(); await h.settle(150); }
+  assert.equal(h.swap(), false, 'ALT opens no swap');
+  assert.ok(eng.am.reloading, 'ALT is the reload');
+  assert.equal(gun.active, 0);
+  // the rewrite itself: a swap kit's ALT row is unbound, Easy Reload's 97 passes as written
+  assert.deepEqual(eng._bindRows(['$BMAP,1,97,,,,,*', '$BMAP,1,100,0,1,99,99,*']), ['$BMAP,1,97,,,,,*', '$BMAP,1,98,,,,,*']);
+});
+
+// Codex review 2026-11-08 of the phone swap: the trigger must never be left held (98) or bound to a slot the phone does not
+// show. `_bindTick` repairs the binding from what was really sent (`_noteBindSent`).
+test('phone swap (Codex H1): a stun that cancels the phone\'s reload does not leave the trigger held', async () => {
+  const h = harness('usp', 21), { eng, gun } = h;
+  await h.start();
+  gun.trigger(); await h.settle(150);                                    // the AR fired last
+  assert.ok(h.swap()); await h.settle(1500);
+  for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
+  await h.settle(300);
+  assert.ok(h.swap()); await h.settle(1500);                             // back on the AR, the USP-S fired last
+  for (let i = 0; i < 2; i++) { gun.trigger(); await h.settle(150); }
+  assert.ok(h.swap()); await h.settle(1500);                             // on the USP-S at 9; the AR fired last
+  gun.lever(); await h.advance(100);
+  assert.ok(eng.am.reloading && eng.am.reloading.soft, 'setup: the phone reloads the USP-S');
+  assert.equal(gun.triggerLive, false, 'setup: the trigger is held for the reload');
+  eng._stun(4000); await h.settle(6000);
+  assert.ok(!eng.stunned && !eng.am.reloading, 'setup: the stun is over and the reload was cut');
+  assert.equal(gun.triggerLive, true, 'the trigger is bound again');
+  assert.equal(gun.active, 1);
+  assert.ok(gun.trigger(), 'the USP-S fires');
+});
+test('phone swap (Codex H5): a respawn after a death on the secondary binds slot 0, never the old life\'s slot', async () => {
+  const h = harness('usp', 22), { eng, gun } = h;
+  await h.start();
+  assert.ok(h.swap()); await h.settle(1500);
+  assert.equal(gun.active, 1, 'setup: on the USP-S');
+  gun.die(); await h.advance(2000);
+  gun.writes.length = 0;
+  h.operatorRespawn(); await h.settle(2500, 12000);
+  assert.ok(eng.alive && gun.live, 'setup: respawned');
+  assert.deepEqual(gun.writes.filter(f => /^\$BMAP,0,\d+,/.test(f) && f !== '$BMAP,0,98,,,,,*'), ['$BMAP,0,0,,,,,*'], 'only slot 0 is ever bound');
+  assert.equal(gun.active, 0); assert.equal(eng.activeSlot, 0);
+});
+
+// brx1 2026-11-08 (F668(f), the firmware emulator): `$SPAWN` moves neither the trigger binding nor the gun's ALT pointer. On
+// main a respawn after a life on the USP-S wrote `$BMAP,0,0` with the gun's pointer on slot 1 (the SR18 desync). Under the
+// phone swap the burst binds the phone's slot 0, and the next ALT and pull go where the phone says.
+test('phone swap (F668 f): a respawn after a life on the USP-S binds the AR, and the next ALT and pull give the phone\'s slot', async () => {
+  const h = harness('usp', 23), { eng, gun } = h;
+  await h.start();
+  assert.ok(h.swap()); await h.settle(1500);
+  assert.equal(gun.active, 1, 'setup: the USP-S in hand');
+  gun.die(); await h.advance(2000);
+  h.operatorRespawn(); await h.settle(2500, 12000);
+  assert.equal(gun.active, 0, 'the spawn burst bound the AR (the gun\'s $SPAWN does not)');
+  assert.equal(eng.activeSlot, 0);
+  assert.ok(gun.trigger(), 'the AR fires'); await h.settle(200);
+  assert.ok(h.swap(), 'ALT'); await h.settle(1500);
+  assert.equal(gun.active, 1); assert.equal(eng.activeSlot, 1);
+  assert.ok(gun.trigger(), 'the USP-S fires'); await h.settle(200);
+  assert.deepEqual(h.logs.filter(l => /^gun (was on|fired) slot/.test(l.m)).map(l => l.m), [], 'no desync');
 });

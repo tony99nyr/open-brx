@@ -155,24 +155,21 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   written count is the gun's own news (a refill or a regen tick): it closes the window and books as an ordinary
   report. If an echo is lost, at most one round can be missed.
 - **`$LCD`.** The magazine books on the frame's own slot token. Inside the slot's echo window, the HUD shows the account. Its slot token is the slot of the last shot, not the selected slot, so an `$LCD` never confirms or denies ALT (bench 2026-10-17).
-- **ALT.** An ALT press with two weapons opens SWITCHING towards the next slot in the cycle (`altPtr`). A real
-  round on the target confirms at once. If no round arrives by `FrameBundle.swap_ms`, the node assumes the swap. The
-  gun sends no frame when a swap completes, and a `$QUERY` reads the last shot's slot, so the node never asks. The next
-  shot's `$ALCD` slot is the truth: if it differs, the trigger and ALT pointer follow it, and the ACTIVE card reads GUN WAS
-  ON (field 2026-10-17). A round from the old slot 250 ms or more into the window closes SWITCHING with no swap; an
-  earlier one can be in flight from before the press, so it closes nothing. The gun ignores ALT during a reload, so the
-  node does too. After `$SPAWN` the node also ignores ALT until the first trigger pull after the life's burst reached
-  the gun: the gun ignores a phone equip there (F436 bench), and ALT there is unbenched (field report bench #2).
-  A stunned gun still swaps on ALT (F465, by design), so the node opens the swap and assumes it at the window's end.
-  After a swap it took, the gun ignores ALT for the `$WEAP` tok15 of the slot the swap
-  moved to, and an ignored press does not restart that lockout (bench 2026-11-08): the node ignores those presses too
-  (`altLockMs`). The gun answers an `$AMMO` write to one loadout slot with an `$ALCD` naming the slot fired last at its own
-  counts (bench 2026-11-08): the node books it as that write's echo, and a report of the other slot at an unchanged count
-  never moves the trigger. The gun also refuses ALT pressed while the trigger is held (bench 2026-11-08), so the node
-  ignores it. As a safety net for any refusal not modelled, two loaded pulls in a row with no `$ALCD`
-  (`TRIGGER_NO_FIRE_MS` each), while the other loadout slot is empty and no swap or reload is open, move the trigger and
-  the ALT pointer to the other slot with GUN WAS ON (`unansweredPulls`).
-- **Reload and heat.** The reload takeover follows the slot whose `$ALCD` reports a magazine rise. A lever pulled inside an ALT swap reloads the old slot, and the swap still completes, so that rise books on the old slot and leaves the trigger on the new one (bench 2026-10-17). A magazine drop
+- **ALT: the phone owns the swap** (Tony 2026-11-08). The gun's ALT is unbound (`$BMAP,1,98`, written in place of the
+  head's `$BMAP,1,100,…`; Easy Reload's `$BMAP,1,97` stays), so the gun never swaps by itself. On ALT with two weapons
+  the node moves the trigger slot at once, shows SWITCHING, holds the trigger (`$BMAP,0,98`) for the target slot's
+  `$WEAP` tok15, then binds it (`$BMAP,0,<slot>`, `switchTick`). A second ALT inside the window retargets, and only the
+  last target is bound. The node plays the target weapon's ReloadPart3 sound (t33) as the swap sound. ALT on a stunned
+  gun is a swap (F465); the stun's disarm keeps the trigger dead until its restore. From a held heavy, ALT goes to the
+  loadout slot other than the one last on the trigger (`lastLoadout`). Every `$BMAP,0,<n>` the node writes (the head,
+  the spawn and revive bursts, `trigger_live`, the cure, the operator resync, the relink) binds the slot the node holds,
+  or 98 while a swap, a weapon delay or a phone reload holds the trigger (`_bindRows`). The relink always re-binds. A
+  round from a slot the node did not bind logs `gun fired slot N, bound M` and re-binds; it never moves the HUD.
+- **Reload and heat.** The lever cannot be unbound, and the gun's lever refills the slot that fired LAST, whatever the
+  trigger is bound to (bench 2026-11-08, lv1-8). When that slot is not the slot in hand, the node reloads the slot in hand
+  itself (F650), holding the trigger for the reload time, and puts the gun's refill of the other slot back with
+  `$AMMO,<slot>,<count at the lever>,<reserve at the lever>,1` once it lands (decided at the lever). When the slot fired
+  last is the slot in hand, the gun's own reload is right: the node books it and writes nothing. A magazine drop
   on any slot ends the takeover because the gun fired (§4.5).
   `$ALCD` token 5 is heat: OVERHEAT shows at 99 or more, and a dry pull on a locked weapon is not `no_fire`.
 

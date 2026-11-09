@@ -72,7 +72,7 @@
         "$SIR,4,0,,28,0,0,1,,*",
         "$SIR,15,0,,28,0,0,1,,*",
         "$BMAP,0,98,,,,,*",
-        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,1,98,,,,,*",
         "$BMAP,2,97,,,,,*",
         "$BMAP,3,98,,,,,*",
         "$BMAP,4,98,,,,,*",
@@ -115,26 +115,36 @@
     },
     {
       "at": "back on slot 0, slot 1 fired last",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
-      "writes": []
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*",
+        "$BMAP,0,1,,,,,*",
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D02,,,,*",
+        "$BMAP,0,0,,,,,*"
+      ]
     },
     {
       "at": "the reload is due with a pull in flight",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":true,"mag":32,"reload":{"ms":1400,"total":1400,"at":5650,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":29,"reserve":192,"deaths":0,"switching":false,"reloading":true,"mag":32,"reload":{"ms":1400,"total":1400,"at":5650,"overrun":false,"gained":0,"outcome":null},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
       "writes": [
+        "$BMAP,0,98,,,,,*",
         "$PLAY,,4,6,D04,,,,*"
       ]
     },
     {
       "at": "one round, the reload ended by the shot",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":29,"to":29,"cap":32,"gained":0,"slot":0,"ms":1400,"why":"fired","at":7050}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":28,"reserve":192,"deaths":0,"switching":false,"reloading":false,"mag":32,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":29,"to":29,"cap":32,"gained":0,"slot":0,"ms":1400,"why":"fired","at":7050}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":900},"moment":{"kind":"switched","data":{"slot":0,"assumed":true,"pu":false}}},
       "facts": [],
       "reports": [],
-      "writes": []
+      "writes": [
+        "$BMAP,0,0,,,,,*"
+      ]
     }
   ]
 }

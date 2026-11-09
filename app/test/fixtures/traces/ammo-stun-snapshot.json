@@ -92,7 +92,7 @@
         "$SIR,4,0,,28,0,0,1,,*",
         "$SIR,15,0,,28,0,0,1,,*",
         "$BMAP,0,98,,,,,*",
-        "$BMAP,1,100,0,1,99,99,*",
+        "$BMAP,1,98,,,,,*",
         "$BMAP,2,97,,,,,*",
         "$BMAP,3,98,,,,,*",
         "$BMAP,4,98,,,,,*",
@@ -156,21 +156,24 @@
     },
     {
       "at": "press_in_swap",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":32,"reserve":162,"deaths":0,"switching":true,"reloading":false,"mag":32,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":true,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":0,"window":850,"from":0,"to":1,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "facts": [],
+      "reports": [],
+      "writes": [
+        "$BMAP,0,98,,,,,*",
+        "$PLAY,,4,6,D27,,,,*"
+      ]
+    },
+    {
+      "at": "press_inside_interval",
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": [
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
-        "$PLAY,X17,4,6,,,,,*"
-      ]
-    },
-    {
-      "at": "press_inside_interval",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
-      "facts": [],
-      "reports": [],
-      "writes": [
+        "$PLAY,X17,4,6,,,,,*",
+        "$BMAP,0,1,,,,,*",
         "$AMMO,0,32,162,1,*",
         "$AMMO,1,6,24,1,*",
         "$AMMO,0,0,0,1,*",
@@ -180,7 +183,7 @@
     },
     {
       "at": "stale_press_dropped",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":5,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":2,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": [
@@ -193,12 +196,13 @@
     },
     {
       "at": "press_in_lockout",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":162,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":4,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": [
         "$AMMO,0,32,162,1,*",
         "$AMMO,1,4,24,1,*",
+        "$BMAP,0,1,,,,,*",
         "$AMMO,0,0,0,1,*",
         "$AMMO,1,0,0,1,*",
         "$PLAY,X17,4,6,,,,,*"
@@ -206,21 +210,21 @@
     },
     {
       "at": "other_slot_heat_in_stun",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":162,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":4,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "lcd_drop_in_stun",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":162,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":4,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stunned","data":{"ms":2000}}},
       "facts": [],
       "reports": [],
       "writes": []
     },
     {
       "at": "restored",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":0,"ammo":31,"reserve":162,"deaths":0,"switching":false,"reloading":false,"mag":32,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":null},"heat":{"heat":99,"overheating":true,"shown":true,"ever":true},"shotCooldown":null,"moment":{"kind":"stun_over","data":null}},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":4,"reserve":24,"deaths":0,"switching":false,"reloading":false,"mag":6,"shots":3,"reload":{"ms":null,"total":null,"at":null,"overrun":false,"gained":null,"outcome":{"ok":false,"filled":false,"from":30,"to":30,"cap":32,"gained":0,"slot":0,"ms":2250,"why":"timeout","at":5260}},"swap":{"ms":null,"window":850,"from":null,"to":null,"last":1000},"heat":{"heat":0,"overheating":false,"shown":false,"ever":false},"shotCooldown":null,"moment":{"kind":"stun_over","data":null}},
       "facts": [],
       "reports": [],
       "writes": [

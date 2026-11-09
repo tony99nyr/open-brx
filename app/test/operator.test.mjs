@@ -267,8 +267,8 @@ test('pl3: a revive clears the last life\'s swap and heat -- no stale OVERHEAT a
   const h = live();
   h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }] } };
   h.frame('$ALCD,31,100,0,384,108,*');   // locked out
-  h.frame('$BUT,1,1,*');                 // an ALT swap in flight
   assert.equal(h.eng.state().overheating, true, 'setup: OVERHEAT');
+  h.frame('$BUT,1,1,*');                 // an ALT swap in flight (Tony 2026-11-08: the phone moves to slot 1 at once)
   assert.ok(h.eng.switching, 'setup: a swap in flight');
   h.op('respawn');
   const st = h.eng.state();
@@ -276,6 +276,7 @@ test('pl3: a revive clears the last life\'s swap and heat -- no stale OVERHEAT a
   assert.equal(st.overheatShown, false);
   assert.equal(st.heat, null); assert.equal(st.heatEverSeen, false);
   assert.equal(h.eng.switching, null, 'no swap carried into the new life');
+  assert.equal(h.eng.activeSlot, 0, 'a revive puts the trigger back on slot 0');
   h.adv(6000);
   assert.equal(h.eng.activeSlot, 0, 'the stale swap never lands a phantom slot change');
 });

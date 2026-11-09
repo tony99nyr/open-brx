@@ -44,6 +44,12 @@ export const C = {
 };
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
+/** Tony 2026-11-08: the phone owns the weapon swap. The trigger held for a swap or a weapon delay (fn 98: no fire), and ALT
+ *  unbound (fn 98 is silent; 99 plays a "disabled" chirp on every press, bench 2026-11-08). */
+export const TRIGGER_HOLD = '$BMAP,0,98,,,,,*';
+export const ALT_UNBOUND = '$BMAP,1,98,,,,,*';
+/** Codex 2026-11-08: the least time between two trigger-binding repairs (`_bindTick`), so a link that keeps failing is not flooded. */
+export const BIND_RETRY_MS = 500;
 /** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
  *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. Whitespace and a
  *  `*` that ends the word are stripped, so `$DPLAY*` or `$ DPLAY,*` cannot slip past the deny list. */
@@ -631,7 +637,13 @@ function ammoHost(e) {
     weaponRow: id => e.weaponRow(id), perkRow: id => e.perkRow(id), perkEffects: id => e.perkEffects(id),
     get tutorial() { return e.tutorial; }, get resync() { return e.resync; }, get stunned() { return e.stunned; }, get rc() { return e.rc; },
     get lifeSeq() { return e._lifeSeq; }, get pulledLife() { return e._pulledLife; },   // F542/F445: a pull since the spawn arms ALT
-    get triggerDownAt() { return e.held[BTN_TRIGGER] != null ? e.held[BTN_TRIGGER] : null; },   // bench 2026-11-08 (B2): ALT with the trigger held
+    // Tony 2026-11-08: the phone owns the weapon swap (ammo.js `altPressed`). Each is one `$BMAP,0` write of its own, never
+    // batched with a `$PLAY` (the play queue can hold a write back); `_bindRows` writes the slot the phone holds.
+    holdTrigger: why => e._write([TRIGGER_HOLD], `${why}: hold the trigger`),
+    bindTrigger: (slot, why) => e._bindTrigger(slot, why),
+    rebind: why => e._bindTrigger(e.activeSlot, `re-bind: ${why}`),
+    swapSound: slot => e._swapSound(slot),
+    undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
     slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
@@ -656,7 +668,7 @@ export function zeroAmmoRows(frames) {
 // PERSIST_AS: a field the blob keeps under another key (or keys). A field saved under its own name needs no entry.
 export const PERSIST_AS = Object.freeze({
   activeSlot: Object.freeze(['slot']),                // F418
-  am: Object.freeze(['ammo', 'altPtr', 'heat']),      // ammo.js: `am.saved()` (F164), the gun's ALT position, `am.heatSaved()` (T2 r1)
+  am: Object.freeze(['ammo', 'lastLoadout', 'heat']),      // ammo.js: `am.saved()` (F164), the loadout slot last bound, `am.heatSaved()` (T2 r1)
   pu: Object.freeze(['pu']),                          // powerup-player.js: `pu.snapshot()` (A56)
   hold: Object.freeze(['possession']),                // T2: the tally as last reported to MC (`_possessionSaved`)
   observed: Object.freeze(['possession']),
@@ -717,7 +729,7 @@ export const PERSIST_TRANSIENT = Object.freeze({
   ammo: 'the HUD magazine number (the blob\'s `ammo` is `am.saved()`); the gun re-reports it', reserve: 'the gun re-reports it', mag: 'the gun re-reports it',
   poolSrc: '\'model\' until the gun speaks, the honest value after a restart', gunAcc: 'the gun re-reports `$ALCD`',
   _prevHp: 'edge detector', _prevArmor: 'edge detector', _prevShield: 'edge detector', _prevRem: 'runway cue edge', _prevLeft: 'time-alert edge (no edge is crossed twice)',
-  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _shotDueSlot: 'pool watchdog (the slot of the owed pull)', _noFirePulls: 'pool watchdog',
+  lastPoolAt: 'pool watchdog clock', _shotDueAt: 'pool watchdog', _bmapSent: 'the gun\'s trigger binding: unknown after a restart, so `_bindTick` writes it again', _bindTickAt: 'binding repair rate limit', _equipSent: 'the pickup slot the last sent `$WEAP` equip put on the trigger: unknown after a restart', _noFirePulls: 'pool watchdog',
   // probes, cures and checks in flight: a pending write is not evidence after a restart
   _queryAt: 'probe in flight', _probeSeen: 'probe in flight', _probeSeq: 'probe sequence', _magQuery: 'one magazine query in flight', _lifeAskAt: 'when the last $LIFE probe went out (its $HP token stays open past a later $QUERY start)', _operatorResyncPending: 'F287: the operator can resend',
   _cure: 'cure in flight', _cureLife: 'cure bound per life (life numbers restart)', _cureAt: 'cure cooldown: a restart allows one more cure', _pollAt: 'heartbeat poll clock',
@@ -1124,7 +1136,7 @@ export class Engine {
         // F164: this life's live counts, per slot the gun has reported: {slot: [mag, reserve]}. Without them a restart
         // mid-match left `am.liveAmmo()` on the spawn rows, and the relink's reconcile handed out a full magazine and
         // reserve. A spawn or revive empties the maps, so the next save drops the old life's counts.
-        ammo: this.am.saved(), altPtr: this.am.altPtr, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
+        ammo: this.am.saved(), lastLoadout: this.am.lastLoadout, slot: this.activeSlot,   // F418: a restart keeps the trigger slot
         heat: this.am.heatSaved(),   // T2 r1: a lockout survives a restart, so its dry pulls are still not GUN NOT FIRING
         pu: this.pu.snapshot(),
         // T2: KOTH possession is a CUMULATIVE tally MC merges by max per node, so a restart that zeroed it lost every second
@@ -1197,13 +1209,13 @@ export class Engine {
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase', '_restored'];
       const before = {}; for (const k of touched) before[k] = this[k];
-      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, altPtr: am.altPtr,
+      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, lastLoadout: am.lastLoadout,
         heatBySlot: am.heatBySlot, heatAt: am.heatAt, everHeated: am.everHeated, heatLock: am.heatLock };   // `heatRestore` replaces these, never edits them
       const puBefore = this.pu.snapshot();
       undo = () => { Object.assign(this, before); Object.assign(am, amBefore); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
       Object.assign(this, next);
       am.acct = { ...am.acct }; am.prevAmmo = { ...am.prevAmmo }; am.prevReserve = { ...am.prevReserve };   // the restore below writes copies, so `amBefore` stays untouched
-      am.altPtr = Number.isInteger(s.altPtr) ? s.altPtr : 0;   // the gun's ALT position (ammo.js)
+      { const l = Number.isInteger(s.lastLoadout) ? s.lastLoadout : s.altPtr; am.lastLoadout = l === 1 ? 1 : 0; }   // ammo.js `lastLoadout` (an older save's `altPtr`)
       if (s.phase === 'live' && s.ammo && typeof s.ammo === 'object') am.restore(s.ammo);   // F164
       if (s.phase === 'live' && s.heat && typeof s.heat === 'object') am.heatRestore(s.heat);   // T2 r1
       if (s.pu && typeof s.pu === 'object') this.pu.restore(s.pu);   // A56
@@ -1410,6 +1422,9 @@ export class Engine {
     frames = this._tidAfterPset(frames);   // LAST, and after the deny filter above, for the orphan `$TID` reason written there (F206)
     // A write with a `$PLAY` goes through the play queue (play-queue.js), which sends it back here, `playScheduled`.
     if (!playScheduled && frames.some(f => typeof f === 'string' && f.startsWith('$PLAY,'))) return this._gun.enqueue(frames, why, { options, onSent, mustHear });
+    // Tony 2026-11-08: the phone owns the swap; every `$BMAP` for the trigger or ALT goes through here, resolved when the write
+    // is SENT (Codex: a burst the play queue held back must bind the slot of that moment, not of when it was queued)
+    frames = this._bindRows(frames);
     // Cross-lane r2 C1: a write may settle its rows when it is SENT (a burst the play queue held back), not when it was built.
     if (options && typeof options.atSend === 'function') frames = options.atSend(frames);
     // F121 rebuild: a `$SIR` row or a `$CLEAR` leaves the gun's table something other than a `sir_pool` take, so the
@@ -1434,6 +1449,7 @@ export class Engine {
       let sentAny = false;
       const sendOptions = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
       const result = this.writer(frames, why, sendOptions);
+      this._noteBindSent(frames, result);   // Tony 2026-11-08: what the gun's trigger is bound to, for `_bindTick`
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
       if (ammoRows && result && typeof result.then === 'function') {
         // F570 (bench 2026-10-17): the gun echoes each row as it READS it, so a long write's early rows echo while it is still
@@ -1450,6 +1466,108 @@ export class Engine {
       if (wire && result !== false && result !== null && !wire.noted()) wire.play(playFrame);
       return result;
     } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); return false; }
+  }
+  /** Tony 2026-11-08: the phone owns the weapon swap, so every `$BMAP` row for the trigger or ALT that leaves the phone says
+   *  what the phone holds. ALT (`$BMAP,1,…`) is unbound with 98 (silent; 99 chirps on each press), except Easy Reload's 97.
+   *  A row that binds the trigger to a slot (`$BMAP,0,<n>`, n of 11 or less: the trigger fires slot n, bench 2026-11-08 bm1-3)
+   *  binds the slot the phone holds (`_boundSlot`), so the cure, the operator resync, the spawn and the relink can never put
+   *  the trigger back on slot 0 under the player (the SR18 cure bug). A hold (98) and anything else pass as written. PURE. */
+  _bindRows(frames) {
+    if (!frames.some(f => typeof f === 'string' && f.startsWith('$BMAP,'))) return frames;
+    return frames.map(f => {
+      const m = typeof f === 'string' ? /^\$BMAP,([01]),(\d+),/.exec(f) : null;
+      if (!m) return f;
+      if (m[1] === '1') return m[2] === '97' || m[2] === '98' ? f : ALT_UNBOUND;
+      if (+m[2] > 11) return f;
+      const want = this._boundSlot();
+      return want === +m[2] ? f : `$BMAP,0,${want},,,,,*`;
+    });
+  }
+  /** Record the last trigger binding a write carried (`$BMAP,0,<fn>`), and forget it if the write fails: `_bindTick` then
+   *  writes the binding again. Codex 2026-11-08: a lost bind, a stale hold from the play queue or a cancelled reload's
+   *  hold all heal there. */
+  _noteBindSent(frames, result) {
+    // Codex r2: a pickup equip (one `$WEAP` for a pickup slot) puts that slot on the trigger by itself; `_bindTick` trusts it
+    // only once the write really went
+    const weaps = frames.filter(f => typeof f === 'string' && f.startsWith('$WEAP,'));
+    if (weaps.length === 1 && +weaps[0].split(',')[1] >= 2) {
+      const es = +weaps[0].split(',')[1], gone = () => { if (this._equipSent === es) this._equipSent = null; };
+      this._equipSent = es;
+      if (result === false || result === null) gone();
+      else if (result && typeof result.then === 'function') result.then(ok => { if (ok === false || ok === null) gone(); }, gone);
+    }
+    const bm = frames.filter(f => typeof f === 'string' && /^\$BMAP,0,\d+,/.test(f)).pop();
+    if (!bm) return;
+    const fn = +bm.split(',')[2], lost = () => { if (this._bmapSent === fn) this._bmapSent = null; };
+    this._bmapSent = fn;
+    if (result === false || result === null) lost();
+    else if (result && typeof result.then === 'function') result.then(ok => { if (ok === false || ok === null) lost(); }, lost);
+  }
+  /** tick(): the trigger binding the gun holds must be the one the phone wants (`_boundSlot`). A heavy on the trigger was put
+   *  there by its own `$WEAP` (bench 2026-09-24), so it needs no `$BMAP` unless the trigger was left held (98). Only while
+   *  live, alive and linked, outside a reconcile, a resync and a queued life burst (each binds the trigger itself). */
+  _bindTick(now) {
+    if (!this.bleUp || this.phase !== 'live' || !this.alive || !this.spawned || this.tutorial || this.rc.active || this.resync) return;
+    if (this._lifeBurst && this._lifeBurst.life === this._lifeSeq) return;
+    const want = this._boundSlot(), sent = this._bmapSent;
+    if (sent === want || (want !== 98 && want >= 2 && sent != null && sent !== 98 && this._equipSent === want)) return;
+    if (now - (this._bindTickAt || 0) < BIND_RETRY_MS) return;
+    this._bindTickAt = now;
+    this._write([want === 98 ? TRIGGER_HOLD : `$BMAP,0,${want},,,,,*`], `trigger binding repair (${sent == null ? 'unknown' : sent} -> ${want})`);
+  }
+  /** What the trigger should be bound to now: held (98) while a weapon delay or a swap holds it, else the slot in hand. PURE. */
+  _boundSlot() {
+    const r = this.am.reloading;
+    if (this._triggerPending || this.am.bindDue || (r && r.soft)) return 98;   // brx1 2026-11-08: no round lands in a phone reload
+    const s = this.activeSlot;
+    return Number.isInteger(s) && s >= 0 && s <= 11 ? s : 0;
+  }
+  /** Bind the trigger to `slot` (ammo.js `switchTick` after a swap, a re-bind after a round from an unbound slot). A weapon
+   *  delay still holding the trigger keeps it: its `trigger_live` write binds the slot in hand when it ends. */
+  _bindTrigger(slot, why) {
+    if (this._triggerPending) { this.log(`${why}: the weapon delay holds the trigger; it binds slot ${this.activeSlot} when it ends`, 'li'); return; }
+    if (!this.bleUp) return;   // the relink's reconcile binds the slot in hand
+    this._write([`$BMAP,0,${slot},,,,,*`], `${why}: bind the trigger`);
+  }
+  /** Tony 2026-11-08 (bench lv1-8): the gun's lever refilled the last-fired slot, which the trigger is not bound to. Write
+   *  back the counts it held at the lever (ammo.js `gunOtherGain`); the echo is bookkeeping (`acctWrote`). */
+  _undoGunReload(slot, mag, res) {
+    if (this.phase !== 'live' || !this.alive || !this.bleUp || this.stunned || this.rc.disarmed) return;
+    const life = this._lifeSeq, had = [this.am.prevAmmo[slot], this.am.prevReserve[slot]];   // the gun's refilled counts
+    const a0 = this.am.acct[slot], until0 = a0 ? a0.echoUntil : 0;
+    this.am.acctWrote(slot, mag, res);
+    const gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
+    this.am.setPrev(slot, mag, res);
+    if (this.activeSlot === slot) this.am.publish(slot, mag, res);
+    this.log(`the gun's lever refilled slot ${slot}, which the trigger is not bound to: put back ${mag}/${res}`, 'li');
+    // Codex 2026-11-08: a write that failed before it left changed nothing on the gun. Send it once more; if that fails too, the
+    // books go back to what the gun holds (its refill stands).
+    const send = tries => {
+      let sent = false;
+      const failed = () => {
+        if (sent || this._lifeSeq !== life) return;
+        // Codex r2: only while nothing has moved since: the books still at the undo, the same write owning the account, and
+        // no stun or reconcile disarm queued behind it. A gun report since is the truth, so the books keep it.
+        const a = this.am.acct[slot], still = this.am.prevAmmo[slot] === mag && this.am.prevReserve[slot] === res && (!a || a.echoGen === gen);
+        if (!still) return;
+        if (tries > 0 && this.bleUp && !this.stunned && !this.rc.active && !this.rc.disarmed) { this.log(`undo of slot ${slot} failed before it left: once more`, 'li'); send(tries - 1); return; }
+        if (had[0] == null || had[1] == null || !this.am.acctUnwrite(slot, had[0], had[1], mag, gen, until0)) return;
+        this.am.setPrev(slot, had[0], had[1]);
+        if (this.activeSlot === slot) this.am.publish(slot, had[0], had[1]);
+        this.log(`undo of slot ${slot} failed: the gun keeps its refill, and so do the books`, 'le');
+      };
+      const w = this._write([`$AMMO,${slot},${mag},${res},1,*`], `undo the gun's reload of slot ${slot}`, { onFrameSent: () => { sent = true; } });
+      Promise.resolve(w).then(ok => { if (ok === false || ok === null) failed(); }, failed);
+    };
+    send(1);
+  }
+
+  /** Tony 2026-11-08: the gun makes no sound for a swap the phone owns, so the phone plays one: the target weapon's own
+   *  `$WEAP` ReloadPart3 (t33, split index 34), its short rack (AR D02, USP-S D06). Nothing when the row has none. */
+  _swapSound(slot) {
+    const row = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`));
+    const id = row ? (row.split(',')[34] || '').trim() : '';
+    if (/^[A-Z][A-Z0-9]{1,4}$/.test(id)) this._write([`$PLAY,,4,6,${id},,,,*`], `swap sound (${id})`);
   }
   /** Record the sounds the gun's `$SIR` rows and `$PSET` hold, and the stops the phone writes. A write with a `$PLAY`
    *  (`deferPlay`) came through the play queue: its stops and clips enter the model as the link sends them (`track`). */
@@ -2141,7 +2259,7 @@ export class Engine {
     if (this._rebootQ) { if (this._rebootQ.down) this._rebootDownProven(this._rebootQ); this._rebootQ = null; this.rc.clear(); this._rcAgain = true; }   // F532 down review: the next relink's check decides again
     this.bleUp = false; this.lastGunFrameAt = 0; this._gunProbe = null; this._gunProbeRetryAt = 0; this._gunRecovery = null; this._cure = null; this._queryAt = 0; this._magQuery = null; this._operatorResyncPending = null; this.configQuery = null; this._configReadback = null;   // F264/F287: no link, no answer -- an ask in flight can never resolve, and it must not act on the relink
     if (pendingResync) this._operatorResult('resync', 'gun link down (RELINK first)', pendingResync);
-    this.am.endReload('dropped'); this.am.gunOther = null; this.am.cancelSwap(); this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
+    this.am.endReload('dropped'); this.am.gunOther = null; this.am.cancelSwap(); this._bmapSent = null; this._equipSent = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this._ann.clear(); this._gun.clear(); this.log('gun link lost', 'le'); this._changed();
   }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; if (s !== 'bound' && this._life) this._life.wsEverDown = true; this._changed(); }   // S56: dealtPartial reads this for the running life
 
@@ -4134,7 +4252,8 @@ export class Engine {
       if (this.card && now - this.card.at > 4000) { this.card = null; }
       if (this.callout && now - this.callout.at > CALLOUT_WINDOW_MS) { this.callout = null; }   // S57: the HUD chip's own lifetime, independent of `moment`'s
       if (this.hillCallout && now - this.hillCallout.at > CALLOUT_WINDOW_MS) { this.hillCallout = null; }   // QA-05: the same lifetime
-      this.am.switchTick(now);         // assume an ALT swap the gun has not confirmed with a shot, after its window
+      this.am.switchTick(now);         // bind the trigger once a swap's time is up; close SWITCHING after its window
+      this._bindTick(now);             // Tony 2026-11-08: the gun's trigger binding follows the phone (Codex: a lost write heals)
       this._changed();
     }
     if (this.resync) this._resyncTick();
@@ -4202,6 +4321,7 @@ export class Engine {
     // the spawn line; a `$PLAYX` in the revive write cuts the line on air (its unsaid rest is kept if it is one of those).
     if (!selfHit || revive.includes(PLAYX)) this._ann.respawn(this.now(), revive.includes(PLAYX));   // F438 polish: no death, so no dead queue to end, unless the burst's own stop cuts a line
     const pre = [...(ps.frame ? [ps.frame] : []), ...sir], post = sp.frame ? [sp.frame] : [];
+    this.activeSlot = 0;   // Codex 2026-11-08: the burst's `$BMAP,0` binds the new life's slot (engine.js `_bindRows`), set before it
     this._writeSpawnBurst([...pre, ...burst, ...post], fill, 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : '') + (fill.length ? ` + shield pool ${this.maxShield}` : '') + (drain.length ? ' + F438 self-hit drain' : ''), life, drain, stunHolds ? [...pre, ...armed, ...post] : null);   // X3: the line before the fill; r1 C1: the armed burst for an F416 re-send
     this.hurtFired = false; this._hurtSent = false;
     this._pendingHurtWrite = false;
@@ -6242,13 +6362,11 @@ export class Engine {
     const mag = seen != null ? seen : this.am.ammoBySlot()[this.activeSlot];
     if (!(mag > 0)) {
       this.am.dryPull();
-      // Codex review 2026-11-08: a slot the dry-pull rule inferred stays owed, so a broken gun still reaches `no_fire` and the cure
-      if (this.am.inferredSlot(this.activeSlot) && this._shotDueAt == null) { this._shotDueAt = this.now(); this._shotDueSlot = this.activeSlot; }
       return;
     }
     this.am.endDrySpell();   // the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
     this.am.acctPress();   // F259: the earliest evidence a round is leaving -- the gun has not fired yet
-    if (this._shotDueAt == null) { this._shotDueAt = this.now(); this._shotDueSlot = this.activeSlot; }
+    if (this._shotDueAt == null) { this._shotDueAt = this.now(); }
   }
   /** F208: called from tick(). A press with no pool report TRIGGER_NO_FIRE_MS later counts as unanswered. */
   _noFireTick(now) {
@@ -6256,9 +6374,6 @@ export class Engine {
     this._shotDueAt = null;
     if (this._standDown(['alive', 'switching', 'reloading', 'stunned', 'heat'], now)) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
     this._noFirePulls++;
-    // bench 2026-11-08 (SR5r): the gun may hold the other, empty slot. Codex review: only on evidence still in context (the
-    // link up, no resync or reconcile), and the stale-pool count goes on, so a broken gun still reaches the cure.
-    if (this.bleUp && !this.resync && !this.rc.active) this.am.unansweredPulls(this._shotDueSlot);
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
   /** F264: ASK the gun where it stands. ONE `$LIFE,0,0,0,*`, 13 bytes, answered immediately with `$HP` whether
