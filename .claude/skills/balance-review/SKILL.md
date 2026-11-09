@@ -38,7 +38,7 @@ The tool is `mcp/tools/balance_review.py`; its docstring explains the engine. Th
 
    The exit code is 0 for PASS and 1 for FAIL. Do not change a constant, a margin or a rep count to get a pass.
    A change to the scenario list bumps `SCENARIO_VERSION`, and is its own reviewed change. The current
-   version is 12. Add `--haze` for the AR + Haze comparison. Use `--haze-blind-ms N` to set its
+   version is 28. Add `--haze` for the AR + Haze comparison. Use `--haze-blind-ms N` to set its
    blind window for a sensitivity run.
 4. **Read the verdict.** Each test is pass, fail or n/a, with its numbers:
    - `value_addition`: near the top in at least one scenario, or a trigger mechanic the arsenal lacks
@@ -94,7 +94,15 @@ Scenario version 12 uses these models:
 - A lethal secondary can cover an empty or heat-locked primary. The kit also draws it when its expected finish
   time, including the swap, is shorter. Estimate the real shot sequence, including bolt and charge cycles,
   magazine and reserve reloads, and count the first shot at draw time. Reject a secondary that cannot finish
-  the remaining pool with its magazine and reserve reloads. Swapping back pays the same catalogue swap delay.
+  the remaining pool with its magazine and reserve reloads.
+- The draw follows the gun's swap rule (F668, from the firmware emulator; `app/src/gunmodel.js`). The drawn slot's
+  first round waits for the later of two edges: the ALT plus the drawn slot's own tok15, and the last live round
+  plus the tok15 of the slot that fired it. The sim has no trigger release, so live fire ends at that last round.
+  A swap clears the edge. So an AR (850) to USP (500) draw 100 ms after the last AR round waits 750 ms, and a draw
+  before any round waits only the drawn slot's tok15. The slot-4 melee draw keeps the larger tok15 of the gun and
+  the melee slot, because a melee button swing is not benched. The ALT blocks after a dry pull and during a lever
+  refill are not modelled.
+- After a respawn the field kit's first round waits `SPAWN_WAIT_MS` (1,500 ms), plus one t14 on a full-auto opener.
   Combo kits keep their opener and finisher plan. A support secondary does not enter the ordinary finish choice.
   Reloads and lever vents progress only while that weapon is in hand. A swap credits a finished reload.
   A swap cancels an unfinished reload or vent. When cooling is on, heat cools while holstered.
