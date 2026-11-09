@@ -1328,9 +1328,9 @@ class WeaponCatalog:
     # `python -m brx_mcp.weapmap`). doc tokN == frame.split(",")[N+1] — `put()` adds the +1.
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
-    # A swap takes the tok15 of the slot it moves TO (bench 2026-11-08 SR1, and a private emulator of the stock
-    # image), so a swap perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`). Only a swap made
-    # with the trigger held and firing waits for the larger tok15 of the two slots (the 2026-09-04 runs held it; sr17e2).
+    # The first round after a swap comes at the later of the swap plus the target slot's tok15 and the end of live
+    # fire plus the fired slot's tok15 (docs/spec/node.md §3.2a; emulator 2026-11-09, bench SR21 owed), so a swap
+    # perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`).
     # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
     # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
@@ -1374,10 +1374,10 @@ class WeaponCatalog:
         return max(0, int(round(base * sm)))
 
     def swap_to_ms(self, w0: str, w1: str | None, mods: dict | None = None) -> dict[int, int]:
-        """The swap delay in each direction: {slot: ms} for a swap TO slot 0 and TO slot 1 (no key 1 with no
-        secondary). Each is that slot's own tok15 as written (bench 2026-11-08 SR1: 850 ms to the AR, 500 ms to
-        the USP-S; a private emulator of the stock image agrees). Only a swap made with the trigger held and firing waits
-        for the larger of the two: the 2026-09-04 runs held it, which is why they read "the larger slot wins"."""
+        """The swap's own edge in each direction: {slot: ms} for a swap TO slot 0 and TO slot 1 (no key 1 with no
+        secondary), each that slot's own tok15 as written (bench 2026-11-08 SR1: ALT lockout 850 ms to the AR, 500 ms
+        to the USP-S). The first round waits for the later of this edge and the end of live fire plus the fired slot's
+        tok15 (docs/spec/node.md §3.2a; emulator 2026-11-09, bench SR21 owed), so it is a floor, not the draw time."""
         out = {0: self.swap_ms(w0, mods)}
         if w1:
             out[1] = self.swap_ms(w1, mods)
@@ -2260,7 +2260,7 @@ class Compiler:
         shields = is_shields_preset(config)
         base_mag, base_reserve, base_reload = self.catalog._ammo(w0, None)
         res_mag, res_reserve, res_reload = self.catalog._ammo(w0, fx)   # ammo/reload knobs act on the PRIMARY only
-        # `swap_ms` is the SLOWER direction: a swap takes the tok15 of the slot it moves to (`swap_to_ms`).
+        # `swap_ms` is the LONGEST swap: the larger of the two directions' edges (`swap_to_ms`).
         base_swap = max(self.catalog.swap_to_ms(w0, w1, None).values())
         res_swap = max(self.catalog.swap_to_ms(w0, w1, fx).values())
 
@@ -2936,9 +2936,9 @@ class Compiler:
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
             "cues": base_cues(build.night),   # D4: every event cue (kill, game_over, ...) comes from presentation.EVENTS below
-            # the LONGEST swap between slots 0 and 1: the larger tok15 of the two. A swap takes the tok15 of the slot it
-            # moves to (bench 2026-11-08 SR1), so this is the slower direction, and every swap made with the trigger
-            # held and firing (2026-09-04, sr17e2). A phone that times each direction reads each slot's tok15 from `head`.
+            # the LONGEST swap between slots 0 and 1: the larger tok15 of the two. A swap's first round comes at the later
+            # of the swap plus the target's tok15 and the end of live fire plus the fired slot's tok15 (docs/spec/node.md
+            # §3.2a), so no swap waits longer than this. A phone reads each slot's tok15 from `head`.
             "swap_ms": max([int(f.split(",")[16]) for f in ctx.head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
             "callout_team": self._callout_team(build.teams),   # S57: the IR callout bus's own team id, or None
         }
