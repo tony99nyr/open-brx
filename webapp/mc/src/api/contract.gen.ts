@@ -1226,7 +1226,7 @@ export interface FrameBundle {
   gun?: Record<string, unknown>;
   /** A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}} */
   headset?: Record<string, unknown>;
-  /** 2026-09-04: the weapon-swap delay the gun enforces (max tok15 of slots 0/1, after perks) */
+  /** the LONGEST swap the gun enforces (max tok15 of slots 0/1, after perks); a swap takes its target slot's tok15 (2026-11-08) */
   swap_ms?: number;
   /** A15.1: event -> frames; the node picks ONE at random per event; `cues[ev]` is the deterministic first */
   cue_pools?: Record<string, string[]>;
