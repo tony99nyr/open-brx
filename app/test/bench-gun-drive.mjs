@@ -83,7 +83,7 @@ export function replayGun(fx, opts = {}) {
       // the round the gun fired is a pull the model refused, so that pull is live from here on
       if (m.trigger) m.trigger = { ...m.trigger, live: true, slot: g.s };
       m.heldFireAt = null; m.fireLockUntil = Math.min(m.fireLockUntil, t); m.swapOnRelease = null;
-      if (g.s !== m.bound) { m.bound = g.s; m.altPtr = g.s; }
+      if (g.s !== m.bound) m.follow(g.s);
       m.mag[g.s] = g.m; m.res[g.s] = g.r; m.lastFired = g.s;
       for (let i = q.length - 1; i >= 0; i--) if (q[i].kind === 'A' && q[i].s === g.s && q[i].t <= t) diffs.push({ t: q[i].t, gun: null, model: key(q.splice(i, 1)[0]) });
       continue;

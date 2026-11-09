@@ -43,6 +43,10 @@
 //   the trigger there (a heavy's `$WEAP` at a pickup); re-sent binds, even 0 then 1 through 98, and `$AMMO` do not undo
 //   it; the bound slot's own `$WEAP` does, and `$CLEAR` makes the next bind switch. A `$WEAP,4` makes the trigger swing
 //   the melee slot. `state()` gives `sel` and `pendingBind` for tests of a phone guard against this.
+// - ALT moves the pointer and binds the trigger to the pointer's slot; onto the slot already bound it changes nothing
+//   visible (SR18; emulator: a trigger a `$WEAP` moved to the AR stayed there). No `$WEAP` blocks ALT.
+// - After `$SPAWN` the trigger and ALT do nothing for SPAWN_WAIT_MS, and each `$SPAWN` restarts it; a held pull fires as
+//   it ends (emulator; SR23). `readyAt(t)` gives the earliest time the next pull can fire, for a HUD "ready" cue.
 // - The rebind delay (emulator): that switch waits for the release of the last pull that fired plus the selected slot's
 //   tok15 (AR 850, USP-S 500). A held pull, or a bind on a held trigger, fires as it ends. A `$WEAP` of the target in
 //   the swap selects it, so the delay drops to the target's tok15; nothing else tried shortens it. A pull at 98 and a
@@ -54,7 +58,7 @@
 // Assumed, not seen: `$START` puts the ALT pointer and a bound trigger on slot 0. A melee swing does not move the
 // last-fired slot. A `$BMAP,0` rebind starts no swap delay.
 // Not encoded (each needs a bench): a Shotgun's shell chain; ALT on 97 (Easy Reload); hits, deaths and the pools (the
-// `$LCD` and `$HP` pools are the last `$PSET`'s); ALT straight after a `$WEAP` (the emulator fired the `$WEAP` slot).
+// `$LCD` and `$HP` pools are the last `$PSET`'s); whether the lever is also dead in the spawn wait.
 //
 // Time is the caller's: every input carries `t` in ms, and `advance(t)` runs what falls due (a timed auto round, a
 // refill). Answers queue in `take()` as `{t, f}`. `decisions` records every timed call with its distance from the edge
@@ -66,6 +70,9 @@ export const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_LEVER = 2;
 export const RELOAD_SCALE = 1.25;
 /** `$BMAP` functions: no action, and the "disabled" chirp; both leave ALT reported and swap nothing. */
 export const FN_INERT = 98, FN_CHIRP = 99, FN_ALT_CYCLE = 100, FN_MELEE = 4;
+/** After `$SPAWN` the gun reads no trigger or ALT for this long; each `$SPAWN` restarts it (emulator, 2026-11-09: a
+ *  held USP-S pull fired at 1,507 ms; the AR's first round came at 1,605 ms, which the wait alone does not explain). */
+export const SPAWN_WAIT_MS = 1500;
 
 const toks = f => f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');
 const int = (t, i) => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
@@ -137,6 +144,7 @@ export class GunModel {
     } else if (cmd === 'SPAWN') {
       for (const [slot, w] of Object.entries(this.w)) { this.mag[slot] = w.clip; this.res[slot] = w.carried; }
       this._newLife();
+      this.fireLockUntil = this.altLockUntil = t + SPAWN_WAIT_MS;
       this._emit(t, `$LCD,${this.pools[0]},${this.pools[1]},0,0,${this.mag[0] ?? 0},${this.res[0] ?? 0},*`);
       this._alcd(0, t);
     } else if (cmd === 'AMMO' && s != null) {
@@ -281,6 +289,11 @@ export class GunModel {
     const c = this.altCycle, i = c.indexOf(this.altPtr), t15 = s => (this.w[s] ? this.w[s].t15 : 0);
     const from = this.bound, prevSel = this.sel;
     this.altPtr = c[(i + 1) % c.length];
+    if (!this.inert && this.altPtr === this.bindSlot) {
+      // emulator: ALT binds the trigger to the pointer's slot; onto the slot already bound it changes nothing visible
+      // (SR18), so a trigger that a `$WEAP` moved stays where it is
+      return this._decide(t, `ALT onto the bound slot ${this.altPtr}`, margin);
+    }
     this.sel = this.bindSlot = this.fireBind = this.altPtr; this.inert = false; this._rebound();
     const ms = t15(this.altPtr);
     this.altLockUntil = t + ms;
@@ -347,6 +360,16 @@ export class GunModel {
     this.mag[s]--; this.lastFired = s; this.lastShot = { slot: s, t };
     this.sel = s; this.fireBind = this.bindSlot; this._rebound();
     this._alcd(s, t);
+  }
+  /** A replay saw the gun fire slot `s` where the model had another: put the trigger, the selection and the ALT
+   *  pointer on `s`, as if an ALT had swapped there. */
+  follow(s) { this.sel = this.bindSlot = this.fireBind = this.altPtr = s; this.inert = false; this._rebound(); }
+  /** The earliest time a pull could fire what the trigger is bound to now, or Infinity on 98 or while dead. PURE: for a
+   *  HUD "ready" cue, which must never show before this. */
+  readyAt(t) {
+    const s = this.bound;
+    if (s == null || this.dead) return Infinity;
+    return Math.max(t, this.fireLockUntil, this._fireEdge(s)[0], this.reload ? this.reload.until : -Infinity);
   }
   /** What the next pull fires: nothing on 98; the bound slot while a bind is pending; else the selected slot. */
   _rebound() { this.bound = this.inert ? null : this.bindSlot !== this.fireBind ? this.bindSlot : this.sel; }

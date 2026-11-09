@@ -53,7 +53,7 @@ const USP = '$WEAP,1,,100,0,3,10,0,,,,,,,,190,500,12,240,2200,0,7,100,100,,0,2,5
 /** A spawned gun with the bench loadout and the MC head's button map; `steps` are [t, 'b'|'w', ...]. Returns the answers. */
 function run(steps, opts) {
   const g = new GunModel(opts);
-  for (const f of [AR, USP, '$BMAP,0,98,,,,,*', '$BMAP,1,100,0,1,99,99,*', '$BMAP,2,97,,,,,*', '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$BMAP,0,98,,,,,*', '$BMAP,1,100,0,1,99,99,*', '$BMAP,2,97,,,,,*', '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
   g.take();
   for (const [t, kind, a, b] of steps) { if (kind === 'b') g.button(a, b, t); else g.write(a, t); }
   g.advance(1e9);
@@ -116,7 +116,7 @@ test('sr17e2, sr17c: ALT in a held trigger; a pull held through a swap fires as 
   assert.deepEqual([dry.g.bound, dry.g.fireLockUntil], [0, 3500]);
   // a pull at 2300 inside the swap back to the AR (850 from 2000), held: the first round leaves as the swap ends
   const g = new GunModel({ auto: 'timed' });
-  for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
   g.take();
   for (const [t, id, st] of [[1000, 1, 1], [1050, 1, 0], [2000, 1, 1], [2050, 1, 0], [2300, 0, 1], [3200, 0, 0]]) g.button(id, st, t);
   assert.deepEqual(g.take().map(o => o.t), [2850, 2950, 3050, 3150]);
@@ -139,7 +139,7 @@ test('$BMAP,1,98 or 99: ALT swaps nothing; $BMAP,0,98: the trigger fires nothing
 
 test('MN1: a melee button swings once per the slot-4 t14', () => {
   const g = new GunModel();
-  for (const f of ['$WEAP,4,1,60,13,1,60,0,,,,,,,,3000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*', '$BMAP,8,4,,,,,*', '$SPAWN,,*']) g.write(f, 0);
+  for (const f of ['$WEAP,4,1,60,13,1,60,0,,,,,,,,3000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*', '$BMAP,8,4,,,,,*', '$SPAWN,,*']) g.write(f, -2000);
   g.take();
   for (const t of [1000, 2500, 3900, 4100]) g.button(8, 1, t);
   assert.deepEqual(g.take().map(o => [o.t, o.f]), [[1000, '$ALCD,1,100,4,0,0,*'], [4100, '$ALCD,1,100,4,0,0,*']]);
@@ -154,7 +154,7 @@ test('emulator: a spawn moves neither the trigger binding nor the ALT pointer', 
 
 test('emulator: a $BMAP,0 bind that lands with the trigger held fires at once', () => {
   const g = new GunModel({ auto: 'timed' });
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,98,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,98,,,,,*']) g.write(f, -2000);
   g.take();
   g.button(0, 1, 1000);
   g.write('$BMAP,0,1,,,,,*', 1300);   // semi: one round
@@ -170,7 +170,7 @@ test('emulator: a $BMAP,0 bind that lands with the trigger held fires at once', 
 
 test('swp1: a bind that lands in a dry hold waits for the release plus the dry slot\'s tok15', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$AMMO,1,0,240,1,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$AMMO,1,0,240,1,*', '$BMAP,0,1,,,,,*']) g.write(f, -2000);
   g.take();
   g.button(0, 1, 1000);                 // a dry pull on the empty USP-S, held
   g.write('$BMAP,0,98,,,,,*', 1700);
@@ -183,7 +183,7 @@ test('swp1: a bind that lands in a dry hold waits for the release plus the dry s
 
 test('emulator: a pull inside t14 of the last round fires nothing, and fires as the floor ends if still held', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, -2000);
   g.take();
   const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
   pull(1000, 40);   // a round
@@ -199,7 +199,7 @@ test('emulator: a pull inside t14 of the last round fires nothing, and fires as 
 
 test('emulator: after live fire, a $BMAP,0 to another slot fires from the release plus the old slot\'s tok15', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
   g.take();
   const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
   pull(1000, 30);                                                     // an AR round, released at 1030
@@ -221,7 +221,7 @@ test('emulator: after live fire, a $BMAP,0 to another slot fires from the releas
 test('emulator review L3: the first pull after a bare $BMAP,0,1 fires, unless another slot fired just before', () => {
   const fire = (shotFirst) => {
     const g = new GunModel();
-    for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+    for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
     g.take();
     const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
     if (shotFirst) pull(1000, 30);                      // an AR round, released at 1030
@@ -235,7 +235,7 @@ test('emulator review L3: the first pull after a bare $BMAP,0,1 fires, unless an
 
 test('emulator: a $WEAP for another slot moves what the trigger fires, once the bound slot has fired', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, -2000);
   const pull = t => { g.button(0, 1, t); g.button(0, 0, t + 40); };
   const fired = () => g.take().filter(o => o.f.startsWith('$ALCD')).map(o => [o.t, o.f.split(',')[3]]);
   pull(1000);                                                           // the USP-S
@@ -254,7 +254,7 @@ test('emulator: a $WEAP for another slot moves what the trigger fires, once the 
 
 test('emulator: a $WEAP before the bound slot has fired leaves the bind in force', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
   g.button(0, 1, 1000); g.button(0, 0, 1030);                          // an AR round
   g.write('$BMAP,0,1,,,,,*', 3000); g.write(AR, 3040);
   g.button(0, 1, 3100); g.button(0, 0, 3140);
@@ -263,7 +263,7 @@ test('emulator: a $WEAP before the bound slot has fired leaves the bind in force
 
 test('emulator: a $WEAP re-send of the target in a swap shortens the rebind delay to the target\'s tok15', () => {
   const g = new GunModel();
-  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, -2000);
   g.take();
   g.button(0, 1, 1000); g.button(0, 0, 1030);                          // an AR round, released at 1030
   g.write('$BMAP,0,98,,,,,*', 1100); g.write(USP, 1140); g.write('$BMAP,0,1,,,,,*', 1180);
@@ -275,7 +275,7 @@ test('emulator: a $WEAP re-send of the target in a swap shortens the rebind dela
 test('emulator: a lone $WEAP,4 after the bound slot fired makes the trigger swing the melee slot', () => {
   const MELEE = '$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*';
   const g = new GunModel();
-  for (const f of [AR, USP, MELEE, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  for (const f of [AR, USP, MELEE, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, -2000);
   g.button(0, 1, 1000); g.button(0, 0, 1040);
   g.write(MELEE, 2000); g.take();
   g.button(0, 1, 2100); g.button(0, 0, 2140);
@@ -289,4 +289,52 @@ test('emulator: an ALT just after a released tap waits for the release plus the 
     [1900, 'b', 0, 1], [1940, 'b', 0, 0]]);              // fires
   assert.deepEqual(g.decisions.filter(([t]) => t >= 1800).map(([t, what]) => [t, what.split(':')[0]]),
     [[1800, 'pull refused'], [1900, 'fired slot 1']]);
+});
+
+test('emulator: after $SPAWN the trigger and ALT do nothing for 1.5 s, and each $SPAWN restarts it', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$BMAP,0,1,,,,,*']) g.write(f, -5000);
+  g.write('$SPAWN,,*', 1000); g.take();
+  const pull = (t, ms) => { g.button(0, 1, t); g.button(0, 0, t + ms); };
+  pull(2400, 30);                                          // released before 1000 + 1500: nothing
+  g.button(1, 1, 1600); g.button(1, 0, 1630);              // ALT inside the wait: no swap
+  g.button(0, 1, 2450); g.advance(2550); g.button(0, 0, 2550);   // held: the USP-S fires as the wait ends
+  g.write('$SPAWN,,*', 4000); g.write('$SPAWN,,*', 4900); g.take();
+  pull(6300, 30);                                          // 1400 after the second spawn: nothing
+  pull(6500, 30);                                          // fires
+  assert.deepEqual(g.decisions.filter(([t]) => t >= 2400).map(([t, what]) => [t, what.split(':')[0]]),
+    [[2400, 'pull refused'], [2450, 'pull refused'], [2500, 'fired slot 1 as the swap ended, trigger held'],
+      [6300, 'pull refused'], [6500, 'fired slot 1']]);
+  assert.equal(g.decisions.find(([t]) => t === 1600)[1].split(':')[0], 'ALT refused');
+});
+
+test('emulator: ALT onto the slot already bound changes nothing visible (a $WEAP-moved trigger stays moved)', () => {
+  const fire = (weap0) => {
+    const g = new GunModel();
+    for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, -5000);
+    g.take();
+    const pull = t => { g.button(0, 1, t); g.button(0, 0, t + 40); };
+    pull(1000);                                            // the USP-S; the ALT pointer is still on the AR
+    if (weap0) g.write(AR, 2000);                          // the trigger now fires the AR
+    g.button(1, 1, 2040); g.button(1, 0, 2070);            // the pointer moves onto the bound USP-S
+    pull(3500);
+    g.button(1, 1, 4000); g.button(1, 0, 4030);            // the pointer moves to the AR: a real swap
+    pull(5500);
+    return g.take().filter(o => o.t === 3500 || o.t === 5500).map(o => o.f.split(',')[3]);
+  };
+  assert.deepEqual(fire(false), ['1', '0']);
+  assert.deepEqual(fire(true), ['0', '0']);
+});
+
+test('readyAt: the earliest time the next pull can fire, for a HUD "ready" cue', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$BMAP,1,100,0,1,99,99,*', '$BMAP,0,0,,,,,*']) g.write(f, -5000);
+  g.write('$SPAWN,,*', 1000);
+  assert.equal(g.readyAt(1100), 2500);                     // the spawn wait
+  g.button(0, 1, 3000); g.button(0, 0, 3030);              // an AR round
+  assert.equal(g.readyAt(3050), 3100);                     // the AR's t14
+  g.write('$BMAP,0,98,,,,,*', 3100);
+  assert.equal(g.readyAt(3100), Infinity);                 // bound to 98
+  g.write('$BMAP,0,1,,,,,*', 3300);
+  assert.equal(g.readyAt(3300), 3880);                     // the rebind delay: 3030 + 850
 });
