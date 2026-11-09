@@ -37,18 +37,24 @@
 //   where the last life left it, the SR18 shape.
 // - The trigger floor: a pull on the slot that fired last waits for that round plus its t14 (USP-S 190, AR 100). A pull
 //   released before then fires nothing; one still held fires as the floor ends (emulator; sr5r and b2's fast taps).
-// - The rebind delay: after a pull that fired slot A, a `$BMAP,0` to another slot fires nothing until that pull's
-//   release plus A's tok15, so the slot moved FROM sets it (AR 850, USP-S 500). A held pull, or a bind on a held
-//   trigger, fires as it ends. A rebind to the same slot, a pull at 98 and a spawn add nothing, and it does not stack on
-//   an ALT swap's own delay (emulator; swp1's refusal 117 ms after a pull at 98 came from the AR fire before it).
+// - Selection (emulator): the gun has a selected slot apart from the binding. A shot, a `$WEAP` and ALT set it. A
+//   `$BMAP,0` that differs from the binding at the last shot switches the trigger to that slot at the next pull;
+//   otherwise the trigger fires the selected slot. So once the bound slot has fired, a `$WEAP` for another slot moves
+//   the trigger there (a heavy's `$WEAP` at a pickup); re-sent binds, even 0 then 1 through 98, and `$AMMO` do not undo
+//   it; the bound slot's own `$WEAP` does, and `$CLEAR` makes the next bind switch. A `$WEAP,4` makes the trigger swing
+//   the melee slot. `state()` gives `sel` and `pendingBind` for tests of a phone guard against this.
+// - The rebind delay (emulator): that switch waits for the release of the last pull that fired plus the selected slot's
+//   tok15 (AR 850, USP-S 500). A held pull, or a bind on a held trigger, fires as it ends. A `$WEAP` of the target in
+//   the swap selects it, so the delay drops to the target's tok15; nothing else tried shortens it. A pull at 98 and a
+//   spawn add nothing (swp1's refusal 117 ms after a pull at 98 came from the AR fire before it). An ALT taken after a
+//   released live pull waits for the same edge as well as its own tok15; one that cuts a held burst counts from the ALT.
 //
 // The rules above marked "emulator" were run on a private emulator of the stock image (2026-11-08, F668; the floor and
 // the rebind delay on its frozen build); the bench still owes their confirmation.
 // Assumed, not seen: `$START` puts the ALT pointer and a bound trigger on slot 0. A melee swing does not move the
 // last-fired slot. A `$BMAP,0` rebind starts no swap delay.
 // Not encoded (each needs a bench): a Shotgun's shell chain; ALT on 97 (Easy Reload); hits, deaths and the pools (the
-// `$LCD` and `$HP` pools are the last `$PSET`'s); a `$WEAP` for another slot moving what the trigger fires (seen on
-// the emulator, not yet bracketed).
+// `$LCD` and `$HP` pools are the last `$PSET`'s); ALT straight after a `$WEAP` (the emulator fired the `$WEAP` slot).
 //
 // Time is the caller's: every input carries `t` in ms, and `advance(t)` runs what falls due (a timed auto round, a
 // refill). Answers queue in `take()` as `{t, f}`. `decisions` records every timed call with its distance from the edge
@@ -72,7 +78,11 @@ export class GunModel {
     this.w = {};             // slot -> {t14, t15, clip, carried, reserve, t18, semi}: the `$WEAP` tokens the model reads
     this.mag = {}; this.res = {};
     this.pools = [0, 0, 0];  // the last `$PSET`'s maxima, for the spawn `$LCD`
-    this.bound = 0;          // the slot the trigger fires (`$BMAP,0,<slot>`), or null on 98
+    this.bound = 0;          // the slot the next pull fires, or null on 98: derived by _rebound() from the three below
+    this.sel = 0;            // the gun's selected slot: a shot, a `$WEAP` and ALT set it
+    this.bindSlot = 0;       // the last `$BMAP,0,<slot>` (98 and 99 set `inert` and keep it)
+    this.inert = false;
+    this.fireBind = null;    // bindSlot at the last shot; a bind that differs switches at the next pull. `$CLEAR` resets it
     this.altFn = FN_ALT_CYCLE;
     this.altCycle = [0, 1];
     this.altPtr = 0;         // the gun's own ALT position, apart from the binding
@@ -100,7 +110,8 @@ export class GunModel {
   write(f, t) {
     this.advance(t);
     const k = toks(f), cmd = k[0], s = int(k, 1);
-    if (cmd === 'START') { this._newLife(); this.altPtr = 0; if (this.bound != null) this.bound = 0; }
+    if (cmd === 'START') { this._newLife(); this.altPtr = 0; this.sel = this.bindSlot = 0; this.fireBind = null; this._rebound(); }
+    else if (cmd === 'CLEAR') { this.fireBind = null; this._rebound(); }
     else if (cmd === 'BMAP' && s === BTN_TRIGGER) {
       this.lastBindAt = t; this._bmap(s, k.slice(2).map(x => (/^\d+$/.test(x) ? +x : null)));
       // emulator: a bind that lands while the trigger is held fires at once (one round semi, a burst full auto). swp1: in
@@ -121,6 +132,7 @@ export class GunModel {
         t18: int(k, 19) ?? 0, semi: (int(k, 21) ?? 0) !== 0 };
       this.mag[s] = clip ?? 0; this.res[s] = reserve;
       this.lastFired = s;    // the `$LCD` after a head reports the last slot loaded (`$LCD,0,0,0,4,1,0` after slot 4)
+      this.sel = s; this._rebound();   // emulator: once the bound slot has fired, the trigger fires the slot loaded last
       this._alcd(s, t);
     } else if (cmd === 'SPAWN') {
       for (const [slot, w] of Object.entries(this.w)) { this.mag[slot] = w.clip; this.res[slot] = w.carried; }
@@ -184,7 +196,8 @@ export class GunModel {
   // ---------- reads ----------
   take() { const o = this.out; this.out = []; return o; }
   state() {
-    return { bound: this.bound, altPtr: this.altPtr, lastFired: this.lastFired, mag: { ...this.mag }, res: { ...this.res },
+    return { bound: this.bound, sel: this.sel, pendingBind: !this.inert && this.bindSlot !== this.fireBind ? this.bindSlot : null,
+      altPtr: this.altPtr, lastFired: this.lastFired, mag: { ...this.mag }, res: { ...this.res },
       reloading: this.reload ? this.reload.slot : null };
   }
   /** Would ALT swap at `t`? `[null, margin]` when it would, else `[why, margin]`. PURE. */
@@ -209,7 +222,10 @@ export class GunModel {
     this.heldFireAt = null; this.dry = null; this.reload = null; this.lastSwing = null; this.lastShot = null; this.lastLive = null;
   }
   _bmap(id, fn) {
-    if (id === BTN_TRIGGER) { this.bound = fn[0] != null && fn[0] < FN_INERT ? fn[0] : null; return; }
+    if (id === BTN_TRIGGER) {
+      if (fn[0] != null && fn[0] < FN_INERT) { this.bindSlot = fn[0]; this.inert = false; } else this.inert = true;
+      return this._rebound();
+    }
     for (const [b, set] of [[id, this.melee]]) { if (fn[0] === FN_MELEE) set.add(b); else set.delete(b); }
     if (id === BTN_ALT) {
       this.altFn = fn[0];
@@ -233,6 +249,11 @@ export class GunModel {
       live(false); this.heldFireAt = edge;
       return this._decide(t, `pull refused: ${why}`, Math.min(edge - t, bindMargin));
     }
+    if (s === FN_MELEE && w) {   // emulator: the trigger on the melee slot swings it; the count stays
+      live(false); this.lastShot = { slot: s, t }; this.lastFired = s; this.sel = s; this.fireBind = this.bindSlot; this._rebound();
+      this._alcd(s, t);
+      return this._decide(t, 'swung slot 4 on the trigger', Infinity);
+    }
     if (s != null && w && this.mag[s] > 0) {
       live(true); this.dry = null;
       this._shot(s, t);
@@ -243,6 +264,7 @@ export class GunModel {
     if (s == null) return this._decide(t, 'pull: trigger unbound', bindMargin);
     this.dry = { slot: s, at: t, semi: !!(w && w.semi), ms: w ? w.t15 : 0, upAt: null };
     this.lastFired = s;   // sr1c: after a live AR round, dry pulls on the empty USP-S, then the lever refilled the USP-S
+    this.sel = s; this.fireBind = this.bindSlot; this._rebound();
     this._decide(t, `dry pull on slot ${s}`, Infinity);
   }
   _release(t) {
@@ -257,9 +279,9 @@ export class GunModel {
     const [why, margin] = this.altBlock(t);
     if (why) return this._decide(t, `ALT refused: ${why}`, margin);
     const c = this.altCycle, i = c.indexOf(this.altPtr), t15 = s => (this.w[s] ? this.w[s].t15 : 0);
-    const from = this.bound;
+    const from = this.bound, prevSel = this.sel;
     this.altPtr = c[(i + 1) % c.length];
-    this.bound = this.altPtr;
+    this.sel = this.bindSlot = this.fireBind = this.altPtr; this.inert = false; this._rebound();
     const ms = t15(this.altPtr);
     this.altLockUntil = t + ms;
     if (this.trigger && this.trigger.live) {
@@ -268,8 +290,13 @@ export class GunModel {
     } else if (this.trigger && this.dry) {
       // a dry hold: the trigger waits for the release plus the dry slot's tok15 (sr17c, emulator)
       this.fireLockUntil = Infinity; this.swapOnRelease = { until: t + ms, dryMs: this.dry.ms };
-    } else this.fireLockUntil = t + ms;
-    this.dry = null; this.lastLive = null;   // an ALT swap keeps its own delay; the rebind delay does not stack on it (e2-430)
+    } else {
+      // emulator: after a released live pull, the first round also waits for that release plus the selected slot's
+      // tok15 (AR tap, ALT 70 ms later: the USP-S refused at 800, fired at 900); a held burst ends at the ALT, above
+      const a = this.lastLive;
+      this.fireLockUntil = Math.max(t + ms, a ? a.t + t15(prevSel) : -Infinity);
+    }
+    this.dry = null; this.lastLive = null;   // folded into fireLockUntil above
     this._decide(t, `ALT to slot ${this.altPtr}`, margin);
   }
   _lever(t) {
@@ -312,10 +339,17 @@ export class GunModel {
     let edge = -Infinity, why = null;
     const w = this.w[s], a = this.lastLive, sh = this.lastShot;
     if (sh && sh.slot === s && w && sh.t + w.t14 > edge) { edge = sh.t + w.t14; why = 'trigger floor'; }
-    if (a && a.slot !== s && this.w[a.slot] && a.t + this.w[a.slot].t15 > edge) { edge = a.t + this.w[a.slot].t15; why = 'rebind delay'; }
+    const sw = !this.inert && this.bindSlot !== this.fireBind && s === this.bindSlot, ws = this.w[this.sel];
+    if (sw && a && ws && a.t + ws.t15 > edge) { edge = a.t + ws.t15; why = 'rebind delay'; }
     return [edge, why];
   }
-  _shot(s, t) { this.mag[s]--; this.lastFired = s; this.lastShot = { slot: s, t }; this._alcd(s, t); }
+  _shot(s, t) {
+    this.mag[s]--; this.lastFired = s; this.lastShot = { slot: s, t };
+    this.sel = s; this.fireBind = this.bindSlot; this._rebound();
+    this._alcd(s, t);
+  }
+  /** What the next pull fires: nothing on 98; the bound slot while a bind is pending; else the selected slot. */
+  _rebound() { this.bound = this.inert ? null : this.bindSlot !== this.fireBind ? this.bindSlot : this.sel; }
   _alcd(s, t) { this._emit(t, `$ALCD,${this.mag[s] ?? 0},100,${s},${this.res[s] ?? 0},0,*`); }
   _emit(t, f) { this.out.push({ t, f }); }
   _decide(t, what, margin) { this.decisions.push([t, what, margin]); }

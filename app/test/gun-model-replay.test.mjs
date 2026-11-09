@@ -232,3 +232,61 @@ test('emulator review L3: the first pull after a bare $BMAP,0,1 fires, unless an
   assert.deepEqual(fire(false), [1120, 1700, 1900]);   // no separate first-pull drop
   assert.deepEqual(fire(true), [1900]);                // the rebind delay: 1030 + 850
 });
+
+test('emulator: a $WEAP for another slot moves what the trigger fires, once the bound slot has fired', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  const pull = t => { g.button(0, 1, t); g.button(0, 0, t + 40); };
+  const fired = () => g.take().filter(o => o.f.startsWith('$ALCD')).map(o => [o.t, o.f.split(',')[3]]);
+  pull(1000);                                                           // the USP-S
+  g.write(AR, 2000); pull(2100);                                        // a lone $WEAP,0: the AR
+  g.write('$BMAP,0,1,,,,,*', 2500); pull(2600);                         // a re-sent bind does not undo it
+  for (const [t, f] of [[3000, 98], [3040, 0], [4000, 98], [4040, 1]]) g.write(`$BMAP,0,${f},,,,,*`, t);
+  pull(5000);                                                           // nor does a swap there and back
+  g.write('$AMMO,1,12,240,1,*', 5500); pull(5600);                      // nor an $AMMO for the bound slot
+  g.write(USP, 6000); pull(6100);                                       // the bound slot's own $WEAP does
+  g.write(AR, 7000); g.write('$CLEAR,*', 7100); g.write(USP, 7140); g.write(AR, 7180);
+  g.write('$BMAP,0,1,,,,,*', 7220); pull(7300);                         // a $CLEAR head's bind does too
+  const pulls = new Set([1000, 2100, 2600, 5000, 5600, 6100, 7300]);
+  assert.deepEqual(fired().filter(([t]) => pulls.has(t)),
+    [[1000, '1'], [2100, '0'], [2600, '0'], [5000, '0'], [5600, '0'], [6100, '1'], [7300, '1']]);
+});
+
+test('emulator: a $WEAP before the bound slot has fired leaves the bind in force', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  g.button(0, 1, 1000); g.button(0, 0, 1030);                          // an AR round
+  g.write('$BMAP,0,1,,,,,*', 3000); g.write(AR, 3040);
+  g.button(0, 1, 3100); g.button(0, 0, 3140);
+  assert.deepEqual(g.take().filter(o => o.t >= 3100).map(o => o.f), ['$ALCD,11,100,1,240,0,*']);
+});
+
+test('emulator: a $WEAP re-send of the target in a swap shortens the rebind delay to the target\'s tok15', () => {
+  const g = new GunModel();
+  for (const f of [AR, USP, '$SPAWN,,*', '$BMAP,0,0,,,,,*']) g.write(f, 0);
+  g.take();
+  g.button(0, 1, 1000); g.button(0, 0, 1030);                          // an AR round, released at 1030
+  g.write('$BMAP,0,98,,,,,*', 1100); g.write(USP, 1140); g.write('$BMAP,0,1,,,,,*', 1180);
+  g.button(0, 1, 1480); g.button(0, 0, 1510);                          // refused: 1030 + 500
+  g.button(0, 1, 1520); g.advance(1550); g.button(0, 0, 1550);         // held at 1530: fires then
+  assert.deepEqual(g.take().filter(o => o.f.includes(',100,1,') && o.t > 1140).map(o => o.t), [1530]);
+});
+
+test('emulator: a lone $WEAP,4 after the bound slot fired makes the trigger swing the melee slot', () => {
+  const MELEE = '$WEAP,4,1,90,13,1,90,0,,,,,,,,1000,100,1,0,0,10,13,100,100,,0,0,,M92,,,,,,,,,,,,1,0,20,*';
+  const g = new GunModel();
+  for (const f of [AR, USP, MELEE, '$SPAWN,,*', '$BMAP,0,1,,,,,*']) g.write(f, 0);
+  g.button(0, 1, 1000); g.button(0, 0, 1040);
+  g.write(MELEE, 2000); g.take();
+  g.button(0, 1, 2100); g.button(0, 0, 2140);
+  assert.deepEqual(g.take().map(o => o.f), ['$ALCD,1,100,4,0,0,*']);
+  assert.deepEqual([g.state().sel, g.state().pendingBind], [4, null]);
+});
+
+test('emulator: an ALT just after a released tap waits for the release plus the old slot\'s tok15 too', () => {
+  const { g } = run([[1000, 'b', 0, 1], [1030, 'b', 0, 0], ...tap(1100, 1),
+    [1800, 'b', 0, 1], [1840, 'b', 0, 0],                // ALT + 500 has passed, 1030 + 850 has not: nothing
+    [1900, 'b', 0, 1], [1940, 'b', 0, 0]]);              // fires
+  assert.deepEqual(g.decisions.filter(([t]) => t >= 1800).map(([t, what]) => [t, what.split(':')[0]]),
+    [[1800, 'pull refused'], [1900, 'fired slot 1']]);
+});
