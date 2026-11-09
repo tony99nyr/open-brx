@@ -12,6 +12,7 @@ import asyncio
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
 from _stage import GUN, StageClock, _nosleep, settle
+from brx_mcp.stage import stage as S
 
 
 async def _live():
@@ -19,6 +20,7 @@ async def _live():
     mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+    clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever and ALT work again
     st.poll(); await settle(st)
     return st
 

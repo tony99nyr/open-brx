@@ -76,6 +76,11 @@ export const SPAWN_WAIT_MS = 1500;
 
 const toks = f => f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');
 const int = (t, i) => (/^-?\d+$/.test(t[i] || '') ? +t[i] : null);
+/** The timing a slot's `$WEAP` row gives the spawn wait: t14 (split index 15) and semi auto (t20, index 21, non-zero). PURE. */
+export function weapTiming(row) { const k = String(row || '').replace(/,?\*$/, '').split(','); return { t14: int(k, 15) ?? 100, semi: (int(k, 21) ?? 0) !== 0 }; }
+/** The first time a pull fires slot `w` once the spawn wait ends at `waitEnd`: then, or one t14 later on a full-auto slot
+ *  (emulator 2026-11-09, SR23). The engine's ready cue reads this too (engine.js `_gunReadyAt`). PURE. */
+export function spawnFireEdge(waitEnd, w) { return waitEnd + (w && !w.semi ? w.t14 : 0); }
 
 export class GunModel {
   /** `auto`: 'timed' fires full-auto rounds every t14 while the trigger is held; 'hinted' fires only the first round
@@ -354,7 +359,7 @@ export class GunModel {
   _fireEdge(s) {
     let edge = -Infinity, why = null;
     const w = this.w[s], a = this.lastLive, sh = this.lastShot;
-    if (this.spawnUntil > -Infinity) { edge = this.spawnUntil + (w && !w.semi ? w.t14 : 0); why = 'spawn wait'; }
+    if (this.spawnUntil > -Infinity) { edge = spawnFireEdge(this.spawnUntil, w); why = 'spawn wait'; }
     if (sh && sh.slot === s && w && sh.t + w.t14 > edge) { edge = sh.t + w.t14; why = 'trigger floor'; }
     const sw = !this.inert && this.bindSlot !== this.fireBind && s === this.bindSlot, ws = this.w[this.sel];
     if (sw && a && ws && a.t + ws.t15 > edge) { edge = a.t + ws.t15; why = 'rebind delay'; }

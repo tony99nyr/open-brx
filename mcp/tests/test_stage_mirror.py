@@ -1053,6 +1053,7 @@ def test_the_reload_glance_repaints_the_last_moved_pool_solid_for_reload_glance_
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         readout = install_levels_readout(st, hold_s=0.3, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
         readout["reload_glance_s"] = 0.7
         assert st._gun_taken
@@ -1105,6 +1106,7 @@ def test_the_glance_cancels_an_animation_in_flight_and_a_later_drop_cancels_the_
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         readout = install_levels_readout(st, hold_s=0.3, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
         readout["reload_glance_s"] = 0.7
         st.alcd(mag=10, reserve=20)
@@ -1140,6 +1142,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         await flush_fake_ammo(st, mgr)
         st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the kill below lands
         st._on_rx("$ALCD,10,100,0,20,0,*")
@@ -1154,6 +1157,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
         await st.revive(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the new life's gun spawn wait (SR23)
         # bug 3a: the revive's own `$AMMO` rows are the new life's counts (`_acct_wrote_rows`); the last life's 10/20 is gone
         assert st.reloading is None and st._prev_ammo.get(0) != 10 and st._prev_reserve.get(0) != 20, "revive clears slot memory"
         assert set(st._prev_ammo) <= set(st._spawn_ammo()), st._prev_ammo
@@ -1175,6 +1179,7 @@ def test_alt_on_an_empty_slot_1_only_reloads_with_easy_reload():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st._slot_count = lambda: 1
         st._on_rx("$ALCD,10,100,0,20,0,*")
         st._on_rx("$BUT,1,1,*")
@@ -1476,6 +1481,7 @@ def test_the_takeover_is_as_long_as_THIS_weapon_not_a_flat_1_5s():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading["s"] == 1.4, f"slot 0 is the AR (reload_ms 1400): {st.reloading}"
@@ -1502,6 +1508,7 @@ def test_a_reload_perk_never_shortens_a_bolt():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.player["loadout"]["weapons"][0] = {"weapon_id": "sniper_rifle"}
         st.player["loadout"]["perk"] = "fast_hands"
         st.alcd(mag=1, reserve=20); await settle(st)
@@ -1519,6 +1526,7 @@ def test_a_new_life_and_the_end_of_the_match_clear_the_whole_takeover_not_just_t
         for finish in ("revive", "end", "panic"):
             st, mgr, clock = mk_reload()
             await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+            clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
             st.alcd(mag=10, reserve=20); await settle(st)
             st._on_rx("$BUT,2,1,*")                      # a pull, still held: `held` carries the press
             assert st.reloading and st.held, (st.reloading, st.held)
@@ -1547,6 +1555,7 @@ def test_a_ble_drop_ends_the_takeover_because_no_echo_can_ever_arrive():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading
@@ -1558,6 +1567,7 @@ def test_a_ble_drop_ends_the_takeover_because_no_echo_can_ever_arrive():
         # the other branch: `get_events` itself raises
         st2, mgr2, _c2 = mk_reload()
         await st2.connect(GUN); await st2.arm(); await st2.spawn(); await settle(st2)
+        _c2.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (SR23)
         st2.alcd(mag=10, reserve=20); await settle(st2)
         st2.reload(); await settle(st2)
         def boom(*a, **k):
@@ -1576,6 +1586,7 @@ def test_a_stunned_gun_refuses_the_pull_and_takes_it_again_once_the_stun_is_over
         st, mgr, clock = mk_reload()
         st.load_config({**st.config, "stun": {"duration_s": 2}}, source="test")
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         await st.ir("emp"); st.poll(); await settle(st)
         assert st.stunned, "fixture: the EMP word must actually stun this game"
@@ -1597,6 +1608,7 @@ def test_a_chain_that_loaded_then_fired_books_what_it_LOADED():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=1, reserve=20); await settle(st)
         st.reload(); await settle(st)
         st.alcd(mag=2, reserve=19); st.alcd(mag=3, reserve=18)      # two shells of a chain
@@ -1617,6 +1629,7 @@ def test_alt_during_reload_swaps_at_once_and_ends_the_takeover():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         assert st.reloading and st._slot_count() == 2
@@ -1892,6 +1905,7 @@ def test_a_ble_drop_also_lets_go_of_every_button():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)                            # past the gun's spawn wait (SR23)
         st.alcd(mag=10, reserve=20); await settle(st)
         st._on_rx("$BUT,2,1,*")                                      # pressed, never released
         assert st.held and st.reloading
@@ -1912,6 +1926,7 @@ def test_the_published_takeover_goes_null_all_at_once_past_the_deadline():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload(); await settle(st)
         v = st.state()["model"]["reloading"]
@@ -1961,6 +1976,7 @@ def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning
         mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
         st = GunStage(mgr, None, sleep=_nosleep, voice_verdict_sink=lambda _r: None)   # no-op sleep, REAL clock
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st._gun_spawn_at -= S.GUN_SPAWN_WAIT_S   # a real clock: the spawn was one gun spawn wait ago (SR23), so the lever works
         st.alcd(mag=10, reserve=20); await settle(st)
         st.reload()
         assert st.reloading, "fixture: the pull took, so there IS a watchdog that could spin"
@@ -2171,7 +2187,7 @@ _HILL_PAIRS = {
 _PU_PAIRS = {"pu._ammoShort": "_ammo_short", "pu.grantAmmo": "grant_ammo"}
 
 # 2026-11-08 phone-owned binding repair: make the two new Engine methods' stage twins explicit.
-_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick", "_bindWrite": "_bind_write", "_gunReadyAt": "_gun_ready_at", "_gunSpawnWaitMs": "_gun_spawn_wait"}
+_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick", "_bindWrite": "_bind_write", "_gunReadyAt": "_gun_ready_at", "_gunSpawnWaitMs": "_gun_spawn_wait", "_gunButtonsWaitMs": "_gun_buttons_wait", "_gunWaitEnd": "_gun_wait_end"}
 
 
 def _hill_methods() -> set[str]:
@@ -2642,6 +2658,7 @@ def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_a
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         st.player["loadout"]["weapons"][0] = {"weapon_id": "energy_rifle"}
         st.alcd(mag=10, reserve=600); await settle(st)
         st.reload(); await settle(st)
@@ -3560,6 +3577,7 @@ def test_a_new_life_clears_the_soft_reload_before_writing_its_trigger():
         for revive in (False, True):
             st, mgr, clock = mk_reload()
             await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+            clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
             await flush_fake_ammo(st, mgr)
             st.active_slot = 1
             st._publish_ammo(1, 2, 20)
@@ -3582,6 +3600,7 @@ def test_a_disconnect_ends_the_soft_reload_before_relink_binds_the_trigger():
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S)   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         await flush_fake_ammo(st, mgr)
         st.active_slot = 1
         st._publish_ammo(1, 2, 20)

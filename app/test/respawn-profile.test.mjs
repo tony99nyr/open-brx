@@ -32,12 +32,12 @@ function timedProtect(ms) {
     revive: protectedList(RP.revive) } };   // the T-0 spawn never carries t8
 }
 
-function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0 } = {}) {
+function harness({ bundle = golden, mode = 'tdm', respawn = 'auto', leadMs = 0, overrides = undefined } = {}) {
   const writes = []; const facts = []; const timed = []; let clock = 1_000_000;
   const teams = [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }];
   const config = { config_id: bundle.config_id, mode, environment: 'outdoor', night: false, time_limit_s: 600,
     respawn: { type: respawn, delay_s: 8 }, ...(respawn === 'scanner' ? { stations: [{ id: 5, kind: 'respawn' }] } : {}), scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams };
-  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], ...(overrides ? { overrides } : {}) }, voice: 'male' };
   const eng = new Engine({ writer: fr => { writes.push(...fr); for (const f of fr) timed.push([clock, f]); }, emit: f => facts.push(f), report: () => {}, now: () => clock,
     synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -390,7 +390,9 @@ test('F645 review 2026-11-06: a T-3 $GSET write that fails rides in front of the
 // ---- emulator 2026-11-09 (brx2; to be confirmed at bench SR23): after `$SPAWN` the gun ignores the trigger and ALT for
 // SPAWN_WAIT_MS (gunmodel.js), whatever the phone's weapon delay. The HUD never says WEAPONS HOT before the gun can fire;
 // the design's weapon delay and every write stay as they are. ----
-import { SPAWN_WAIT_MS } from '../src/gunmodel.js';
+import { SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from '../src/gunmodel.js';
+// the AR (slot 0, full auto) fires its first round one t14 after the gun's spawn wait (gunmodel.js `spawnFireEdge`)
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,'))));
 const DESIGN = { ...golden, respawn_profile: { ...RP, trigger_ms: 500 } };   // the design's 0.5 s weapon delay
 const spawnAt = h => h.timed.filter(([, f]) => f === '$SPAWN,,*').pop()[0];
 
@@ -400,7 +402,7 @@ test('spawn wait: a timed revive with a 0.5 s weapon delay maps the trigger at 0
   h.adv(510);
   assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'the write is unchanged: the trigger is mapped at 0.5 s');
   assert.ok(h.eng.state().weaponArming > 0, 'but the gun still ignores the trigger, so the HUD is not ready');
-  h.adv(t0 + SPAWN_WAIT_MS - h.now() - 10);
+  h.adv(t0 + GUN_READY - h.now() - 10);
   assert.ok(h.eng.state().weaponArming > 0, 'still waiting 10 ms before the gun\'s wait ends');
   h.adv(10);
   assert.equal(h.eng.state().weaponArming, null, 'ready when the gun can fire');
@@ -410,20 +412,21 @@ test('spawn wait: a station respawn (trigger live in the burst) waits for the gu
   const h = liveArmed({ respawn: 'scanner' });
   stationRevive(h); const t0 = spawnAt(h);
   assert.ok(h.eng.state().weaponArming > 0, 'not WEAPONS HOT at the revive');
-  h.adv(t0 + SPAWN_WAIT_MS - h.now() - 10); assert.ok(h.eng.state().weaponArming > 0);
+  h.adv(t0 + GUN_READY - h.now() - 10); assert.ok(h.eng.state().weaponArming > 0);
   h.adv(10); assert.equal(h.eng.state().weaponArming, null);
   assert.equal(h.eng.state().shielded, true, 'the shield is unchanged (station protection 2 s)');
 });
 
-test('spawn wait: the go-live spawn waits for the gun too, and a 1.5 s design delay is not lengthened', () => {
+test('spawn wait: the go-live spawn waits for the gun too, and a 1.5 s design delay waits only for the AR\'s first round', () => {
   const h = harness();   // late start: the start message spawns the gun
   const t0 = spawnAt(h);
   assert.ok(h.eng.state().weaponArming > 0, 'not ready at the T-0 spawn');
-  h.adv(t0 + SPAWN_WAIT_MS - h.now()); assert.equal(h.eng.state().weaponArming, null);
+  h.adv(t0 + GUN_READY - h.now()); assert.equal(h.eng.state().weaponArming, null);
   const g = liveArmed();   // golden: trigger_ms 1500, the same as the gun's wait
   const n = revived(g);
   g.adv(1490); assert.ok(g.eng.state().weaponArming > 0);
-  g.adv(10); assert.equal(g.eng.state().weaponArming, null, 'ready at 1.5 s, as before');
+  g.adv(GUN_READY - 1490 - 10); assert.ok(g.eng.state().weaponArming > 0, 'the AR\'s first round is one t14 after the gun\'s wait');
+  g.adv(10); assert.equal(g.eng.state().weaponArming, null, 'ready when the AR can fire');
   assert.deepEqual(bmap0(g.since(n)), [HELD, LIVE]);
 });
 
@@ -433,7 +436,7 @@ test('spawn wait: the go-live WEAPONS HOT pill waits for the gun as well', async
   const pill = () => /WEAPONS HOT/.test(renderHtml({ now: h.now(), state: h.eng.state(), hud: {} }).chips);
   assert.equal(h.eng.state().moment && h.eng.state().moment.kind, 'go', 'setup: the go moment is up');
   assert.equal(pill(), false, 'not at the T-0 spawn');
-  h.adv(t0 + SPAWN_WAIT_MS - h.now());
+  h.adv(t0 + GUN_READY - h.now());
   assert.equal(pill(), true, 'once the gun can fire');
 });
 
@@ -443,3 +446,25 @@ test('spawn wait: a shielded station life inside the gun\'s wait names the shiel
   assert.match(_redeployLine({ weaponArming: null, shielded: true }), /SHIELD UP · WEAPONS HOT/, 'CONTROL: once the gun can fire');
   assert.match(_redeployLine({ weaponArming: 900, shielded: false }), /ACTIVATING WEAPON SYSTEMS/);
 });
+
+// brx2 2026-11-09 (emulator; bench SR23): the lever is dead in the spawn wait as well (no reload from 300 to 1,400 ms after
+// `$SPAWN`; a normal one at 2,500 ms). The phone must not start or book a reload the gun never does, from the lever or from
+// Easy Reload's ALT, and must take the press the moment the gun does (accessibility: never later).
+for (const [name, press, opts] of [['the lever', h => { h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); }, {}],
+  ['Easy Reload\'s ALT', h => { h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*'); }, { easy: true }]]) {
+  test(`spawn wait: ${name} inside the gun's spawn wait starts no reload; at the end of the wait it does`, () => {
+    const bundle = { ...golden, respawn_profile: { ...RP, trigger_ms: 500 } };
+    const h = liveArmed({ bundle, ...(opts.easy ? { overrides: { easy_reload: true } } : {}) });
+    h.frame('$ALCD,32,100,0,192,0,*'); h.adv(300); h.shot(31); h.adv(300); h.shot(30); h.adv(300); h.shot(29);   // a part-empty AR
+    h.die(); h.adv(7990); const n = h.mark(); h.adv(10); assert.equal(h.eng.alive, true, 'setup: revived');
+    const t0 = spawnAt(h);
+    h.adv(300); press(h);
+    assert.equal(h.eng.am.reloading, null, `${name} 300 ms after the spawn: the gun ignores it, so the phone starts no reload`);
+    h.adv(1000); press(h);
+    assert.equal(h.eng.am.reloading, null, `${name} at 1.3 s: still the gun's wait`);
+    assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,') && !RP.revive.includes(f)), [], 'no reload write');
+    h.adv(t0 + SPAWN_WAIT_MS - h.now()); h.shot(31); h.adv(200);   // the wait is over: a round leaves
+    press(h);
+    assert.ok(h.eng.am.reloading, `${name} the moment the gun takes it: the reload starts`);
+  });
+}

@@ -25,7 +25,10 @@ import { LANE_HERO_MS, LANE_HILL_CLEAR_MS, redeployOutMs } from './lanes.js';
 // A56 (S58): the player's side of the powerups (docs/spec/powerups.md) lives in powerup-player.js; its constants are
 // re-exported here so every existing `from './engine.js'` import keeps working.
 import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_STACK_CAP_X, OVERSHIELD_AMOUNT, OVERSHIELD_DECAY_PER_S, PU_SELECT_DEBOUNCE_MS, PU_ANNOUNCE_MS, PU_ANNOUNCE_LATE_MS, PU_READY_MS, PU_NEAR_DB, POWERUP_EXIT_DB, POWERUP_DWELL_MS, POWERUP_NO_ANSWER_MS, POWERUP_READY_LATCH_MS, PU_ADVERT_STALE_MS, OVERSHIELD_GRANT_MS, OVERSHIELD_HIR_WAIT_MS, PU_BACK_RETRY_MS, OVERSHIELD_OFF_RETRIES, PU_BACK_TRIES, OVERSHIELD_ECHO_MS, puSpawnIndex, puSpawnAt, PU_COUNT_REPAIRS, burstWithHeld, PlayerPowerups } from './powerup-player.js';
-import { SPAWN_WAIT_MS as GUN_SPAWN_WAIT_MS } from './gunmodel.js';   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
+import { SPAWN_WAIT_MS as GUN_SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from './gunmodel.js';
+/** Emulator 2026-11-09 (brx2; to be confirmed at bench SR23): the gun's own wait after `$SPAWN`. False turns off every use of
+ *  it (the ready cue and the dead lever), if the bench refutes it. */
+const GUN_SPAWN_WAIT = true;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
@@ -646,7 +649,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -1821,9 +1824,22 @@ export class Engine {
     return tp || ms > 0 ? ms : null;
   }
   /** Emulator 2026-11-09 (brx2; to be confirmed at bench SR23): after `$SPAWN` the gun ignores the trigger and ALT for
-   *  GUN_SPAWN_WAIT_MS, whatever the weapon delay; each `$SPAWN` restarts it. When a gun that spawned at `spawnAt` can
-   *  fire. The one place this rule lives: if the bench refutes it, return `spawnAt` here. Display only; no write. PURE. */
-  _gunReadyAt(spawnAt) { return spawnAt + GUN_SPAWN_WAIT_MS; }
+   *  GUN_SPAWN_WAIT_MS, whatever the weapon delay; each `$SPAWN` restarts it, and a full-auto slot's first round comes one
+   *  t14 later (gunmodel.js `spawnFireEdge`). When a gun that spawned at `spawnAt` can fire the slot in hand. The one place
+   *  this rule lives: if the bench refutes it, return `spawnAt` here. Display only; no write. PURE. */
+  _gunReadyAt(spawnAt) {
+    if (!GUN_SPAWN_WAIT) return spawnAt;
+    const row = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${this.activeSlot},`));
+    return spawnFireEdge(this._gunWaitEnd(spawnAt), row ? weapTiming(row) : null);
+  }
+  /** When the gun's spawn wait ends for a `$SPAWN` at `spawnAt`: from then the gun reads the trigger, ALT and the lever. PURE. */
+  _gunWaitEnd(spawnAt) { return GUN_SPAWN_WAIT ? spawnAt + GUN_SPAWN_WAIT_MS : spawnAt; }
+  /** brx2 2026-11-09 (emulator; SR23): the ms left before the gun reads the lever and ALT again after the last `$SPAWN`
+   *  (ammo.js `reloadPulled` refuses a press inside it: the gun reloads nothing). PURE. */
+  _gunButtonsWaitMs(now = this.now()) {
+    const t = this._gunSpawnAt;
+    return t == null ? 0 : Math.max(0, this._gunWaitEnd(t) - now);
+  }
   /** The ms left of the gun's spawn wait (`_gunReadyAt`) after the last `$SPAWN` write, else 0. PURE. */
   _gunSpawnWaitMs(now = this.now()) {
     const t = this._gunSpawnAt;

@@ -2666,7 +2666,25 @@ class GunStage:
 
     def _gun_ready_at(self, spawn_at: float) -> float:
         """engine.js `_gunReadyAt` (emulator 2026-11-09, bench SR23): the gun ignores the trigger and ALT for
-        GUN_SPAWN_WAIT_S after `$SPAWN`. The one place the rule lives. PURE."""
+        GUN_SPAWN_WAIT_S after `$SPAWN`, and a full-auto slot's first round comes one t14 later (gunmodel.js
+        `spawnFireEdge`, `weapTiming`: t14 is split index 15, semi auto is index 21 non-zero). The one place the rule lives. PURE."""
+        row = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{self.active_slot},")), None)
+        extra = 0.0
+        if row is not None:
+            k = row.rstrip("*").rstrip(",").split(",")
+            num = lambda i: int(k[i]) if len(k) > i and re.fullmatch(r"-?\d+", k[i] or "") else None
+            t14, semi = num(15), num(21)
+            if not semi:
+                extra = (t14 if t14 is not None else 100) / 1000
+        return self._gun_wait_end(spawn_at) + extra
+
+    def _gun_buttons_wait(self, now: float) -> float:
+        """engine.js `_gunButtonsWaitMs` (in seconds): what is left of the gun's spawn wait for the lever and ALT."""
+        t = self._gun_spawn_at
+        return 0.0 if t is None else max(0.0, self._gun_wait_end(t) - now)
+
+    def _gun_wait_end(self, spawn_at: float) -> float:
+        """engine.js `_gunWaitEnd`: when the gun reads the trigger, ALT and the lever again after a `$SPAWN`. PURE."""
         return spawn_at + GUN_SPAWN_WAIT_S
 
     def _gun_spawn_wait(self, now: float) -> float:
@@ -6988,6 +7006,11 @@ class GunStage:
         # A20/F15 (ammo.js `reloadPulled`): a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_on_ammo`
         # drops every $ALCD for the whole window, so a takeover started here could never be reconciled --
         # it would run to its deadline and book `ok:false` on a reload the player never asked the gun for.
+        # ammo.js `reloadPulled` (emulator 2026-11-09, SR23): the gun reads no lever in its spawn wait and reloads nothing
+        wait = self._gun_buttons_wait(self.now())
+        if wait > 0:
+            self._log(f"reload pull ignored: the gun's spawn wait ({math.ceil(wait * 1000)} ms left)", "info")
+            return
         self._lever_at = self.now()   # ammo.js `reloadPulled`: a refused pull still makes the gun reload a slot
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")

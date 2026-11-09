@@ -16,6 +16,10 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.stage.stage import PROBE_LIFE as PROBE, GunStage
 from _stage import _nosleep, GUN, LegacyCompiler, settle, StageClock, tx
+from brx_mcp.stage import stage as S
+
+# gunmodel.js `spawnFireEdge`: the gun's spawn wait plus one t14 on the full-auto AR (slot 0, t14 100 ms)
+GUN_READY_S = S.GUN_SPAWN_WAIT_S + 0.1
 
 ON, OFF = "$TMP,,,,,,,,-100,,,,*", "$TMP,,,,,,,,0,,,,*"
 HELD, LIVE = "$BMAP,0,98,,,,,*", "$BMAP,0,0,,,,,*"
@@ -138,14 +142,17 @@ def test_timed_defaults_no_t8_the_trigger_held_and_live_at_one_and_a_half_second
         assert new[start:start + len(rp["revive"])] == rp["revive"], "the revive writes respawn_profile.revive"
         assert not _tmp(new) and HELD in new and LIVE not in new
         assert st._arm_pending is None, "no protection: armed at once"
-        assert st.state()["model"]["weapon_arming_s"] == 1.5
+        # emulator 2026-11-09 (bench SR23): the gun's own wait plus one AR t14 (full auto), not under the 1.5 s weapon delay
+        assert abs(st.state()["model"]["weapon_arming_s"] - max(rp["trigger_ms"] / 1000, GUN_READY_S)) < 1e-9
         st._inject_rx("$BUT,0,1,*"); st._inject_rx("$BUT,0,0,*")
         assert st._shot_due_at is None, "weaponHold: a pull while the trigger is held owes no shot (F208)"
         clock.advance(1.49); st.poll(); await settle(st)
         assert LIVE not in tx(mgr)[n:], "still held at 1.49 s"
         clock.advance(0.01); st.poll(); await settle(st)
         assert tx(mgr)[n:].count(LIVE) == 1, "trigger_live at 1.5 s"
-        assert st._trigger_pending is None and st.state()["model"]["weapon_arming_s"] is None
+        assert st._trigger_pending is None and st.state()["model"]["weapon_arming_s"] > 0, "the AR's first round is one t14 later"
+        clock.advance(GUN_READY_S - 1.5); st.poll(); await settle(st)
+        assert st.state()["model"]["weapon_arming_s"] is None, "ready when the AR can fire"
         k = len(tx(mgr)); clock.advance(5); st.poll(); await settle(st)
         assert LIVE not in tx(mgr)[k:] and not _tmp(tx(mgr)[n:]), "once, and never a $TMP"
     asyncio.run(run())
@@ -487,7 +494,7 @@ def test_f497_weapon_arming_counts_the_planned_wait_of_a_queued_burst():
         task = asyncio.create_task(st.revive())
         await settle(st)
         first = st.state()["model"]["weapon_arming_s"]
-        assert abs(first - (rp["trigger_ms"] / 1000 + 1.3)) <= 0.01, f"the delay and the planned wait: {first}"
+        assert abs(first - (max(rp["trigger_ms"] / 1000, GUN_READY_S) + 1.3)) <= 0.01, f"the delay and the planned wait: {first}"
         seen = [first]
         for _ in range(12):
             clock.advance(0.1); st.poll(); await settle(st); seen.append(st.state()["model"]["weapon_arming_s"])
