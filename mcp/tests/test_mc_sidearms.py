@@ -107,8 +107,8 @@ def test_pistol_sounds_are_unique_on_gun_ids():
 
 
 def test_pistols_draw_in_500ms_in_their_tok15():
-    """Bench 2026-09-04 (docs/spec/loadout.md §1.2): tok15 IS the swap delay. A swap takes the tok15 of the slot
-    it moves to (bench 2026-11-08 SR1), so a 500 ms pistol draws in 500 ms beside a rifle too."""
+    """Bench 2026-09-04 (docs/spec/loadout.md §1.2): tok15 IS the swap delay. A swap's own edge is the tok15 of the
+    slot it moves to (bench 2026-11-08 SR1); live fire just before can push the first round later (node.md §3.2a)."""
     for w in ALL_PISTOLS:
         assert CAT.swap_ms(w) == 500, w
         assert _T(CAT.resolve(w, 1), "swap") == "500", w
@@ -116,8 +116,8 @@ def test_pistols_draw_in_500ms_in_their_tok15():
 
 
 def test_each_swap_direction_takes_the_tok15_of_the_slot_it_moves_to():
-    """Bench 2026-11-08 SR1 (and a private emulator of the stock image): AR to USP-S 500 ms, USP-S to AR 850 ms.
-    The 2026-09-04 "the larger slot wins" reading held the trigger through the swap while firing; a perk scales both ways."""
+    """Bench 2026-11-08 SR1: the ALT lockout is 500 ms to the USP-S and 850 ms to the AR. The 2026-09-04 "the larger
+    slot wins" runs fired through each swap, which adds the fired slot's tok15 edge; a perk scales both ways."""
     assert CAT.swap_to_ms("assault_rifle", "usp") == {0: 850, 1: 500}
     assert CAT.swap_to_ms("usp", "assault_rifle") == {0: 500, 1: 850}
     assert CAT.swap_to_ms("assault_rifle", "usp", {"switch_mult": 0.5}) == {0: 425, 1: 250}

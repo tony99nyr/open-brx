@@ -159,7 +159,9 @@ does **not** simulate reloads; it reflects `$ALCD`/`$LCD`.
   head's `$BMAP,1,100,…`; Easy Reload's `$BMAP,1,97` stays), so the gun never swaps by itself. On ALT with two weapons
   the node moves the trigger slot at once, shows SWITCHING, holds the trigger (`$BMAP,0,98`) for the target slot's
   `$WEAP` tok15, then binds it (`$BMAP,0,<slot>`, `switchTick`). A second ALT inside the window retargets, and only the
-  last target is bound. The node plays the target weapon's ReloadPart3 sound (t33) as the swap sound. ALT on a stunned
+  last target is bound. The gun itself adds a second edge (Tony 2026-11-09 keeps it, no extra writes): the first round
+  comes at the later of the bind and the end of live fire plus the tok15 of the slot that fired, so after an AR round
+  the USP-S fires 850 ms after the AR release, not 500 ms after ALT (a private emulator of the stock image, 2026-11-09; bench SR21 owed, F668). The node plays the target weapon's ReloadPart3 sound (t33) as the swap sound. ALT on a stunned
   gun is a swap (F465); the stun's disarm keeps the trigger dead until its restore. From a held heavy, ALT goes to the
   loadout slot other than the one last on the trigger (`lastLoadout`). Every `$BMAP,0,<n>` the node writes (the head,
   the spawn and revive bursts, `trigger_live`, the cure, the operator resync, the relink) binds the slot the node holds,
@@ -248,7 +250,10 @@ A frame inside an echo window, and the magazine on an `$LCD`, books no shot (§3
   player through it (§4.5). `type=="none"`: stay down (LMS). Respawn math uses **synced time**.
   **A49 (2026-09-19):** with `respawn_profile` in the bundle the node writes `respawn_profile.revive` for a timed
   revive (trigger held, `trigger_live` at `trigger_ms`, `spawn_protect_off` at `protect_ms` when that is above 0, both measured from when the revive burst is sent, not when it is queued (F493). A queued life burst is never dropped, and a zero pool read while it waits is not a death. `LIFE_BURST_HOLD_MAX_MS` caps the wait, and the spawn read-back waits for a queued burst) and
-  `respawn_profile.revive_station` for a station revive (contracts §4). The T-0 spawn writes `respawn_profile.spawn`
+  `respawn_profile.revive_station` for a station revive (contracts §4). **The gun's spawn wait:** after every `$SPAWN` the
+  gun ignores the trigger, ALT and the lever for 1.5 s, and each `$SPAWN` restarts it; a full-auto slot's first round
+  comes one t14 later (a private emulator of the stock image, 2026-11-09; bench SR23 owed, F668). So a respawned player
+  fires no sooner than 1.5 s after the spawn, whatever the weapon delay, and a lever in that time refills nothing. The T-0 spawn writes `respawn_profile.spawn`
   (no protection, trigger live) after one live `sir_pool` take at T-3. A shot never ends protection on this path.
 
 ### 3.5 Shooter identity from `$HIR`
@@ -770,7 +775,7 @@ and wait out DOWN and RECONCILING. The kill card is a lane, and a due one waits 
 | overlay | kind | trigger | copy / what it shows | ends |
 |---|---|---|---|---|
 | RELOADING | takeover | `$BUT,2,1` (reload handle) or ALT on a one-weapon gun (`easy_reload`) | weapon name, a progress track sized to the catalog `reload_s` × the equipped perk's `reload_mult` (MC applies the same to `$WEAP` t18) | the mag reaches its cap on the gun's slot, a shot fires on any slot, or the deadline passes after the last gain. Never while dead, in resync/reconcile, or with a dry reserve |
-| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the LONGEST swap = `FrameBundle.swap_ms` (the larger `$WEAP` t15 of the two slots; Fast Hands halves it). The gun's own delay is the t15 of the slot the swap moves to (bench 2026-11-08), so a swap to a quicker weapon is ready before the track ends | a shot on the new slot confirms the slot. A round on the old slot 250 ms or more after the press closes the card without a swap (GUN WAS ON). With neither by `swap_ms`, the node assumes the swap (READY), and the next shot's slot corrects it (§3.2a) |
+| SWITCHING | takeover | ALT with two weapons | STOWING → DRAWING tiles (art + names), a track over the LONGEST swap = `FrameBundle.swap_ms` (the larger `$WEAP` t15 of the two slots; Fast Hands halves it). The gun's first round comes at the later of the swap plus the target's t15 and the end of live fire plus the fired slot's t15 (§3.2a ALT), so a swap to a quicker weapon can be ready before the track ends | a shot on the new slot confirms the slot. A round on the old slot 250 ms or more after the press closes the card without a swap (GUN WAS ON). With neither by `swap_ms`, the node assumes the swap (READY), and the next shot's slot corrects it (§3.2a) |
 | RECONCILING | takeover | a BLE rejoin while LIVE (S7.1) | GUN RELINKED · SYNCING WITH YOUR GUN · 3 s fill · WEAPON DISARMED FOR A MOMENT | `state().reconciling` clears |
 | DOWN | takeover | death | auto mode: the countdown and GET TO SAFE SPACE FOR REDEPLOY (A49: larger and pulsing at warning level 2, a full-width 1 Hz band at level 3 after spawn kills); scanner mode: the **lesson** — HEAD TO YOUR TEAM'S RESPAWN STATION (then pull the trigger / and stand there, per `respawnGate`) → GET CLOSER + a closeness bar (RSSI vs the station's threshold) → HOLD… → PULL THE TRIGGER TO RESPAWN / RESPAWNING…; the death screen (§3.5): the killer and weapon, the callouts, and a game strip of the clock, the race to the cap, the hill and the player's kills and deaths, MC's numbers with an age tag once stale | revive |
 | REDEPLOYED | moment | revive | the kit you go back in with (primary, secondary and perk, A14), a light sweep. A49: while a timed revive holds the trigger the line reads ACTIVATING WEAPON SYSTEMS… and turns to WEAPONS HOT when it goes live; a station revive reads SHIELD UP | at least 1.7 s, or the weapon delay + 0.4 s: 1.9 s at the 1.5 s default (A74, `lanes.js redeployOutMs`) |
