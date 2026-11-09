@@ -149,7 +149,7 @@ export function _moments(st) {
 
     // SWITCHING WEAPON (persistent for the assumed swap window; the gun will not fire mid-swap). Ends with a 'switched' moment.
     if (switchUp) {
-      const fill = pct(st.switchingMs, st.switchWindowMs);
+      const fill = pct(st.switchingMs, st.swapWindowMs || st.switchWindowMs);   // the swap's own window (the gun's rule)
       if (this._moment !== 'switch') {
         this._moment = 'switch';
         this.overlay.innerHTML = `<div class="mo switching"><div class="c"><span class="t">SWITCHING</span>

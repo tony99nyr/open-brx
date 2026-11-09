@@ -122,7 +122,7 @@
     },
     {
       "at": "no_assumed_swap",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":true,"reloading":false},
       "facts": [],
       "reports": [{"kind":"ack_config","body":{"config_id":"golden-tdm","ok":true,"gun_echo":"$ALCD,32,100,0,192,0,*"}}],
       "writes": [
@@ -131,7 +131,7 @@
     },
     {
       "at": "reload_landed_on_slot_0",
-      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":false,"reloading":false},
+      "state": {"phase":"live","alive":true,"spawned":true,"hp":45,"armor":70,"shield":0,"activeSlot":1,"ammo":6,"reserve":48,"deaths":0,"switching":true,"reloading":false},
       "facts": [],
       "reports": [],
       "writes": []

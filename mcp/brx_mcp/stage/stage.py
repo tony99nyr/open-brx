@@ -386,6 +386,7 @@ HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MI
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
 GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_constants pins the pair
 GUN_SPAWN_AIR_S = 0.06   # engine.js GUN_SPAWN_AIR_MS: the `$SPAWN` frame's air time after its send (late is safe, early is the bug)
+SWAP_HELD_MAX_S = 5.0    # engine.js SWAP_HELD_MAX_MS: a live pull still held ends no later than this after its last round (a lost release)
 RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
 # S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
@@ -1054,6 +1055,8 @@ class GunStage:
         self._pulled_life: int | None = None       # engine.js `_pulledLife`: the life of the last trigger pull (F445: ALT needs one)
         self._last_shot_life: int | None = None    # ammo.js `lastShot.life`: the life of the last round from slot 0 or 1
         self._last_shot_slot: int | None = None    # ammo.js `lastShot.slot` (F542: the lever reloads it until the new weapon fires)
+        self._last_shot_at: float | None = None    # ammo.js `lastShot.at`: when that round was reported (the swap timer)
+        self._gun_live_end: dict | None = None     # engine.js `_gunLiveEnd`: {at, shot_at, life}, the release of the last pull that fired
         self._lever_at: float | None = None        # ammo.js `leverAt`: the last lever pull while live and alive, refused or not
         self._gun_other: dict | None = None        # ammo.js `gunOther` (review 2026-11-06): a refused lever the gun spends on the last-fired slot
         self._pull_at: float | None = None         # engine.js `_pull.at`: the last trigger press (review 2026-11-06 M1)
@@ -1156,6 +1159,7 @@ class GunStage:
         self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
         self._equip_sent: int | None = None  # engine.js `_equipSent`: the pickup slot the last sent `$WEAP` equip put on the trigger
         self._gun_spawn_at: float | None = None   # engine.js `_gunSpawnAt`: the last `$SPAWN` write
+        self._gun_bind_at: dict | None = None     # engine.js `_gunBindAt`: {slot, at, pending}, when the gun reads the last trigger bind
         self._weap_out: int | None = None   # engine.js `_weapOut`: a `$WEAP` sent since the bound slot last fired (emulator 2026-11-09)
         self._gun_sel: int | None = None    # engine.js `_gunSel`: the slot the gun last fired while bound
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
@@ -1730,13 +1734,24 @@ class GunStage:
         fn = int(bm.split(",")[2]) if bm is not None else None
         if fn is not None:
             self._bmap_sent = fn
+        # engine.js `_write`: the gun reads a trigger bind one air time after it leaves (the swap timer); pending until sent
+        bind_at = {"slot": fn, "at": self.now() + GUN_SPAWN_AIR_S, "pending": True} if fn is not None and fn < 98 else None
+        if bind_at is not None:
+            self._gun_bind_at = bind_at
         if es is None and fn is None and ws is None:
             return result
+
+        def sent() -> None:
+            if bind_at is not None and bind_at["pending"]:
+                bind_at["pending"] = False
+                bind_at["at"] = max(bind_at["at"], self.now() + GUN_SPAWN_AIR_S)
 
         async def settled() -> None:
             try:
                 await result
+                sent()
             except BaseException:
+                sent()
                 if fn is not None and self._bmap_sent == fn:
                     self._bmap_sent = None
                 if es is not None and self._equip_sent == es:
@@ -1791,17 +1806,19 @@ class GunStage:
             return
         if not self.connected:
             return
+        # engine.js `_write` stamps the bind at the hand-off, inside this tick; the stage's write runs as a task, so stamp it here
+        self._gun_bind_at = {"slot": slot, "at": self.now() + GUN_SPAWN_AIR_S, "pending": True}
         self._spawn_task(self._bind_write(slot, f"{why}: bind the trigger", self._bmap_sent))
 
     async def _bind_write(self, slot: int, why: str, sent: int | None) -> None:
         """engine.js `_bindWrite` (emulator 2026-11-09): while a `$WEAP` for another slot is out, a bind re-equips its slot
         (head `$WEAP`, `$AMMO` with the live counts, then the `$BMAP`) when it binds the slot the gun last fired while bound
         (`_gun_sel`, or an unknown one), only while the trigger is held (98)."""
-        out, sel, bind = self._weap_out, self._gun_sel, f"$BMAP,0,{slot},,,,,*"
-        if out is None or out == slot or (sel is not None and sel != slot):
+        out, bind = self._weap_out, f"$BMAP,0,{slot},,,,,*"
+        if not self._reequip_wanted(slot):
             await self.write([bind], why)
             return
-        weap = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None) if sent == 98 else None
+        weap = self._reequip_row(slot, sent)
         if weap is None:
             self._log(f"{why}: the gun's weapon is slot {out}, not {slot}, but "
                       f"{'the head has no $WEAP for slot ' + str(slot) if sent == 98 else 'the trigger is not held'}: $BMAP only", "error")
@@ -1815,6 +1832,18 @@ class GunStage:
         self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
         self._log(f"{why}: the gun's weapon is slot {out} (a $WEAP since the bound slot last fired): re-equip slot {slot} at {mag}/{res}", "info")
         await self.write([weap, f"$AMMO,{slot},{mag},{res},1,*", bind], f"{why} (re-equip)")
+
+    def _reequip_wanted(self, slot: int) -> bool:
+        """engine.js `_reequipWanted`: a `$WEAP` for another slot is out, and `slot` is the slot the gun last fired while bound,
+        or that slot is unknown. PURE."""
+        out, sel = self._weap_out, self._gun_sel
+        return out is not None and out != slot and (sel is None or sel == slot)
+
+    def _reequip_row(self, slot: int, sent: int | None) -> str | None:
+        """engine.js `_reequipRow`: the head `$WEAP` a bind to `slot` re-equips with, only while the trigger is held. PURE."""
+        if not (self._reequip_wanted(slot) and sent == 98):
+            return None
+        return next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None)
 
     def _undo_gun_reload(self, slot: int, mag: int, res: int) -> None:
         """engine.js `_undoGunReload`: restore the last-fired slot's counts from the lever press."""
@@ -5956,6 +5985,7 @@ class GunStage:
             # phone also counts a held pickup's slot, which the stage never has (`pu.*` is KNOWN_UNMIRRORED).
             self._last_shot_life = self._life_queued
             self._last_shot_slot = slot
+            self._last_shot_at = self.now()
             if slot == self._bmap_sent:
                 self._weap_out = None   # engine.js `_roundsLeft`: the bound slot fired: the gun's weapon and selection are that slot
                 self._gun_sel = slot
@@ -6099,6 +6129,10 @@ class GunStage:
         if bid == 2 and self.reloading:
             self.reloading["released_at"] = now
         if bid == 0:
+            # engine.js `_onButton`: the release of a pull that fired; the gun's rebind delay counts from it (`_gun_swap_ready_at`)
+            if (self._last_shot_life == self._life_queued and self._last_shot_at is not None and since is not None
+                    and self._last_shot_at >= since):
+                self._gun_live_end = {"at": now, "shot_at": self._last_shot_at, "life": self._life_queued}
             self._recoil_release()   # S54 + F663 (engine.js `_onButton` -> `_recoilRelease`)
 
     def _easy_reload(self) -> bool:
@@ -6166,9 +6200,44 @@ class GunStage:
         return self.SWITCH_MAX_S * (float(sm) if sm and float(sm) > 0 else 1.0)
 
     def _swap_window_s(self) -> float:
-        """ammo.js `swapWindowMs`: the current swap's own duration, else the host window. PURE."""
+        """ammo.js `swapWindowMs`: the current swap's own duration, else the host window; an ALT swap stays up until the gun can
+        fire its target (Tony 2026-11-09, `_gun_swap_ready_at`). PURE."""
         sw = self.switching
-        return sw["s"] if sw and sw.get("s", 0) > 0 else self._switch_window_s()
+        own = sw["s"] if sw and sw.get("s", 0) > 0 else self._switch_window_s()
+        return max(own, self._gun_swap_ready_at(sw) - sw["at"]) if sw and not sw.get("pu") else own
+
+    def _swap_held_capped(self, now: float) -> bool:
+        """engine.js `_swapHeldCapped`: SWAP_HELD_MAX_S ended a live pull the stage still reads as held. PURE."""
+        st, down = self._last_shot_at, self.held.get(0)
+        return (st is not None and self._last_shot_life == self._life_queued and down is not None and down <= st
+                and now >= st + SWAP_HELD_MAX_S)
+
+    def _gun_swap_ready_at(self, sw: dict, now: float | None = None) -> float:
+        """engine.js `_gunSwapReadyAt` (Tony 2026-11-09, option 1; gunmodel.js `readyAt`): the later of the gun reading the swap's
+        bind (its send plus the air time; before the write, its due time plus the air time; while unsent, now plus the air time)
+        and the rebind delay (the release of the last pull that fired plus the tok15 of the gun's selected slot), in seconds.
+        No rebind delay to the slot the gun last fired while bound, or once the target has fired since the ALT. PURE."""
+        now = self.now() if now is None else now
+        to, due, b = sw.get("to"), self._bind_due, self._gun_bind_at
+        if due and due["slot"] == to:
+            at = due["at"] + GUN_SPAWN_AIR_S
+        elif b and b["slot"] == to and b["at"] >= sw["at"]:
+            at = max(b["at"], now + GUN_SPAWN_AIR_S) if b["pending"] else b["at"]
+        else:
+            at = sw["at"] + (sw.get("s") or 0) + GUN_SPAWN_AIR_S
+        st, ss = self._last_shot_at, self._last_shot_slot
+        if (to is not None and st is not None and ss is not None and self._last_shot_life == self._life_queued
+                and self._gun_sel != to and not (ss == to and st >= sw["at"])):
+            r, down = self._gun_live_end, self.held.get(0)
+            if down is not None and down <= st:
+                end = min(now, st + SWAP_HELD_MAX_S)   # a live pull still held: it has not ended (a lost release ends it)
+            elif r and r["life"] == self._life_queued and r["shot_at"] >= st:
+                end = r["at"]
+            else:
+                end = st    # a lost release: the round itself
+            sel = to if self._reequip_row(to, self._bmap_sent) else self._weap_out if self._weap_out is not None else ss
+            at = max(at, end + self._alt_lock_s(sel))
+        return at
 
     def _switch_tick(self) -> None:
         """ammo.js `switchTick`: bind a due target and close the swap display after its window."""
@@ -6184,6 +6253,8 @@ class GunStage:
         self.switching = None
         if not pu:
             self.last_switch_s = round((now - sw["at"]) * 1000) / 1000
+        if not pu and self._swap_held_capped(now):   # engine.js `_swapHeldCapped`: probably a lost trigger release
+            self._log("swap timer: a held pull hit the 5 s cap (SWAP_HELD_MAX_MS): its trigger release was probably lost", "error")
         if not pu and to == self.active_slot:
             self._show_slot_ammo(to)
         self._log(f"pickup switch card to slot {to} closed after {self._swap_window_s() * 1000:g}ms" if pu

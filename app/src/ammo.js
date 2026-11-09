@@ -926,8 +926,12 @@ export class Ammo {
     const ms = row ? Number(row.split(',')[16]) : NaN;
     return ms > 0 ? ms : this.host.switchWindowMs();
   }
-  /** The SWITCHING display's window: an ALT swap's own (`ms`), else the host's swap window (a pickup's card). PURE. */
-  swapWindowMs() { const sw = this.switching; return sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs(); }
+  /** The SWITCHING display's window: an ALT swap's own (`ms`), else the host's swap window (a pickup's card). Tony 2026-11-09
+   *  (option 1): an ALT swap stays up until the gun can fire its target (engine.js `_gunSwapReadyAt`), never before. PURE. */
+  swapWindowMs() {
+    const sw = this.switching, own = sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs();
+    return sw && !sw.pu && this.host.gunSwapReadyAt ? Math.max(own, this.host.gunSwapReadyAt(sw) - sw.at) : own;
+  }
   /** tick(): bind the trigger to the swap's target once its time is up (`bindDue`), and close the SWITCHING display when its
    *  window ends. A pickup's card (`switching.pu`) only closes: the powerup equip already moved the trigger. */
   switchTick(now) {
@@ -937,6 +941,7 @@ export class Ammo {
       const sw = this.switching, pu = !!sw.pu, to = sw.to;
       this.switching = null;
       if (!pu) this.lastSwitchMs = now - sw.at;
+      if (!pu && this.host.swapHeldCapped && this.host.swapHeldCapped()) this.host.log('swap timer: a held pull hit the 5 s cap (SWAP_HELD_MAX_MS): its trigger release was probably lost', 'le');
       if (!pu && to === this.host.activeSlot) this.showSlot(to);   // a press booked at the swap has settled since (F259 account)
       // `pu` rides along so the HUD can tell a pickup's ACTIVE bubble from ALT's own (docs/spec/powerups.md "The switch card").
       this.host.setMoment({ kind: 'switched', at: now, data: { slot: to, assumed: true, pu } });   // `assumed`: the HUD's READY (no gun report confirms a swap the phone owns)

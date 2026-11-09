@@ -15,7 +15,7 @@ import copy
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.mc.compile import Compiler
-from brx_mcp.stage.stage import ACC_HOLD_MS, GunStage
+from brx_mcp.stage.stage import ACC_HOLD_MS, GUN_SPAWN_AIR_S, GunStage
 from _stage import GUN, StageClock, _nosleep, mark, settle, since
 
 # The stage's own kit is the assault rifle on slot 0 and the shotgun on slot 1 (`recompile()`). The rifle carries an
@@ -126,6 +126,7 @@ def test_a_swap_onto_a_flat_weapon_clears_the_modifier_it_inherited_once():
         assert st.active_slot == 1 and st.switching
         assert st._recoil is not None and st._recoil["model"] is False and st._recoil["dirty"], st._recoil
         await _tick(st, mgr, clock, st._swap_window_s() + 0.01)
+        await _tick(st, mgr, clock, GUN_SPAWN_AIR_S + 0.01)   # Tony 2026-11-09: the gun reads the bind one air time after it leaves
         await _tick(st, mgr, clock, 0)
         assert _tmp(mgr, n) == ["$TMP,,,,0,,,,,,,,*"], "the inherited -30 must be written back to the base, once"
         for _ in range(4):
