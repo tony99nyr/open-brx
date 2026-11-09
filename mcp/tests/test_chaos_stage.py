@@ -18,7 +18,10 @@ from __future__ import annotations
 from brx_mcp.stage import stage as S
 
 import asyncio
+import itertools
 import random
+import time
+from unittest import mock
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage.stage import GunStage
@@ -30,7 +33,10 @@ DOT = {"11": {"weapon_id": "toxin_rifle", "per_tick": 4, "tick_ms": 1000, "durat
 
 
 def _mk(clock, **profile):
-    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
+    # The fake gun shares the stage's hand clock. On its default `time.monotonic` its delayed `$ALCD` replies fell due
+    # in REAL time, so on a slow machine (CI every run) a revive's refill reply landed after the test's own injected
+    # report and the stage booked it as the reload (`test_stage_mirror.flush_fake_ammo` names the class).
+    mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     if profile:
         st.set_profile(**profile)
@@ -43,6 +49,7 @@ async def _settle_all(st) -> None:
     inside `send()`, but only the NEXT `poll()` reacts to what it queued."""
     for _ in range(5):
         await settle(st)
+        st.mgr.pump()          # deliver the fake gun's replies that are due on the shared clock, in the test's order
         st.poll()
     await settle(st)
 
@@ -207,6 +214,7 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
         await st.spawn()
         await _settle_all(st)
         clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)            # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
+        await _settle_all(st)                        # the spawn burst's delayed replies land now, before the injected report
 
         st.alcd(mag=1, reserve=50, slot=0)           # a known, below-cap mag + a real reserve opens the reload gate
         st.reload()
@@ -227,12 +235,22 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
         await _settle_all(st)
         assert st.alive and st.reloading is None
         clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)            # past the new life's gun spawn wait (SR23)
+        await _settle_all(st)                        # the revive burst's delayed replies land now, before the injected report
 
         st.alcd(mag=1, reserve=50, slot=0)
         st.reload()
         await _settle_all(st)
         assert st.reloading is not None, "the gun can pull the handle again after a revive"
     asyncio.run(go())
+
+
+def test_the_reload_chaos_reads_no_wall_clock():
+    """The death-mid-reload chaos again with the wall clock jumping a second on every read: a slow CI runner at its
+    worst. It failed every CI run while the fake gun timed its `$ALCD` replies on `time.monotonic`; on the shared
+    hand clock the wall clock must not matter."""
+    ticks = itertools.count()
+    with mock.patch.object(time, "monotonic", lambda: 1e6 + next(ticks)):
+        test_death_mid_reload_blocks_the_refill_and_revive_starts_clean()
 
 
 # ---- 4: death mid-weapon-swap --------------------------------------------------------------------------
