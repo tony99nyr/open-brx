@@ -2170,6 +2170,9 @@ _HILL_PAIRS = {
 # app/test/fixtures/ammo-grant-cases.json.
 _PU_PAIRS = {"pu._ammoShort": "_ammo_short", "pu.grantAmmo": "grant_ammo"}
 
+# 2026-11-08 phone-owned binding repair: make the two new Engine methods' stage twins explicit.
+_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick"}
+
 
 def _hill_methods() -> set[str]:
     """`hl.<name>` for every `HillListener` method and accessor in hill.js."""
@@ -2230,7 +2233,15 @@ def _snake(name: str) -> str:
 def _unmirrored() -> set[str]:
     stage = _stage_methods()
     return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage
-            and _AMMO_PAIRS.get(m) not in stage and _HILL_PAIRS.get(m) not in stage and _PU_PAIRS.get(m) not in stage}
+            and _AMMO_PAIRS.get(m) not in stage and _HILL_PAIRS.get(m) not in stage and _PU_PAIRS.get(m) not in stage
+            and _ENGINE_PAIRS.get(m) not in stage}
+
+
+def test_every_new_engine_pair_is_real():
+    engine, stage = _engine_methods(), _stage_methods()
+    for js, py in sorted(_ENGINE_PAIRS.items()):
+        assert js in engine, f"_ENGINE_PAIRS names `{js}`, which engine.js does not declare"
+        assert py in stage, f"_ENGINE_PAIRS pairs `{js}` with `{py}`, which GunStage does not declare"
 
 
 def test_every_ammo_pair_is_real():
@@ -2528,17 +2539,17 @@ def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone()
     # an orphan, because `$TID` is a KNOWN command the deny filter has no reason to take. The gun would read
     # a team byte for a `$PSET` that never arrived. Both `_write` bodies must therefore DENY FIRST, then
     # restore the team, and this guard reads both bodies rather than trusting either comment.
-    for label, body, deny, tid, bind in (
+    for label, body, deny, tid, queue, bind in (
             ("engine.js `_write`", _fn_body(js, "  _write(frames, why, options = undefined, playScheduled = false, onSent = null, mustHear = false) {", "\n  }"),
-             "deniedCommand(f)", "frames = this._tidAfterPset(frames);", "frames = this._bindRows(frames);"),
+             "deniedCommand(f)", "frames = this._tidAfterPset(frames);", "return this._gun.enqueue(frames, why", "frames = this._bindRows(frames);"),
             ("stage.py `write`", _fn_body(_STAGE_PY.read_text(encoding="utf-8"),
                                           "    async def write(self, frames: list[str], why: str", "\n    async def _send_job"),
-             "protocol.is_denied(f)", "self._tid_after_pset(frames)", "self._bind_rows(frames)")):
+             "protocol.is_denied(f)", "self._tid_after_pset(frames)", "return await self._send_job", "self._bind_rows(frames)")):
         assert deny in body and tid in body, \
             (f"{label}: the deny filter and the $TID restore are not both in this function's CODE (stage.py: `write` alone, which ends where `_send_job` starts). A "
              "comment mentioning either one does not count -- `_fn_body` strips comments on purpose.")
-        assert bind in body and body.index(tid) < body.index(bind), \
-            f"{label}: normalise button bindings after restoring the team"
+        assert bind in body and body.index(tid) < body.index(queue) < body.index(bind), \
+            f"{label}: resolve button bindings after the play queue sends the write"
         assert body.index(deny) < body.index(tid), \
             (f"{label} restores the team BEFORE it drops denied frames. A denied $PSET would then leave an "
              "orphan $TID on the gun. Deny first, then $TID -- and keep the two sources in the same order, "

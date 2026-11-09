@@ -98,6 +98,7 @@ from ..mc.types import (  # seams review 2026-10-10 #3: the engine tunables, one
 # Milestone round 4 (Codex): the groups the CURRENT write has sent. A context variable, so two writes on the link at once
 # (each in its own task) never count each other's groups: a write that failed unsent while another sent still restores.
 _WRITE_SENDS: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar("stage_write_sends", default=None)
+_WRITE_FRAME_SENT: contextvars.ContextVar[Callable[[str], None] | None] = contextvars.ContextVar("stage_write_frame_sent", default=None)
 
 
 
@@ -1149,6 +1150,8 @@ class GunStage:
         self.active_slot = 0
         self._last_loadout = 0             # ammo.js `lastLoadout`: the last loadout slot bound
         self._bind_due: dict | None = None  # ammo.js `bindDue`: {slot, at, life}, with `at` in seconds
+        self._bmap_sent: int | None = None  # engine.js `_bmapSent`: unknown until a binding write
+        self._bind_tick_at = 0.0            # engine.js `_bindTickAt`, in seconds
         self._rebind_at = 0.0               # ammo.js `rebindAt`, in seconds
         self._disarm_note: dict[int, int] = {}   # ammo.js `disarmNote`: disarmed slots outside the account
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
@@ -1647,7 +1650,7 @@ class GunStage:
             except Exception as e:   # the link may already be gone
                 self._log(f"disconnect: {e}", "warn")
         self.connected = False
-        self._gun_other = None; self._end_reload("dropped")
+        self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None
         self._operator_resync_pending = None
         self._mag_query = None; self.switching = None; self._bind_due = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
         self._log("disconnected", "info")
@@ -1701,6 +1704,47 @@ class GunStage:
             out.append(frame if want == int(action) else f"$BMAP,0,{want},,,,,*")
         return out
 
+    def _note_bind_sent(self, frames: list[str], result: Awaitable[None]) -> Awaitable[None]:
+        """engine.js `_noteBindSent`: remember the last trigger row and forget it if its write fails."""
+        bm = next((f for f in reversed(frames) if re.match(r"^\$BMAP,0,\d+,", f)), None)
+        if bm is None:
+            return result
+        fn = int(bm.split(",")[2])
+        self._bmap_sent = fn
+
+        async def settled() -> None:
+            try:
+                await result
+            except BaseException:
+                if self._bmap_sent == fn:
+                    self._bmap_sent = None
+                raise
+
+        return settled()
+
+    def _bind_tick(self, now: float) -> None:
+        """engine.js `_bindTick`: repair the trigger binding outside a queued life burst.
+
+        The stage has no tutorial, rejoin reconcile or reconnect resync state machine.
+        """
+        async def repair() -> None:
+            # Let this tick's writers start before checking, including the weapon delay release below in poll().
+            await asyncio.sleep(0)
+            if not (self.connected and self.spawned and self.alive):
+                return
+            if self._life_burst is not None:
+                return
+            want, sent = self._bound_slot(), self._bmap_sent
+            if sent == want or (want != 98 and want >= 2 and sent is not None and sent != 98):
+                return
+            if now - self._bind_tick_at < self.BIND_RETRY_S:
+                return
+            self._bind_tick_at = now
+            await self.write([TRIGGER_HOLD if want == 98 else f"$BMAP,0,{want},,,,,*"],
+                             f"trigger binding repair ({'unknown' if sent is None else sent} -> {want})")
+
+        self._spawn_task(repair())
+
     def _bound_slot(self) -> int:
         """engine.js `_boundSlot`: a weapon delay, swap or phone reload holds the trigger. PURE."""
         if self._trigger_pending or self._bind_due or (self.reloading and self.reloading.get("soft")):
@@ -1725,10 +1769,43 @@ class GunStage:
         """engine.js `_undoGunReload`: restore the last-fired slot's counts from the lever press."""
         if not (self.spawned and self.alive and self.connected) or self.stunned:
             return
+        life = self._life_queued
+        had = (self._prev_ammo.get(slot), self._prev_reserve.get(slot))
+        a0 = self._shot_acct.get(slot)
+        until0 = a0["echo_until"] if a0 else 0.0
         self._acct_wrote(slot, mag, res)
+        gen = (self._shot_acct.get(slot) or {}).get("echo_gen")
         self._prev_ammo[slot] = mag; self._prev_reserve[slot] = res
+        if self.active_slot == slot:
+            self._publish_ammo(slot, mag, res)
         self._log(f"the gun's lever refilled slot {slot}, which the trigger is not bound to: put back {mag}/{res}", "info")
-        self._spawn_task(self.write([f"$AMMO,{slot},{mag},{res},1,*"], f"undo the gun's reload of slot {slot}"))
+
+        async def send(tries: int) -> None:
+            sent = False
+
+            def on_frame_sent(_frame: str) -> None:
+                nonlocal sent
+                sent = True
+
+            try:
+                ok = await self.write([f"$AMMO,{slot},{mag},{res},1,*"], f"undo the gun's reload of slot {slot}",
+                                      on_frame_sent=on_frame_sent)
+            except Exception:
+                ok = False
+            if ok is not False or sent or self._life_queued != life:
+                return
+            if tries > 0 and self.connected:
+                self._log(f"undo of slot {slot} failed before it left: once more", "info")
+                await send(tries - 1)
+                return
+            if had[0] is None or had[1] is None or not self._acct_unwrite(slot, had[0], had[1], mag, gen, until0):
+                return
+            self._prev_ammo[slot] = had[0]; self._prev_reserve[slot] = had[1]
+            if self.active_slot == slot:
+                self._publish_ammo(slot, had[0], had[1])
+            self._log(f"undo of slot {slot} failed: the gun keeps its refill, and so do the books", "error")
+
+        self._spawn_task(send(1))
 
     def _swap_sound(self, slot: int) -> None:
         """engine.js `_swapSound`: play the target weapon's ReloadPart3 at split index 34."""
@@ -1740,7 +1817,8 @@ class GunStage:
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False, take: bool = False,
                     on_start: Callable[[], None] | None = None, *, model: bool = True, life: bool = False,
-                    should_send: Callable[[], bool] | None = None) -> bool | None:
+                    should_send: Callable[[], bool] | None = None,
+                    on_frame_sent: Callable[[str], None] | None = None) -> bool | None:
         """engine.js `_write` around the send (F570, milestone review 2026-10-18): a write that carries `$AMMO`/`$WEAP` rows
         holds those rows' echo windows open while it is on the link (at most ECHO_HOLD_MAX_S), because the gun echoes each
         row as it reads it and a real link takes seconds for a head; when it settles they restart, so they close ACC_ECHO_S
@@ -1750,6 +1828,7 @@ class GunStage:
         before = self._echo_untils(rows, gens)
         sent = [0]   # milestone round 4: THIS write's groups that went out (`_send` counts into it), never another write's
         token = _WRITE_SENDS.set(sent)
+        frame_token = _WRITE_FRAME_SENT.set(on_frame_sent)
         if rows:
             self._hold_echoes(rows, gens)
         result: bool | None = False
@@ -1759,6 +1838,7 @@ class GunStage:
             return result
         finally:
             _WRITE_SENDS.reset(token)
+            _WRITE_FRAME_SENT.reset(frame_token)
             if rows and result is False and not sent[0]:
                 # bug 3 r2 M1: a write that never left (the link was down) lands nothing, so it holds no window: put back what
                 # the hold changed. (Round 3: a write that sent a group and then failed restarts them, as the phone does on
@@ -1815,10 +1895,12 @@ class GunStage:
         # `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a lone
         # `$PSET` on purpose; every game write restores the team (F206).
         frames = frames if exact else self._tid_after_pset(frames)
-        frames = self._bind_rows(frames)
         frames = self._drop_queued_fillers(frames, why)
         if not frames:
             return
+        if any(f.startswith("$PLAY,") for f in frames):
+            return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
+        frames = self._bind_rows(frames)
         return await self._send_job(_WriteJob(frames, why, gap_ms, take, on_start, queued_at, model, life, should_send))
 
     async def _send_job(self, job: "_WriteJob") -> bool | None:
@@ -1936,11 +2018,13 @@ class GunStage:
         if not self.connected:
             if play_lock_held:
                 self._play_lock.release()
+            self._bmap_sent = None
             return False   # bug 3 r2 M1: nothing was delivered (`_write_ammo` reads this; every other caller ignores it)
         if model:
             self._audio_write(frames, why)   # F478: what the gun will play, as it is sent (engine.js `_audioWrite` / `notePlay`)
         try:
-            await self._send(frames, gap_ms, on_start=on_start)
+            result = self._send(frames, gap_ms, on_start=on_start)
+            await self._note_bind_sent(frames, result)
             if play_indexes:
                 self._last_play_sent_at = self.now()
                 self._last_play_at = self._last_play_sent_at
@@ -1950,14 +2034,16 @@ class GunStage:
             # page said LINKED). Mark it, reconnect once, retry once; only then surface the failure.
             self._log(f"link lost while writing ({e}) -- reconnecting", "warn")
             self.connected = False
-            self._gun_other = None; self._end_reload("dropped")
+            self._gun_other = None; self._end_reload("dropped"); self._bmap_sent = None
             self._mag_query = None; self.switching = None; self._bind_due = None   # F542 review (engine.js `onBleDropped`): no query or swap survives the link
             try:
                 await self._reconnect()
                 if job.should_send is not None and not job.should_send():
                     await self._relink_trigger()
                     return False   # The drop cleared the write's reason, so only repair the trigger.
-                await self._send(self._bind_rows(frames), gap_ms, on_start=on_start)
+                frames = self._bind_rows(frames)
+                result = self._send(frames, gap_ms, on_start=on_start)
+                await self._note_bind_sent(frames, result)
                 if why != "reconcile: weapon systems live":
                     await self._relink_trigger()   # Repair after retry, so an old hold cannot replace the live binding.
                 if play_indexes:
@@ -1996,13 +2082,19 @@ class GunStage:
     async def _send(self, frames: list[str], gap_ms: int, on_start: Callable[[], None] | None = None) -> None:
         if (sent := _WRITE_SENDS.get()) is not None:
             sent[0] += 1   # milestone round 3: a group of this write started, so its rows may echo
-        if hasattr(self.mgr, "send_batch"):
+        on_frame_sent = _WRITE_FRAME_SENT.get()
+        if hasattr(self.mgr, "send_batch") and on_frame_sent is None:
             await self.mgr.send_batch(self.alias, frames, gap_ms=gap_ms, on_start=on_start)
-        else:                                       # the fake manager: one send per frame
+        else:
             for i, f in enumerate(frames):
-                if i == 0 and on_start is not None:
-                    on_start()
-                await self.mgr.send(self.alias, f, reply_window_ms=0)
+                if hasattr(self.mgr, "send_batch"):
+                    await self.mgr.send_batch(self.alias, [f], gap_ms=gap_ms, on_start=on_start if i == 0 else None)
+                else:                               # the fake manager: one send per frame
+                    if i == 0 and on_start is not None:
+                        on_start()
+                    await self.mgr.send(self.alias, f, reply_window_ms=0)
+                if on_frame_sent is not None:
+                    on_frame_sent(f)
 
     async def _reconnect(self) -> None:
         if not self.address:
@@ -4121,7 +4213,7 @@ class GunStage:
             self._pending_hurt_write = False       # ...the held low-health line too (engine.js `_lightGen` on a drop)
             self._ann.clear(); self._gun_audio.clear()   # engine.js `onBleDropped`: no announcer line, no audio model
             self._light_gen += 1
-            self._gun_other = None
+            self._gun_other = None; self._bmap_sent = None
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
             self.switching = None; self._bind_due = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
@@ -4132,7 +4224,7 @@ class GunStage:
             ev = self.mgr.get_events(self.alias, since_seq=self._last_seq)
         except Exception as e:
             self._log(f"link lost: {e}", "warn"); self.connected = False
-            self._gun_other = None
+            self._gun_other = None; self._bmap_sent = None
             self._end_reload("dropped")            # same drop, discovered a different way: same takeover verdict
             self.switching = None; self._bind_due = None; self.held = {}
             self._hill_reset()
@@ -4159,6 +4251,7 @@ class GunStage:
         # holds the soft reload's `$AMMO`), and never on a drop: `onBleDropped` ends the takeover and cancels the swap first.
         self._reload_tick()
         self._switch_tick()
+        self._bind_tick(self.now())
         # ⚠ OUTSIDE the loop on purpose: this is the phone's `tick()` work and it must run on an EMPTY drain
         # too, or presence never expires (a player who walks off the hill sees no more frames at all, which is
         # exactly the case the expiry exists for).
@@ -7098,6 +7191,7 @@ class GunStage:
 
     # F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs ~1.22-1.29x the catalog reload_ms (AR 1701 vs
     # 1400, burst 2160 vs 1700, charge 3220 vs 2500), so the ceiling is flat-OR-proportional, whichever is larger.
+    BIND_RETRY_S = 0.5       # engine.js BIND_RETRY_MS: minimum time between trigger binding repairs
     REBIND_MIN_GAP_S = 0.5   # ammo.js REBIND_MIN_GAP_MS: rate-limit repairs after an unbound slot fires
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
     FIRE_FIRST_SHOW_S = 3.0  # ammo.js FIRE_FIRST_SHOW_MS: how long the ammo block says PULL THE TRIGGER, THEN RELOAD

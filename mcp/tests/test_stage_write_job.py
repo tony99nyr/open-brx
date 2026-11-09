@@ -58,7 +58,7 @@ def test_model_false_keeps_a_stop_out_of_the_gun_audio_model():
 
 
 def test_a_play_queue_wait_rechecks_the_trigger_binding():
-    """The phone normalises binding rows again when the play queue sends them."""
+    """The phone resolves binding rows when the play queue sends them."""
     async def run():
         st, mgr = await _linked()
         await st._play_lock.acquire()
@@ -77,5 +77,5 @@ def test_a_play_queue_wait_rechecks_the_trigger_binding():
         st._bind_due = None
         st._play_lock.release()
         await task
-        assert tx(mgr)[-1] == "$BMAP,0,98,,,,,*", "an existing hold stays held"
+        assert tx(mgr)[-1] == "$BMAP,0,1,,,,,*", "a completed swap binds the slot at dispatch"
     asyncio.run(run())

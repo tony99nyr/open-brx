@@ -128,6 +128,36 @@ def test_a_round_from_an_unbound_slot_requests_a_rate_limited_rebind():
     asyncio.run(go())
 
 
+def test_a_failed_trigger_bind_is_repaired_on_the_next_tick():
+    async def go():
+        st, _gun, clock = await _live()
+        st._bmap_sent = 98
+        real_send, real_reconnect = st._send, st._reconnect
+
+        async def failed_send(*_args, **_kwargs):
+            raise OSError("failed bind write")
+
+        async def failed_reconnect():
+            st.connected = True
+            raise OSError("reconnect unavailable")
+
+        st._send = failed_send  # type: ignore[method-assign]
+        st._reconnect = failed_reconnect  # type: ignore[method-assign]
+        try:
+            await st.write(["$BMAP,0,0,,,,,*"], "test failed trigger bind", gap_ms=0)
+            assert False, "the failed write must reach the caller"
+        except OSError:
+            pass
+        assert st._bmap_sent is None, "a failed write must clear the binding the stage recorded"
+        st._send, st._reconnect = real_send, real_reconnect  # type: ignore[method-assign]
+        st.connected = True
+        before = len(_tx(st))
+        await _tick(st, clock, 0.51)
+        assert any(f.startswith("$BMAP,0,0,") for f in _tx(st)[before:])
+        assert st._bmap_sent == 0
+    asyncio.run(go())
+
+
 def test_a_gun_reload_of_an_unbound_slot_is_undone_once():
     async def go():
         st, _gun, _clock = await _live()
@@ -146,6 +176,77 @@ def test_a_gun_reload_of_an_unbound_slot_is_undone_once():
         st._on_rx("$ALCD,20,100,0,100,0,*")
         await settle(st)
         assert not [f for f in _tx(st)[before:] if f.startswith("$AMMO,0,")]
+    asyncio.run(go())
+
+
+def _seed_undo_slot(st):
+    st.active_slot = 0
+    st._prev_ammo[0] = 30; st._prev_reserve[0] = 180
+    st._acct_wrote(0, 30, 180)
+    return st._shot_acct[0]["echo_gen"], st._shot_acct[0]["echo_pending"]
+
+
+def test_undo_gun_reload_books_once_and_retries_an_unsent_write():
+    async def go():
+        st, _gun, _clock = await _live()
+        gen0, pending0 = _seed_undo_slot(st)
+        calls = []
+
+        async def retry_once(frames, why, *args, **kwargs):
+            calls.append(frames)
+            return False if len(calls) == 1 else None
+
+        st.write = retry_once  # type: ignore[method-assign]
+        st._undo_gun_reload(0, 10, 100)
+        await settle(st)
+        assert calls == [["$AMMO,0,10,100,1,*"], ["$AMMO,0,10,100,1,*"]]
+        assert st._shot_acct[0]["echo_gen"] == gen0 + 1
+        assert st._shot_acct[0]["echo_pending"] == pending0 + 1
+        assert st._shot_acct[0]["mag"] == 10 and st._shot_acct[0]["res"] == 100
+        assert (st._prev_ammo[0], st._prev_reserve[0], st.ammo, st.reserve) == (10, 100, 10, 100)
+    asyncio.run(go())
+
+
+def test_undo_gun_reload_rolls_back_books_after_two_unsent_failures():
+    async def go():
+        st, _gun, _clock = await _live()
+        gen0, pending0 = _seed_undo_slot(st)
+        calls = []
+
+        async def always_fail(frames, why, *args, **kwargs):
+            calls.append(frames)
+            return False
+
+        st.write = always_fail  # type: ignore[method-assign]
+        st._undo_gun_reload(0, 10, 100)
+        await settle(st)
+        acct = st._shot_acct[0]
+        assert calls == [["$AMMO,0,10,100,1,*"], ["$AMMO,0,10,100,1,*"]]
+        assert acct["echo_gen"] == gen0 + 1 and acct["echo_pending"] == pending0
+        assert acct["mag"] == 30 and acct["res"] == 180 and acct["echo_expect"] == 30
+        assert (st._prev_ammo[0], st._prev_reserve[0], st.ammo, st.reserve) == (30, 180, 30, 180)
+    asyncio.run(go())
+
+
+def test_undo_gun_reload_does_not_retry_or_roll_back_after_frame_sent():
+    async def go():
+        st, _gun, _clock = await _live()
+        gen0, pending0 = _seed_undo_slot(st)
+        calls = []
+
+        async def sent_then_failed(frames, why, *args, on_frame_sent=None, **kwargs):
+            calls.append(frames)
+            on_frame_sent(frames[0])
+            raise OSError("write failed after the frame left")
+
+        st.write = sent_then_failed  # type: ignore[method-assign]
+        st._undo_gun_reload(0, 10, 100)
+        await settle(st)
+        acct = st._shot_acct[0]
+        assert calls == [["$AMMO,0,10,100,1,*"]]
+        assert acct["echo_gen"] == gen0 + 1 and acct["echo_pending"] == pending0 + 1
+        assert acct["mag"] == 10 and acct["res"] == 100
+        assert (st._prev_ammo[0], st._prev_reserve[0], st.ammo, st.reserve) == (10, 100, 10, 100)
     asyncio.run(go())
 
 
