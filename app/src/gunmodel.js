@@ -45,8 +45,8 @@
 //   the melee slot. `state()` gives `sel` and `pendingBind` for tests of a phone guard against this.
 // - ALT moves the pointer and binds the trigger to the pointer's slot; onto the slot already bound it changes nothing
 //   visible (SR18; emulator: a trigger a `$WEAP` moved to the AR stayed there). No `$WEAP` blocks ALT.
-// - After `$SPAWN` the trigger and ALT do nothing for SPAWN_WAIT_MS, and each `$SPAWN` restarts it; a held pull fires as
-//   it ends (emulator; SR23). `readyAt(t)` gives the earliest time the next pull can fire, for a HUD "ready" cue.
+// - After `$SPAWN` the trigger, ALT and the lever do nothing for SPAWN_WAIT_MS, and each `$SPAWN` restarts it; a held
+//   pull fires as it ends, one t14 later on a full-auto slot (emulator; SR23). `readyAt(t)` gives the earliest time the next pull can fire, for a HUD "ready" cue.
 // - The rebind delay (emulator): that switch waits for the release of the last pull that fired plus the selected slot's
 //   tok15 (AR 850, USP-S 500). A held pull, or a bind on a held trigger, fires as it ends. A `$WEAP` of the target in
 //   the swap selects it, so the delay drops to the target's tok15; nothing else tried shortens it. A pull at 98 and a
@@ -58,7 +58,7 @@
 // Assumed, not seen: `$START` puts the ALT pointer and a bound trigger on slot 0. A melee swing does not move the
 // last-fired slot. A `$BMAP,0` rebind starts no swap delay.
 // Not encoded (each needs a bench): a Shotgun's shell chain; ALT on 97 (Easy Reload); hits, deaths and the pools (the
-// `$LCD` and `$HP` pools are the last `$PSET`'s); whether the lever is also dead in the spawn wait.
+// `$LCD` and `$HP` pools are the last `$PSET`'s).
 //
 // Time is the caller's: every input carries `t` in ms, and `advance(t)` runs what falls due (a timed auto round, a
 // refill). Answers queue in `take()` as `{t, f}`. `decisions` records every timed call with its distance from the edge
@@ -70,8 +70,8 @@ export const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_LEVER = 2;
 export const RELOAD_SCALE = 1.25;
 /** `$BMAP` functions: no action, and the "disabled" chirp; both leave ALT reported and swap nothing. */
 export const FN_INERT = 98, FN_CHIRP = 99, FN_ALT_CYCLE = 100, FN_MELEE = 4;
-/** After `$SPAWN` the gun reads no trigger or ALT for this long; each `$SPAWN` restarts it (emulator, 2026-11-09: a
- *  held USP-S pull fired at 1,507 ms; the AR's first round came at 1,605 ms, which the wait alone does not explain). */
+/** After `$SPAWN` the gun reads no trigger, ALT or lever for this long; each `$SPAWN` restarts it. A full-auto slot's
+ *  first round waits one more t14 (emulator, 2026-11-09: USP-S 1,507 ms; AR t14 60/100/150: 1,570/1,605/1,655 ms). */
 export const SPAWN_WAIT_MS = 1500;
 
 const toks = f => f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');
@@ -103,6 +103,7 @@ export class GunModel {
     this.lastBindAt = -Infinity;     // the last `$BMAP,0` write, for the margin of a pull just after it
     this.lastShot = null;            // {slot, t} of the last round: the next pull on that slot waits its t14
     this.lastLive = null;            // {slot, t}: the release of the last pull that fired, for the rebind delay
+    this.spawnUntil = -Infinity;     // the end of the spawn wait (trigger, ALT and lever)
     this.trigger = null;     // {at, live} while held: live = the pull fired
     this.lastPull = null;
     this.dry = null;         // {slot, at, semi, ms, upAt}: the last dry pull, for the ALT block
@@ -144,7 +145,7 @@ export class GunModel {
     } else if (cmd === 'SPAWN') {
       for (const [slot, w] of Object.entries(this.w)) { this.mag[slot] = w.clip; this.res[slot] = w.carried; }
       this._newLife();
-      this.fireLockUntil = this.altLockUntil = t + SPAWN_WAIT_MS;
+      this.altLockUntil = this.spawnUntil = t + SPAWN_WAIT_MS;   // the trigger's edge is in _fireEdge
       this._emit(t, `$LCD,${this.pools[0]},${this.pools[1]},0,0,${this.mag[0] ?? 0},${this.res[0] ?? 0},*`);
       this._alcd(0, t);
     } else if (cmd === 'AMMO' && s != null) {
@@ -228,6 +229,7 @@ export class GunModel {
     this.dead = false;
     this.lastFired = 0; this.altLockUntil = -Infinity; this.fireLockUntil = -Infinity; this.swapOnRelease = null;
     this.heldFireAt = null; this.dry = null; this.reload = null; this.lastSwing = null; this.lastShot = null; this.lastLive = null;
+    this.spawnUntil = -Infinity;
   }
   _bmap(id, fn) {
     if (id === BTN_TRIGGER) {
@@ -314,6 +316,7 @@ export class GunModel {
   }
   _lever(t) {
     if (this.reload) return;
+    if (t < this.spawnUntil) return this._decide(t, 'lever refused: spawn wait', this.spawnUntil - t);
     if (t < this.altLockUntil) return this._decide(t, 'lever refused: swapping', this.altLockUntil - t);   // sr5a: 14 ms after ALT
     const s = this.lastFired, w = this.w[s];
     if (!w || !(this.mag[s] < w.clip) || !(this.res[s] > 0)) return this._decide(t, `lever: slot ${s} needs nothing`, Infinity);
@@ -351,6 +354,7 @@ export class GunModel {
   _fireEdge(s) {
     let edge = -Infinity, why = null;
     const w = this.w[s], a = this.lastLive, sh = this.lastShot;
+    if (this.spawnUntil > -Infinity) { edge = this.spawnUntil + (w && !w.semi ? w.t14 : 0); why = 'spawn wait'; }
     if (sh && sh.slot === s && w && sh.t + w.t14 > edge) { edge = sh.t + w.t14; why = 'trigger floor'; }
     const sw = !this.inert && this.bindSlot !== this.fireBind && s === this.bindSlot, ws = this.w[this.sel];
     if (sw && a && ws && a.t + ws.t15 > edge) { edge = a.t + ws.t15; why = 'rebind delay'; }
