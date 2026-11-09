@@ -112,7 +112,8 @@ test('go-live is equal for everyone: at T-0 nobody is protected, every trigger i
     const tableAt = h.timed.find(([, f]) => f === golden.sir_pool[0][0])[0];
     assert.ok(tableAt <= goLive - 2500 && tableAt >= goLive - 3250, `the live table went on at T-3 (${goLive - tableAt} ms before go-live)`);
     assert.equal(h.eng._armPending, null, 'nothing to end after go-live');
-    assert.equal(h.eng.state().weaponArming, null, 'no weapon delay at go-live');
+    assert.equal(h.eng._triggerPending, null, 'no weapon delay at go-live');
+    assert.ok(h.eng.state().weaponArming > 0, 'emulator 2026-11-09: the HUD waits for the gun\'s own spawn wait (SR23)');
   }
 });
 
@@ -184,7 +185,7 @@ test('station: t8 -100, trigger live at once, the shield on; a shot does not end
   assert.deepEqual(rev.slice(i, i + 3), ['$SPAWN,,*', ON, '$TID,1,*']);
   assert.deepEqual(bmap0(rev), [LIVE], 'the trigger is live in the revive write itself');
   assert.ok(rev.includes(RP.shield_on), 'the shield is on');
-  assert.equal(h.eng.state().shielded, true); assert.equal(h.eng.state().weaponArming, null);
+  assert.equal(h.eng.state().shielded, true); assert.equal(h.eng._triggerPending, null, 'no weapon delay at a station');
   assert.equal(h.since(n).filter(f => f.startsWith('$HLED')).pop(), RP.shield_on, 'no respawn flash paints over the shield');
   h.frame('$ALCD,32,100,0,192,0,*');
   h.adv(300); h.shot(31);
@@ -384,4 +385,54 @@ test('F645 review 2026-11-06: a T-3 $GSET write that fails rides in front of the
   const w = h.since(n), g = w.lastIndexOf(ffaGset);
   assert.equal(w.filter(f => f === ffaGset).length, 2, 'sent again after the failed T-3 write');
   assert.ok(g >= 0 && w.indexOf(LIVE) > g, 'before the T-0 spawn maps the trigger');
+});
+
+// ---- emulator 2026-11-09 (brx2; to be confirmed at bench SR23): after `$SPAWN` the gun ignores the trigger and ALT for
+// SPAWN_WAIT_MS (gunmodel.js), whatever the phone's weapon delay. The HUD never says WEAPONS HOT before the gun can fire;
+// the design's weapon delay and every write stay as they are. ----
+import { SPAWN_WAIT_MS } from '../src/gunmodel.js';
+const DESIGN = { ...golden, respawn_profile: { ...RP, trigger_ms: 500 } };   // the design's 0.5 s weapon delay
+const spawnAt = h => h.timed.filter(([, f]) => f === '$SPAWN,,*').pop()[0];
+
+test('spawn wait: a timed revive with a 0.5 s weapon delay maps the trigger at 0.5 s but stays ACTIVATING until the gun\'s own wait ends', () => {
+  const h = liveArmed({ bundle: DESIGN });
+  const n = revived(h); const t0 = spawnAt(h);
+  h.adv(510);
+  assert.deepEqual(bmap0(h.since(n)), [HELD, LIVE], 'the write is unchanged: the trigger is mapped at 0.5 s');
+  assert.ok(h.eng.state().weaponArming > 0, 'but the gun still ignores the trigger, so the HUD is not ready');
+  h.adv(t0 + SPAWN_WAIT_MS - h.now() - 10);
+  assert.ok(h.eng.state().weaponArming > 0, 'still waiting 10 ms before the gun\'s wait ends');
+  h.adv(10);
+  assert.equal(h.eng.state().weaponArming, null, 'ready when the gun can fire');
+});
+
+test('spawn wait: a station respawn (trigger live in the burst) waits for the gun as well', () => {
+  const h = liveArmed({ respawn: 'scanner' });
+  stationRevive(h); const t0 = spawnAt(h);
+  assert.ok(h.eng.state().weaponArming > 0, 'not WEAPONS HOT at the revive');
+  h.adv(t0 + SPAWN_WAIT_MS - h.now() - 10); assert.ok(h.eng.state().weaponArming > 0);
+  h.adv(10); assert.equal(h.eng.state().weaponArming, null);
+  assert.equal(h.eng.state().shielded, true, 'the shield is unchanged (station protection 2 s)');
+});
+
+test('spawn wait: the go-live spawn waits for the gun too, and a 1.5 s design delay is not lengthened', () => {
+  const h = harness();   // late start: the start message spawns the gun
+  const t0 = spawnAt(h);
+  assert.ok(h.eng.state().weaponArming > 0, 'not ready at the T-0 spawn');
+  h.adv(t0 + SPAWN_WAIT_MS - h.now()); assert.equal(h.eng.state().weaponArming, null);
+  const g = liveArmed();   // golden: trigger_ms 1500, the same as the gun's wait
+  const n = revived(g);
+  g.adv(1490); assert.ok(g.eng.state().weaponArming > 0);
+  g.adv(10); assert.equal(g.eng.state().weaponArming, null, 'ready at 1.5 s, as before');
+  assert.deepEqual(bmap0(g.since(n)), [HELD, LIVE]);
+});
+
+test('spawn wait: the go-live WEAPONS HOT pill waits for the gun as well', async () => {
+  const { renderHtml } = await import('./hud-html-harness.mjs');
+  const h = harness(); const t0 = spawnAt(h);
+  const pill = () => /WEAPONS HOT/.test(renderHtml({ now: h.now(), state: h.eng.state(), hud: {} }).chips);
+  assert.equal(h.eng.state().moment && h.eng.state().moment.kind, 'go', 'setup: the go moment is up');
+  assert.equal(pill(), false, 'not at the T-0 spawn');
+  h.adv(t0 + SPAWN_WAIT_MS - h.now());
+  assert.equal(pill(), true, 'once the gun can fire');
 });

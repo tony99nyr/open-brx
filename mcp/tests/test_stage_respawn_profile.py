@@ -188,7 +188,8 @@ def test_a_station_revive_protects_maps_the_trigger_and_shows_the_shield_for_2s(
         assert _tmp(new) == [ON] and LIVE in new and HELD not in new and rp["shield_on"] in new
         assert st._trigger_pending is None
         assert not any(f in new for f in hs_respawn if f not in rp["revive_station"]), "no respawn flash under the shield"
-        assert st.state()["model"]["shielded"] is True and st.state()["model"]["weapon_arming_s"] is None
+        assert st.state()["model"]["shielded"] is True
+        assert st.state()["model"]["weapon_arming_s"] > 0, "emulator 2026-11-09: not ready before the gun's spawn wait (SR23)"
         _shoot(st); await settle(st)
         assert _tmp(tx(mgr)[n:]) == [ON], "a shot does not end it"
         # a registered hit clears the painted colour: the shield is painted again, at most once per 0.5 s

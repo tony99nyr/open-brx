@@ -2171,7 +2171,7 @@ _HILL_PAIRS = {
 _PU_PAIRS = {"pu._ammoShort": "_ammo_short", "pu.grantAmmo": "grant_ammo"}
 
 # 2026-11-08 phone-owned binding repair: make the two new Engine methods' stage twins explicit.
-_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick", "_bindWrite": "_bind_write"}
+_ENGINE_PAIRS = {"_noteBindSent": "_note_bind_sent", "_bindTick": "_bind_tick", "_bindWrite": "_bind_write", "_gunReadyAt": "_gun_ready_at", "_gunSpawnWaitMs": "_gun_spawn_wait"}
 
 
 def _hill_methods() -> set[str]:
@@ -3592,3 +3592,4 @@ def test_a_disconnect_ends_the_soft_reload_before_relink_binds_the_trigger():
         await st.connect(GUN)
         assert "$BMAP,0,1,,,,,*" in tx(mgr)
     asyncio.run(go())
+
