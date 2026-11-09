@@ -6206,6 +6206,12 @@ class GunStage:
         own = sw["s"] if sw and sw.get("s", 0) > 0 else self._switch_window_s()
         return max(own, self._gun_swap_ready_at(sw) - sw["at"]) if sw and not sw.get("pu") else own
 
+    def _swap_held_capped(self, now: float) -> bool:
+        """engine.js `_swapHeldCapped`: SWAP_HELD_MAX_S ended a live pull the stage still reads as held. PURE."""
+        st, down = self._last_shot_at, self.held.get(0)
+        return (st is not None and self._last_shot_life == self._life_queued and down is not None and down <= st
+                and now >= st + SWAP_HELD_MAX_S)
+
     def _gun_swap_ready_at(self, sw: dict, now: float | None = None) -> float:
         """engine.js `_gunSwapReadyAt` (Tony 2026-11-09, option 1; gunmodel.js `readyAt`): the later of the gun reading the swap's
         bind (its send plus the air time; before the write, its due time plus the air time; while unsent, now plus the air time)
@@ -6247,6 +6253,8 @@ class GunStage:
         self.switching = None
         if not pu:
             self.last_switch_s = round((now - sw["at"]) * 1000) / 1000
+        if not pu and self._swap_held_capped(now):   # engine.js `_swapHeldCapped`: probably a lost trigger release
+            self._log("swap timer: a held pull hit the 5 s cap (SWAP_HELD_MAX_MS): its trigger release was probably lost", "error")
         if not pu and to == self.active_slot:
             self._show_slot_ammo(to)
         self._log(f"pickup switch card to slot {to} closed after {self._swap_window_s() * 1000:g}ms" if pu

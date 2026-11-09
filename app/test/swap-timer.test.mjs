@@ -21,7 +21,7 @@ const STEP = 5, AIR = E.GUN_SPAWN_AIR_MS;
 async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
   const model = new GunModel({ auto: 'timed' });
   let clock = base.clock0_ms;
-  const timers = [];
+  const timers = [], logs = [];
   // `queueBindMs`: a swap's bind waits that long in the link's queue, then leaves (`onFrameSent`) and reaches the model
   const writer = (fr, why, opts) => {
     const late = queueBindMs > 0 && /^ALT: swap/.test(String(why)) && fr.some(f => /^\$BMAP,0,[0-9],/.test(f));
@@ -32,7 +32,7 @@ async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
     } }));
   };
   const eng = new E.Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(),
-    log: () => {}, delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
+    log: m => logs.push(String(m)), delay: (ms, fn) => timers.push({ at: clock + ms, fn }), rng: () => 0 });
   const runTimers = () => { for (;;) { timers.sort((a, b) => a.at - b.at); if (!timers.length || timers[0].at > clock) return; timers.shift().fn(); } };
   const pump = () => { for (let n = 0; n < 50; n++) { const o = model.take(); if (!o.length) return; for (const x of o) eng.feedFrame(x.f); } };
   const swaps = [];
@@ -76,6 +76,7 @@ async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
     await flush(); pump(); watch();
   }
   await until(clock + runMs);
+  drive.logs = logs;
   return swaps.map(s => ({ ...s, closeAt: s.closeAt == null ? null : s.closeAt - t0, readyAt: s.readyAt == null ? null : s.readyAt - t0 }));
 }
 
@@ -90,6 +91,7 @@ function closesWithTheGun(s, msg) {
 
 test('swap timer: a cold swap to the USP-S shows its tok15 (500 ms), plus the air time', async () => {
   const [s] = await drive([[0, 'alt']]);
+  assert.equal(drive.logs.filter(l => /held pull hit the 5 s cap/.test(l)).length, 0, 'no cap on a swap with no held pull');
   assert.equal(s.to, 1);
   closesWithTheGun(s, 'cold swap');
   assert.ok(s.closeAt >= s.readyAt + AIR, `the gun reads the bind one air time after it leaves: ${JSON.stringify(s)}`);
@@ -136,4 +138,5 @@ test('swap timer: a live pull whose release the link lost stops holding SWITCHIN
   const [s] = await drive([[0, 'down'], [200, 'alt']], { runMs: E.SWAP_HELD_MAX_MS + 2000 });
   assert.ok(s.closeAt != null, `SWITCHING closed: ${JSON.stringify(s)}`);
   assert.ok(s.closeAt > E.SWAP_HELD_MAX_MS && s.closeAt <= 200 + E.SWAP_HELD_MAX_MS + 850 + 2 * STEP, `about SWAP_HELD_MAX_MS plus the AR's tok15: ${JSON.stringify(s)}`);
+  assert.equal(drive.logs.filter(l => /held pull hit the 5 s cap/.test(l)).length, 1, 'the cap is logged once');
 });

@@ -19,6 +19,9 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "SWAP_HELD_MAX_S": "Tony 2026-11-09 (swap timer): the latest a live pull still held counts as ending after its last round,\n"
+                       "against a lost trigger release. Display only: it bounds how long SWITCHING stays up; it never\n"
+                       "fires a write, and no beacon reaches it",
     "SCORE_SILENT_MS": "A89 (2026-11-07): how long a phone must have been silent at a Domination whistle for MC to hold the\n"
                        "result. Read once, at the whistle, against the phone's last message; it never fires, and a hill's\n"
                        "beacon is not a phone's message, so no beacon can reset it",

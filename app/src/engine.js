@@ -655,7 +655,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), swapHeldCapped: () => e._swapHeldCapped(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -1887,6 +1887,12 @@ export class Engine {
       at = Math.max(at, end + this.am.altLockMs(sel));
     }
     return at;
+  }
+  /** Did SWAP_HELD_MAX_MS end a live pull the phone still reads as held (`_gunSwapReadyAt`): most likely a lost release.
+   *  ammo.js `switchTick` logs it when the swap closes, so the bench and field logs count it (brx1 2026-11-09). PURE. */
+  _swapHeldCapped(now = this.now()) {
+    const s = this.am.lastShot, down = this.held[BTN_TRIGGER];
+    return !!(s && s.life === this._lifeSeq && down != null && down <= s.at && now >= s.at + SWAP_HELD_MAX_MS);
   }
   /** When the gun's spawn wait ends for a `$SPAWN` at `spawnAt`: from then the gun reads the trigger, ALT and the lever. PURE. */
   _gunWaitEnd(spawnAt) { return GUN_SPAWN_WAIT ? spawnAt + GUN_SPAWN_WAIT_MS : spawnAt; }
