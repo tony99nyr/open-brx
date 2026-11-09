@@ -5337,11 +5337,11 @@ for (const view of VIEWS) for (const night of [false, true]) {
       must(r.dot && r.dot.shown && r.mc && r.mc.shown, `the gun and MC link status must show at night: ${JSON.stringify({ dot: r.dot, mc: r.mc })}`);
       must(onBlack(r.clock.color) >= 4.4 && onBlack(r.res.color) >= 4.4, `clock ${onBlack(r.clock.color).toFixed(2)}:1, reserve ${onBlack(r.res.color).toFixed(2)}:1`);
     });
-    await step(`${view.name} QA-17 night weapon switch: CONFIRMED BY YOUR GUN is not green`, async () => {
+    await step(`${view.name} QA-17 night weapon switch: the ACTIVE line is not green`, async () => {
       const pg = await open(view, 'live-switch-shot', '&night');
       await pg.waitForSelector('.mo.switched .s', { timeout: 4000 });
       const r = await look(pg, '.mo.switched .s'); const t = await pg.evaluate(() => document.querySelector('.mo.switched .s').textContent); await pg.close();
-      must(/CONFIRMED BY YOUR GUN/.test(t), `the shot must confirm the swap: ${t}`);   // F394: 'live-switch' alone is assumed, never confirmed
+      must(/^READY$/.test(t), `the phone-owned swap closes on READY (Tony 2026-11-08: no gun report confirms it): ${t}`);
       must(r && !green(r.color), `night switched line: ${JSON.stringify(r)}`);
     });
     await step(`${view.name} QA-21 live labels: TDM, the squad and PRIMARY are >= 11 px`, async () => {
