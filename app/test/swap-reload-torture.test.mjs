@@ -157,7 +157,9 @@ class GunModel {
     let took = false;
     if (this.altFn === 100 && this.live && !this.reload && !this.triggerDown && this.now() - this.altTookAt >= this.altLock) {   // the gun's own ALT
       took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now(); this.altLock = this.slot(this.active).swapMs;
-      this.swapUntil = this.now() + Math.max(this.slot(0).swapMs, this.slot(1).swapMs);   // bench 2026-09-04: the larger slot wins
+      // brx4 correction (78aebc73b): a swap takes the tok15 of the slot it moves TO; only a swap made while the trigger fires
+      // waits for the larger of the two
+      this.swapUntil = this.now() + (this.triggerDown ? Math.max(this.slot(0).swapMs, this.slot(1).swapMs) : this.slot(this.active).swapMs);
     }
     this.later(80, () => this.feed('$BUT,1,0,*'));
     return took;
