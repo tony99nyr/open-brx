@@ -392,7 +392,7 @@ test('F645 review 2026-11-06: a T-3 $GSET write that fails rides in front of the
 // the design's weapon delay and every write stay as they are. ----
 import { SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from '../src/gunmodel.js';
 // the AR (slot 0, full auto) fires its first round one t14 after the gun's spawn wait (gunmodel.js `spawnFireEdge`)
-const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,'))));
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,')))) + E.GUN_SPAWN_AIR_MS;   // + the frame's air time
 const DESIGN = { ...golden, respawn_profile: { ...RP, trigger_ms: 500 } };   // the design's 0.5 s weapon delay
 const spawnAt = h => h.timed.filter(([, f]) => f === '$SPAWN,,*').pop()[0];
 
@@ -463,8 +463,31 @@ for (const [name, press, opts] of [['the lever', h => { h.frame('$BUT,2,1,*'); h
     h.adv(1000); press(h);
     assert.equal(h.eng.am.reloading, null, `${name} at 1.3 s: still the gun's wait`);
     assert.deepEqual(h.since(n).filter(f => f.startsWith('$AMMO,') && !RP.revive.includes(f)), [], 'no reload write');
-    h.adv(t0 + SPAWN_WAIT_MS - h.now()); h.shot(31); h.adv(200);   // the wait is over: a round leaves
+    h.adv(t0 + SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS - h.now()); h.shot(31); h.adv(200);   // the wait is over: a round leaves
     press(h);
     assert.ok(h.eng.am.reloading, `${name} the moment the gun takes it: the reload starts`);
   });
 }
+
+test('spawn wait (brx1 review): a $SPAWN the link sends 300 ms after the hand-off moves the ready time by 300 ms', () => {
+  /** ms from the station revive until the HUD says the gun can fire, with the link reporting the `$SPAWN` frame sent
+   *  `queueMs` after the write was handed to it (a write queued behind others). */
+  const readyAfter = queueMs => {
+    const h = liveArmed({ respawn: 'scanner' });
+    const w0 = h.eng.writer; let sent = null;
+    h.eng.writer = (fr, why, o) => {
+      const r = w0(fr, why, o);
+      if (o && o.onFrameSent && fr.includes('$SPAWN,,*')) sent = () => { for (const f of fr) o.onFrameSent(f); };
+      return r;
+    };
+    stationRevive(h); const t0 = h.now();
+    assert.ok(sent, 'setup: the revive write went to the link with a frame-sent callback');
+    if (queueMs) h.adv(queueMs);
+    sent();
+    while (h.eng.state().weaponArming != null && h.now() - t0 < 5000) h.adv(10);
+    return h.now() - t0;
+  };
+  const now = readyAfter(0), queued = readyAfter(300);
+  assert.ok(Math.abs(queued - now - 300) <= 10, `ready ${now} ms after an immediate send, ${queued} ms after a 300 ms queue`);
+  assert.ok(now >= SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS, `never before the gun's wait plus the air time (${now} ms)`);
+});

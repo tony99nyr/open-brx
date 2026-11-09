@@ -28,7 +28,10 @@ import { PU_RESERVE, PU_LOST_AT_DEATH, PU_ACTIVE_CARD_MS, PU_WEAPON_SWAPS, PU_ST
 import { SPAWN_WAIT_MS as GUN_SPAWN_WAIT_MS, spawnFireEdge, weapTiming } from './gunmodel.js';
 /** Emulator 2026-11-09 (brx2; to be confirmed at bench SR23): the gun's own wait after `$SPAWN`. False turns off every use of
  *  it (the ready cue and the dead lever), if the bench refutes it. */
-const GUN_SPAWN_WAIT = true;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
+const GUN_SPAWN_WAIT = true;
+/** brx1 2026-11-09: the gun's wait starts when IT reads `$SPAWN`, after the link sends the frame, so the stamp is the frame's
+ *  send plus this much air time (one BLE connection interval and the gun's parse, generous). Late is safe; early is the bug. */
+export const GUN_SPAWN_AIR_MS = 60;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
 export { HILL_CUES } from './hill.js';
@@ -1451,9 +1454,16 @@ export class Engine {
       // F590 (brx3 review): what the windows were before the hold, and whether any frame left, as stage.py `write` keeps them
       const before = ammoRows ? this.am.echoUntils(frames, gens) : null;
       let sentAny = false;
-      const sendOptions = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
+      const sendOptions0 = ammoRows ? { ...(writeOptions || {}), onFrameSent: frame => { sentAny = true; if (writeOptions && writeOptions.onFrameSent) writeOptions.onFrameSent(frame); } } : writeOptions;
+      // the gun's spawn wait (`_gunSpawnWaitMs`) runs from when the gun reads `$SPAWN`: stamped at the hand-off, and again, later,
+      // when the link reports the frame sent (a write can queue behind others), plus the air time. It only ever moves later.
+      const spawnRow = frames.find(f => typeof f === 'string' && f.startsWith('$SPAWN,'));
+      if (spawnRow) this._gunSpawnAt = this.now() + GUN_SPAWN_AIR_MS;
+      const sendOptions = spawnRow ? { ...(sendOptions0 || {}), onFrameSent: frame => {
+        if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
+        if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
+      } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);
-      if (frames.some(f => typeof f === 'string' && f.startsWith('$SPAWN,'))) this._gunSpawnAt = this.now();   // the gun's spawn wait runs from here (`_gunSpawnWaitMs`)
       this._noteBindSent(frames, result);   // Tony 2026-11-08: what the gun's trigger is bound to, for `_bindTick`
       // Bug 3 r1 M1: the gun's echo of an `$AMMO`/`$WEAP` row comes after the write LANDS, so its window restarts then.
       if (ammoRows && result && typeof result.then === 'function') {
@@ -1818,7 +1828,7 @@ export class Engine {
     if (!this.alive) return null;
     const tp = this._triggerPending, waiting = this._lifeBurstWaiting(now), sendIn = waiting ? this._lifeBurstSendIn(now) : 0;
     // emulator 2026-11-09: the gun itself fires nothing until its spawn wait ends, so neither does the HUD say it can
-    const gun = waiting ? this._gunReadyAt(now + sendIn) - now : this._gunSpawnWaitMs(now);
+    const gun = waiting ? this._gunReadyAt(now + sendIn + GUN_SPAWN_AIR_MS) - now : this._gunSpawnWaitMs(now);
     const design = !tp ? 0 : waiting ? (tp.due - tp.at) + sendIn : Math.max(0, tp.due - now);
     const ms = Math.max(design, gun);
     return tp || ms > 0 ? ms : null;
@@ -5041,7 +5051,10 @@ export class Engine {
    *  it sooner (`_takeover`). PURE. */
   _redeployUntil(rd, now = this.now()) {
     const br = this._burstReached, reached = br && br.life === rd.life ? Math.max(rd.at, br.at) : null;
-    const gunAt = reached != null ? this._gunReadyAt(reached) : null;   // emulator 2026-11-09: the gun's spawn wait
+    // emulator 2026-11-09: the gun's spawn wait, from when the gun read this burst's `$SPAWN` (`_gunSpawnAt`: the frame's send
+    // plus its air time), never earlier than the burst's reach plus that air time
+    const sa = this._gunSpawnAt, spawnAt = reached == null ? null : Math.max(reached + GUN_SPAWN_AIR_MS, sa != null && sa >= reached ? sa : -Infinity);
+    const gunAt = spawnAt != null ? this._gunReadyAt(spawnAt) : null;
     const liveAt0 = rd.timed ? rd.liveAt : reached, liveAt = liveAt0 != null && gunAt != null ? Math.max(liveAt0, gunAt) : liveAt0;
     const cap = (reached != null ? reached : rd.at) + LIFE_BURST_HOLD_MAX_MS + redeployOutMs(rd.trigMs);
     if (liveAt == null) return now < cap ? null : cap;

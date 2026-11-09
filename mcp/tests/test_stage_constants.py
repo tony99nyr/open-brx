@@ -36,6 +36,7 @@ TABLE = [
     ("SPAWN_SHIELD_FULL", "engine.js", "SPAWN_SHIELD_FULL", 1),
     # emulator 2026-11-09 (bench SR23): the gun's own wait after `$SPAWN`
     ("GUN_SPAWN_WAIT_S", "gunmodel.js", "SPAWN_WAIT_MS", 1000),
+    ("GUN_SPAWN_AIR_S", "engine.js", "GUN_SPAWN_AIR_MS", 1000),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.

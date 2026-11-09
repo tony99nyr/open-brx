@@ -18,7 +18,7 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const RP = golden.respawn_profile;
 // emulator 2026-11-09 (bench SR23): after the burst's `$SPAWN` the gun fires the AR (full auto) no sooner than its spawn
 // wait plus one t14 (gunmodel.js `spawnFireEdge`), so the HUD's ready point is the later of that and the trigger going live
-const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,'))));
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,')))) + E.GUN_SPAWN_AIR_MS;   // + the frame's air time
 const readyAt = (liveAt, burstAt) => Math.max(liveAt, burstAt + GUN_READY);
 const ON = '$TMP,,,,,,,,-100,,,,*', OFF = '$TMP,,,,,,,,0,,,,*';
 const HELD = '$BMAP,0,98,,,,,*', LIVE = '$BMAP,0,0,,,,,*';

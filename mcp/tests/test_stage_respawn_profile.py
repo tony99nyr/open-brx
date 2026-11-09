@@ -19,7 +19,7 @@ from _stage import _nosleep, GUN, LegacyCompiler, settle, StageClock, tx
 from brx_mcp.stage import stage as S
 
 # gunmodel.js `spawnFireEdge`: the gun's spawn wait plus one t14 on the full-auto AR (slot 0, t14 100 ms)
-GUN_READY_S = S.GUN_SPAWN_WAIT_S + 0.1
+GUN_READY_S = S.GUN_SPAWN_WAIT_S + 0.1 + S.GUN_SPAWN_AIR_S   # + the `$SPAWN` frame's air time
 
 ON, OFF = "$TMP,,,,,,,,-100,,,,*", "$TMP,,,,,,,,0,,,,*"
 HELD, LIVE = "$BMAP,0,98,,,,,*", "$BMAP,0,0,,,,,*"

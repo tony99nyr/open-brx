@@ -17,7 +17,7 @@ const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/
 const RP = golden.respawn_profile;
 // emulator 2026-11-09 (bench SR23): after `$SPAWN` the gun fires the AR (full auto) no sooner than its spawn wait plus one t14
 // (gunmodel.js `spawnFireEdge`); REDEPLOYED ends 400 ms after the later of that and the trigger going live
-const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,'))));
+const GUN_READY = spawnFireEdge(SPAWN_WAIT_MS, weapTiming(golden.head.find(f => f.startsWith('$WEAP,0,')))) + E.GUN_SPAWN_AIR_MS;   // + the frame's air time
 const HELD = '$BMAP,0,98,,,,,*', LIVE = '$BMAP,0,0,,,,,*';
 const TICK = 50;
 // The Rockets pickup slot's head `$WEAP` (powerups.test.mjs WEAP[2]; the grant re-sends it verbatim).

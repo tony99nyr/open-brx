@@ -206,7 +206,7 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
         await st.arm()
         await st.spawn()
         await _settle_all(st)
-        clock.advance(S.GUN_SPAWN_WAIT_S)            # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)            # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
 
         st.alcd(mag=1, reserve=50, slot=0)           # a known, below-cap mag + a real reserve opens the reload gate
         st.reload()
@@ -226,7 +226,7 @@ def test_death_mid_reload_blocks_the_refill_and_revive_starts_clean():
         await st.revive()
         await _settle_all(st)
         assert st.alive and st.reloading is None
-        clock.advance(S.GUN_SPAWN_WAIT_S)            # past the new life's gun spawn wait (SR23)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)            # past the new life's gun spawn wait (SR23)
 
         st.alcd(mag=1, reserve=50, slot=0)
         st.reload()

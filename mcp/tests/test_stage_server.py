@@ -99,7 +99,7 @@ def test_the_control_point_reload_and_ammo_actions_through_the_api():
         # here the fake gun's `$ALCD` replies to the spawn's `$AMMO` land during the F347 play gap.
         r = c.post("/api/do", json={"action": "alcd", "mag": 10, "reserve": 20}).json()
         assert r["model"]["reserve"] == 20 and any(l["why"] == "injected by the page" for l in r["log"])
-        t[0] += 1.5   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
+        t[0] += 1.5 + 0.06   # past the gun's spawn wait (emulator 2026-11-09, SR23): the lever works
         r = c.post("/api/do", json={"action": "reload"}).json()
         assert r["model"]["reloading"] and r["model"]["reloading"]["slot"] == 0
         assert c.post("/api/do", json={"action": "alcd", "mag": "x"}).status_code == 400

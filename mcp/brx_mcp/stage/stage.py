@@ -384,7 +384,8 @@ CONTROL_LATCH_HEARD_S = PRESENCE_SIGHT_WINDOW_MS / 1000   # engine.js `_controlS
 CONTROL_RECONNECT_S = CONTROL_RECONNECT_MS / 1000     # types.py CONTROL_RECONNECT_MS: remember an owner from the last advert for 30 s
 HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
-GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_mirror pins the pair
+GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_constants pins the pair
+GUN_SPAWN_AIR_S = 0.06   # engine.js GUN_SPAWN_AIR_MS: the `$SPAWN` frame's air time after its send (late is safe, early is the bug)
 RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
 # S57 (docs/ir-callouts.md, engine.js `IR_CALLOUT`): a dying gun's one presentation word over protocol-15 `$IRTX`. The
@@ -2079,7 +2080,7 @@ class GunStage:
         try:
             result = self._send(frames, gap_ms, on_start=on_start)
             if any(f.startswith("$SPAWN,") for f in frames):
-                self._gun_spawn_at = self.now()   # engine.js `_write`: the gun's spawn wait runs from here
+                self._gun_spawn_at = self.now() + GUN_SPAWN_AIR_S   # engine.js `_write`: the gun reads `$SPAWN` after its air time
             await self._note_bind_sent(frames, result)
             if play_indexes:
                 self._last_play_sent_at = self.now()
@@ -2100,7 +2101,7 @@ class GunStage:
                 frames = self._bind_rows(frames)
                 result = self._send(frames, gap_ms, on_start=on_start)
                 if any(f.startswith("$SPAWN,") for f in frames):
-                    self._gun_spawn_at = self.now()   # engine.js `_write`: the gun's spawn wait runs from here
+                    self._gun_spawn_at = self.now() + GUN_SPAWN_AIR_S   # engine.js `_write`: the gun reads `$SPAWN` after its air time
                 await self._note_bind_sent(frames, result)
                 if why != "reconcile: weapon systems live":
                     await self._relink_trigger()   # Repair after retry, so an old hold cannot replace the live binding.
@@ -2659,7 +2660,7 @@ class GunStage:
         tp = self._trigger_pending
         waiting = self._life_burst_waiting(now)
         send_in = self._life_burst_send_in(now) if waiting else 0.0
-        gun = self._gun_ready_at(now + send_in) - now if waiting else self._gun_spawn_wait(now)
+        gun = self._gun_ready_at(now + send_in + GUN_SPAWN_AIR_S) - now if waiting else self._gun_spawn_wait(now)
         design = 0.0 if not tp else (tp["due"] - tp["at"] + send_in if waiting else max(0.0, tp["due"] - now))
         s = max(design, gun)
         return s if tp or s > 0 else None
