@@ -10,7 +10,8 @@
 //   - The lever reloads the LAST-FIRED slot, not the slot in hand (F542, bench 2026-11-01); after a spawn that is slot 0.
 //     The reload takes the weapon's `$WEAP` reload time (token 18) times 1.2 (F27: hardware runs 1.22x to 1.29x slower).
 //   - `$AMMO` sets a slot's magazine and reserve and the gun echoes it as `$ALCD` 40 ms later (fake.py, fakegun.js).
-//   - A `$WEAP` write resets the slot to its clip and t40 reserve; `$SPAWN` refills every slot and puts the gun on slot 0.
+//   - A `$WEAP` write resets the slot to its clip and t40 reserve; `$SPAWN` refills every slot and keeps the trigger binding
+//     (F668(f), the firmware emulator 2026-11-08), so the phone's spawn burst binds slot 0 itself.
 //   - Melee is button 8 (`$BMAP,8,4`): `$ALCD,1,100,4,0,0` 3 to 18 ms after the press (F665), at most one swing per
 //     melee `$WEAP` token 14.
 //   - `$QUERY` answers `$LCD` with the slot of the LAST SHOT (bench 2026-10-17, ammo.js `switchTick`).
@@ -113,7 +114,7 @@ class GunModel {
       } else if (cmd === '$BMAP' && t[1] === '1') this.altFn = n(2);
       else if (cmd === '$SPAWN') {
         this.spawned = true; [this.hp, this.armor] = this.max; this.shield = 0;
-        this.active = 0; this.latch = 0; this.reload = null; this.swapUntil = 0;
+        this.latch = 0; this.reload = null; this.swapUntil = 0;   // F668(f), emulator 2026-11-08: $SPAWN keeps the trigger binding
         for (const s of Object.keys(this.slots)) { const x = this.slots[s]; if (+s < 2) { x.mag = x.clip; x.res = x.carried; } }
         const x = this.slot(0);
         this.later(0, () => this.feed(`$LCD,${this.hp},${this.armor},0,0,${x.mag},${x.res},*`));
@@ -830,4 +831,23 @@ test('phone swap (Codex H5): a respawn after a death on the secondary binds slot
   assert.ok(eng.alive && gun.live, 'setup: respawned');
   assert.deepEqual(gun.writes.filter(f => /^\$BMAP,0,\d+,/.test(f) && f !== '$BMAP,0,98,,,,,*'), ['$BMAP,0,0,,,,,*'], 'only slot 0 is ever bound');
   assert.equal(gun.active, 0); assert.equal(eng.activeSlot, 0);
+});
+
+// brx1 2026-11-08 (F668(f), the firmware emulator): `$SPAWN` moves neither the trigger binding nor the gun's ALT pointer. On
+// main a respawn after a life on the USP-S wrote `$BMAP,0,0` with the gun's pointer on slot 1 (the SR18 desync). Under the
+// phone swap the burst binds the phone's slot 0, and the next ALT and pull go where the phone says.
+test('phone swap (F668 f): a respawn after a life on the USP-S binds the AR, and the next ALT and pull give the phone\'s slot', async () => {
+  const h = harness('usp', 23), { eng, gun } = h;
+  await h.start();
+  assert.ok(h.swap()); await h.settle(1500);
+  assert.equal(gun.active, 1, 'setup: the USP-S in hand');
+  gun.die(); await h.advance(2000);
+  h.operatorRespawn(); await h.settle(2500, 12000);
+  assert.equal(gun.active, 0, 'the spawn burst bound the AR (the gun\'s $SPAWN does not)');
+  assert.equal(eng.activeSlot, 0);
+  assert.ok(gun.trigger(), 'the AR fires'); await h.settle(200);
+  assert.ok(h.swap(), 'ALT'); await h.settle(1500);
+  assert.equal(gun.active, 1); assert.equal(eng.activeSlot, 1);
+  assert.ok(gun.trigger(), 'the USP-S fires'); await h.settle(200);
+  assert.deepEqual(h.logs.filter(l => /^gun (was on|fired) slot/.test(l.m)).map(l => l.m), [], 'no desync');
 });
