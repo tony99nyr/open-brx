@@ -8306,7 +8306,7 @@ export class Engine {
                    // without an identity it could not tell a second reload from the first: a $ALCD (fired) and
                    // a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, and the new
                    // one opened already pulsing on the old one's latch (review 2026-09-12).
-                   reloadAt: ms != null ? this.am.reloading.at : null,
+                   reloadAt: ms != null ? (this.am.reloading.t0 ?? this.am.reloading.at) : null,   // bench 2026-11-14: one card for a whole chain
                    reloadOverrun: !!(ms != null && ms > this.am.reloading.ms),
                    reloadGained: ms != null ? Math.max(0, this.am.reloading.mag - this.am.reloading.from) : null }))(this.am.reloadingMs()),
       reloadOutcome: this.am.reloadOutcome,
