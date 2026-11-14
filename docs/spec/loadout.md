@@ -165,7 +165,7 @@ UI convention, not a hardware fact.
 
 ### 2.1 Easy Reload — a per-player accessibility switch, not a perk (S50, 2026-09-17)
 
-Easy Reload maps the **ALT button** to RELOAD (`$BMAP,1,97`). It exists because a player may not be able to work the
+Easy Reload maps the **ALT button** to RELOAD (`$BMAP,1,97`). The gun has one reload button: the last row written 97 takes reload from the other (bench 2026-11-14). So the lever row is `$BMAP,2,98` (inert; the gun still reports `$BUT,2`), and the phone reloads in software on the lever. Both buttons reload (Tony, 2026-11-14). It exists because a player may not be able to work the
 reload lever (Tony: his daughter), so it is accessibility, not balance: it moved OUT of the perk slot and INTO
 `loadout.overrides.easy_reload`, beside the per-player pool handicap (§2), the other accessibility control. The two
 switches are independent: a player may take Easy Reload with no extra pool, or the pool handicap with no Easy Reload.
@@ -185,7 +185,7 @@ catalog. Then **policy enforcement** (§3.3) — a violating loadout (out of poo
 Compiler (`compile.py`): slot 1 `$WEAP`/`$AMMO,1` emitted **only when a secondary exists** (no more silent shotgun);
 `melee` slot 4 unchanged. Perk effects: `max_armor_add` → `$PSET` armor; `ammo_mult` → `$AMMO,0` + primary frame
 t16/t39 (mag) and t17/t40 (reserve; keep t17 == 2×t40 and t39 == t16); `reload_mult` → t18. S50: `overrides.easy_reload`
-→ `_bmap()` (`$BMAP,1,97`); no current perk row sets `effects.alt_reload` (§1.2), so that key compiles nothing today.
+→ `_bmap()` (`$BMAP,1,97` and `$BMAP,2,98`); no current perk row sets `effects.alt_reload` (§1.2), so that key compiles nothing today.
 Tutorial frames are unaffected (a try-out is the raw weapon).
 
 ### The per-player pool (the handicap knob)

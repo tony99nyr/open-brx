@@ -1136,6 +1136,28 @@ def test_the_glance_cancels_an_animation_in_flight_and_a_later_drop_cancels_the_
     asyncio.run(go())
 
 
+def test_alt_bounce_is_ignored_and_a_double_alt_190_ms_apart_counts_twice():
+    """engine.js `_onButton` (bench 2026-11-14): an ALT press 1 ms after its release is contact bounce, not a swap back."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        start = st.active_slot
+        st._on_rx("$BUT,1,1,*"); clock.advance(0.137); st._on_rx("$BUT,1,0,*")
+        clock.advance(0.001); st._on_rx("$BUT,1,1,*"); clock.advance(0.004); st._on_rx("$BUT,1,0,*")
+        assert st.active_slot != start, "one press: one swap"
+        assert sum("ALT bounce ignored" in l["text"] for l in st.log) == 1
+        clock.advance(3.0); st.poll(); await settle(st)
+        back = st.active_slot
+        st._on_rx("$BUT,1,1,*"); clock.advance(0.09); st._on_rx("$BUT,1,0,*")
+        clock.advance(0.1); st._on_rx("$BUT,1,1,*"); clock.advance(0.09); st._on_rx("$BUT,1,0,*")
+        assert st.active_slot == back, "two presses: there and back"
+        assert sum("ALT bounce ignored" in l["text"] for l in st.log) == 1
+    asyncio.run(go())
+
+
 def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_death_clears_it():
     """The trigger the phone reacts to is the press half of the reload button (`$BUT,2,1`); the release
     (`,0`) and an ALT press on a two-weapon loadout are not reloads. Death clears the reload in flight."""
@@ -1152,7 +1174,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
         st._on_rx("$BUT,1,1,*")
         assert st.reloading is None and st._slot_count() == 2, "ALT on two slots is a swap, not a reload"
         st._on_rx("$ALCD,5,100,1,20,0,*")
-        st._on_rx("$BUT,2,1,*")
+        clock.advance(0.1); st._on_rx("$BUT,2,1,*")   # a real pull, past BUTTON_BOUNCE_S after the release above
         assert st.reloading and st.reloading["slot"] == 1
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive and st.reloading is None, "the gun stops the reload when you drop; so does the model"
