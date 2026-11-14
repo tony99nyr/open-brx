@@ -66,9 +66,13 @@ static void sk6812_takes_green_first() {
   CHECK(out[0] == 1 && out[1] == 2 && out[2] == 3);
 }
 
-static void team_colours_come_from_the_contract() {
-  CHECK(team_rgb(0) == (Rgb{0xf4, 0x3f, 0x5e}));
-  CHECK(team_rgb(1) == (Rgb{0x3a, 0x86, 0xff}));
+// The LED palette is pinned: the screen's hex reads wrong on an SK6812 (rose red reads pink, bench 2026-11-14).
+static void team_colours_are_the_led_palette() {
+  CHECK(team_rgb(0) == (Rgb{255, 0, 0}));
+  CHECK(team_rgb(1) == (Rgb{0, 40, 255}));
+  CHECK(team_rgb(2) == (Rgb{255, 150, 0}));
+  CHECK(team_rgb(3) == (Rgb{150, 0, 255}));
+  CHECK(team_rgb(-1) == Rgb{});
   CHECK(team_rgb(4) == Rgb{});
   auto px = frame(StripPattern::TEAMS, 0, 0, 4);  // one LED a team, under the budget, so uncapped
   CHECK(px[0] == team_rgb(0) && px[1] == team_rgb(1) && px[2] == team_rgb(2) && px[3] == team_rgb(3));
@@ -103,11 +107,11 @@ static std::vector<Rgb> role_frame(const StickState& s, uint32_t now, size_t n =
   return px;
 }
 
-static bool same_hue(Rgb a, Rgb want) {  // a is want scaled down, to within rounding
-  auto near = [](int x, int y, int ref) { return ref == 0 ? x == 0 : (x > 0 && std::abs(x * 255 / ref - y * 255 / ref) <= 40); };
+static bool same_hue(Rgb a, Rgb want) {  // a is want scaled down: scaled back up, each channel within 40 of want
   int k = std::max({a.r, a.g, a.b}), m = std::max({want.r, want.g, want.b});
   if (!k || !m) return false;
-  return near(a.r * m / k, want.r, m) && near(a.g * m / k, want.g, m) && near(a.b * m / k, want.b, m);
+  auto near = [&](int x, int y) { return std::abs(x * m / k - y) <= 40; };
+  return near(a.r, want.r) && near(a.g, want.g) && near(a.b, want.b);
 }
 
 static void a_neutral_hill_is_dim_white() {
@@ -236,7 +240,7 @@ int main() {
   the_cap_keeps_the_hue();
   the_walk_steps_end_to_end_and_wraps();
   sk6812_takes_green_first();
-  team_colours_come_from_the_contract();
+  team_colours_are_the_led_palette();
   the_bench_command_parses();
   a_neutral_hill_is_dim_white();
   a_capture_fills_the_strip_in_the_capturers_colour_at_the_progress();

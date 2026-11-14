@@ -43,9 +43,11 @@ brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised; flashi
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-11-14):** the swap-rule docs are landed (`ac0b6341b`, `173a8e598`). The Stick LED strip (SK6812 on the
-Grove port: bench commands, role patterns, a 300 mA cap) and the stick.py build lock are on `brx4-strip`.
-**Next:** land the strip; then whatever brx1 assigns. Bench: the strip's data pin, colour order and real current.
+**State (2026-11-14):** the swap-rule docs are landed (`ac0b6341b`, `173a8e598`). The Stick drives the SK6812 LED
+strip on the Grove port: bench commands, a 300 mA cap and an LED team palette (bench-proven on G9), the role patterns,
+and `STRIPPOWER EXT` (2000 mA, the strip on a U151 from the bank). stick.py has a build lock and a 30 min limit.
+**Next:** whatever brx1 assigns. Bench: the role patterns on a live hill, the U151 wiring, a current reading.
+**Blocked:** none.
 **Blocked:** none.
 
 ## Lane: brx5, cross-language seams and the stage
