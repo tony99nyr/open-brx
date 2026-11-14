@@ -15,10 +15,13 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
   const deathLcd = () => `$LCD,0,0,0,0,${mag[0] ?? 0},${reserve[0] ?? 0},*`;
   const feed = f => engine.feedFrame(f);
   const writes = [];                                  // every frame the 'gun' received — e2e assertions read this
-  engine.writer = (frames) => {
-    writes.push(...frames);
+  engine.writer = (frames, why, options) => {
     const now = [], later = [];                       // fake.py: instant replies first, then each write's delayed $ALCD
-    for (const f of frames) {
+    // as brxlink.js `write`: `onFrameSent` runs after each frame leaves, and a throw there stops the rest of the batch
+    // (bench 2026-11-14: a throwing hook cut every revive burst before its `$SPAWN`)
+    const sent = f => { if (options && typeof options.onFrameSent === 'function') options.onFrameSent(f); };
+    try {
+    for (const f of frames) { writes.push(f); frame: {
       const t = f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');
       const cmd = t[0];
       if (cmd === 'TID') { if (num(t, 1) != null) team = num(t, 1); }
@@ -32,7 +35,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         // F259/S42 + F207: a $WEAP resets the slot's magazine to its clip (t16, index 17) and its reserve to t40
         // (index 41; t17 // 2 when absent), and a $SPAWN refills it to the carried t17 (index 18)
         const slot = num(t, 1);
-        if (slot == null) continue;
+        if (slot == null) break frame;
         const clip = num(t, 17), full = num(t, 18);
         const rsv = num(t, 41) ?? (full == null ? null : Math.floor(full / 2));
         if (clip != null) mag[slot] = clip;
@@ -43,7 +46,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
       } else if (cmd === 'AMMO') {
         // `$AMMO,<slot>,<mag>,<reserve>,…` sets both outright, and the gun echoes them (ammo.js `echoGens`)
         const slot = num(t, 1);
-        if (slot == null) continue;
+        if (slot == null) break frame;
         if (num(t, 2) != null) mag[slot] = num(t, 2);
         if (num(t, 3) != null) reserve[slot] = num(t, 3);
         later.push(alcd(slot));
@@ -57,7 +60,7 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         // $PSET maxima, no spill; mode 1 (t4) is an absolute set clamped at the maxima, mode 2 an unclamped one. The
         // gun answers $HP, or the death $LCD when the write kills; a dead gun answers the F264 zero probe with $HP,0,0,0.
         const d = [1, 2, 3].map(i => num(t, i) ?? 0), mode = num(t, 4);
-        if (!spawned && d.every(v => v === 0)) { now.push('$HP,0,0,0,*'); continue; }   // any mode, as fake.py: the zero-effect check comes first
+        if (!spawned && d.every(v => v === 0)) { now.push('$HP,0,0,0,*'); break frame; }   // any mode, as fake.py: the zero-effect check comes first
         if (mode === 1 || mode === 2) {
           const caps = mode === 1 ? [maxHp, maxArmor, maxShield] : [1e6, 1e6, 1e6];
           [hp, armor, shield] = d.map((v, i) => Math.max(0, Math.min(caps[i], v)));
@@ -72,11 +75,13 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
         // F518 (bench 2026-10-16): the `$LCD` t3 is the live shield (`$LIFE,0,0,30` then `$QUERY` gave `$LCD,45,70,30,0,36,216`)
         now.push(`$QUERY,${playerId},${team},${maxHp},${maxArmor},${maxShield},,1,*`, `$LCD,${hp},${armor},${shield},0,${mag[0] ?? 0},${reserve[0] ?? 0},*`);
       }
-    }
+    } sent(f); }
+    } finally {
     if (frames.includes('$CLEAR,*') && frames.some(f => f.startsWith('$SP,99'))) spawned = false;
     // fake.py's timing: a reply to the write itself comes at once, a $WEAP/$AMMO $ALCD after its 40 ms write latency
     setTimeout(() => { for (const f of now) feed(f); }, 0);
     if (later.length) setTimeout(() => { for (const f of later) feed(f); }, 40);
+    }
     log(`fakegun ← ${frames.length} frame(s)`, 'lr');
   };
   const api = {
