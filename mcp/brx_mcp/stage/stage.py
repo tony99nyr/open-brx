@@ -6158,7 +6158,8 @@ class GunStage:
         seconds = self._alt_lock_s(target)
         held = self._bind_due is not None
         self.switching = {"at": now, "from": source, "to": target, "s": seconds}
-        self._bind_due = {"slot": target, "at": now + seconds, "life": self._life_queued}
+        due = self._bind_due = {"slot": target, "at": now + seconds, "life": self._life_queued}
+        self._spawn_task(self._bind_wake(due))
         self._last_loadout = target
         self.active_slot = target; self._pull_at = None
         self._recoil_arm("swap")
@@ -6239,13 +6240,30 @@ class GunStage:
             at = max(at, end + self._alt_lock_s(sel))
         return at
 
-    def _switch_tick(self) -> None:
-        """ammo.js `switchTick`: bind a due target and close the swap display after its window."""
-        now, b = self.now(), self._bind_due
+    def _bind_if_due(self, now: float) -> None:
+        """ammo.js `bindIfDue`: bind the trigger to the swap's target once `_bind_due` is reached."""
+        b = self._bind_due
         if b and round(now * 1000) >= round(b["at"] * 1000):
             self._bind_due = None
             if b["life"] == self._life_queued:
                 self._bind_trigger(b["slot"], f"ALT: swap to slot {b['slot']}")
+
+    async def _bind_wake(self, due: dict, again: bool = True) -> None:
+        """ammo.js `bindWake` (bench 2026-11-14): the bind goes out when it is due, not at the next poll. A retarget or a
+        cancel retires this wake; the poll still binds as the fallback."""
+        await self.sleep(max(0.0, due["at"] - self.now()))
+        if self._bind_due is not due:
+            return
+        if round(self.now() * 1000) < round(due["at"] * 1000):
+            if again:
+                await self._bind_wake(due, False)
+            return
+        self._bind_if_due(self.now())
+
+    def _switch_tick(self) -> None:
+        """ammo.js `switchTick`: bind a due target and close the swap display after its window."""
+        now = self.now()
+        self._bind_if_due(now)
         sw = self.switching
         if not sw or round((now - sw["at"]) * 1000) <= round(self._swap_window_s() * 1000):
             return

@@ -650,7 +650,7 @@ function ammoHost(e) {
     // Tony 2026-11-08: the phone owns the weapon swap (ammo.js `altPressed`). Each is one `$BMAP,0` write of its own, never
     // batched with a `$PLAY` (the play queue can hold a write back); `_bindRows` writes the slot the phone holds.
     holdTrigger: why => e._write([TRIGGER_HOLD], `${why}: hold the trigger`),
-    bindTrigger: (slot, why) => e._bindTrigger(slot, why),
+    bindTrigger: (slot, why) => e._bindTrigger(slot, why), delay: (ms, fn) => e.delay(ms, fn),
     rebind: why => e._bindTrigger(e.activeSlot, `re-bind: ${why}`),
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
