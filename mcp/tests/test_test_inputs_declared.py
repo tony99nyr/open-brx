@@ -42,6 +42,8 @@ def _entries(job):
                 *sorted((REPO / "site/test").rglob("*.spec.*"))]
     if job == "app-tsc":
         return [REPO / "app/tsconfig.json"]
+    if job == "app-null":
+        return [REPO / "app/tsconfig.null.json", REPO / "app/tools/null-gate.mjs"]
     if job == "app-test":
         return sorted((REPO / "app/test").glob("*.test.mjs"))
     tools = {"app-screens": "screens.mjs", "app-logsync": "logsync-gate.mjs",
