@@ -2996,6 +2996,41 @@ test('ALT raises the swap indicator only with a real second weapon', () => {
 });
 
 
+// Bench 2026-11-14 (0.4.41): one ALT press came in as $BUT,1,1 (t+0), $BUT,1,0 (+137), $BUT,1,1 (+138), $BUT,1,0 (+142). The
+// phone counted the bounce as a second press and swapped straight back ("HUD shows usp again"). A press inside
+// E.BUTTON_BOUNCE_MS of the button's last release is a bounce; a deliberate double ALT 190 ms apart (SR17 e) is two swaps.
+test('ALT bounce: a press 1 ms after the release is ignored and logged; a double ALT 190 ms apart still counts twice', () => {
+  const h = twoWeapons(goLive(harness())), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.eng._pulledLife = h.eng._lifeSeq;   // F542/F445: the gun takes ALT only after a pull since the spawn
+  const from = h.eng.activeSlot;
+  h.frame('$BUT,1,1,*'); h.adv(137); h.frame('$BUT,1,0,*');
+  h.adv(1); h.frame('$BUT,1,1,*'); h.adv(4); h.frame('$BUT,1,0,*');
+  assert.notEqual(h.eng.activeSlot, from, 'one press: one swap, the bounce does not swap back');
+  assert.equal(h.eng.state().switchTo, h.eng.activeSlot);
+  assert.equal(logs.filter(m => m.includes('ALT bounce ignored')).length, 1, logs.join('\n'));
+  // SR17 e: a deliberate double ALT, 190 ms press to press, is a retarget
+  h.adv(3000); h.eng.tick();
+  const back = h.eng.activeSlot;
+  h.frame('$BUT,1,1,*'); h.adv(90); h.frame('$BUT,1,0,*');
+  h.adv(100); h.frame('$BUT,1,1,*'); h.adv(90); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.activeSlot, back, 'two presses: there and back');
+  assert.equal(logs.filter(m => m.includes('ALT bounce ignored')).length, 1, 'no real press is ignored');
+});
+
+test('lever bounce: a reload pull 2 ms after the release does not restart the reload', () => {
+  const h = goLive(harness()), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$ALCD,10,100,0,192,0,*');
+  h.frame('$BUT,2,1,*');
+  const r = h.eng.am.reloading;
+  assert.ok(r, 'setup: the lever opened a reload');
+  h.adv(120); h.frame('$BUT,2,0,*');
+  h.adv(2); h.frame('$BUT,2,1,*'); h.adv(3); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.am.reloading, r, 'the bounce left the reload as it was');
+  assert.equal(logs.filter(m => m.includes('lever bounce ignored')).length, 1, logs.join('\n'));
+});
+
 test('switchingMs() is pure — reading state never mutates it', () => {
   const h = twoWeapons(goLive(harness()));
   h.frame('$BUT,1,1,*');

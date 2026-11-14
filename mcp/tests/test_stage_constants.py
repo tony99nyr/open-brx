@@ -38,6 +38,7 @@ TABLE = [
     ("GUN_SPAWN_WAIT_S", "gunmodel.js", "SPAWN_WAIT_MS", 1000),
     ("GUN_SPAWN_AIR_S", "engine.js", "GUN_SPAWN_AIR_MS", 1000),
     ("SWAP_HELD_MAX_S", "engine.js", "SWAP_HELD_MAX_MS", 1000),
+    ("BUTTON_BOUNCE_S", "engine.js", "BUTTON_BOUNCE_MS", 1000),
 ]
 
 # Stage constants deliberately absent from the table, each with the reason.

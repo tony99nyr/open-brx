@@ -386,6 +386,7 @@ HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MI
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
 GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_constants pins the pair
 GUN_SPAWN_AIR_S = 0.06   # engine.js GUN_SPAWN_AIR_MS: the `$SPAWN` frame's air time after its send (late is safe, early is the bug)
+BUTTON_BOUNCE_S = 0.04  # engine.js BUTTON_BOUNCE_MS: an ALT or lever press this soon after that button's release is bounce
 SWAP_HELD_MAX_S = 5.0    # engine.js SWAP_HELD_MAX_MS: a live pull still held ends no later than this after its last round (a lost release)
 RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
 RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
@@ -1144,6 +1145,8 @@ class GunStage:
         # are what the gun last REPORTED ($ALCD), None until it has.
         self.reloading: dict | None = None
         self.reload_outcome: dict | None = None    # F123: how the last takeover ended (engine.js `_reloadOutcome`)
+        self._button_up_at: dict[int, float] = {}  # engine.js `_buttonUpAt`: $BUT id -> its last release (bench 2026-11-14)
+        self._bounced: dict[int, bool] = {}        # engine.js `_bounced`: a bounced press waits for its own release
         self.held: dict[int, float] = {}           # F123: $BUT id -> the now() of the press still down (engine.js `held`)
         self.last_button: dict | None = None       # the last $BUT edge either way (engine.js `lastButton`)
         self.switching: dict | None = None         # {at, from} while an ALT weapon swap is in flight (engine.js `switching`)
@@ -6101,6 +6104,17 @@ class GunStage:
         if bid is None:
             return
         now = self.now()
+        up = self._button_up_at.get(bid)
+        if (state == 1 and bid in (1, 2) and bid not in self.held and up is not None
+                and round((now - up) * 1000) < round(BUTTON_BOUNCE_S * 1000)):   # engine.js `_onButton`: contact bounce
+            self._bounced[bid] = True
+            self._log(f"{'ALT' if bid == 1 else 'lever'} bounce ignored: a press {round((now - up) * 1000)} ms after its release", "info")
+            return
+        if state == 0 and self._bounced.pop(bid, False):   # the bounce's own release
+            self._button_up_at[bid] = now
+            return
+        if state == 0:
+            self._button_up_at[bid] = now
         if state == 1:
             self.held.setdefault(bid, now)
             self.last_button = {"id": bid, "state": 1, "at": now, "held_s": None}
