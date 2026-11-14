@@ -327,11 +327,12 @@ def test_alt_reload_remaps_orange_button_to_reload():
     off = GameConfig(mode="tdm").setup_frames()
     assert any(f.startswith("$BMAP,1,100") for f in off)
     assert not any(f.startswith("$BMAP,1,97") for f in off)
-    # alt_reload: id 1 → reload (fn 97); reload handle (id 2) stays reload
+    # alt_reload: id 1 → reload (fn 97). The gun has one reload button, so the lever row is 98 and the phone
+    # reloads on the lever in software (bench 2026-11-14)
     on = GameConfig(mode="tdm", alt_reload=True).setup_frames()
     assert "$BMAP,1,97,,,,,*" in on
     assert not any(f.startswith("$BMAP,1,100") for f in on)
-    assert "$BMAP,2,97,,,,,*" in on                 # the lever still reloads too
+    assert "$BMAP,2,98,,,,,*" in on and "$BMAP,2,97,,,,,*" not in on
     # and it reaches the guns through the driver
     from sim import SimGame
     g = SimGame(GameConfig(mode="tdm", alt_reload=True)).setup()

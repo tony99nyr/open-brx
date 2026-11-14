@@ -535,10 +535,16 @@ class GameConfig:
     def _bmap(self) -> list[str]:
         """Button map. With `alt_reload`, the orange alt-fire button (id 1) is remapped
         from weapon-cycle (fn 100) to RELOAD (fn 97) — a kid-friendly reload that also
-        drops the secondary weapon-switch. The reload handle (id 2) stays reload too."""
+        drops the secondary weapon-switch.
+
+        Only one button can hold fn 97: the last row written 97 takes reload and the other row loses it
+        (bench 2026-11-14; a private emulator of the stock image). So ALT is the ONLY 97 row and the lever
+        row is 98 (inert; the gun still reports `$BUT,2`). The phone reloads in software on the lever for
+        an Easy Reload player, so both still reload (Tony, 2026-11-14)."""
         bmap: list[str] = list(_BMAP)
         if self.alt_reload:
             bmap[1] = "$BMAP,1,97,,,,,*"
+            bmap[2] = "$BMAP,2,98,,,,,*"
         return bmap
 
     def _pset(self, player_id: int = 0, voice: str | None = None, slots: dict | None = None,
