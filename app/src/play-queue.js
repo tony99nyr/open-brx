@@ -205,7 +205,17 @@ export class PlayQueue extends GunAudio {
       this.inFlight = true; job.started = true;   // F493 r3: handed to the link, no longer waiting in the queue
       const options = { ...job.options, shouldSend: () => !job.cancelled && generation === this.gen
         && (!job.options || !job.options.shouldSend || job.options.shouldSend()) };
-      const result = this._send(job.group, job.why, options, job.onSent, job.mustHear);
+      // Bench 2026-11-14: a send that throws (the engine runs a burst's `atSend` in it) is our bug. Before, it left the
+      // queue busy for ever and every later `$PLAY` stranded behind it. Now the job settles false, typed `code`.
+      let result;
+      try { result = this._send(job.group, job.why, options, job.onSent, job.mustHear); } catch (e) {
+        const message = String(e && e.message || e);
+        const stack = String(e && e.stack || '').split('\n').filter(l => /^\s+at /.test(l)).slice(0, 8).join('\n');
+        try { this._log(`BUG in send during ${job.why}: ${message}${stack ? '\n' + stack : ''}`); } catch (_) { /* a throwing log must not strand the queue */ }
+        const report = job.options && job.options.onOutcome;
+        if (typeof report === 'function') { try { report({ ok: false, kind: 'code', error: message, faults: [{ hook: 'send', why: job.why, message, stack }] }); } catch (_) { /* nor a throwing report */ } }
+        result = false;
+      }
       if (result && typeof result.then === 'function') result.then(finish, () => finish(false));
       else finish(result);
     };
