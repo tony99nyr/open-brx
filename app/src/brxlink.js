@@ -39,6 +39,32 @@ export const LATE_RESENDS = 2;
  *  (a busy chunk did not go; any other late error may or may not have gone), and after one the gun's parser may
  *  hold a partial frame. This link writes `PARSER_RESET` before the next frame it sends after any chunk error. */
 export const PARSER_RESET = '$*';
+/** Bench 2026-11-14 (0.4.41): an engine `onFrameSent` hook threw on a `$BMAP,0,98` row, and the link treated that bug as a
+ *  transport failure: it dropped the rest of the revive burst (`$SPAWN` never went), lost the stack, and owed a parser
+ *  reset. Now a throw in any hook the caller gives the link (`shouldSend`, `onStart`, `onFrameSent`, `onOutcome`), or in
+ *  the log, is a CODE fault: it is logged as `BUG in <hook> during <why>` with the stack, and the write goes on. A code
+ *  error in the link's own loop stops the batch like before but is typed `code`, never `ble`.
+ *
+ *  What a write did, for `options.onOutcome`. `ok` is the value `write` resolves with. `kind`:
+ *  - `sent`: every frame went. `faults` lists any hook that threw on the way (the write still counts as sent).
+ *  - `skipped`: `shouldSend` said no; nothing more went.
+ *  - `refused`: no gun picked, or the headset probe owns the link. Nothing went.
+ *  - `ble`: the radio failed a chunk (an error inside the answer cap, or chunks still lost after the re-sends).
+ *  - `code`: an exception in our own code stopped the batch. The Bluetooth link is fine; sending again sends the same bug.
+ *  @typedef {{ hook: string, why: string, message: string, stack: string }} CodeFault
+ *  @typedef {{ ok: boolean | null, kind: 'sent' | 'skipped' | 'refused' | 'ble' | 'code', error: string | null, faults: CodeFault[] }} WriteOutcome */
+/** A chunk the radio rejected. Only these make a `ble` outcome; anything else that escapes the write loop is a code error. */
+export class BleWriteError extends Error {
+  /** @param {unknown} cause */
+  constructor(cause) { super(String(cause && /** @type {any} */ (cause).message || cause)); this.name = 'BleWriteError'; this.cause = cause; }
+}
+const STACK_LINES = 8;
+/** The message and the first STACK_LINES frames of the stack, for a `BUG in` line. PURE. */
+export function faultOf(hook, why, e) {
+  const message = String(e && e.message || e);
+  const stack = String(e && e.stack || '').split('\n').filter(l => /^\s+at /.test(l)).slice(0, STACK_LINES).join('\n');
+  return { hook, why, message, stack };
+}
 /** F542 (bench 2026-11-01): the frame ring kept 60 frames, so a share made a minute after a fault had already lost the
  *  frames that showed it. F650 (game 2026-11-01): the ring then kept 2000 frames and the background sync sent only the
  *  newest 300, about one minute of play, so most of each match was invisible. A match runs at about 300 frames a minute;
@@ -249,6 +275,7 @@ export class BrxLink {
     this.responseForMultiPacket = responseForMultiPacket;
     this.ackCapMs = ackCapMs;
     this.lateAcks = 0;     // chunks whose answer took longer than ackCapMs (diagnostics)
+    this.codeFaults = 0; this.lastCodeFault = null;   // hooks or link code that threw (see BleWriteError): bugs, never the radio
     this.onRelink = onRelink;
     this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
@@ -296,7 +323,7 @@ export class BrxLink {
     if (state === 'joined' || state === null) this._hsSince = 0;
     if (this._hs === state && state !== 'joined') return;   // every hds.N reading is news: the app clears its warnings on it
     this._hs = state; this._hsAt = this.now();
-    try { this.onHeadset(this.headsetJoin); } catch (_) { /* a listener must not break the link */ }
+    this._hook('onHeadset', 'a headset state change', this.onHeadset, [this.headsetJoin], undefined);
   }
   /** A manual action (RECONNECT NOW, RELINK, a pick) ends a `not_joined` stop and starts the 60 s cap again. */
   resetHeadset() { if (this._hs !== 'joined') this._setHeadset(null); this._hsSince = 0; }
@@ -305,7 +332,7 @@ export class BrxLink {
   _setFlap(streak, nextAt = 0) {
     const was = JSON.stringify(this.flapping);
     this._flapStreak = streak; this._flapNextAt = nextAt;
-    if (JSON.stringify(this.flapping) !== was) { try { this.onFlap(this.flapping); } catch (_) { /* a listener must not break the link */ } }
+    if (JSON.stringify(this.flapping) !== was) this._hook('onFlap', 'a flap state change', this.onFlap, [this.flapping], undefined);
   }
   /** A user action (RECONNECT NOW, RELINK, picking a gun) starts the backoff again from the start. */
   resetFlap() { this._setFlap(0); }
@@ -314,7 +341,7 @@ export class BrxLink {
   _setRelinking(v) {
     if (this._relinking === v) return;
     this._relinking = v;
-    try { this.onRelink(v); } catch (_) { /* a listener must not break the link */ }
+    this._hook('onRelink', 'a relink state change', this.onRelink, [v], undefined);
   }
   _armStable() {
     clearTimeout(this._stableTimer);
@@ -360,7 +387,7 @@ export class BrxLink {
           const uuids = Array.isArray(res.uuids) ? res.uuids : [];
           if (!name && !uuids.length) return;
           const hit = { deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower, manufacturerData: res.manufacturerData };   // A88: a hill's tally rides in manufacturer data
-          for (const t of this._scanTaps) { try { t(hit); } catch (_) { /* a tap must not break the scan */ } }
+          for (const t of this._scanTaps) this._hook('scan tap', 'a scan result', t, [hit], undefined);
           onHit(hit);
         });
       } catch (e) { if (tok === this._scanTok) this._scanning = false; throw e; }   // a refused start is not an open scan
@@ -416,7 +443,23 @@ export class BrxLink {
     try { await this.ble.openLocationSettings(); return true; } catch (e) { this._log('open location settings: ' + (e && e.message || e), 'le'); return false; }
   }
 
-  _log(m, cls) { this.log(m, cls); }
+  /** A throwing log must not break the link (bench 2026-11-14). */
+  _log(m, cls) {
+    try { this.log(m, cls); } catch (e) { try { console.error(`BUG in log during ${String(m).split('\n')[0]}:`, e); } catch (_) { /* nothing left to tell */ } }
+  }
+  /** Logs and counts a code fault (see BleWriteError). `faults`: the write's list; a hook already in it is not logged again. */
+  _bug(hook, why, e, faults = null) {
+    const f = faultOf(hook, why, e);
+    this.codeFaults++; this.lastCodeFault = f;
+    const again = !!faults && faults.some(x => x.hook === hook);
+    if (faults) faults.push(f);
+    if (!again) this._log(`BUG in ${hook} during ${why}: ${f.message}${f.stack ? '\n' + f.stack : ''}`, 'le');
+    return f;
+  }
+  /** Runs caller hook `fn` with `args`. A throw is logged by `_bug` and `fallback` is returned instead. */
+  _hook(hook, why, fn, args, fallback, faults = null) {
+    try { return fn(...args); } catch (e) { this._bug(hook, why, e, faults); return fallback; }
+  }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > FRAME_RING) this.frames.shift(); }
 
   /** `onAttempt(i, of)` runs before each native connect attempt (the picker shows "Retrying (2 of 5)…"). */
@@ -504,7 +547,7 @@ export class BrxLink {
         timeouts = 0;
       }
       if (gen !== this._gen) return false;
-      if (onAttempt) { try { onAttempt(i, attempts); } catch (_) { /* a listener must not break the link */ } }
+      if (onAttempt) this._hook('onAttempt', `connect attempt ${i}`, onAttempt, [i, attempts], undefined);
       const t0 = this.now();
       let seq = 0, nativeFail = false;
       try {
@@ -870,13 +913,24 @@ export class BrxLink {
    *    that may hold a partial frame.
    *  `label`: what the batch is, for that log line (the engine passes its `why`). */
   write(frames, label = '', options = undefined) {
-    const id = (options && options.deviceId) || this.deviceId; if (!id) return Promise.resolve(false);   // F293: the probe writes before the link is claimed
-    if (this._probing && !(options && options.deviceId)) { this._log(`write refused while the headset probe owns the link: ${label || 'unlabelled'}`, 'li'); return Promise.resolve(false); }
     const list = Array.isArray(frames) ? frames : [frames];
-    const batch = { failed: null, open: true, label, list, id, cur: 0 };   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now
+    /** @type {CodeFault[]} */
+    const faults = [];
+    const where = () => `write "${label || 'unlabelled'}" (frame ${batch.cur + 1} of ${list.length})`;
+    /** @param {WriteOutcome['kind']} kind @param {boolean | null} ok */
+    const outcome = (kind, ok, error = null) => {
+      if (options && typeof options.onOutcome === 'function') this._hook('onOutcome', where(), options.onOutcome, [{ ok, kind, error, faults }], undefined);
+      return ok;
+    };
+    const batch = { failed: null, open: true, label, list, id: '', cur: 0, midFrame: false };   // `failed`: the earliest frame index a late error hit; `cur`: the frame sending now; `midFrame`: a frame is part-sent
+    const id = (options && options.deviceId) || this.deviceId; if (!id) return Promise.resolve(outcome('refused', false));   // F293: the probe writes before the link is claimed
+    if (this._probing && !(options && options.deviceId)) { this._log(`write refused while the headset probe owns the link: ${label || 'unlabelled'}`, 'li'); return Promise.resolve(outcome('refused', false)); }
+    batch.id = id;
+    // A throwing `shouldSend` is a bug: the write goes on (true), it is not dropped.
+    const go = () => !(options && typeof options.shouldSend === 'function') || !!this._hook('shouldSend', where(), options.shouldSend, [], true, faults);
     this._q = this._q.then(async () => {
-      if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
-      if (options && typeof options.onStart === 'function') options.onStart();
+      if (!go()) return outcome('skipped', null);
+      if (options && typeof options.onStart === 'function') this._hook('onStart', where(), options.onStart, [], undefined, faults);
       let late = 0, chunks = 0, resends = 0, lost = false, sentFrames = 0;
       // F341: one `$*` on its own, then the frame gap. Its own chunk error marks the batch like any other, so the
       // next boundary owes another reset (bounded by LATE_RESENDS like every re-send).
@@ -890,19 +944,22 @@ export class BrxLink {
       this._openBatch = batch;
       try {
         for (let i = 0; i < list.length;) {
-          if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
+          batch.cur = i;
+          if (!go()) return outcome('skipped', null);
           const frame = list[i];
           if (this._resetOwed.has(id)) await reset(i, 'the link dropped or an earlier write lost a chunk');
-          if (options && typeof options.shouldSend === 'function' && !options.shouldSend()) return null;
-          batch.cur = i;
+          if (!go()) return outcome('skipped', null);
           this._note('tx', frame);
           const useResponse = this.responseForMultiPacket && frame.length > 20;
           for (let o = 0; o < frame.length; o += 20) {
             chunks++;
-            if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i, useResponse)) late++;
+            const dv = textToDataView(frame.substr(o, 20));
+            batch.midFrame = true;
+            if (!await this._sendChunk(id, dv, batch, i, useResponse)) late++;
             if (frame.length > 20) await sleep(this.chunkGapMs);
           }
-          if (options && typeof options.onFrameSent === 'function') options.onFrameSent(frame);
+          batch.midFrame = false;
+          if (options && typeof options.onFrameSent === 'function') this._hook('onFrameSent', where(), options.onFrameSent, [frame], undefined, faults);
           await sleep(this.frameGapMs);
           i++;
           if (batch.failed != null) {
@@ -921,13 +978,20 @@ export class BrxLink {
         }
       } finally { batch.open = false; if (this._openBatch === batch) this._openBatch = null; }
       if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
-      if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return false; }
-      return true;
+      if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return outcome('ble', false, 'chunks lost'); }
+      return outcome('sent', true);
     }).catch(e => {
-      // F341: a chunk error inside the cap stops the batch mid-frame, so the gun may hold a partial frame. The next
-      // write starts with `$*`.
-      batch.open = false; if (this._openBatch === batch) this._openBatch = null; this._resetOwed.add(id);
-      this._log('write err: ' + (e && e.message || e), 'le'); return false;
+      batch.open = false; if (this._openBatch === batch) this._openBatch = null;
+      if (e instanceof BleWriteError) {
+        // F341: a chunk error inside the cap stops the batch mid-frame, so the gun may hold a partial frame. The next
+        // write starts with `$*`.
+        this._resetOwed.add(id);
+        this._log('write err: ' + e.message, 'le'); return outcome('ble', false, e.message);
+      }
+      // Our own bug stopped the batch. The gun holds a partial frame only if it threw between two chunks of one frame.
+      if (batch.midFrame) this._resetOwed.add(id);
+      const f = this._bug('write', where(), e, faults);
+      return outcome('code', false, f.message);
     });
     return this._q;
   }
@@ -942,14 +1006,14 @@ export class BrxLink {
    *  of the lever: an error rejects, and the batch stops as it does for an error inside the cap. */
   _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false) {
     let sent;
-    try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(e); }
-    if (useResponse) return sent.then(() => true);
+    try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(new BleWriteError(e)); }
+    if (useResponse) return sent.then(() => true, e => { throw new BleWriteError(e); });
     return new Promise((resolve, reject) => {
       let done = false;
       const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);
       sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
         e => {
-          if (!done) { done = true; clearTimeout(t); reject(e); return; }
+          if (!done) { done = true; clearTimeout(t); reject(new BleWriteError(e)); return; }
           const msg = e && e.message || e;
           if (batch && batch.open) {
             batch.failed = batch.failed == null ? frameIdx : Math.min(batch.failed, frameIdx);
