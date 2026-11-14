@@ -12,9 +12,9 @@
 //     60 mA of the budget before any colour;
 //   - colour: the rest (240 mA for 60 LEDs) caps the sum of every channel value in the frame at
 //     240 / 20 x 255 = 3060. A frame above that is scaled down, all channels by one factor.
-// EXTERNAL 5 V (STRIPPOWER EXT, Tony 2026-11-14): with the strip's 5 V from its own supply (a power bank's second
-// port; the Stick's Grove 5 V NOT connected), the budget is 2000 mA (STRIP_EXT_BUDGET_MA), because many banks share
-// about 2.4 A across both ports. The same per-frame scaling applies. GROVE is the default and the safe one.
+// EXTERNAL 5 V (STRIPPOWER EXT, Tony 2026-11-14): with the strip's 5 V from its own supply (an M5 U151 unit fed from
+// the power bank's second port; the Stick's Grove 5 V NOT connected), the budget is 2000 mA (STRIP_EXT_BUDGET_MA),
+// because many banks share about 2.4 A across both ports. The same per-frame scaling applies. GROVE is the default and the safe one.
 // In GROVE mode all 60 at "full" red send about 51 per LED, and all 60 at "full" white about 17 per channel. A
 // single walking LED stays at full brightness, because one LED is well inside the budget.
 #pragma once
@@ -36,7 +36,7 @@ constexpr uint16_t STRIP_DEFAULT_LEDS = 60;
 constexpr uint16_t STRIP_MAX_LEDS = 144;            // a 1 m strip at 144/m; idle alone is then 144 mA
 constexpr uint32_t STRIP_RAIL_MA = 380;             // EXT_5V, M5PM1 (about 0.38 A)
 constexpr uint32_t STRIP_BUDGET_MA = 300;           // GROVE: the whole strip, idle included
-constexpr uint32_t STRIP_EXT_BUDGET_MA = 2000;      // EXT: the strip on its own 5 V supply
+constexpr uint32_t STRIP_EXT_BUDGET_MA = 2000;      // EXT: the strip on its own 5 V (a U151 from the bank)
 constexpr uint32_t STRIP_IDLE_MA_PER_LED = 1;       // estimate
 constexpr uint32_t STRIP_MA_PER_CHANNEL_FULL = 20;  // one channel at 255, estimate
 constexpr uint32_t STRIP_WALK_STEP_MS = 250;        // 60 LEDs in 15 s: slow enough to count by eye

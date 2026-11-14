@@ -167,20 +167,21 @@ to the role after a bench pattern; the serial port prints `STRIP role <name>` on
 
 ### Brighter: the strip on its own 5 V (`STRIPPOWER EXT`)
 
-Tony wants the strip brighter than the Grove 5 V allows (2026-11-14). The plan is a two-port power bank: its USB-C port
-powers the Stick, and a cut USB-A lead powers the strip.
+Tony wants the strip brighter than the Grove 5 V allows (2026-11-14). The plan is an M5Stack Unit TypeC2Grove
+(U151) and a two-port power bank: three plugs, no tools.
 
-| strip wire | goes to |
-|---|---|
-| data | the Stick's Grove G9 (as now) |
-| GND | the Stick's Grove GND **and** the bank's USB-A GND (a shared ground, or the data is garbage) |
-| 5 V | the bank's USB-A 5 V only |
+1. The Stick's Grove port into the U151's INPUT port. M5's pin map has that port's 5 V and GND not connected, so
+   the U151 cannot feed the Stick's Grove 5 V, and the Stick cannot feed the strip. Only the data line passes.
+2. The strip into the U151's CH1. CH1 takes its 5 V from the U151's own USB-C (3 A at most).
+3. The bank's two ports: one to the Stick's USB-C, one to the U151's USB-C. The ground is common through the bank,
+   and the strip needs that shared ground to read its data. So the Stick must run from the bank, not from its own
+   battery alone.
 
-**Never join the Stick's Grove 5 V to the external 5 V.** Leave the Grove 5 V pin unconnected. Two supplies tied
+Never join the Stick's Grove 5 V to the strip's 5 V in any other way (a cut lead, a jumper). Two supplies tied
 together fight, and the Stick's PMIC is the one that loses.
 
 Then send `STRIPPOWER EXT` (saved). The frame budget rises from 300 mA to 2000 mA, with the same scaling, because many
-banks share about 2.4 A across both ports. `STRIPPOWER GROVE` is the default and the safe mode: use it whenever the
+banks share about 2.4 A across both ports (the U151 alone could give 3 A). `STRIPPOWER GROVE` is the default and the safe mode: use it whenever the
 strip takes its 5 V from the Grove port. A bank that switches off at low draw needs its trickle (low-current) mode on,
 or it cuts the Stick when the strip is dim. Bare `STRIP` prints `power=` and `budget_ma=`.
 
