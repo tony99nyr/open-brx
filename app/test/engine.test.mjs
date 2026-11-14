@@ -1735,8 +1735,9 @@ test('review 2026-09-17: heat is recorded even while the gun is STUNNED', () => 
 test('review 2026-09-17: a stuck OVERHEAT reading goes stale after HEAT_STALE_MS with no new $ALCD', () => {
   // Bench 2026-09-17 (match 592e444eff): a locked-out weapon sends NO $ALCD while it cools ("10 pulls, no
   // $ALCD"), so the last reading above HEAT_LOCKOUT could otherwise sit there for the rest of the life,
-  // sticking OVERHEAT on and keeping `no_fire` from ever taking over.
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  // sticking OVERHEAT on and keeping `no_fire` from ever taking over. That was a Charge Rifle, whose lock cools; the Energy
+  // Rifle's does not, and is held until a newer reading (SR8, 2026-11-14).
+  const { h } = chargeHarness();
   h.frame('$ALCD,31,100,0,384,108,*');   // match 592e444eff: a real bench capture
   assert.equal(h.eng.state().overheating, true);
   h.adv(24000);
@@ -5011,6 +5012,61 @@ test('F226: the Energy Rifle\'s normal overheat (no multi-round charge) at heat 
   h.frame(`$ALCD,${cap - 1},100,0,600,99,*`); h.frame(`$ALCD,${cap - 1},100,0,600,100,*`);   // locked at 100, same magazine
   assert.equal(h.writes.filter(f => f.startsWith('$AMMO,0,')).length, n, 'an ordinary overheat is never reloaded for the player');
   assert.equal(h.eng.state().overheatShown, true, 'and it still reads OVERHEAT');
+});
+
+// Bench 2026-11-14 (brx2, emulator; SR7): an `$AMMO` refill inside the lock keeps the heat. The phone re-sends the slot's own
+// `$WEAP` row first, which clears the heat and the lock, then the `$AMMO`, back to back.
+test('SR7: the F226 refill re-sends the slot\'s own $WEAP row, then its $AMMO, in one write', () => {
+  const { h, cap, res } = chargeHarness();
+  const n = h.writes.length;
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  const give = Math.min(cap - 4, res), mine = h.writes.slice(n);
+  const weap = h.bundle.head.find(f => f.startsWith('$WEAP,0,'));
+  const i = mine.indexOf(`$AMMO,0,${4 + give},${res - give},1,*`);
+  assert.ok(i > 0 && mine[i - 1] === weap, `the head's $WEAP,0 row goes straight before the $AMMO: ${JSON.stringify(mine)}`);
+});
+
+// Bench 2026-11-14 (SR8; brx2's emulator): the Energy Rifle locks at about 101 and the lock does not cool. Pulls inside it fire
+// nothing on EITHER slot (one heat value), and the lever vents 35 a press. The phone counted 13 pulls as rounds, tripped the
+// stale-pool cure, and showed "reload did NOT take" at every vent.
+function energyHarness() {
+  const h = harness();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+      { weapon_id: 'usp', name: 'USP', clip: 12, reserve: 48 }], perks: [] } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+  h.frame('$ALCD,202,100,0,600,99,*'); h.frame('$ALCD,201,100,0,600,101,*');   // the lock
+  return h;
+}
+test('SR8: pulls inside an Energy Rifle lock are no rounds and no stale-pool evidence, however long the lock lasts', () => {
+  const h = energyHarness(), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  const acct = h.eng.am.acctLive(0);
+  for (let k = 0; k < 13; k++) { h.adv(3000); h.frame('$BUT,0,1,*'); h.adv(60); h.frame('$BUT,0,0,*'); h.adv(1000); h.eng.tick(); }
+  assert.ok(h.eng.state().overheating, '40 s on, the lock still blocks the trigger');
+  assert.equal(h.eng.am.acctLive(0), acct, 'no pull was booked as a round');
+  assert.ok(!logs.some(m => /gun not firing/.test(m)), logs.filter(m => /not firing|stale/.test(m)).join('\n'));
+});
+test('SR8: the lever on the Energy Rifle vents the heat: no reload card, no "did not take"', () => {
+  const h = energyHarness(), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'no RELOADING card');
+  h.frame('$ALCD,201,100,0,600,65,*');                         // the vent: heat falls, the cell does not move
+  h.adv(4000); h.eng.tick();
+  assert.ok(logs.some(m => /lever vents the heat/.test(m)));
+  assert.ok(!logs.some(m => /did NOT take/.test(m)), logs.filter(m => /reload/.test(m)).join('\n'));
+  // cooled to 0: the lever is a reload again
+  h.frame('$ALCD,20,100,0,600,0,*'); h.adv(100);
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'at heat 0 the lever reloads');
+});
+test('SR8: the lock blocks the other slot too (one heat value)', () => {
+  const h = energyHarness();
+  h.eng.activeSlot = 1;
+  assert.equal(h.eng.am.heatBlocksFire(), true);
 });
 
 test('F226: never more than the reserve holds, and an empty reserve writes nothing', () => {

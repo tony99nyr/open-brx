@@ -2341,11 +2341,39 @@ class GunStage:
         heat token has reached HEAT_LOCKOUT -- UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S),
         since a locked-out weapon sends none while it cools and a stuck reading must not gate the trigger
         forever. ammo.js also has `overheatOnHud`, the 6 s DISPLAY window; the stage draws no HUD."""
-        slot = self.active_slot
-        if (self.heat_by_slot.get(slot) or 0) < self.HEAT_LOCKOUT:
+        h = self._heat_now()   # ammo.js `heatBlocksFire` (bench 2026-11-14, SR7/SR8): ONE heat value for both slots
+        if h is None or h[1] < self.HEAT_LOCKOUT:
             return False
-        at = self._heat_at.get(slot)
-        return at is None or (self.now() - at) < self.HEAT_STALE_S
+        return (self.now() - h[2]) < self.HEAT_STALE_S if self._heat_cools(h[0]) else True   # an Energy Rifle lock holds
+
+    HEAT_COOL_PER_S = 33.0      # engine.js HEAT_COOL_PER_MS (bench 2026-11-14, brx2's emulator): cooling while not locked
+
+    def _heat_now(self) -> tuple[int, int, float] | None:
+        """ammo.js `heatNow`: the gun's one heat value, the newest reading on any slot: (slot, heat, at)."""
+        best = None
+        for k, at in self._heat_at.items():
+            if self.heat_by_slot.get(k) is not None and (best is None or at > self._heat_at[best]):
+                best = k
+        return None if best is None else (best, self.heat_by_slot[best], self._heat_at[best])
+
+    def _heat_cools(self, slot: int) -> bool:
+        """ammo.js `heatCools`: a charge weapon's lock cools by itself; the Energy Rifle's holds until the lever vents it."""
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[slot] if slot < len(ws) else None) or {}
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}
+        rpc = row.get("rounds_per_charge")
+        return rpc is not None and float(rpc) > 1
+
+    def _lever_vents(self) -> bool:
+        """ammo.js `leverVents` (bench 2026-11-14, SR8): on the Energy Rifle a lever with any heat vents it; no reload."""
+        slot = self.active_slot
+        if not self._active_weapon_is_energy() or self._heat_cools(slot):
+            return False
+        h = self._heat_now()
+        if h is None:
+            return False
+        v = h[1] if h[1] >= self.HEAT_LOCKOUT else h[1] - (self.now() - h[2]) * self.HEAT_COOL_PER_S
+        return v > 0
 
     # ---- the stand-down table (engine.js `STAND_DOWN` / `_standDown`), maint review 2026-09-17 ----------
     # "The writer stands down" was re-typed at every call site on both sides and no two agreed. Each site
@@ -7122,6 +7150,10 @@ class GunStage:
         if wait > 0:
             self._log(f"reload pull ignored: the gun's spawn wait ({math.ceil(wait * 1000)} ms left)", "info")
             return
+        if lever and self._lever_vents():   # ammo.js `reloadPulled` (SR8): the Energy Rifle's lever vents the heat
+            h = self._heat_now()
+            self._log(f"lever vents the heat ({h[1] if h else '?'}); no reload", "info")
+            return
         self._lever_at = self.now()   # ammo.js `reloadPulled`: a refused pull still makes the gun reload a slot
         if self.stunned:
             self._log("reload pull ignored -- the gun is stunned", "info")
@@ -7504,7 +7536,10 @@ class GunStage:
         """engine.js `_chargeLock`'s send (Codex pass 2026-11-07 r3): a write that never left gave the gun nothing."""
         life, gen, until0 = own
         try:
-            ok = await self.write([f"$AMMO,{slot},{to},{left},1,*"], "F226: charge lock, reload for the player", gap_ms=0)
+            # engine.js `_chargeLock` (bench 2026-11-14, SR7): the slot's own `$WEAP` first clears the heat and the lock
+            weap = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None)
+            rows = ([weap] if weap else []) + [f"$AMMO,{slot},{to},{left},1,*"]
+            ok = await self.write(rows, "F226: charge lock, reload for the player", gap_ms=0)
         except Exception:
             ok = False
         if ok is False:

@@ -19,6 +19,8 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "HEAT_COOL_PER_S": "Bench 2026-11-14 (brx2, emulator): a cooling RATE (heat per second), not a timer; it never fires,\n"
+                       "and only decides whether a lever press vents the Energy Rifle's heat",
     "SWAP_HELD_MAX_S": "Tony 2026-11-09 (swap timer): the latest a live pull still held counts as ending after its last round,\n"
                        "against a lost trigger release. Display only: it bounds how long SWITCHING stays up; it never\n"
                        "fires a write, and no beacon reaches it",

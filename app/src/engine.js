@@ -5294,7 +5294,12 @@ export class Engine {
     // Codex pass 2026-11-07 r3 (brx1): a write that failed before its frame left gave the gun nothing (`_chargeLockUnwrite`)
     const life = this._lifeSeq, gen = this.am.acct[slot] && this.am.acct[slot].echoGen;
     let sent = false;
-    const wr = this._write([`$AMMO,${slot},${to},${left},1,*`], 'F226: charge lock, reload for the player', { onFrameSent: () => { sent = true; } });
+    // Bench 2026-11-14 (brx2, emulator; SR7): an `$AMMO` refill inside the lock keeps the heat, so the gun stayed locked. A `$WEAP`
+    // re-send of the slot clears the heat and the lock at once; the `$AMMO` goes straight after it (between them the gun shows
+    // the row's own reserve, t40).
+    const weap = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`));
+    const rows = weap ? [weap, `$AMMO,${slot},${to},${left},1,*`] : [`$AMMO,${slot},${to},${left},1,*`];
+    const wr = this._write(rows, 'F226: charge lock, reload for the player', { onFrameSent: f => { if (f.startsWith('$AMMO,')) sent = true; } });
     const failed = () => { if (!sent) this._chargeLockUnwrite(slot, mag, res, to, life, gen, until0); };
     Promise.resolve(wr).then(ok => { if (ok === false) failed(); }, failed);
     this._holdAccuracyWrites('F226 reload');   // the `$AMMO` owns the counts until the gun answers it

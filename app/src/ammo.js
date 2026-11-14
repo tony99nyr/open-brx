@@ -17,7 +17,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
-//     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
+//     heat        noteHeat(slot, heat) · heatNow() · heatCools(slot) · leverVents(now) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat() · heatSaved() · heatRestore(h)
 //     reload      reloadPulled({lever}) · reloadReleased(now) · softWake(r) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
@@ -120,6 +120,8 @@ export const OVERHEAT_CAP_MS = 30000;
 // HEAT_STALE_MS sits above that real window with margin, so a genuine lockout (or a player still trying it)
 // is never cleared early, and only a reading old enough to be certainly abandoned counts as untrustworthy.
 export const HEAT_STALE_MS = 25000;
+/** Bench 2026-11-14 (brx2, emulator): the gun's one heat value cools about 33 a second while it is not locked. Per ms. */
+export const HEAT_COOL_PER_MS = 0.033;
 // pl3 (2026-09-17): HEAT_STALE_MS above is for `no_fire` only. It must outlast a player who dry-fires a locked
 // weapon for ~20 s. The HUD's OVERHEAT word must not: the lockout itself ends long before that. The reading that
 // tips a weapon over the line arrives with the shot that caused it. The bench-measured lockout holds ~4.8 s,
@@ -569,10 +571,37 @@ export class Ammo {
    *  were one truth. THIS one decides whether the gun can shoot: it gates the accuracy writer and exempts a
    *  dry pull from `no_fire`, on the 25 s HEAT_STALE_MS trust window. It is NOT what the HUD draws. */
   heatBlocksFire(now = this.host.now()) {
-    const slot = this.host.activeSlot;
-    if ((this.heatBySlot[slot] || 0) < HEAT_LOCKOUT) return false;
-    const at = this.heatAt[slot];
-    return at == null || (now - at) < HEAT_STALE_MS;
+    // Bench 2026-11-14 (brx2, emulator; SR7/SR8): the gun has ONE heat value, shared by both weapons, so a lock blocks pulls on
+    // either slot. The Energy Rifle's lock does not cool: it holds until the lever vents it, so its reading is trusted until a
+    // newer one (pulls inside it were counted as rounds and tripped the stale-pool cure). A charge weapon's lock cools by
+    // itself, so its reading keeps the HEAT_STALE_MS trust window (match 592e444eff).
+    const h = this.heatNow();
+    if (!h || h.v < HEAT_LOCKOUT) return false;
+    return this.heatCools(h.slot) ? now - h.at < HEAT_STALE_MS : true;
+  }
+  /** The gun's one heat value: the newest reading on any slot this life, or null. PURE. */
+  heatNow() {
+    let best = null;
+    for (const k of Object.keys(this.heatAt)) if (this.heatBySlot[k] != null && (best == null || this.heatAt[k] > this.heatAt[best])) best = k;
+    return best == null ? null : { slot: +best, v: this.heatBySlot[best], at: this.heatAt[best] };
+  }
+  /** Does a lock from this slot's weapon cool by itself? A charge weapon's does (`rounds_per_charge`); the Energy Rifle's holds
+   *  until the lever vents it (bench 2026-11-14). PURE. */
+  heatCools(slot) {
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    return !!(row && row.rounds_per_charge != null && +row.rounds_per_charge > 1);
+  }
+  /** Bench 2026-11-14 (SR8): on the Energy Rifle the lever VENTS the heat while there is any (35 a press; a held lever vents to
+   *  0, then refills the cell), and the magazine does not move. Such a lever is no reload. PURE. */
+  leverVents(now = this.host.now()) {
+    const slot = this.host.activeSlot, ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    if (!w || !isEnergyClass(row && row.weapon_class, w.weapon_id) || this.heatCools(slot)) return false;
+    const h = this.heatNow();
+    if (!h) return false;
+    const v = h.v >= HEAT_LOCKOUT ? h.v : h.v - (now - h.at) * HEAT_COOL_PER_MS;
+    return v > 0;
   }
   /** pl4: one `$ALCD` for `slot`. A reading at or past the line starts or refreshes the lockout; a reading below
    *  it, or a round leaving the slot without such a reading, ends it. `prev` is the slot's last mag (null = none). */
@@ -622,6 +651,7 @@ export class Ammo {
     // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
     const wait = this.host.gunButtonsWaitMs ? this.host.gunButtonsWaitMs() : 0;
     if (wait > 0) { this.host.log(`reload pull ignored: the gun's spawn wait (${Math.ceil(wait)} ms left)`, 'li'); return; }
+    if (lever && this.leverVents()) { this.host.log(`lever vents the heat (${this.heatNow().v}); no reload`, 'li'); return; }   // SR8
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
