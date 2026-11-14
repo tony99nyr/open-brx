@@ -207,6 +207,29 @@ static void no_link_and_no_role_blinks_amber_slowly() {
   CHECK(strip_role(bench) == StripRole::OFF);
 }
 
+// STRIPPOWER: GROVE keeps 300 mA, EXT (the strip on its own 5 V) allows 2000 mA, same scaling.
+static void each_power_mode_has_its_own_budget() {
+  CHECK_EQ(strip_budget_ma(StripPower::GROVE), 300u);
+  CHECK_EQ(strip_budget_ma(StripPower::EXT), 2000u);
+  for (StripPower pw : {StripPower::GROVE, StripPower::EXT}) {
+    const uint32_t budget = strip_budget_ma(pw);
+    std::vector<Rgb> px(60);
+    strip_render(StripPattern::WHITE, 0, 0, px.data(), 60, budget);
+    const uint32_t ma = strip_estimate_ma(px.data(), 60);
+    CHECK(ma <= budget);
+    CHECK(ma > budget * 9 / 10);  // the cap uses the budget, it does not waste it
+    StickState s = hill(0, 0, 100);
+    std::vector<Rgb> r(60);
+    strip_render_role(s, STRIP_PULSE_MS / 2, r.data(), 60, budget);
+    CHECK(strip_estimate_ma(r.data(), 60) <= budget);
+  }
+  std::vector<Rgb> g(60), e(60);
+  strip_render(StripPattern::RED, 0, 0, g.data(), 60, STRIP_BUDGET_MA);
+  strip_render(StripPattern::RED, 0, 0, e.data(), 60, STRIP_EXT_BUDGET_MA);
+  CHECK(e[0].r > 4 * g[0].r);  // about 51 on the Grove 5 V, 255 on an external supply
+  CHECK_EQ(e[0].r, 255);
+}
+
 int main() {
   every_full_frame_stays_under_the_budget();
   a_small_frame_is_not_dimmed();
@@ -222,5 +245,6 @@ int main() {
   a_respawn_is_steady_and_flashes_brighter_on_a_respawn();
   a_ready_powerup_chases_and_a_spent_one_refills_dark();
   no_link_and_no_role_blinks_amber_slowly();
+  each_power_mode_has_its_own_budget();
   return report("strip: all checks passed");
 }

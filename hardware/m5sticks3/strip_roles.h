@@ -1,6 +1,6 @@
 // strip_roles.h - what the LED strip shows for the station's role, from the same StickState the screen
 // uses (stick_state.h). Pure: no Arduino; host-tested in test/test_strip.cpp. Every frame still goes
-// through strip_cap() (led_strip.h), so no pattern here can break the 300 mA budget.
+// through strip_cap() (led_strip.h), so no pattern here can break the budget (300 mA on the Grove 5 V, STRIPPOWER).
 //
 // The roles (brx1's 2026-10-18 design):
 //   - hill: neutral is dim white; a capture fills the strip from LED 0 in the capturer's colour at the
@@ -120,7 +120,8 @@ inline uint32_t strip_pulse_pct(uint32_t now_ms) {
   return 40 + 60 * up / half;
 }
 
-inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px, size_t n) {
+inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px, size_t n,
+                                   uint32_t budget_ma = STRIP_BUDGET_MA) {
   const StripRole role = strip_role(s);
   for (size_t i = 0; i < n; i++) px[i] = Rgb{};
   switch (role) {
@@ -138,13 +139,13 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       for (size_t i = 0; i < n; i++) px[i] = i < k ? c : STRIP_NEUTRAL;
       // cap the fill against what the neutral rest leaves, so the rest stays the same dim white
       const uint64_t rest = (uint64_t)(n - k) * (STRIP_NEUTRAL.r + STRIP_NEUTRAL.g + STRIP_NEUTRAL.b);
-      const uint64_t budget = strip_channel_budget(n);
+      const uint64_t budget = strip_channel_budget(n, budget_ma);
       strip_cap_to(px, k, budget > rest ? budget - rest : 0);
       return role;
     }
     case StripRole::HILL_OWNED:
       for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
-      strip_cap(px, n);
+      strip_cap(px, n, budget_ma);
       strip_dim(px, n, strip_pulse_pct(now_ms), 100);
       return role;
     case StripRole::HILL_CONTESTED: {
@@ -155,7 +156,7 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
     case StripRole::HILL_ENDED:
       if (strip_team_ok(s.control_owner)) {
         for (size_t i = 0; i < n; i++) px[i] = team_rgb(s.control_owner);
-        strip_cap(px, n);
+        strip_cap(px, n, budget_ma);
         strip_dim(px, n, 1, 3);
       } else {
         for (size_t i = 0; i < n; i++) px[i] = STRIP_NEUTRAL;
@@ -165,7 +166,7 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
     case StripRole::RESPAWN_FLASH: {
       const Rgb c = strip_team_ok(s.respawn_team) ? team_rgb(s.respawn_team) : Rgb{255, 255, 255};
       for (size_t i = 0; i < n; i++) px[i] = c;
-      strip_cap(px, n);
+      strip_cap(px, n, budget_ma);
       if (role == StripRole::RESPAWN) strip_dim(px, n, 1, 2);  // the flash is the full budget, so twice as bright
       return role;
     }
@@ -185,7 +186,7 @@ inline StripRole strip_render_role(const StickState& s, uint32_t now_ms, Rgb* px
       break;
     }
   }
-  strip_cap(px, n);
+  strip_cap(px, n, budget_ma);
   return role;
 }
 

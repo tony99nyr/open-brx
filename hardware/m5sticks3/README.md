@@ -165,6 +165,25 @@ bench HILL shows it too):
 A station with a role keeps showing it when the link drops, because a HELD station plays on. `STRIP auto` returns
 to the role after a bench pattern; the serial port prints `STRIP role <name>` on each change.
 
+### Brighter: the strip on its own 5 V (`STRIPPOWER EXT`)
+
+Tony wants the strip brighter than the Grove 5 V allows (2026-11-14). The plan is a two-port power bank: its USB-C port
+powers the Stick, and a cut USB-A lead powers the strip.
+
+| strip wire | goes to |
+|---|---|
+| data | the Stick's Grove G9 (as now) |
+| GND | the Stick's Grove GND **and** the bank's USB-A GND (a shared ground, or the data is garbage) |
+| 5 V | the bank's USB-A 5 V only |
+
+**Never join the Stick's Grove 5 V to the external 5 V.** Leave the Grove 5 V pin unconnected. Two supplies tied
+together fight, and the Stick's PMIC is the one that loses.
+
+Then send `STRIPPOWER EXT` (saved). The frame budget rises from 300 mA to 2000 mA, with the same scaling, because many
+banks share about 2.4 A across both ports. `STRIPPOWER GROVE` is the default and the safe mode: use it whenever the
+strip takes its 5 V from the Grove port. A bank that switches off at low draw needs its trickle (low-current) mode on,
+or it cuts the Stick when the strip is dim. Bare `STRIP` prints `power=` and `budget_ma=`.
+
 Bench steps:
 
 1. `STRIPPIN 9` (or `10`). The pin is saved; the default is no strip. It refuses a pin used for IR TX or RX.
@@ -265,7 +284,7 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | `ID <n>` · `GAME <n>` | advert bytes 6-7 and 13, persisted; a republish follows |
 | `TXPIN 46\|9\|10` | onboard LED or either Grove signal pin, persisted; refuses to double as the RX pin |
 | `RXPIN 42\|9\|10` | onboard receiver or either Grove pin, persisted; refuses to double as the TX pin. An internal pull-up is enabled on a Grove pin (see "External IR receiver" below). The `STATUS` RX line names the active pin |
-| `STRIPPIN 9\|10\|OFF` · `STRIPN <n>` · `STRIP [pattern]` · `STRIPORDER GRB\|RGB` | the LED strip: pin and count (saved), the role (`auto`, the default) or a bench pattern (`off`, `red`, `green`, `blue`, `white`, `walk`, `teams`, `team <0-3>`), byte order (not saved). Bare `STRIP` is read-only status. See "LED strip" |
+| `STRIPPIN 9\|10\|OFF` · `STRIPN <n>` · `STRIP [pattern]` · `STRIPPOWER GROVE\|EXT` · `STRIPORDER GRB\|RGB` | the LED strip: pin, count and power mode (saved; EXT only with the strip on its own 5 V), the role (`auto`, the default) or a bench pattern (`off`, `red`, `green`, `blue`, `white`, `walk`, `teams`, `team <0-3>`), byte order (not saved). Bare `STRIP` is read-only status. See "LED strip" |
 | `BL <n>` | screen brightness 0-255, not persisted; bench-only, for A/B-ing the backlight-PWM noise against the receiver (`BACKLIGHT_DIM 60` is the shipped idle level) |
 | `RESET` | neutral, charges cleared |
 | `PLAYERS` | read-only: every player the station hears (RSSI raw/median/EMA, threshold, near/present, age) and the revive count |

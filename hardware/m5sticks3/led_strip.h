@@ -12,7 +12,10 @@
 //     60 mA of the budget before any colour;
 //   - colour: the rest (240 mA for 60 LEDs) caps the sum of every channel value in the frame at
 //     240 / 20 x 255 = 3060. A frame above that is scaled down, all channels by one factor.
-// So all 60 at "full" red send about 51 per LED, and all 60 at "full" white about 17 per channel. A
+// EXTERNAL 5 V (STRIPPOWER EXT, Tony 2026-11-14): with the strip's 5 V from its own supply (a power bank's second
+// port; the Stick's Grove 5 V NOT connected), the budget is 2000 mA (STRIP_EXT_BUDGET_MA), because many banks share
+// about 2.4 A across both ports. The same per-frame scaling applies. GROVE is the default and the safe one.
+// In GROVE mode all 60 at "full" red send about 51 per LED, and all 60 at "full" white about 17 per channel. A
 // single walking LED stays at full brightness, because one LED is well inside the budget.
 #pragma once
 #include <cstddef>
@@ -32,12 +35,17 @@ struct Rgb {
 constexpr uint16_t STRIP_DEFAULT_LEDS = 60;
 constexpr uint16_t STRIP_MAX_LEDS = 144;            // a 1 m strip at 144/m; idle alone is then 144 mA
 constexpr uint32_t STRIP_RAIL_MA = 380;             // EXT_5V, M5PM1 (about 0.38 A)
-constexpr uint32_t STRIP_BUDGET_MA = 300;           // the whole strip, idle included
+constexpr uint32_t STRIP_BUDGET_MA = 300;           // GROVE: the whole strip, idle included
+constexpr uint32_t STRIP_EXT_BUDGET_MA = 2000;      // EXT: the strip on its own 5 V supply
 constexpr uint32_t STRIP_IDLE_MA_PER_LED = 1;       // estimate
 constexpr uint32_t STRIP_MA_PER_CHANNEL_FULL = 20;  // one channel at 255, estimate
 constexpr uint32_t STRIP_WALK_STEP_MS = 250;        // 60 LEDs in 15 s: slow enough to count by eye
 static_assert(STRIP_BUDGET_MA < STRIP_RAIL_MA, "the strip budget must stay under the EXT_5V rail");
 static_assert(STRIP_MAX_LEDS * STRIP_IDLE_MA_PER_LED < STRIP_BUDGET_MA, "idle alone must fit the budget");
+
+enum class StripPower : uint8_t { GROVE, EXT };
+inline uint32_t strip_budget_ma(StripPower p) { return p == StripPower::EXT ? STRIP_EXT_BUDGET_MA : STRIP_BUDGET_MA; }
+inline const char* strip_power_name(StripPower p) { return p == StripPower::EXT ? "ext" : "grove"; }
 
 // The estimated current of a frame in mA: idle plus colour, rounded up.
 inline uint32_t strip_estimate_ma(const Rgb* px, size_t n) {
@@ -47,14 +55,14 @@ inline uint32_t strip_estimate_ma(const Rgb* px, size_t n) {
 }
 
 // The largest sum of channel values a frame of n LEDs may carry.
-inline uint32_t strip_channel_budget(size_t n) {
+inline uint32_t strip_channel_budget(size_t n, uint32_t budget_ma = STRIP_BUDGET_MA) {
   const uint32_t idle = (uint32_t)n * STRIP_IDLE_MA_PER_LED;
-  if (idle >= STRIP_BUDGET_MA) return 0;
-  return (STRIP_BUDGET_MA - idle) * 255 / STRIP_MA_PER_CHANNEL_FULL;
+  if (idle >= budget_ma) return 0;
+  return (budget_ma - idle) * 255 / STRIP_MA_PER_CHANNEL_FULL;
 }
 
 // Scale the frame down (one factor for every channel, rounded down) so it fits the budget. Returns true
-// when it scaled. After this, strip_estimate_ma(px, n) <= STRIP_BUDGET_MA for any frame.
+// when it scaled. After this, strip_estimate_ma(px, n) <= budget_ma for any frame.
 // strip_cap_to() scales px[0..n) to at most `limit` in channel sum: for a part of a frame whose other part is
 // already counted (a capture fill over a dim neutral rest).
 inline bool strip_cap_to(Rgb* px, size_t n, uint64_t limit) {
@@ -68,7 +76,9 @@ inline bool strip_cap_to(Rgb* px, size_t n, uint64_t limit) {
   }
   return true;
 }
-inline bool strip_cap(Rgb* px, size_t n) { return strip_cap_to(px, n, strip_channel_budget(n)); }
+inline bool strip_cap(Rgb* px, size_t n, uint32_t budget_ma = STRIP_BUDGET_MA) {
+  return strip_cap_to(px, n, strip_channel_budget(n, budget_ma));
+}
 
 // The wire bytes, 3 per LED. SK6812 RGB takes green first (GRB); `grb = false` sends RGB, for a strip
 // whose red test shows green (STRIPORDER RGB on the serial port).
@@ -127,7 +137,8 @@ inline const char* strip_pattern_name(StripPattern p) {
 inline size_t strip_walk_index(uint32_t elapsed_ms, size_t n) { return n ? (elapsed_ms / STRIP_WALK_STEP_MS) % n : 0; }
 
 // Draw the pattern at full level, then cap it. AUTO draws nothing here: the sketch renders the role instead. TEAMS: four equal blocks, team 0 to 3 from LED 0.
-inline void strip_render(StripPattern p, int team, uint32_t elapsed_ms, Rgb* px, size_t n) {
+inline void strip_render(StripPattern p, int team, uint32_t elapsed_ms, Rgb* px, size_t n,
+                         uint32_t budget_ma = STRIP_BUDGET_MA) {
   for (size_t i = 0; i < n; i++) {
     Rgb c;
     switch (p) {
@@ -142,7 +153,7 @@ inline void strip_render(StripPattern p, int team, uint32_t elapsed_ms, Rgb* px,
     }
     px[i] = c;
   }
-  strip_cap(px, n);
+  strip_cap(px, n, budget_ma);
 }
 
 }  // namespace brx
