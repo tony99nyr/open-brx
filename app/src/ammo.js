@@ -22,7 +22,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     reload      reloadPulled({lever}) · reloadReleased(now) · softWake(r) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
-//     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
+//     ALT         altPressed() · switchTick(now) · bindIfDue(now) · bindWake(due) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
 //                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · swapWindowMs() ·
 //                 equipped(slot, mag, res)
 //     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
@@ -31,7 +31,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
 //   services    now() · log(line, cls) · changed() · event(kind) · fireIntervalMs(slot) · recoilStep(n) · recoilArm(why) ·
-//               reloadGlance()
+//               reloadGlance() · delay(ms, fn) (the engine's timer: a swap's bind and a phone reload's write go out when due)
 //   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · altReloads() · switchWindowMs() (the Engine's public
 //               `switchWindowMs`, which asks this module back: the swap's own clock reads it there, so a test that
 //               stubs the Engine's window is still honoured)
@@ -903,7 +903,8 @@ export class Ammo {
     // A second ALT inside the window retargets: only the last target is bound, `ms` after the last press.
     const held = !!this.bindDue;
     this.switching = { at: now, from, to, ms };
-    this.bindDue = { slot: to, at: now + ms, life: this.host.lifeSeq };
+    const due = this.bindDue = { slot: to, at: now + ms, life: this.host.lifeSeq };
+    this.bindWake(due);
     this.lastLoadout = to;
     this.host.setActiveSlot(to); this.host.clearPull();
     this.host.pu.onAssumedSwap(to);   // A56: ALT takes the trigger off a held heavy (the heavy keeps its charges)
@@ -951,11 +952,25 @@ export class Ammo {
     const sw = this.switching, own = sw && sw.ms > 0 ? sw.ms : this.host.switchWindowMs();
     return sw && !sw.pu && this.host.gunSwapReadyAt ? Math.max(own, this.host.gunSwapReadyAt(sw) - sw.at) : own;
   }
+  /** Bind the trigger to the swap's target once `bindDue` is reached. */
+  bindIfDue(now) {
+    const b = this.bindDue;
+    if (b && now >= b.at) { this.bindDue = null; if (b.life === this.host.lifeSeq) this.host.bindTrigger(b.slot, `ALT: swap to slot ${b.slot}`); }
+  }
+  /** Bench 2026-11-14: the bind waited for the next 250 ms tick, so it reached the gun +4..+251 ms after it was due. A timer
+   *  now writes it on time. The tick still binds as the fallback, and a retarget or a cancel retires this wake. */
+  bindWake(due, again = true) {
+    if (!this.host.delay) return;
+    this.host.delay(Math.max(0, due.at - this.host.now()), () => {
+      if (this.bindDue !== due) return;
+      if (this.host.now() < due.at) { if (again) this.bindWake(due, false); return; }   // a timer that fires a little early waits once more
+      this.bindIfDue(this.host.now());
+    });
+  }
   /** tick(): bind the trigger to the swap's target once its time is up (`bindDue`), and close the SWITCHING display when its
    *  window ends. A pickup's card (`switching.pu`) only closes: the powerup equip already moved the trigger. */
   switchTick(now) {
-    const b = this.bindDue;
-    if (b && now >= b.at) { this.bindDue = null; if (b.life === this.host.lifeSeq) this.host.bindTrigger(b.slot, `ALT: swap to slot ${b.slot}`); }
+    this.bindIfDue(now);
     if (this.switching && now - this.switching.at > this.swapWindowMs()) {
       const sw = this.switching, pu = !!sw.pu, to = sw.to;
       this.switching = null;

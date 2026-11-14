@@ -655,7 +655,7 @@ function ammoHost(e) {
     // Tony 2026-11-08: the phone owns the weapon swap (ammo.js `altPressed`). Each is one `$BMAP,0` write of its own, never
     // batched with a `$PLAY` (the play queue can hold a write back); `_bindRows` writes the slot the phone holds.
     holdTrigger: why => e._write([TRIGGER_HOLD], `${why}: hold the trigger`),
-    bindTrigger: (slot, why) => e._bindTrigger(slot, why),
+    bindTrigger: (slot, why) => e._bindTrigger(slot, why), delay: (ms, fn) => e.delay(ms, fn),
     rebind: why => e._bindTrigger(e.activeSlot, `re-bind: ${why}`),
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
@@ -1474,9 +1474,10 @@ export class Engine {
       // `pending` while a link that answers later has not sent the frame yet: the swap timer reads it as leaving now
       const bindAt = bindRow && bindFn < 98 ? { slot: bindFn, at: this.now() + GUN_SPAWN_AIR_MS, pending: false, sent: false } : null;
       if (bindAt) this._gunBindAt = bindAt;
+      // bench 2026-11-14 (P0): a burst can carry `$SPAWN` with only the hold (`$BMAP,0,98`, no stamp), so each stamp is guarded
       const sendOptions = spawnRow || bindAt ? { ...(sendOptions0 || {}), onFrameSent: frame => {
         if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
-        if (frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
+        if (bindAt && frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
         if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
       } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);

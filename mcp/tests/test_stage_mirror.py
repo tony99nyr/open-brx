@@ -1797,6 +1797,32 @@ def test_swap_timer_waits_for_the_release_of_a_live_pull_plus_the_fired_slots_to
     asyncio.run(go())
 
 
+def test_swap_bind_goes_out_when_due_not_at_the_next_poll():
+    """ammo.js `bindWake` (bench 2026-11-14: the bind waited for the next 250 ms tick, +4..+251 ms late): the stage writes the
+    swap's bind on its own timer at ALT plus the target's tok15, with no poll in between."""
+    async def go():
+        clock = StageClock()
+        mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1, clock=clock)])
+        on = {"clock": False}
+        async def sleep(s):   # the swap's timer runs on the test clock once the setup is done
+            if on["clock"] and s > 0:
+                clock.advance(s)
+        st = GunStage(mgr, None, sleep=sleep, now=clock, voice_verdict_sink=lambda _r: None)
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        await flush_fake_ammo(st, mgr)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        on["clock"] = True
+        t0 = clock.t
+        st._on_rx("$BUT,1,1,*"); st._on_rx("$BUT,1,0,*")
+        assert st.switching and st.switching["to"] == 1
+        await settle(st)
+        assert st._bind_due is None, "the bind went out on its own timer"
+        assert st._bmap_sent == 1, st._bmap_sent
+        assert abs(clock.t - t0 - st._alt_lock_s(1)) < 1e-6, clock.t - t0
+    asyncio.run(go())
+
+
 def test_echoes_and_rounds_leave_the_swap_window_open_until_its_deadline():
     """Only the swap clock closes SWITCHING, regardless of ammo reports."""
     async def go():
@@ -2171,7 +2197,7 @@ _AMMO_PAIRS = {
     "am.noteGunOther": "_note_gun_other", "am.gunOtherGain": "_gun_other_gain", "am.reloadMsOf": "_reload_s",   # review 2026-11-06: `_reload_s(slot)` takes the slot
     # the ALT swap: the stage's window is in seconds (`_switch_window_s`), the same rule
     "am.altPressed": "_alt_pressed", "am.altCycle": "_alt_cycle", "am.nextAltSlot": "_next_alt_slot",
-    "am.switchTick": "_switch_tick", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.swapWindowMs": "_swap_window_s", "am.noteDisarm": "_note_disarm",
+    "am.switchTick": "_switch_tick", "am.bindIfDue": "_bind_if_due", "am.bindWake": "_bind_wake", "am.switchWindowMs": "_switch_window_s", "am.altLockMs": "_alt_lock_s", "am.swapWindowMs": "_swap_window_s", "am.noteDisarm": "_note_disarm",
     # one ammo report, and the RELOAD nag
     "am.onAmmo": "_on_ammo", "am.dryPull": "_dry_pull", "am.fireFirstShown": "_fire_first_shown",
     # bug 3a (brx1's captures, 2026-10-02): every write's `$AMMO` rows open their echo windows; a new life keeps an open one
