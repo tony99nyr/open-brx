@@ -150,14 +150,17 @@ export function _moments(st) {
     // SWITCHING WEAPON (persistent for the assumed swap window; the gun will not fire mid-swap). Ends with a 'switched' moment.
     if (switchUp) {
       const fill = pct(st.switchingMs, st.swapWindowMs || st.switchWindowMs);   // the swap's own window (the gun's rule)
-      if (this._moment !== 'switch') {
-        this._moment = 'switch';
+      // Bench 2026-11-14: a second ALT inside the swap retargets it, so the tiles redraw when from/to change. The haptic
+      // stays once per swap (the button press has its own feel).
+      const key = st.switchFrom + '>' + st.switchTo, fresh = this._moment !== 'switch';
+      if (fresh || this._swKey !== key) {
+        this._moment = 'switch'; this._swKey = key;
         this.overlay.innerHTML = `<div class="mo switching"><div class="c"><span class="t">SWITCHING</span>
           <div class="pair">${this._wtile(this._slotItem(st, st.switchFrom), 'STOWING', 'from')}<span class="arr">▸▸▸</span>${this._wtile(this._slotItem(st, st.switchTo), 'DRAWING', 'to')}</div>
           <div class="track"><i id="swbar" style="width:${fill}%"></i></div></div></div>`;
-        this.h.onHaptic && this.h.onHaptic('tap');
+        if (fresh) this.h.onHaptic && this.h.onHaptic('tap');
       } else { const b = this.overlay.querySelector('#swbar'); if (b) b.style.width = fill + '%'; }
-    } else if (this._moment === 'switch') { this._moment = null; this.overlay.innerHTML = ''; }
+    } else if (this._moment === 'switch') { this._moment = null; this._swKey = null; this.overlay.innerHTML = ''; }
 
     // ARCH-2: REDEPLOYED is drawn once per revive (the takeover's `at`) and ends when the engine says (`_redeployEnd`)
     if (tkind === 'redeploy' && tko.at !== this._redeployAt) { this._redeployAt = tko.at; this._redeploy(st); }

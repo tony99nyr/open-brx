@@ -230,14 +230,16 @@ function harness(sec, seed, { failAmmo = 0, easyOne = false } = {}) {
   // before they leave, settling false 30 ms later, as a chunk error with the link still up does. Its own PRNG, so the actions
   // of a seed stay the same.
   const failRng = mulberry32(seed * 7919 + 1);
-  const writer = (fr, why) => {
+  const writer = (fr, why, opts) => {
     // Codex 2026-11-08: the phone swap's own writes fail too (the hold, the bind, the undo, the repair), as a chunk error would
     const bind = /^(ALT:|undo |trigger binding repair|re-bind)/.test(String(why));
     if (failAmmo > 0 && (bind || (/^(F650|F226)/.test(String(why)) && fr.some(f => f.startsWith('$AMMO,')))) && failRng() < failAmmo) {
       gun.failed++;
       return new Promise(r => at(30, () => r(false)));
     }
-    gun.wrote(fr);
+    // as brxlink.js `write`: each frame leaves, then `onFrameSent` runs for it; a throw there stops the rest of the batch
+    // (bench 2026-11-14: a throwing hook cut every revive burst before its `$SPAWN`, and no test called the hook)
+    for (const f of fr) { gun.wrote([f]); if (opts && typeof opts.onFrameSent === 'function') opts.onFrameSent(f); }
   };
   eng = new E.Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
     synced: () => true, storage: mkStorage(), log: m => logs.push({ at: clock, m: String(m) }), delay: (ms, fn) => at(ms, fn), rng: () => 0 });
@@ -822,6 +824,24 @@ test('phone swap (Codex H1): a stun that cancels the phone\'s reload does not le
   assert.equal(gun.active, 1);
   assert.ok(gun.trigger(), 'the USP-S fires');
 });
+// Bench 2026-11-14 (0.4.41, P0): the revive burst carries `$BMAP,0,98` (the weapon delay's hold) beside `$SPAWN`, and the
+// bind stamp's `onFrameSent` hook read `.at` of a null stamp on that row, so the link stopped the burst before `$SPAWN`:
+// every revive failed, and the player stayed down for ever. The writer here reports each frame as brxlink.js does.
+test('revive: a link that reports each frame sent gets the whole revive burst, $SPAWN included, and the player lives', async () => {
+  const h = harness('usp', 31), { eng, gun } = h;
+  await h.start();
+  for (let life = 0; life < 2; life++) {
+    gun.die(); await h.advance(2000);
+    assert.ok(!eng.alive, `setup: down (${life})`);
+    gun.writes.length = 0;
+    h.operatorRespawn(); await h.settle(2500, 12000);
+    assert.ok(gun.writes.includes('$BMAP,0,98,,,,,*'), `setup: the burst holds the trigger (${life}): ${gun.writes.join(' ')}`);
+    assert.ok(gun.writes.some(f => f.startsWith('$SPAWN,')), `the revive sent $SPAWN (${life}): ${gun.writes.join(' ')}`);
+    assert.ok(eng.alive && gun.live, `the player is alive after revive ${life}`);
+    assert.ok(!h.logs.some(l => /write .* failed/.test(l.m)), h.logs.filter(l => /failed/.test(l.m)).map(l => l.m).join('\n'));
+  }
+});
+
 test('phone swap (Codex H5): a respawn after a death on the secondary binds slot 0, never the old life\'s slot', async () => {
   const h = harness('usp', 22), { eng, gun } = h;
   await h.start();
