@@ -20,6 +20,7 @@ not read it). Gun sticker labels stay out of the repo; the device registry in `~
 | USB-C cables, 5 V USB charger | several | power + serial for every board | before 2026-08 |
 | M5StickS3 ESP32-S3 Mini IoT Dev Kit (M5Stack K150) | 6 | the hardware Station node (`brx-station-spec.md` S1 tier in a case): IR RX G42, IR TX G46, 1.14" LCD, speaker, 250 mAh, BLE 5. First unit flashed and bench-brought-up 2026-09-23 (`hardware/m5sticks3/README.md`, `docs/bench-sticks3-2026-09-23.md`). 6 units (Tony, 2026-11-02); MC has seen 3, and the other 3 have never joined (their first flash needs download mode) | 2026-09-11 |
 | Seeed Grove Infrared Emitter (101020026), 940 nm, ±17°, driver on board | 3 | the stronger beacon for the Stick (the bare CHANZON LED cliffs at 8 to 10 ft). Two in use, one spare | 2026-09-11 |
+| M5Stack Digital RGB LED Weatherproof Strip (A093-B), SK6812, 1 m, 60 LEDs, Grove plug | 1 | the Stick's station light, so a hill can be tested without an enclosure. It takes the Stick's Grove port (data probably G9, `STRIPPIN`); in the final box the U002 IR unit moves to the HAT header through a Grove-to-jumper cable. Firmware caps the strip at 300 mA of the 0.38 A Grove rail (`hardware/m5sticks3/led_strip.h`) | bought on the 2026-10-18 pick |
 
 Seeed direct wanted $26.11 DHL on $8.60 of parts. Mouser and Amazon (the Seeed listing and the
 M5Stack official store, checked 2026-09-11) carry both with domestic shipping; both items were bought
@@ -37,6 +38,7 @@ from Mouser.
 
 - IR receive on **G42 is RMT-only** (no GPIO-interrupt decode), and the **speaker amplifier must be off** while receiving.
 - Grove port = 5 V (0.38 A max), GND, G9, G10. HAT header exposes GPIO 1 to 8, 10, 43, 44 plus EXT_5V.
+- The 60-LED SK6812 strip at full white is an estimated 3.6 A (60 × 3 × 20 mA), almost ten times the Grove budget: the firmware scales every frame to 300 mA (`led_strip.h`).
 - The 16-pixel ring at full single-colour brightness is an estimated 320 mA (16 × 20 mA per channel, not measured), most of the Grove budget: cap brightness near 50 percent or feed the ring from the power bank.
 - The Atom Matrix ($14.95, 5×5 matrix, IR TX only, no receiver, no battery) was considered and rejected for the first unit; it remains the cheaper fixed-hill option once a receiver unit is added.
 

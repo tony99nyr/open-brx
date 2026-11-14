@@ -74,6 +74,13 @@ BOARD_URL = "https://static-cdn.m5stack.com/resource/arduino/package_m5stack_ind
 FQBN = "m5stack:esp32:m5stack_sticks3:PartitionScheme=default_8MB,CDCOnBoot=cdc"
 STAGE_DIR_WSL = WIN_HOME_WSL / "brx-sticks3" / "m5sticks3"  # folder name must match the .ino
 STAGE_DIR_WIN = WIN_HOME + r"\brx-sticks3\m5sticks3"
+# A cold Windows build of the core took more than 600 s under load (bench 2026-11-14). The limit is a backstop
+# only: build() prints progress while it waits, and on the limit it kills the Windows arduino-cli tree too.
+BUILD_TIMEOUT_S = 1800
+BUILD_PROGRESS_S = 30
+# Every checkout stages into the same folder and so shares one arduino-cli build cache: two builds at once
+# overwrite each other's files (bench 2026-11-14). stage_lock() lets one compile or flash run at a time.
+STAGE_LOCK = Path.home() / ".brx-sticks3.lock"
 STAGE_CWD = "/mnt/c"  # avoid the UNC-cwd warning arduino-cli prints when launched from a WSL path
 
 # USB identity (2026-09-23 bench): the Stick enumerates vendor id 0x303a; pid 0x1001 running our
@@ -290,6 +297,63 @@ def _run(argv: list[str], timeout: float, cwd: str | None = None) -> subprocess.
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout)
 
 
+def kill_build_argv(stage_dir_win: str = STAGE_DIR_WIN) -> list[str]:
+    """Kill the Windows arduino-cli.exe that builds the staged sketch, with its whole process tree. Killing the
+    WSL interop shim leaves the Windows process running, and a later kill mid-build leaves a broken cache.
+    Only a compile or upload of this stage folder matches, so the Arduino IDE's own daemon is left alone."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name='arduino-cli.exe'\" | "
+          f"Where-Object {{ $_.CommandLine -like '*{stage_dir_win}*' }} | "
+          "ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F }")
+    return ["powershell.exe", "-NoProfile", "-Command", ps]
+
+
+def build(argv: list[str], what: str, limit_s: float = BUILD_TIMEOUT_S, every_s: float = BUILD_PROGRESS_S,
+          cwd: str | None = STAGE_CWD, kill_argv: list[str] | None = None) -> subprocess.CompletedProcess:
+    """Run a compile or upload, print "still <what>" every `every_s`, and stop it at `limit_s`. On the limit
+    it kills the Windows process tree (kill_build_argv) before it exits, so no half-built cache is left."""
+    proc = subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    waited = 0.0
+    while True:
+        try:
+            out, err = proc.communicate(timeout=every_s)
+            return subprocess.CompletedProcess(argv, proc.returncode, out, err)
+        except subprocess.TimeoutExpired:
+            waited += every_s
+            if waited >= limit_s:
+                subprocess.run(kill_argv if kill_argv is not None else kill_build_argv(), capture_output=True,
+                               timeout=60)
+                proc.kill()
+                proc.communicate()
+                sys.exit(f"{what} took more than {int(limit_s)} s; stopped it and its Windows process tree. "
+                         "If the next build fails on a missing .d file, see README 'A broken build cache'.")
+            print(f"still {what} ({int(waited)} s)", flush=True)
+
+
+class stage_lock:
+    """One compile or flash at a time on this machine (see STAGE_LOCK). A second run exits at once and names
+    the checkout that holds the lock. The OS frees the lock when the holder exits, even on a crash."""
+
+    def __init__(self, path: Path = STAGE_LOCK, owner: str = str(SKETCH_DIR)):
+        self.path, self.owner, self.fd = path, owner, None
+
+    def __enter__(self):
+        import fcntl  # POSIX only: stick.py runs in WSL or on a Mac
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            holder = os.pread(self.fd, 4096, 0).decode("utf-8", "replace").strip() or "another run"
+            os.close(self.fd)
+            sys.exit(f"another Stick compile or flash is running ({holder}); wait for it, they share one stage folder")
+        os.ftruncate(self.fd, 0)
+        os.pwrite(self.fd, f"pid {os.getpid()} from {self.owner}\n".encode(), 0)
+        return self
+
+    def __exit__(self, *exc):
+        os.close(self.fd)  # closing drops the flock
+        return False
+
+
 def _list_ports() -> list[dict]:
     proc = _run(ports_argv(), timeout=20)
     if proc.returncode != 0:
@@ -308,13 +372,18 @@ def do_ports(_args) -> None:
 
 
 def do_compile(args) -> None:
+    with stage_lock():
+        _do_compile(args)
+
+
+def _do_compile(args) -> None:
     check_toolchain()
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
     revive_on = bool(getattr(args, "revive_on", False))
     if revive_on:
         print("building with revive feedback ON (BRX_REVIVE_FEEDBACK=1): a compile check, not for flashing")
-    proc = _run(compile_argv(revive_on=revive_on, fw_sha=firmware_sha()), timeout=600, cwd=STAGE_CWD)
+    proc = build(compile_argv(revive_on=revive_on, fw_sha=firmware_sha()), "compiling")
     if proc.returncode != 0:
         print(proc.stdout)
         print(proc.stderr, file=sys.stderr)
@@ -326,10 +395,15 @@ def do_compile(args) -> None:
 
 def do_flash(args) -> None:
     port = select_stick_port(_list_ports(), explicit=args.port)
+    with stage_lock():
+        _do_flash(port)
+
+
+def _do_flash(port: str) -> None:
     check_toolchain()
     copied = stage(SKETCH_DIR, STAGE_DIR_WSL)
     print(f"staged {len(copied)} files to {STAGE_DIR_WSL}")
-    cproc = _run(compile_argv(fw_sha=firmware_sha()), timeout=300, cwd=STAGE_CWD)
+    cproc = build(compile_argv(fw_sha=firmware_sha()), "compiling")
     if cproc.returncode != 0:
         print(cproc.stdout)
         print(cproc.stderr, file=sys.stderr)
@@ -338,7 +412,7 @@ def do_flash(args) -> None:
         if "Sketch uses" in line or "Global variables" in line:
             print(line)
     print(f"uploading to {port} ...")
-    uproc = _run(upload_argv(port), timeout=120, cwd=STAGE_CWD)
+    uproc = build(upload_argv(port), "uploading", limit_s=300)
     print(uproc.stdout)
     if uproc.stderr:
         print(uproc.stderr, file=sys.stderr)
