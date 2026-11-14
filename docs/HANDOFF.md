@@ -43,11 +43,10 @@ brx3's F575 heat fit asks for it. R4/T5 read-only research is authorised; flashi
 **Blocked:** none.
 
 ## Lane: brx4, the engine and the StickS3
-**State (2026-10-28):** F635 is landed (`29f238707`): the post-match end-to-end gate is the `--ui` job `app-postmatch`.
-The doc-rot apply for the public site and the design docs is landed (`e914148f1`, `587d7086d`, `2d5f66bf3`, `b998a70e5`,
-review fixes `8b1b96453`). The firmware safety guards are merged, and F501 is closed. Nothing was flashed.
-**Next:** none open at the desk. Bench: the code-read leads on F264, F277 and F293 (and F300 in post-mvp), then F519,
-F521, F525, F526, F511 and F530.
+**State (2026-11-14):** the swap-rule docs are landed (`ac0b6341b`, `173a8e598`). The Stick drives the SK6812 LED
+strip on the Grove port (bench commands, a 300 mA cap, an LED team palette; bench-proven on G9), and stick.py has a
+build lock and a 30 min limit.
+**Next:** the strip's role patterns (`brx4-strip-roles`), then whatever brx1 assigns. Bench: a current reading.
 **Blocked:** none.
 
 ## Lane: brx5, cross-language seams and the stage

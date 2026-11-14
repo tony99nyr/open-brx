@@ -77,12 +77,18 @@ inline void strip_bytes(const Rgb* px, size_t n, bool grb, uint8_t* out) {
   }
 }
 
-constexpr Rgb team_rgb(int team) {
-  return team < 0 || team > 3 ? Rgb{}
-       : Rgb{(uint8_t)(brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][1]) * 16 + brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][2])),
-             (uint8_t)(brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][3]) * 16 + brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][4])),
-             (uint8_t)(brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][5]) * 16 + brx_render::hex_nibble(contract::TEAM_COLOUR_HEX[team][6]))};
-}
+// The strip's own team palette, team 0-3 = red, blue, yellow, purple. It differs from the screen and contract
+// colours (contract::TEAM_COLOUR_HEX) on purpose: an SK6812 has no gamma and very bright green, so the screen's rose
+// red (#f43f5e) reads pink on the strip (bench 2026-11-14), and a screen yellow needs far less blue and some green
+// cut. Saturated primaries read as the team on a pillar. Change the screen colours in the contract, never here.
+constexpr Rgb STRIP_TEAM_RGB[4] = {
+    {255, 0, 0},    // red
+    {0, 40, 255},   // blue
+    {255, 150, 0},  // yellow
+    {150, 0, 255},  // purple
+};
+
+constexpr Rgb team_rgb(int team) { return team < 0 || team > 3 ? Rgb{} : STRIP_TEAM_RGB[team]; }
 
 // ---- bench patterns (the STRIP serial command) --------------------------------------------------------
 enum class StripPattern : uint8_t { OFF, RED, GREEN, BLUE, WHITE, WALK, TEAMS, TEAM };
