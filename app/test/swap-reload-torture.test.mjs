@@ -67,7 +67,7 @@ class GunModel {
     this.slots = {};                 // slot -> {mag, res, clip, carried, t40, fireMs, swapMs, reloadMs}
     this.active = 0; this.latch = 0; this.spawned = false;
     this.hp = 0; this.armor = 0; this.shield = 0; this.max = [45, 70, 0];
-    this.triggerLive = false; this.altFn = 100; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.altLock = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
+    this.triggerLive = false; this.altFn = 100; this.reloadBtn = 2; this.reload = null; this.swapUntil = 0; this.altTookAt = -1e9; this.altLock = 0; this.lastRoundAt = -1e9; this.lastSwingAt = -1e9;
     this.rounds = 0;                 // rounds fired while alive in the match: `eng.shots` must equal this
     this.pending = 0;                // replies still in flight
     this.chain = new Set();          // slots whose lever loads one shell per reload time (the Shotgun)
@@ -112,6 +112,9 @@ class GunModel {
         const fn = n(2);
         if (fn === 98) this.triggerLive = false; else if (fn != null && fn <= 11) { this.triggerLive = true; this.active = fn; }
       } else if (cmd === '$BMAP' && t[1] === '1') this.altFn = n(2);
+      // brx2 (emulator, bench 2026-11-14): one button holds RELOAD (fn 97), and the last row written wins; another fn on that
+      // button frees it
+      if (cmd === '$BMAP' && (t[1] === '1' || t[1] === '2')) { if (n(2) === 97) this.reloadBtn = +t[1]; else if (this.reloadBtn === +t[1]) this.reloadBtn = null; }
       else if (cmd === '$SPAWN') {
         this.spawned = true; [this.hp, this.armor] = this.max; this.shield = 0;
         this.latch = 0; this.reload = null; this.swapUntil = 0;   // F668(f), emulator 2026-11-08: $SPAWN keeps the trigger binding
@@ -155,6 +158,7 @@ class GunModel {
   alt() {
     this.feed('$BUT,1,1,*');
     let took = false;
+    if (this.altFn === 97 && this.reloadBtn === 1) { this.nativeReload(); this.later(80, () => this.feed('$BUT,1,0,*')); return false; }   // ALT on RELOAD
     if (this.altFn === 100 && this.live && !this.reload && !this.triggerDown && this.now() - this.altTookAt >= this.altLock) {   // the gun's own ALT
       took = true; this.active = this.active ? 0 : 1; this.altTookAt = this.now(); this.altLock = this.slot(this.active).swapMs;
       // brx4 correction (78aebc73b): a swap takes the tok15 of the slot it moves TO; only a swap made while the trigger fires
@@ -166,6 +170,12 @@ class GunModel {
   }
   lever() {
     this.feed('$BUT,2,1,*');
+    const s = this.reloadBtn === 2 ? this.nativeReload() : null;   // a lever on 98 does nothing on the gun
+    this.later(60, () => this.feed('$BUT,2,0,*'));
+    return s;
+  }
+  /** The gun's own reload (the button that holds fn 97): the slot that fired last, or null when nothing reloads. */
+  nativeReload() {
     let s = null;
     if (this.live && !this.reload) {
       // F542: the lever reloads the slot fired last, whatever is in hand (a chain in hand is the phone's to load, Tony 2026-11-07)
@@ -193,7 +203,6 @@ class GunModel {
         }
       }
     }
-    this.later(60, () => this.feed('$BUT,2,0,*'));
     return s;
   }
   melee(rng) {
@@ -213,8 +222,9 @@ class GunModel {
   }
 }
 
-function harness(sec, seed, { failAmmo = 0, easyOne = false } = {}) {
+function harness(sec, seed, { failAmmo = 0, easyOne = false, leverOff = false } = {}) {
   const bundle = bundleFor(sec);
+  if (leverOff) bundle.head = bundle.head.map(f => (f === '$BMAP,2,97,,,,,*' ? '$BMAP,2,98,,,,,*' : f));   // brx2 2026-11-14: ALT is the only 97
   if (easyOne) {   // a one-weapon kit with Easy Reload: compile.py keeps ALT on fn 97 (RELOAD), bench SR6
     const one = list => list.filter(f => !f.startsWith('$WEAP,1,') && !f.startsWith('$AMMO,1,')).map(f => (f.startsWith('$BMAP,1,') ? '$BMAP,1,97,,,,,*' : f));
     bundle.head = one(bundle.head); bundle.spawn = one(bundle.spawn); bundle.revive = one(bundle.revive);
@@ -799,6 +809,45 @@ test('phone swap: a one-weapon Easy Reload kit keeps ALT on reload (fn 97), neve
   assert.equal(gun.active, 0);
   // the rewrite itself: a swap kit's ALT row is unbound, Easy Reload's 97 passes as written
   assert.deepEqual(eng._bindRows(['$BMAP,1,97,,,,,*', '$BMAP,1,100,0,1,99,99,*']), ['$BMAP,1,97,,,,,*', '$BMAP,1,98,,,,,*']);
+});
+
+// Bench 2026-11-14 (brx2, emulator): one button holds RELOAD (fn 97), and the last row written wins. The head wrote
+// `$BMAP,1,97` then `$BMAP,2,97`, so ALT did nothing all first life. Every spawn and revive burst now ends with `$BMAP,1,97`.
+test('Easy Reload (accessibility): on a bundle that wrote the lever 97 last, ALT still reloads from the first life, and after a revive', async () => {
+  const h = harness('usp', 41, { easyOne: true }), { eng, gun } = h;
+  await h.start();
+  for (let life = 0; life < 2; life++) {
+    assert.equal(gun.reloadBtn, 1, `ALT holds the gun's reload (life ${life})`);
+    for (let i = 0; i < 5; i++) { gun.trigger(); await h.settle(150); }
+    const x = gun.slot(0);
+    assert.ok(x.mag < x.clip, 'setup: rounds fired');
+    gun.alt(); await h.settle(3000);
+    assert.equal(x.mag, x.clip, `ALT reloaded the gun (life ${life})`);
+    assert.equal(eng.ammo, x.clip, 'the phone shows the full magazine');
+    gun.die(); await h.advance(2000);
+    h.operatorRespawn(); await h.settle(2500, 12000);
+    assert.ok(eng.alive, 'setup: revived');
+  }
+});
+
+// Tony 2026-11-14: on Easy Reload both ALT and the lever reload. MC puts the lever on 98 (ALT is the only 97), so the lever is
+// the phone's reload: `$AMMO` of the weapon in hand after its reload time, with the trigger held meanwhile.
+test('Easy Reload (accessibility): with the lever on 98, a lever pull reloads the weapon in hand in software', async () => {
+  const h = harness('usp', 43, { easyOne: true, leverOff: true }), { eng, gun } = h;
+  await h.start();
+  for (let i = 0; i < 5; i++) { gun.trigger(); await h.settle(150); }
+  const x = gun.slot(0), before = x.mag;
+  assert.ok(before < x.clip, 'setup: rounds fired');
+  assert.equal(gun.lever(), null, 'setup: the gun itself reloads nothing on the lever');
+  await h.settle(3000);
+  assert.equal(x.mag, x.clip, 'the phone reloaded the gun');
+  assert.equal(eng.ammo, x.clip);
+  assert.ok(gun.triggerLive, 'the trigger is live again');
+  assert.ok(!h.logs.some(l => /did NOT take/.test(l.m)), h.logs.filter(l => /reload/.test(l.m)).map(l => l.m).join('\n'));
+  // ALT is still the gun's own reload
+  for (let i = 0; i < 4; i++) { gun.trigger(); await h.settle(150); }
+  gun.alt(); await h.settle(3000);
+  assert.equal(x.mag, x.clip, 'ALT reloaded the gun');
 });
 
 // Codex review 2026-11-08 of the phone swap: the trigger must never be left held (98) or bound to a slot the phone does not

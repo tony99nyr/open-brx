@@ -320,6 +320,7 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 # contract is not their one owner. test_stage_constants.py pins each one against engine.js.
 TRIGGER_HOLD = "$BMAP,0,98,,,,,*"
 ALT_UNBOUND = "$BMAP,1,98,,,,,*"
+ALT_RELOAD = "$BMAP,1,97,,,,,*"    # engine.js ALT_RELOAD: Easy Reload keeps ALT on the gun's reload (fn 97)
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
 PLAY_GAP_S = PLAY_GAP_MS / 1000             # F347 (types.py PLAY_GAP_MS): keep successive `$PLAY` writes at least 150 ms apart.
@@ -1698,6 +1699,8 @@ class GunStage:
 
     def _bind_rows(self, frames: list[str]) -> list[str]:
         """engine.js `_bindRows`: bind trigger rows to the held slot and unbind ALT. PURE."""
+        if self._alt_reloads() and any(f.startswith("$SPAWN,") for f in frames):   # engine.js `_bindRows` (bench 2026-11-14)
+            frames = [f for f in frames if f != ALT_RELOAD] + [ALT_RELOAD]
         if not any(f.startswith("$BMAP,") for f in frames):
             return frames
         out = []
@@ -6121,7 +6124,7 @@ class GunStage:
             if bid == 1:
                 self._alt_pressed()
             elif bid == 2:
-                self._reload_pulled()
+                self._reload_pulled(lever=True)
             elif bid == 0:
                 r = self.reloading   # engine.js `_onButton` (Tony 2026-11-07): a pull ends the phone's chain; written shells stay
                 if self.alive and r and r.get("soft") and r.get("chain"):
@@ -6148,6 +6151,10 @@ class GunStage:
                     and self._last_shot_at >= since):
                 self._gun_live_end = {"at": now, "shot_at": self._last_shot_at, "life": self._life_queued}
             self._recoil_release()   # S54 + F663 (engine.js `_onButton` -> `_recoilRelease`)
+
+    def _alt_reloads(self) -> bool:
+        """engine.js `_altReloads`: Easy Reload on a one-weapon kit keeps ALT on fn 97 and the lever on 98 (bench 2026-11-14)."""
+        return self._easy_reload() and self._slot_count() < 2
 
     def _easy_reload(self) -> bool:
         """engine.js `_easyReload()`: `loadout.overrides.easy_reload` is the live shape; the `alt_reload`
@@ -7081,7 +7088,7 @@ class GunStage:
         self.poison = None
         self._log(f"☣ poison over ({why})", "info")
 
-    def _reload_pulled(self) -> None:
+    def _reload_pulled(self, lever: bool = False) -> None:
         """The reload handle ($BUT,2,1): the gun refuses fire for the weapon's reload time, and A16 §3.1 gives
         the pull a GLANCE at the current pool readout. Ported gate for gate from ammo.js `reloadPulled`:
         nothing to reload when the mag is full and there is reserve; a DRY reserve reloads nothing; and a
@@ -7124,7 +7131,7 @@ class GunStage:
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
                           "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
                           # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
-                          "soft": swap_to is None and self._soft_reload_needed(), "life": self._life_queued,
+                          "soft": swap_to is None and (self._soft_reload_needed() or (lever and self._alt_reloads())), "life": self._life_queued,
                           "chain": chain}   # Tony 2026-11-07 (ammo.js `reloadPulled`): a phone reload of a chain goes shell by shell
         if self.reloading["soft"]:
             self._hold_trigger("the phone reloads the weapon in hand")

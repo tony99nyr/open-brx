@@ -19,7 +19,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
 //     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat() · heatSaved() · heatRestore(h)
-//     reload      reloadPulled() · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
+//     reload      reloadPulled({lever}) · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
@@ -32,7 +32,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
 //   services    now() · log(line, cls) · changed() · event(kind) · fireIntervalMs(slot) · recoilStep(n) · recoilArm(why) ·
 //               reloadGlance()
-//   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · switchWindowMs() (the Engine's public
+//   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · altReloads() · switchWindowMs() (the Engine's public
 //               `switchWindowMs`, which asks this module back: the swap's own clock reads it there, so a test that
 //               stubs the Engine's window is still honoured)
 //   read-only   activeSlot · frames · phase · alive · tutorial · resync · stunned · player · ammo · mag · reserve ·
@@ -607,7 +607,9 @@ export class Ammo {
    *  completes about 1.4 s later, so a release never ends a takeover. */
   reloadReleased(now) { if (this.reloading) this.reloading.releasedAt = now; }
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
-  reloadPulled() {
+  /** A reload pull: the lever (`lever`), or ALT on Easy Reload. Bench 2026-11-14: Easy Reload's lever is on fn 98 (ALT holds
+   *  the gun's reload), so a lever pull there is the phone's reload of the weapon in hand, with every refusal ALT's has. */
+  reloadPulled({ lever = false } = {}) {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial || this.host.resync || this.host.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
     // brx2 2026-11-09 (emulator; SR23): after `$SPAWN` the gun reads no lever (nor ALT, so no Easy Reload) for its spawn wait,
     // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
@@ -646,7 +648,7 @@ export class Ammo {
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
                        bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
-                       soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
+                       soft: swapTo == null && (this.softReloadNeeded() || (lever && !!this.host.altReloads && this.host.altReloads())), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
                        chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
     if (this.reloading.soft) {   // Codex pass r2
       this.host.holdTrigger('the phone reloads the weapon in hand');   // brx1 2026-11-08: no round lands mid-reload

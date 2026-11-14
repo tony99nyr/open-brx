@@ -62,6 +62,7 @@ export const PLAYX = '$PLAYX,0,*';
  *  unbound (fn 98 is silent; 99 plays a "disabled" chirp on every press, bench 2026-11-08). */
 export const TRIGGER_HOLD = '$BMAP,0,98,,,,,*';
 export const ALT_UNBOUND = '$BMAP,1,98,,,,,*';
+export const ALT_RELOAD = '$BMAP,1,97,,,,,*';   // Easy Reload: ALT is the gun's reload (fn 97)
 /** Codex 2026-11-08: the least time between two trigger-binding repairs (`_bindTick`), so a link that keeps failing is not flooded. */
 export const BIND_RETRY_MS = 500;
 /** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
@@ -659,7 +660,7 @@ function ammoHost(e) {
     swapSound: slot => e._swapSound(slot),
     undoGunReload: (slot, mag, res) => e._undoGunReload(slot, mag, res),
     get player() { return e.player; }, get ammo() { return e.ammo; }, get mag() { return e.mag; }, get reserve() { return e.reserve; },
-    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), swapHeldCapped: () => e._swapHeldCapped(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
+    slotCount: () => e._slotCount(), easyReload: () => e._easyReload(), altReloads: () => e._altReloads(), gunButtonsWaitMs: () => e._gunButtonsWaitMs(), gunSwapReadyAt: sw => e._gunSwapReadyAt(sw), swapHeldCapped: () => e._swapHeldCapped(), switchWindowMs: () => e.switchWindowMs(), queryReplyMs: () => QUERY_REPLY_MS, recoilArm: why => e._recoilArm(why), get pu() { return e.pu; },
     askSlot: (why, onReply, onTimeout) => e._askSlot(why, onReply, onTimeout),
     slotQueryQueued: () => !!(e._magQuery && /slot confirmation/.test(e._magQuery.why) && e._magQuery.at == null),
     // ARCH-2 gate r1: a `switched` moment also stamps the ACTIVE card's own record (`_activeCard`, read by `_switchCardUp`)
@@ -1506,8 +1507,12 @@ export class Engine {
    *  what the phone holds. ALT (`$BMAP,1,…`) is unbound with 98 (silent; 99 chirps on each press), except Easy Reload's 97.
    *  A row that binds the trigger to a slot (`$BMAP,0,<n>`, n of 11 or less: the trigger fires slot n, bench 2026-11-08 bm1-3)
    *  binds the slot the phone holds (`_boundSlot`), so the cure, the operator resync, the spawn and the relink can never put
-   *  the trigger back on slot 0 under the player (the SR18 cure bug). A hold (98) and anything else pass as written. PURE. */
+   *  the trigger back on slot 0 under the player (the SR18 cure bug). A hold (98) and anything else pass as written. An Easy
+   *  Reload burst with `$SPAWN` ends with `$BMAP,1,97`. PURE. */
   _bindRows(frames) {
+    // Bench 2026-11-14 (brx2, emulator): one button holds RELOAD (fn 97), and the last row written wins. A bundle that wrote
+    // `$BMAP,1,97` before `$BMAP,2,97` left ALT dead for the whole first life, so every spawn and revive burst ends with it.
+    if (this._altReloads() && frames.some(f => typeof f === 'string' && f.startsWith('$SPAWN,'))) frames = [...frames.filter(f => f !== ALT_RELOAD), ALT_RELOAD];
     if (!frames.some(f => typeof f === 'string' && f.startsWith('$BMAP,'))) return frames;
     return frames.map(f => {
       const m = typeof f === 'string' ? /^\$BMAP,([01]),(\d+),/.exec(f) : null;
@@ -6977,7 +6982,7 @@ export class Engine {
       // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
       if (id === BTN_ALT) this.am.altPressed();
-      else if (id === BTN_RELOAD) this.am.reloadPulled();
+      else if (id === BTN_RELOAD) this.am.reloadPulled({ lever: true });
       else if (id === BTN_TRIGGER) {
         // Bug 3 X2 (utility.md line 137: the revive gate is a dead gun plus a trigger pull): a pull on a DEAD gun is never a
         // round. When it revives the player at a station (`_triggerPulled`), the
@@ -7033,6 +7038,10 @@ export class Engine {
     return !!(pk && pk.effects && pk.effects.alt_reload);
   }
 
+
+  /** Easy Reload on a one-weapon kit: compile.py keeps ALT on fn 97, the gun's own reload, and the lever on 98 (bench
+   *  2026-11-14), so the lever is the phone's reload (ammo.js `reloadPulled`). PURE. */
+  _altReloads() { return this._easyReload() && this._slotCount() < 2; }
 
   _slotCount() {
     const ws = this.player && this.player.loadout && this.player.loadout.weapons;
