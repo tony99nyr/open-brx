@@ -118,7 +118,7 @@ export class GunAudio {
  * tail: it resolves true, false, or null for a write the link did not send), `clipLen(frame)`, `staleMs`.
  */
 export class PlayQueue extends GunAudio {
-  constructor({ now, delay, log = () => {}, send, clipLen = clipMs, staleMs, gapMs = PLAY_GAP_MS }) {
+  constructor({ now, delay, log = (/** @type {string} */ _message) => {}, send, clipLen = clipMs, staleMs, gapMs = PLAY_GAP_MS }) {
     super(clipLen);
     this._now = now; this._delay = delay; this._log = log; this._send = send;
     this.staleMs = staleMs; this.gapMs = gapMs;

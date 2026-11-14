@@ -448,6 +448,7 @@ export class BrxLink {
     try { this.log(m, cls); } catch (e) { try { console.error(`BUG in log during ${String(m).split('\n')[0]}:`, e); } catch (_) { /* nothing left to tell */ } }
   }
   /** Logs and counts a code fault (see BleWriteError). `faults`: the write's list; a hook already in it is not logged again. */
+  /** @param {string} hook @param {string} why @param {unknown} e @param {CodeFault[] | null} [faults] @returns {CodeFault} */
   _bug(hook, why, e, faults = null) {
     const f = faultOf(hook, why, e);
     this.codeFaults++; this.lastCodeFault = f;
@@ -457,6 +458,7 @@ export class BrxLink {
     return f;
   }
   /** Runs caller hook `fn` with `args`. A throw is logged by `_bug` and `fallback` is returned instead. */
+  /** @param {string} hook @param {string} why @param {Function} fn @param {any[]} args @param {any} fallback @param {CodeFault[] | null} [faults] */
   _hook(hook, why, fn, args, fallback, faults = null) {
     try { return fn(...args); } catch (e) { this._bug(hook, why, e, faults); return fallback; }
   }
@@ -912,12 +914,13 @@ export class BrxLink {
    *    (its first frame was appended to the partial one), so it resets and sends again from there. A re-send never starts on a parser
    *    that may hold a partial frame.
    *  `label`: what the batch is, for that log line (the engine passes its `why`). */
+  /** @param {string | string[]} frames @param {string} [label] @param {Record<string, any>} [options] */
   write(frames, label = '', options = undefined) {
     const list = Array.isArray(frames) ? frames : [frames];
     /** @type {CodeFault[]} */
     const faults = [];
     const where = () => `write "${label || 'unlabelled'}" (frame ${batch.cur + 1} of ${list.length})`;
-    /** @param {WriteOutcome['kind']} kind @param {boolean | null} ok */
+    /** @param {WriteOutcome['kind']} kind @param {boolean | null} ok @param {string | null} [error] */
     const outcome = (kind, ok, error = null) => {
       if (options && typeof options.onOutcome === 'function') this._hook('onOutcome', where(), options.onOutcome, [{ ok, kind, error, faults }], undefined);
       return ok;
@@ -1005,6 +1008,7 @@ export class BrxLink {
    *  plugin keeps ONE write callback per device: moving on early fails the next chunk as busy on Android and
    *  lets it overwrite the pending callback on iOS, which drops the first chunk's error. Waiting is the point
    *  of the lever: an error rejects, and the batch stops as it does for an error inside the cap. */
+  /** @param {string} id @param {DataView} dv @param {any} [batch] @param {number} [frameIdx] @param {boolean} [useResponse] */
   _sendChunk(id, dv, batch = null, frameIdx = 0, useResponse = false) {
     let sent;
     try { sent = Promise.resolve((useResponse ? this.writeChunkResponse : this.writeChunk)(id, dv)); } catch (e) { return Promise.reject(new BleWriteError(e)); }
