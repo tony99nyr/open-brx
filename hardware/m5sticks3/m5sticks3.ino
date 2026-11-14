@@ -38,6 +38,7 @@
 #include "button_controller.h" // host-tested button decisions and ordered effects
 #include "stick_state.h"    // the pure mapping: the Stick's real state -> StickState (host-tested, sim/)
 #include "led_strip.h"      // the LED strip's patterns, power cap and wire bytes (host-tested)
+#include "strip_roles.h"    // the strip's role patterns, from the screen's StickState (host-tested)
 
 using namespace brx;
 
@@ -258,7 +259,10 @@ static void pollRx() {
 // Every frame passes strip_cap() first: see led_strip.h for the 300 mA budget on the 0.38 A EXT_5V rail.
 static const uint32_t STRIP_TICK_HZ = 10000000;
 int stripPinActive = -1;
-StripPattern stripPattern = StripPattern::OFF;
+StripPattern stripPattern = StripPattern::AUTO;  // the station role; STRIP <pattern> overrides it for the bench
+StripRole stripRoleLast = StripRole::OFF;
+uint32_t stripLastFrameMs = 0;
+static StickState buildStickState(uint32_t now);  // the display section below
 int stripTeam = 0;
 uint32_t stripStartMs = 0;
 long stripWalkLast = -1;
@@ -292,6 +296,9 @@ static bool initStrip(int pin) {
 
 static void stripSend() {
   if (stripPinActive < 0) return;
+  static std::vector<Rgb> sent;
+  if (!stripDirty && sent == stripPx) return;  // an unchanged role frame costs no RMT time
+  sent = stripPx;
   const size_t n = stripPx.size();
   stripLastMa = strip_estimate_ma(stripPx.data(), n);
   strip_bytes(stripPx.data(), n, stripGrb, stripWire.data());
@@ -319,6 +326,7 @@ static void stripBlank() {
 static void printStrip() {
   Serial.printf("STRIP pin=%d n=%u pattern=%s", stripPinActive, settings.stripn, strip_pattern_name(stripPattern));
   if (stripPattern == StripPattern::TEAM) Serial.printf(" team=%d", stripTeam);
+  if (stripPattern == StripPattern::AUTO) Serial.printf(" role=%s", strip_role_name(stripRoleLast));
   Serial.printf(" order=%s est_ma=%lu budget_ma=%lu\n", stripGrb ? "GRB" : "RGB", (unsigned long)stripLastMa,
                 (unsigned long)STRIP_BUDGET_MA);
 }
@@ -334,10 +342,19 @@ static void pollStrip(uint32_t now) {
       Serial.printf("STRIP walk %ld\n", idx);  // LED 0 is the one nearest the plug
     }
   }
+  if (stripPattern == StripPattern::AUTO) {
+    if (!stripDirty && now - stripLastFrameMs < STRIP_FRAME_MS) return;
+    stripLastFrameMs = now;
+    StripRole role = strip_render_role(buildStickState(now), now, stripPx.data(), stripPx.size());
+    if (role != stripRoleLast) { stripRoleLast = role; Serial.printf("STRIP role %s\n", strip_role_name(role)); }
+    stripSend();
+    stripDirty = false;
+    return;
+  }
   if (!stripDirty) return;
-  stripDirty = false;
   strip_render(stripPattern, stripTeam, elapsed, stripPx.data(), stripPx.size());
   stripSend();
+  stripDirty = false;
 }
 
 // ---- IR transmit (RMT + hardware 38 kHz carrier) ---------------------------------------------- //
@@ -901,7 +918,7 @@ static void handleLine(String line) {
     String a = line.substring(6); a.trim(); a.toLowerCase();
     StripPattern pat; int team = stripTeam;
     if (!parse_strip_pattern(std::string(a.c_str()), pat, team)) {
-      Serial.println("ERR STRIP off|red|green|blue|white|walk|teams|team <0-3>");
+      Serial.println("ERR STRIP auto|off|red|green|blue|white|walk|teams|team <0-3>");
       return;
     }
     stripPattern = pat; stripTeam = team; stripStartMs = millis(); stripWalkLast = -1; stripDirty = true;
@@ -1077,7 +1094,7 @@ void setup() {
   Serial.printf("# mode=%s id=%u game=%u txpin=%u\n", point.mode == Mode::HILL ? "HILL" : "BRIDGE", settings.id,
                 settings.game, settings.txpin);
   Serial.println("# Commands: SELFTEST [bits] | RAW ON|OFF | TX <bits> | TXN <n> <bits> | AUTO <bits>|OFF | PING | STATUS | MODE BRIDGE|HILL | ID <n> | GAME <n> | TXPIN 46|9|10 | RXPIN 42|9|10 | BL <n> | RESET | r s c");
-  Serial.println("# Strip: STRIPPIN 9|10|OFF | STRIPN <n> | STRIP [off|red|green|blue|white|walk|teams|team <0-3>] | STRIPORDER GRB|RGB");
+  Serial.println("# Strip: STRIPPIN 9|10|OFF | STRIPN <n> | STRIP [auto|off|red|green|blue|white|walk|teams|team <0-3>] | STRIPORDER GRB|RGB");
   Serial.println("# H8: WIFI <ssid> <pass> | MC <ws://host:port/path> | LINK HELD(default)|MUSTER|OFF|RECONNECT | ACTIONS ON|OFF");
   Serial.println("# A58: while MC's match lock is on, state-changing commands answer ERR locked; A+B held 7 s restarts");
   IR_RX_PIN = (settings.rxpin == IR_TX_GROVE || settings.rxpin == IR_TX_GROVE_ALT) ? settings.rxpin : IR_RX_ONBOARD;

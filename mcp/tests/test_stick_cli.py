@@ -323,7 +323,11 @@ def test_op3_r1_compile_and_flash_check_the_toolchain_before_they_build():
         calls.append("run")
         raise Stop()
 
-    saved = (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run)
+    import contextlib
+    saved = (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run, stick.build,
+             stick.stage_lock)
+    stick.stage_lock = lambda *a, **k: contextlib.nullcontext()  # never the machine's real lock
+    stick.build = no_run
     stick.check_toolchain = refuse
     stick.stage = lambda *a, **k: calls.append("stage") or []
     stick.select_stick_port = lambda *a, **k: "COM_TEST"
@@ -338,7 +342,8 @@ def test_op3_r1_compile_and_flash_check_the_toolchain_before_they_build():
                 pass
             assert calls == ["check"], (fn.__name__, calls)
     finally:
-        stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run = saved
+        (stick.check_toolchain, stick.stage, stick.select_stick_port, stick._list_ports, stick._run, stick.build,
+         stick.stage_lock) = saved
 
 
 def test_op3_r3_a_copy_bundled_by_an_unrelated_platform_is_ignored_but_one_in_the_pinned_core_counts():

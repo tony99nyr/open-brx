@@ -26,6 +26,7 @@ namespace brx {
 struct Rgb {
   uint8_t r = 0, g = 0, b = 0;
   bool operator==(const Rgb& o) const { return r == o.r && g == o.g && b == o.b; }
+  bool operator!=(const Rgb& o) const { return !(*this == o); }
 };
 
 constexpr uint16_t STRIP_DEFAULT_LEDS = 60;
@@ -54,10 +55,11 @@ inline uint32_t strip_channel_budget(size_t n) {
 
 // Scale the frame down (one factor for every channel, rounded down) so it fits the budget. Returns true
 // when it scaled. After this, strip_estimate_ma(px, n) <= STRIP_BUDGET_MA for any frame.
-inline bool strip_cap(Rgb* px, size_t n) {
+// strip_cap_to() scales px[0..n) to at most `limit` in channel sum: for a part of a frame whose other part is
+// already counted (a capture fill over a dim neutral rest).
+inline bool strip_cap_to(Rgb* px, size_t n, uint64_t limit) {
   uint64_t sum = 0;
   for (size_t i = 0; i < n; i++) sum += (uint32_t)px[i].r + px[i].g + px[i].b;
-  const uint64_t limit = strip_channel_budget(n);
   if (sum <= limit) return false;
   for (size_t i = 0; i < n; i++) {
     px[i].r = (uint8_t)(px[i].r * limit / sum);
@@ -66,6 +68,7 @@ inline bool strip_cap(Rgb* px, size_t n) {
   }
   return true;
 }
+inline bool strip_cap(Rgb* px, size_t n) { return strip_cap_to(px, n, strip_channel_budget(n)); }
 
 // The wire bytes, 3 per LED. SK6812 RGB takes green first (GRB); `grb = false` sends RGB, for a strip
 // whose red test shows green (STRIPORDER RGB on the serial port).
@@ -85,11 +88,13 @@ constexpr Rgb team_rgb(int team) {
 }
 
 // ---- bench patterns (the STRIP serial command) --------------------------------------------------------
-enum class StripPattern : uint8_t { OFF, RED, GREEN, BLUE, WHITE, WALK, TEAMS, TEAM };
+// AUTO is the station role (strip_roles.h), the default; the rest are bench patterns that override it.
+enum class StripPattern : uint8_t { AUTO, OFF, RED, GREEN, BLUE, WHITE, WALK, TEAMS, TEAM };
 
-// "off", "red", "green", "blue", "white", "walk", "teams", "team <0-3>". False on anything else.
+// "auto", "off", "red", "green", "blue", "white", "walk", "teams", "team <0-3>". False on anything else.
 inline bool parse_strip_pattern(const std::string& s, StripPattern& out, int& team) {
-  if (s == "off") out = StripPattern::OFF;
+  if (s == "auto") out = StripPattern::AUTO;
+  else if (s == "off") out = StripPattern::OFF;
   else if (s == "red") out = StripPattern::RED;
   else if (s == "green") out = StripPattern::GREEN;
   else if (s == "blue") out = StripPattern::BLUE;
@@ -105,6 +110,7 @@ inline bool parse_strip_pattern(const std::string& s, StripPattern& out, int& te
 
 inline const char* strip_pattern_name(StripPattern p) {
   switch (p) {
+    case StripPattern::AUTO: return "auto";
     case StripPattern::OFF: return "off";
     case StripPattern::RED: return "red";
     case StripPattern::GREEN: return "green";
@@ -120,12 +126,12 @@ inline const char* strip_pattern_name(StripPattern p) {
 // Which LED the walk lights `elapsed_ms` after it started.
 inline size_t strip_walk_index(uint32_t elapsed_ms, size_t n) { return n ? (elapsed_ms / STRIP_WALK_STEP_MS) % n : 0; }
 
-// Draw the pattern at full level, then cap it. TEAMS: four equal blocks, team 0 to 3 from LED 0.
+// Draw the pattern at full level, then cap it. AUTO draws nothing here: the sketch renders the role instead. TEAMS: four equal blocks, team 0 to 3 from LED 0.
 inline void strip_render(StripPattern p, int team, uint32_t elapsed_ms, Rgb* px, size_t n) {
   for (size_t i = 0; i < n; i++) {
     Rgb c;
     switch (p) {
-      case StripPattern::OFF: break;
+      case StripPattern::AUTO: case StripPattern::OFF: break;
       case StripPattern::RED: c = {255, 0, 0}; break;
       case StripPattern::GREEN: c = {0, 255, 0}; break;
       case StripPattern::BLUE: c = {0, 0, 255}; break;

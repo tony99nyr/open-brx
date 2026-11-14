@@ -147,12 +147,30 @@ Power is the hard limit. The Grove 5 V (EXT_5V) gives about 0.38 A, and 60 LEDs 
 The firmware estimates every frame (about 20 mA per channel at 255, plus about 1 mA idle per LED) and scales it
 down to 300 mA before it is sent. So the full strip in one colour is dim, and one lit LED stays at full brightness.
 
+By default the strip shows the station's role (`strip_roles.h`, from the same `StickState` the screen uses, so a
+bench HILL shows it too):
+
+| role | strip |
+|---|---|
+| hill, neutral or waiting to open | dim white |
+| hill, being captured (or drained) | fills from LED 0 in that team's colour, at the capture progress; the rest dim white |
+| hill, owned | solid owner colour, a slow 2 s pulse |
+| hill, contested | the two largest teams' colours in turn, 400 ms each |
+| hill, game over | the owner's colour, dim and still |
+| respawn | steady team colour at half the budget; a full-budget flash on each respawn (only with the post-MVP revive feedback) |
+| power-up, ready | a chase in the item's colour |
+| power-up, refilling | dark, with a dim bar that grows to full at the next spawn; off once the match is over |
+| no Mission Control link and no role | a slow dim amber blink (500 ms in 2 s) |
+
+A station with a role keeps showing it when the link drops, because a HELD station plays on. `STRIP auto` returns
+to the role after a bench pattern; the serial port prints `STRIP role <name>` on each change.
+
 Bench steps:
 
 1. `STRIPPIN 9` (or `10`). The pin is saved; the default is no strip. It refuses a pin used for IR TX or RX.
 2. `STRIP walk`. One white LED walks from the plug end, one step every 250 ms, and the serial port prints
    `STRIP walk <i>`. Count the LEDs; a dark strip on 9 wants `STRIPPIN 10`.
-3. `STRIP red`, `green`, `blue`, `white`, `teams` (four blocks, red, blue, yellow, purple), `team <0-3>`, `off`.
+3. `STRIP auto` (the role, the default), `red`, `green`, `blue`, `white`, `teams` (four blocks, red, blue, yellow, purple), `team <0-3>`, `off`.
    If `red` shows green, the strip wants `STRIPORDER RGB` (not saved; the default is GRB).
 4. `STRIPN <n>` sets the LED count (default 60, saved). Bare `STRIP` prints the pin, count, pattern and the
    estimated current.
@@ -247,7 +265,7 @@ The capture and emit line formats are the DevKitC rig's, so `mcp/tools/native_ca
 | `ID <n>` · `GAME <n>` | advert bytes 6-7 and 13, persisted; a republish follows |
 | `TXPIN 46\|9\|10` | onboard LED or either Grove signal pin, persisted; refuses to double as the RX pin |
 | `RXPIN 42\|9\|10` | onboard receiver or either Grove pin, persisted; refuses to double as the TX pin. An internal pull-up is enabled on a Grove pin (see "External IR receiver" below). The `STATUS` RX line names the active pin |
-| `STRIPPIN 9\|10\|OFF` · `STRIPN <n>` · `STRIP [pattern]` · `STRIPORDER GRB\|RGB` | the LED strip: pin and count (saved), a bench pattern (`off`, `red`, `green`, `blue`, `white`, `walk`, `teams`, `team <0-3>`), byte order (not saved). Bare `STRIP` is read-only status. See "LED strip" |
+| `STRIPPIN 9\|10\|OFF` · `STRIPN <n>` · `STRIP [pattern]` · `STRIPORDER GRB\|RGB` | the LED strip: pin and count (saved), the role (`auto`, the default) or a bench pattern (`off`, `red`, `green`, `blue`, `white`, `walk`, `teams`, `team <0-3>`), byte order (not saved). Bare `STRIP` is read-only status. See "LED strip" |
 | `BL <n>` | screen brightness 0-255, not persisted; bench-only, for A/B-ing the backlight-PWM noise against the receiver (`BACKLIGHT_DIM 60` is the shipped idle level) |
 | `RESET` | neutral, charges cleared |
 | `PLAYERS` | read-only: every player the station hears (RSSI raw/median/EMA, threshold, near/present, age) and the revive count |

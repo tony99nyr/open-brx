@@ -97,6 +97,17 @@ inline StickState build_stick_state(const StickInputs& in, HeldClock& held) {
       st.control_bar_team = hv.team == contract::STATION_TEAM_ANY ? -1 : (int)hv.team;
       st.control_contested = h.contested;
       st.control_dir = h.dir;
+      if (h.contested) {  // the two largest teams counted, ties to the lower tid (presence.h's `ranked`)
+        for (int t = 0; t < 4; t++) {
+          if (h.counts[t] <= 0) continue;
+          if (st.control_contest_a < 0 || h.counts[t] > h.counts[st.control_contest_a]) {
+            st.control_contest_b = st.control_contest_a;
+            st.control_contest_a = t;
+          } else if (st.control_contest_b < 0 || h.counts[t] > h.counts[st.control_contest_b]) {
+            st.control_contest_b = t;
+          }
+        }
+      }
     } else {
       st.control_progress_pct = point.progress();
     }
