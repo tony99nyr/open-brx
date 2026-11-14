@@ -34,6 +34,10 @@ const GUN_SPAWN_WAIT = true;
 export const GUN_SPAWN_AIR_MS = 60;
 /** The swap timer (`_gunSwapReadyAt`) counts a live pull still held as ending now, but no later than this after its last
  *  round: the link loses a few `$BUT,0,0` releases (7 of 1068 on 2026-11-01), and one must not hold SWITCHING up for ever. */
+// Bench 2026-11-14: one ALT press reached the phone as press, release (+137 ms), press (+138), release (+142). A press of
+// ALT or the lever this soon after that button's release is contact bounce. The trigger has no such guard: the gun fires
+// on its own trigger edges, so the phone counts every one it reports.
+export const BUTTON_BOUNCE_MS = 40;
 export const SWAP_HELD_MAX_MS = 5000;   // emulator 2026-11-09: the gun's own wait after `$SPAWN` (bench SR23)
 import { Reconcile } from './reconcile.js';   // S7.1: the relink reconcile (its window, RECONCILE_MS, begin and end)
 import { HillListener } from './hill.js';
@@ -1058,6 +1062,8 @@ export class Engine {
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
     this._accHoldUntil = 0;         // S42 × A44/A47/F15: the accuracy writer stands down until this time (`_holdAccuracyWrites`)
     this._accHoldWhy = null;        // ...and which write asked it to, published as `state().accHold` so a reader can see why
+    this._buttonUpAt = {};          // bench 2026-11-14: $BUT id -> the `now()` of its last release (BUTTON_BOUNCE_MS)
+    this._bounced = {};             // $BUT id -> true while a bounced press waits for its own release
     this.held = {};                 // F123: $BUT id -> the `now()` of the press that is still down (a release deletes the entry)
     this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
     this.am = new Ammo(ammoHost(this));   // F259/F164: the magazine account and the counts per weapon slot (ammo.js)
@@ -6955,6 +6961,14 @@ export class Engine {
   _onButton(id, state) {
     if (!Number.isFinite(id)) return;
     const now = this.now();
+    const up = this._buttonUpAt[id];
+    if (state === 1 && (id === BTN_ALT || id === BTN_RELOAD) && this.held[id] == null && up != null && now - up < BUTTON_BOUNCE_MS) {
+      this._bounced[id] = true;
+      this.log(`${id === BTN_ALT ? 'ALT' : 'lever'} bounce ignored: a press ${now - up} ms after its release`, 'li');
+      return;
+    }
+    if (state === 0 && this._bounced[id]) { delete this._bounced[id]; this._buttonUpAt[id] = now; return; }   // the bounce's own release
+    if (state === 0) this._buttonUpAt[id] = now;
     if (state === 1) {
       if (this.held[id] == null) this.held[id] = now;
       this.lastButton = { id, state: 1, at: now, heldMs: null };
