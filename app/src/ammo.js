@@ -768,7 +768,9 @@ export class Ammo {
     // Tony 2026-11-08: the phone's reload held the trigger (engine.js `_boundSlot`); it binds the slot in hand again. A swap
     // that ends it holds the trigger itself and binds when its own time is up.
     if (r.soft && why !== 'swapped' && why !== 'dropped') this.host.bindTrigger(this.host.activeSlot, 'the phone reload ended');
-    if (r.chain && why !== 'filled') r.stopped = true;   // Codex (chain review): a shell still queued for the link is not sent
+    // Codex (chain review): a shell still queued for the link is not sent. A release ends the chain after its last shell, so
+    // that shell still goes (bench 2026-11-14, SR16: a tap loads one shell).
+    if (r.chain && why !== 'filled' && why !== 'released') r.stopped = true;
     const gained = Math.max(0, (r.mag ?? r.from) - r.from);
     this.reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
                             from: r.from, to: r.mag, cap: r.cap, gained, slot: r.slot,

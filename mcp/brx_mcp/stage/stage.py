@@ -6144,7 +6144,7 @@ class GunStage:
         self.last_button = {"id": bid, "state": 0, "at": now,
                             "held_s": round(now - since, 2) if since is not None else None}
         if bid == 2 and self.reloading:
-            self.reloading["released_at"] = now
+            self._reload_released(now)
         if bid == 0:
             # engine.js `_onButton`: the release of a pull that fired; the gun's rebind delay counts from it (`_gun_swap_ready_at`)
             if (self._last_shot_life == self._life_queued and self._last_shot_at is not None and since is not None
@@ -7145,7 +7145,7 @@ class GunStage:
         w = (ws[self.active_slot] if self.active_slot < len(ws) else None) or {}
         chain = (self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("reload_type") == "chain"
         s_nominal = self._reload_s(floor=0.001 if chain else 0.3) + (self._switch_window_s() if swap_to is not None else 0.0)   # chain review
-        self.reloading = {"at": now, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
+        self.reloading = {"at": now, "t0": now, "shells": 0, "s": s_nominal, "slot": self.active_slot, "from": self.ammo or 0,
                           "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
                           "energy": self._active_weapon_is_energy(), "swap_to": swap_to,
                           # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
@@ -7198,8 +7198,8 @@ class GunStage:
             energy = energy or (bool(w) and is_energy_class((self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}).get("weapon_class"), w.get("weapon_id")))
         if not snap:
             return
-        self._gun_other = {"bound": a, "snap": snap, "until": now + self._gun_hold_s(s, energy), "life": self._life_queued, "energy": energy}
-        self._log(f"{why} on slot {a}: a gun refill of slot {', '.join(str(k) for k in snap)} is put back", "info")
+        self._gun_other = {"bound": a, "snap": snap, "until": now + self._gun_hold_s(s, energy), "life": self._life_queued, "energy": energy,
+                           "why": why}
 
     def _gun_hold_s(self, s: float, energy: bool) -> float:
         """ammo.js `gunHoldMs`: the maximum wait for the gun's refill (F27, pl4)."""
@@ -7215,6 +7215,8 @@ class GunStage:
         if not mag > n["mag"]:
             return
         self._undo_gun_reload(slot, n["mag"], n["res"])
+        self._log(f"{g.get('why') or 'lever'} on slot {g['bound']}: the gun refilled slot {slot} ({n['mag']} -> {mag}); "
+                  f"put back to {n['mag']}", "info")   # ammo.js `gunOtherGain` (bench 2026-11-14): logged when it happens
         ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
         w = (ws[slot] if slot < len(ws) else None) or {}
         row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id"))
@@ -7439,14 +7441,17 @@ class GunStage:
         self.reloading = None
         if r.get("soft") and why not in ("swapped", "dropped"):
             self._bind_trigger(self.active_slot, "the phone reload ended")
-        if r.get("chain") and why != "filled":
-            r["stopped"] = True   # ammo.js `endReload` (chain review): a shell still queued is not sent
+        if r.get("chain") and why not in ("filled", "released"):
+            r["stopped"] = True   # ammo.js `endReload` (chain review): a shell still queued is not sent; a release keeps its last
         gained = max(0, (r.get("mag") if r.get("mag") is not None else r["from"]) - r["from"])
         self.reload_outcome = {"ok": gained > 0, "filled": (r["mag"] >= r["cap"]) if r["cap"] is not None else gained > 0,
                                "from": r["from"], "to": r["mag"], "cap": r["cap"], "gained": gained,
                                "slot": r["slot"], "s": self.now() - r["at"], "why": why, "at": self.now()}
         if not gained:
             self._log(f"reload did NOT take ({why}) -- mag still {r['mag']}", "warn")
+        elif not self.reload_outcome["filled"] and r.get("chain"):   # ammo.js `endReload` (SR16): a shell a lever time is no fault
+            self._log(f"reload: {gained} shell(s) loaded, {r['from']} -> {r['mag']} of {r['cap']} "
+                      f"({'the gun stopped feeding' if why == 'timeout' else why})", "info")
         elif not self.reload_outcome["filled"]:
             self._log(f"reload partial: {r['from']} -> {r['mag']} of {r['cap']} ({why})", "info")
         else:
@@ -7530,6 +7535,16 @@ class GunStage:
         self.reload_outcome = None
         self._gun_readout_reload_glance()
 
+    def _reload_released(self, now: float) -> None:
+        """ammo.js `reloadReleased` (bench 2026-11-14, SR16): the lever let go. A phone chain is hold-to-chain, as the gun's own:
+        a release after its first shell ends it here; one before it lets that shell land first (`_reload_tick`)."""
+        r = self.reloading
+        if not r:
+            return
+        r["released_at"] = now
+        if r.get("soft") and r.get("chain") and r.get("shells", 0) > 0 and not r.get("in_flight"):
+            self._end_reload("filled" if r["cap"] is not None and r["mag"] >= r["cap"] else "released")
+
     def _reload_tick(self) -> None:
         """ammo.js `reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from
         `poll()` (the stage's tick) so a hand-driven clock reaches the timeout without the watchdog task."""
@@ -7543,13 +7558,15 @@ class GunStage:
             if to is None:
                 self._end_reload("dropped")
                 return
-            r["mag"] = to
-            # ammo.js `reloadTick` (Tony 2026-11-07): a chain loads one shell a reload time until full or out of reserve
-            if r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0:
+            r["mag"] = to; r["shells"] = r.get("shells", 0) + 1
+            # ammo.js `reloadTick` (Tony 2026-11-07; SR16 2026-11-14): a chain loads one shell a reload time while the lever is
+            # held, until full or out of reserve
+            more = r.get("chain") and (r.get("cap") is None or to < r["cap"]) and (self._prev_reserve.get(r["slot"]) or 0) > 0
+            if more and r.get("released_at") is None:
                 r["at"] = max(r["at"] + r["s"], self.now() - r["s"] / 2); r["last_gain_at"] = self.now()   # chain review: the reload's pace
                 self._spawn_task(self._reload_watchdog(dict(r)))
                 return
-            self._end_reload("filled")
+            self._end_reload("released" if more else "filled")
             return
         if self.reloading and self.now() > self._reload_deadline():
             self._end_reload("timeout")
