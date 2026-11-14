@@ -147,3 +147,24 @@ test('a throwing onOutcome is logged and the write still resolves', async ctx =>
   assert.equal(await done, true);
   assert.match(r.text(), /BUG in onOutcome during /);
 });
+
+test('review: a reset chunk that fails late, then a code error, still leaves the reset owed', async ctx => {
+  const settle = useClock(ctx, 600);
+  const chunks = [];
+  const writeChunk = (id, dv) => {
+    const i = chunks.length; chunks.push(textOf(dv));
+    if (i === 0) return Promise.reject(new Error('Writing characteristic failed.'));                       // inside the cap: a reset is owed
+    if (i === 1) return new Promise((_, rej) => setTimeout(() => rej(new Error('late')), 60));              // the reset itself fails past the cap
+    return Promise.resolve();
+  };
+  const ble = { initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {} };
+  const link = new BrxLink({ ble, writeChunk, log: () => {}, ackCapMs: 50, frameGapMs: 100 });
+  await link.connect('A', 'GUN-A-1111');
+  const one = link.write('$PING,*', 'one'); await settle(); assert.equal(await one, false);
+  const seen = [];
+  const two = link.write([undefined], 'two', { onOutcome: o => seen.push(o.kind) }); await settle(); assert.equal(await two, false);
+  assert.deepEqual(seen, ['code']);
+  assert.deepEqual(chunks.slice(0, 2), ['$PING,*', PARSER_RESET], 'setup: the second write sent its reset first');
+  const three = link.write('$SPAWN,,*', 'three'); await settle(); assert.equal(await three, true);
+  assert.deepEqual(chunks.slice(2), [PARSER_RESET, '$SPAWN,,*'], 'the failed reset is owed again');
+});

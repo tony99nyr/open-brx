@@ -988,8 +988,9 @@ export class BrxLink {
         this._resetOwed.add(id);
         this._log('write err: ' + e.message, 'le'); return outcome('ble', false, e.message);
       }
-      // Our own bug stopped the batch. The gun holds a partial frame only if it threw between two chunks of one frame.
-      if (batch.midFrame) this._resetOwed.add(id);
+      // Our own bug stopped the batch. The gun may hold a partial frame if it threw between two chunks of one frame, or
+      // if a late chunk error (a reset's own, say) marked the batch before the throw (review: astra).
+      if (batch.midFrame || batch.failed != null) this._resetOwed.add(id);
       const f = this._bug('write', where(), e, faults);
       return outcome('code', false, f.message);
     });
