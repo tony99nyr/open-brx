@@ -1467,9 +1467,10 @@ export class Engine {
       // `pending` while a link that answers later has not sent the frame yet: the swap timer reads it as leaving now
       const bindAt = bindRow && bindFn < 98 ? { slot: bindFn, at: this.now() + GUN_SPAWN_AIR_MS, pending: false, sent: false } : null;
       if (bindAt) this._gunBindAt = bindAt;
+      // bench 2026-11-14 (P0): a burst can carry `$SPAWN` with only the hold (`$BMAP,0,98`, no stamp), so each stamp is guarded
       const sendOptions = spawnRow || bindAt ? { ...(sendOptions0 || {}), onFrameSent: frame => {
         if (frame === spawnRow) this._gunSpawnAt = Math.max(this._gunSpawnAt || 0, this.now() + GUN_SPAWN_AIR_MS);
-        if (frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
+        if (bindAt && frame === bindRow) { bindAt.at = Math.max(bindAt.at, this.now() + GUN_SPAWN_AIR_MS); bindAt.sent = true; bindAt.pending = false; }
         if (sendOptions0 && sendOptions0.onFrameSent) sendOptions0.onFrameSent(frame);
       } } : sendOptions0;
       const result = this.writer(frames, why, sendOptions);
