@@ -387,6 +387,29 @@ for (const offset of [100, 400, 700, 1000, 1300, 1600, 1900, 2200]) {
   });
 }
 
+// Bench 2026-11-14 (0.4.41): a second ALT inside the swap retargets it, but the SWITCHING card kept the first target's
+// tiles ("switching to USP-S", the bar reset, then "AR equipped"). The card draws the swap the engine holds now.
+test('double ALT: the SWITCHING card redraws its tiles for the new target, with one haptic per swap', async () => {
+  const h = harness(), haptics = [];
+  h.hud.h.onHaptic = k => haptics.push(k);
+  await h.adv(6000);
+  pulled(h); h.eng.feedFrame('$BUT,1,1,*');   // ALT 1
+  const seen = [], tile = cls => { const el = h.hud.overlay.querySelector(`.mo.switching .wt.${cls} .wn`); return el ? el.textContent : null; };
+  const look = () => {
+    const st = h.eng.state();
+    if (!st.switching) return;
+    const name = slot => { const it = h.hud._slotItem(st, slot); return it ? String(it.name).toUpperCase() : 'NONE'; };
+    seen.push({ t: h.now(), to: st.switchTo, want: [name(st.switchFrom), name(st.switchTo)], got: [tile('from'), tile('to')] });
+  };
+  await h.adv(300, look);
+  const first = h.eng.state().switchTo;
+  h.eng.feedFrame('$BUT,1,1,*');   // ALT 2, inside the swap
+  await h.adv(3000, look);
+  assert.ok(seen.some(s => s.to !== first), `setup: the second ALT retargeted the swap: ${JSON.stringify(seen.map(s => s.to))}`);
+  for (const s of seen) assert.deepEqual(s.got, s.want, `at ${s.t} the card shows ${s.got} for a swap ${s.want}`);
+  assert.equal(haptics.filter(k => k === 'tap').length, 1, `one tap for the swap: ${haptics}`);
+});
+
 // Tony 2026-10-13 (via brx1 and brx2): a kill card WAITS under the pickup switch card; it does not take over from it.
 // The ALT gate above drives the switch by a button; this one drives it by a pickup grant (powerup-player.js `_switchCard`).
 for (const offset of [100, 700, 1300, 1900]) {

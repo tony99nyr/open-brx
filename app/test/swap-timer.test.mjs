@@ -18,12 +18,13 @@ const STEP = 5, AIR = E.GUN_SPAWN_AIR_MS;
 /** A fresh live life on the bench loadout, the gun model as the gun. `script` is [[ms, edge]] from the first edge (`down`,
  *  `up` for the trigger, `alt`). Returns the ALT times, when SWITCHING closed after each, the model's ready time for it,
  *  and the HUD bar's window. */
-async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
+async function drive(script, { runMs = 3000, queueBindMs = 0, tickMs = STEP } = {}) {
   const model = new GunModel({ auto: 'timed' });
   let clock = base.clock0_ms;
-  const timers = [], logs = [];
+  const timers = [], logs = [], binds = [];
   // `queueBindMs`: a swap's bind waits that long in the link's queue, then leaves (`onFrameSent`) and reaches the model
   const writer = (fr, why, opts) => {
+    if (/^ALT: swap/.test(String(why)) && fr.some(f => /^\$BMAP,0,[0-9],/.test(f))) binds.push(clock);
     const late = queueBindMs > 0 && /^ALT: swap/.test(String(why)) && fr.some(f => /^\$BMAP,0,[0-9],/.test(f));
     if (!late) { for (const f of fr) model.write(f, clock); return undefined; }
     return new Promise(res => timers.push({ at: clock + queueBindMs, fn: () => {   // as brxlink.js `write`: settles once sent
@@ -47,7 +48,7 @@ async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
   const until = async end => {
     while (clock < end) {
       clock = Math.min(end, clock + STEP);
-      runTimers(); model.advance(clock); pump(); eng.tick(); runTimers(); pump();
+      runTimers(); model.advance(clock); pump(); if (clock % tickMs === 0) eng.tick(); runTimers(); pump();
       await flush(); pump(); watch();
     }
   };
@@ -76,7 +77,7 @@ async function drive(script, { runMs = 3000, queueBindMs = 0 } = {}) {
     await flush(); pump(); watch();
   }
   await until(clock + runMs);
-  drive.logs = logs;
+  drive.logs = logs; drive.binds = binds.map(t => t - t0);
   return swaps.map(s => ({ ...s, closeAt: s.closeAt == null ? null : s.closeAt - t0, readyAt: s.readyAt == null ? null : s.readyAt - t0 }));
 }
 
@@ -139,4 +140,15 @@ test('swap timer: a live pull whose release the link lost stops holding SWITCHIN
   assert.ok(s.closeAt != null, `SWITCHING closed: ${JSON.stringify(s)}`);
   assert.ok(s.closeAt > E.SWAP_HELD_MAX_MS && s.closeAt <= 200 + E.SWAP_HELD_MAX_MS + 850 + 2 * STEP, `about SWAP_HELD_MAX_MS plus the AR's tok15: ${JSON.stringify(s)}`);
   assert.equal(drive.logs.filter(l => /held pull hit the 5 s cap/.test(l)).length, 1, 'the cap is logged once');
+});
+
+// Bench 2026-11-14 (0.4.41): every swap bind left on the engine's 250 ms tick, +4..+251 ms after it was due (mean ~125 ms).
+// With app.js's own tick, the bind now leaves when it is due, and SWITCHING still closes with the gun.
+test('swap timer: on the 250 ms tick, the bind leaves when it is due, not on the next tick', async () => {
+  assert.equal(base.clock0_ms % 250, 0, 'setup: the ticks fall on whole 250 ms');
+  for (const altMs of [0, 70, 130, 245]) {
+    const [s] = await drive([[altMs, 'alt']], { tickMs: 250 });
+    assert.deepEqual(drive.binds, [altMs + 500], `ALT at +${altMs}: the bind to the USP-S leaves at ALT + its tok15`);
+    closesWithTheGun(s, `ALT at +${altMs}`);
+  }
 });
