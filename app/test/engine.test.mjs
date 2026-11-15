@@ -11,6 +11,7 @@ import { MELEE_PRESS_MS } from '../src/ammo.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
+import { renderHtml } from './hud-html-harness.mjs';
 import * as W from '../src/transport/envelope.js';
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 import { mkStorage } from './_helpers.mjs';
@@ -5281,6 +5282,33 @@ test('SR8: OVERHEAT stays on the HUD through a part vent (65, 30) and clears at 
   h.eng.activeSlot = 0;
   h.frame('$ALCD,201,100,0,600,0,*');
   assert.equal(h.eng.state().overheatShown, false, 'vented to 0: OVERHEAT clears with the lock');
+});
+test('SR8 kit: with the Charge Rifle in hand at 9 under the vent lock, the HUD says OVERHEAT, not NOT ENOUGH ENERGY', () => {
+  const run = latch => {
+    const h = harness();
+    h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+    h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'charge_rifle' }];
+    h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+      catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+        { weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: 10, clip: 40, reserve: 160, reload_s: 2 }], perks: [] } } });
+    h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+    h.frame('$ALCD,9,100,1,160,0,*');                            // the Charge Rifle's cell: under one charge
+    if (latch) { h.frame('$ALCD,205,100,0,600,101,*'); h.frame('$ALCD,205,100,0,600,30,*'); }   // locked, then part-vented
+    h.eng.activeSlot = 1;
+    h.frame(`$ALCD,9,100,1,160,${latch ? 30 : 104},*`);          // the cell in hand: the shared heat, or (CONTROL) a starved charge's spike
+    return renderHtml({ now: h.eng.now(), state: h.eng.state(), hud: {} }).screen;
+  };
+  assert.match(run(false), /unskew">NOT ENOUGH ENERGY</, 'CONTROL: a starved cell with no vent lock says NOT ENOUGH ENERGY');
+  const html = run(true);
+  assert.match(html, /heatword">OVERHEAT/, 'the word and the vignette');
+  assert.match(html, /unskew">OVERHEAT</, 'the red prompt names the lock (the small note may still say the cell is under a charge)');
+});
+test('SR8: a vent to 0 reported on the other slot ends OVERHEAT on the locked slot too (one heat value)', () => {
+  const h = energyHarness();
+  h.eng.activeSlot = 1;
+  h.frame('$ALCD,12,100,1,48,0,*');                            // the vent to 0, on the slot in hand
+  h.eng.activeSlot = 0;
+  assert.equal(h.eng.state().overheatShown, false, 'back on the Energy Rifle: no OVERHEAT after the lock ended');
 });
 test('SR8: a round fired ends the vent lock and its OVERHEAT; OVERHEAT_CAP_MS bounds an unvented lock', () => {
   let h = energyHarness();

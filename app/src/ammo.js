@@ -572,7 +572,7 @@ export class Ammo {
     if (heat > 0) this.everHeated[slot] = true;
     // Polish r1: an Energy Rifle lock latches. Polish r4 (brx2's emulator): it starts ABOVE 99; rounds still fire at 99.
     if (heat >= VENT_LOCK_AT && this.heatVents(slot)) { if (this.ventLock == null) this.ventLockAt = this.host.now(); this.ventLock = slot; }
-    else if (heat <= 0) this.ventLock = null;                                  // vented (the gun has one heat value)
+    else if (heat <= 0) { this.ventLock = null; this.heatLock = null; }      // vented: the gun has one heat value, so no slot is hot
   }
   /** Polish r1 (brx4): is the weapon in `slot` one whose lock only the lever vents (an energy weapon that does not cool, the
    *  Energy Rifle; bench SR8)? Other heat weapons keep the trust window. PURE. */
@@ -662,7 +662,7 @@ export class Ammo {
    *  30) and the trigger is dead on either slot (one heat value). OVERHEAT stays up for the whole lock, so the player sees why
    *  the trigger does nothing. It ends with the lock (a reading of 0 or a round fired), and OVERHEAT_CAP_MS still bounds it. */
   overheatOnHud(now = this.host.now()) {
-    if (this.ventLock != null && now - this.ventLockAt < OVERHEAT_CAP_MS) return true;
+    if (this.ventLock != null && this.host.alive && now - this.ventLockAt < OVERHEAT_CAP_MS) return true;   // never on a down player
     const L = this.heatLock;
     return !!(L && L.slot === this.host.activeSlot && now - L.lastAt < OVERHEAT_SHOWN_MS && now - L.at < OVERHEAT_CAP_MS);
   }

@@ -8340,6 +8340,7 @@ export class Engine {
       // THE DISPLAY (`am.overheatOnHud`): the OVERHEAT word, the overlay AND the hot heat bar, all from this one
       // field, for OVERHEAT_SHOWN_MS after the last evidence of the lockout.
       overheatShown: this.am.overheatOnHud(now),
+      ventLocked: /** @type {Ammo} */ (this.am).ventLocked(),   // heat HUD: the Energy Rifle's lock, so the HUD never calls it NOT ENOUGH ENERGY
       heatEverSeen: this.am.heatedEver(this.activeSlot),
       // S42 × A44/A47/F15 (maint review 2026-09-17): the accuracy writer's own stand-down, made visible.
       // `{until, why}` while a spawn, revive, operator resync or stun write owns `$AMMO`; null once it lifts.
