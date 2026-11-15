@@ -17,9 +17,13 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
   const writes = [];                                  // every frame the 'gun' received — e2e assertions read this
   engine.writer = (frames, why, options) => {
     const now = [], later = [];                       // fake.py: instant replies first, then each write's delayed $ALCD
-    // as brxlink.js `write`: `onFrameSent` runs after each frame leaves, and a throw there stops the rest of the batch
-    // (bench 2026-11-14: a throwing hook cut every revive burst before its `$SPAWN`)
-    const sent = f => { if (options && typeof options.onFrameSent === 'function') options.onFrameSent(f); };
+    // as brxlink.js `write`: `onFrameSent` runs after each frame leaves. Polish r1 (Codex + Opus): since 0a64281ef a throw there
+    // is a logged code fault and the rest of the batch still goes (it used to stop it, which cut every 0.4.41 revive burst
+    // before its `$SPAWN`), so the fake does the same.
+    const sent = f => {
+      if (!(options && typeof options.onFrameSent === 'function')) return;
+      try { options.onFrameSent(f); } catch (e) { log(`BUG in onFrameSent during ${why}: ${e && e.stack || e}`, 'le'); }
+    };
     try {
     for (const f of frames) { writes.push(f); frame: {
       const t = f.replace(/^\$/, '').replace(/,?\*$/, '').split(',');

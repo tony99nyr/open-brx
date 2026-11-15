@@ -225,7 +225,7 @@ class GunModel {
   }
 }
 
-function harness(sec, seed, { failAmmo = 0, easyOne = false, leverOff = false } = {}) {
+function harness(sec, seed, { failAmmo = 0, easyOne = false, leverOff = false, slowAmmoMs = 0 } = {}) {
   const bundle = bundleFor(sec);
   if (leverOff) bundle.head = bundle.head.map(f => (f === '$BMAP,2,97,,,,,*' ? '$BMAP,2,98,,,,,*' : f));   // brx2 2026-11-14: ALT is the only 97
   if (easyOne) {   // a one-weapon kit with Easy Reload: compile.py keeps ALT on fn 97 (RELOAD), bench SR6
@@ -253,6 +253,8 @@ function harness(sec, seed, { failAmmo = 0, easyOne = false, leverOff = false } 
     // as brxlink.js `write`: each frame leaves, then `onFrameSent` runs for it; a throw there stops the rest of the batch
     // (bench 2026-11-14: a throwing hook cut every revive burst before its `$SPAWN`, and no test called the hook)
     for (const f of fr) { gun.wrote([f]); if (opts && typeof opts.onFrameSent === 'function') opts.onFrameSent(f); }
+    // polish r1: `slowAmmoMs`, the phone's own reload write settles that long after its frames left (a busy link)
+    if (slowAmmoMs > 0 && /^F650/.test(String(why))) return new Promise(r => at(slowAmmoMs, () => r(true)));
   };
   eng = new E.Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, wallNow: () => clock,
     synced: () => true, storage: mkStorage(), log: m => logs.push({ at: clock, m: String(m) }), delay: (ms, fn) => at(ms, fn), rng: () => 0 });
@@ -673,8 +675,8 @@ test('swap/reload torture: ALT pressed while the lever reload runs, both loadout
 // Bench 2026-11-14 (SR16, Tony): the gun's own Shotgun reload is hold-to-chain (lever held 2.3 s: shells 1 to 6, ~400 ms
 // apart; a tap: one shell). The phone's chain loaded all 6 from one tap, on the 250 ms tick, and its HUD replayed the reload
 // card at every shell. Now: one shell a reload time while the lever is held, on time, one card for the hold.
-async function shotgunInHandArFiredLast(seed, { arFull = false } = {}) {
-  const h = harness('shotgun', seed), { eng, gun } = h;
+async function shotgunInHandArFiredLast(seed, { arFull = false, slowAmmoMs = 0 } = {}) {
+  const h = harness('shotgun', seed, { slowAmmoMs }), { eng, gun } = h;
   await h.start();
   assert.ok(h.swap()); await h.settle(1500);
   for (let i = 0; i < 3; i++) { gun.trigger(); await h.advance(gun.slot(1).fireMs + 10); }
@@ -726,6 +728,38 @@ test('SR16: the gun\'s own one-shell tap logs a shell loaded, not "reload partia
   assert.equal(eng.ammo, from + 1);
   assert.ok(!h.logs.some(l => /reload partial/.test(l.m)), h.logs.filter(l => /reload/.test(l.m)).map(l => l.m).join('\n'));
   assert.ok(h.logs.some(l => /reload: 1 shell\(s\) loaded/.test(l.m)));
+});
+// Polish r1 (brx4; Codex + Opus): a release that came while a shell's `$AMMO` was still on the link was seen only after the
+// next shell was written, so the chain loaded one shell after the lever was let go.
+test('SR16: a release while a shell is on the link stops the chain: no shell after the release', async () => {
+  const { h, eng, gun, shells } = await shotgunInHandArFiredLast(65, { slowAmmoMs: 40 });
+  const t0 = h.now(), from = gun.slot(1).mag;
+  gun.feed('$BUT,2,1,*');                                    // held until the first shell is on the link
+  const r = eng.am.reloading;
+  assert.ok(r && r.soft && r.chain, 'setup: the phone loads the chain');
+  await h.advance(r.ms + 10);
+  assert.ok(r.inFlight, 'setup: the first shell is still on the link');
+  gun.feed('$BUT,2,0,*');                                    // the release, while it flies
+  await h.advance(3000);
+  assert.deepEqual(shells.map(t => t - t0), [r.ms], `one shell, none after the release: ${shells.map(t => t - t0)}`);
+  assert.equal(gun.slot(1).mag, from + 1);
+  assert.equal(eng.am.reloadOutcome.why, 'released');
+});
+// Polish r1 (brx4; Opus): bounce on the PRESS edge (press, release +2 ms, press +1 ms, then held) read the first release as
+// the lever let go, so the chain stopped after one shell while the lever was still down.
+test('SR16: contact bounce on the press edge keeps a held lever held: the chain goes on', async () => {
+  const { h, eng, gun, shells } = await shotgunInHandArFiredLast(66);
+  const t0 = h.now(), from = gun.slot(1).mag;
+  gun.feed('$BUT,2,1,*');
+  const r = eng.am.reloading;
+  assert.ok(r && r.soft && r.chain, 'setup: the phone loads the chain');
+  await h.advance(2); gun.feed('$BUT,2,0,*'); await h.advance(1); gun.feed('$BUT,2,1,*');
+  await h.advance(2 * r.ms + 200);
+  gun.feed('$BUT,2,0,*');
+  await h.advance(3000);
+  assert.deepEqual(shells.map(t => t - t0), [r.ms, 2 * r.ms], `two shells while held: ${shells.map(t => t - t0)}`);
+  assert.equal(gun.slot(1).mag, from + 2);
+  assert.deepEqual(eng.held, {}, 'the real release let the lever go');
 });
 test('the put-back log line names a refill only when one was put back', async () => {
   const { h, gun } = await shotgunInHandArFiredLast(64, { arFull: true });   // the gun's lever has nothing to refill

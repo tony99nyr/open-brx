@@ -2381,7 +2381,9 @@ test('free vent: a pickup equip waits out an Energy Rifle lock and goes out on t
   h.adv(5000);
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'still held: the lock does not cool');
   assert.equal(h.eng.state().powerup.held.name, 'ROCKETS', 'the pickup is the player\'s all the same');
-  h.frame('$ALCD,201,100,0,600,66,*');                         // one lever press vents 35
+  h.frame('$ALCD,201,100,0,600,66,*');                         // one lever press vents 35: still a lock (polish r1, SR8)
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'still held at 66: the gun does not fire there');
+  h.frame('$ALCD,201,100,0,600,0,*');                          // vented to 0
   const out = h.since(n).filter(f => /^\$(WEAP|AMMO),2,/.test(f));
   assert.deepEqual(out, [WEAP[2], '$AMMO,2,2,0,1,*'], 'the equip goes out once the gun reads vented');
 });
@@ -2398,6 +2400,8 @@ test('free vent: a bind re-equip waits out the lock; a pickup equip with no lock
   n = h.mark();
   h.adv(3000);                                                 // the bind repair ticks
   assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP on a locked gun');
-  h.frame('$ALCD,201,100,0,600,66,*');                         // vented: the re-equip goes at once, not at the next tick
+  h.frame('$ALCD,201,100,0,600,66,*');                         // one vent: still a lock (polish r1, SR8)
+  assert.deepEqual(h.since(n).filter(f => f.startsWith('$WEAP,')), [], 'no re-equip $WEAP at 66');
+  h.frame('$ALCD,201,100,0,600,0,*');                          // vented: the re-equip goes at once, not at the next tick
   assert.ok(h.since(n).some(f => f.startsWith('$WEAP,0,')), `vented: the re-equip goes out: ${JSON.stringify(h.since(n))}`);
 });
