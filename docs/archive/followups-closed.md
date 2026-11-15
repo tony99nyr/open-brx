@@ -1020,3 +1020,4 @@ closed in the same pass, each checked against the code, the git log or the exper
 - 2026-11-02 **F652** decided (brx3; Tony 2026-11-02 via brx1): no change. Body Armor and AP stay off under Shields, and the line that says so already shipped. `balance-decisions.md` 2026-11-02; Log 2026-11-02.
 - 2026-11-08 **F647** decided (brx3 recording; Tony at bench SR14): keep `X49` as the crit sound (`H21` is the shield hit). The sound the player heard on 2026-11-01 was probably the crit. Log 2026-11-08.
 - 2026-11-08 **F645** fixed (brx4's re-send; bench SR9 and SR10 on 0.4.37, brx3 recording): a `$GSET` re-send on a live gun keeps its pools and takes the next hit, and an FFA after four try-outs takes hits both ways. Log 2026-11-08.
+- 2026-11-15 **F669** fixed (brx5): the gun's own Energy Rifle reload counts down to `reload_s` + 0.6 s, the refill time bench F500 measured (3.03 s). Log 2026-11-15.

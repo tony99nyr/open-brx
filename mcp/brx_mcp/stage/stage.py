@@ -387,6 +387,7 @@ HILL_CALLOUT_MIN_S = HILL_CALLOUT_MIN_MS / 1000       # types.py HILL_CALLOUT_MI
 HILL_TICK_LOSING_S = HILL_TICK_LOSING_MS / 1000       # types.py HILL_TICK_LOSING_MS 1500: OUR point draining is quicker than the ordinary tick
 GUN_SPAWN_WAIT_S = 1.5   # app/src/gunmodel.js SPAWN_WAIT_MS (emulator 2026-11-09, bench SR23); test_stage_constants pins the pair
 GUN_SPAWN_AIR_S = 0.06   # engine.js GUN_SPAWN_AIR_MS: the `$SPAWN` frame's air time after its send (late is safe, early is the bug)
+ENERGY_REFILL_LAG_S = 0.6  # ammo.js ENERGY_REFILL_LAG_MS (F669): the gun's own energy refill lands this long after reload_s
 BUTTON_BOUNCE_S = 0.04  # engine.js BUTTON_BOUNCE_MS: an ALT or lever press this soon after that button's release is bounce
 SWAP_HELD_MAX_S = 5.0    # engine.js SWAP_HELD_MAX_MS: a live pull still held ends no later than this after its last round (a lost release)
 RARE_GUARD_S = RARE_GUARD_MS / 1000            # types.py RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
@@ -7244,6 +7245,8 @@ class GunStage:
                           # F650 (ammo.js `reloadPulled`): the phone reloads the weapon in hand itself
                           "soft": swap_to is None and (self._soft_reload_needed() or (lever and self._alt_reloads())), "life": self._life_queued,
                           "chain": chain}   # Tony 2026-11-07 (ammo.js `reloadPulled`): a phone reload of a chain goes shell by shell
+        if self.reloading["energy"] and not self.reloading["soft"] and not chain:   # F669 (ammo.js `reloadPulled`)
+            self.reloading["s"] += ENERGY_REFILL_LAG_S
         if self.reloading["soft"]:
             self._hold_trigger("the phone reloads the weapon in hand")
             self._soft_reload_start(self.reloading)

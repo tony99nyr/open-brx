@@ -2783,6 +2783,25 @@ def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_a
     asyncio.run(go())
 
 
+def test_f669_the_gun_s_own_energy_reload_books_the_refill_lag():
+    """ammo.js `reloadPulled` (F669; bench F500 3.03 s): the gun's own Energy Rifle refill lands ENERGY_REFILL_LAG_S after
+    its reload_s, so the reload's nominal length books it. A bullet weapon keeps reload_s."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        clock.advance(S.GUN_SPAWN_WAIT_S + S.GUN_SPAWN_AIR_S)
+        st.player["loadout"]["weapons"][0] = {"weapon_id": "energy_rifle"}
+        st.alcd(mag=10, reserve=600); await settle(st)
+        st.reload(); await settle(st)
+        assert not st.reloading["soft"], st.reloading
+        assert abs(st.reloading["s"] - (st._reload_s() + S.ENERGY_REFILL_LAG_S)) < 1e-9, st.reloading
+        st._end_reload("fired")
+        st.player["loadout"]["weapons"][0] = {"weapon_id": "assault_rifle"}
+        st.reload(); await settle(st)
+        assert abs(st.reloading["s"] - st._reload_s()) < 1e-9, "control: a bullet weapon keeps reload_s"
+    asyncio.run(go())
+
+
 # ======================================================================================================
 # Maint review 2026-09-17 -- what the method scan above CANNOT see
 # ======================================================================================================

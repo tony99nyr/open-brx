@@ -5290,6 +5290,20 @@ test('SR8: while the Energy Rifle lock holds, the lever vents whatever slot is i
   assert.deepEqual(h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,')), [], 'no phone reload of the Charge Rifle');
   assert.ok(logs.some(m => /lever vents the heat/.test(m)), logs.filter(m => /lever|reload/.test(m)).join('\n'));
 });
+// F669 (bench F500: 3.03 s; brx2's emulator about 3.0 s): the gun's own Energy Rifle refill lands about 0.6 s after its 2.4 s
+// reload_s. The RELOADING countdown ran out at 2.4 s and sat at 0.0S until the gun's $ALCD; it now runs to the refill.
+test('F669: the gun\'s own Energy Rifle reload counts down to the refill at reload_s + 0.6 s, and the $ALCD ends it', () => {
+  const h = energyHarness();
+  h.frame('$ALCD,20,100,0,600,0,*'); h.adv(100);                 // vented and cooled: the lever is the gun's reload
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  let st = h.eng.state();
+  assert.equal(st.reloading, true);
+  assert.equal(st.reloadTotalMs, 3000, '2.4 s + 0.6 s');
+  h.adv(2600); h.eng.tick(); st = h.eng.state();
+  assert.equal(st.reloadOverrun, false, 'at 2.66 s the countdown is still running, not stuck at 0.0S');
+  h.frame('$ALCD,300,100,0,320,0,*');                           // the gun's refill
+  assert.equal(h.eng.state().reloading, false, 'the gun\'s $ALCD ends it');
+});
 test('SR8: the lock blocks the other slot too (one heat value)', () => {
   const h = energyHarness();
   h.eng.activeSlot = 1;
