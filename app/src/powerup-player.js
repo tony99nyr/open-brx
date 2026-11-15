@@ -25,7 +25,7 @@
 //                 swapCard (the setters exist for tests that stage a state without a grant)
 //
 // HOST INTERFACE (engine.js `powerupHost`; every member looks the engine up at call time)
-//   services    now() · log(line, cls) · save() · changed() · write(frames, why) · quietWrite(frames, why) ·
+//   services    now() · log(line, cls) · save() · changed() · write(frames, why) · quietWrite(frames, why) · weapWrite(frames, why) ·
 //               writeMust(frames, why, still, actExempt) · emitFact(fact)
 //   presentation show(channel, item) · presentable(channel) · laneAge(at, now) · laneFeed(item) · announce(item) ·
 //               announceStatus(kind)
@@ -458,7 +458,8 @@ export class PlayerPowerups {
     h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);   // F259: the gun's `$WEAP` reset and our `$AMMO` echo are bookkeeping, never a shot (bug 3 r1: a `$WEAP`-bearing window)
     h.setPrev(slot, mag, res);     // what the slot holds now, should the echo never come back
     const frames = [...pre, weap, `$AMMO,${slot},${mag},${res},1,*`], act = h.actSeq, held = this._held, life = h.lifeSeq, stun = h.stunned;   // `stun`: the premise of this write (r2 C1: a zero equip is authorised by a stun that is still running)
-    Promise.resolve(h.quietWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
+    // Tony 2026-11-14: `weapWrite` holds the equip while the gun reads an Energy Rifle lock (a `$WEAP` would vent it for free)
+    Promise.resolve(h.weapWrite(frames, why)).then(ok => {   // F416 part 2: a grant is a must-land write too
       if (ok !== false) return;
       // F417 (bench 2026-09-26): a lost equip left the gun on the old weapon ("ON TRIGGER" but the sniper fired) or
       // without its counts. It is safe to repeat while nothing moved: no round, no hit, the same item on the same slot.
@@ -469,7 +470,7 @@ export class PlayerPowerups {
       // out), so the retry's `$WEAP` reset and `$AMMO` echo come on top of the first pair's. Reopen the windows for them.
       for (const f of pre) { const t = f.split(','); if (t[0] === '$AMMO') h.acctWrote(+t[1], +t[2] || 0, +t[3] || 0); }
       h.acctWrote(slot, mag, res, true, Number.isFinite(resetMag) ? resetMag : null);
-      h.quietWrite(frames, `${why} (retry)`);
+      h.weapWrite(frames, `${why} (retry)`);
     });
     h.equipped(slot, mag, res);   // the trigger is on `slot` now (the engine's side: the swap, the reload, the ammo block)
     if (this._held) this._held.trig = slot;
