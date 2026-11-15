@@ -122,6 +122,7 @@ def test_review_2026_09_17_overheat_is_excluded_from_no_fire_until_the_reading_g
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
+        st._heat_cools = lambda slot: True             # match 592e444eff was a Charge Rifle, whose lock cools (SR8: the Energy Rifle's holds)
         st._inject_rx("$ALCD,10,100,0,192,108,*")     # match 592e444eff: a real bench overheat capture
         assert st._heat_blocks_fire()
         for _ in range(5):

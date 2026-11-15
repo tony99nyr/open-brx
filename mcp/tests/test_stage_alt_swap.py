@@ -521,7 +521,7 @@ def test_soft_chain_stops_before_a_queued_shell_is_sent():
             spawn_task(task)
         st._spawn_task = without_watchdog
         before = len(_tx(st))
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*"); await settle(st)
+        st._on_rx("$BUT,2,1,*"); await settle(st)   # held: a chain loads while the lever is held (bench 2026-11-14, SR16)
         assert st.reloading and st.reloading["soft"] and st.reloading["chain"]
         gate = asyncio.Event()
         real = st.write
@@ -557,7 +557,7 @@ def test_soft_chain_loads_one_shell_per_reload_interval():
         st.ammo = 2; st.reserve = 24; st._prev_ammo[1] = 2; st._prev_reserve[1] = 24
         st._shot_acct[1]["mag"] = 2; st._shot_acct[1]["fired"] = 0
         before = len(_tx(st))
-        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*"); await settle(st)
+        st._on_rx("$BUT,2,1,*"); await settle(st)   # held: a chain loads while the lever is held (bench 2026-11-14, SR16)
         assert st.reloading and st.reloading["chain"]
         interval = st.reloading["s"]
         await _tick(st, clock, interval + 0.01)
@@ -567,6 +567,29 @@ def test_soft_chain_loads_one_shell_per_reload_interval():
         await _tick(st, clock, interval + 0.01)
         shells = [f for f in _tx(st)[before:] if f.startswith("$AMMO,1,")]
         assert shells == ["$AMMO,1,3,23,1,*", "$AMMO,1,4,22,1,*"], shells
+    asyncio.run(go())
+
+
+def test_soft_chain_tap_loads_one_shell_and_a_release_ends_a_hold():
+    """ammo.js `reloadReleased` (bench 2026-11-14, SR16): the gun's own Shotgun chain is hold-to-chain, so the phone's is too."""
+    async def go():
+        st, _gun, clock = await _live()
+        catalog_row = st._catalog_row
+        st._catalog_row = lambda table, key, value: ({**(catalog_row(table, key, value) or {}), "reload_type": "chain"}
+                                                       if table == "weapon_catalog" else catalog_row(table, key, value))
+        _pull(st); st._on_rx("$ALCD,31,100,0,182,0,*")
+        _alt(st); await settle(st); await _tick(st, clock, st._alt_lock_s(1) + 0.02)
+        st.ammo = 2; st.reserve = 24; st._prev_ammo[1] = 2; st._prev_reserve[1] = 24
+        st._shot_acct[1]["mag"] = 2; st._shot_acct[1]["fired"] = 0
+        before = len(_tx(st))
+        st._on_rx("$BUT,2,1,*"); st._on_rx("$BUT,2,0,*"); await settle(st)   # a tap
+        interval = st.reloading["s"]
+        for _ in range(4):
+            await _tick(st, clock, interval + 0.01)
+        shells = [f for f in _tx(st)[before:] if f.startswith("$AMMO,1,")]
+        assert shells == ["$AMMO,1,3,23,1,*"], (shells, [l["text"] for l in list(st.log)[-12:]])
+        assert st.reloading is None and st.reload_outcome["why"] == "released"
+        assert any("reload: 1 shell(s) loaded" in l["text"] for l in st.log)
     asyncio.run(go())
 
 

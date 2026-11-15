@@ -1735,8 +1735,9 @@ test('review 2026-09-17: heat is recorded even while the gun is STUNNED', () => 
 test('review 2026-09-17: a stuck OVERHEAT reading goes stale after HEAT_STALE_MS with no new $ALCD', () => {
   // Bench 2026-09-17 (match 592e444eff): a locked-out weapon sends NO $ALCD while it cools ("10 pulls, no
   // $ALCD"), so the last reading above HEAT_LOCKOUT could otherwise sit there for the rest of the life,
-  // sticking OVERHEAT on and keeping `no_fire` from ever taking over.
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  // sticking OVERHEAT on and keeping `no_fire` from ever taking over. That was a Charge Rifle, whose lock cools; the Energy
+  // Rifle's does not, and is held until a newer reading (SR8, 2026-11-14).
+  const { h } = chargeHarness();
   h.frame('$ALCD,31,100,0,384,108,*');   // match 592e444eff: a real bench capture
   assert.equal(h.eng.state().overheating, true);
   h.adv(24000);
@@ -5013,6 +5014,61 @@ test('F226: the Energy Rifle\'s normal overheat (no multi-round charge) at heat 
   assert.equal(h.eng.state().overheatShown, true, 'and it still reads OVERHEAT');
 });
 
+// Bench 2026-11-14 (brx2, emulator; SR7): an `$AMMO` refill inside the lock keeps the heat. The phone re-sends the slot's own
+// `$WEAP` row first, which clears the heat and the lock, then the `$AMMO`, back to back.
+test('SR7: the F226 refill re-sends the slot\'s own $WEAP row, then its $AMMO, in one write', () => {
+  const { h, cap, res } = chargeHarness();
+  const n = h.writes.length;
+  h.frame(`$ALCD,4,100,0,${res},156,*`);
+  const give = Math.min(cap - 4, res), mine = h.writes.slice(n);
+  const weap = h.bundle.head.find(f => f.startsWith('$WEAP,0,'));
+  const i = mine.indexOf(`$AMMO,0,${4 + give},${res - give},1,*`);
+  assert.ok(i > 0 && mine[i - 1] === weap, `the head's $WEAP,0 row goes straight before the $AMMO: ${JSON.stringify(mine)}`);
+});
+
+// Bench 2026-11-14 (SR8; brx2's emulator): the Energy Rifle locks at about 101 and the lock does not cool. Pulls inside it fire
+// nothing on EITHER slot (one heat value), and the lever vents 35 a press. The phone counted 13 pulls as rounds, tripped the
+// stale-pool cure, and showed "reload did NOT take" at every vent.
+function energyHarness() {
+  const h = harness();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }];
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+    catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+      { weapon_id: 'usp', name: 'USP', clip: 12, reserve: 48 }], perks: [] } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+  h.frame('$ALCD,202,100,0,600,99,*'); h.frame('$ALCD,201,100,0,600,101,*');   // the lock
+  return h;
+}
+test('SR8: pulls inside an Energy Rifle lock are no rounds and no stale-pool evidence, however long the lock lasts', () => {
+  const h = energyHarness(), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  const acct = h.eng.am.acctLive(0);
+  for (let k = 0; k < 13; k++) { h.adv(3000); h.frame('$BUT,0,1,*'); h.adv(60); h.frame('$BUT,0,0,*'); h.adv(1000); h.eng.tick(); }
+  assert.ok(h.eng.state().overheating, '40 s on, the lock still blocks the trigger');
+  assert.equal(h.eng.am.acctLive(0), acct, 'no pull was booked as a round');
+  assert.ok(!logs.some(m => /gun not firing/.test(m)), logs.filter(m => /not firing|stale/.test(m)).join('\n'));
+});
+test('SR8: the lever on the Energy Rifle vents the heat: no reload card, no "did not take"', () => {
+  const h = energyHarness(), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'no RELOADING card');
+  h.frame('$ALCD,201,100,0,600,65,*');                         // the vent: heat falls, the cell does not move
+  h.adv(4000); h.eng.tick();
+  assert.ok(logs.some(m => /lever vents the heat/.test(m)));
+  assert.ok(!logs.some(m => /did NOT take/.test(m)), logs.filter(m => /reload/.test(m)).join('\n'));
+  // cooled to 0: the lever is a reload again
+  h.frame('$ALCD,20,100,0,600,0,*'); h.adv(100);
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'at heat 0 the lever reloads');
+});
+test('SR8: the lock blocks the other slot too (one heat value)', () => {
+  const h = energyHarness();
+  h.eng.activeSlot = 1;
+  assert.equal(h.eng.am.heatBlocksFire(), true);
+});
+
 test('F226: never more than the reserve holds, and an empty reserve writes nothing', () => {
   let r = chargeHarness({ reserve: 3 }); let n = r.ammo().length;
   r.h.frame('$ALCD,4,100,0,3,156,*');
@@ -5587,12 +5643,14 @@ function chainInHand(h, { mag = 2 } = {}) {
 }
 const shellRows = (h, n) => h.writes.slice(n).filter(f => f.startsWith('$AMMO,1,'));
 // one shell time on, then the write settles (the app ticks every 250 ms, so a settled write is the real order)
+// Bench 2026-11-14 (SR16): a chain loads while the lever is HELD (the gun's own Shotgun is hold-to-chain); these hold it.
+const holdLever = h => { h.frame('$BUT,2,1,*'); };
 const shellTick = async (h, ms = 400) => { h.adv(ms); h.eng.tick(); await new Promise(r => setImmediate(r)); };
 test('Tony 2026-11-07: the lever loads a chain in hand shell by shell when the gun\'s lever goes to the slot fired last', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   const n = h.writes.length;
-  f542Lever(h);
+  holdLever(h);
   const r = h.eng.am.reloading;
   assert.ok(r && r.soft && r.chain && r.ms === 400, 'the phone loads the chain');
   assert.equal(h.eng.state().reloading, true, 'the HUD shows RELOADING');
@@ -5607,7 +5665,7 @@ test('Tony 2026-11-07: a trigger pull ends the phone\'s chain and the shells alr
   const h = liveSwapHarness();
   chainInHand(h);
   const n = h.writes.length;
-  f542Lever(h); await shellTick(h); await shellTick(h);
+  holdLever(h); await shellTick(h); await shellTick(h);
   h.frame('$BUT,0,1,*');
   assert.equal(h.eng.state().reloading, false);
   assert.equal(h.eng.am.reloadOutcome.why, 'fired'); assert.equal(h.eng.am.reloadOutcome.gained, 2);
@@ -5621,7 +5679,7 @@ test('Tony 2026-11-07: ALT the gun takes ends the phone\'s chain', async () => {
   chainInHand(h);
   h.eng.am.prevAmmo[0] = h.eng.am.ammoBySlot()[0];                 // the rifle is full: the gun's lever does nothing, ALT is a swap
   const n = h.writes.length;
-  f542Lever(h); await shellTick(h);
+  holdLever(h); await shellTick(h);
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.am.reloadOutcome.why, 'swapped');
   h.adv(2000); h.eng.tick();
@@ -5632,7 +5690,7 @@ test('Tony 2026-11-07: the chain stops when the reserve runs out', async () => {
   chainInHand(h);
   h.eng.am.prevReserve[1] = 2;
   const n = h.writes.length;
-  f542Lever(h); await shellTick(h); await shellTick(h); await shellTick(h);
+  holdLever(h); await shellTick(h); await shellTick(h); await shellTick(h);
   assert.deepEqual(shellRows(h, n), ['$AMMO,1,3,1,1,*', '$AMMO,1,4,0,1,*']);
   assert.equal(h.eng.am.reloadOutcome.why, 'filled'); assert.equal(h.eng.state().reloading, false);
 });
@@ -5642,7 +5700,7 @@ test('Tony 2026-11-07: a shell whose write failed before it left is rolled back,
   const real = h.eng.writer; let failNext = true;
   h.eng.writer = (fr, why, o) => (failNext && fr.some(f => f.startsWith('$AMMO,1,')) ? (failNext = false, Promise.resolve(false)) : real(fr, why, o));
   const n = h.writes.length;
-  f542Lever(h); await shellTick(h);
+  holdLever(h); await shellTick(h);
   await new Promise(r => setImmediate(r));
   assert.equal(h.eng.am.prevAmmo[1], 2, 'the failed shell is off the books');
   await shellTick(h);
@@ -5654,7 +5712,7 @@ test('Tony 2026-11-07: a chain that fired last keeps the gun\'s own chain, never
   chainInHand(h);
   f542Shot(h, '$ALCD,1,100,1,288,0,*');                           // the chain in hand fires: now it is the slot fired last
   const n = h.writes.length;
-  f542Lever(h);
+  holdLever(h);
   assert.ok(h.eng.am.reloading && !h.eng.am.reloading.soft, 'the gun loads it');
   h.adv(2000); h.eng.tick();
   assert.deepEqual(shellRows(h, n), [], 'no `$AMMO` from the phone');
@@ -5664,7 +5722,7 @@ test('chain review (Codex): one shell on the link at a time, so a failed shell r
   chainInHand(h);
   const real = h.eng.writer; let settle = null;
   h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,')) ? new Promise(r => { settle = r; }) : real(fr, why, o));
-  f542Lever(h); await shellTick(h);
+  holdLever(h); await shellTick(h);
   const first = settle; assert.ok(first, 'setup: shell 1 is on the link');
   settle = null; await shellTick(h);
   assert.equal(settle, null, 'no second shell while the first is unsettled');
@@ -5681,7 +5739,7 @@ test('chain review (Codex): a shell still queued when the trigger stops the chai
   h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,'))
     ? new Promise(r => { release = () => r(o && o.shouldSend && !o.shouldSend() ? null : (o && o.onFrameSent && o.onFrameSent(fr[0]), true)); })
     : real(fr, why, o));
-  f542Lever(h); await shellTick(h);
+  holdLever(h); await shellTick(h);
   assert.ok(release, 'setup: shell 1 waits behind other traffic');
   h.frame('$BUT,0,1,*');                                           // the trigger stops the chain
   release(); await new Promise(r => setImmediate(r));
@@ -5689,11 +5747,29 @@ test('chain review (Codex): a shell still queued when the trigger stops the chai
   assert.equal(h.eng.am.prevAmmo[1], 2, 'the unsent shell is off the books');
   assert.equal(h.eng.state().ammo, 2);
 });
+// Bench 2026-11-14 (SR16): a tap loads one shell. The release ends the chain once that shell is written, and a shell still
+// queued for the link then must still go (only a trigger, ALT, a stun or a death stops it).
+test('SR16: a tapped chain\'s one shell still goes when the link sends it after the release ended the chain', async () => {
+  const h = liveSwapHarness();
+  chainInHand(h);
+  const real = h.eng.writer; let release = null; const sent = [];
+  h.eng.writer = (fr, why, o) => (fr.some(f => f.startsWith('$AMMO,1,'))
+    ? new Promise(r => { release = () => { const go = !(o && o.shouldSend && !o.shouldSend()); if (go) { sent.push(fr[0]); o && o.onFrameSent && o.onFrameSent(fr[0]); } r(go ? true : null); }; })
+    : real(fr, why, o));
+  f542Lever(h);                                                    // a tap: press and release
+  await shellTick(h);
+  assert.ok(release, 'setup: the shell waits behind other traffic');
+  assert.equal(h.eng.am.reloading, null, 'the chain ended at its one shell');
+  release(); await new Promise(r => setImmediate(r));
+  h.eng.writer = real;
+  assert.deepEqual(sent, ['$AMMO,1,3,287,1,*'], 'the shell went');
+  assert.equal(h.eng.state().ammo, 3);
+});
 test('chain review (Codex): shells keep the reload\'s pace on the app\'s 250 ms tick', async () => {
   const h = liveSwapHarness();
   chainInHand(h);
   const n = h.writes.length;
-  f542Lever(h);
+  holdLever(h);
   for (let k = 0; k < 5; k++) await shellTick(h, 250);           // 1250 ms: shells due at 400, 800, 1200
   assert.equal(shellRows(h, n).length, 3);
 });
@@ -5702,7 +5778,7 @@ test('chain review (Codex): a chain\'s shell time has no 300 ms floor (Fast Hand
   chainInHand(h);
   const row = h.eng.weaponRow.bind(h.eng);
   h.eng.weaponRow = id => (id === 'smg' ? { ...(row(id) || {}), reload_s: 0.2 } : row(id));
-  f542Lever(h);
+  holdLever(h);
   assert.equal(h.eng.am.reloading.ms, 200);
 });
 test('F650: the lever right after the weapon in hand fired is the gun\'s own reload, not the phone\'s', () => {

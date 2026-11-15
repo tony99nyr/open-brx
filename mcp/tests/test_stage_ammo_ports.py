@@ -44,6 +44,24 @@ def test_slot_count_is_the_loadout_not_the_bundle_rows():
     asyncio.run(go())
 
 
+def test_easy_reload_lever_is_the_phones_reload_and_a_spawn_burst_ends_with_alt_on_97():
+    """engine.js `_altReloads` (bench 2026-11-14): on a one-weapon Easy Reload kit ALT holds the gun's reload and the lever
+    is on 98, so a lever pull is the phone's (soft) reload, and every `$SPAWN` burst ends with `$BMAP,1,97`."""
+    async def go():
+        st = await _live()
+        st.player["loadout"] = {"weapons": [{"weapon_id": "assault_rifle"}], "overrides": {"easy_reload": True}}
+        burst = ["$BMAP,1,97,,,,,*", "$BMAP,2,97,,,,,*", "$SPAWN,1,*"]
+        assert st._bind_rows(burst)[-1] == S.ALT_RELOAD, st._bind_rows(burst)
+        assert st._bind_rows(["$BMAP,2,97,,,,,*"]) == ["$BMAP,2,97,,,,,*"], "no `$SPAWN`: no re-send"
+        st._on_rx("$ALCD,20,100,0,192,0,*")
+        st._on_rx("$BUT,2,1,*")
+        assert st.reloading and st.reloading["soft"], "the lever is the phone's reload"
+        st._end_reload("test"); st._on_rx("$BUT,2,0,*")
+        st.player["loadout"]["overrides"] = {}
+        assert st._bind_rows(burst) == burst, "no Easy Reload: the burst is as written"
+    asyncio.run(go())
+
+
 def test_mag_is_the_hud_denominator_and_caps_a_reload_on_a_slot_with_no_spawn_row():
     """ammo-recoil-*: `mag` is the largest count published per slot. A slot the spawn `$AMMO` rows do not name (a
     melee or pickup slot) takes it as the reload cap, as the engine does; the stage used to read the last `$LCD` mag."""

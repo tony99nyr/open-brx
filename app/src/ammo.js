@@ -17,9 +17,9 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
-//     heat        noteHeat(slot, heat) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
+//     heat        noteHeat(slot, heat) · heatNow() · heatCools(slot) · leverVents(now) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat() · heatSaved() · heatRestore(h)
-//     reload      reloadPulled() · reloadReleased(now) · reloadDeadline() · endReload(why) · reloadTick(now) ·
+//     reload      reloadPulled({lever}) · reloadReleased(now) · softWake(r) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
 //     a report    onAmmo(mag, reserve, slot, heat, lcd) · dryPull() · endDrySpell()
 //     ALT         altPressed() · switchTick(now) · bindIfDue(now) · bindWake(due) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
@@ -31,8 +31,8 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //
 // HOST INTERFACE (engine.js `ammoHost`; every member looks the engine up at call time)
 //   services    now() · log(line, cls) · changed() · event(kind) · fireIntervalMs(slot) · recoilStep(n) · recoilArm(why) ·
-//               reloadGlance() · delay(ms, fn) (the engine's timer: a swap's bind goes out when it is due)
-//   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · switchWindowMs() (the Engine's public
+//               reloadGlance() · delay(ms, fn) (the engine's timer: a swap's bind and a phone reload's write go out when due)
+//   lookups     weaponRow(id) · perkRow(id) · perkEffects(id) · slotCount() · easyReload() · altReloads() · switchWindowMs() (the Engine's public
 //               `switchWindowMs`, which asks this module back: the swap's own clock reads it there, so a test that
 //               stubs the Engine's window is still honoured)
 //   read-only   activeSlot · frames · phase · alive · tutorial · resync · stunned · player · ammo · mag · reserve ·
@@ -120,6 +120,8 @@ export const OVERHEAT_CAP_MS = 30000;
 // HEAT_STALE_MS sits above that real window with margin, so a genuine lockout (or a player still trying it)
 // is never cleared early, and only a reading old enough to be certainly abandoned counts as untrustworthy.
 export const HEAT_STALE_MS = 25000;
+/** Bench 2026-11-14 (brx2, emulator): the gun's one heat value cools about 33 a second while it is not locked. Per ms. */
+export const HEAT_COOL_PER_MS = 0.033;
 // pl3 (2026-09-17): HEAT_STALE_MS above is for `no_fire` only. It must outlast a player who dry-fires a locked
 // weapon for ~20 s. The HUD's OVERHEAT word must not: the lockout itself ends long before that. The reading that
 // tips a weapon over the line arrives with the shot that caused it. The bench-measured lockout holds ~4.8 s,
@@ -569,10 +571,37 @@ export class Ammo {
    *  were one truth. THIS one decides whether the gun can shoot: it gates the accuracy writer and exempts a
    *  dry pull from `no_fire`, on the 25 s HEAT_STALE_MS trust window. It is NOT what the HUD draws. */
   heatBlocksFire(now = this.host.now()) {
-    const slot = this.host.activeSlot;
-    if ((this.heatBySlot[slot] || 0) < HEAT_LOCKOUT) return false;
-    const at = this.heatAt[slot];
-    return at == null || (now - at) < HEAT_STALE_MS;
+    // Bench 2026-11-14 (brx2, emulator; SR7/SR8): the gun has ONE heat value, shared by both weapons, so a lock blocks pulls on
+    // either slot. The Energy Rifle's lock does not cool: it holds until the lever vents it, so its reading is trusted until a
+    // newer one (pulls inside it were counted as rounds and tripped the stale-pool cure). A charge weapon's lock cools by
+    // itself, so its reading keeps the HEAT_STALE_MS trust window (match 592e444eff).
+    const h = this.heatNow();
+    if (!h || h.v < HEAT_LOCKOUT) return false;
+    return this.heatCools(h.slot) ? now - h.at < HEAT_STALE_MS : true;
+  }
+  /** The gun's one heat value: the newest reading on any slot this life, or null. PURE. */
+  heatNow() {
+    let best = null;
+    for (const k of Object.keys(this.heatAt)) if (this.heatBySlot[k] != null && (best == null || this.heatAt[k] > this.heatAt[best])) best = k;
+    return best == null ? null : { slot: +best, v: this.heatBySlot[best], at: this.heatAt[best] };
+  }
+  /** Does a lock from this slot's weapon cool by itself? A charge weapon's does (`rounds_per_charge`); the Energy Rifle's holds
+   *  until the lever vents it (bench 2026-11-14). PURE. */
+  heatCools(slot) {
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    return !!(row && row.rounds_per_charge != null && +row.rounds_per_charge > 1);
+  }
+  /** Bench 2026-11-14 (SR8): on the Energy Rifle the lever VENTS the heat while there is any (35 a press; a held lever vents to
+   *  0, then refills the cell), and the magazine does not move. Such a lever is no reload. PURE. */
+  leverVents(now = this.host.now()) {
+    const slot = this.host.activeSlot, ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    if (!w || !isEnergyClass(row && row.weapon_class, w.weapon_id) || this.heatCools(slot)) return false;
+    const h = this.heatNow();
+    if (!h) return false;
+    const v = h.v >= HEAT_LOCKOUT ? h.v : h.v - (now - h.at) * HEAT_COOL_PER_MS;
+    return v > 0;
   }
   /** pl4: one `$ALCD` for `slot`. A reading at or past the line starts or refreshes the lockout; a reading below
    *  it, or a round leaving the slot without such a reading, ends it. `prev` is the slot's last mag (null = none). */
@@ -605,14 +634,24 @@ export class Ammo {
   get reloadOpen() { return !!this.reloading; }
   /** The reload lever came up. OBSERVATIONAL only: a magazine weapon's handle is let go at once and the reload still
    *  completes about 1.4 s later, so a release never ends a takeover. */
-  reloadReleased(now) { if (this.reloading) this.reloading.releasedAt = now; }
+  /** The lever let go. Bench 2026-11-14 (SR16): the gun's own Shotgun chain is hold-to-chain, one shell a reload time while the
+   *  lever is held, one shell for a tap. The phone's chain does the same: a release after its first shell ends it here, and a
+   *  release before it lets that shell land first (`reloadTick`). */
+  reloadReleased(now) {
+    const r = this.reloading; if (!r) return;
+    r.releasedAt = now;
+    if (r.soft && r.chain && r.shells > 0 && !r.inFlight) this.endReload(r.cap != null && r.mag >= r.cap ? 'filled' : 'released');
+  }
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
-  reloadPulled() {
+  /** A reload pull: the lever (`lever`), or ALT on Easy Reload. Bench 2026-11-14: Easy Reload's lever is on fn 98 (ALT holds
+   *  the gun's reload), so a lever pull there is the phone's reload of the weapon in hand, with every refusal ALT's has. */
+  reloadPulled({ lever = false } = {}) {
     if (this.host.phase !== 'live' || !this.host.alive || this.host.tutorial || this.host.resync || this.host.rc.disarmed) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
     // brx2 2026-11-09 (emulator; SR23): after `$SPAWN` the gun reads no lever (nor ALT, so no Easy Reload) for its spawn wait,
     // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
     const wait = this.host.gunButtonsWaitMs ? this.host.gunButtonsWaitMs() : 0;
     if (wait > 0) { this.host.log(`reload pull ignored: the gun's spawn wait (${Math.ceil(wait)} ms left)`, 'li'); return; }
+    if (lever && this.leverVents()) { const h = this.heatNow(); this.host.log(`lever vents the heat (${h ? h.v : '?'}); no reload`, 'li'); return; }   // SR8
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
@@ -640,17 +679,18 @@ export class Ammo {
     // weapon in hand (the phone's reload when the gun's lever goes to the slot fired last, `softReloadNeeded`).
     const swapTo = null;
     const chain = !!(row && row.reload_type === 'chain');   // Codex (chain review): a shell's time is the perk-adjusted reload_s, no 300 ms floor
-    this.reloading = { at: now, ms: Math.max(chain ? 1 : 300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
+    this.reloading = { at: now, t0: now, shells: 0, ms: Math.max(chain ? 1 : 300, Math.round(secs * 1000)) + (swapTo != null ? this.host.switchWindowMs() : 0), slot: this.host.activeSlot,
                        // BOLT: one lever chambers one round, so the bolt is done at the magazine plus one, whatever the spawn cap
                        from: this.host.ammo, cap: row && row.reload_type === 'bolt' ? (this.host.ammo || 0) + 1 : cap || null, mag: this.host.ammo, lastGainAt: now, releasedAt: null,
                        energy: !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id)),   // DRY-1: the catalogue row decides, as on the HUD (weaponclass.js)
                        bolt: !!(row && row.reload_type === 'bolt'),   // BOLT (Tony 2026-10-17): a lever per shot; the HUD shows a BOLT cue, not RELOADING
                        swapTo,   // a lever inside an ALT swap reloads the OLD slot, and the swap still completes
-                       soft: swapTo == null && this.softReloadNeeded(), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
+                       soft: swapTo == null && (this.softReloadNeeded() || (lever && !!this.host.altReloads && this.host.altReloads())), life: this.host.lifeSeq,   // F650: the phone reloads the weapon in hand itself
                        chain };   // Tony 2026-11-07: a phone reload of a chain goes shell by shell
     if (this.reloading.soft) {   // Codex pass r2
       this.host.holdTrigger('the phone reloads the weapon in hand');   // brx1 2026-11-08: no round lands mid-reload
       this.host.softReloadStart(this.reloading);
+      this.softWake(this.reloading);
     }
     this.reloadOutcome = null;
     this.host.reloadGlance();   // A16 §3.1: reload gets a glance at the current readout
@@ -707,8 +747,7 @@ export class Ammo {
       energy = energy || !!(w && isEnergyClass(row && row.weapon_class, w.weapon_id));
     }
     if (!Object.keys(snap).length) return;
-    this.gunOther = { bound: a, snap, until: now + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy };
-    this.host.log(`${why} on slot ${a}: a gun refill of slot ${Object.keys(snap).join(', ')} is put back`, 'li');
+    this.gunOther = { bound: a, snap, until: now + gunHoldMs(ms, energy), life: this.host.lifeSeq, energy, why };
   }
   /** A rise the gun reported on `slot` while a lever's note is open: a slot other than the one in hand at the lever gets
    *  its noted counts back, one `$AMMO` per refill (a chain's every shell). PURE of the gun: it writes only through the host. */
@@ -718,6 +757,7 @@ export class Ammo {
     const n = g.snap[slot];
     if (!(mag > n.mag)) return;
     this.host.undoGunReload(slot, n.mag, n.res);
+    this.host.log(`${g.why || 'lever'} on slot ${g.bound}: the gun refilled slot ${slot} (${n.mag} → ${mag}); put back to ${n.mag}`, 'li');   // bench 2026-11-14: logged when it happens
     // A magazine refills once, so its undo is done; a chain (the Shotgun) loads shell by shell, so its note stays
     const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot], row = w && this.host.weaponRow(w.weapon_id);
     if (!(row && row.reload_type === 'chain')) { delete g.snap[slot]; if (!Object.keys(g.snap).length) this.gunOther = null; }
@@ -750,7 +790,7 @@ export class Ammo {
   }
   /** Book the end of a takeover and record WHAT THE GUN DID, so a failed reload can never read as a success.
    *  `why`: 'filled' (mag reached the spawn cap) · 'fired' (a round left the mag, the reload is over) ·
-   *  'swapped' (an ALT swap took the weapon away) · 'timeout' (the gun stopped feeding) · 'dropped' (link lost) ·
+   *  'swapped' (an ALT swap took the weapon away) · 'released' (a phone chain's lever let go) · 'timeout' (the gun stopped feeding) · 'dropped' (link lost) ·
    *  'last_fired' (F542: the gun reloaded the slot that fired last, not the one in hand). */
   endReload(why) {
     const r = this.reloading; if (!r) return;
@@ -758,7 +798,9 @@ export class Ammo {
     // Tony 2026-11-08: the phone's reload held the trigger (engine.js `_boundSlot`); it binds the slot in hand again. A swap
     // that ends it holds the trigger itself and binds when its own time is up.
     if (r.soft && why !== 'swapped' && why !== 'dropped') this.host.bindTrigger(this.host.activeSlot, 'the phone reload ended');
-    if (r.chain && why !== 'filled') r.stopped = true;   // Codex (chain review): a shell still queued for the link is not sent
+    // Codex (chain review): a shell still queued for the link is not sent. A release ends the chain after its last shell, so
+    // that shell still goes (bench 2026-11-14, SR16: a tap loads one shell).
+    if (r.chain && why !== 'filled' && why !== 'released') r.stopped = true;
     const gained = Math.max(0, (r.mag ?? r.from) - r.from);
     this.reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
                             from: r.from, to: r.mag, cap: r.cap, gained, slot: r.slot,
@@ -767,7 +809,8 @@ export class Ammo {
     // read as a defect in the log of every chain weapon anybody fires out of (review 2026-09-12).
     if (why === 'fired' && !this.reloadOutcome.filled) this.host.log(`reload cancelled by a shot: ${r.mag} of ${r.cap ?? r.mag} loaded`, 'li');
     else if (!gained) this.host.log(`reload did NOT take (${why}) — mag still ${r.mag}`, 'le');
-    else if (!this.reloadOutcome.filled) this.host.log(`reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
+    // a chain loads a shell a lever time (the gun's own: one shell a tap, bench 2026-11-14 SR16), so fewer shells is no fault
+    else if (!this.reloadOutcome.filled) this.host.log(r.chain ? `reload: ${gained} shell(s) loaded, ${r.from} → ${r.mag} of ${r.cap} (${why === 'timeout' ? 'the gun stopped feeding' : why})` : `reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
     // E10 review: GUN WAS ON under the RELOAD takeover is never seen and holds the lanes, so a moved reload shows it at its end
     // F542: a lever the gun spent on the full LAST-FIRED slot is silent, so the takeover on the weapon in hand times out.
     // That is no failed reload: the hint says why, in place of RELOAD DID NOT TAKE (engine.js `state().reloadFailed`).
@@ -788,15 +831,23 @@ export class Ammo {
       const r = this.reloading, to = this.host.softReloadWrite(r);
       if (to === 'wait') return;   // review 2026-11-06 M1: a pull in flight; its round ends the reload, else the write goes
       if (to == null) { this.endReload('dropped'); return; }
-      r.mag = to;
+      r.mag = to; r.shells = (r.shells || 0) + 1;
       // Tony 2026-11-07 (option a): a chain loads one shell a `reload_s` until the tube is full or the reserve is out. The next
       // shell is due one reload time from this one; a trigger pull (engine.js `_onButton`), ALT, a stun, death or a drop ends it.
       // Codex (chain review): the next shell is due one reload time after THIS one was due, not after the tick that wrote it (the
       // app ticks every 250 ms), so the chain keeps the reload's pace; a tick far behind does not let shells catch up in a burst.
-      if (r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.host.changed(); return; }
-      this.endReload('filled'); return;
+      // Bench 2026-11-14 (SR16): the chain goes on only while the lever is held, as the gun's own does.
+      const more = r.chain && (r.cap == null || to < r.cap) && this.prevReserve[r.slot] > 0;
+      if (more && r.releasedAt == null) { r.at = Math.max(r.at + r.ms, now - Math.floor(r.ms / 2)); r.lastGainAt = now; this.softWake(r); this.host.changed(); return; }
+      this.endReload(more ? 'released' : 'filled'); return;
     }
     if (this.reloading && now > this.reloadDeadline()) this.endReload('timeout');
+  }
+  /** Bench 2026-11-14: the phone's reload wrote on the 250 ms tick, so a chain's shells jittered 250 to 500 ms apart. A timer
+   *  now runs `reloadTick` when the next write is due; the tick stays the fallback (a write that must wait, a timer early). */
+  softWake(r) {
+    if (!this.host.delay) return;
+    this.host.delay(Math.max(0, r.at + r.ms - this.host.now()), () => { if (this.reloading === r) this.reloadTick(this.host.now()); });
   }
   /** F226 (bench 2026-11-01): a charge from a cell below one full charge locks the gun, and the lever does nothing
    *  for several seconds. The phone writes the reload itself (engine.js `_chargeLock`); this shows it on the HUD as a
