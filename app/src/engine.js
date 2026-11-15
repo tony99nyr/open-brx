@@ -172,6 +172,9 @@ export const SPAWN_RESEND_WAIT_MS = 1500; // a re-send's own answer gets this lo
 // Review r1: the check holds a 0-pool death at most this long from the first lost write. Past it the pool books as it
 // always did (the auto-respawn is the cure), so a gun that never answers can never leave an undying player at 0.
 export const SPAWN_CHECK_MAX_MS = 8000;
+/** Bench 2026-11-14: how long a 0 pool after our own failed spawn/revive write (`_writeBugged`) is held as no death. Time
+ *  for the host to RESYNC GUN or FORCE RESPAWN. Never an undying player: after it, a 0 pool books as usual. */
+export const WRITE_BUG_HOLD_MS = 60000;
 /** F493 r4: the most link-down time one spawn check is credited (`_spawnCheckLive`). The window does not age while the
  *  link is down, but a gun that never comes back still ends the check, and the HOST: FORCE RESPAWN warning with it. */
 export const SPAWN_CHECK_LINK_CREDIT_MAX_MS = 60000;
@@ -1823,6 +1826,7 @@ export class Engine {
     }
     this._writeLost = life;
     this._writeBug = { life, at: burst && burst.reachedAt != null ? burst.reachedAt : this.now() };
+    if (this._spawnCheck && this._spawnCheck.life === life) this._spawnCheck = null;   // review: an earlier loss's check must not re-send it
     this.log(`*** BUG: write ${why} failed on a code error (${error || 'unknown'}). No re-send: it would hit the same bug. `
       + 'The player stays up; no death is booked without a hit. HOST: RESYNC GUN or FORCE RESPAWN ***', 'le');
     this._spawnLanded({ life, frames, why });   // the repair still ends spawn protection and restores the hit table (F11)
@@ -2141,7 +2145,10 @@ export class Engine {
   _spawnIntercept() {
     // Bench 2026-11-14: our own write threw, so a 0 pool with no hit since is the gun we failed to spawn, not a death.
     const bug = this._writeBug;
-    if (bug && bug.life === this._lifeSeq && this.phase === 'live' && !((this.hp || 0) > 0) && !((this.lastHitAt || 0) > bug.at)) {
+    // The hold ends on a real hit, on the gun's first positive health (`_hpTakePools`: it did spawn, so poison and every
+    // other death count as usual), or after WRITE_BUG_HOLD_MS (review: astra, never an undying player).
+    if (bug && bug.life === this._lifeSeq && this.phase === 'live' && !((this.hp || 0) > 0) && !((this.lastHitAt || 0) > bug.at)
+      && this.now() - bug.at < WRITE_BUG_HOLD_MS) {
       this.log('BUG hold: a 0 pool after our own failed spawn/revive write is no death (HOST: RESYNC GUN or FORCE RESPAWN)', 'le');
       return true;
     }
@@ -7321,6 +7328,7 @@ export class Engine {
     const prev = { hp: this._prevHp, armor: this._prevArmor, shield: this._prevShield };   // the last frame's pools, read by the steps (never the live fields)
     const movedPool = hp !== prev.hp ? 'health' : armor !== prev.armor ? 'armor' : shield !== prev.shield ? 'shield' : null;
     this.hp = hp; this.armor = armor; this.shield = shield;
+    if (hp > 0 && this._writeBug) this._writeBug = null;   // bench 2026-11-14: the gun did spawn, so a later 0 pool is a death
     const dmg = Math.max(0, before - (hp + armor + shield));
     return { hp, armor, shield, solicited, fillAnswer, before, pools0, prev, movedPool, dmg, dotEcho: false, hurtNow: false, dl: null, hl: null, hitWeapon: null };
   }

@@ -576,3 +576,40 @@ test('part 4: the link\'s typed "code" outcome is honoured the same way', async 
   assert.equal(h.eng._spawnCheck, null);
   assert.equal(h.eng.statusBody().pool_stale, 'write_lost');
 });
+
+test('part 4 review: the hold ends on the gun\'s positive health, so a later 0 pool with no hit (poison) books the death', async () => {
+  const { h } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  revived(h); await new Promise(r => setImmediate(r));
+  h.frame('$HP,20,0,0,*');                    // part of the burst landed: the gun is up
+  h.frame('$HP,0,0,0,*');                     // a poison tick, no hit
+  assert.equal(h.eng.alive, false, 'a real death is booked');
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
+
+test('part 4 review: the hold ends after WRITE_BUG_HOLD_MS, never an undying player', async () => {
+  const { h } = bugRig(isRevive);
+  revived(h); await new Promise(r => setImmediate(r));
+  h.frame('$HP,0,0,0,*'); assert.equal(h.eng.alive, true, 'CONTROL: held at first');
+  h.adv(E.WRITE_BUG_HOLD_MS + 500);
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'the 0 pool books after the hold');
+});
+
+test('part 4 review: a code-faulted retry closes an earlier F416 check, so it cannot re-send', async () => {
+  const h = liveArmed();
+  const w0 = h.eng.writer; let n = 0;
+  h.eng.writer = (fr, why, o) => {
+    if (!isRevive(fr)) return w0(fr, why, o);
+    if (n++ === 0) return Promise.resolve(false);                           // the radio loses the first: F416 opens a check
+    o.onOutcome({ ok: false, kind: 'code', error: 'bug', faults: [] }); return Promise.resolve(false);
+  };
+  revived(h); await new Promise(r => setImmediate(r));
+  assert.ok(h.eng._spawnCheck, 'setup: the check is open');
+  for (let i = 0; i < 40 && n < 2; i++) { h.adv(250); h.frame('$HP,45,70,0,*'); h.frame('$LCD,45,70,0,1,3,24,*'); await new Promise(r => setImmediate(r)); }
+  assert.equal(n, 2, 'setup: F416 re-sent once, and that re-send hit the code fault');
+  await new Promise(r => setImmediate(r));
+  assert.equal(h.eng._spawnCheck, null, 'the check is closed');
+  for (let i = 0; i < 40; i++) { h.adv(250); h.frame('$LCD,45,70,0,1,3,24,*'); await new Promise(r => setImmediate(r)); }
+  assert.equal(n, 2, 'no further re-send');
+});
