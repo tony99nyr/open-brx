@@ -731,7 +731,9 @@ function controlTick(now) {
   if (waiting) point.at = null;
   else if (!follows && _hillWaited && settings.hillStartsAt != null) point.at = settings.hillStartsAt;   // the first live step counts from go-live, as on the Stick
   _hillWaited = waiting;
-  let at = now, step = !waiting;
+  // Following, the followed game's own end (a whistle or end info heard, or 10 minutes of silence) holds the point
+  // until another live game takes the hill, as the Stick freezes it (bench H6, 2026-11-15).
+  let at = now, step = !waiting && !(follows && follower.current != null && follower.ended);
   if (step && !follows && settings.hillEndsAt != null && now >= settings.hillEndsAt) {
     if (point.at != null && point.at >= settings.hillEndsAt) step = false;
     else at = settings.hillEndsAt;

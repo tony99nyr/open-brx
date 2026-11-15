@@ -14,6 +14,8 @@
 #include "json_lite.h"
 #include "station_link.h"
 #include "station_persistence.h"
+#include "stick_state.h"
+#include "strip_roles.h"
 #include "check.h"
 
 
@@ -3239,10 +3241,126 @@ static void test_claim_gate_drops_a_pending_claim_on_a_game_switch() {
   CHECK(!g.resolve_batch().won);
 }
 
+// A following Stick hill (F658) on a strip, as the bench drove it: red owns game 41, then ends.
+struct FollowHillBench {
+  StationLink link;
+  PlayerPresence p;
+  ControlPoint ir;  // the bench IR point build_stick_state also reads (unused: an MC-armed hill)
+  HeldClock held;
+  uint32_t t = 0;
+  FollowHillBench() {
+    StationAssignment a;
+    a.present = true; a.kind = "control"; a.id = 9; a.team = 255; a.game = 41;
+    link.apply_station_config(a, 0);
+    p.key_by_game = true;
+  }
+  // `ms` of 250 ms ticks; each tick hears every player in `who`: {id, team, game, state, byte 11}
+  struct Who { uint8_t id, team, game, state, value; };
+  void run(uint32_t ms, std::initializer_list<Who> who) {
+    for (uint32_t k = 0; k < ms; k += 250) {
+      t += 250;
+      for (const Who& w : who) {
+        Advert d; d.role = contract::ADVERT_ROLE_PLAYER; d.scope_kinds = contract::ADVERT_SCOPE_KIND_CONTROL; d.scope = 1u << 9;
+        d.id = w.id; d.team = w.team; d.state = w.state; d.game = w.game; d.value = w.value;
+        p.observe(d, -50, t);
+      }
+      p.tick(t);
+      link.tick_players(p, t);
+      state();  // paint every tick, as the firmware does, so the HELD clock sees every step
+    }
+  }
+  StickState state() {
+    StickInputs in;
+    in.now_ms = t; in.link = &link; in.point = &ir;
+    return build_stick_state(in, held);
+  }
+};
+static constexpr uint8_t LIVE_ALIVE = contract::ADVERT_PLAYER_STATE_ALIVE | contract::ADVERT_PLAYER_STATE_LIVE;
+
+// Bench H6 (2026-11-15): after END a following Stick hill stayed `hill-owned` for 50 s and more. Its phones had ended
+// (no live bit, alive 0) and MC sent ends_in_ms:0, but tick_players thawed the hill on every tick while it followed. The
+// followed game's end (FollowEnd) now freezes the hill: the strip shows `hill-ended`, the screen MATCH OVER, nothing more
+// counts, and the A88 tally is final. The next live game still takes the hill at once.
+static void test_h6_a_following_hill_ends_with_its_game() {
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.follower().follows && b.link.hill().owner == 0);
+  CHECK(strip_role(b.state()) == StripRole::HILL_OWNED);
+  CHECK(b.link.in_live_play(b.t));
+  // END: the phone drops the live bit and goes down (HUD phase kitted), and MC sends ends_in_ms:0
+  b.run(2000, {{3, 0, 41, 0, 0}});
+  StationAssignment end = b.link.assignment(); end.starts_known = true; end.starts_in_ms = -20000; end.ends_in_ms = 0;
+  b.link.apply_station_config(end, b.t);
+  b.run(1000, {{3, 0, 41, 0, 0}});
+  CHECK(b.link.hill_ended());
+  StickState st = b.state();
+  CHECK(strip_role(st) == StripRole::HILL_ENDED);
+  const ScreenSpec spec = compute_screen(st);
+  CHECK(spec.kind == ScreenKind::HILL_HELD && spec.hill_team == 0 && spec.hill_note == "MATCH OVER");
+  CHECK(!b.link.in_live_play(b.t));  // the game is over: the /24 scan may run again
+  const uint32_t hold = b.link.hill().hold_ms[0], own = b.link.hill().own_ms[0];
+  // 60 s later, a blue phone that missed END (still live in game 41) on the point: an ended game counts nobody
+  b.run(60000, {{3, 0, 41, 0, 0}, {5, 1, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.hill_ended() && b.link.hill().owner == 0 && b.link.hill().progress == 100);
+  CHECK(b.link.hill().hold_ms[0] == hold && b.link.hill().own_ms[0] == own);
+  CHECK(strip_role(b.state()) == StripRole::HILL_ENDED);
+  // HT1-HT5 (A88): the follower still finalises the tally from the ended phone
+  TallyView tv[2];
+  CHECK(b.link.follower().tallies(b.link.hill(), b.t, tv) >= 1);
+  CHECK(tv[0].game == 41 && tv[0].final && tv[0].own_ms[0] > 5000);
+  // the next game goes live: the hill follows it at once, thawed, and counts again
+  b.run(3000, {{6, 1, 42, LIVE_ALIVE, 0}});
+  CHECK(!b.link.hill_ended() && b.link.hill_game() == 42);
+  CHECK(b.link.hill().capturing == 1 && b.link.hill().progress > 0);
+}
+
+// Tony 2026-11-15 (option 1; F554 scores an owned hill only while a living owner player is counted on it, not
+// contested): the strip pulses only while the owner scores, and the screen's HELD clock counts only that time.
+static void test_owned_hill_shows_scoring_only_while_the_owner_scores() {
+  FollowHillBench b;
+  b.run(20000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  CHECK(b.link.hill().owner == 0);
+  StickState st = b.state();
+  CHECK(st.control_scoring && strip_role(st) == StripRole::HILL_OWNED);
+  const std::string held_at_leave = st.control_hold_time;
+  CHECK(held_at_leave != "0:00");
+  // red leaves the point: still owned, but it scores nothing, so no pulse and the clock pauses
+  b.run(30000, {});
+  st = b.state();
+  CHECK(b.link.hill().owner == 0 && !st.control_scoring);
+  CHECK(strip_role(st) == StripRole::HILL_OWNED_IDLE);
+  std::vector<Rgb> lo(60), hi(60);
+  strip_render_role(st, 0, lo.data(), 60);
+  strip_render_role(st, STRIP_PULSE_MS / 2, hi.data(), 60);
+  CHECK(lo[0] == hi[0] && lo[0] == lo[59]);  // steady: no breath
+  std::vector<Rgb> pulse_hi(60);
+  StickState scoring = st; scoring.control_scoring = true;
+  strip_render_role(scoring, STRIP_PULSE_MS / 2, pulse_hi.data(), 60);
+  CHECK(pulse_hi[0].r > lo[0].r);  // dimmer than the scoring pulse's peak
+  const std::string paused = st.control_hold_time;  // the exit grace still counted red for a few seconds
+  CHECK(paused >= held_at_leave && paused <= "0:20");
+  b.run(10000, {});
+  st = b.state();
+  CHECK(st.control_hold_time == paused);  // 10 s more with nobody of the owner: the clock stands still
+  CHECK(compute_screen(st).kind == ScreenKind::HILL_HELD && compute_screen(st).hold_time == paused);
+  // red and blue on the point: contested keeps the two colours in turn, and the clock stays paused
+  b.run(5000, {{3, 0, 41, LIVE_ALIVE, 0}, {5, 1, 41, LIVE_ALIVE, 0}});
+  st = b.state();
+  CHECK(st.control_contested && !st.control_scoring && strip_role(st) == StripRole::HILL_CONTESTED);
+  CHECK(st.control_hold_time == paused);
+  // blue leaves, red scores again: the pulse and the clock come back
+  b.run(30000, {{3, 0, 41, LIVE_ALIVE, 0}});
+  st = b.state();
+  CHECK(st.control_scoring && strip_role(st) == StripRole::HILL_OWNED);
+  CHECK(st.control_hold_time > paused && st.control_hold_time <= "0:50");
+}
+
 int main(int argc, char** argv) {
   test_claim_gate_drops_a_pending_claim_on_a_game_switch();
   test_hill_ring_keeps_the_current_game_end();
   test_f658_hill_follows_the_live_game();
+  test_h6_a_following_hill_ends_with_its_game();
+  test_owned_hill_shows_scoring_only_while_the_owner_scores();
   test_f658_powerup_follows_the_live_game();
   test_f390_timed_powerup_rejoins_at_whistle_not_short_lock_expiry();
   test_f390_deadline_rejoin_for_each_station_kind();

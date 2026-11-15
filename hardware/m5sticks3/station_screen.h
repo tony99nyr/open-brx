@@ -308,7 +308,7 @@ struct StickState {
   bool bridge_beacon_live = false;  // BRIDGE only: a grenade beacon was heard recently (the advert is up)
   uint8_t control_owner = 255;  // contract::STATION_TEAM_ANY
   int control_progress_pct = 0;
-  std::string control_hold_time;  // "M:SS", pre-formatted by the .ino (it tracks "held since")
+  std::string control_hold_time;  // "M:SS", pre-formatted by stick_state.h: the time the owner SCORED since its capture
   // An MC-armed control station runs the Bluetooth hill (presence.h BleControlPoint) instead; these
   // carry what it measures and the IR hill cannot. control_owner/control_progress_pct above are its
   // owner and its progress then.
@@ -317,6 +317,9 @@ struct StickState {
   bool control_waiting = false;
   int control_bar_team = -1;  // advert byte 9 when not 255: the owner while held, else the team building it
   bool control_contested = false;
+  // F554: the owner scores, a living owner player counted on the point and no other team (hold_ms grows). The strip
+  // pulses only then (Tony 2026-11-15, option 1).
+  bool control_scoring = false;
   int control_dir = 0;        // +1 rising, -1 falling, 0 static
   int control_contest_a = -1;  // while contested: the two largest teams on the point (ties to the lower tid), else -1
   int control_contest_b = -1;

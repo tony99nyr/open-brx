@@ -1649,7 +1649,7 @@ class StationLink {
   // glue then clears the saved owner too).
   bool reset_hill() {
     if (!has_control_assignment()) return false;
-    if (hill_.frozen) return false;  // keep the finished match's recap tally
+    if (hill_.frozen && !follower_.follows) return false;  // keep the finished match's recap tally (following: a reset forgets every game, as before)
     hill_.reset();
     follower_.clear();  // F658: a reset forgets every game's tally (utility.js resetPoint)
     return true;
@@ -1664,9 +1664,15 @@ class StationLink {
   HillUpdate tick_players(const PlayerPresence& players, uint32_t now_ms) {
     HillUpdate u;
     if (has_control_assignment()) {
-      // F658: the follower first. Following, the live bit replaces MC's window: no wait, no whistle, no freeze.
+      // F658: the follower first. Following, the live bit replaces MC's window: no wait and no MC whistle. The followed
+      // game's own end (FollowEnd: a whistle or end info from its phones, or 10 minutes of silence) freezes the hill
+      // until another live game takes it (bench H6, 2026-11-15: thawing here every tick kept an ended hill owned).
       last_follow_ = follower_.step(hill_, players, now_ms, (uint8_t)assignment_.game, (int)assignment_.id);
       if (follower_.follows) {
+        if (follower_.has_current && follower_.end.ended) {
+          hill_.freeze();
+          return u;
+        }
         hill_.thaw();
         return hill_.update(players, now_ms, &last_follow_.filter);
       }
@@ -1766,6 +1772,7 @@ class StationLink {
   }
   bool following_live(uint32_t now_ms) const {
     if (has_control_assignment() && follower_.follows && follower_.has_current) {
+      if (follower_.end.ended) return false;  // the followed game ended here (H6)
       const HillGame* g = follower_.get(follower_.current);
       return g && (uint32_t)(now_ms - g->heard_at) <= FOLLOW_LIVE_PLAY_MS;
     }
@@ -1781,7 +1788,9 @@ class StationLink {
   // F658: a following powerup ignores MC's window (the live bit decides who claims), as a following hill does.
   bool powerup_ended() const { return has_powerup_assignment() && powerup_ended_ && !pu_follower_.follows; }
   bool hill_waiting(uint32_t now_ms) const {
-    return has_control_assignment() && !hill_live_ &&
+    // F658: a following hill waits for no MC START (the live bit is its window); without this a static hill that MC
+    // never started showed WAITING FOR START (and a neutral strip) while it counted
+    return has_control_assignment() && !follower_.follows && !hill_live_ &&
            (duration_restore_wait_ || (!hill_.frozen && (!starts_known_ || (int32_t)(now_ms - hill_starts_ms_) < 0)));
   }
   void enforce_restored_hill_freeze() {
