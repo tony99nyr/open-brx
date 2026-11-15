@@ -93,7 +93,13 @@ node --test test/transport.test.mjs     # the wire (needs ../.venv for the integ
                                          #    single `node --test test/` can clash on resources)
 node --test test/beacon.test.mjs        # the utility-item advert codec + presence
 npm run ui:screens                      # screen truth: what a person sees, per state (tools/README.md)
+npm run typecheck:null                  # strict-null check of src/ against null-baseline.json (the app-null job)
 ```
+
+**The strict-null gate** (bench 2026-11-14: a null `bindAt` broke every revive in 0.4.41). `tools/null-gate.mjs` runs
+`tsc` with `strictNullChecks` over `src/` and counts the errors per file, code and message. A count above
+`null-baseline.json` fails. Fix a new error; do not add it to the baseline. After you fix old errors, run
+`node tools/null-gate.mjs --update` and commit the smaller baseline.
 
 **Reviewing or changing a screen?** Start `npm run ui:stage`, jump to the state, and add a `screens.mjs` step
 that fails before the fix (see `docs/hud-review-2026-09-03.md` for how the last review was run).

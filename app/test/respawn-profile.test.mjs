@@ -491,3 +491,27 @@ test('spawn wait (brx1 review): a $SPAWN the link sends 300 ms after the hand-of
   assert.ok(Math.abs(queued - now - 300) <= 10, `ready ${now} ms after an immediate send, ${queued} ms after a 300 ms queue`);
   assert.ok(now >= SPAWN_WAIT_MS + E.GUN_SPAWN_AIR_MS, `never before the gun's wait plus the air time (${now} ms)`);
 });
+
+// Bench 2026-11-14 (0.4.41): every timed revive failed and the player looped through deaths. The revive burst holds the
+// trigger with `$BMAP,0,98`, and an engine `onFrameSent` hook read a null `bindAt` on that row. The timed-revive tests
+// used writers that never call `onFrameSent`, so none saw it. This writer reports each frame as BrxLink does
+// (brxlink.js: after each frame's chunks), and a throw stops the rest of the burst, as the 0.4.41 link did.
+test('timed revive (weapon delay 1500 ms) with a writer that reports each frame sent: the revive lands and the player stays up', () => {
+  const h = liveArmed();
+  assert.equal(RP.trigger_ms, 1500, 'setup: the golden weapon delay');
+  h.eng.writer = (fr, why, o) => {
+    for (const f of fr) { h.writes.push(f); h.timed.push([h.now(), f]); if (o && typeof o.onFrameSent === 'function') o.onFrameSent(f); }
+    return true;
+  };
+  const deaths0 = h.eng.deaths;
+  const n = revived(h);
+  const burst = h.since(n);
+  assert.ok(burst.includes(HELD), 'setup: the timed revive holds the trigger');
+  assert.ok(burst.includes('$SPAWN,,*'), `$SPAWN reached the gun: ${burst.join(' ')}`);
+  h.adv(RP.trigger_ms + 1000);
+  assert.ok(h.since(n).includes(LIVE), 'the trigger is mapped once the weapon delay ends');
+  h.adv(20_000);
+  assert.equal(h.eng.alive, true, 'the player stays up');
+  assert.equal(h.eng.deaths, deaths0 + 1, 'one death, not a loop of them');
+  assert.equal(h.since(n).filter(f => f === '$SPAWN,,*').length, 1, 'one revive, not a re-send loop');
+});

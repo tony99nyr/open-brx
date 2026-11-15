@@ -830,6 +830,10 @@ export class Engine {
     // `_clockRebase` reads only `clockOffset`, never `now()`, so this cannot recurse.
     this.writer = writer; this.emitFact = emit; this.report = report; this.now = () => (this._clockRebase(), now()); this.isSynced = synced;
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
+    // Typed here so strict-null checks see them always set (the reset below fills them again; null gate, 2026-11-14)
+    /** @type {Record<number, number>} */ this._buttonUpAt = {};
+    /** @type {Record<number, boolean>} */ this._bounced = {};
+    /** @type {Record<number, number>} */ this.held = {};
     this._ann = new Announcer(() => this.now(), m => this.log(m, 'li'));   // docs/announcer.md: one line or banner at a time, on this clock
     // docs/announcer.md: the ONE model of the gun's audio FIFO, and the queue of `$PLAY` writes that feeds it (play-queue.js)
     this._gun = new PlayQueue({ now: () => this.now(), delay: (ms, fn) => this.delay(ms, fn), log: m => this.log(m, 'li'),

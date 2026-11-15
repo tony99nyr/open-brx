@@ -27,7 +27,8 @@
     "ui:moments": "npm run build && node tools/moments.mjs",
     "ui:stage": "npm run build && node tools/stage.mjs",
     "ui:screens": "npm run build && node tools/screens.mjs",
-    "ui:logsync": "npm run build && node tools/logsync-gate.mjs"
+    "ui:logsync": "npm run build && node tools/logsync-gate.mjs",
+    "typecheck:null": "node tools/null-gate.mjs"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",

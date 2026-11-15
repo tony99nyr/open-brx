@@ -93,6 +93,8 @@ const REGISTRY = [
   { name: 'mc-vitest', cwd: 'webapp/mc', secs: 19, tasks: 100, inputs: [...MC, ...MC_CASES, ...WEB_LOCK],
     sized: s => ({ cmd: ['npx', 'vitest', 'run', `--maxWorkers=${s.vitestW}`], mb: 300 + 300 * s.vitestW, cores: s.vitestW }) },
   { name: 'app-tsc', cwd: 'app', cmd: ['npx', 'tsc', '--noEmit'], mb: 350, secs: 1, inputs: ['app/', ...APP_LOCK] },
+  // Bench 2026-11-14: strictNullChecks over all of app/src against app/null-baseline.json (app/tools/null-gate.mjs)
+  { name: 'app-null', cwd: 'app', cmd: ['node', 'tools/null-gate.mjs'], mb: 500, secs: 4, inputs: ['app/', ...APP_LOCK] },
   // The root already built shared app/www. The prebuilt form avoids rewriting it under parallel readers, and a
   // private shots dir keeps this focused A38 browser pass isolated from the full app-screens job.
   { name: 'app-test', cwd: 'app', cmd: ['npm', 'run', 'test:prebuilt'], www: true, mb: 550, secs: 15, tasks: TASK_ALLOWANCES.appTest, libs: [SERVER, BUNDLES],
