@@ -2009,6 +2009,9 @@ class StationLink {
       if (a.ends_in_ms != 0) hill_.thaw();
     }
     if (a.ends_in_ms == 0) hill_.freeze();
+    // brx1 2026-11-15: following, MC's END for the followed game ends it here (FollowEnd), so tick_players keeps the hill
+    // frozen; without it the next tick thaws a hill that heard no phone at END. MC's END for another game is ignored.
+    if (a.kind == "control" && a.ends_in_ms == 0) follower_.end_by_mc((uint8_t)a.game, received_at_ms);
     // F386 for a pickup: END/recap/RECALL (`ends_in_ms:0`) freezes the schedule into MATCH OVER, the
     // same edge the hill above reads off the same field. A config carrying a fresh START (`starts_known`)
     // is a new match clock, whatever kind the station is, so it lifts the freeze; either edge beats the

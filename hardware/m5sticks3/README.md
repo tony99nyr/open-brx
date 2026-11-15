@@ -77,7 +77,8 @@ advert only then (`engine.js _hillSourceAllowed`); under `grenade` it follows th
 A Stick hill set up once plays every following game with no walk-out, no Wi-Fi and no re-arm. Player phones on an app with F658
 set the `live` bit (advert byte 10, 128) from go-live to the whistle. Once the hill hears any live-bit player it
 follows the newest live game (`presence.h` `HillFollower`, the same rules as `control.js`): it counts only live-bit
-players of that game, advertises that game's byte, and ignores MC's timing (no WAITING, no MATCH OVER freeze). It
+players of that game, advertises that game's byte, and ignores MC's go-live and deadline (no WAITING). It freezes at MATCH OVER when the
+followed game ends here: a whistle or end info heard from a phone of it, or MC's END for that game's byte. It
 keeps one tally per game byte, four at most; a byte unheard for 10 minutes starts fresh. Presence is keyed by game
 and player number while a hill is assigned. The ring is saved in NVS as `hill_ring` (`encode_hill_ring`) when follow
 mode starts, on a game switch, on a change of owner and at most every 30 s while the tally grows, and restored at boot

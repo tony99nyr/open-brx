@@ -101,6 +101,28 @@ test('F658 review: MC re-arms a following hill as another id: the point and the 
   await api.applyStationConfig({ ...hill, game: 60 });   // back to id 9 for the tests after this one
 });
 
+test('MC END for the followed game ends it at a hill that heard no phone at END; MC END for another game does not', async () => {
+  await api.applyStationConfig({ ...hill, game: 74 });
+  stand(15000, [{ id: 3, team: RED, game: 75, live: true }]);
+  assert.equal(airGame(), 75);
+  assert.equal(api.point.owner, RED, 'red owns game 75');
+  stand(3000, []);   // red walks out of earshot, still live: no whistle heard here
+  await api.applyStationConfig({ ...hill, game: 74, starts_in_ms: -20000, ends_in_ms: 0 });
+  stand(1000, [{ id: 5, team: BLUE, game: 75, live: true }]);
+  assert.equal(api.point.contested, true, "MC's END for game 74 says nothing about game 75");
+  await api.applyStationConfig({ ...hill, game: 75, starts_in_ms: -20000, ends_in_ms: 0 });
+  const own = api.point.ownMs[RED];
+  stand(20000, [{ id: 5, team: BLUE, game: 75, live: true }]);
+  assert.equal(api.point.owner, RED, 'blue, still live in the ended game, drains nothing');
+  assert.equal(api.point.progress, 100);
+  assert.equal(api.point.ownMs[RED], own, 'the ended game banks no more');
+  stand(3000, [{ id: 6, team: BLUE, game: 76, live: true }]);
+  assert.equal(airGame(), 76, 'the next live game takes the hill');
+  assert.equal(api.point.capturing, BLUE, 'and counts at once');
+  await api.applyStationConfig({ ...hill, id: 10, game: 77 });   // another id forgets every game, for the tests after this one
+  await api.applyStationConfig({ ...hill, game: 77 });
+});
+
 test('bench H6: once the followed game ends here, a phone that missed END builds nothing until another live game takes the hill', async () => {
   await api.applyStationConfig({ ...hill, game: 70 });
   stand(15000, [{ id: 3, team: RED, game: 71, live: true }]);

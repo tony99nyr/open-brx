@@ -705,8 +705,11 @@ every following game with no walk-out, no Wi-Fi and no re-arm.**
    ends at the station when either:
    - a player the station heard live in that game advertises without the live bit (its whistle). A countdown phone
      was never heard live, so it cannot end a game. A phone that missed MC's END still drops the bit at its own time
-     limit; or
-   - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes).
+     limit;
+   - for a hill, MC's END (`ends_in_ms: 0`) names that game's byte (brx1 2026-11-15). This ends the game at a hill
+     that heard no phone at END. MC's END for another byte, or for game 0, is ignored; or
+   - no live player of the game has been heard for `HILL_RING_STALE_MS` (10 minutes), and another live game is
+     heard. Silence alone never ends a game.
    Only an in-scope advert of the current game's own byte counts, so no advert of another game can end it, however
    strong. Once the current game has ended, the strongest other live game takes the station at once, so the next
    game loses no time. The end evidence is saved with the follower, so a restart keeps it; after a power-on every
