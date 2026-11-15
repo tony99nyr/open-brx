@@ -104,3 +104,32 @@ def test_sr8_energy_rifle_lock_holds_on_either_slot_and_the_lever_vents():
         st._reload_pulled(lever=True)
         assert st.reloading is None and any("lever vents the heat" in l["text"] for l in st.log)
     asyncio.run(go())
+
+
+def test_polish_r1_a_part_vented_energy_rifle_stays_locked_until_0():
+    """ammo.js `ventLocked` (polish r1; bench SR8): 65 after one vent is still a lock, and it does not cool; 0 ends it."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}, {"weapon_id": "usp"}]}}
+        st._on_ammo(201, 600, 0, 101)
+        st._on_ammo(201, 600, 0, 65)
+        clock.t += 20.0
+        assert st._heat_blocks_fire(), "20 s on, 65 is still a lock"
+        st.ammo = 20
+        st._reload_pulled(lever=True)
+        assert st.reloading is None and any("lever vents the heat" in l["text"] for l in st.log)
+        st._on_ammo(201, 600, 0, 0)
+        assert not st._heat_blocks_fire(), "vented to 0: the lock is over"
+    asyncio.run(go())
+
+
+def test_polish_r1_easy_reload_alt_vents_the_energy_rifle():
+    """ammo.js `reloadPulled` (polish r1): on a one-weapon Easy Reload kit ALT holds fn 97, so ALT vents with no takeover."""
+    async def go():
+        clock = StageClock(); st, _sent = _st(clock)
+        st.player = {"loadout": {"weapons": [{"weapon_id": "energy_rifle"}], "overrides": {"easy_reload": True}}}
+        st._on_ammo(201, 600, 0, 101)
+        st.ammo = 20
+        st._reload_pulled()
+        assert st.reloading is None and any("ALT vents the heat" in l["text"] for l in st.log), [l["text"] for l in st.log]
+    asyncio.run(go())

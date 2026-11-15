@@ -1146,8 +1146,7 @@ class GunStage:
         # are what the gun last REPORTED ($ALCD), None until it has.
         self.reloading: dict | None = None
         self.reload_outcome: dict | None = None    # F123: how the last takeover ended (engine.js `_reloadOutcome`)
-        self._button_up_at: dict[int, float] = {}  # engine.js `_buttonUpAt`: $BUT id -> its last release (bench 2026-11-14)
-        self._bounced: dict[int, bool] = {}        # engine.js `_bounced`: a bounced press waits for its own release
+        self._button_up: dict[int, tuple[float, float | None]] = {}   # engine.js `_buttonUp`: $BUT id -> (release, press it ended)
         self.held: dict[int, float] = {}           # F123: $BUT id -> the now() of the press still down (engine.js `held`)
         self.last_button: dict | None = None       # the last $BUT edge either way (engine.js `lastButton`)
         self.switching: dict | None = None         # {at, from} while an ALT weapon swap is in flight (engine.js `switching`)
@@ -1189,6 +1188,7 @@ class GunStage:
         self._acc_hold_why: str | None = None
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
         self.heat_by_slot: dict[int, int] = {}     # per weapon slot ($ALCD token 5): last heat seen (engine.js `heatBySlot`)
+        self._vent_lock: int | None = None         # ammo.js `ventLock` (polish r1): the slot whose Energy Rifle lock is on
         self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (ammo.js `heatAt`)
         # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
         self.stunned: StunnedState | None = None
@@ -2341,6 +2341,8 @@ class GunStage:
         heat token has reached HEAT_LOCKOUT -- UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S),
         since a locked-out weapon sends none while it cools and a stuck reading must not gate the trigger
         forever. ammo.js also has `overheatOnHud`, the 6 s DISPLAY window; the stage draws no HUD."""
+        if self._vent_locked():
+            return True   # ammo.js `heatBlocksFire` (polish r1): a part-vented Energy Rifle (65) is still locked
         h = self._heat_now()   # ammo.js `heatBlocksFire` (bench 2026-11-14, SR7/SR8): ONE heat value for both slots
         if h is None or h[1] < self.HEAT_LOCKOUT:
             return False
@@ -2364,11 +2366,22 @@ class GunStage:
         rpc = row.get("rounds_per_charge")
         return rpc is not None and float(rpc) > 1
 
+    def _heat_vents(self, slot: int) -> bool:
+        """ammo.js `heatVents` (polish r1): an energy weapon that does not cool (the Energy Rifle): only the lever vents it."""
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[slot] if 0 <= slot < len(ws) else None) or {}
+        if not w.get("weapon_id"):
+            return False
+        row = self._catalog_row("weapon_catalog", "weapon_id", w.get("weapon_id")) or {}
+        return is_energy_class(row.get("weapon_class"), w.get("weapon_id")) and not self._heat_cools(slot)
+
     def _lever_vents(self) -> bool:
         """ammo.js `leverVents` (bench 2026-11-14, SR8): on the Energy Rifle a lever with any heat vents it; no reload."""
         slot = self.active_slot
         if not self._active_weapon_is_energy() or self._heat_cools(slot):
             return False
+        if self._vent_locked():
+            return True   # polish r1: the lock holds at 65 and does not cool, so the next press vents too
         h = self._heat_now()
         if h is None:
             return False
@@ -3999,11 +4012,11 @@ class GunStage:
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
         self._shield_gave_up = False; self._shield_quiet_at = self.now()
         self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0 (the recoil model was armed for it at the queue). Both ammo maps were reset (stun snapshot, polish 2026-09-11) by `_forget_counts` before the burst (bug 3 r1 M2)
-        self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
+        self.heat_by_slot = {}; self._heat_at = {}; self._vent_lock = None    # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
         # `reload_outcome` on the page to be read as this life's (polish review 2026-09-12).
-        self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None; self._bind_due = None
+        self.reloading = None; self.reload_outcome = None; self.held = {}; self._button_up = {}; self.switching = None; self._bind_due = None
         if not keep_poison:   # F438 polish r1 (engine.js `_revive` `selfHit`): a self-hit revive is the same life
             self._poison_clear("new life")          # S16: a stack never survives a life (engine.js `_spawn`/`_revive`)
             self._smoke_clear("new life"); self.gun_acc = None; self._acc_zero_at = None; self._smoke_hir_at = None   # S53
@@ -4079,7 +4092,7 @@ class GunStage:
         await self.write(self.bundle["end"], "end")
         self._arm_pending = None; self._trigger_pending = None   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None; self._mag_query = None   # F15/S16: the end frames own the gun now (F542: and no query callback outlives the match)
-        self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None; self._bind_due = None   # engine.js `_endLocal`: the whole takeover goes with the match
+        self.reloading = None; self.reload_outcome = None; self.held = {}; self._button_up = {}; self.switching = None; self._bind_due = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._recoil = None                        # S42 (engine.js `_endLocal`): no more life to drive accuracy for
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
         self._ann.clear(); self._gun_audio.clear()   # engine.js `_endLocal`: no queued pool line, nor the old audio model
@@ -4095,7 +4108,7 @@ class GunStage:
         await self.write(self.bundle["panic"], "PANIC")
         self._arm_pending = None; self._trigger_pending = None   # F209
         self.spawned = False; self.alive = False; self.stunned = None; self.poison = None; self._mag_query = None   # S16: no life left to tick
-        self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None; self._bind_due = None
+        self.reloading = None; self.reload_outcome = None; self.held = {}; self._button_up = {}; self.switching = None; self._bind_due = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
         self._ann.clear(); self._gun_audio.clear()   # engine.js `control` panic
         self._light_gen += 1
@@ -4369,7 +4382,7 @@ class GunStage:
             self._light_gen += 1
             self._gun_other = None; self._bmap_sent = None
             self._end_reload("dropped")            # engine.js `onBleDropped`: no link, no ammo echo -- the takeover would be fiction
-            self.switching = None; self._bind_due = None; self.held = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
+            self.switching = None; self._bind_due = None; self.held = {}; self._button_up = {}   # `_on_button` keeps the FIRST edge, so a press whose release never arrived would read as held forever
             self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
             self._cure = None; self._query_at = 0.0; self._mag_query = None; self._operator_resync_pending = None   # F264/F287: no link, no answer -- an ask in flight can never resolve
             self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
@@ -4380,7 +4393,7 @@ class GunStage:
             self._log(f"link lost: {e}", "warn"); self.connected = False
             self._gun_other = None; self._bmap_sent = None
             self._end_reload("dropped")            # same drop, discovered a different way: same takeover verdict
-            self.switching = None; self._bind_due = None; self.held = {}
+            self.switching = None; self._bind_due = None; self.held = {}; self._button_up = {}
             self._hill_reset()
             self._cure = None; self._query_at = 0.0; self._mag_query = None; self._operator_resync_pending = None   # F264/F287: same drop, discovered a different way
             return []
@@ -5558,7 +5571,7 @@ class GunStage:
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0   # S29: the heartbeat stops with the life
         self._shield_fill_at = 0.0                                   # engine.js X3: a dead gun holds no shield, so no fill is in flight
         self._gun_other = None   # ammo.js `dropReload` (review 2026-11-06 r2)
-        self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None; self._bind_due = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
+        self.reloading = None; self.reload_outcome = None; self.held = {}; self._button_up = {}; self.switching = None; self._bind_due = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
         self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
         # S16 (engine.js `_death`): a death straight after our own poison tick, with no newer DAMAGING hit behind
         # it, is the TICK's kill, credited to whoever last applied the poison. The stage keeps no MC facts
@@ -5943,11 +5956,18 @@ class GunStage:
         if heat is not None:
             self.heat_by_slot[slot] = heat
             self._heat_at[slot] = self.now()
+            if heat >= self.HEAT_LOCKOUT and self._heat_vents(slot):   # ammo.js `noteHeat` (polish r1): the lock latches
+                self._vent_lock = slot
+            elif heat <= 0:
+                self._vent_lock = None
         # F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0`
         # (hardware-UNVERIFIED either way). Recording it would make the restore re-send 0 -- disarmed for life.
         if self.stunned:
             self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
             return
+        prev_v = self._prev_ammo.get(slot)
+        if self._vent_lock is not None and prev_v is not None and mag < prev_v:
+            self._vent_lock = None   # ammo.js `heatLockFrame` (polish r1): it fired, so it is not locked
         if not lcd and slot in self._disarm_note and not self._acct_echoing(slot):
             del self._disarm_note[slot]   # ammo.js `onAmmo`: the gun's own word after the disarm replaces its note
         # F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside
@@ -6135,17 +6155,20 @@ class GunStage:
         if bid is None:
             return
         now = self.now()
-        up = self._button_up_at.get(bid)
-        if (state == 1 and bid in (1, 2) and bid not in self.held and up is not None
-                and round((now - up) * 1000) < round(BUTTON_BOUNCE_S * 1000)):   # engine.js `_onButton`: contact bounce
-            self._bounced[bid] = True
-            self._log(f"{'ALT' if bid == 1 else 'lever'} bounce ignored: a press {round((now - up) * 1000)} ms after its release", "info")
-            return
-        if state == 0 and self._bounced.pop(bid, False):   # the bounce's own release
-            self._button_up_at[bid] = now
+        up = self._button_up.get(bid)
+        # engine.js `_onButton` (polish r1): a press inside the bounce window undoes its release (the button is held again from
+        # its first press, a held lever keeps its chain), and a clock step back is no bounce
+        if (state == 1 and bid in (1, 2) and bid not in self.held and up is not None and now >= up[0]
+                and round((now - up[0]) * 1000) < round(BUTTON_BOUNCE_S * 1000)):
+            del self._button_up[bid]
+            if up[1] is not None:
+                self.held[bid] = up[1]
+            if bid == 2:
+                self._reload_unreleased()
+            self._log(f"{'ALT' if bid == 1 else 'lever'} bounce ignored: a press {round((now - up[0]) * 1000)} ms after its release", "info")
             return
         if state == 0:
-            self._button_up_at[bid] = now
+            self._button_up[bid] = (now, self.held.get(bid))
         if state == 1:
             self.held.setdefault(bid, now)
             self.last_button = {"id": bid, "state": 1, "at": now, "held_s": None}
@@ -7150,9 +7173,10 @@ class GunStage:
         if wait > 0:
             self._log(f"reload pull ignored: the gun's spawn wait ({math.ceil(wait * 1000)} ms left)", "info")
             return
-        if lever and self._lever_vents():   # ammo.js `reloadPulled` (SR8): the Energy Rifle's lever vents the heat
+        easy_alt = self._alt_reloads()   # ammo.js `reloadPulled` (polish r1): the button on fn 97 vents (ALT on Easy Reload)
+        if (not easy_alt if lever else easy_alt) and self._lever_vents():   # (SR8): the Energy Rifle's reload vents the heat
             h = self._heat_now()
-            self._log(f"lever vents the heat ({h[1] if h else '?'}); no reload", "info")
+            self._log(f"{'lever' if lever else 'ALT'} vents the heat ({h[1] if h else '?'}); no reload", "info")
             return
         self._lever_at = self.now()   # ammo.js `reloadPulled`: a refused pull still makes the gun reload a slot
         if self.stunned:
@@ -7290,6 +7314,8 @@ class GunStage:
                 r["in_flight"] = False
         if ok is False or refused[0]:
             self._soft_reload_unwrite(slot, mag, res, to, left, life, gen, until0)
+        if r is not None and r.get("chain") and r.get("released_at") is not None and self.reloading is r:
+            self._reload_tick()   # engine.js `_softReloadWrite` (polish r1): a release while it flew ends the chain now
 
     def _soft_reload_unwrite(self, slot: int, mag: int, res: int, to: int, left: int, life: int, gen: int | None,
                              until0: float | None = None) -> None:
@@ -7526,7 +7552,10 @@ class GunStage:
         give = min(cap - mag, res); to = mag + give; left = res - give
         self._log(f"charge lock on slot {slot}: cell {mag} below a {cost}-round charge, heat {heat}: reloading for the player {mag} -> {to}, reserve {res} -> {left} (F226)", "info")
         a0 = self._shot_acct.get(slot); until0 = a0["echo_until"] if a0 else 0.0
-        self._acct_wrote(slot, to, left)
+        # engine.js `_chargeLock` (polish r1): the `$WEAP`'s reset echo (its clip, t17) comes back first, so book it
+        weap = next((f for f in self.bundle.get("head") or [] if isinstance(f, str) and f.startswith(f"$WEAP,{slot},")), None)
+        reset_t = weap.split(",")[17] if weap and len(weap.split(",")) > 17 else ""
+        self._acct_wrote(slot, to, left, weap is not None, int(reset_t) if reset_t.lstrip("-").isdigit() else None)
         own = (self._life_queued, (self._shot_acct.get(slot) or {}).get("echo_gen"), until0)
         self._spawn_task(self._charge_lock_send(slot, mag, res, to, left, own))
         self._hold_accuracy_writes("F226 reload")
@@ -7577,14 +7606,36 @@ class GunStage:
         if not r:
             return
         r["released_at"] = now
-        if r.get("soft") and r.get("chain") and r.get("shells", 0) > 0 and not r.get("in_flight"):
-            self._end_reload("filled" if r["cap"] is not None and r["mag"] >= r["cap"] else "released")
+        # ammo.js `reloadReleased` (polish r1): a press inside the bounce window undoes the release, so the chain ends in
+        # `_reload_tick` once the window has passed and no shell is on the link
+        if r.get("soft") and r.get("chain"):
+            self._spawn_task(self._reload_release_wake(r))
+
+    def _reload_unreleased(self) -> None:
+        """ammo.js `reloadUnreleased` (polish r1): the lever's last release was contact bounce, so it is still held."""
+        if self.reloading:
+            self.reloading["released_at"] = None
+
+    def _vent_locked(self) -> bool:
+        """ammo.js `ventLocked` (polish r1): the Energy Rifle's lock holds until a reading of 0 or a round fired."""
+        return self._vent_lock is not None
+
+    async def _reload_release_wake(self, r: dict) -> None:
+        """ammo.js `reloadReleased`'s wake: run the tick once the bounce window has passed."""
+        await self.sleep(BUTTON_BOUNCE_S)
+        if self.reloading is r:
+            self._reload_tick()
 
     def _reload_tick(self) -> None:
         """ammo.js `reloadTick`: a takeover the gun stopped feeding ends on its deadline. Called from
         `poll()` (the stage's tick) so a hand-driven clock reaches the timeout without the watchdog task."""
         if self.reloading and self.reloading.get("auto") and self.now() >= self.reloading["at"] + self.reloading["s"]:
             self._end_reload("filled")   # F226: the phone's own reload (ammo.js `reloadTick`)
+            return
+        r = self.reloading   # ammo.js `reloadTick` (polish r1): a released chain ends before its next shell is written
+        if (r and r.get("soft") and r.get("chain") and r.get("shells", 0) > 0 and r.get("released_at") is not None
+                and not r.get("in_flight") and round((self.now() - r["released_at"]) * 1000) >= round(BUTTON_BOUNCE_S * 1000)):
+            self._end_reload("filled" if r["cap"] is not None and r["mag"] >= r["cap"] else "released")
             return
         if self.reloading and self.reloading.get("soft") and self.now() >= self.reloading["at"] + self.reloading["s"]:
             r = self.reloading; to = self._soft_reload_write(r)   # F650 (ammo.js `reloadTick`)

@@ -587,6 +587,37 @@ test('part 4 review: the hold ends on the gun\'s positive health, so a later 0 p
   assert.equal(h.eng.deaths, deaths0 + 2);
 });
 
+// Polish r1 (brx4; Codex): the hold ended only on a positive `$HP` that came after the failed write settled. An `$LCD` with
+// health (the burst's `$QUERY` answer), or an `$HP` that came first, left a later 0 pool held for up to a minute.
+test('part 4 review: positive health from an $LCD ends the hold', async () => {
+  const { h } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  revived(h); await new Promise(r => setImmediate(r));
+  h.frame('$LCD,20,0,0,0,30,90,*');           // the gun reports health: it did spawn
+  h.frame('$HP,0,0,0,*');                     // a poison tick, no hit
+  assert.equal(h.eng.alive, false, 'a real death is booked');
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
+test('part 4 review: positive health before the failed write settles ends the hold', async () => {
+  const { h } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  revived(h);
+  h.frame('$HP,20,0,0,*');                    // the gun is up before the writer reports the fault
+  await new Promise(r => setImmediate(r));
+  assert.ok(h.eng._writeBug, 'setup: the fault was booked after the health report');
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'a real death is booked');
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
+test('part 4 review: a real hit in the same ms as the failed write still books the death', async () => {
+  const { h } = bugRig(isRevive);
+  const deaths0 = h.eng.deaths;
+  revived(h); await new Promise(r => setImmediate(r));
+  assert.equal(h.eng.lastHitAt != null && h.eng._writeBug && h.eng.now() === h.eng._writeBug.at, true, 'setup: no time has passed');
+  h.die();                                                   // a hit, then 0, in the same ms
+  assert.equal(h.eng.alive, false);
+  assert.equal(h.eng.deaths, deaths0 + 2);
+});
 test('part 4 review: the hold ends after WRITE_BUG_HOLD_MS, never an undying player', async () => {
   const { h } = bugRig(isRevive);
   revived(h); await new Promise(r => setImmediate(r));

@@ -3032,6 +3032,32 @@ test('lever bounce: a reload pull 2 ms after the release does not restart the re
   assert.equal(logs.filter(m => m.includes('lever bounce ignored')).length, 1, logs.join('\n'));
 });
 
+// Polish r1 (brx4; Codex + Opus): a bounced press whose own release the link lost (7 of 1068 lost on 2026-11-01) left a marker
+// that ate the NEXT real release, so the lever read as held for ever (a Shotgun chain then ran to a full tube).
+test('lever bounce: a lost bounce release does not eat the next real release', () => {
+  const h = goLive(harness());
+  h.frame('$ALCD,10,100,0,192,0,*');
+  h.frame('$BUT,2,1,*'); h.adv(120); h.frame('$BUT,2,0,*');
+  h.adv(2); h.frame('$BUT,2,1,*');                           // bounce; its release never arrives
+  h.adv(2000); h.frame('$BUT,2,1,*'); h.adv(100); h.frame('$BUT,2,0,*');
+  assert.deepEqual(h.eng.held, {}, 'the real release let the lever go');
+});
+// Polish r1 (brx4; Codex + Opus): `now()` is the MC-synced clock and can step back. A press after a step back read a
+// negative time since the release, under BUTTON_BOUNCE_MS, and was dropped as bounce: a real ALT did nothing.
+test('ALT bounce: a clock step back between the release and a real press is no bounce', () => {
+  const h = twoWeapons(goLive(harness())), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.eng._pulledLife = h.eng._lifeSeq;
+  const from = h.eng.activeSlot;
+  h.frame('$BUT,1,1,*'); h.adv(90); h.frame('$BUT,1,0,*');
+  h.adv(3000); h.eng.tick();
+  assert.notEqual(h.eng.activeSlot, from, 'setup: one swap');
+  h.adv(-3100);                                              // the synced clock steps back past the release
+  h.frame('$BUT,1,1,*'); h.adv(90); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.activeSlot, from, 'the second ALT swapped back');
+  assert.equal(logs.filter(m => m.includes('bounce ignored')).length, 0, logs.filter(m => m.includes('bounce')).join('\n'));
+});
+
 test('switchingMs() is pure — reading state never mutates it', () => {
   const h = twoWeapons(goLive(harness()));
   h.frame('$BUT,1,1,*');
@@ -5026,18 +5052,36 @@ test('SR7: the F226 refill re-sends the slot\'s own $WEAP row, then its $AMMO, i
   assert.ok(i > 0 && mine[i - 1] === weap, `the head's $WEAP,0 row goes straight before the $AMMO: ${JSON.stringify(mine)}`);
 });
 
+// Polish r1 (brx4; Codex): the F226 write now carries a `$WEAP`, whose reset echo (the clip, t17) comes back before the `$AMMO`
+// echo. Booked as an `$AMMO`-only write, the reset closed the echo window and the restore at 7 read as 33 rounds fired.
+test('F226: the $WEAP reset echo and the $AMMO echo of a reserve-limited refill book no rounds', () => {
+  const { h } = chargeHarness({ reserve: 3 });
+  const weap = h.bundle.head.find(f => f.startsWith('$WEAP,0,')), clip = +weap.split(',')[17];
+  const shot0 = h.eng.am.lastShot, steps = [];
+  h.eng.am.host.recoilStep = n => steps.push(n);
+  h.frame('$ALCD,4,100,0,3,156,*');
+  assert.ok(h.writes.includes('$AMMO,0,7,0,1,*'), 'setup: a reserve of 3 tops up to 7');
+  assert.ok(clip > 7, `setup: the reset reads above the written count: ${clip}`);
+  h.adv(20); h.frame(`$ALCD,${clip},100,0,0,0,*`);              // the $WEAP's reset
+  h.adv(20); h.frame('$ALCD,7,100,0,0,0,*');                     // the $AMMO's restore
+  assert.equal(h.eng.am.acctLive(0), 7);
+  assert.equal(h.eng.am.lastShot, shot0, 'no round was booked from the echoes');
+  assert.deepEqual(steps, [], 'no recoil step from the echoes');
+});
+
 // Bench 2026-11-14 (SR8; brx2's emulator): the Energy Rifle locks at about 101 and the lock does not cool. Pulls inside it fire
 // nothing on EITHER slot (one heat value), and the lever vents 35 a press. The phone counted 13 pulls as rounds, tripped the
 // stale-pool cure, and showed "reload did NOT take" at every vent.
-function energyHarness() {
+function energyHarness({ easyOne = false, lock = true } = {}) {
   const h = harness();
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
-  h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }];
+  h.player.loadout.weapons = easyOne ? [{ weapon_id: 'energy_rifle' }] : [{ weapon_id: 'energy_rifle' }, { weapon_id: 'usp' }];
+  if (easyOne) h.player.loadout.overrides = { easy_reload: true };   // compile.py: ALT on fn 97, the lever on 98
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
     catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
       { weapon_id: 'usp', name: 'USP', clip: 12, reserve: 48 }], perks: [] } } });
   h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
-  h.frame('$ALCD,202,100,0,600,99,*'); h.frame('$ALCD,201,100,0,600,101,*');   // the lock
+  if (lock) { h.frame('$ALCD,202,100,0,600,99,*'); h.frame('$ALCD,201,100,0,600,101,*'); }   // the lock
   return h;
 }
 test('SR8: pulls inside an Energy Rifle lock are no rounds and no stale-pool evidence, however long the lock lasts', () => {
@@ -5062,6 +5106,40 @@ test('SR8: the lever on the Energy Rifle vents the heat: no reload card, no "did
   h.frame('$ALCD,20,100,0,600,0,*'); h.adv(100);
   h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
   assert.equal(h.eng.state().reloading, true, 'at heat 0 the lever reloads');
+});
+// Polish r1 (brx4; Opus): bench SR8 read 65 after one vent, still 65 ten seconds later, and no shot at 65. The phone trusted the
+// lock only at 99 or more and cooled 65 to 0 in 2 s, so pulls became rounds again and the next lever showed "did NOT take".
+test('SR8: a part-vented Energy Rifle (65) stays locked: pulls are no rounds, the next lever vents again', () => {
+  const h = energyHarness(), logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  h.frame('$ALCD,201,100,0,600,65,*');                         // one vent: 101 to 65
+  const acct = h.eng.am.acctLive(0);
+  for (let k = 0; k < 5; k++) { h.adv(3000); h.frame('$BUT,0,1,*'); h.adv(60); h.frame('$BUT,0,0,*'); h.adv(1000); h.eng.tick(); }
+  assert.equal(h.eng.am.heatBlocksFire(), true, '20 s on, 65 is still a lock');
+  assert.equal(h.eng.am.acctLive(0), acct, 'no pull was booked as a round');
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, false, 'the second lever vents too: no RELOADING card');
+  h.adv(4000); h.eng.tick();
+  assert.ok(!logs.some(m => /did NOT take|gun not firing/.test(m)), logs.filter(m => /reload|firing/.test(m)).join('\n'));
+  h.frame('$ALCD,201,100,0,600,0,*');                          // vented to 0
+  assert.equal(h.eng.am.heatBlocksFire(), false, 'vented to 0: the lock is over');
+});
+// Polish r1 (brx4; Codex + Opus): on a one-weapon Easy Reload kit ALT holds fn 97, so ALT vents the Energy Rifle and the lever
+// (fn 98) is the phone's reload. ALT's vent opened a reload that ended "did NOT take"; the lever was refused as a vent.
+test('Easy Reload + Energy Rifle: ALT vents with no reload card; the lever is the phone\'s reload', () => {
+  let h = energyHarness({ easyOne: true }); const logs = [];
+  h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,1,1,*'); h.adv(60); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().reloading, false, 'ALT vents: no RELOADING card');
+  h.frame('$ALCD,201,100,0,600,65,*');
+  h.adv(4000); h.eng.tick();
+  assert.ok(logs.some(m => /ALT vents the heat/.test(m)), logs.join('\n'));
+  assert.ok(!logs.some(m => /did NOT take/.test(m)), logs.filter(m => /reload/.test(m)).join('\n'));
+  h = energyHarness({ easyOne: true, lock: false }); const l2 = []; h.eng.log = m => l2.push(String(m));
+  h.frame('$ALCD,20,100,0,600,50,*');                          // warm, not locked (the bundle's cap is 32)
+  h.frame('$BUT,2,1,*'); h.adv(60); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true, 'the lever reloads: it vents nothing on this kit\n' + l2.join('\n'));
 });
 test('SR8: the lock blocks the other slot too (one heat value)', () => {
   const h = energyHarness();

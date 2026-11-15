@@ -17,7 +17,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     counts      liveAmmo() · spawnAmmo() · ammoBySlot() · lastMag(slot) · setPrev(slot, mag, res) · setMag(slot, mag) · saved() · restore(saved) ·
 //                 forgetCounts()
 //     the HUD     publish(slot, mag, reserve) · showSlot(slot) · forgetShown()
-//     heat        noteHeat(slot, heat) · heatNow() · heatCools(slot) · leverVents(now) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
+//     heat        noteHeat(slot, heat) · heatVents(slot) · ventLocked() · heatNow() · heatCools(slot) · leverVents(now) · heatLockFrame(slot, heat, prev, mag) · heatLockPress() · heatBlocksFire(now) ·
 //                 overheatOnHud(now) · heatOf(slot) · heatedEver(slot) · forgetHeat() · heatSaved() · heatRestore(h)
 //     reload      reloadPulled({lever}) · reloadReleased(now) · softWake(r) · reloadDeadline() · endReload(why) · reloadTick(now) ·
 //                 reloadingMs() · reloadOpen · dropReload()
@@ -25,7 +25,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     ALT         altPressed() · switchTick(now) · bindIfDue(now) · bindWake(due) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
 //                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · swapWindowMs() ·
 //                 equipped(slot, mag, res)
-//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · reloading ·
+//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · ventLock · reloading ·
 //                 reloadOutcome · switching · lastLoadout · bindDue · lastSwitchMs · dryPulls · lastShot · lastSwing (read them;
 //                 change them through the methods above)
 //
@@ -178,6 +178,9 @@ export class Ammo {
     // up on the very first rising frame of ordinary fire, which is not what "OVERHEAT" means on the bench).
     this.heatBySlot = {};
     this.heatLock = null;   // pl4: {slot, at, lastAt} from the first reading at or past HEAT_LOCKOUT; see `overheatOnHud`
+    // Polish r1 (brx4; bench SR8): the slot whose Energy Rifle lock is on. It holds below HEAT_LOCKOUT: a lever press vents
+    // 100 to 65, and the gun still will not fire at 65. A reading of 0 or a round fired ends it (`noteHeat`, `heatLockFrame`).
+    /** @type {number | null} */ this.ventLock = null;
     // Per slot, the `now()` of the last heat token recorded -- lets `heatBlocksFire()` treat a reading as
     // stale once nothing has refreshed it for HEAT_STALE_MS (review 2026-09-17: see the constant's comment).
     this.heatAt = {};
@@ -248,7 +251,7 @@ export class Ammo {
   /** A loaded pull, a new life: the RELOAD nag's dry spell is over. */
   endDrySpell() { this.dryPulls = 0; }
   /** A new life: no slot has a heat reading or a lockout. */
-  forgetHeat() { this.heatBySlot = {}; this.heatAt = {}; this.everHeated = {}; this.heatLock = null; }
+  forgetHeat() { this.heatBySlot = {}; this.heatAt = {}; this.everHeated = {}; this.heatLock = null; this.ventLock = null; }
 
   /** {slot: [mag, reserve]} the gun holds NOW: the node's magazine account per slot (F259 -- never the last
    *  `$ALCD`, which can be a round behind), else the frame's spawn values (F87: never a refill).
@@ -555,7 +558,23 @@ export class Ammo {
   // ---------- heat: $ALCD token 5 (bench 2026-09-17, pl4) ----------
   /** Record one `$ALCD` heat token for `slot` (null when the frame carries none: `$LCD`'s ammo echo leaves the last
    *  reading alone). Recorded before any guard that drops the frame, so a stun cannot leave a stale lockout. */
-  noteHeat(slot, heat) { if (heat != null && !Number.isNaN(heat)) { this.heatBySlot[slot] = heat; this.heatAt[slot] = this.host.now(); if (heat > 0) this.everHeated[slot] = true; } }
+  noteHeat(slot, heat) {
+    if (heat == null || Number.isNaN(heat)) return;
+    this.heatBySlot[slot] = heat; this.heatAt[slot] = this.host.now();
+    if (heat > 0) this.everHeated[slot] = true;
+    if (heat >= HEAT_LOCKOUT && this.heatVents(slot)) this.ventLock = slot;    // polish r1: an Energy Rifle lock latches
+    else if (heat <= 0) this.ventLock = null;                                  // vented (the gun has one heat value)
+  }
+  /** Polish r1 (brx4): is the weapon in `slot` one whose lock only the lever vents (an energy weapon that does not cool, the
+   *  Energy Rifle; bench SR8)? Other heat weapons keep the trust window. PURE. */
+  heatVents(slot) {
+    const ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
+    const row = w && this.host.weaponRow(w.weapon_id);
+    return !!w && isEnergyClass(row && row.weapon_class, w.weapon_id) && !this.heatCools(slot);
+  }
+  /** Polish r1 (brx4): is the Energy Rifle's lock on? It holds until a reading of 0 or a round fired, whatever the heat
+   *  reads in between (bench SR8: no fire at 65). PURE. */
+  ventLocked() { return this.ventLock != null; }
   /** The slot's last heat reading, or null before one this life. PURE. */
   heatOf(slot) { return this.heatBySlot[slot] != null ? this.heatBySlot[slot] : null; }
   /** Has the slot reported heat above 0 this life? The HUD's heat bar exists only for a weapon that heats. PURE. */
@@ -575,6 +594,7 @@ export class Ammo {
     // either slot. The Energy Rifle's lock does not cool: it holds until the lever vents it, so its reading is trusted until a
     // newer one (pulls inside it were counted as rounds and tripped the stale-pool cure). A charge weapon's lock cools by
     // itself, so its reading keeps the HEAT_STALE_MS trust window (match 592e444eff).
+    if (this.ventLocked()) return true;   // polish r1: a part-vented Energy Rifle (65) is still locked
     const h = this.heatNow();
     if (!h || h.v < HEAT_LOCKOUT) return false;
     return this.heatCools(h.slot) ? now - h.at < HEAT_STALE_MS : true;
@@ -595,9 +615,8 @@ export class Ammo {
   /** Bench 2026-11-14 (SR8): on the Energy Rifle the lever VENTS the heat while there is any (35 a press; a held lever vents to
    *  0, then refills the cell), and the magazine does not move. Such a lever is no reload. PURE. */
   leverVents(now = this.host.now()) {
-    const slot = this.host.activeSlot, ws = this.host.player && this.host.player.loadout && this.host.player.loadout.weapons, w = ws && ws[slot];
-    const row = w && this.host.weaponRow(w.weapon_id);
-    if (!w || !isEnergyClass(row && row.weapon_class, w.weapon_id) || this.heatCools(slot)) return false;
+    if (!this.heatVents(this.host.activeSlot)) return false;
+    if (this.ventLocked()) return true;   // polish r1 (Opus): the lock holds at 65 and does not cool, so the next press vents too
     const h = this.heatNow();
     if (!h) return false;
     const v = h.v >= HEAT_LOCKOUT ? h.v : h.v - (now - h.at) * HEAT_COOL_PER_MS;
@@ -611,6 +630,7 @@ export class Ammo {
     // old heat; the `$AMMO` ended the lock (bench 2026-09-17), so it must not put OVERHEAT back up over a full cell.
     if (hot && this.reloading && this.reloading.auto && this.reloading.slot === slot) return;
     if (hot) { if (L && L.slot === slot) L.lastAt = now; else this.heatLock = { slot, at: now, lastAt: now }; return; }
+    if (this.ventLock != null && prev != null && mag < prev) this.ventLock = null;   // polish r1: it fired, so it is not locked
     if (!L || L.slot !== slot) return;
     if ((heat != null && !Number.isNaN(heat)) || (prev != null && mag < prev)) this.heatLock = null;   // cooled, or it fired
   }
@@ -640,8 +660,14 @@ export class Ammo {
   reloadReleased(now) {
     const r = this.reloading; if (!r) return;
     r.releasedAt = now;
-    if (r.soft && r.chain && r.shells > 0 && !r.inFlight) this.endReload(r.cap != null && r.mag >= r.cap ? 'filled' : 'released');
+    // Polish r1 (brx4): a press inside the bounce window undoes this release (`reloadUnreleased`), so a chain ends only once the
+    // window has passed (`reloadTick`). The wake brings that tick forward from the 250 ms app tick.
+    if (r.soft && r.chain && this.host.delay) this.host.delay(this.bounceMs(), () => { if (this.reloading === r) this.reloadTick(this.host.now()); });
   }
+  /** Polish r1 (brx4): the lever's last release was contact bounce (engine.js `_onButton`), so the lever is still held. */
+  reloadUnreleased() { const r = this.reloading; if (r) r.releasedAt = null; }
+  /** The engine's BUTTON_BOUNCE_MS (40 when no host gives it). PURE. */
+  bounceMs() { return this.host.bounceMs != null ? this.host.bounceMs : 40; }
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
   /** A reload pull: the lever (`lever`), or ALT on Easy Reload. Bench 2026-11-14: Easy Reload's lever is on fn 98 (ALT holds
    *  the gun's reload), so a lever pull there is the phone's reload of the weapon in hand, with every refusal ALT's has. */
@@ -651,7 +677,11 @@ export class Ammo {
     // and reloads nothing: a reload started here would book rounds the gun never loaded. From the wait's end it is a lever again.
     const wait = this.host.gunButtonsWaitMs ? this.host.gunButtonsWaitMs() : 0;
     if (wait > 0) { this.host.log(`reload pull ignored: the gun's spawn wait (${Math.ceil(wait)} ms left)`, 'li'); return; }
-    if (lever && this.leverVents()) { const h = this.heatNow(); this.host.log(`lever vents the heat (${h ? h.v : '?'}); no reload`, 'li'); return; }   // SR8
+    // SR8: the gun's reload button (fn 97) vents an Energy Rifle's heat and reloads nothing. That is the lever, or ALT on Easy
+    // Reload (`altReloads`: the lever is on 98 there and is the phone's reload). Polish r1 (Codex + Opus): ALT's vent opened a
+    // reload that ended "did NOT take", and Easy Reload's lever, which vents nothing, was refused.
+    const easyAlt = !!(this.host.altReloads && this.host.altReloads());
+    if ((lever ? !easyAlt : easyAlt) && this.leverVents()) { const h = this.heatNow(); this.host.log(`${lever ? 'lever' : 'ALT'} vents the heat (${h ? h.v : '?'}); no reload`, 'li'); return; }
     this.leverAt = this.host.now();   // E10 review: a refused pull (a full slot on the phone) still makes the gun reload its own slot
     // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `onAmmo` drops every $ALCD for the whole
     // window, so a takeover started here could never be reconciled: it would run to its deadline and book
@@ -826,6 +856,13 @@ export class Ammo {
   reloadTick(now) {
     // F226: the phone's own reload (`autoReload`) needs no gun evidence: the gun's echo of the phone's `$AMMO` is bookkeeping.
     if (this.reloading && this.reloading.auto && now >= this.reloading.at + this.reloading.ms) { this.endReload('filled'); return; }
+    // Bench 2026-11-14 (SR16): a chain goes on only while the lever is held. Polish r1 (brx4): a release after the first shell
+    // ends it once the bounce window has passed and no shell is on the link, and always before the next shell is written (a
+    // release that came while a shell was in flight wrote one more shell).
+    { const r = this.reloading;
+      if (r && r.soft && r.chain && r.shells > 0 && r.releasedAt != null && !r.inFlight && now - r.releasedAt >= this.bounceMs()) {
+        this.endReload(r.cap != null && r.mag >= r.cap ? 'filled' : 'released'); return;
+      } }
     // F650: the phone's own reload writes its `$AMMO` at the weapon's reload time. Its echo is bookkeeping (`acctWrote`).
     if (this.reloading && this.reloading.soft && now >= this.reloading.at + this.reloading.ms) {
       const r = this.reloading, to = this.host.softReloadWrite(r);
@@ -1340,8 +1377,9 @@ export class Ammo {
    *  so a restart that forgot the lockout counted the player's dry pulls as GUN NOT FIRING (`heatBlocksFire`). The times
    *  are absolute, on the engine clock, so the snapshot only changes on a reading (EFF-1) and the engine rebases them. */
   heatSaved() {
-    if (!Object.keys(this.heatBySlot).length && !this.heatLock) return null;
-    return { by: { ...this.heatBySlot }, at: { ...this.heatAt }, ever: { ...this.everHeated }, lock: this.heatLock ? { ...this.heatLock } : null };
+    if (!Object.keys(this.heatBySlot).length && !this.heatLock && this.ventLock == null) return null;
+    return { by: { ...this.heatBySlot }, at: { ...this.heatAt }, ever: { ...this.everHeated }, lock: this.heatLock ? { ...this.heatLock } : null,
+             vent: this.ventLock };
   }
   /** T2 r1: put `heatSaved()`'s snapshot back. A malformed entry reads as no reading. */
   heatRestore(h) {
@@ -1351,6 +1389,7 @@ export class Ammo {
     const L = h && h.lock;
     this.heatBySlot = by; this.heatAt = at; this.everHeated = ever;
     this.heatLock = L && Number.isInteger(L.slot) && num(L.at) && num(L.lastAt) ? { slot: L.slot, at: L.at, lastAt: L.lastAt } : null;
+    this.ventLock = h && Number.isInteger(h.vent) ? h.vent : null;
   }
   /** F164: seed the account and the last-seen counts from `saved()`'s shape, so `liveAmmo()` reads them. */
   restore(saved) {
