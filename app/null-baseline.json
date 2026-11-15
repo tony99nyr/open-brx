@@ -100,7 +100,6 @@
   "TS18047 'bindFn' is possibly 'null'.": 1,
   "TS18047 'entry' is possibly 'null'.": 1,
   "TS18047 'selfHit' is possibly 'null'.": 3,
-  "TS18048 'am' is possibly 'undefined'.": 17,
   "TS18048 's' is possibly 'undefined'.": 2,
   "TS18048 'slot' is possibly 'undefined'.": 1,
   "TS18048 'want' is possibly 'undefined'.": 1,
@@ -177,8 +176,7 @@
   "TS2538 Type 'undefined' cannot be used as an index type.": 3,
   "TS2554 Expected 1 arguments, but got 3.": 1,
   "TS2722 Cannot invoke an object which is possibly 'undefined'.": 4,
-  "TS2741 Property 'writer' is missing in type '{}' but required in type '{ writer: (frames: string[]) => void | Promise<void>; emit?: ((fact: any) => void) | undefined; report?: ((kind: string, body: any) => void) | undefined; now?: (() => number) | undefined; clockOffset?: (() => number) | undefined; synced?: (() => boolean) | undefined; storage?: any; log?: ((line: string, cls?: string...'.": 1,
-  "TS2769 No overload matches this call.": 1
+  "TS2741 Property 'writer' is missing in type '{}' but required in type '{ writer: (frames: string[]) => void | Promise<void>; emit?: ((fact: any) => void) | undefined; report?: ((kind: string, body: any) => void) | undefined; now?: (() => number) | undefined; clockOffset?: (() => number) | undefined; synced?: (() => boolean) | undefined; storage?: any; log?: ((line: string, cls?: string...'.": 1
  },
  "src/fakegun.js": {
   "TS2322 Type 'number | null' is not assignable to type 'number'.": 5

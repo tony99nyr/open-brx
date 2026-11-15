@@ -11,6 +11,7 @@ import { MELEE_PRESS_MS } from '../src/ammo.js';
 import { BrxLink } from '../src/brxlink.js';
 import { CLIP_MS, clipId } from '../src/announcer.js';
 import { Hud } from '../src/hud/hud.js';
+import { renderHtml } from './hud-html-harness.mjs';
 import * as W from '../src/transport/envelope.js';
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 import { mkStorage } from './_helpers.mjs';
@@ -5266,6 +5267,61 @@ test('SR8: the latch starts above 99 and ends only at 0', () => {
   for (const v of [66, 31]) { h.frame(`$ALCD,205,100,0,600,${v},*`); assert.equal(h.eng.am.ventLocked(), true, `part-vented to ${v}: still locked`); }
   h.frame('$ALCD,205,100,0,600,0,*');
   assert.equal(h.eng.am.ventLocked(), false, 'vented to 0');
+});
+// Heat HUD (bench SR8 on 0.4.43): a held lever vented 100 -> 65 -> 30 and pulls at 30 got no shot, but the HUD cleared OVERHEAT
+// under 99, so the player saw no reason for a dead trigger. OVERHEAT holds for the whole vent lock, on either slot.
+test('SR8: OVERHEAT stays on the HUD through a part vent (65, 30) and clears at 0', () => {
+  const h = energyHarness();
+  assert.equal(h.eng.state().overheatShown, true, 'setup: the lock reads OVERHEAT');
+  for (const v of [65, 30]) {
+    h.frame(`$ALCD,201,100,0,600,${v},*`); h.adv(7000); h.frame('$BUT,0,1,*'); h.adv(60); h.frame('$BUT,0,0,*');
+    assert.equal(h.eng.state().overheatShown, true, `part-vented to ${v}, 7 s on: still OVERHEAT`);
+  }
+  h.eng.activeSlot = 1;
+  assert.equal(h.eng.state().overheatShown, true, 'the other slot is locked too (one heat value)');
+  h.eng.activeSlot = 0;
+  h.frame('$ALCD,201,100,0,600,0,*');
+  assert.equal(h.eng.state().overheatShown, false, 'vented to 0: OVERHEAT clears with the lock');
+});
+test('SR8 kit: with the Charge Rifle in hand at 9 under the vent lock, the HUD says OVERHEAT, not NOT ENOUGH ENERGY', () => {
+  const run = latch => {
+    const h = harness();
+    h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+    h.player.loadout.weapons = [{ weapon_id: 'energy_rifle' }, { weapon_id: 'charge_rifle' }];
+    h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
+      catalog: { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', weapon_class: 'energy', clip: 300, reserve: 600, reload_s: 2.4 },
+        { weapon_id: 'charge_rifle', name: 'Charge Rifle', weapon_class: 'energy', rounds_per_charge: 10, clip: 40, reserve: 160, reload_s: 2 }], perks: [] } } });
+    h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.adv(5000); h.eng.tick();
+    h.frame('$ALCD,9,100,1,160,0,*');                            // the Charge Rifle's cell: under one charge
+    if (latch) { h.frame('$ALCD,205,100,0,600,101,*'); h.frame('$ALCD,205,100,0,600,30,*'); }   // locked, then part-vented
+    h.eng.activeSlot = 1;
+    h.frame(`$ALCD,9,100,1,160,${latch ? 30 : 104},*`);          // the cell in hand: the shared heat, or (CONTROL) a starved charge's spike
+    return renderHtml({ now: h.eng.now(), state: h.eng.state(), hud: {} }).screen;
+  };
+  assert.match(run(false), /unskew">NOT ENOUGH ENERGY</, 'CONTROL: a starved cell with no vent lock says NOT ENOUGH ENERGY');
+  const html = run(true);
+  assert.match(html, /heatword">OVERHEAT/, 'the word and the vignette');
+  assert.match(html, /unskew">OVERHEAT</, 'the red prompt names the lock (the small note may still say the cell is under a charge)');
+});
+test('SR8: a vent to 0 reported on the other slot ends OVERHEAT on the locked slot too (one heat value)', () => {
+  const h = energyHarness();
+  h.eng.activeSlot = 1;
+  h.frame('$ALCD,12,100,1,48,0,*');                            // the vent to 0, on the slot in hand
+  h.eng.activeSlot = 0;
+  assert.equal(h.eng.state().overheatShown, false, 'back on the Energy Rifle: no OVERHEAT after the lock ended');
+});
+test('SR8: a round fired ends the vent lock and its OVERHEAT; OVERHEAT_CAP_MS bounds an unvented lock', () => {
+  let h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,30,*'); h.adv(2000);
+  h.frame('$ALCD,200,100,0,600,30,*');                         // a round left the cell
+  assert.equal(h.eng.state().overheatShown, false, 'it fired: no OVERHEAT');
+  h = energyHarness();
+  h.frame('$ALCD,201,100,0,600,65,*');
+  h.adv(OVERHEAT_CAP_MS - 100);
+  assert.equal(h.eng.state().overheatShown, true, 'inside the cap');
+  h.adv(200);
+  assert.equal(h.eng.state().overheatShown, false, 'never past OVERHEAT_CAP_MS');
+  assert.equal(h.eng.am.heatBlocksFire(), true, 'the mechanic still holds the lock');
 });
 // Polish r4 (brx4; brx2's emulator replay m6 of 97d699470): Energy Rifle + Charge Rifle, the Energy Rifle locked, the Charge Rifle
 // in hand at 9. The gun's lever only vents (one heat value), but the phone started its own reload of slot 1: a free 9 -> 40, the

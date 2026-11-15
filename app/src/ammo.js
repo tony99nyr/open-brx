@@ -25,7 +25,7 @@ import { RELOAD_NAG_FIRST, RELOAD_NAG_EVERY } from './transport/contract.gen.js'
 //     ALT         altPressed() · switchTick(now) · bindIfDue(now) · bindWake(due) · switchingMs() · switchWindowMs() · altCycle() · nextAltSlot() ·
 //                 swapOpen · altSwap() · swapFrom · swapTo · setSwitching(card) · cancelSwap() · swapWindowMs() ·
 //                 equipped(slot, mag, res)
-//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · ventLock · reloading ·
+//     state       acct · prevAmmo · prevReserve · magBySlot · heatBySlot · heatAt · everHeated · heatLock · ventLock · ventLockAt · reloading ·
 //                 reloadOutcome · switching · lastLoadout · bindDue · lastSwitchMs · dryPulls · lastShot · lastSwing (read them;
 //                 change them through the methods above)
 //
@@ -188,6 +188,7 @@ export class Ammo {
     // Polish r1 (brx4; bench SR8): the slot whose Energy Rifle lock is on. It holds below HEAT_LOCKOUT: a lever press vents
     // 100 to 65, and the gun still will not fire at 65. A reading of 0 or a round fired ends it (`noteHeat`, `heatLockFrame`).
     /** @type {number | null} */ this.ventLock = null;
+    this.ventLockAt = 0;    // heat HUD (SR8 on 0.4.43): when `ventLock` engaged, so `overheatOnHud` keeps OVERHEAT_CAP_MS on it
     // Per slot, the `now()` of the last heat token recorded -- lets `heatBlocksFire()` treat a reading as
     // stale once nothing has refreshed it for HEAT_STALE_MS (review 2026-09-17: see the constant's comment).
     this.heatAt = {};
@@ -258,7 +259,7 @@ export class Ammo {
   /** A loaded pull, a new life: the RELOAD nag's dry spell is over. */
   endDrySpell() { this.dryPulls = 0; }
   /** A new life: no slot has a heat reading or a lockout. */
-  forgetHeat() { this.heatBySlot = {}; this.heatAt = {}; this.everHeated = {}; this.heatLock = null; this.ventLock = null; }
+  forgetHeat() { this.heatBySlot = {}; this.heatAt = {}; this.everHeated = {}; this.heatLock = null; this.ventLock = null; this.ventLockAt = 0; }
 
   /** {slot: [mag, reserve]} the gun holds NOW: the node's magazine account per slot (F259 -- never the last
    *  `$ALCD`, which can be a round behind), else the frame's spawn values (F87: never a refill).
@@ -570,8 +571,8 @@ export class Ammo {
     this.heatBySlot[slot] = heat; this.heatAt[slot] = this.host.now();
     if (heat > 0) this.everHeated[slot] = true;
     // Polish r1: an Energy Rifle lock latches. Polish r4 (brx2's emulator): it starts ABOVE 99; rounds still fire at 99.
-    if (heat >= VENT_LOCK_AT && this.heatVents(slot)) this.ventLock = slot;
-    else if (heat <= 0) this.ventLock = null;                                  // vented (the gun has one heat value)
+    if (heat >= VENT_LOCK_AT && this.heatVents(slot)) { if (this.ventLock == null) this.ventLockAt = this.host.now(); this.ventLock = slot; }
+    else if (heat <= 0) { this.ventLock = null; this.heatLock = null; }      // vented: the gun has one heat value, so no slot is hot
   }
   /** Polish r1 (brx4): is the weapon in `slot` one whose lock only the lever vents (an energy weapon that does not cool, the
    *  Energy Rifle; bench SR8)? Other heat weapons keep the trust window. PURE. */
@@ -656,8 +657,12 @@ export class Ammo {
   /** THE DISPLAY. pl4: the HUD's OVERHEAT word, overlay and hot heat bar -- all three read this one field, so
    *  they cannot disagree (maint review 2026-09-17: the bar read the mechanic and could stay hot for up to 19 s
    *  after the word cleared). True while the active slot's lockout has evidence inside OVERHEAT_SHOWN_MS and
-   *  began less than OVERHEAT_CAP_MS ago. Display only: no game rule reads it. PURE. */
+   *  began less than OVERHEAT_CAP_MS ago. Display only: no game rule reads it. PURE.
+   *  Heat HUD (bench SR8 on 0.4.43): the Energy Rifle's lock (`ventLock`) holds below HEAT_LOCKOUT (a part vent reads 65, then
+   *  30) and the trigger is dead on either slot (one heat value). OVERHEAT stays up for the whole lock, so the player sees why
+   *  the trigger does nothing. It ends with the lock (a reading of 0 or a round fired), and OVERHEAT_CAP_MS still bounds it. */
   overheatOnHud(now = this.host.now()) {
+    if (this.ventLock != null && this.host.alive && now - this.ventLockAt < OVERHEAT_CAP_MS) return true;   // never on a down player
     const L = this.heatLock;
     return !!(L && L.slot === this.host.activeSlot && now - L.lastAt < OVERHEAT_SHOWN_MS && now - L.at < OVERHEAT_CAP_MS);
   }
@@ -1409,7 +1414,7 @@ export class Ammo {
   heatSaved() {
     if (!Object.keys(this.heatBySlot).length && !this.heatLock && this.ventLock == null) return null;
     return { by: { ...this.heatBySlot }, at: { ...this.heatAt }, ever: { ...this.everHeated }, lock: this.heatLock ? { ...this.heatLock } : null,
-             vent: this.ventLock };
+             vent: this.ventLock, ventAt: this.ventLockAt };
   }
   /** T2 r1: put `heatSaved()`'s snapshot back. A malformed entry reads as no reading. */
   heatRestore(h) {
@@ -1420,6 +1425,7 @@ export class Ammo {
     this.heatBySlot = by; this.heatAt = at; this.everHeated = ever;
     this.heatLock = L && Number.isInteger(L.slot) && num(L.at) && num(L.lastAt) ? { slot: L.slot, at: L.at, lastAt: L.lastAt } : null;
     this.ventLock = h && Number.isInteger(h.vent) ? h.vent : null;
+    this.ventLockAt = this.ventLock == null ? 0 : num(h.ventAt) ? h.ventAt : this.host.now();   // an older save has no `ventAt`
   }
   /** F164: seed the account and the last-seen counts from `saved()`'s shape, so `liveAmmo()` reads them. */
   restore(saved) {

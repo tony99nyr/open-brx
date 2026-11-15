@@ -1238,8 +1238,8 @@ export class Engine {
       // Engine split (b): the ALT pointer and the ammo account live on `this.am` (ammo.js), so their copies are taken there.
       const touched = [...Object.keys(next), '_pendingPhase', '_restored'];
       const before = {}; for (const k of touched) before[k] = this[k];
-      const am = this.am, amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, lastLoadout: am.lastLoadout,
-        heatBySlot: am.heatBySlot, heatAt: am.heatAt, everHeated: am.everHeated, heatLock: am.heatLock };   // `heatRestore` replaces these, never edits them
+      const am = /** @type {Ammo} */ (this.am), amBefore = { acct: { ...am.acct }, prevAmmo: { ...am.prevAmmo }, prevReserve: { ...am.prevReserve }, lastLoadout: am.lastLoadout,
+        heatBySlot: am.heatBySlot, heatAt: am.heatAt, everHeated: am.everHeated, heatLock: am.heatLock, ventLock: am.ventLock, ventLockAt: am.ventLockAt };   // `heatRestore` replaces these, never edits them
       const puBefore = this.pu.snapshot();
       undo = () => { Object.assign(this, before); Object.assign(am, amBefore); if (puBefore) this.pu.restore(puBefore); else this.pu.reset(); };
       Object.assign(this, next);
@@ -1294,6 +1294,7 @@ export class Engine {
       field(this, 'deadAt'); field(this, 'endedAt'); field(this, 'resultAt'); this.pu.clockItems(field, obj);
       for (const slot of Object.keys(this.am.heatAt)) field(this.am.heatAt, slot);   // T2 r1: the heat times, each until a new reading
       if (this.am.heatLock) { field(this.am.heatLock, 'at'); field(this.am.heatLock, 'lastAt'); }
+      { const am = /** @type {Ammo} */ (this.am); if (am.ventLock != null) field(am, 'ventLockAt'); }   // heat HUD: the vent lock's OVERHEAT cap
       const d = offset - s.clockOffset; if (d) for (const it of items) it.shift(d);
     }
     obj(() => this.stunned, ['at', 'until']); obj(() => this.poison, ['at', 'until', 'nextAt']); obj(() => this._emp, ['readyAt']);
@@ -8339,6 +8340,7 @@ export class Engine {
       // THE DISPLAY (`am.overheatOnHud`): the OVERHEAT word, the overlay AND the hot heat bar, all from this one
       // field, for OVERHEAT_SHOWN_MS after the last evidence of the lockout.
       overheatShown: this.am.overheatOnHud(now),
+      ventLocked: /** @type {Ammo} */ (this.am).ventLocked(),   // heat HUD: the Energy Rifle's lock, so the HUD never calls it NOT ENOUGH ENERGY
       heatEverSeen: this.am.heatedEver(this.activeSlot),
       // S42 × A44/A47/F15 (maint review 2026-09-17): the accuracy writer's own stand-down, made visible.
       // `{until, why}` while a spawn, revive, operator resync or stun write owns `$AMMO`; null once it lifts.

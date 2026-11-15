@@ -82,7 +82,9 @@ export function _live(st) {
     // and waiting never clears it. OVERHEAT told the player to wait, so NOT ENOUGH ENERGY wins the prompt. F226 (Tony, 2026-11-01:
     // "janky super large"): no full-screen word or vignette for this case; the red prompt on the ammo block says it, and the
     // phone reloads the cell itself (engine.js `_chargeLock`).
-    const starved = overheating && belowCharge && st.ammo > 0;
+    // Heat HUD (SR8 on 0.4.43): with the Energy Rifle's vent lock on, a short Charge Rifle cell in hand is not the cause; the lever
+    // vents and the phone reloads nothing (engine.js `_chargeLock`), so the prompt says OVERHEAT.
+    const starved = overheating && belowCharge && st.ammo > 0 && !st.ventLocked;
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
