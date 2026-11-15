@@ -1833,9 +1833,10 @@ class GunStage:
             return
         lock = self._vent_holds()
         if lock is not None:
+            if not self._vent_bind:   # once per lock: the bind repair retries this about twice a second
+                self._log(f"{why}: the re-equip of slot {slot} waits, the gun is heat-locked (heat {lock[1]}); "
+                          "a $WEAP now would vent it for free", "info")
             self._vent_bind = True
-            self._log(f"{why}: the re-equip of slot {slot} waits, the gun is heat-locked (heat {lock[1]}); "
-                      "a $WEAP now would vent it for free", "info")
             return
         live = self._live_ammo().get(slot) or [0, 0]
         mag, res = int(live[0] or 0), int(live[1] or 0)
